@@ -40,17 +40,8 @@ export class FileSystemOps implements Ops {
   readonly runs: FileSystemRuns;
   readonly threads: FileSystemThreads;
 
-  constructor() {
-    this.conn = new FileSystemPersistence<Store>(
-      ".langgraphjs_ops.json",
-      () => ({
-        runs: {},
-        threads: {},
-        assistants: {},
-        assistant_versions: [],
-        retry_counter: {},
-      })
-    );
+  constructor(conn) {
+    this.conn = conn;
     this.assistants = new FileSystemAssistants(this.conn);
     this.runs = new FileSystemRuns(this.conn);
     this.threads = new FileSystemThreads(this.conn);

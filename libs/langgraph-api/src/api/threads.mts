@@ -16,14 +16,14 @@ const api = new Hono();
 api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
   // Create Thread
   const payload = c.req.valid("json");
-  const thread = await Threads.put(
+  const thread = await threads().put(
     payload.thread_id || uuid4(),
     { metadata: payload.metadata, if_exists: payload.if_exists ?? "raise" },
     c.var.auth
   );
 
   if (payload.supersteps?.length) {
-    await Threads.State.bulk(
+    await threads().state.bulk(
       { configurable: { thread_id: thread.thread_id } },
       payload.supersteps,
       c.var.auth
@@ -112,7 +112,7 @@ api.post(
       Object.assign(config.configurable, payload.checkpoint);
     }
 
-    const inserted = await Threads.State.post(
+    const inserted = await threads().state.post(
       config,
       payload.values,
       payload.as_node,
@@ -141,7 +141,7 @@ api.get(
     const { thread_id, checkpoint_id } = c.req.valid("param");
     const { subgraphs } = c.req.valid("query");
     const state = stateSnapshotToThreadState(
-      await Threads.State.get(
+      await threads().state.get(
         { configurable: { thread_id, checkpoint_id } },
         { subgraphs },
         c.var.auth
@@ -168,7 +168,7 @@ api.post(
     const { checkpoint, subgraphs } = c.req.valid("json");
 
     const state = stateSnapshotToThreadState(
-      await Threads.State.get(
+      await threads().state.get(
         { configurable: { thread_id, ...checkpoint } },
         { subgraphs },
         c.var.auth
@@ -198,7 +198,7 @@ api.get(
     const { thread_id } = c.req.valid("param");
     const { limit, before } = c.req.valid("query");
 
-    const states = await Threads.State.list(
+    const states = await threads().state.list(
       { configurable: { thread_id, checkpoint_ns: "" } },
       { limit, before },
       c.var.auth
@@ -216,7 +216,7 @@ api.post(
     const { thread_id } = c.req.valid("param");
     const { limit, before, metadata, checkpoint } = c.req.valid("json");
 
-    const states = await Threads.State.list(
+    const states = await threads().state.list(
       { configurable: { thread_id, checkpoint_ns: "", ...checkpoint } },
       { limit, before, metadata },
       c.var.auth
@@ -232,7 +232,7 @@ api.get(
   async (c) => {
     // Get Thread
     const { thread_id } = c.req.valid("param");
-    return jsonExtra(c, await Threads.get(thread_id, c.var.auth));
+    return jsonExtra(c, await threads().get(thread_id, c.var.auth));
   }
 );
 
@@ -242,7 +242,7 @@ api.delete(
   async (c) => {
     // Delete Thread
     const { thread_id } = c.req.valid("param");
-    await Threads.delete(thread_id, c.var.auth);
+    await threads().delete(thread_id, c.var.auth);
     return new Response(null, { status: 204 });
   }
 );
@@ -257,7 +257,7 @@ api.patch(
     const { metadata } = c.req.valid("json");
     return jsonExtra(
       c,
-      await Threads.patch(thread_id, { metadata }, c.var.auth)
+      await threads().patch(thread_id, { metadata }, c.var.auth)
     );
   }
 );
@@ -268,7 +268,7 @@ api.post(
   async (c) => {
     // Copy Thread
     const { thread_id } = c.req.valid("param");
-    return jsonExtra(c, await Threads.copy(thread_id, c.var.auth));
+    return jsonExtra(c, await threads().copy(thread_id, c.var.auth));
   }
 );
 

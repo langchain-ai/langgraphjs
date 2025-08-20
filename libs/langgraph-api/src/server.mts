@@ -10,7 +10,7 @@ import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
 
-import { StorageEnv } from "./storage/types.mjs";
+import type { Store, StorageEnv } from "./storage/types.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
@@ -30,6 +30,7 @@ import { cors, ensureContentType } from "./http/middleware.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import { getConfig } from "@langchain/langgraph";
+import { FileSystemPersistence } from "./storage/persist.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -89,11 +90,22 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   }
 
   logger.info(`Initializing storage...`);
+  const opsConn = new FileSystemPersistence<Store>(
+    ".langgraphjs_ops.json",
+    () => ({
+      runs: {},
+      threads: {},
+      assistants: {},
+      assistant_versions: [],
+      retry_counter: {},
+    })
+  );
   const callbacks = await Promise.all([
-    // TODO: restore cleanup for ops connection
+    opsConn.initialize(options.cwd),
     checkpointer.initialize(options.cwd),
     graphStore.initialize(options.cwd),
   ]);
+  const ops = new FileSystemOps(opsConn);
 
   const cleanup = async () => {
     logger.info(`Flushing to persistent storage, exiting...`);
@@ -122,7 +134,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
       "A graph definition in `langgraph.json` has a `description` property. Local MCP features are not yet supported with the JS CLI and will be ignored."
     );
   }
-  await registerFromEnv(graphPaths, { cwd: options.cwd });
+  await registerFromEnv(ops.assistants, graphPaths, { cwd: options.cwd });
 
   registerRuntimeLogFormatter((info) => {
     const config = getConfig();
@@ -138,7 +150,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
 
   app.use(contextStorage());
   app.use(async (c, next) => {
-    c.set("ops", new FileSystemOps());
+    c.set("ops", ops);
     await next();
   });
 
