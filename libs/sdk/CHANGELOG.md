@@ -1,5 +1,12 @@
 # @langchain/langgraph-sdk
 
+## 0.0.109
+
+### Patch Changes
+
+- e8b4540: Add support for select statements in the search endpoints
+- 9c57526: fix(sdk): expose subgraph events in useStream callbacks
+
 ## 0.0.107
 
 ### Patch Changes
