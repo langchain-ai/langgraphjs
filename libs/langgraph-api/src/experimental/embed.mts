@@ -9,7 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v4 as uuidv4 } from "uuid";
 
-import type { Metadata, Run } from "../storage/ops.mjs";
+import type { Metadata, Run } from "../storage/types.mjs";
 import * as schemas from "../schemas.mjs";
 
 import { z } from "zod";

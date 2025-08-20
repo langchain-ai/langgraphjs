@@ -1,4 +1,5 @@
-import { type Run, type RunStatus, Runs, Threads } from "./storage/ops.mjs";
+import { Runs, Threads } from "./storage/ops.mjs";
+import type { Run, RunStatus } from "./storage/types.mjs";
 import {
   type StreamCheckpoint,
   type StreamTaskResult,

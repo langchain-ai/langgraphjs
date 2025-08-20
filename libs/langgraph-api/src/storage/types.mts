@@ -3,6 +3,7 @@ import type {
   CheckpointMetadata as LangGraphCheckpointMetadata,
 } from "@langchain/langgraph";
 import type { RunCommand } from "../command.mjs";
+import type { AuthContext } from "../auth/index.mjs";
 
 export type Metadata = Record<string, unknown>;
 

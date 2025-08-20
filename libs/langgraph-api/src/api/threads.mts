@@ -6,7 +6,8 @@ import { v4 as uuid4 } from "uuid";
 import { z } from "zod";
 import * as schemas from "../schemas.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
-import { type RunnableConfig, Threads } from "../storage/ops.mjs";
+import { Threads } from "../storage/ops.mjs";
+import type { RunnableConfig } from "../storage/types.mjs";
 import { jsonExtra } from "../utils/hono.mjs";
 
 const api = new Hono();

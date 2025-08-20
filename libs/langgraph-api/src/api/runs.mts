@@ -8,7 +8,8 @@ import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
-import { type Run, type RunKwargs, Runs, Threads } from "../storage/ops.mjs";
+import { Runs, Threads } from "../storage/ops.mjs";
+import type { Run, RunKwargs } from "../storage/types.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
