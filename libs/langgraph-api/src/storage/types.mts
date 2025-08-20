@@ -5,6 +5,14 @@ import type {
 import type { RunCommand } from "../command.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 
+/*
+export type StorageEnv = {
+  Variables: {
+
+  };
+};
+*/
+
 export type Metadata = Record<string, unknown>;
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
@@ -175,4 +183,213 @@ export interface ThreadState {
   created_at: Date | null;
   parent_checkpoint: Checkpoint | null;
   tasks: ThreadTask[];
+}
+
+export interface RunsRepo {
+  next(): AsyncGenerator<{
+    run: Run;
+    attempt: number;
+    signal: AbortSignal;
+  }>;
+
+  put(
+    runId: string,
+    assistantId: string,
+    kwargs: RunKwargs,
+    options: {
+      threadId?: string;
+      userId?: string;
+      status?: RunStatus;
+      metadata?: Metadata;
+      preventInsertInInflight?: boolean;
+      multitaskStrategy?: MultitaskStrategy;
+      ifNotExists?: IfNotExists;
+      afterSeconds?: number;
+    },
+    auth: AuthContext | undefined
+  ): Promise<Run[]>;
+
+  get(
+    runId: string,
+    thread_id: string | undefined,
+    auth: AuthContext | undefined
+  ): Promise<Run | null>;
+
+  delete(
+    run_id: string,
+    thread_id: string | undefined,
+    auth: AuthContext | undefined
+  ): Promise<string | null>;
+
+  wait(
+    runId: string,
+    threadId: string | undefined,
+    auth: AuthContext | undefined
+  ): Promise<unknown>;
+
+  join(
+    runId: string,
+    threadId: string,
+    auth: AuthContext | undefined
+  ): Promise<unknown>;
+
+  readonly stream: {
+    join(
+      runId: string,
+      threadId: string | undefined,
+      options: {
+        ignore404?: boolean;
+        cancelOnDisconnect?: AbortSignal;
+        lastEventId: string | undefined;
+      },
+      auth: AuthContext | undefined
+    ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;
+
+    publish(payload: {
+      runId: string;
+      event: string;
+      data: unknown;
+      resumable: boolean;
+    }): Promise<void>;
+  };
+}
+
+export interface RunsStreamRepo {
+  join(
+    runId: string,
+    threadId: string | undefined,
+    options: {
+      ignore404?: boolean;
+      cancelOnDisconnect?: AbortSignal;
+      lastEventId: string | undefined;
+    },
+    auth: AuthContext | undefined
+  ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;
+}
+
+export interface ThreadsRepo {
+  search(
+    options: {
+      metadata?: Metadata;
+      status?: ThreadStatus;
+      values?: Record<string, unknown>;
+      limit: number;
+      offset: number;
+      sort_by?: "thread_id" | "status" | "created_at" | "updated_at";
+      sort_order?: "asc" | "desc";
+    },
+    auth: AuthContext | undefined
+  ): AsyncGenerator<{ thread: Thread; total: number }>;
+
+  get(thread_id: string, auth: AuthContext | undefined): Promise<Thread>;
+
+  put(
+    thread_id: string,
+    options: {
+      metadata?: Metadata;
+      if_exists: OnConflictBehavior;
+    },
+    auth: AuthContext | undefined
+  ): Promise<Thread>;
+
+  patch(
+    threadId: string,
+    options: { metadata?: Metadata },
+    auth: AuthContext | undefined
+  ): Promise<Thread>;
+
+  setStatus(
+    threadId: string,
+    options: {
+      checkpoint?: CheckpointPayload;
+      exception?: Error;
+    }
+  ): Promise<void>;
+
+  delete(thread_id: string, auth: AuthContext | undefined): Promise<string[]>;
+
+  copy(thread_id: string, auth: AuthContext | undefined): Promise<Thread>;
+
+  readonly state: ThreadsStateRepo;
+}
+
+export interface ThreadsStateRepo {
+  get(
+    threadId: string,
+    auth: AuthContext | undefined
+  ): Promise<ThreadState | null>;
+
+  put(
+    threadId: string,
+    state: ThreadState,
+    auth: AuthContext | undefined
+  ): Promise<void>;
+
+  delete(threadId: string, auth: AuthContext | undefined): Promise<void>;
+}
+
+export interface AssistantsRepo {
+  search(
+    options: {
+      graph_id?: string;
+      metadata?: Metadata;
+      limit: number;
+      offset: number;
+    },
+    auth: AuthContext | undefined
+  ): AsyncGenerator<{ assistant: Assistant; total: number }>;
+
+  get(assistant_id: string, auth: AuthContext | undefined): Promise<Assistant>;
+
+  put(
+    assistant_id: string,
+    options: {
+      config: RunnableConfig;
+      context: unknown;
+      graph_id: string;
+      metadata?: Metadata;
+      if_exists: OnConflictBehavior;
+      name?: string;
+    },
+    auth: AuthContext | undefined
+  ): Promise<Assistant>;
+
+  patch(
+    assistantId: string,
+    options: {
+      config?: RunnableConfig;
+      context?: unknown;
+      graph_id?: string;
+      metadata?: Metadata;
+      name?: string;
+    },
+    auth: AuthContext | undefined
+  ): Promise<Assistant>;
+
+  delete(
+    assistant_id: string,
+    auth: AuthContext | undefined
+  ): Promise<string[]>;
+
+  setLatest(
+    assistant_id: string,
+    version: number,
+    auth: AuthContext | undefined
+  ): Promise<Assistant>;
+
+  getVersions(
+    assistant_id: string,
+    options: {
+      limit: number;
+      offset: number;
+      metadata?: Metadata;
+    },
+    auth: AuthContext | undefined
+  ): Promise<AssistantVersion[]>;
+}
+
+export interface Ops {
+  readonly assistants: AssistantsRepo;
+  readonly threads: ThreadsRepo;
+  readonly runs: RunsRepo;
 }

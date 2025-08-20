@@ -30,18 +30,37 @@ import type {
   Message,
   Thread,
   CheckpointPayload,
+  Ops,
+  AssistantsRepo,
+  RunsRepo,
+  RunsStreamRepo,
+  ThreadsRepo,
+  ThreadsStateRepo,
 } from "./types.mjs";
 
-export const conn = new FileSystemPersistence<Store>(
-  ".langgraphjs_ops.json",
-  () => ({
-    runs: {},
-    threads: {},
-    assistants: {},
-    assistant_versions: [],
-    retry_counter: {},
-  })
-);
+export class FileSystemOps implements Ops {
+  private conn: FileSystemPersistence<Store>;
+
+  readonly assistants: FileSystemAssistants;
+  readonly runs: FileSystemRuns;
+  readonly threads: FileSystemThreads;
+
+  constructor() {
+    this.conn = new FileSystemPersistence<Store>(
+      ".langgraphjs_ops.json",
+      () => ({
+        runs: {},
+        threads: {},
+        assistants: {},
+        assistant_versions: [],
+        retry_counter: {},
+      })
+    );
+    this.assistants = new FileSystemAssistants(this.conn);
+    this.runs = new FileSystemRuns(this.conn);
+    this.threads = new FileSystemThreads(this.conn);
+  }
+}
 
 class TimeoutError extends Error {}
 class AbortError extends Error {}
@@ -218,8 +237,14 @@ const isJsonbContained = (
   return true;
 };
 
-export class Assistants {
-  static async *search(
+export class FileSystemAssistants implements AssistantsRepo {
+  private conn: FileSystemPersistence<Store>;
+
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+  }
+
+  async *search(
     options: {
       graph_id?: string;
       metadata?: Metadata;
@@ -235,7 +260,7 @@ export class Assistants {
       offset: options.offset,
     });
 
-    yield* conn.withGenerator(async function* (STORE) {
+    yield* this.conn.withGenerator(async function* (STORE) {
       let filtered = Object.values(STORE.assistants)
         .filter((assistant) => {
           if (
@@ -282,7 +307,7 @@ export class Assistants {
     });
   }
 
-  static async get(
+  async get(
     assistant_id: string,
     auth: AuthContext | undefined
   ): Promise<Assistant> {
@@ -290,7 +315,7 @@ export class Assistants {
       assistant_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const result = STORE.assistants[assistant_id];
       if (result == null)
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -301,7 +326,7 @@ export class Assistants {
     });
   }
 
-  static async put(
+  async put(
     assistant_id: string,
     options: {
       config: RunnableConfig;
@@ -327,7 +352,7 @@ export class Assistants {
       }
     );
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       if (STORE.assistants[assistant_id] != null) {
         const existingAssistant = STORE.assistants[assistant_id];
 
@@ -371,7 +396,7 @@ export class Assistants {
     });
   }
 
-  static async patch(
+  async patch(
     assistantId: string,
     options: {
       config?: RunnableConfig;
@@ -394,7 +419,7 @@ export class Assistants {
       }
     );
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -461,7 +486,7 @@ export class Assistants {
     });
   }
 
-  static async delete(
+  async delete(
     assistant_id: string,
     auth: AuthContext | undefined
   ): Promise<string[]> {
@@ -469,7 +494,7 @@ export class Assistants {
       assistant_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const assistant = STORE.assistants[assistant_id];
       if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -496,7 +521,7 @@ export class Assistants {
     });
   }
 
-  static async setLatest(
+  async setLatest(
     assistant_id: string,
     version: number,
     auth: AuthContext | undefined
@@ -506,7 +531,7 @@ export class Assistants {
       version,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const assistant = STORE.assistants[assistant_id];
       if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -539,7 +564,7 @@ export class Assistants {
     });
   }
 
-  static async getVersions(
+  async getVersions(
     assistant_id: string,
     options: {
       limit: number;
@@ -552,7 +577,7 @@ export class Assistants {
       assistant_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const versions = STORE.assistant_versions
         .filter((version) => {
           if (version["assistant_id"] !== assistant_id) return false;
@@ -577,8 +602,16 @@ export class Assistants {
   }
 }
 
-export class Threads {
-  static async *search(
+export class FileSystemThreads implements ThreadsRepo {
+  private conn: FileSystemPersistence<Store>;
+  public readonly state: ThreadsRepo["state"];
+
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+    this.state = new FileSystemThreads.State(conn, this);
+  }
+
+  async *search(
     options: {
       metadata?: Metadata;
       status?: ThreadStatus;
@@ -598,7 +631,7 @@ export class Threads {
       offset: options.offset,
     });
 
-    yield* conn.withGenerator(async function* (STORE) {
+    yield* this.conn.withGenerator(async function* (STORE) {
       const filtered = Object.values(STORE.threads)
         .filter((thread) => {
           if (
@@ -655,15 +688,12 @@ export class Threads {
   }
 
   // TODO: make this accept `undefined`
-  static async get(
-    thread_id: string,
-    auth: AuthContext | undefined
-  ): Promise<Thread> {
+  async get(thread_id: string, auth: AuthContext | undefined): Promise<Thread> {
     const [filters] = await handleAuthEvent(auth, "threads:read", {
       thread_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const result = STORE.threads[thread_id];
       if (result == null) {
         throw new HTTPException(404, {
@@ -681,7 +711,7 @@ export class Threads {
     });
   }
 
-  static async put(
+  async put(
     thread_id: string,
     options: {
       metadata?: Metadata;
@@ -695,7 +725,7 @@ export class Threads {
       if_exists: options.if_exists,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const now = new Date();
 
       if (STORE.threads[thread_id] != null) {
@@ -726,7 +756,7 @@ export class Threads {
     });
   }
 
-  static async patch(
+  async patch(
     threadId: string,
     options: { metadata?: Metadata },
     auth: AuthContext | undefined
@@ -736,7 +766,7 @@ export class Threads {
       metadata: options.metadata,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread) {
         throw new HTTPException(404, { message: "Thread not found" });
@@ -760,14 +790,14 @@ export class Threads {
     });
   }
 
-  static async setStatus(
+  async setStatus(
     threadId: string,
     options: {
       checkpoint?: CheckpointPayload;
       exception?: Error;
     }
   ) {
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread)
         throw new HTTPException(404, { message: "Thread not found" });
@@ -809,7 +839,7 @@ export class Threads {
     });
   }
 
-  static async delete(
+  async delete(
     thread_id: string,
     auth: AuthContext | undefined
   ): Promise<string[]> {
@@ -817,7 +847,7 @@ export class Threads {
       thread_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread) {
         throw new HTTPException(404, {
@@ -843,7 +873,7 @@ export class Threads {
     });
   }
 
-  static async copy(
+  async copy(
     thread_id: string,
     auth: AuthContext | undefined
   ): Promise<Thread> {
@@ -851,7 +881,7 @@ export class Threads {
       thread_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread)
         throw new HTTPException(409, { message: "Thread not found" });
@@ -876,15 +906,23 @@ export class Threads {
     });
   }
 
-  static State = class {
-    static async get(
+  private static State = class implements ThreadsStateRepo {
+    private conn: FileSystemPersistence<Store>;
+    private threads: FileSystemThreads;
+
+    constructor(conn: FileSystemPersistence<Store>, threads: FileSystemThreads) {
+      this.conn = conn;
+      this.threads = threads;
+    }
+
+    async get(
       config: RunnableConfig,
       options: { subgraphs?: boolean },
       auth: AuthContext | undefined
     ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
-      const thread = threadId ? await Threads.get(threadId, auth) : undefined;
+      const thread = threadId ? await this.threads.get(threadId, auth) : undefined;
 
       const metadata = thread?.metadata ?? {};
       const graphId = metadata?.graph_id as string | undefined | null;
@@ -917,7 +955,7 @@ export class Threads {
       return result;
     }
 
-    static async post(
+    async post(
       config: RunnableConfig,
       values:
         | Record<string, unknown>[]
@@ -932,7 +970,7 @@ export class Threads {
         thread_id: threadId,
       });
 
-      const thread = threadId ? await Threads.get(threadId, auth) : undefined;
+      const thread = threadId ? await this.threads.get(threadId, auth) : undefined;
       if (!thread)
         throw new HTTPException(404, {
           message: `Thread ${threadId} not found`,
@@ -943,7 +981,7 @@ export class Threads {
       }
 
       // do a check if there are no pending runs
-      await conn.with(async (STORE) => {
+      await this.conn.with(async (STORE) => {
         if (
           Object.values(STORE.runs).some(
             (run) =>
@@ -976,10 +1014,10 @@ export class Threads {
       updateConfig.configurable.checkpoint_ns ??= "";
 
       const nextConfig = await graph.updateState(updateConfig, values, asNode);
-      const state = await Threads.State.get(config, { subgraphs: false }, auth);
+      const state = await this.get(config, { subgraphs: false }, auth);
 
       // update thread values
-      await conn.with(async (STORE) => {
+      await this.conn.with(async (STORE) => {
         for (const thread of Object.values(STORE.threads)) {
           if (thread.thread_id === threadId) {
             thread.values = state.values;
@@ -991,7 +1029,7 @@ export class Threads {
       return { checkpoint: nextConfig.configurable };
     }
 
-    static async bulk(
+    async bulk(
       config: RunnableConfig,
       supersteps: Array<{
         updates: Array<{
@@ -1014,7 +1052,7 @@ export class Threads {
         thread_id: threadId,
       });
 
-      const thread = await Threads.get(threadId, auth);
+      const thread = await this.threads.get(threadId, auth);
 
       if (!isAuthMatching(thread["metadata"], filters)) {
         throw new HTTPException(403);
@@ -1049,10 +1087,10 @@ export class Threads {
           })),
         }))
       );
-      const state = await Threads.State.get(config, { subgraphs: false }, auth);
+      const state = await this.get(config, { subgraphs: false }, auth);
 
       // update thread values
-      await conn.with(async (STORE) => {
+      await this.conn.with(async (STORE) => {
         for (const thread of Object.values(STORE.threads)) {
           if (thread.thread_id === threadId) {
             thread.values = state.values;
@@ -1064,7 +1102,7 @@ export class Threads {
       return { checkpoint: nextConfig.configurable };
     }
 
-    static async list(
+    async list(
       config: RunnableConfig,
       options: {
         limit?: number;
@@ -1080,7 +1118,7 @@ export class Threads {
         thread_id: threadId,
       });
 
-      const thread = await Threads.get(threadId, auth);
+      const thread = await this.threads.get(threadId, auth);
       if (!isAuthMatching(thread["metadata"], filters)) return [];
 
       const graphId = thread.metadata?.graph_id as string | undefined | null;
@@ -1109,13 +1147,20 @@ export class Threads {
   };
 }
 
-export class Runs {
-  static async *next(): AsyncGenerator<{
+export class FileSystemRuns implements RunsRepo {
+  private conn: FileSystemPersistence<Store>;
+  public readonly stream: RunsStreamRepo;
+
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+  }
+
+  async *next(): AsyncGenerator<{
     run: Run;
     attempt: number;
     signal: AbortSignal;
   }> {
-    yield* conn.withGenerator(async function* (STORE, options) {
+    yield* this.conn.withGenerator(async function* (STORE, options) {
       const now = new Date();
       const pendingRunIds = Object.values(STORE.runs)
         .filter((run) => run.status === "pending" && run.created_at < now)
@@ -1166,7 +1211,7 @@ export class Runs {
     });
   }
 
-  static async put(
+  async put(
     runId: string,
     assistantId: string,
     kwargs: RunKwargs,
@@ -1182,7 +1227,7 @@ export class Runs {
     },
     auth: AuthContext | undefined
   ): Promise<Run[]> {
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant) {
         throw new HTTPException(404, {
@@ -1347,7 +1392,7 @@ export class Runs {
     });
   }
 
-  static async get(
+  async get(
     runId: string,
     thread_id: string | undefined,
     auth: AuthContext | undefined
@@ -1356,7 +1401,7 @@ export class Runs {
       thread_id,
     });
 
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (
         !run ||
@@ -1374,7 +1419,7 @@ export class Runs {
     });
   }
 
-  static async delete(
+  async delete(
     run_id: string,
     thread_id: string | undefined,
     auth: AuthContext | undefined
@@ -1384,7 +1429,7 @@ export class Runs {
       thread_id,
     });
 
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const run = STORE.runs[run_id];
       if (!run || (thread_id != null && run.thread_id !== thread_id))
         throw new HTTPException(404, { message: "Run not found" });
@@ -1402,12 +1447,12 @@ export class Runs {
     });
   }
 
-  static async wait(
+  async wait(
     runId: string,
     threadId: string | undefined,
     auth: AuthContext | undefined
   ) {
-    const runStream = Runs.Stream.join(
+    const runStream = this.stream.join(
       runId,
       threadId,
       { ignore404: threadId == null, lastEventId: undefined },
@@ -1434,22 +1479,18 @@ export class Runs {
     return lastChunk;
   }
 
-  static async join(
-    runId: string,
-    threadId: string,
-    auth: AuthContext | undefined
-  ) {
+  async join(runId: string, threadId: string, auth: AuthContext | undefined) {
     // check if thread exists
     await Threads.get(threadId, auth);
 
-    const lastChunk = await Runs.wait(runId, threadId, auth);
+    const lastChunk = await this.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;
 
     const thread = await Threads.get(threadId, auth);
     return thread.values ?? null;
   }
 
-  static async cancel(
+  async cancel(
     threadId: string | undefined,
     runIds: string[],
     options: {
@@ -1457,7 +1498,7 @@ export class Runs {
     },
     auth: AuthContext | undefined
   ) {
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const action = options.action ?? "interrupt";
       const promises: Promise<unknown>[] = [];
 
@@ -1527,7 +1568,7 @@ export class Runs {
     });
   }
 
-  static async search(
+  async search(
     threadId: string,
     options: {
       limit?: number | null;
@@ -1543,7 +1584,7 @@ export class Runs {
       status: options.status,
     });
 
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const runs = Object.values(STORE.runs).filter((run) => {
         if (run.thread_id !== threadId) return false;
         if (options?.status != null && run.status !== options.status)
@@ -1565,8 +1606,8 @@ export class Runs {
     });
   }
 
-  static async setStatus(runId: string, status: RunStatus) {
-    return conn.with(async (STORE) => {
+  async setStatus(runId: string, status: RunStatus) {
+    return this.conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (!run) throw new Error(`Run ${runId} not found`);
       run.status = status;
@@ -1574,8 +1615,14 @@ export class Runs {
     });
   }
 
-  static Stream = class {
-    static async *join(
+  private static Stream = class implements RunsStreamRepo {
+    private conn: FileSystemPersistence<Store>;
+
+    constructor(conn: FileSystemPersistence<Store>) {
+      this.conn = conn;
+    }
+
+    async *join(
       runId: string,
       threadId: string | undefined,
       options: {
@@ -1585,7 +1632,7 @@ export class Runs {
       },
       auth: AuthContext | undefined
     ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
-      yield* conn.withGenerator(async function* (STORE) {
+      yield* this.conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.cancelOnDisconnect;
         const queue = StreamManager.getQueue(runId, {
@@ -1647,9 +1694,9 @@ export class Runs {
           await Runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
         }
       });
-    }
+    },
 
-    static async publish(payload: {
+    async publish(payload: {
       runId: string;
       event: string;
       data: unknown;
@@ -1663,7 +1710,7 @@ export class Runs {
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,
       });
-    }
+    },
   };
 }
 
