@@ -406,4 +406,12 @@ export interface Ops {
   readonly assistants: AssistantsRepo;
   readonly threads: ThreadsRepo;
   readonly runs: RunsRepo;
+
+  truncate(flags: {
+    runs?: boolean;
+    threads?: boolean;
+    assistants?: boolean;
+    checkpointer?: boolean;
+    store?: boolean;
+  }): Promise<void>;
 }

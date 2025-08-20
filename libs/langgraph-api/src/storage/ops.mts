@@ -60,6 +60,31 @@ export class FileSystemOps implements Ops {
     this.runs = new FileSystemRuns(this.conn);
     this.threads = new FileSystemThreads(this.conn);
   }
+
+  truncate(flags: {
+    runs?: boolean;
+    threads?: boolean;
+    assistants?: boolean;
+    checkpointer?: boolean;
+    store?: boolean;
+  }): Promise<void> {
+    return this.conn.with((STORE) => {
+      if (flags.runs) STORE.runs = {};
+      if (flags.threads) STORE.threads = {};
+      if (flags.assistants) {
+        STORE.assistants = Object.fromEntries(
+          Object.entries(STORE.assistants).filter(
+            ([key, assistant]) =>
+              assistant.metadata?.created_by === "system" &&
+              uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
+          )
+        );
+      }
+
+      if (flags.checkpointer) checkpointer.clear();
+      if (flags.store) store.clear();
+    });
+  }
 }
 
 class TimeoutError extends Error {}
@@ -189,31 +214,6 @@ class StreamManagerImpl {
 }
 
 export const StreamManager = new StreamManagerImpl();
-
-export const truncate = (flags: {
-  runs?: boolean;
-  threads?: boolean;
-  assistants?: boolean;
-  checkpointer?: boolean;
-  store?: boolean;
-}) => {
-  return conn.with((STORE) => {
-    if (flags.runs) STORE.runs = {};
-    if (flags.threads) STORE.threads = {};
-    if (flags.assistants) {
-      STORE.assistants = Object.fromEntries(
-        Object.entries(STORE.assistants).filter(
-          ([key, assistant]) =>
-            assistant.metadata?.created_by === "system" &&
-            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
-        )
-      );
-    }
-
-    if (flags.checkpointer) checkpointer.clear();
-    if (flags.store) store.clear();
-  });
-};
 
 const isObject = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null;
