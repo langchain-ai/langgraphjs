@@ -1,6 +1,7 @@
 import type {
   LangGraphRunnableConfig,
   CheckpointMetadata as LangGraphCheckpointMetadata,
+  StateSnapshot as LangGraphStateSnapshot,
 } from "@langchain/langgraph";
 import type { RunCommand } from "../command.mjs";
 import type { AuthContext } from "../auth/index.mjs";
@@ -233,25 +234,7 @@ export interface RunsRepo {
     auth: AuthContext | undefined
   ): Promise<unknown>;
 
-  readonly stream: {
-    join(
-      runId: string,
-      threadId: string | undefined,
-      options: {
-        ignore404?: boolean;
-        cancelOnDisconnect?: AbortSignal;
-        lastEventId: string | undefined;
-      },
-      auth: AuthContext | undefined
-    ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;
-
-    publish(payload: {
-      runId: string;
-      event: string;
-      data: unknown;
-      resumable: boolean;
-    }): Promise<void>;
-  };
+  readonly stream: RunsStreamRepo;
 }
 
 export interface RunsStreamRepo {
@@ -315,17 +298,48 @@ export interface ThreadsRepo {
 
 export interface ThreadsStateRepo {
   get(
-    threadId: string,
+    config: RunnableConfig,
+    options: { subgraphs?: boolean },
     auth: AuthContext | undefined
-  ): Promise<ThreadState | null>;
+  ): Promise<LangGraphStateSnapshot>;
 
-  put(
-    threadId: string,
-    state: ThreadState,
+  post(
+    config: RunnableConfig,
+    values:
+      | Record<string, unknown>[]
+      | Record<string, unknown>
+      | null
+      | undefined,
+    asNode: string | undefined,
     auth: AuthContext | undefined
-  ): Promise<void>;
+  ): Promise<{ checkpoint: Record<string, unknown> }>;
 
-  delete(threadId: string, auth: AuthContext | undefined): Promise<void>;
+  bulk(
+    config: RunnableConfig,
+    supersteps: Array<{
+      updates: Array<{
+        values?:
+          | Record<string, unknown>[]
+          | Record<string, unknown>
+          | unknown
+          | null
+          | undefined;
+        command?: RunCommand | undefined | null;
+        as_node?: string | undefined;
+      }>;
+    }>,
+    auth: AuthContext | undefined
+  ): Promise<{ checkpoint: Record<string, unknown> }>;
+
+  list(
+    config: RunnableConfig,
+    options: {
+      limit?: number;
+      before?: string | RunnableConfig;
+      metadata?: Metadata;
+    },
+    auth: AuthContext | undefined
+  ): Promise<LangGraphStateSnapshot[]>;
 }
 
 export interface AssistantsRepo {

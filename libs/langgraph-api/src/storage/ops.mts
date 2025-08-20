@@ -910,7 +910,10 @@ export class FileSystemThreads implements ThreadsRepo {
     private conn: FileSystemPersistence<Store>;
     private threads: FileSystemThreads;
 
-    constructor(conn: FileSystemPersistence<Store>, threads: FileSystemThreads) {
+    constructor(
+      conn: FileSystemPersistence<Store>,
+      threads: FileSystemThreads
+    ) {
       this.conn = conn;
       this.threads = threads;
     }
@@ -922,7 +925,9 @@ export class FileSystemThreads implements ThreadsRepo {
     ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
-      const thread = threadId ? await this.threads.get(threadId, auth) : undefined;
+      const thread = threadId
+        ? await this.threads.get(threadId, auth)
+        : undefined;
 
       const metadata = thread?.metadata ?? {};
       const graphId = metadata?.graph_id as string | undefined | null;
@@ -970,7 +975,9 @@ export class FileSystemThreads implements ThreadsRepo {
         thread_id: threadId,
       });
 
-      const thread = threadId ? await this.threads.get(threadId, auth) : undefined;
+      const thread = threadId
+        ? await this.threads.get(threadId, auth)
+        : undefined;
       if (!thread)
         throw new HTTPException(404, {
           message: `Thread ${threadId} not found`,
@@ -1153,6 +1160,7 @@ export class FileSystemRuns implements RunsRepo {
 
   constructor(conn: FileSystemPersistence<Store>) {
     this.conn = conn;
+    this.stream = new FileSystemRuns.Stream(conn, this);
   }
 
   async *next(): AsyncGenerator<{
@@ -1544,7 +1552,7 @@ export class FileSystemRuns implements RunsRepo {
               }
             );
 
-            promises.push(Runs.delete(runId, threadId, auth));
+            promises.push(this.delete(runId, threadId, auth));
           }
         } else {
           logger.warn("Attempted to cancel non-pending run.", {
@@ -1617,9 +1625,11 @@ export class FileSystemRuns implements RunsRepo {
 
   private static Stream = class implements RunsStreamRepo {
     private conn: FileSystemPersistence<Store>;
+    private runs: FileSystemRuns;
 
-    constructor(conn: FileSystemPersistence<Store>) {
+    constructor(conn: FileSystemPersistence<Store>, runs: FileSystemRuns) {
       this.conn = conn;
+      this.runs = runs;
     }
 
     async *join(
@@ -1632,7 +1642,10 @@ export class FileSystemRuns implements RunsRepo {
       },
       auth: AuthContext | undefined
     ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
-      yield* this.conn.withGenerator(async function* (STORE) {
+      const conn = this.conn;
+      const runs = this.runs;
+
+      yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.cancelOnDisconnect;
         const queue = StreamManager.getQueue(runId, {
@@ -1679,7 +1692,7 @@ export class FileSystemRuns implements RunsRepo {
           } catch (error) {
             if (error instanceof AbortError) break;
 
-            const run = await Runs.get(runId, threadId, auth);
+            const run = await runs.get(runId, threadId, auth);
             if (run == null) {
               if (!options?.ignore404)
                 yield { event: "error", data: "Run not found" };
@@ -1691,10 +1704,10 @@ export class FileSystemRuns implements RunsRepo {
         }
 
         if (signal?.aborted && threadId != null) {
-          await Runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
+          await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
         }
       });
-    },
+    }
 
     async publish(payload: {
       runId: string;
@@ -1710,7 +1723,7 @@ export class FileSystemRuns implements RunsRepo {
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,
       });
-    },
+    }
   };
 }
 
