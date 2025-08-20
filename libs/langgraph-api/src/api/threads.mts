@@ -6,7 +6,7 @@ import { v4 as uuid4 } from "uuid";
 import { z } from "zod";
 import * as schemas from "../schemas.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
-import { Threads } from "../storage/ops.mjs";
+import { threads } from "../storage/context.mjs";
 import type { RunnableConfig } from "../storage/types.mjs";
 import { jsonExtra } from "../utils/hono.mjs";
 
@@ -42,7 +42,7 @@ api.post(
     const result: unknown[] = [];
 
     let total = 0;
-    for await (const item of Threads.search(
+    for await (const item of threads().search(
       {
         status: payload.status,
         values: payload.values,
@@ -82,7 +82,7 @@ api.get(
     const { subgraphs } = c.req.valid("query");
 
     const state = stateSnapshotToThreadState(
-      await Threads.State.get(
+      await threads().state.get(
         { configurable: { thread_id } },
         { subgraphs },
         c.var.auth

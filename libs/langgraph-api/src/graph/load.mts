@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import * as uuid from "uuid";
-import { Assistants } from "../storage/ops.mjs";
+import { assistants } from "../storage/context.mjs";
 import type {
   BaseCheckpointSaver,
   BaseStore,
@@ -57,7 +57,7 @@ export async function registerFromEnv(
       GRAPHS[graphId] = resolved;
       GRAPH_SPEC[graphId] = spec;
 
-      await Assistants.put(
+      await assistants().put(
         uuid.v5(graphId, NAMESPACE_GRAPH),
         {
           graph_id: graphId,

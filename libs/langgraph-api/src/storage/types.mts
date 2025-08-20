@@ -234,6 +234,26 @@ export interface RunsRepo {
   ): Promise<unknown>;
   setStatus(runId: string, status: RunStatus): Promise<unknown>;
 
+  cancel(
+    threadId: string | undefined,
+    runIds: string[],
+    options: {
+      action?: "interrupt" | "rollback";
+    },
+    auth: AuthContext | undefined
+  ): Promise<void>;
+
+  search(
+    threadId: string,
+    options: {
+      limit?: number | null;
+      offset?: number | null;
+      status?: string | null;
+      metadata?: Metadata | null;
+    },
+    auth: AuthContext | undefined
+  ): Promise<Run[]>;
+
   readonly stream: RunsStreamRepo;
 }
 
