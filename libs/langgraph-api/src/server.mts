@@ -10,7 +10,7 @@ import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
 
-import type { Store, StorageEnv } from "./storage/types.mjs";
+import type { Ops, Store, StorageEnv } from "./storage/types.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
@@ -74,7 +74,10 @@ export const StartServerSchema = z.object({
     .optional(),
 });
 
-export async function startServer(options: z.infer<typeof StartServerSchema>) {
+export async function startver(
+  options: z.infer<typeof StartServerSchema>,
+  storage?: { ops?: Ops }
+) {
   const semver = await checkLangGraphSemver();
   const invalidPackages = semver.filter((s) => !s.satisfies);
   if (invalidPackages.length > 0) {
@@ -90,22 +93,24 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   }
 
   logger.info(`Initializing storage...`);
-  const opsConn = new FileSystemPersistence<Store>(
-    ".langgraphjs_ops.json",
-    () => ({
+  let initCalls: Promise<FileSystemPersistence<unknown>>[] = [
+    checkpointer.initialize(options.cwd),
+    graphStore.initialize(options.cwd),
+  ];
+  let opsConn = null;
+  if (storage?.ops == null) {
+    opsConn = new FileSystemPersistence<Store>(".langgraphjs_ops.json", () => ({
       runs: {},
       threads: {},
       assistants: {},
       assistant_versions: [],
       retry_counter: {},
-    })
-  );
-  const callbacks = await Promise.all([
-    opsConn.initialize(options.cwd),
-    checkpointer.initialize(options.cwd),
-    graphStore.initialize(options.cwd),
-  ]);
-  const ops = new FileSystemOps(opsConn);
+    }));
+    initCalls.push(opsConn.initialize(options.cwd));
+  }
+  const callbacks = await Promise.all(initCalls);
+  const ops =
+    storage?.ops ?? new FileSystemOps(opsConn as FileSystemPersistence<Store>);
 
   const cleanup = async () => {
     logger.info(`Flushing to persistent storage, exiting...`);

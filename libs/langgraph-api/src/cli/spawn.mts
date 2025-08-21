@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import type { Ops } from "../storage/types.mjs";
 
 export async function spawnServer(
   args: {
@@ -30,6 +31,9 @@ export async function spawnServer(
           max_age?: number;
         };
       };
+    };
+    storage?: {
+      ops?: Ops;
     };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
