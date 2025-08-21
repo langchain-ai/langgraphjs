@@ -2611,6 +2611,101 @@ describe.each([["v1" as const], ["v2" as const]])(
         },
       ]);
     });
+
+    it("should handle subgraph regeneration", async () => {
+      const checkpointer = new MemorySaverAssertImmutable();
+      const subgraphToolMock = vi.fn();
+
+      const subgraphTool = tool(
+        subgraphToolMock.mockImplementation(async (state) => {
+          return `tool response: ${state.source}`;
+        }),
+        {
+          name: "tool",
+          schema: z.object({ source: z.string() }),
+        }
+      );
+
+      const subgraph = createReactAgent({
+        llm: new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({
+              content: "subgraph tool response",
+              tool_calls: [{ name: "tool", args: { source: "subgraph" } }],
+            }),
+            new AIMessage("subgraph final response"),
+          ],
+        }),
+        tools: [subgraphTool],
+        version,
+      });
+
+      const parentToolMock = vi.fn();
+      const parentTool = tool(
+        parentToolMock.mockImplementation(async (state) => {
+          const { messages } = await subgraph.invoke({
+            messages: state.source,
+          });
+          return `[subgraph] ${messages.map((i) => i.text).join(", ")}`;
+        }),
+        { name: "parent", schema: z.object({ source: z.string() }) }
+      );
+
+      const graph = createReactAgent({
+        llm: new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({
+              content: "tool response",
+              tool_calls: [
+                { name: "parent", args: { source: "source: graph" } },
+              ],
+            }),
+            new AIMessage("final response"),
+          ],
+        }),
+        tools: [parentTool],
+        version,
+        checkpointer,
+      });
+
+      const config = { configurable: { thread_id: "1" } };
+
+      expect(
+        await graph.invoke(
+          { messages: "input" },
+          { interruptAfter: ["tools"], ...config }
+        )
+      ).toMatchObject({
+        messages: [
+          { text: "input" },
+          { text: "tool response" },
+          {
+            text: "[subgraph] source: graph, subgraph tool response, tool response: subgraph, subgraph final response",
+          },
+        ],
+      });
+
+      expect(parentToolMock).toHaveBeenCalledTimes(1);
+      expect(subgraphToolMock).toHaveBeenCalledTimes(1);
+
+      const history = await gatherIterator(graph.getStateHistory(config));
+      // restart invocation of the parent tool
+      expect(
+        await graph.invoke(null, { ...history.at(1)?.config })
+      ).toMatchObject({
+        messages: [
+          { text: "input" },
+          { text: "tool response" },
+          {
+            text: "[subgraph] source: graph, subgraph tool response, tool response: subgraph, subgraph final response",
+          },
+          { text: "final response" },
+        ],
+      });
+
+      expect(parentToolMock).toHaveBeenCalledTimes(2);
+      expect(subgraphToolMock).toHaveBeenCalledTimes(2);
+    });
   }
 );
 
