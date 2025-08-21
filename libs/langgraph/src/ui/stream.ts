@@ -1,7 +1,8 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import type { StreamMode, StreamOutputMap } from "../pregel/types.js";
-import type { TypedEventStream } from "./types.js";
+import type { LangGraphEventStream } from "./types.schema.js";
+import type { AnyPregelLike, InferGraph } from "./types.infer.js";
 
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",
@@ -115,12 +116,16 @@ function serializeCheckpoint(payload: StreamCheckpointsOutput<unknown>) {
  * @param events
  */
 export async function* toLangGraphEventStream<
-  TStateType = unknown,
-  TUpdateType = TStateType,
-  TCustomType = unknown
+  TGraph extends AnyPregelLike,
+  TStateType = InferGraph<TGraph>["state"],
+  TUpdateType = InferGraph<TGraph>["update"],
+  TCustomType = unknown,
+  TNodeReturnType = InferGraph<TGraph>["returnType"]
 >(
   events: AsyncIterable<StreamEvent> | Promise<AsyncIterable<StreamEvent>>
-): AsyncGenerator<TypedEventStream<TStateType, TUpdateType, TCustomType>> {
+): AsyncGenerator<
+  LangGraphEventStream<TStateType, TUpdateType, TCustomType, TNodeReturnType>
+> {
   let rootRunId: string | undefined;
 
   try {
@@ -173,7 +178,12 @@ export async function* toLangGraphEventStream<
         yield {
           event: ns?.length ? `${mode}|${ns.join("|")}` : mode,
           data,
-        } as TypedEventStream<TStateType, TUpdateType, TCustomType>;
+        } as LangGraphEventStream<
+          TStateType,
+          TUpdateType,
+          TCustomType,
+          TNodeReturnType
+        >;
       }
     }
   } catch (error) {
@@ -184,17 +194,20 @@ export async function* toLangGraphEventStream<
 /**
  * Converts a `graph.streamEvents()` output into a LangGraph Platform compatible Web Response.
  * @experimental Does not follow semver.
- *
- * @param events
  */
-export function toLangGraphEventStreamResponse(
-  events: AsyncIterable<StreamEvent> | Promise<AsyncIterable<StreamEvent>>
-) {
+export function toLangGraphEventStreamResponse(options: {
+  status?: number;
+  statusText?: string;
+  headers?: HeadersInit | Record<string, string>;
+  stream: AsyncIterable<StreamEvent> | Promise<AsyncIterable<StreamEvent>>;
+}) {
   return new Response(
     new ReadableStream({
       async start(controller) {
         try {
-          for await (const { event, data } of toLangGraphEventStream(events)) {
+          for await (const { event, data } of toLangGraphEventStream(
+            options.stream
+          )) {
             controller.enqueue(`event: ${event}\n`);
             controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
           }
@@ -208,7 +221,10 @@ export function toLangGraphEventStreamResponse(
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        ...options.headers,
       },
+      status: options.status,
+      statusText: options.statusText,
     }
   );
 }

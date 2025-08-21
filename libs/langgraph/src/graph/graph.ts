@@ -595,6 +595,8 @@ export class CompiledGraph<
 > {
   declare NodeType: N;
 
+  declare "~NodeReturnType": NodeReturnType;
+
   declare RunInput: State;
 
   declare RunOutput: Update;

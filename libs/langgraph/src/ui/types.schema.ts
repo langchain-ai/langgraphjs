@@ -1,106 +1,11 @@
-namespace MessageV0 {
-  type ImageDetail = "auto" | "low" | "high";
-  type MessageContentImageUrl = {
-    type: "image_url";
-    image_url: string | { url: string; detail?: ImageDetail | undefined };
-  };
+import type { SerializedMessage } from "./types.message.js";
 
-  type MessageContentText = { type: "text"; text: string };
-  type MessageContentComplex = MessageContentText | MessageContentImageUrl;
-  type MessageContent = string | MessageContentComplex[];
-
-  /**
-   * Model-specific additional kwargs, which is passed back to the underlying LLM.
-   */
-  type MessageAdditionalKwargs = Record<string, unknown>;
-
-  type BaseMessage = {
-    additional_kwargs?: MessageAdditionalKwargs | undefined;
-    content: MessageContent;
-    id?: string | undefined;
-    name?: string | undefined;
-    response_metadata?: Record<string, unknown> | undefined;
-  };
-
-  type HumanMessage = BaseMessage & {
-    type: "human";
-    example?: boolean | undefined;
-  };
-
-  type AIMessage = BaseMessage & {
-    type: "ai";
-    example?: boolean | undefined;
-    tool_calls?:
-      | {
-          name: string;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          args: { [x: string]: any };
-          id?: string | undefined;
-          type?: "tool_call" | undefined;
-        }[]
-      | undefined;
-    invalid_tool_calls?:
-      | {
-          name?: string | undefined;
-          args?: string | undefined;
-          id?: string | undefined;
-          error?: string | undefined;
-          type?: "invalid_tool_call" | undefined;
-        }[]
-      | undefined;
-    usage_metadata?:
-      | {
-          input_tokens: number;
-          output_tokens: number;
-          total_tokens: number;
-          input_token_details?:
-            | {
-                audio?: number | undefined;
-                cache_read?: number | undefined;
-                cache_creation?: number | undefined;
-              }
-            | undefined;
-          output_token_details?:
-            | { audio?: number | undefined; reasoning?: number | undefined }
-            | undefined;
-        }
-      | undefined;
-  };
-
-  type ToolMessage = BaseMessage & {
-    type: "tool";
-    status?: "error" | "success" | undefined;
-    tool_call_id: string;
-    /**
-     * Artifact of the Tool execution which is not meant to be sent to the model.
-     *
-     * Should only be specified if it is different from the message content, e.g. if only
-     * a subset of the full tool output is being passed as message content but the full
-     * output is needed in other parts of the code.
-     */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    artifact?: any;
-  };
-
-  type SystemMessage = BaseMessage & { type: "system" };
-  type FunctionMessage = BaseMessage & { type: "function" };
-  type RemoveMessage = BaseMessage & { type: "remove" };
-
-  export type AnyMessage =
-    | HumanMessage
-    | AIMessage
-    | ToolMessage
-    | SystemMessage
-    | FunctionMessage
-    | RemoveMessage;
-}
+type Optional<T> = T | null | undefined;
 
 type MessageTupleMetadata = {
   tags: string[];
   [key: string]: unknown;
 };
-
-type Optional<T> = T | null | undefined;
 
 type DefaultValues = Record<string, unknown>[] | Record<string, unknown>;
 
@@ -222,7 +127,7 @@ type MessagesTupleStreamEvent = AsSubgraph<{
   event: "messages";
   // TODO: add types for message and config, which do not depend on LangChain
   // while making sure it's easy to keep them in sync.
-  data: [message: MessageV0.AnyMessage, config: MessageTupleMetadata];
+  data: [message: SerializedMessage.AnyMessage, config: MessageTupleMetadata];
 }>;
 
 /**
@@ -248,10 +153,14 @@ type SubgraphErrorStreamEvent = AsSubgraph<{
  * The streamed outputs include the name of the node that
  * produced the update as well as the update.
  */
-type UpdatesStreamEvent<UpdateType> = AsSubgraph<{
+type UpdatesStreamEvent<UpdateType, NodeReturnType> = AsSubgraph<{
   id?: string;
   event: "updates";
-  data: { [node: string]: UpdateType };
+  data: NodeReturnType extends Record<string, unknown>
+    ? { [K in keyof NodeReturnType]?: NodeReturnType[K] } & {
+        [node: string]: UpdateType;
+      }
+    : Record<string, UpdateType>;
 }>;
 
 /**
@@ -262,24 +171,6 @@ type CustomStreamEvent<T> = AsSubgraph<{
   event: "custom";
   data: T;
 }>;
-
-type MessagesMetadataStreamEvent = {
-  id?: string;
-  event: "messages/metadata";
-  data: { [messageId: string]: { metadata: unknown } };
-};
-
-type MessagesCompleteStreamEvent = {
-  id?: string;
-  event: "messages/complete";
-  data: MessageV0.AnyMessage[];
-};
-
-type MessagesPartialStreamEvent = {
-  id?: string;
-  event: "messages/partial";
-  data: MessageV0.AnyMessage[];
-};
 
 type TasksStreamCreateEvent<StateType> = {
   id?: string;
@@ -333,15 +224,6 @@ type CheckpointsStreamEvent<StateType> = AsSubgraph<{
 }>;
 
 /**
- * Message stream event specific to LangGraph Server.
- * @deprecated Use `streamMode: "messages-tuple"` instead.
- */
-type MessagesStreamEvent =
-  | AsSubgraph<MessagesMetadataStreamEvent>
-  | AsSubgraph<MessagesCompleteStreamEvent>
-  | AsSubgraph<MessagesPartialStreamEvent>;
-
-/**
  * Stream event with detailed debug information.
  */
 type DebugStreamEvent = AsSubgraph<{
@@ -375,30 +257,19 @@ type EventsStreamEvent = {
   };
 };
 
-/**
- * Stream event with a feedback key to signed URL map. Set `feedbackKeys` in
- * the `RunsStreamPayload` to receive this event.
- */
-type FeedbackStreamEvent = {
-  id?: string;
-  event: "feedback";
-  data: { [feedbackKey: string]: string };
-};
-
-export type TypedEventStream<
+export type LangGraphEventStream<
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown
+  TCustomType = unknown,
+  TNodeReturnType = unknown
 > =
   | ValuesStreamEvent<TStateType>
-  | UpdatesStreamEvent<TUpdateType>
+  | UpdatesStreamEvent<TUpdateType, TNodeReturnType>
   | CustomStreamEvent<TCustomType>
   | DebugStreamEvent
-  | MessagesStreamEvent
   | MessagesTupleStreamEvent
   | EventsStreamEvent
   | TasksStreamEvent<TStateType, TUpdateType>
   | CheckpointsStreamEvent<TStateType>
   | SubgraphErrorStreamEvent
-  | MetadataStreamEvent
-  | FeedbackStreamEvent;
+  | MetadataStreamEvent;
