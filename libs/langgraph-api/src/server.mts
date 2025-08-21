@@ -74,7 +74,7 @@ export const StartServerSchema = z.object({
     .optional(),
 });
 
-export async function startver(
+export async function startServer(
   options: z.infer<typeof StartServerSchema>,
   storage?: { ops?: Ops }
 ) {
