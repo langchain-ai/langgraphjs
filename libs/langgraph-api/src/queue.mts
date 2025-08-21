@@ -1,5 +1,4 @@
-import { runs, threads } from "./storage/context.mjs";
-import type { Run, RunStatus } from "./storage/types.mjs";
+import type { Ops, Run, RunStatus } from "./storage/types.mjs";
 import {
   type StreamCheckpoint,
   type StreamTaskResult,
@@ -13,10 +12,10 @@ import { getGraph } from "./graph/load.mjs";
 const MAX_RETRY_ATTEMPTS = 3;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-export const queue = async () => {
+export const queue = async (ops: Ops) => {
   while (true) {
-    for await (const { run, attempt, signal } of runs().next()) {
-      await worker(run, attempt, signal);
+    for await (const { run, attempt, signal } of ops.runs.next()) {
+      await worker(ops, run, attempt, signal);
     }
 
     // TODO: this is very suboptimal, we should implement subscription to the run
@@ -24,7 +23,12 @@ export const queue = async () => {
   }
 };
 
-const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
+const worker = async (
+  ops: Ops,
+  run: Run,
+  attempt: number,
+  signal: AbortSignal
+) => {
   const startedAt = new Date();
   let endedAt: Date | undefined = undefined;
   let checkpoint: StreamCheckpoint | undefined = undefined;
@@ -72,10 +76,10 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
       });
 
       for await (const { event, data } of stream) {
-        await runs().stream.publish({ runId, resumable, event, data });
+        await ops.runs.stream.publish({ runId, resumable, event, data });
       }
     } catch (error) {
-      await runs().stream.publish({
+      await ops.runs.stream.publish({
         runId,
         resumable,
         event: "error",
@@ -95,7 +99,7 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
     });
 
     status = "success";
-    await runs().setStatus(run.run_id, status);
+    await ops.runs.setStatus(run.run_id, status);
   } catch (error) {
     endedAt = new Date();
     if (error instanceof Error) exception = error;
@@ -113,12 +117,12 @@ const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
     });
 
     status = "error";
-    await runs().setStatus(run.run_id, "error");
+    await ops.runs.setStatus(run.run_id, "error");
   } finally {
     if (temporary) {
-      await threads().delete(run.thread_id, undefined);
+      await ops.threads.delete(run.thread_id, undefined);
     } else {
-      await threads().setStatus(run.thread_id, { checkpoint, exception });
+      await ops.threads.setStatus(run.thread_id, { checkpoint, exception });
     }
 
     if (webhook) {

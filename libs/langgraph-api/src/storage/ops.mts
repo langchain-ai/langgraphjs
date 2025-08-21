@@ -40,7 +40,7 @@ export class FileSystemOps implements Ops {
   readonly runs: FileSystemRuns;
   readonly threads: FileSystemThreads;
 
-  constructor(conn) {
+  constructor(conn: FileSystemPersistence<Store>) {
     this.conn = conn;
     this.assistants = new FileSystemAssistants(this.conn);
     this.runs = new FileSystemRuns(this.conn);

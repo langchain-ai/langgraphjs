@@ -173,7 +173,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
       const { runs, threads, assistants, checkpointer, store } =
         c.req.valid("json");
 
-      truncate({ runs, threads, assistants, checkpointer, store });
+      ops.truncate({ runs, threads, assistants, checkpointer, store });
       return c.json({ ok: true });
     }
   );
@@ -212,7 +212,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   }
 
   logger.info(`Starting ${options.nWorkers} workers`);
-  for (let i = 0; i < options.nWorkers; i++) queue();
+  for (let i = 0; i < options.nWorkers; i++) queue(ops);
 
   return new Promise<{ host: string; cleanup: () => Promise<void> }>(
     (resolve) => {
