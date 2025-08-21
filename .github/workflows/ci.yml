@@ -37,8 +37,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Debug
-        run: cd libs/langgraph-api && yarn install --immutable && yarn tsc --outDir dist
+      #- name: Debug
+      #  run: cd libs/langgraph-api && yarn install --immutable && yarn tsc --outDir dist
 
       - name: Build
         run: yarn build
