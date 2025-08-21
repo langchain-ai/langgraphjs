@@ -1,7 +1,7 @@
 import { expectTypeOf, it } from "vitest";
 import { Annotation, StateGraph } from "../graph/index.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
-import { START } from "../constants.js";
+import { END, START } from "../constants.js";
 import { toLangGraphEventStream } from "../ui/stream.js";
 import type { SerializedMessage } from "../ui/types.message.js";
 
@@ -20,6 +20,8 @@ it("toLangGraphEventStream", async () => {
       foo: "foo:two" as const,
     }))
     .addEdge(START, "one")
+    .addEdge("one", "two")
+    .addEdge("two", END)
     .compile();
 
   type GraphType = typeof graph;
