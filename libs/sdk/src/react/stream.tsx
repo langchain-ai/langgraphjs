@@ -45,7 +45,7 @@ function fetchHistory<StateType extends Record<string, unknown>>(
     });
   }
 
-  const limit = typeof options?.limit === "number" ? options.limit : 1000;
+  const limit = typeof options?.limit === "number" ? options.limit : 25;
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
