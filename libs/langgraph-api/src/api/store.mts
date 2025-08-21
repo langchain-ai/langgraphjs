@@ -4,7 +4,7 @@ import * as schemas from "../schemas.mjs";
 import { HTTPException } from "hono/http-exception";
 import { store as storageStore } from "../storage/store.mjs";
 import type { Item } from "@langchain/langgraph";
-import { handleAuthEvent } from "../auth/custom.mjs";
+import { handleAuthEvent } from "../auth/index.mjs";
 
 const api = new Hono();
 

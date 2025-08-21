@@ -1,7 +1,7 @@
 import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid4, v5 as uuid5 } from "uuid";
-import { handleAuthEvent, isAuthMatching } from "../auth/custom.mjs";
+import { handleAuthEvent, isAuthMatching } from "../auth/index.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 import { getLangGraphCommand, type RunCommand } from "../command.mjs";
 import { getGraph, NAMESPACE_GRAPH } from "../graph/load.mjs";
