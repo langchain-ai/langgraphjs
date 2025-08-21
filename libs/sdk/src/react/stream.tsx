@@ -572,7 +572,16 @@ export function useStream<
     branch,
     setBranch,
 
-    history: branchContext.flatHistory,
+    get history() {
+      if (options.fetchStateHistory === false) {
+        throw new Error(
+          "`fetchStateHistory` must be set to `true` to use `history`"
+        );
+      }
+
+      return branchContext.flatHistory;
+    },
+
     isThreadLoading: history.isLoading && history.data == null,
 
     get experimental_branchTree() {
