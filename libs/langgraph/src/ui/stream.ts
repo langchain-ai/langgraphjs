@@ -1,8 +1,11 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import type { StreamMode, StreamOutputMap } from "../pregel/types.js";
-import type { LangGraphEventStream } from "./types.schema.js";
-import type { AnyPregelLike, InferGraph } from "./types.infer.js";
+import type {
+  AnyPregelLike,
+  ExtraTypeBag,
+  InferLangGraphEventStream,
+} from "./types.infer.js";
 
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",
@@ -117,15 +120,10 @@ function serializeCheckpoint(payload: StreamCheckpointsOutput<unknown>) {
  */
 export async function* toLangGraphEventStream<
   TGraph extends AnyPregelLike,
-  TStateType = InferGraph<TGraph>["state"],
-  TUpdateType = InferGraph<TGraph>["update"],
-  TCustomType = unknown,
-  TNodeReturnType = InferGraph<TGraph>["returnType"]
+  TExtra extends ExtraTypeBag = ExtraTypeBag
 >(
   events: AsyncIterable<StreamEvent> | Promise<AsyncIterable<StreamEvent>>
-): AsyncGenerator<
-  LangGraphEventStream<TStateType, TUpdateType, TCustomType, TNodeReturnType>
-> {
+): AsyncGenerator<InferLangGraphEventStream<TGraph, TExtra>> {
   let rootRunId: string | undefined;
 
   try {
@@ -178,12 +176,7 @@ export async function* toLangGraphEventStream<
         yield {
           event: ns?.length ? `${mode}|${ns.join("|")}` : mode,
           data,
-        } as LangGraphEventStream<
-          TStateType,
-          TUpdateType,
-          TCustomType,
-          TNodeReturnType
-        >;
+        } as InferLangGraphEventStream<TGraph, TExtra>;
       }
     }
   } catch (error) {
@@ -198,9 +191,26 @@ export async function* toLangGraphEventStream<
 export function toLangGraphEventStreamResponse(options: {
   status?: number;
   statusText?: string;
-  headers?: HeadersInit | Record<string, string>;
+  headers?: Headers | Record<string, string>;
   stream: AsyncIterable<StreamEvent> | Promise<AsyncIterable<StreamEvent>>;
 }) {
+  const headers = new Headers({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  if (options.headers) {
+    if (
+      "forEach" in options.headers &&
+      typeof options.headers.forEach === "function"
+    ) {
+      options.headers.forEach((v, k) => headers.set(k, v));
+    } else {
+      Object.entries(options.headers).map(([k, v]) => headers.set(k, v));
+    }
+  }
+
   return new Response(
     new ReadableStream({
       async start(controller) {
@@ -216,15 +226,6 @@ export function toLangGraphEventStreamResponse(options: {
         }
       },
     }),
-    {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        ...options.headers,
-      },
-      status: options.status,
-      statusText: options.statusText,
-    }
+    { headers, status: options.status, statusText: options.statusText }
   );
 }

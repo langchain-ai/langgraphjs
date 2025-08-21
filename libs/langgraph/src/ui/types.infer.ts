@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { BaseMessage } from "@langchain/core/messages";
 import type { SerializedMessage } from "./types.message.js";
+import type { LangGraphEventStream } from "./types.schema.js";
 
-export type Equals<X, Y> = (<T>() => T extends X ? 1 : 2) extends <
-  T
->() => T extends Y ? 1 : 2
+type Equals<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y
+  ? 1
+  : 2
   ? true
   : false;
 
@@ -64,10 +65,38 @@ type ReflectCompiledGraph<T> = T extends {
   ? { state: ReplaceMessages<OutputType>; update: ReplaceMessages<InputType> }
   : never;
 
-export type InferGraph<T> = Defactorify<T> extends infer DT
+type InferGraph<T> = Defactorify<T> extends infer DT
   ? DT extends {
       compile(...args: any[]): infer Compiled;
     }
     ? ReflectCompiledGraph<Compiled>
     : ReflectCompiledGraph<DT>
   : never;
+
+export type ExtraTypeBag<TCustomType = unknown, TInterruptType = unknown> = {
+  CustomType?: TCustomType;
+  InterruptType?: TInterruptType;
+};
+
+type GetCustomType<Bag extends ExtraTypeBag> = Bag extends {
+  CustomType: unknown;
+}
+  ? Bag["CustomType"]
+  : unknown;
+
+type GetInterruptType<Bag extends ExtraTypeBag> = Bag extends {
+  InterruptType: unknown;
+}
+  ? Bag["InterruptType"]
+  : unknown;
+
+export type InferLangGraphEventStream<
+  TGraph extends AnyPregelLike,
+  TExtra extends ExtraTypeBag = ExtraTypeBag
+> = LangGraphEventStream<
+  InferGraph<TGraph>["state"],
+  InferGraph<TGraph>["update"],
+  GetCustomType<TExtra>,
+  GetInterruptType<TExtra>,
+  InferGraph<TGraph>["returnType"]
+>;

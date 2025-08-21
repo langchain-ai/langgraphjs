@@ -113,10 +113,12 @@ type AsSubgraph<TEvent extends { id?: string; event: string; data: unknown }> =
 /**
  * Stream event with values after completion of each step.
  */
-type ValuesStreamEvent<StateType> = AsSubgraph<{
+type ValuesStreamEvent<StateType, InterruptType> = AsSubgraph<{
   id?: string;
   event: "values";
-  data: StateType;
+  data: unknown extends InterruptType
+    ? StateType
+    : StateType & { __interrupt__?: InterruptType };
 }>;
 
 /**
@@ -261,9 +263,10 @@ export type LangGraphEventStream<
   TStateType = unknown,
   TUpdateType = TStateType,
   TCustomType = unknown,
+  TInterruptType = unknown,
   TNodeReturnType = unknown
 > =
-  | ValuesStreamEvent<TStateType>
+  | ValuesStreamEvent<TStateType, TInterruptType>
   | UpdatesStreamEvent<TUpdateType, TNodeReturnType>
   | CustomStreamEvent<TCustomType>
   | DebugStreamEvent

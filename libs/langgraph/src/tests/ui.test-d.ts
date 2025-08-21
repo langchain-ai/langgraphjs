@@ -22,7 +22,10 @@ it("toLangGraphEventStream", async () => {
     .addEdge(START, "one")
     .compile();
 
-  const stream = await toLangGraphEventStream<typeof graph>(
+  type GraphType = typeof graph;
+  type ExtraType = { CustomType: string; InterruptType: number };
+
+  const stream = await toLangGraphEventStream<GraphType, ExtraType>(
     graph.streamEvents({ messages: "input" }, { version: "v2" })
   );
 
@@ -32,6 +35,9 @@ it("toLangGraphEventStream", async () => {
         messages: SerializedMessage.AnyMessage[];
         foo: string;
       }>();
+
+      expectTypeOf(data).toExtend<{ __interrupt__?: number }>();
+      expectTypeOf(data).not.toExtend<{ __interrupt__?: string }>();
     }
 
     if (event === "updates") {
@@ -40,6 +46,9 @@ it("toLangGraphEventStream", async () => {
         two?: { messages: { role: "ai"; content: "two" }; foo: "foo:two" };
       }>();
 
+      expectTypeOf(data).not.toExtend<{
+        one?: { messages?: { role: "human"; content: "two" } };
+      }>();
       expectTypeOf(data).not.toExtend<{ two?: { foo: "invalid" } }>();
 
       expectTypeOf(data).toExtend<{
@@ -51,8 +60,7 @@ it("toLangGraphEventStream", async () => {
     }
 
     if (event === "custom") {
-      // TODO: make `writer` type-safe
-      expectTypeOf(data).toExtend<unknown>();
+      expectTypeOf(data).toExtend<string>();
     }
   }
 });

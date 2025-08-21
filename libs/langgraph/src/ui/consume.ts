@@ -1,6 +1,9 @@
 import { IterableReadableStream } from "@langchain/core/utils/stream";
-import type { LangGraphEventStream } from "./types.schema.js";
-import type { AnyPregelLike, InferGraph } from "./types.infer.js";
+import type {
+  AnyPregelLike,
+  ExtraTypeBag,
+  InferLangGraphEventStream,
+} from "./types.infer.js";
 
 const CR = "\r".charCodeAt(0);
 const LF = "\n".charCodeAt(0);
@@ -180,16 +183,11 @@ function decodeArraysToJson(decoder: TextDecoder, data: ArrayLike<number>[]) {
 
 export async function* stream<
   TGraph extends AnyPregelLike,
-  TStateType = InferGraph<TGraph>["state"],
-  TUpdateType = InferGraph<TGraph>["update"],
-  TCustomType = unknown,
-  TNodeReturnType = InferGraph<TGraph>["returnType"]
+  TExtra extends ExtraTypeBag = ExtraTypeBag
 >(options: {
   url: string;
   headers: HeadersInit;
-}): AsyncGenerator<
-  LangGraphEventStream<TStateType, TUpdateType, TCustomType, TNodeReturnType>
-> {
+}): AsyncGenerator<InferLangGraphEventStream<TGraph, TExtra>> {
   const res = await fetch(options.url, {
     method: "POST",
     headers: options.headers,
@@ -203,15 +201,6 @@ export async function* stream<
   yield* IterableReadableStream.fromReadableStream(
     (res.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
       .pipeThrough(BytesLineDecoder())
-      .pipeThrough(
-        SSEDecoder<
-          LangGraphEventStream<
-            TStateType,
-            TUpdateType,
-            TCustomType,
-            TNodeReturnType
-          >
-        >()
-      )
+      .pipeThrough(SSEDecoder<InferLangGraphEventStream<TGraph, TExtra>>())
   );
 }
