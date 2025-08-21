@@ -14,7 +14,7 @@ const packageJsonPath = path.resolve(
 let version: string;
 let langgraph_js_version: string;
 
-api.use(async (c, next) => {
+api.use(async (_, next) => {
   try {
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
     version = packageJson.version;
