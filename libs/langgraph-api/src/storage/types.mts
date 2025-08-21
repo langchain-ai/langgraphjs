@@ -6,6 +6,8 @@ import type {
 import type { RunCommand } from "../command.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 
+export type { RunCommand } from "../command.mjs";
+
 // Hono context object
 export type StorageEnv = {
   Variables: {
