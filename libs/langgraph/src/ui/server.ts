@@ -108,8 +108,12 @@ function serializeCheckpoint(payload: StreamCheckpointsOutput<unknown>) {
   return result;
 }
 
-// Works only with LangGraph, not LCEL as a whole.
-// Builds on top of `streamEvents` method.
+/**
+ * Converts a `graph.streamEvents()` output into a LangGraph Platform compatible event stream.
+ * @experimental Does not follow semver.
+ *
+ * @param events
+ */
 export async function* toLangGraphEventStream<
   TStateType = unknown,
   TUpdateType = TStateType,
@@ -177,6 +181,12 @@ export async function* toLangGraphEventStream<
   }
 }
 
+/**
+ * Converts a `graph.streamEvents()` output into a LangGraph Platform compatible Web Response.
+ * @experimental Does not follow semver.
+ *
+ * @param events
+ */
 export function toLangGraphEventStreamResponse(
   events: AsyncIterable<StreamEvent> | Promise<AsyncIterable<StreamEvent>>
 ) {
