@@ -626,13 +626,11 @@ describe("useStream", () => {
       );
     }
 
-    let threadId: string | undefined;
-
     function TestComponent() {
       const { submit, messages, getMessagesMetadata, setBranch } = useStream({
         assistantId: "agent",
         apiKey: "test-api-key",
-        onThreadId: (newThreadId) => void (threadId = newThreadId),
+        fetchStateHistory: true,
       });
 
       return (

@@ -249,8 +249,8 @@ export function useStream<
     client,
     typeof options.fetchStateHistory === "object" &&
       options.fetchStateHistory != null
-      ? options.fetchStateHistory.limit ?? true
-      : options.fetchStateHistory ?? true,
+      ? options.fetchStateHistory.limit ?? false
+      : options.fetchStateHistory ?? false,
     clearCallbackRef,
     submittingRef,
     onErrorRef
@@ -560,9 +560,9 @@ export function useStream<
     isThreadLoading: history.isLoading && history.data == null,
 
     get experimental_branchTree() {
-      if (options.fetchStateHistory === false) {
+      if (!options.fetchStateHistory) {
         throw new Error(
-          "`experimental_branchTree` is not available when `fetchStateHistory` is set to `false`"
+          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
         );
       }
 
