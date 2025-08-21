@@ -267,7 +267,7 @@ export interface UseStreamOptions<
 
   /**
    * Whether to fetch the history of the thread.
-   * If true, the history will be fetched from the server. Defaults to 25 entries.
+   * If true, the history will be fetched from the server. Defaults to 10 entries.
    * If false, only the last state will be fetched from the server.
    * @default true
    */
