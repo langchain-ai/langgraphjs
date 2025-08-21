@@ -573,7 +573,7 @@ export function useStream<
     setBranch,
 
     get history() {
-      if (options.fetchStateHistory === false) {
+      if (historyLimit === false) {
         throw new Error(
           "`fetchStateHistory` must be set to `true` to use `history`"
         );
@@ -585,7 +585,7 @@ export function useStream<
     isThreadLoading: history.isLoading && history.data == null,
 
     get experimental_branchTree() {
-      if (!options.fetchStateHistory) {
+      if (historyLimit === false) {
         throw new Error(
           "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
         );
