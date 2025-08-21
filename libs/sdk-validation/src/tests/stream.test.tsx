@@ -626,10 +626,13 @@ describe("useStream", () => {
       );
     }
 
+    let threadId: string | undefined;
+
     function TestComponent() {
       const { submit, messages, getMessagesMetadata, setBranch } = useStream({
         assistantId: "agent",
         apiKey: "test-api-key",
+        onThreadId: (newThreadId) => void (threadId = newThreadId),
       });
 
       return (
@@ -796,48 +799,58 @@ describe("useStream", () => {
     });
   });
 
-  it("fetchStateHistory: false", async () => {
-    const user = userEvent.setup();
+  it.each([false, { limit: 2 }])(
+    "fetchStateHistory: %s",
+    async (fetchStateHistory) => {
+      const user = userEvent.setup();
 
-    function TestComponent() {
-      const { submit, messages } = useStream({
-        assistantId: "agent",
-        apiKey: "test-api-key",
-        fetchStateHistory: false,
+      function TestComponent() {
+        const { submit, messages, isLoading } = useStream({
+          assistantId: "agent",
+          apiKey: "test-api-key",
+          fetchStateHistory,
+        });
+
+        return (
+          <div>
+            <div data-testid="loading">
+              {isLoading ? "Loading..." : "Not loading"}
+            </div>
+            <div data-testid="messages">
+              {messages.map((msg, i) => (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  {typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content)}
+                </div>
+              ))}
+            </div>
+            <button
+              data-testid="submit"
+              onClick={() =>
+                submit({ messages: [{ content: "Hello", type: "human" }] })
+              }
+            >
+              Send
+            </button>
+          </div>
+        );
+      }
+
+      render(<TestComponent />);
+
+      await user.click(screen.getByTestId("submit"));
+      await waitFor(() => {
+        expect(screen.getByTestId("loading")).toHaveTextContent("Loading...");
       });
 
-      return (
-        <div>
-          <div data-testid="messages">
-            {messages.map((msg, i) => (
-              <div key={msg.id ?? i} data-testid={`message-${i}`}>
-                {typeof msg.content === "string"
-                  ? msg.content
-                  : JSON.stringify(msg.content)}
-              </div>
-            ))}
-          </div>
-          <button
-            data-testid="submit"
-            onClick={() =>
-              submit({ messages: [{ content: "Hello", type: "human" }] })
-            }
-          >
-            Send
-          </button>
-        </div>
-      );
+      await waitFor(() => {
+        expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+        expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+        expect(screen.getByTestId("loading")).toHaveTextContent("Not loading");
+      });
     }
-
-    render(<TestComponent />);
-
-    await user.click(screen.getByTestId("submit"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
-      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
-    });
-  });
+  );
 
   it("streamSubgraphs: true", async () => {
     const user = userEvent.setup();

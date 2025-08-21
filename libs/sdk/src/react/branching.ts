@@ -34,10 +34,10 @@ interface ValidSequence<StateType = any> {
 export function getBranchSequence<StateType extends Record<string, unknown>>(
   history: ThreadState<StateType>[]
 ) {
+  const nodeIds = new Set<string>();
   const childrenMap: Record<string, ThreadState<StateType>[]> = {};
 
   // Short circuit if there's only a singular one state
-  // TODO: I think we can make this more generalizable for all `fetchStateHistory` values.
   if (history.length <= 1) {
     return {
       rootSequence: {
@@ -53,7 +53,51 @@ export function getBranchSequence<StateType extends Record<string, unknown>>(
     const checkpointId = state.parent_checkpoint?.checkpoint_id ?? "$";
     childrenMap[checkpointId] ??= [];
     childrenMap[checkpointId].push(state);
+
+    if (state.checkpoint?.checkpoint_id != null) {
+      nodeIds.add(state.checkpoint.checkpoint_id);
+    }
   });
+
+  // If dealing with partial history, take the branch
+  // with the latest checkpoint and mark it as the root.
+  const maxId = (...ids: (string | null)[]) =>
+    ids
+      .filter((i) => i != null)
+      .sort((a, b) => a.localeCompare(b))
+      .at(-1)!;
+
+  const lastOrphanedNode =
+    childrenMap.$ == null
+      ? Object.keys(childrenMap)
+          .filter((parentId) => !nodeIds.has(parentId))
+          .map((parentId) => {
+            const queue: string[] = [parentId];
+            const seen = new Set<string>();
+
+            let lastId = parentId;
+
+            while (queue.length > 0) {
+              const current = queue.shift()!;
+
+              if (seen.has(current)) continue;
+              seen.add(current);
+
+              const children = (childrenMap[current] ?? []).flatMap(
+                (i) => i.checkpoint?.checkpoint_id ?? []
+              );
+
+              lastId = maxId(lastId, ...children);
+              queue.push(...children);
+            }
+
+            return { parentId, lastId };
+          })
+          .sort((a, b) => a.lastId.localeCompare(b.lastId))
+          .at(-1)?.parentId
+      : undefined;
+
+  if (lastOrphanedNode != null) childrenMap.$ = childrenMap[lastOrphanedNode];
 
   // Second pass - create a tree of sequences
   type Task = { id: string; sequence: Sequence; path: string[] };
