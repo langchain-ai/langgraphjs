@@ -27,6 +27,10 @@
       "types": "./dist/graph/parser/index.d.mts",
       "default": "./dist/graph/parser/index.mjs"
     },
+    "./storage": {
+      "types": "./dist/storage/types.d.mts",
+      "default": "./dist/storage/types.mjs"
+    },
     "./experimental/embed": {
       "types": "./dist/experimental/embed.d.mts",
       "default": "./dist/experimental/embed.mjs"
