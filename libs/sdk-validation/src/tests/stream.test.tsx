@@ -1011,6 +1011,7 @@ describe("useStream", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
       expect(screen.getByTestId("stream-metadata")).toHaveTextContent("agent");
     });
   });

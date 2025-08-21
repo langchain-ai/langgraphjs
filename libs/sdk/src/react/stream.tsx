@@ -244,13 +244,16 @@ export function useStream<
   >(undefined);
   onErrorRef.current = options.onError;
 
+  const historyLimit =
+    typeof options.fetchStateHistory === "object" &&
+    options.fetchStateHistory != null
+      ? options.fetchStateHistory.limit ?? false
+      : options.fetchStateHistory ?? false;
+
   const history = useThreadHistory<StateType>(
     threadId,
     client,
-    typeof options.fetchStateHistory === "object" &&
-      options.fetchStateHistory != null
-      ? options.fetchStateHistory.limit ?? false
-      : options.fetchStateHistory ?? false,
+    historyLimit,
     clearCallbackRef,
     submittingRef,
     onErrorRef
@@ -290,7 +293,7 @@ export function useStream<
   const messageMetadata = (() => {
     const alreadyShown = new Set<string>();
     return getMessages(historyValues).map(
-      (message, idx): MessageMetadata<StateType> => {
+      (message, idx): Omit<MessageMetadata<StateType>, "streamMetadata"> => {
         const messageId = message.id ?? idx;
 
         // Find the first checkpoint where the message was seen
@@ -320,8 +323,6 @@ export function useStream<
 
           branch: branch?.branch,
           branchOptions: branch?.branchOptions,
-
-          streamMetadata: messageManager.get(message.id)?.metadata,
         };
       }
     );
@@ -355,6 +356,11 @@ export function useStream<
       return { ...historyValues };
     });
 
+    // When `fetchStateHistory` is requested, thus we assume that branching
+    // is enabled. We then need to include the implicit branch.
+    const includeImplicitBranch =
+      historyLimit === true || typeof historyLimit === "number";
+
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId = threadId;
@@ -382,7 +388,9 @@ export function useStream<
 
         let checkpoint =
           submitOptions?.checkpoint ??
-          branchContext.threadHead?.checkpoint ??
+          (includeImplicitBranch
+            ? branchContext.threadHead?.checkpoint
+            : undefined) ??
           undefined;
 
         // Avoid specifying a checkpoint if user explicitly set it to null
@@ -442,14 +450,22 @@ export function useStream<
 
         async onSuccess() {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-          const newHistory = await history.mutate(usableThreadId!);
+          const shouldRefetch =
+            // We're expecting the whole thread state in onFinish
+            options.onFinish != null ||
+            // We're fetching history, thus we need the latest checkpoint
+            // to ensure we're not accidentally submitting to a wrong branch
+            includeImplicitBranch;
 
-          const lastHead = newHistory.at(0);
-          if (lastHead) {
-            // We now have the latest update from /history
-            // Thus we can clear the local stream state
-            options.onFinish?.(lastHead, callbackMeta);
-            return null;
+          if (shouldRefetch) {
+            const newHistory = await history.mutate(usableThreadId!);
+            const lastHead = newHistory.at(0);
+            if (lastHead) {
+              // We now have the latest update from /history
+              // Thus we can clear the local stream state
+              options.onFinish?.(lastHead, callbackMeta);
+              return null;
+            }
           }
 
           return undefined;
@@ -595,9 +611,20 @@ export function useStream<
       index?: number
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("values");
-      return messageMetadata?.find(
+
+      const streamMetadata = messageManager.get(message.id)?.metadata;
+      const historyMetadata = messageMetadata?.find(
         (m) => m.messageId === (message.id ?? index)
       );
+
+      if (streamMetadata != null || historyMetadata != null) {
+        return {
+          ...historyMetadata,
+          streamMetadata,
+        } as MessageMetadata<StateType>;
+      }
+
+      return undefined;
     },
   };
 }
