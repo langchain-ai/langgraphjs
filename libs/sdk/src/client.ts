@@ -440,6 +440,26 @@ export class CronsClient extends BaseClient {
       },
     });
   }
+
+  /**
+   * Count cron jobs matching filters.
+   *
+   * @param query.assistantId Assistant ID to filter by.
+   * @param query.threadId Thread ID to filter by.
+   * @returns Number of cron jobs matching the criteria.
+   */
+  async count(query?: {
+    assistantId?: string;
+    threadId?: string;
+  }): Promise<number> {
+    return this.fetch<number>(`/runs/crons/count`, {
+      method: "POST",
+      json: {
+        assistant_id: query?.assistantId ?? undefined,
+        thread_id: query?.threadId ?? undefined,
+      },
+    });
+  }
 }
 
 export class AssistantsClient extends BaseClient {
@@ -597,6 +617,26 @@ export class AssistantsClient extends BaseClient {
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
         select: query?.select ?? undefined,
+      },
+    });
+  }
+
+  /**
+   * Count assistants matching filters.
+   *
+   * @param query.metadata Metadata to filter by. Exact match for each key/value.
+   * @param query.graphId Optional graph id to filter by.
+   * @returns Number of assistants matching the criteria.
+   */
+  async count(query?: {
+    metadata?: Metadata;
+    graphId?: string;
+  }): Promise<number> {
+    return this.fetch<number>(`/assistants/count`, {
+      method: "POST",
+      json: {
+        metadata: query?.metadata ?? undefined,
+        graph_id: query?.graphId ?? undefined,
       },
     });
   }
@@ -804,6 +844,29 @@ export class ThreadsClient<
         sort_by: query?.sortBy,
         sort_order: query?.sortOrder,
         select: query?.select ?? undefined,
+      },
+    });
+  }
+
+  /**
+   * Count threads matching filters.
+   *
+   * @param query.metadata Thread metadata to filter on.
+   * @param query.values State values to filter on.
+   * @param query.status Thread status to filter on.
+   * @returns Number of threads matching the criteria.
+   */
+  async count<ValuesType = TStateType>(query?: {
+    metadata?: Metadata;
+    values?: ValuesType;
+    status?: ThreadStatus;
+  }): Promise<number> {
+    return this.fetch<number>(`/threads/count`, {
+      method: "POST",
+      json: {
+        metadata: query?.metadata ?? undefined,
+        values: query?.values ?? undefined,
+        status: query?.status ?? undefined,
       },
     });
   }
