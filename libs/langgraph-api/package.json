@@ -23,6 +23,10 @@
       "types": "./dist/auth/index.d.mts",
       "default": "./dist/auth/index.mjs"
     },
+    "./graph": {
+      "types": "./dist/graph/api.d.mts",
+      "default": "./dist/graph/api.mjs"
+    },
     "./semver": {
       "types": "./dist/semver/index.d.mts",
       "default": "./dist/semver/index.mjs"

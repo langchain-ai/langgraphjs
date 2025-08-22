@@ -84,8 +84,7 @@ export async function getGraph(
     store?: BaseStore;
   }
 ) {
-  if (!GRAPHS[graphId])
-    throw new HTTPException(404, { message: `Graph "${graphId}" not found` });
+  assertGraphExists(graphId);
 
   const compiled =
     typeof GRAPHS[graphId] === "function"
@@ -101,6 +100,13 @@ export async function getGraph(
   compiled.store = options?.store ?? store;
 
   return compiled;
+}
+
+export function assertGraphExists(graphId: string) {
+  if (!GRAPHS[graphId])
+    throw new HTTPException(404, {
+      message: `Graph "${graphId}" not found`,
+    });
 }
 
 export async function getCachedStaticGraphSchema(graphId: string) {
