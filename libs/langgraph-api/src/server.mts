@@ -97,20 +97,23 @@ export async function startServer(
     checkpointer.initialize(options.cwd),
     graphStore.initialize(options.cwd),
   ];
-  let opsConn = null;
-  if (storage?.ops == null) {
-    opsConn = new FileSystemPersistence<Store>(".langgraphjs_ops.json", () => ({
-      runs: {},
-      threads: {},
-      assistants: {},
-      assistant_versions: [],
-      retry_counter: {},
-    }));
+
+  let ops = storage?.ops;
+  if (ops == null) {
+    const opsConn = new FileSystemPersistence<Store>(
+      ".langgraphjs_ops.json",
+      () => ({
+        runs: {},
+        threads: {},
+        assistants: {},
+        assistant_versions: [],
+        retry_counter: {},
+      })
+    );
     initCalls.push(opsConn.initialize(options.cwd));
+    ops = new FileSystemOps(opsConn);
   }
   const callbacks = await Promise.all(initCalls);
-  const ops =
-    storage?.ops ?? new FileSystemOps(opsConn as FileSystemPersistence<Store>);
 
   const cleanup = async () => {
     logger.info(`Flushing to persistent storage, exiting...`);
