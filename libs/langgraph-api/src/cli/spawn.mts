@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import type { Ops } from "../storage/types.mjs";
 
 export async function spawnServer(
   args: {
