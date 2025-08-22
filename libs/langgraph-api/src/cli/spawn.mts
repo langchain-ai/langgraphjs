@@ -32,9 +32,6 @@ export async function spawnServer(
         };
       };
     };
-    storage?: {
-      ops?: Ops;
-    };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
   },
