@@ -342,6 +342,7 @@ export interface ThreadsStateRepo {
     asNode: string | undefined,
     auth: AuthContext | undefined
   ): Promise<{ checkpoint: Record<string, unknown> | undefined }>;
+
   bulk(
     config: RunnableConfig,
     supersteps: Array<{
