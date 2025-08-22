@@ -13,8 +13,9 @@ const packageJsonPath = path.resolve(
 
 let version: string;
 let langgraph_js_version: string;
+let versionInfoLoaded = false;
 
-api.use(async (_, next) => {
+const loadVersionInfo = async () => {
   try {
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
     version = packageJson.version;
@@ -31,13 +32,17 @@ api.use(async (_, next) => {
   } catch {
     console.warn("Could not determine version of @langchain/langgraph");
   }
-  await next();
-});
+};
 
 // read env variable
 const env = process.env;
 
-api.get("/info", (c) => {
+api.get("/info", async (c) => {
+  if (!versionInfoLoaded) {
+    await loadVersionInfo();
+    versionInfoLoaded = true;
+  }
+
   const langsmithApiKey = env["LANGSMITH_API_KEY"] || env["LANGCHAIN_API_KEY"];
 
   const langsmithTracing = (() => {
