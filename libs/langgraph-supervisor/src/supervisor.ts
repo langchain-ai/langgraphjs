@@ -117,6 +117,8 @@ export type CreateSupervisorParams<
   addHandoffBackMessages?: boolean;
   supervisorName?: string;
   includeAgentName?: AgentNameMode;
+  preModelHook?: CreateReactAgentParams["preModelHook"];
+  postModelHook?: CreateReactAgentParams["postModelHook"];
 };
 
 /**
@@ -146,6 +148,30 @@ export type CreateSupervisorParams<
  *
  * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
  * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
+ * @param preModelHook An optional node to add before the LLM node in the supervisor agent (i.e., the node that calls the LLM).
+ *   Useful for managing long message histories (e.g., message trimming, summarization, etc.).
+ *   Pre-model hook must be a callable or a runnable that takes in current graph state and returns a state update in the form of:
+ *   ```javascript
+ *   // At least one of `messages` or `llmInputMessages` MUST be provided
+ *   {
+ *     // If provided, will UPDATE the `messages` in the state
+ *     "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), ...],
+ *     // If provided, will be used as the input to the LLM,
+ *     // and will NOT UPDATE `messages` in the state
+ *     "llmInputMessages": [...],
+ *     // Any other state keys that need to be propagated...
+ *   }
+ *   ```
+ *   **Important**: At least one of `messages` or `llmInputMessages` MUST be provided and will be used as an input to the `agent` node.
+ *   The rest of the keys will be added to the graph state.
+ *
+ *   **Warning**: If you are returning `messages` in the pre-model hook, you should OVERWRITE the `messages` key by doing the following:
+ *   ```javascript
+ *   {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), ...newMessages], ...}
+ *   ```
+ * @param postModelHook An optional node to add after the LLM node in the supervisor agent (i.e., the node that calls the LLM).
+ *   Useful for implementing human-in-the-loop, guardrails, validation, or other post-processing.
+ *   Post-model hook must be a callable or a runnable that takes in current graph state and returns a state update.
  * @param stateSchema State schema to use for the supervisor graph
  * @param contextSchema Context schema to use for the supervisor graph
  * @param outputMode Mode for adding managed agents' outputs to the message history in the multi-agent workflow.
@@ -177,6 +203,8 @@ const createSupervisor = <
   addHandoffBackMessages = true,
   supervisorName = "supervisor",
   includeAgentName,
+  preModelHook,
+  postModelHook,
 }: CreateSupervisorParams<
   AnnotationRootT,
   StructuredResponseFormat
@@ -259,6 +287,8 @@ const createSupervisor = <
     prompt,
     responseFormat,
     stateSchema: schema,
+    preModelHook,
+    postModelHook,
   });
 
   let builder = new StateGraph(schema, contextSchema)
