@@ -1,5 +1,12 @@
 # @langchain/langgraph-cli
 
+## 0.0.61
+
+### Patch Changes
+
+- Updated dependencies [9f13d74]
+  - @langchain/langgraph-api@0.0.61
+
 ## 0.0.60
 
 ### Patch Changes

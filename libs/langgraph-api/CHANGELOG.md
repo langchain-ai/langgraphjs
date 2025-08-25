@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.61
+
+### Patch Changes
+
+- 9f13d74: fix(api): prevent overriding default CORS config when applying a single override
+  - @langchain/langgraph-ui@0.0.61
+
 ## 0.0.60
 
 ### Patch Changes
