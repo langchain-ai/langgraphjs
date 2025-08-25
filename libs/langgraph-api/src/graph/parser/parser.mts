@@ -2,9 +2,9 @@ import * as ts from "typescript";
 import * as vfs from "@typescript/vfs";
 import * as path from "node:path";
 import dedent from "dedent";
-import { buildGenerator } from "./schema/types.mjs";
 import { fileURLToPath } from "node:url";
 import type { JSONSchema7 } from "json-schema";
+import { buildGenerator } from "./schema/types.mjs";
 
 interface GraphSchema {
   state: JSONSchema7 | undefined;
@@ -29,11 +29,15 @@ const INFER_TEMPLATE_PATH = path.resolve(
 
 export class SubgraphExtractor {
   protected program: ts.Program;
+
   protected checker: ts.TypeChecker;
+
   protected sourceFile: ts.SourceFile;
+
   protected inferFile: ts.SourceFile;
 
   protected anyPregelType: ts.Type;
+
   protected anyGraphType: ts.Type;
 
   protected strict: boolean;
@@ -56,11 +60,11 @@ export class SubgraphExtractor {
   }
 
   private findTypeByName = (needle: string) => {
-    let result: ts.Type | undefined = undefined;
+    let result: ts.Type | undefined;
 
     const visit = (node: ts.Node) => {
       if (ts.isTypeAliasDeclaration(node)) {
-        const symbol = (node as any).symbol;
+        const {symbol} = (node as any);
 
         if (symbol != null) {
           const name = this.checker
@@ -81,7 +85,7 @@ export class SubgraphExtractor {
     root: ts.Node,
     predicate: (node: ts.Node) => boolean
   ): ts.Node | undefined => {
-    let result: ts.Node | undefined = undefined;
+    let result: ts.Node | undefined;
 
     const visit = (node: ts.Node) => {
       if (predicate(node)) {
@@ -158,7 +162,7 @@ export class SubgraphExtractor {
             }
 
             acc.push({
-              namespace: namespace,
+              namespace,
               node: nodeName,
               subgraph: variables[0],
             });
@@ -585,10 +589,10 @@ export class SubgraphExtractor {
     const allDiagnostics = ts.getPreEmitDiagnostics(extract);
     for (const diagnostic of allDiagnostics) {
       let message =
-        ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n") + "\n";
+        `${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")  }\n`;
 
       if (diagnostic.file) {
-        const fileName = diagnostic.file.fileName;
+        const {fileName} = diagnostic.file;
         const { line, character } = ts.getLineAndCharacterOfPosition(
           diagnostic.file,
           diagnostic.start!
@@ -602,7 +606,7 @@ export class SubgraphExtractor {
 
     const schemaGenerator = buildGenerator(extract);
     const trySymbol = (symbol: string) => {
-      let schema: JSONSchema7 | undefined = undefined;
+      let schema: JSONSchema7 | undefined;
       try {
         schema = schemaGenerator?.getSchemaForSymbol(symbol) ?? undefined;
       } catch (e) {
@@ -614,7 +618,7 @@ export class SubgraphExtractor {
 
       if (schema == null) return undefined;
 
-      const definitions = schema.definitions;
+      const {definitions} = schema;
       if (definitions == null) return schema;
 
       const toReplace = Object.keys(definitions).flatMap((key) => {

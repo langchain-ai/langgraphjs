@@ -1,8 +1,8 @@
 import { asyncExitHook } from "exit-hook";
 import * as process from "node:process";
+import { Client as LangSmithClient } from "langsmith";
 import { startServer, StartServerSchema } from "../server.mjs";
 import { connectToServer } from "./utils/ipc/client.mjs";
-import { Client as LangSmithClient } from "langsmith";
 import { logger } from "../logging.mjs";
 
 logger.info(`Starting server...`);

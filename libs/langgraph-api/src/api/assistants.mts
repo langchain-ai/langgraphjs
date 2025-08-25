@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 
+import { HTTPException } from "hono/http-exception";
 import {
   getAssistantId,
   getCachedStaticGraphSchema,
@@ -11,9 +12,9 @@ import {
 } from "../graph/load.mjs";
 import { getRuntimeGraphSchema } from "../graph/parser/index.mjs";
 
-import { HTTPException } from "hono/http-exception";
 import * as schemas from "../schemas.mjs";
 import { Assistants } from "../storage/ops.mjs";
+
 const api = new Hono();
 
 const RunnableConfigSchema = z.object({

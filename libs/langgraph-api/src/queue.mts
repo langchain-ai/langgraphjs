@@ -25,12 +25,12 @@ export const queue = async () => {
 
 const worker = async (run: Run, attempt: number, signal: AbortSignal) => {
   const startedAt = new Date();
-  let endedAt: Date | undefined = undefined;
-  let checkpoint: StreamCheckpoint | undefined = undefined;
-  let exception: Error | undefined = undefined;
-  let status: RunStatus | undefined = undefined;
+  let endedAt: Date | undefined;
+  let checkpoint: StreamCheckpoint | undefined;
+  let exception: Error | undefined;
+  let status: RunStatus | undefined;
 
-  const temporary = run.kwargs.temporary;
+  const {temporary} = run.kwargs;
   const webhook = run.kwargs.webhook as string | undefined;
 
   logger.info("Starting background run", {

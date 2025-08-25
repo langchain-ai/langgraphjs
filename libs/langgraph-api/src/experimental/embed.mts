@@ -9,10 +9,10 @@ import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v4 as uuidv4 } from "uuid";
 
+import { z } from "zod";
 import type { Metadata, Run } from "../storage/ops.mjs";
 import * as schemas from "../schemas.mjs";
 
-import { z } from "zod";
 import { streamState } from "../stream.mjs";
 import { serialiseAsDict, serializeError } from "../utils/serde.mjs";
 import { getDisconnectAbortSignal, jsonExtra } from "../utils/hono.mjs";
@@ -62,11 +62,10 @@ function createStubRun(
     : undefined;
 
   if (streamMode == null || streamMode.length === 0) streamMode = ["values"];
-  const config = Object.assign(
-    {},
-    payload.config ?? {},
-    {
-      configurable: {
+  const config = {
+    
+    ...payload.config ?? {},
+    configurable: {
         run_id: runId,
         thread_id: threadId,
         graph_id: payload.assistant_id,
@@ -81,9 +80,8 @@ function createStubRun(
             }
           : null),
       },
-    },
-    { metadata: payload.metadata ?? {} }
-  );
+    metadata: payload.metadata ?? {}
+  };
 
   return {
     run_id: runId,

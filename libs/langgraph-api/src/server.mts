@@ -1,6 +1,9 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { getConfig } from "@langchain/langgraph";
 import { registerFromEnv } from "./graph/load.mjs";
 
 import runs from "./api/runs.mjs";
@@ -10,8 +13,6 @@ import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
 
 import { truncate, conn as opsConn } from "./storage/ops.mjs";
-import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
 import { queue } from "./queue.mjs";
 import {
   logger,
@@ -27,7 +28,6 @@ import { registerHttp } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
-import { getConfig } from "@langchain/langgraph";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -126,7 +126,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     const config = getConfig();
     if (config == null) return info;
 
-    const node = config.metadata?.["langgraph_node"];
+    const node = config.metadata?.langgraph_node;
     if (node != null) info.langgraph_node = node;
 
     return info;

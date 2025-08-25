@@ -124,14 +124,14 @@ const deleteInternalConfigurableFields = (config: unknown) => {
 function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
   const result: Record<string, unknown> = {
     ...payload,
-    checkpoint: runnableConfigToCheckpoint(payload["config"]),
-    parent_checkpoint: runnableConfigToCheckpoint(payload["parentConfig"]),
-    tasks: payload["tasks"].map(preprocessDebugCheckpointTask),
+    checkpoint: runnableConfigToCheckpoint(payload.config),
+    parent_checkpoint: runnableConfigToCheckpoint(payload.parentConfig),
+    tasks: payload.tasks.map(preprocessDebugCheckpointTask),
   };
 
   // Handle LangGraph JS pascalCase vs snake_case
   // TODO: use stream to LangGraph.JS
-  result.parent_config = payload["parentConfig"];
+  result.parent_config = payload.parentConfig;
   delete result.parentConfig;
 
   result.config = deleteInternalConfigurableFields(result.config);
@@ -156,7 +156,7 @@ export async function* streamState(
     signal?: AbortSignal;
   }
 ): AsyncGenerator<{ event: string; data: unknown }> {
-  const kwargs = run.kwargs;
+  const {kwargs} = run;
   const graphId = kwargs.config?.configurable?.graph_id;
 
   if (!graphId || typeof graphId !== "string") {

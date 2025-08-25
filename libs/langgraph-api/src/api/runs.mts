@@ -81,9 +81,9 @@ const createValidRun = async (
   if (auth) {
     userId = auth.user.identity ?? auth.user.id;
     config.configurable ??= {};
-    config.configurable["langgraph_auth_user"] = auth.user;
-    config.configurable["langgraph_auth_user_id"] = userId;
-    config.configurable["langgraph_auth_permissions"] = auth.scopes;
+    config.configurable.langgraph_auth_user = auth.user;
+    config.configurable.langgraph_auth_user_id = userId;
+    config.configurable.langgraph_auth_permissions = auth.scopes;
   }
 
   let feedbackKeys =

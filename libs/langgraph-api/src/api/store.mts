@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import * as schemas from "../schemas.mjs";
 import { HTTPException } from "hono/http-exception";
-import { store as storageStore } from "../storage/store.mjs";
 import type { Item } from "@langchain/langgraph";
+import * as schemas from "../schemas.mjs";
+import { store as storageStore } from "../storage/store.mjs";
 import { handleAuthEvent } from "../auth/custom.mjs";
 
 const api = new Hono();
@@ -17,8 +17,8 @@ const validateNamespace = (namespace: string[]) => {
     if (!label || label.includes(".")) {
       throw new HTTPException(422, {
         message:
-          "Namespace labels cannot be empty or contain periods. Received: " +
-          namespace.join("."),
+          `Namespace labels cannot be empty or contain periods. Received: ${ 
+          namespace.join(".")}`,
       });
     }
   }
@@ -136,8 +136,8 @@ api.get(
       key: payload.key,
     });
 
-    const key = payload.key;
-    const namespace = payload.namespace;
+    const {key} = payload;
+    const {namespace} = payload;
     return c.json(mapItemsToApi(await storageStore.get(namespace, key)));
   }
 );

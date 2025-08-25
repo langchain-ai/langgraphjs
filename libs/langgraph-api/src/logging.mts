@@ -113,11 +113,11 @@ const formatStack = (stack: string | undefined | null) => {
 
       codeFrame = codeFrame
         .split("\n")
-        .map((i) => padding + i + "\x1b[0m")
+        .map((i) => `${padding + i  }\x1b[0m`)
         .join("\n");
 
       if (highlightCode) {
-        codeFrame = "\x1b[36m" + codeFrame + "\x1b[31m";
+        codeFrame = `\x1b[36m${  codeFrame  }\x1b[31m`;
       }
 
       // insert codeframe after the line but dont lose the stack

@@ -200,7 +200,7 @@ function extend(target: any, ..._: any[]): any {
 
   const to = Object(target);
 
-  for (var index = 1; index < arguments.length; index++) {
+  for (let index = 1; index < arguments.length; index++) {
     const nextSource = arguments[index];
 
     if (nextSource != null) {
@@ -372,7 +372,7 @@ function makeNullable(def: Definition): Definition {
       union.push({ type: "null" });
     } else {
       const subdef: DefinitionIndex = {};
-      for (var k in def as any) {
+      for (const k in def as any) {
         if (def.hasOwnProperty(k)) {
           subdef[k] = def[k as keyof Definition];
           delete def[k as keyof typeof def];
@@ -503,16 +503,19 @@ class JsonSchemaGenerator {
    * information.
    */
   private symbols: SymbolRef[];
+
   /**
    * All types for declarations of classes, interfaces, enums, and type aliases
    * defined in all TS files.
    */
   private allSymbols: { [name: string]: ts.Type };
+
   /**
    * All symbols for declarations of classes, interfaces, enums, and type aliases
    * defined in non-default-lib TS files.
    */
   private userSymbols: { [name: string]: ts.Symbol };
+
   /**
    * Maps from the names of base types to the names of the types that inherit from
    * them.
@@ -547,6 +550,7 @@ class JsonSchemaGenerator {
    * map from type IDs to type names.
    */
   private typeNamesById: { [id: number]: string } = {};
+
   /**
    * Whenever a type is assigned its name, its entry in this dictionary is set,
    * so that we don't give the same name to two separate types.
@@ -640,7 +644,7 @@ class JsonSchemaGenerator {
     const jsdocs = symbol.getJsDocTags();
     jsdocs.forEach((doc) => {
       // if we have @TJS-... annotations, we have to parse them
-      let name = doc.name;
+      let {name} = doc;
       const originalText = doc.text ? doc.text.map((t) => t.text).join("") : "";
       let text = originalText;
       // In TypeScript versions prior to 3.7, it stops parsing the annotation
@@ -654,7 +658,7 @@ class JsonSchemaGenerator {
           text = "true";
         }
       } else if (name === "TJS" && text.startsWith("-")) {
-        let match: string[] | RegExpExecArray | null = new RegExp(
+        const match: string[] | RegExpExecArray | null = new RegExp(
           REGEX_TJS_JSDOC
         ).exec(originalText);
         if (match) {
@@ -743,7 +747,7 @@ class JsonSchemaGenerator {
         undefined,
         ts.TypeFormatFlags.UseFullyQualifiedType
       );
-      const flags = propertyType.flags;
+      const {flags} = propertyType;
       const arrayType = this.tc.getIndexTypeOfType(
         propertyType,
         ts.IndexKind.Number
@@ -823,7 +827,7 @@ class JsonSchemaGenerator {
               [NUMERIC_INDEX_PATTERN]: this.getTypeDefinition(arrayType),
             };
             if (
-              !!Array.from((propertyType as any).members as any[])?.find(
+              Array.from((propertyType as any).members as any[])?.find(
                 (member: [string]) => member[0] !== "__index"
               )
             ) {
@@ -877,7 +881,7 @@ class JsonSchemaGenerator {
         } else {
           // Report that type could not be processed
           const error = new TypeError(
-            "Unsupported type: " + propertyTypeString
+            `Unsupported type: ${  propertyTypeString}`
           );
           (error as any).type = propertyType;
           throw error;
@@ -943,7 +947,7 @@ class JsonSchemaGenerator {
 
       if ((initial as any).expression) {
         // node
-        console.warn("initializer is expression for property " + propertyName);
+        console.warn(`initializer is expression for property ${  propertyName}`);
       } else if (
         (initial as any).kind &&
         (initial as any).kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral
@@ -952,7 +956,7 @@ class JsonSchemaGenerator {
       } else {
         try {
           const sandbox = { sandboxvar: null as any };
-          vm.runInNewContext("sandboxvar=" + initial.getText(), sandbox);
+          vm.runInNewContext(`sandboxvar=${  initial.getText()}`, sandbox);
 
           const val = sandbox.sandboxvar;
           if (
@@ -965,12 +969,12 @@ class JsonSchemaGenerator {
             definition.default = val;
           } else if (val) {
             console.warn(
-              "unknown initializer for property " + propertyName + ": " + val
+              `unknown initializer for property ${  propertyName  }: ${  val}`
             );
           }
         } catch (e) {
           console.warn(
-            "exception evaluating initializer for property " + propertyName
+            `exception evaluating initializer for property ${  propertyName}`
           );
         }
       }
@@ -993,7 +997,7 @@ class JsonSchemaGenerator {
       node.kind === ts.SyntaxKind.EnumDeclaration
         ? (node as ts.EnumDeclaration).members
         : ts.factory.createNodeArray([node as ts.EnumMember]);
-    var enumValues: (number | boolean | string | null)[] = [];
+    const enumValues: (number | boolean | string | null)[] = [];
     const enumTypes: JSONSchema7TypeName[] = [];
 
     const addType = (type: JSONSchema7TypeName) => {
@@ -1015,7 +1019,7 @@ class JsonSchemaGenerator {
           if ((initial as any).expression) {
             // node
             const exp = (initial as any).expression;
-            const text = (exp as any).text;
+            const {text} = (exp as any);
             // if it is an expression with a text literal, chances are it is the enum convention:
             // CASELABEL = 'literal' as any
             if (text) {
@@ -1029,10 +1033,10 @@ class JsonSchemaGenerator {
               addType("boolean");
             } else {
               console.warn(
-                "initializer is expression for enum: " +
-                  fullName +
-                  "." +
-                  caseLabel
+                `initializer is expression for enum: ${ 
+                  fullName 
+                  }.${ 
+                  caseLabel}`
               );
             }
           } else if (
@@ -1469,7 +1473,7 @@ class JsonSchemaGenerator {
       this.typeIdsByName[name] !== undefined && this.typeIdsByName[name] !== id;
       ++i
     ) {
-      name = baseName + "_" + i;
+      name = `${baseName  }_${  i}`;
     }
 
     this.typeNamesById[id] = name;
@@ -1618,7 +1622,7 @@ class JsonSchemaGenerator {
       // We don't return the full definition, but we put it into
       // reffedDefinitions below.
       returnedDefinition = {
-        $ref: `${this.args.id}#/definitions/` + fullTypeName,
+        $ref: `${this.args.id}#/definitions/${  fullTypeName}`,
       };
     }
 
@@ -1700,7 +1704,7 @@ class JsonSchemaGenerator {
               definition.additionalProperties = false;
             }
 
-            const types = (typ as ts.IntersectionType).types;
+            const {types} = (typ as ts.IntersectionType);
             for (const member of types) {
               const other = this.getTypeDefinition(
                 member,
@@ -1784,13 +1788,13 @@ class JsonSchemaGenerator {
         }, {});
 
         returnedDefinition = {
-          $ref: `${this.args.id}#/definitions/` + fullTypeName,
+          $ref: `${this.args.id}#/definitions/${  fullTypeName}`,
           ...annotations,
         };
       }
     }
 
-    if (otherAnnotations["nullable"]) {
+    if (otherAnnotations.nullable) {
       makeNullable(returnedDefinition);
     }
 
@@ -1817,9 +1821,7 @@ class JsonSchemaGenerator {
     if (overrideDefinition) {
       def = { ...overrideDefinition };
     } else {
-      def = overrideDefinition
-        ? overrideDefinition
-        : this.getTypeDefinition(
+      def = overrideDefinition || this.getTypeDefinition(
             this.allSymbols[symbolName],
             this.args.topRef,
             undefined,
@@ -1836,10 +1838,10 @@ class JsonSchemaGenerator {
     ) {
       def.definitions = this.reffedDefinitions;
     }
-    def["$schema"] = "http://json-schema.org/draft-07/schema#";
-    const id = this.args.id;
+    def.$schema = "http://json-schema.org/draft-07/schema#";
+    const {id} = this.args;
     if (id) {
-      def["$id"] = this.args.id;
+      def.$id = this.args.id;
     }
     return def;
   }
@@ -1860,10 +1862,10 @@ class JsonSchemaGenerator {
 
     this.resetSchemaSpecificProperties(includeAllOverrides);
 
-    const id = this.args.id;
+    const {id} = this.args;
 
     if (id) {
-      root["$id"] = id;
+      root.$id = id;
     }
 
     for (const symbolName of symbolNames) {
@@ -1969,7 +1971,7 @@ export function buildGenerator(
         node.kind === ts.SyntaxKind.EnumDeclaration ||
         node.kind === ts.SyntaxKind.TypeAliasDeclaration
       ) {
-        const symbol: ts.Symbol = (node as any).symbol;
+        const {symbol} = (node as any);
         const nodeType = tc.getTypeAtLocation(node);
         const fullyQualifiedName = tc.getFullyQualifiedName(symbol);
         const typeName = fullyQualifiedName.replace(/".*"\./, "");
@@ -1985,7 +1987,7 @@ export function buildGenerator(
         const baseTypes = nodeType.getBaseTypes() || [];
 
         baseTypes.forEach((baseType) => {
-          var baseName = tc.typeToString(
+          const baseName = tc.typeToString(
             baseType,
             undefined,
             ts.TypeFormatFlags.UseFullyQualifiedType

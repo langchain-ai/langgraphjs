@@ -1,8 +1,8 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as superjson from "superjson";
-import * as importMap from "./importMap.mjs";
 import { load } from "@langchain/core/load";
+import * as importMap from "./importMap.mjs";
 
 // Add custom transformers for Uint8Array
 superjson.registerCustom<Uint8Array, string>(
@@ -25,9 +25,11 @@ export async function deserialize<T>(input: string) {
 
 export class FileSystemPersistence<Schema> {
   private filepath: string | null = null;
+
   private data: Schema | null = null;
 
   private defaultSchema: () => Schema;
+
   private name: string;
 
   private flushTimeout: NodeJS.Timeout | undefined = undefined;
@@ -88,7 +90,7 @@ export class FileSystemPersistence<Schema> {
     }
 
     let shouldPersist = false;
-    let schedulePersist = () => void (shouldPersist = true);
+    const schedulePersist = () => void (shouldPersist = true);
 
     try {
       const gen =

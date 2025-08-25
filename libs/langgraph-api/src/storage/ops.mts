@@ -149,9 +149,11 @@ interface Message {
 
 class Queue {
   private log: Message[] = [];
+
   private listeners: ((idx: number) => void)[] = [];
 
   private nextId = 0;
+
   private resumable = false;
 
   constructor(options: { resumable: boolean }) {
@@ -170,7 +172,7 @@ class Queue {
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
     if (this.resumable) {
-      const lastEventId = options.lastEventId;
+      const {lastEventId} = options;
 
       // Generator stores internal state of the read head index,
       let targetId = lastEventId != null ? +lastEventId + 1 : null;
@@ -192,8 +194,8 @@ class Queue {
       }
     }
 
-    let timeout: NodeJS.Timeout | undefined = undefined;
-    let resolver: ((idx: number) => void) | undefined = undefined;
+    let timeout: NodeJS.Timeout | undefined;
+    let resolver: ((idx: number) => void) | undefined;
 
     const clean = new AbortController();
 
@@ -235,6 +237,7 @@ class CancellationAbortController extends AbortController {
 
 class StreamManagerImpl {
   readers: Record<string, Queue> = {};
+
   control: Record<string, CancellationAbortController> = {};
 
   getQueue(
@@ -337,31 +340,31 @@ export class Assistants {
     });
 
     yield* conn.withGenerator(async function* (STORE) {
-      let filtered = Object.values(STORE.assistants)
+      const filtered = Object.values(STORE.assistants)
         .filter((assistant) => {
           if (
             options.graph_id != null &&
-            assistant["graph_id"] !== options.graph_id
+            assistant.graph_id !== options.graph_id
           ) {
             return false;
           }
 
           if (
             options.metadata != null &&
-            !isJsonbContained(assistant["metadata"], options.metadata)
+            !isJsonbContained(assistant.metadata, options.metadata)
           ) {
             return false;
           }
 
-          if (!isAuthMatching(assistant["metadata"], filters)) {
+          if (!isAuthMatching(assistant.metadata, filters)) {
             return false;
           }
 
           return true;
         })
         .sort((a, b) => {
-          const aCreatedAt = a["created_at"]?.getTime() ?? 0;
-          const bCreatedAt = b["created_at"]?.getTime() ?? 0;
+          const aCreatedAt = a.created_at?.getTime() ?? 0;
+          const bCreatedAt = b.created_at?.getTime() ?? 0;
           return bCreatedAt - aCreatedAt;
         });
 
@@ -395,7 +398,7 @@ export class Assistants {
       const result = STORE.assistants[assistant_id];
       if (result == null)
         throw new HTTPException(404, { message: "Assistant not found" });
-      if (!isAuthMatching(result["metadata"], filters)) {
+      if (!isAuthMatching(result.metadata, filters)) {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
       return { ...result, name: result.name ?? result.graph_id };
@@ -446,7 +449,7 @@ export class Assistants {
       const now = new Date();
 
       STORE.assistants[assistant_id] ??= {
-        assistant_id: assistant_id,
+        assistant_id,
         version: 1,
         config: options.config ?? {},
         context: options.context ?? {},
@@ -458,7 +461,7 @@ export class Assistants {
       };
 
       STORE.assistant_versions.push({
-        assistant_id: assistant_id,
+        assistant_id,
         version: 1,
         graph_id: options.graph_id,
         config: options.config ?? {},
@@ -501,7 +504,7 @@ export class Assistants {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
 
-      if (!isAuthMatching(assistant["metadata"], filters)) {
+      if (!isAuthMatching(assistant.metadata, filters)) {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
 
@@ -510,38 +513,38 @@ export class Assistants {
       const metadata =
         mutable.metadata != null
           ? {
-              ...assistant["metadata"],
+              ...assistant.metadata,
               ...mutable.metadata,
             }
           : null;
 
       if (options?.graph_id != null) {
-        assistant["graph_id"] = options?.graph_id ?? assistant["graph_id"];
+        assistant.graph_id = options?.graph_id ?? assistant.graph_id;
       }
 
       if (options?.config != null) {
-        assistant["config"] = options?.config ?? assistant["config"];
+        assistant.config = options?.config ?? assistant.config;
       }
 
       if (options?.context != null) {
-        assistant["context"] = options?.context ?? assistant["context"];
+        assistant.context = options?.context ?? assistant.context;
       }
 
       if (options?.name != null) {
-        assistant["name"] = options?.name ?? assistant["name"];
+        assistant.name = options?.name ?? assistant.name;
       }
 
       if (metadata != null) {
-        assistant["metadata"] = metadata ?? assistant["metadata"];
+        assistant.metadata = metadata ?? assistant.metadata;
       }
 
-      assistant["updated_at"] = now;
+      assistant.updated_at = now;
 
       const newVersion =
         Math.max(
           ...STORE.assistant_versions
-            .filter((v) => v["assistant_id"] === assistantId)
-            .map((v) => v["version"])
+            .filter((v) => v.assistant_id === assistantId)
+            .map((v) => v.version)
         ) + 1;
 
       assistant.version = newVersion;
@@ -549,11 +552,11 @@ export class Assistants {
       const newVersionEntry = {
         assistant_id: assistantId,
         version: newVersion,
-        graph_id: options?.graph_id ?? assistant["graph_id"],
-        config: options?.config ?? assistant["config"],
-        context: options?.context ?? assistant["context"],
-        name: options?.name ?? assistant["name"],
-        metadata: metadata ?? assistant["metadata"],
+        graph_id: options?.graph_id ?? assistant.graph_id,
+        config: options?.config ?? assistant.config,
+        context: options?.context ?? assistant.context,
+        name: options?.name ?? assistant.name,
+        metadata: metadata ?? assistant.metadata,
         created_at: now,
       };
 
@@ -576,7 +579,7 @@ export class Assistants {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
 
-      if (!isAuthMatching(assistant["metadata"], filters)) {
+      if (!isAuthMatching(assistant.metadata, filters)) {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
 
@@ -584,12 +587,12 @@ export class Assistants {
 
       // Cascade delete for assistant versions and crons
       STORE.assistant_versions = STORE.assistant_versions.filter(
-        (v) => v["assistant_id"] !== assistant_id
+        (v) => v.assistant_id !== assistant_id
       );
 
       for (const run of Object.values(STORE.runs)) {
-        if (run["assistant_id"] === assistant_id) {
-          delete STORE.runs[run["run_id"]];
+        if (run.assistant_id === assistant_id) {
+          delete STORE.runs[run.run_id];
         }
       }
 
@@ -613,12 +616,12 @@ export class Assistants {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
 
-      if (!isAuthMatching(assistant["metadata"], filters)) {
+      if (!isAuthMatching(assistant.metadata, filters)) {
         throw new HTTPException(404, { message: "Assistant not found" });
       }
 
       const assistantVersion = STORE.assistant_versions.find(
-        (v) => v["assistant_id"] === assistant_id && v["version"] === version
+        (v) => v.assistant_id === assistant_id && v.version === version
       );
 
       if (!assistantVersion)
@@ -629,10 +632,10 @@ export class Assistants {
       const now = new Date();
       STORE.assistants[assistant_id] = {
         ...assistant,
-        config: assistantVersion["config"],
-        metadata: assistantVersion["metadata"],
-        version: assistantVersion["version"],
-        name: assistantVersion["name"],
+        config: assistantVersion.config,
+        metadata: assistantVersion.metadata,
+        version: assistantVersion.version,
+        name: assistantVersion.name,
         updated_at: now,
       };
 
@@ -656,22 +659,22 @@ export class Assistants {
     return conn.with((STORE) => {
       const versions = STORE.assistant_versions
         .filter((version) => {
-          if (version["assistant_id"] !== assistant_id) return false;
+          if (version.assistant_id !== assistant_id) return false;
 
           if (
             options.metadata != null &&
-            !isJsonbContained(version["metadata"], options.metadata)
+            !isJsonbContained(version.metadata, options.metadata)
           ) {
             return false;
           }
 
-          if (!isAuthMatching(version["metadata"], filters)) {
+          if (!isAuthMatching(version.metadata, filters)) {
             return false;
           }
 
           return true;
         })
-        .sort((a, b) => b["version"] - a["version"]);
+        .sort((a, b) => b.version - a.version);
 
       return versions.slice(options.offset, options.offset + options.limit);
     });
@@ -759,21 +762,21 @@ export class Threads {
         .filter((thread) => {
           if (
             options.metadata != null &&
-            !isJsonbContained(thread["metadata"], options.metadata)
+            !isJsonbContained(thread.metadata, options.metadata)
           )
             return false;
 
           if (
             options.values != null &&
-            typeof thread["values"] !== "undefined" &&
-            !isJsonbContained(thread["values"], options.values)
+            typeof thread.values !== "undefined" &&
+            !isJsonbContained(thread.values, options.values)
           )
             return false;
 
-          if (options.status != null && thread["status"] !== options.status)
+          if (options.status != null && thread.status !== options.status)
             return false;
 
-          if (!isAuthMatching(thread["metadata"], filters)) return false;
+          if (!isAuthMatching(thread.metadata, filters)) return false;
 
           return true;
         })
@@ -827,7 +830,7 @@ export class Threads {
         });
       }
 
-      if (!isAuthMatching(result["metadata"], filters)) {
+      if (!isAuthMatching(result.metadata, filters)) {
         throw new HTTPException(404, {
           message: `Thread with ID ${thread_id} not found`,
         });
@@ -857,7 +860,7 @@ export class Threads {
       if (STORE.threads[thread_id] != null) {
         const existingThread = STORE.threads[thread_id];
 
-        if (!isAuthMatching(existingThread["metadata"], filters)) {
+        if (!isAuthMatching(existingThread.metadata, filters)) {
           throw new HTTPException(409, { message: "Thread already exists" });
         }
 
@@ -869,7 +872,7 @@ export class Threads {
       }
 
       STORE.threads[thread_id] ??= {
-        thread_id: thread_id,
+        thread_id,
         created_at: now,
         updated_at: now,
         metadata: mutable?.metadata ?? {},
@@ -898,20 +901,20 @@ export class Threads {
         throw new HTTPException(404, { message: "Thread not found" });
       }
 
-      if (!isAuthMatching(thread["metadata"], filters)) {
+      if (!isAuthMatching(thread.metadata, filters)) {
         // TODO: is this correct status code?
         throw new HTTPException(404, { message: "Thread not found" });
       }
 
       const now = new Date();
       if (mutable.metadata != null) {
-        thread["metadata"] = {
-          ...thread["metadata"],
+        thread.metadata = {
+          ...thread.metadata,
           ...mutable.metadata,
         };
       }
 
-      thread["updated_at"] = now;
+      thread.updated_at = now;
       return thread;
     });
   }
@@ -934,7 +937,7 @@ export class Threads {
       }
 
       const hasPendingRuns = Object.values(STORE.runs).some(
-        (run) => run["thread_id"] === threadId && run["status"] === "pending"
+        (run) => run.thread_id === threadId && run.status === "pending"
       );
 
       let status: ThreadStatus = "idle";
@@ -981,7 +984,7 @@ export class Threads {
         });
       }
 
-      if (!isAuthMatching(thread["metadata"], filters)) {
+      if (!isAuthMatching(thread.metadata, filters)) {
         throw new HTTPException(404, {
           message: `Thread with ID ${thread_id} not found`,
         });
@@ -989,8 +992,8 @@ export class Threads {
 
       delete STORE.threads[thread_id];
       for (const run of Object.values(STORE.runs)) {
-        if (run["thread_id"] === thread_id) {
-          delete STORE.runs[run["run_id"]];
+        if (run.thread_id === thread_id) {
+          delete STORE.runs[run.run_id];
         }
       }
       checkpointer.delete(thread_id, null);
@@ -1012,7 +1015,7 @@ export class Threads {
       if (!thread)
         throw new HTTPException(409, { message: "Thread not found" });
 
-      if (!isAuthMatching(thread["metadata"], filters)) {
+      if (!isAuthMatching(thread.metadata, filters)) {
         throw new HTTPException(409, { message: "Thread not found" });
       }
 
@@ -1066,9 +1069,9 @@ export class Threads {
       if (
         result.metadata != null &&
         "checkpoint_ns" in result.metadata &&
-        result.metadata["checkpoint_ns"] === ""
+        result.metadata.checkpoint_ns === ""
       ) {
-        delete result.metadata["checkpoint_ns"];
+        delete result.metadata.checkpoint_ns;
       }
       return result;
     }
@@ -1094,7 +1097,7 @@ export class Threads {
           message: `Thread ${threadId} not found`,
         });
 
-      if (!isAuthMatching(thread["metadata"], filters)) {
+      if (!isAuthMatching(thread.metadata, filters)) {
         throw new HTTPException(403);
       }
 
@@ -1172,7 +1175,7 @@ export class Threads {
 
       const thread = await Threads.get(threadId, auth);
 
-      if (!isAuthMatching(thread["metadata"], filters)) {
+      if (!isAuthMatching(thread.metadata, filters)) {
         throw new HTTPException(403);
       }
 
@@ -1237,7 +1240,7 @@ export class Threads {
       });
 
       const thread = await Threads.get(threadId, auth);
-      if (!isAuthMatching(thread["metadata"], filters)) return [];
+      if (!isAuthMatching(thread.metadata, filters)) return [];
 
       const graphId = thread.metadata?.graph_id as string | undefined | null;
       if (graphId == null) return [];
@@ -1360,7 +1363,7 @@ export class Runs {
           thread_id: threadId,
           assistant_id: assistantId,
           run_id: runId,
-          status: status,
+          status,
           metadata: options?.metadata ?? {},
           prevent_insert_if_inflight: options?.preventInsertInInflight,
           multitask_strategy: multitaskStrategy,
@@ -1379,7 +1382,7 @@ export class Runs {
 
       if (
         existingThread &&
-        !isAuthMatching(existingThread["metadata"], filters)
+        !isAuthMatching(existingThread.metadata, filters)
       ) {
         throw new HTTPException(404);
       }
@@ -1396,13 +1399,11 @@ export class Runs {
             assistant_id: assistantId,
             ...metadata,
           },
-          config: Object.assign({}, assistant.config, config, {
-            configurable: Object.assign(
-              {},
-              assistant.config?.configurable,
-              config?.configurable
-            ),
-          }),
+          config: { ...assistant.config, ...config, configurable: {
+              
+              ...assistant.config?.configurable,
+              ...config?.configurable
+            },},
           created_at: now,
           updated_at: now,
         };
@@ -1410,25 +1411,21 @@ export class Runs {
       } else if (existingThread) {
         if (existingThread.status !== "busy") {
           existingThread.status = "busy";
-          existingThread.metadata = Object.assign({}, existingThread.metadata, {
-            graph_id: assistant.graph_id,
-            assistant_id: assistantId,
-          });
+          existingThread.metadata = { ...existingThread.metadata, graph_id: assistant.graph_id,
+            assistant_id: assistantId,};
 
-          existingThread.config = Object.assign(
-            {},
-            assistant.config,
-            existingThread.config,
-            config,
-            {
-              configurable: Object.assign(
-                {},
-                assistant.config?.configurable,
-                existingThread?.config?.configurable,
-                config?.configurable
-              ),
-            }
-          );
+          existingThread.config = {
+            
+            ...assistant.config,
+            ...existingThread.config,
+            ...config,
+            configurable: {
+                
+                ...assistant.config?.configurable,
+                ...existingThread?.config?.configurable,
+                ...config?.configurable
+              },
+          };
 
           existingThread.updated_at = now;
         }
@@ -1449,13 +1446,12 @@ export class Runs {
       }
 
       // create new run
-      const configurable = Object.assign(
-        {},
-        assistant.config?.configurable,
-        existingThread?.config?.configurable,
-        config?.configurable,
-        {
-          run_id: runId,
+      const configurable = {
+        
+        ...assistant.config?.configurable,
+        ...existingThread?.config?.configurable,
+        ...config?.configurable,
+        run_id: runId,
           thread_id: threadId,
           graph_id: assistant.graph_id,
           assistant_id: assistantId,
@@ -1464,35 +1460,32 @@ export class Runs {
             existingThread?.config?.configurable?.user_id ??
             assistant.config?.configurable?.user_id ??
             options?.userId,
-        }
-      );
+      };
 
-      const mergedMetadata = Object.assign(
-        {},
-        assistant.metadata,
-        existingThread?.metadata,
-        metadata
-      );
+      const mergedMetadata = {
+        
+        ...assistant.metadata,
+        ...existingThread?.metadata,
+        ...metadata
+      };
 
       const newRun: Run = {
         run_id: runId,
         thread_id: threadId!,
         assistant_id: assistantId,
         metadata: mergedMetadata,
-        status: status,
-        kwargs: Object.assign({}, kwargs, {
-          config: Object.assign(
-            {},
-            assistant.config,
-            config,
-            { configurable },
-            { metadata: mergedMetadata }
-          ),
+        status,
+        kwargs: { ...kwargs, config: {
+            
+            ...assistant.config,
+            ...config,
+            configurable,
+            metadata: mergedMetadata
+          },
           context:
             typeof assistant.context !== "object" && assistant.context != null
               ? assistant.context ?? kwargs.context
-              : Object.assign({}, assistant.context, kwargs.context),
-        }),
+              : ({ ...assistant.context, ...kwargs.context}),},
         multitask_strategy: multitaskStrategy,
         created_at: new Date(now.valueOf() + afterSeconds * 1000),
         updated_at: now,
@@ -1523,7 +1516,7 @@ export class Runs {
 
       if (filters != null) {
         const thread = STORE.threads[run.thread_id];
-        if (!isAuthMatching(thread["metadata"], filters)) return null;
+        if (!isAuthMatching(thread.metadata, filters)) return null;
       }
 
       return run;
@@ -1547,7 +1540,7 @@ export class Runs {
 
       if (filters != null) {
         const thread = STORE.threads[run.thread_id];
-        if (!isAuthMatching(thread["metadata"], filters)) {
+        if (!isAuthMatching(thread.metadata, filters)) {
           throw new HTTPException(404, { message: "Run not found" });
         }
       }
@@ -1631,7 +1624,7 @@ export class Runs {
 
         if (filters != null) {
           const thread = STORE.threads[run.thread_id];
-          if (!isAuthMatching(thread["metadata"], filters)) continue;
+          if (!isAuthMatching(thread.metadata, filters)) continue;
         }
 
         foundRunsCount += 1;
@@ -1712,7 +1705,7 @@ export class Runs {
 
         if (filters != null) {
           const thread = STORE.threads[run.thread_id];
-          if (!isAuthMatching(thread["metadata"], filters)) return false;
+          if (!isAuthMatching(thread.metadata, filters)) return false;
         }
         return true;
       });
@@ -1756,7 +1749,7 @@ export class Runs {
         // TODO: consolidate into a single function
         if (filters != null && threadId != null) {
           const thread = STORE.threads[threadId];
-          if (!isAuthMatching(thread["metadata"], filters)) {
+          if (!isAuthMatching(thread.metadata, filters)) {
             yield {
               event: "error",
               data: { error: "Error", message: "404: Thread not found" },

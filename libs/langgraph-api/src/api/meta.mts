@@ -31,19 +31,19 @@ try {
 }
 
 // read env variable
-const env = process.env;
+const {env} = process;
 
 api.get("/info", (c) => {
-  const langsmithApiKey = env["LANGSMITH_API_KEY"] || env["LANGCHAIN_API_KEY"];
+  const langsmithApiKey = env.LANGSMITH_API_KEY || env.LANGCHAIN_API_KEY;
 
   const langsmithTracing = (() => {
     if (langsmithApiKey) {
       // Check if any tracing variable is explicitly set to "false"
       const tracingVars = [
-        env["LANGCHAIN_TRACING_V2"],
-        env["LANGCHAIN_TRACING"],
-        env["LANGSMITH_TRACING_V2"],
-        env["LANGSMITH_TRACING"],
+        env.LANGCHAIN_TRACING_V2,
+        env.LANGCHAIN_TRACING,
+        env.LANGSMITH_TRACING_V2,
+        env.LANGSMITH_TRACING,
       ];
 
       // Return true unless explicitly disabled
