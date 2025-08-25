@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 0.4.7
+
+### Patch Changes
+
+- 60e9258: fix(langgraph): task result from stream mode debug / tasks should match format from getStateHistory / getState
+- Updated dependencies [b5f14d0]
+  - @langchain/langgraph-sdk@0.0.111
+
 ## 0.4.6
 
 ### Patch Changes
