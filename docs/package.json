@@ -1,0 +1,12 @@
+{
+  "name": "docs",
+  "type": "module",
+  "private": true,
+  "description": "Dependencies for LangGraph docs.",
+  "scripts": {
+    "build": "typedoc --options typedoc.json"
+  },
+  "devDependencies": {
+    "typedoc": "^0.28.11"
+  }
+}
