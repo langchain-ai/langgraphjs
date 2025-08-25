@@ -2,8 +2,23 @@
   "navigationLinks": {
     "Back to documentation": "/langgraphjs/"
   },
-  "excludeInternal": true,
+  "out": "./site/reference",
+  "sort": [
+    "kind",
+    "visibility",
+    "instance-first",
+    "required-first",
+    "alphabetical"
+  ],
+  "tsconfig": "../tsconfig.json",
+  "entryPoints": ["../libs/*/*.d.ts"],
   "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": false,
+  "excludeNotDocumented": false,
+  "includeVersion": true,
+  "name": "LangGraph.js",
+  "skipErrorChecking": true,
   "plugin": ["./plugins/typedoc/google_analytics/index.js"],
   "gtmId": "G-WR87FQLG9F"
 }

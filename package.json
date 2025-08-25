@@ -14,8 +14,9 @@
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "workspaces": [
-    "libs/*",
+    "docs",
     "examples",
+    "libs/*",
     "internal/*"
   ],
   "scripts": {
@@ -50,11 +51,11 @@
     "tslab": "^1.0.21",
     "tsx": "^4.19.3",
     "turbo": "^2.5.4",
-    "typedoc": "^0.25.13",
     "typescript": "^4.9.5 || ^5.4.5"
   },
   "resolutions": {
     "cheerio": "^1.0.0-rc.12",
+    "typedoc": "0.28.11",
     "semver": "^7.0.0"
   },
   "publishConfig": {
