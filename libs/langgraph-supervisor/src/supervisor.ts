@@ -117,8 +117,14 @@ export type CreateSupervisorParams<
   addHandoffBackMessages?: boolean;
   supervisorName?: string;
   includeAgentName?: AgentNameMode;
-  preModelHook?: CreateReactAgentParams["preModelHook"];
-  postModelHook?: CreateReactAgentParams["postModelHook"];
+  preModelHook?: CreateReactAgentParams<
+    AnnotationRootT,
+    StructuredResponseFormat
+  >["preModelHook"];
+  postModelHook?: CreateReactAgentParams<
+    AnnotationRootT,
+    StructuredResponseFormat
+  >["postModelHook"];
 };
 
 /**
@@ -286,7 +292,7 @@ const createSupervisor = <
     tools: allTools,
     prompt,
     responseFormat,
-    stateSchema: schema,
+    stateSchema: schema as AnnotationRootT,
     preModelHook,
     postModelHook,
   });
