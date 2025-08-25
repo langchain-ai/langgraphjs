@@ -1,12 +1,7 @@
-import type {
-  CheckpointMetadata as LangGraphCheckpointMetadata,
-  LangGraphRunnableConfig,
-  StateSnapshot as LangGraphStateSnapshot,
-} from "@langchain/langgraph";
-
+import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
 import { v4 as uuid4, v5 as uuid5 } from "uuid";
-import { handleAuthEvent, isAuthMatching } from "../auth/custom.mjs";
+import { handleAuthEvent, isAuthMatching } from "../auth/index.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 import { getLangGraphCommand, type RunCommand } from "../command.mjs";
 import { getGraph, NAMESPACE_GRAPH } from "../graph/load.mjs";
@@ -15,137 +10,71 @@ import { serializeError } from "../utils/serde.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
 import { store } from "./store.mjs";
+import type {
+  Metadata,
+  ThreadStatus,
+  RunStatus,
+  MultitaskStrategy,
+  OnConflictBehavior,
+  IfNotExists,
+  RunnableConfig,
+  Assistant,
+  RunKwargs,
+  Run,
+  Store,
+  Message,
+  Thread,
+  CheckpointPayload,
+  Ops,
+  AssistantsRepo,
+  RunsRepo,
+  RunsStreamRepo,
+  ThreadsRepo,
+  ThreadsStateRepo,
+} from "./types.mjs";
 
-export type Metadata = Record<string, unknown>;
+export class FileSystemOps implements Ops {
+  private readonly conn: FileSystemPersistence<Store>;
 
-export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
+  readonly assistants: FileSystemAssistants;
+  readonly runs: FileSystemRuns;
+  readonly threads: FileSystemThreads;
 
-export type RunStatus =
-  | "pending"
-  | "running"
-  | "error"
-  | "success"
-  | "timeout"
-  | "interrupted";
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+    this.assistants = new FileSystemAssistants(this.conn);
+    this.runs = new FileSystemRuns(this.conn);
+    this.threads = new FileSystemThreads(this.conn);
+  }
 
-export type StreamMode =
-  | "values"
-  | "messages"
-  | "messages-tuple"
-  | "custom"
-  | "updates"
-  | "events"
-  | "debug"
-  | "tasks"
-  | "checkpoints";
+  truncate(flags: {
+    runs?: boolean;
+    threads?: boolean;
+    assistants?: boolean;
+    checkpointer?: boolean;
+    store?: boolean;
+  }): Promise<void> {
+    return this.conn.with((STORE) => {
+      if (flags.runs) STORE.runs = {};
+      if (flags.threads) STORE.threads = {};
+      if (flags.assistants) {
+        STORE.assistants = Object.fromEntries(
+          Object.entries(STORE.assistants).filter(
+            ([key, assistant]) =>
+              assistant.metadata?.created_by === "system" &&
+              uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
+          )
+        );
+      }
 
-export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
-
-export type OnConflictBehavior = "raise" | "do_nothing";
-
-export type IfNotExists = "create" | "reject";
-
-export interface RunnableConfig {
-  tags?: string[];
-
-  recursion_limit?: number;
-
-  configurable?: {
-    thread_id?: string;
-    thread_ts?: string;
-    [key: string]: unknown;
-  };
-
-  metadata?: LangGraphRunnableConfig["metadata"];
+      if (flags.checkpointer) checkpointer.clear();
+      if (flags.store) store.clear();
+    });
+  }
 }
-
-interface Assistant {
-  name: string | undefined;
-  assistant_id: string;
-  graph_id: string;
-  created_at: Date;
-  updated_at: Date;
-  version: number;
-  config: RunnableConfig;
-  context: unknown;
-  metadata: Metadata;
-}
-
-interface AssistantVersion {
-  assistant_id: string;
-  version: number;
-  graph_id: string;
-  config: RunnableConfig;
-  context: unknown;
-  metadata: Metadata;
-  created_at: Date;
-  name: string | undefined;
-}
-
-export interface RunKwargs {
-  input?: unknown;
-  command?: RunCommand;
-
-  stream_mode?: Array<StreamMode>;
-
-  interrupt_before?: "*" | string[] | undefined;
-  interrupt_after?: "*" | string[] | undefined;
-
-  config?: RunnableConfig;
-  context?: unknown;
-
-  subgraphs?: boolean;
-  resumable?: boolean;
-
-  temporary?: boolean;
-
-  // TODO: implement webhook
-  webhook?: unknown;
-
-  // TODO: implement feedback_keys
-  feedback_keys?: string[] | undefined;
-
-  [key: string]: unknown;
-}
-
-export interface Run {
-  run_id: string;
-  thread_id: string;
-  assistant_id: string;
-  created_at: Date;
-  updated_at: Date;
-  status: RunStatus;
-  metadata: Metadata;
-  kwargs: RunKwargs;
-  multitask_strategy: MultitaskStrategy;
-}
-
-interface Store {
-  runs: Record<string, Run>;
-  threads: Record<string, Thread>;
-  assistants: Record<string, Assistant>;
-  assistant_versions: AssistantVersion[];
-  retry_counter: Record<string, number>;
-}
-
-export const conn = new FileSystemPersistence<Store>(
-  ".langgraphjs_ops.json",
-  () => ({
-    runs: {},
-    threads: {},
-    assistants: {},
-    assistant_versions: [],
-    retry_counter: {},
-  })
-);
 
 class TimeoutError extends Error {}
 class AbortError extends Error {}
-
-interface Message {
-  topic: `run:${string}:stream:${string}`;
-  data: unknown;
-}
 
 class Queue {
   private log: Message[] = [];
@@ -272,31 +201,6 @@ class StreamManagerImpl {
 
 export const StreamManager = new StreamManagerImpl();
 
-export const truncate = (flags: {
-  runs?: boolean;
-  threads?: boolean;
-  assistants?: boolean;
-  checkpointer?: boolean;
-  store?: boolean;
-}) => {
-  return conn.with((STORE) => {
-    if (flags.runs) STORE.runs = {};
-    if (flags.threads) STORE.threads = {};
-    if (flags.assistants) {
-      STORE.assistants = Object.fromEntries(
-        Object.entries(STORE.assistants).filter(
-          ([key, assistant]) =>
-            assistant.metadata?.created_by === "system" &&
-            uuid5(assistant.graph_id, NAMESPACE_GRAPH) === key
-        )
-      );
-    }
-
-    if (flags.checkpointer) checkpointer.clear();
-    if (flags.store) store.clear();
-  });
-};
-
 const isObject = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null;
 };
@@ -319,8 +223,14 @@ const isJsonbContained = (
   return true;
 };
 
-export class Assistants {
-  static async *search(
+export class FileSystemAssistants implements AssistantsRepo {
+  private readonly conn: FileSystemPersistence<Store>;
+
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+  }
+
+  async *search(
     options: {
       graph_id?: string;
       metadata?: Metadata;
@@ -336,7 +246,7 @@ export class Assistants {
       offset: options.offset,
     });
 
-    yield* conn.withGenerator(async function* (STORE) {
+    yield* this.conn.withGenerator(async function* (STORE) {
       let filtered = Object.values(STORE.assistants)
         .filter((assistant) => {
           if (
@@ -383,7 +293,7 @@ export class Assistants {
     });
   }
 
-  static async get(
+  async get(
     assistant_id: string,
     auth: AuthContext | undefined
   ): Promise<Assistant> {
@@ -391,7 +301,7 @@ export class Assistants {
       assistant_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const result = STORE.assistants[assistant_id];
       if (result == null)
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -402,7 +312,7 @@ export class Assistants {
     });
   }
 
-  static async put(
+  async put(
     assistant_id: string,
     options: {
       config: RunnableConfig;
@@ -428,7 +338,7 @@ export class Assistants {
       }
     );
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       if (STORE.assistants[assistant_id] != null) {
         const existingAssistant = STORE.assistants[assistant_id];
 
@@ -472,7 +382,7 @@ export class Assistants {
     });
   }
 
-  static async patch(
+  async patch(
     assistantId: string,
     options: {
       config?: RunnableConfig;
@@ -495,7 +405,7 @@ export class Assistants {
       }
     );
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -562,7 +472,7 @@ export class Assistants {
     });
   }
 
-  static async delete(
+  async delete(
     assistant_id: string,
     auth: AuthContext | undefined
   ): Promise<string[]> {
@@ -570,7 +480,7 @@ export class Assistants {
       assistant_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const assistant = STORE.assistants[assistant_id];
       if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -597,7 +507,7 @@ export class Assistants {
     });
   }
 
-  static async setLatest(
+  async setLatest(
     assistant_id: string,
     version: number,
     auth: AuthContext | undefined
@@ -607,7 +517,7 @@ export class Assistants {
       version,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const assistant = STORE.assistants[assistant_id];
       if (!assistant) {
         throw new HTTPException(404, { message: "Assistant not found" });
@@ -640,7 +550,7 @@ export class Assistants {
     });
   }
 
-  static async getVersions(
+  async getVersions(
     assistant_id: string,
     options: {
       limit: number;
@@ -653,7 +563,7 @@ export class Assistants {
       assistant_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const versions = STORE.assistant_versions
         .filter((version) => {
           if (version["assistant_id"] !== assistant_id) return false;
@@ -678,63 +588,16 @@ export class Assistants {
   }
 }
 
-interface Thread {
-  thread_id: string;
-  created_at: Date;
-  updated_at: Date;
-  metadata?: Metadata;
-  config?: RunnableConfig;
-  status: ThreadStatus;
-  values?: Record<string, unknown>;
-  interrupts?: Record<string, unknown>;
-}
+export class FileSystemThreads implements ThreadsRepo {
+  private readonly conn: FileSystemPersistence<Store>;
+  public readonly state: ThreadsStateRepo;
 
-interface CheckpointTask {
-  id: string;
-  name: string;
-  error?: string;
-  interrupts: Record<string, unknown>;
-  state?: RunnableConfig;
-}
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+    this.state = new FileSystemThreads.State(conn, this);
+  }
 
-interface CheckpointPayload {
-  config?: RunnableConfig;
-  metadata: LangGraphCheckpointMetadata;
-  values: Record<string, unknown>;
-  next: string[];
-  parent_config?: RunnableConfig;
-  tasks: CheckpointTask[];
-}
-
-export interface Checkpoint {
-  thread_id: string;
-  checkpoint_ns: string;
-  checkpoint_id: string | null;
-  checkpoint_map: Record<string, unknown> | null;
-}
-
-interface ThreadTask {
-  id: string;
-  name: string;
-  error: string | null;
-  interrupts: Record<string, unknown>[];
-  checkpoint: Checkpoint | null;
-  state: ThreadState | null;
-  result: unknown | null;
-}
-
-export interface ThreadState {
-  values: Record<string, unknown>;
-  next: string[];
-  checkpoint: Checkpoint | null;
-  metadata: Record<string, unknown> | undefined;
-  created_at: Date | null;
-  parent_checkpoint: Checkpoint | null;
-  tasks: ThreadTask[];
-}
-
-export class Threads {
-  static async *search(
+  async *search(
     options: {
       metadata?: Metadata;
       status?: ThreadStatus;
@@ -754,7 +617,7 @@ export class Threads {
       offset: options.offset,
     });
 
-    yield* conn.withGenerator(async function* (STORE) {
+    yield* this.conn.withGenerator(async function* (STORE) {
       const filtered = Object.values(STORE.threads)
         .filter((thread) => {
           if (
@@ -811,15 +674,12 @@ export class Threads {
   }
 
   // TODO: make this accept `undefined`
-  static async get(
-    thread_id: string,
-    auth: AuthContext | undefined
-  ): Promise<Thread> {
+  async get(thread_id: string, auth: AuthContext | undefined): Promise<Thread> {
     const [filters] = await handleAuthEvent(auth, "threads:read", {
       thread_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const result = STORE.threads[thread_id];
       if (result == null) {
         throw new HTTPException(404, {
@@ -837,7 +697,7 @@ export class Threads {
     });
   }
 
-  static async put(
+  async put(
     thread_id: string,
     options: {
       metadata?: Metadata;
@@ -851,7 +711,7 @@ export class Threads {
       if_exists: options.if_exists,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const now = new Date();
 
       if (STORE.threads[thread_id] != null) {
@@ -882,7 +742,7 @@ export class Threads {
     });
   }
 
-  static async patch(
+  async patch(
     threadId: string,
     options: { metadata?: Metadata },
     auth: AuthContext | undefined
@@ -892,7 +752,7 @@ export class Threads {
       metadata: options.metadata,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread) {
         throw new HTTPException(404, { message: "Thread not found" });
@@ -916,14 +776,14 @@ export class Threads {
     });
   }
 
-  static async setStatus(
+  async setStatus(
     threadId: string,
     options: {
       checkpoint?: CheckpointPayload;
       exception?: Error;
     }
   ) {
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[threadId];
       if (!thread)
         throw new HTTPException(404, { message: "Thread not found" });
@@ -965,7 +825,7 @@ export class Threads {
     });
   }
 
-  static async delete(
+  async delete(
     thread_id: string,
     auth: AuthContext | undefined
   ): Promise<string[]> {
@@ -973,7 +833,7 @@ export class Threads {
       thread_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread) {
         throw new HTTPException(404, {
@@ -999,7 +859,7 @@ export class Threads {
     });
   }
 
-  static async copy(
+  async copy(
     thread_id: string,
     auth: AuthContext | undefined
   ): Promise<Thread> {
@@ -1007,7 +867,7 @@ export class Threads {
       thread_id,
     });
 
-    return conn.with((STORE) => {
+    return this.conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread)
         throw new HTTPException(409, { message: "Thread not found" });
@@ -1032,15 +892,28 @@ export class Threads {
     });
   }
 
-  static State = class {
-    static async get(
+  private static State = class implements ThreadsStateRepo {
+    private readonly conn: FileSystemPersistence<Store>;
+    private threads: FileSystemThreads;
+
+    constructor(
+      conn: FileSystemPersistence<Store>,
+      threads: FileSystemThreads
+    ) {
+      this.conn = conn;
+      this.threads = threads;
+    }
+
+    async get(
       config: RunnableConfig,
       options: { subgraphs?: boolean },
       auth: AuthContext | undefined
     ): Promise<LangGraphStateSnapshot> {
       const subgraphs = options.subgraphs ?? false;
       const threadId = config.configurable?.thread_id;
-      const thread = threadId ? await Threads.get(threadId, auth) : undefined;
+      const thread = threadId
+        ? await this.threads.get(threadId, auth)
+        : undefined;
 
       const metadata = thread?.metadata ?? {};
       const graphId = metadata?.graph_id as string | undefined | null;
@@ -1073,7 +946,7 @@ export class Threads {
       return result;
     }
 
-    static async post(
+    async post(
       config: RunnableConfig,
       values:
         | Record<string, unknown>[]
@@ -1082,13 +955,15 @@ export class Threads {
         | undefined,
       asNode: string | undefined,
       auth: AuthContext | undefined
-    ) {
+    ): Promise<{ checkpoint: Record<string, unknown> | undefined }> {
       const threadId = config.configurable?.thread_id;
       const [filters] = await handleAuthEvent(auth, "threads:update", {
         thread_id: threadId,
       });
 
-      const thread = threadId ? await Threads.get(threadId, auth) : undefined;
+      const thread = threadId
+        ? await this.threads.get(threadId, auth)
+        : undefined;
       if (!thread)
         throw new HTTPException(404, {
           message: `Thread ${threadId} not found`,
@@ -1099,7 +974,7 @@ export class Threads {
       }
 
       // do a check if there are no pending runs
-      await conn.with(async (STORE) => {
+      await this.conn.with(async (STORE) => {
         if (
           Object.values(STORE.runs).some(
             (run) =>
@@ -1132,10 +1007,10 @@ export class Threads {
       updateConfig.configurable.checkpoint_ns ??= "";
 
       const nextConfig = await graph.updateState(updateConfig, values, asNode);
-      const state = await Threads.State.get(config, { subgraphs: false }, auth);
+      const state = await this.get(config, { subgraphs: false }, auth);
 
       // update thread values
-      await conn.with(async (STORE) => {
+      await this.conn.with(async (STORE) => {
         for (const thread of Object.values(STORE.threads)) {
           if (thread.thread_id === threadId) {
             thread.values = state.values;
@@ -1147,7 +1022,7 @@ export class Threads {
       return { checkpoint: nextConfig.configurable };
     }
 
-    static async bulk(
+    async bulk(
       config: RunnableConfig,
       supersteps: Array<{
         updates: Array<{
@@ -1162,7 +1037,9 @@ export class Threads {
         }>;
       }>,
       auth: AuthContext | undefined
-    ) {
+    ): Promise<
+      { checkpoint: Record<string, unknown> | undefined } | unknown[]
+    > {
       const threadId = config.configurable?.thread_id;
       if (!threadId) return [];
 
@@ -1170,7 +1047,7 @@ export class Threads {
         thread_id: threadId,
       });
 
-      const thread = await Threads.get(threadId, auth);
+      const thread = await this.threads.get(threadId, auth);
 
       if (!isAuthMatching(thread["metadata"], filters)) {
         throw new HTTPException(403);
@@ -1205,10 +1082,10 @@ export class Threads {
           })),
         }))
       );
-      const state = await Threads.State.get(config, { subgraphs: false }, auth);
+      const state = await this.get(config, { subgraphs: false }, auth);
 
       // update thread values
-      await conn.with(async (STORE) => {
+      await this.conn.with(async (STORE) => {
         for (const thread of Object.values(STORE.threads)) {
           if (thread.thread_id === threadId) {
             thread.values = state.values;
@@ -1220,7 +1097,7 @@ export class Threads {
       return { checkpoint: nextConfig.configurable };
     }
 
-    static async list(
+    async list(
       config: RunnableConfig,
       options: {
         limit?: number;
@@ -1236,7 +1113,7 @@ export class Threads {
         thread_id: threadId,
       });
 
-      const thread = await Threads.get(threadId, auth);
+      const thread = await this.threads.get(threadId, auth);
       if (!isAuthMatching(thread["metadata"], filters)) return [];
 
       const graphId = thread.metadata?.graph_id as string | undefined | null;
@@ -1265,13 +1142,24 @@ export class Threads {
   };
 }
 
-export class Runs {
-  static async *next(): AsyncGenerator<{
+export class FileSystemRuns implements RunsRepo {
+  private readonly conn: FileSystemPersistence<Store>;
+  private readonly threads: FileSystemThreads;
+
+  public readonly stream: RunsStreamRepo;
+
+  constructor(conn: FileSystemPersistence<Store>) {
+    this.conn = conn;
+    this.threads = new FileSystemThreads(conn);
+    this.stream = new FileSystemRuns.Stream(conn, this);
+  }
+
+  async *next(): AsyncGenerator<{
     run: Run;
     attempt: number;
     signal: AbortSignal;
   }> {
-    yield* conn.withGenerator(async function* (STORE, options) {
+    yield* this.conn.withGenerator(async function* (STORE, options) {
       const now = new Date();
       const pendingRunIds = Object.values(STORE.runs)
         .filter((run) => run.status === "pending" && run.created_at < now)
@@ -1322,7 +1210,7 @@ export class Runs {
     });
   }
 
-  static async put(
+  async put(
     runId: string,
     assistantId: string,
     kwargs: RunKwargs,
@@ -1338,7 +1226,7 @@ export class Runs {
     },
     auth: AuthContext | undefined
   ): Promise<Run[]> {
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const assistant = STORE.assistants[assistantId];
       if (!assistant) {
         throw new HTTPException(404, {
@@ -1503,7 +1391,7 @@ export class Runs {
     });
   }
 
-  static async get(
+  async get(
     runId: string,
     thread_id: string | undefined,
     auth: AuthContext | undefined
@@ -1512,7 +1400,7 @@ export class Runs {
       thread_id,
     });
 
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (
         !run ||
@@ -1530,7 +1418,7 @@ export class Runs {
     });
   }
 
-  static async delete(
+  async delete(
     run_id: string,
     thread_id: string | undefined,
     auth: AuthContext | undefined
@@ -1540,7 +1428,7 @@ export class Runs {
       thread_id,
     });
 
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const run = STORE.runs[run_id];
       if (!run || (thread_id != null && run.thread_id !== thread_id))
         throw new HTTPException(404, { message: "Run not found" });
@@ -1558,12 +1446,12 @@ export class Runs {
     });
   }
 
-  static async wait(
+  async wait(
     runId: string,
     threadId: string | undefined,
     auth: AuthContext | undefined
   ) {
-    const runStream = Runs.Stream.join(
+    const runStream = this.stream.join(
       runId,
       threadId,
       { ignore404: threadId == null, lastEventId: undefined },
@@ -1590,22 +1478,18 @@ export class Runs {
     return lastChunk;
   }
 
-  static async join(
-    runId: string,
-    threadId: string,
-    auth: AuthContext | undefined
-  ) {
+  async join(runId: string, threadId: string, auth: AuthContext | undefined) {
     // check if thread exists
-    await Threads.get(threadId, auth);
+    await this.threads.get(threadId, auth);
 
-    const lastChunk = await Runs.wait(runId, threadId, auth);
+    const lastChunk = await this.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;
 
-    const thread = await Threads.get(threadId, auth);
+    const thread = await this.threads.get(threadId, auth);
     return thread.values ?? null;
   }
 
-  static async cancel(
+  async cancel(
     threadId: string | undefined,
     runIds: string[],
     options: {
@@ -1613,7 +1497,7 @@ export class Runs {
     },
     auth: AuthContext | undefined
   ) {
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const action = options.action ?? "interrupt";
       const promises: Promise<unknown>[] = [];
 
@@ -1659,7 +1543,7 @@ export class Runs {
               }
             );
 
-            promises.push(Runs.delete(runId, threadId, auth));
+            promises.push(this.delete(runId, threadId, auth));
           }
         } else {
           logger.warn("Attempted to cancel non-pending run.", {
@@ -1683,7 +1567,7 @@ export class Runs {
     });
   }
 
-  static async search(
+  async search(
     threadId: string,
     options: {
       limit?: number | null;
@@ -1699,7 +1583,7 @@ export class Runs {
       status: options.status,
     });
 
-    return conn.with(async (STORE) => {
+    return this.conn.with(async (STORE) => {
       const runs = Object.values(STORE.runs).filter((run) => {
         if (run.thread_id !== threadId) return false;
         if (options?.status != null && run.status !== options.status)
@@ -1721,8 +1605,8 @@ export class Runs {
     });
   }
 
-  static async setStatus(runId: string, status: RunStatus) {
-    return conn.with(async (STORE) => {
+  async setStatus(runId: string, status: RunStatus) {
+    return this.conn.with(async (STORE) => {
       const run = STORE.runs[runId];
       if (!run) throw new Error(`Run ${runId} not found`);
       run.status = status;
@@ -1730,8 +1614,16 @@ export class Runs {
     });
   }
 
-  static Stream = class {
-    static async *join(
+  private static Stream = class implements RunsStreamRepo {
+    private readonly conn: FileSystemPersistence<Store>;
+    private runs: FileSystemRuns;
+
+    constructor(conn: FileSystemPersistence<Store>, runs: FileSystemRuns) {
+      this.conn = conn;
+      this.runs = runs;
+    }
+
+    async *join(
       runId: string,
       threadId: string | undefined,
       options: {
@@ -1741,6 +1633,9 @@ export class Runs {
       },
       auth: AuthContext | undefined
     ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
+      const conn = this.conn;
+      const runs = this.runs;
+
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.cancelOnDisconnect;
@@ -1788,7 +1683,7 @@ export class Runs {
           } catch (error) {
             if (error instanceof AbortError) break;
 
-            const run = await Runs.get(runId, threadId, auth);
+            const run = await runs.get(runId, threadId, auth);
             if (run == null) {
               if (!options?.ignore404)
                 yield { event: "error", data: "Run not found" };
@@ -1800,12 +1695,12 @@ export class Runs {
         }
 
         if (signal?.aborted && threadId != null) {
-          await Runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
+          await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
         }
       });
     }
 
-    static async publish(payload: {
+    async publish(payload: {
       runId: string;
       event: string;
       data: unknown;

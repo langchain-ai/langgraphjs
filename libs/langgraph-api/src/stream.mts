@@ -11,7 +11,7 @@ import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
-import type { Checkpoint, Run, RunnableConfig } from "./storage/ops.mjs";
+import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
   runnableConfigToCheckpoint,
   taskRunnableConfigToCheckpoint,

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import * as uuid from "uuid";
-import { Assistants } from "../storage/ops.mjs";
+import type { AssistantsRepo } from "../storage/types.mjs";
 import type {
   BaseCheckpointSaver,
   BaseStore,
@@ -35,6 +35,7 @@ export const getAssistantId = (graphId: string) => {
 };
 
 export async function registerFromEnv(
+  assistants: AssistantsRepo,
   specs: Record<string, string>,
   options: { cwd: string }
 ) {
@@ -57,7 +58,7 @@ export async function registerFromEnv(
       GRAPHS[graphId] = resolved;
       GRAPH_SPEC[graphId] = spec;
 
-      await Assistants.put(
+      await assistants.put(
         uuid.v5(graphId, NAMESPACE_GRAPH),
         {
           graph_id: graphId,
@@ -83,8 +84,7 @@ export async function getGraph(
     store?: BaseStore;
   }
 ) {
-  if (!GRAPHS[graphId])
-    throw new HTTPException(404, { message: `Graph "${graphId}" not found` });
+  assertGraphExists(graphId);
 
   const compiled =
     typeof GRAPHS[graphId] === "function"
@@ -100,6 +100,13 @@ export async function getGraph(
   compiled.store = options?.store ?? store;
 
   return compiled;
+}
+
+export function assertGraphExists(graphId: string) {
+  if (!GRAPHS[graphId])
+    throw new HTTPException(404, {
+      message: `Graph "${graphId}" not found`,
+    });
 }
 
 export async function getCachedStaticGraphSchema(graphId: string) {
