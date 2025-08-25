@@ -161,10 +161,10 @@ export type CreateSupervisorParams<
  *   // At least one of `messages` or `llmInputMessages` MUST be provided
  *   {
  *     // If provided, will UPDATE the `messages` in the state
- *     "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), ...],
+ *     messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...],
  *     // If provided, will be used as the input to the LLM,
  *     // and will NOT UPDATE `messages` in the state
- *     "llmInputMessages": [...],
+ *     llmInputMessages: [...]
  *     // Any other state keys that need to be propagated...
  *   }
  *   ```
@@ -173,7 +173,7 @@ export type CreateSupervisorParams<
  *
  *   **Warning**: If you are returning `messages` in the pre-model hook, you should OVERWRITE the `messages` key by doing the following:
  *   ```javascript
- *   {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), ...newMessages], ...}
+ *   { messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...newMessages], ... }
  *   ```
  * @param postModelHook An optional node to add after the LLM node in the supervisor agent (i.e., the node that calls the LLM).
  *   Useful for implementing human-in-the-loop, guardrails, validation, or other post-processing.
