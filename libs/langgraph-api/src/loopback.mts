@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { StorageEnv } from "./storage/types.mjs";
 
 const fetchSmb = Symbol.for("langgraph_api:fetch");
 const global = globalThis as unknown as {
@@ -10,7 +11,7 @@ export function getLoopbackFetch() {
   return global[fetchSmb];
 }
 
-export const bindLoopbackFetch = (app: Hono) => {
+export const bindLoopbackFetch = (app: Hono<StorageEnv>) => {
   global[fetchSmb] = async (url: string, init?: RequestInit) =>
     app.request(url, init);
 };

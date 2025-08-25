@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Checkpoint, RunnableConfig } from "../storage/ops.mjs";
+import type { Checkpoint, RunnableConfig } from "../storage/types.mjs";
 
 const ConfigSchema = z.object({
   configurable: z.object({

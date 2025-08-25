@@ -8,7 +8,8 @@ import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
-import { type Run, type RunKwargs, Runs, Threads } from "../storage/ops.mjs";
+import { runs, threads } from "../storage/context.mjs";
+import type { Run, RunKwargs } from "../storage/types.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
@@ -94,7 +95,7 @@ const createValidRun = async (
       : undefined;
   if (!feedbackKeys?.length) feedbackKeys = undefined;
 
-  const [first, ...inflight] = await Runs.put(
+  const [first, ...inflight] = await runs().put(
     runId,
     getAssistantId(assistantId),
     {
@@ -132,7 +133,7 @@ const createValidRun = async (
       inflight.length > 0
     ) {
       try {
-        await Runs.cancel(
+        await runs().cancel(
           threadId,
           inflight.map((run) => run.run_id),
           { action: multitaskStrategy },
@@ -213,7 +214,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         : undefined;
 
     try {
-      for await (const { event, data } of Runs.Stream.join(
+      for await (const { event, data } of runs().stream.join(
         run.run_id,
         undefined,
         {
@@ -251,7 +252,7 @@ api.get(
         : undefined;
 
       try {
-        for await (const { id, event, data } of Runs.Stream.join(
+        for await (const { id, event, data } of runs().stream.join(
           run_id,
           undefined,
           { cancelOnDisconnect, lastEventId, ignore404: true },
@@ -274,7 +275,7 @@ api.post("/runs/wait", zValidator("json", schemas.RunCreate), async (c) => {
     headers: c.req.raw.headers,
   });
   c.header("Content-Location", `/runs/${run.run_id}`);
-  return waitKeepAlive(c, Runs.wait(run.run_id, undefined, c.var.auth));
+  return waitKeepAlive(c, runs().wait(run.run_id, undefined, c.var.auth));
 });
 
 api.post("/runs", zValidator("json", schemas.RunCreate), async (c) => {
@@ -323,12 +324,12 @@ api.get(
     const { thread_id } = c.req.valid("param");
     const { limit, offset, status, metadata } = c.req.valid("query");
 
-    const [runs] = await Promise.all([
-      Runs.search(thread_id, { limit, offset, status, metadata }, c.var.auth),
-      Threads.get(thread_id, c.var.auth),
+    const [runsResponse] = await Promise.all([
+      runs().search(thread_id, { limit, offset, status, metadata }, c.var.auth),
+      threads().get(thread_id, c.var.auth),
     ]);
 
-    return jsonExtra(c, runs);
+    return jsonExtra(c, runsResponse);
   }
 );
 
@@ -372,7 +373,7 @@ api.post(
           : undefined;
 
       try {
-        for await (const { id, event, data } of Runs.Stream.join(
+        for await (const { id, event, data } of runs().stream.join(
           run.run_id,
           thread_id,
           {
@@ -405,7 +406,7 @@ api.post(
     });
 
     c.header("Content-Location", `/threads/${thread_id}/runs/${run.run_id}`);
-    return waitKeepAlive(c, Runs.join(run.run_id, thread_id, c.var.auth));
+    return waitKeepAlive(c, runs().join(run.run_id, thread_id, c.var.auth));
   }
 );
 
@@ -418,8 +419,8 @@ api.get(
   async (c) => {
     const { thread_id, run_id } = c.req.valid("param");
     const [run] = await Promise.all([
-      Runs.get(run_id, thread_id, c.var.auth),
-      Threads.get(thread_id, c.var.auth),
+      runs().get(run_id, thread_id, c.var.auth),
+      threads().get(thread_id, c.var.auth),
     ]);
 
     if (run == null) throw new HTTPException(404, { message: "Run not found" });
@@ -436,7 +437,7 @@ api.delete(
   async (c) => {
     // Delete Run
     const { thread_id, run_id } = c.req.valid("param");
-    await Runs.delete(run_id, thread_id, c.var.auth);
+    await runs().delete(run_id, thread_id, c.var.auth);
     return c.body(null, 204);
   }
 );
@@ -450,7 +451,7 @@ api.get(
   async (c) => {
     // Join Run Http
     const { thread_id, run_id } = c.req.valid("param");
-    return jsonExtra(c, await Runs.join(run_id, thread_id, c.var.auth));
+    return jsonExtra(c, await runs().join(run_id, thread_id, c.var.auth));
   }
 );
 
@@ -475,7 +476,7 @@ api.get(
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
 
-      for await (const { id, event, data } of Runs.Stream.join(
+      for await (const { id, event, data } of runs().stream.join(
         run_id,
         thread_id,
         { cancelOnDisconnect: signal, lastEventId },
@@ -505,8 +506,8 @@ api.post(
     const { thread_id, run_id } = c.req.valid("param");
     const { wait, action } = c.req.valid("query");
 
-    await Runs.cancel(thread_id, [run_id], { action }, c.var.auth);
-    if (wait) await Runs.join(run_id, thread_id, c.var.auth);
+    await runs().cancel(thread_id, [run_id], { action }, c.var.auth);
+    if (wait) await runs().join(run_id, thread_id, c.var.auth);
     return c.body(null, wait ? 204 : 202);
   }
 );
