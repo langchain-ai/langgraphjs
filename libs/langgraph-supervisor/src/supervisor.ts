@@ -1,6 +1,10 @@
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { StructuredToolInterface, DynamicTool } from "@langchain/core/tools";
-import { RunnableToolLike } from "@langchain/core/runnables";
+import {
+  RunnableConfig,
+  RunnableToolLike,
+  mergeConfigs,
+} from "@langchain/core/runnables";
 import { InteropZodType } from "@langchain/core/utils/types";
 import {
   START,
@@ -71,8 +75,11 @@ const makeCallAgent = (
     );
   }
 
-  return async (state: Record<string, unknown>) => {
-    const output = await agent.invoke(state);
+  return async (state: Record<string, unknown>, config?: RunnableConfig) => {
+    // Merge the child agent's bound config with the supervisor-provided config
+    const mergedConfig = mergeConfigs(agent?.config, config);
+
+    const output = await agent.invoke(state, mergedConfig);
     let { messages } = output;
 
     if (outputMode === "last_message") {
