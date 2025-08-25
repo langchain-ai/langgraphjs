@@ -992,6 +992,28 @@ export class ThreadsClient<
       }
     );
   }
+
+  async *getStream(
+    threadId: string,
+    lastEventId?: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
+    const response = await this.asyncCaller.fetch(
+      ...this.prepareFetchOptions(`/threads/${threadId}/stream`, {
+        method: "GET",
+        headers: lastEventId ? { "Last-Event-ID": lastEventId } : undefined,
+      })
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream: ReadableStream<{ event: string; data: any }> = (
+      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+    )
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    yield* IterableReadableStream.fromReadableStream(stream);
+  }
 }
 
 export class RunsClient<
