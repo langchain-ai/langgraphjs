@@ -93,6 +93,16 @@ api.post(
   }
 );
 
+api.post(
+  "/assistants/count",
+  zValidator("json", schemas.AssistantCountRequest),
+  async (c) => {
+    const payload = c.req.valid("json");
+    const total = await assistants().count(payload, c.var.auth);
+    return c.json(total);
+  }
+);
+
 api.get("/assistants/:assistant_id", async (c) => {
   // Get Assistant
   const assistantId = getAssistantId(c.req.param("assistant_id"));
