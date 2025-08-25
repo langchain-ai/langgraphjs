@@ -676,6 +676,42 @@ export class Assistants {
       return versions.slice(options.offset, options.offset + options.limit);
     });
   }
+
+  static async count(
+    options: { graph_id?: string; metadata?: Metadata },
+    auth: AuthContext | undefined
+  ): Promise<number> {
+    const [filters] = await handleAuthEvent(auth, "assistants:search", {
+      graph_id: options.graph_id,
+      metadata: options.metadata,
+      limit: 0,
+      offset: 0,
+    });
+
+    return conn.with((STORE) => {
+      return Object.values(STORE.assistants).filter((assistant) => {
+        if (
+          options.graph_id != null &&
+          assistant["graph_id"] !== options.graph_id
+        ) {
+          return false;
+        }
+
+        if (
+          options.metadata != null &&
+          !isJsonbContained(assistant["metadata"], options.metadata)
+        ) {
+          return false;
+        }
+
+        if (!isAuthMatching(assistant["metadata"], filters)) {
+          return false;
+        }
+
+        return true;
+      }).length;
+    });
+  }
 }
 
 interface Thread {
@@ -1029,6 +1065,52 @@ export class Threads {
 
       checkpointer.copy(thread_id, newThreadId);
       return STORE.threads[newThreadId];
+    });
+  }
+
+  static async count(
+    options: {
+      metadata?: Metadata;
+      values?: Record<string, unknown>;
+      status?: ThreadStatus;
+    },
+    auth: AuthContext | undefined
+  ): Promise<number> {
+    const [filters] = await handleAuthEvent(auth, "threads:search", {
+      metadata: options.metadata,
+      values: options.values,
+      status: options.status,
+      limit: 0,
+      offset: 0,
+    });
+
+    return conn.with((STORE) => {
+      return Object.values(STORE.threads).filter((thread) => {
+        if (
+          options.metadata != null &&
+          !isJsonbContained(thread["metadata"], options.metadata)
+        ) {
+          return false;
+        }
+
+        if (
+          options.values != null &&
+          typeof thread["values"] !== "undefined" &&
+          !isJsonbContained(thread["values"], options.values)
+        ) {
+          return false;
+        }
+
+        if (options.status != null && thread["status"] !== options.status) {
+          return false;
+        }
+
+        if (!isAuthMatching(thread["metadata"], filters)) {
+          return false;
+        }
+
+        return true;
+      }).length;
     });
   }
 
