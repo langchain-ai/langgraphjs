@@ -158,7 +158,7 @@ export async function startServer(
 
   app.use(contextStorage());
   app.use(async (c, next) => {
-    c.set("ops", ops);
+    c.set("LANGGRAPH_OPS", ops);
     await next();
   });
 

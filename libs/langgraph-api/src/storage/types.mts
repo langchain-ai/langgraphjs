@@ -11,7 +11,7 @@ export type { RunCommand } from "../command.mjs";
 // Hono context object
 export type StorageEnv = {
   Variables: {
-    ops: Ops;
+    LANGGRAPH_OPS: Ops;
   };
 };
 
