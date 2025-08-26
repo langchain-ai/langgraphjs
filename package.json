@@ -55,7 +55,6 @@
   },
   "resolutions": {
     "cheerio": "^1.0.0-rc.12",
-    "typedoc": "0.28.11",
     "semver": "^7.0.0"
   },
   "publishConfig": {

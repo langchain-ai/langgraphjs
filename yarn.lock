@@ -7318,7 +7318,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "docs@workspace:docs"
   dependencies:
-    typedoc: "npm:^0.28.11"
+    typedoc: "patch:typedoc@npm%3A0.28.11#~/.yarn/patches/typedoc-npm-0.28.11-18b71eb2e0.patch"
   languageName: unknown
   linkType: soft
 
@@ -14909,6 +14909,23 @@ __metadata:
   bin:
     typedoc: bin/typedoc
   checksum: 10/35efd88e960acc8633a9c46c56c3e1f67173441ab8dce96e161108745d04174382150e4fd02d2f735704cb3d7b42cc468db8013368e8f97678bec0186ebc77d4
+  languageName: node
+  linkType: hard
+
+"typedoc@patch:typedoc@npm%3A0.28.11#~/.yarn/patches/typedoc-npm-0.28.11-18b71eb2e0.patch":
+  version: 0.28.11
+  resolution: "typedoc@patch:typedoc@npm%3A0.28.11#~/.yarn/patches/typedoc-npm-0.28.11-18b71eb2e0.patch::version=0.28.11&hash=543bb2"
+  dependencies:
+    "@gerrit0/mini-shiki": "npm:^3.9.0"
+    lunr: "npm:^2.3.9"
+    markdown-it: "npm:^14.1.0"
+    minimatch: "npm:^9.0.5"
+    yaml: "npm:^2.8.0"
+  peerDependencies:
+    typescript: 5.0.x || 5.1.x || 5.2.x || 5.3.x || 5.4.x || 5.5.x || 5.6.x || 5.7.x || 5.8.x || 5.9.x
+  bin:
+    typedoc: bin/typedoc
+  checksum: 10/20bac514ea858672aa2eaaeed91c346df679588a1960d2dd87eed22a127251add677dc8a36c1cb141da2622b2dcc221c266ca3e8222f189eefe8faaabe66cefa
   languageName: node
   linkType: hard
 
