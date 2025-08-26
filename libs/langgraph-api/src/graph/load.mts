@@ -109,6 +109,10 @@ export function assertGraphExists(graphId: string) {
     });
 }
 
+export function getGraphKeys() {
+  return Object.keys(GRAPHS);
+}
+
 export async function getCachedStaticGraphSchema(graphId: string) {
   if (!GRAPH_SPEC[graphId])
     throw new HTTPException(404, {
