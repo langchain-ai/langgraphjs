@@ -69,6 +69,16 @@ api.post(
   }
 );
 
+api.post(
+  "/threads/count",
+  zValidator("json", schemas.ThreadCountRequest),
+  async (c) => {
+    const payload = c.req.valid("json");
+    const total = await threads().count(payload, c.var.auth);
+    return c.json(total);
+  }
+);
+
 api.get(
   "/threads/:thread_id/state",
   zValidator("param", z.object({ thread_id: z.string().uuid() })),

@@ -322,6 +322,15 @@ export interface ThreadsRepo {
 
   copy(thread_id: string, auth: AuthContext | undefined): Promise<Thread>;
 
+  count(
+    options: {
+      metadata?: Metadata;
+      values?: Record<string, unknown>;
+      status?: ThreadStatus;
+    },
+    auth: AuthContext | undefined
+  ): Promise<number>;
+
   readonly state: ThreadsStateRepo;
 }
 
@@ -413,6 +422,11 @@ export interface AssistantsRepo {
     assistant_id: string,
     auth: AuthContext | undefined
   ): Promise<string[]>;
+
+  count(
+    options: { graph_id?: string; metadata?: Metadata },
+    auth: AuthContext | undefined
+  ): Promise<number>;
 
   setLatest(
     assistant_id: string,

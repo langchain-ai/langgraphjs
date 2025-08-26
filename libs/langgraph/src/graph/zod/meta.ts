@@ -73,7 +73,6 @@ export interface SchemaMeta<TValue = any, TUpdate = TValue> {
     fn: (a: TValue, b: TUpdate) => TValue;
   };
   default?: () => TValue;
-  [key: string]: unknown;
 }
 
 /**
