@@ -995,7 +995,7 @@ export class ThreadsClient<
 
   async *getStream(
     threadId: string,
-    lastEventId?: string
+    options?: { lastEventId?: string }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
     const response = await this.asyncCaller.fetch(
