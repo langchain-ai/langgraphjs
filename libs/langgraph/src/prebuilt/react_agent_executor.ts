@@ -654,6 +654,8 @@ export type CreateReactAgentParams<
  * }
  * // Returns the messages in the state at each step of execution
  * ```
+ *
+ * @deprecated Use `createReactAgent` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
  */
 export function createReactAgent<
   A extends AnyAnnotationRoot | InteropZodObject = typeof MessagesAnnotation,

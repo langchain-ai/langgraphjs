@@ -28,9 +28,8 @@ export OPENAI_API_KEY=<your_api_key>
 ```ts
 import { z } from "zod";
 import { ChatOpenAI } from "@langchain/openai";
-import { tool } from "@langchain/core/tools";
+import { tool, createReactAgent } from "langchain";
 import { MemorySaver } from "@langchain/langgraph";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSwarm, createHandoffTool } from "@langchain/langgraph-swarm";
 
 const model = new ChatOpenAI({ modelName: "gpt-4o" });
