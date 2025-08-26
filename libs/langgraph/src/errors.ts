@@ -12,6 +12,7 @@ export type BaseLangGraphErrorFields = {
 };
 
 // TODO: Merge with base LangChain error class when we drop support for core@0.2.0
+/** @category Errors */
 export class BaseLangGraphError extends Error {
   lc_error_code?: string;
 

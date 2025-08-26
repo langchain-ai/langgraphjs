@@ -41,17 +41,18 @@ index 2dadd8df70cefca52fb2d1cc104c8bf5783d1195..dbcca7511f9c6ae453cfb5792ddc3a9d
          // I don't think it will ever occur in normal usage.
          if (parts.includes("..")) {
 diff --git a/dist/lib/output/themes/default/DefaultTheme.js b/dist/lib/output/themes/default/DefaultTheme.js
-index b6c97e6cd7c832256ed861f2da1c414c1485f8a8..240f444d42a276bdf4067ee1c7310938c11a18bc 100644
+index b6c97e6cd7c832256ed861f2da1c414c1485f8a8..7202ab3f44ca5db6353cbae64e3a4f2a1bd6923a 100644
 --- a/dist/lib/output/themes/default/DefaultTheme.js
 +++ b/dist/lib/output/themes/default/DefaultTheme.js
-@@ -234,7 +234,10 @@ let DefaultTheme = (() => {
+@@ -234,7 +234,11 @@ let DefaultTheme = (() => {
                      return filterMapWithNoneCollection(parent.categories);
                  }
                  if (parent.groups && shouldShowGroups(parent, opts)) {
 -                    return filterMapWithNoneCollection(parent.groups);
 +                    // Hack: We want to group only certain groups, not all
-+                    const grouped = parent.groups.filter(g => g.title === "Interfaces" || g.title === "Type Aliases" || g.title === "Deprecated" || g.title === "Errors")
-+                    const notGrouped = parent.groups.filter(g => g.title !== "Interfaces" && g.title !== "Type Aliases" && g.title !== "Deprecated" && g.title !== "Errors")
++                    const includeGroups = ["Interfaces", "Type Aliases", "Deprecated", "Errors", "Graphs", "Functional API", "Pregel", "Constants", "Storage"];
++                    const grouped = parent.groups.filter(g => includeGroups.includes(g.title))
++                    const notGrouped = parent.groups.filter(g => !includeGroups.includes(g.title))
 +                    return [...filterMap(notGrouped.flatMap(g => g.children), toNavigation), ...filterMapWithNoneCollection(grouped)];
                  }
                  if (opts.includeFolders && parent.childrenIncludingDocuments?.some((child) => child.name.includes("/"))) {

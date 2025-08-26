@@ -97,6 +97,7 @@ export interface TaskOptions {
  *   return results;
  * });
  * ```
+ * @category Functional API
  */
 export function task<ArgsT extends unknown[], OutputT>(
   optionsOrName: TaskOptions | string,
@@ -159,6 +160,7 @@ export type EntrypointOptions = {
 
 /**
  * Type declaration for the entrypoint function with its properties
+ * @category Functional API
  */
 export interface EntrypointFunction {
   <InputT, OutputT>(
@@ -335,6 +337,7 @@ export interface EntrypointFunction {
  * await myWorkflow.invoke(3, config); // 0 (previous was undefined)
  * await myWorkflow.invoke(1, config); // 6 (previous was 3 * 2 from the previous invocation)
  * ```
+ * @category Functional API
  */
 export const entrypoint = function entrypoint<InputT, OutputT>(
   optionsOrName: EntrypointOptions | string,
@@ -451,6 +454,7 @@ entrypoint.final = function final<ValueT, SaveT>({
  * const previousState = getPreviousState<{ counter: number }>();
  * const newCount = (previousState?.counter ?? 0) + 1;
  * ```
+ * @category Functional API
  */
 export function getPreviousState<StateT>(): StateT {
   const config: LangGraphRunnableConfig =

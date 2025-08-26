@@ -34,6 +34,7 @@
   "navigation": {
     "includeFolders": false,
     "includeGroups": true,
+    "includeCategories": true,
     "excludeReferences": true
   },
   "name": "LangGraph.js API Reference",
