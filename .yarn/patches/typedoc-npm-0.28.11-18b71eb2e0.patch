@@ -28,10 +28,19 @@ index 1f5ab57d619ff2a20f4b59e26d8d234f6553d9af..e879fe67665906ff2b7c901737bc4da9
                  if (reflection instanceof ReferenceReflection &&
                      groupReferencesByType) {
 diff --git a/dist/lib/output/router.js b/dist/lib/output/router.js
-index 2dadd8df70cefca52fb2d1cc104c8bf5783d1195..dbcca7511f9c6ae453cfb5792ddc3a9dab398fda 100644
+index 2dadd8df70cefca52fb2d1cc104c8bf5783d1195..50c5f263740b52639681baa16abce8ccec629c6b 100644
 --- a/dist/lib/output/router.js
 +++ b/dist/lib/output/router.js
-@@ -396,6 +396,8 @@ export class StructureRouter extends BaseRouter {
+@@ -359,6 +359,8 @@ export class KindRouter extends BaseRouter {
+             reflection = reflection.parent;
+             parts.unshift(createNormalizedUrl(reflection.name));
+         }
++        const prefix = createNormalizedUrl("@langchain/");
++        if (parts[0].startsWith(prefix)) parts[0] = parts[0].slice(prefix.length);
+         const baseName = parts.join(".");
+         return `${dir}/${baseName}`;
+     }
+@@ -396,6 +398,8 @@ export class StructureRouter extends BaseRouter {
              reflection = reflection.parent;
              parts.unshift(...reflection.name.split("/").map(createNormalizedUrl));
          }

@@ -10,7 +10,6 @@
     "instance-first",
     "alphabetical"
   ],
-  "router": "structure-dir",
   "entryPoints": [
     "../libs/checkpoint",
     "../libs/checkpoint-mongodb",
