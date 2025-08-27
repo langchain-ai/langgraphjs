@@ -46,6 +46,10 @@ import { END, Send, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
 import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
 
+/**
+ * @deprecated `AgentState` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
+ * Update your import to `import { AgentState } from "langchain";`
+ */
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseType extends Record<string, any> = Record<string, any>
@@ -474,6 +478,10 @@ type ToAnnotationRoot<A extends AnyAnnotationRoot | InteropZodObject> =
     ? AnnotationRoot<InteropZodToStateDefinition<A>>
     : never;
 
+/**
+ * @deprecated `CreateReactAgentParams` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
+ * Update your import to `import { CreateReactAgentParams } from "langchain";`
+ */
 export type CreateReactAgentParams<
   A extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -614,8 +622,9 @@ export type CreateReactAgentParams<
 };
 
 /**
- * @deprecated Use `createReactAgent` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
- * 
+ * @deprecated `createReactAgent` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
+ * Update your import to `import { createReactAgent } from "langchain";`
+ *
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
  *
  * @example
