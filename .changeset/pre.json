@@ -1,6 +1,6 @@
 {
   "mode": "pre",
-  "tag": "next",
+  "tag": "alpha",
   "initialVersions": {
     "@langchain/langgraph-checkpoint": "0.1.0",
     "@langchain/langgraph-checkpoint-mongodb": "0.1.0",
