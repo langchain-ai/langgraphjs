@@ -37,6 +37,8 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  * either in StateGraph with a "messages" key or in MessageGraph. If multiple
  * tool calls are requested, they will be run in parallel. The output will be
  * a list of ToolMessages, one for each tool call.
+ * 
+ * @deprecated Use `ToolNode` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
  *
  * @example
  * ```ts
@@ -301,6 +303,9 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
   }
 }
 
+/**
+ * @deprecated Use new `ToolNode` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
+ */
 export function toolsCondition(
   state: BaseMessage[] | typeof MessagesAnnotation.State
 ): "tools" | typeof END {
