@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@langchain/core": "1.0.0-alpha.1",
-    "@langchain/scripts": "^0.1.4",
+    "@langchain/scripts": "patch:@langchain/scripts@npm%3A0.1.4#~/.yarn/patches/@langchain-scripts-npm-0.1.4-458d383040.patch",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "@types/react": "^19.0.8",

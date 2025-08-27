@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@langchain/langgraph-checkpoint": "workspace:*",
-    "@langchain/scripts": ">=0.1.2 <0.2.0",
+    "@langchain/scripts": "patch:@langchain/scripts@npm%3A0.1.4#~/.yarn/patches/@langchain-scripts-npm-0.1.4-458d383040.patch",
     "@tsconfig/recommended": "^1.0.3",
     "@types/pg": "^8.11.8",
     "@types/uuid": "^10",
