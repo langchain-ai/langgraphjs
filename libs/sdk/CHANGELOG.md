@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.0.111
+
+### Patch Changes
+
+- b5f14d0: Add methods to connect with the /count endpoints
+
 ## 0.0.109
 
 ### Patch Changes
