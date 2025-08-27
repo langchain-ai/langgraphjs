@@ -1,8 +1,8 @@
 diff --git a/dist/build/index.js b/dist/build/index.js
-index a2c33d0f874575e43065091a466cf8a316d64a63..04344790ceb64698eafa72a8f20052cd69571262 100644
+index a2c33d0f874575e43065091a466cf8a316d64a63..c267964d63c375fd7abef3bc05b900fd41819540 100644
 --- a/dist/build/index.js
 +++ b/dist/build/index.js
-@@ -539,10 +539,24 @@ export async function buildWithTSup() {
+@@ -539,10 +539,26 @@ export async function buildWithTSup() {
          ]);
      }
      if (shouldCreateEntrypoints) {
@@ -14,14 +14,16 @@ index a2c33d0f874575e43065091a466cf8a316d64a63..04344790ceb64698eafa72a8f20052cd
 +            const original = await fs.promises.readFile("package.json", { encoding: "utf-8" });
 +
 +            let updated = JSON.parse(original);
-+            delete updated.type;
++            updated.type = "commonjs";
 +            updated = JSON.stringify(updated, null, 2);
 +
 +            await fs.promises.writeFile("package.json", updated, { encoding: "utf-8" });
++            try {
++                await cb();
++            } finally {
++                await fs.promises.writeFile("package.json", original, { encoding: "utf-8" });
++            }
 +
-+            await cb();
-+
-+            await fs.promises.writeFile("package.json", original, { encoding: "utf-8" });
 +        }
 +
 +        // Build CJS by omitting `"type": "module"` from package.json

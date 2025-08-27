@@ -1683,7 +1683,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:1.0.0-alpha.1, @langchain/core@npm:^1.0.0-alpha.1":
+"@langchain/core@npm:1.0.0-alpha.1":
   version: 1.0.0-alpha.1
   resolution: "@langchain/core@npm:1.0.0-alpha.1"
   dependencies:
@@ -2319,7 +2319,7 @@ __metadata:
 
 "@langchain/scripts@patch:@langchain/scripts@npm%3A0.1.4#~/.yarn/patches/@langchain-scripts-npm-0.1.4-458d383040.patch":
   version: 0.1.4
-  resolution: "@langchain/scripts@patch:@langchain/scripts@npm%3A0.1.4#~/.yarn/patches/@langchain-scripts-npm-0.1.4-458d383040.patch::version=0.1.4&hash=4d0ff9"
+  resolution: "@langchain/scripts@patch:@langchain/scripts@npm%3A0.1.4#~/.yarn/patches/@langchain-scripts-npm-0.1.4-458d383040.patch::version=0.1.4&hash=962626"
   dependencies:
     "@octokit/rest": "npm:^21.0.2"
     "@rollup/wasm-node": "npm:^4.19.0"
@@ -2336,7 +2336,7 @@ __metadata:
     filter_spam_comment: bin/filter_spam_comment.js
     lc_build: bin/build.js
     notebook_validate: bin/validate_notebook.js
-  checksum: 10/69ac8d9bb66de10179778c5ca5bcdf92d521c409e858701633adc5bda20a4be182507f7bbb87d944116dd75636ef80f403cc169f938234de733f5627cfcf95f4
+  checksum: 10/719c4b3d9cbd061f12df230d92ae93f046677a6edebe934050af6260c1b72a3593026dd8048f3e8847243760658908948ed277e7840f8dcb64f4c6501f2e20d0
   languageName: node
   linkType: hard
 
