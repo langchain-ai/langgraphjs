@@ -22,10 +22,7 @@ export type StreamMode =
   | "custom"
   | "messages-tuple";
 
-export type ThreadStreamMode =
-  | "run_modes"
-  | "lifecycle"
-  | "state_update"
+export type ThreadStreamMode = "run_modes" | "lifecycle" | "state_update";
 
 type MessageTupleMetadata = {
   tags: string[];
