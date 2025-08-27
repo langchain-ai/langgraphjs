@@ -25,7 +25,7 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^0.3.61",
+    "@langchain/core": "1.0.0-alpha.1",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
@@ -48,7 +48,7 @@
     "vitest": "^3.1.2"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },

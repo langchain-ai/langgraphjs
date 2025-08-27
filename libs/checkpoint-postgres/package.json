@@ -33,7 +33,7 @@
     "pg": "^8.12.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0",
     "@langchain/langgraph-checkpoint": "^0.1.0"
   },
   "devDependencies": {
