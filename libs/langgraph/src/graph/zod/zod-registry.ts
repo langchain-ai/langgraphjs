@@ -28,7 +28,7 @@ import {
 export class LanggraphZodMetaRegistry<
   Meta extends SchemaMeta = SchemaMeta,
   Schema extends $ZodType = $ZodType
-> extends $ZodRegistry<Meta, Schema> {
+> extends $ZodRegistry<Meta & { [key: string]: unknown }, Schema> {
   /**
    * Creates a new LanggraphZodMetaRegistry instance.
    *
@@ -37,14 +37,17 @@ export class LanggraphZodMetaRegistry<
   constructor(protected parent: SchemaMetaRegistry) {
     super();
     // Use the parent's map for metadata storage
-    this._map = this.parent._map as WeakMap<Schema, $replace<Meta, Schema>>;
+    this._map = this.parent._map as WeakMap<
+      Schema,
+      $replace<Meta & { [key: string]: unknown }, Schema>
+    >;
   }
 
   add<S extends Schema>(
     schema: S,
-    ..._meta: undefined extends Meta
-      ? [$replace<Meta, S>?]
-      : [$replace<Meta, S>]
+    ..._meta: undefined extends Meta & { [key: string]: unknown }
+      ? [$replace<Meta & { [key: string]: unknown }, S>?]
+      : [$replace<Meta & { [key: string]: unknown }, S>]
   ): this {
     const firstMeta = _meta[0];
     if (firstMeta && !firstMeta?.default) {

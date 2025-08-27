@@ -21,6 +21,7 @@ import { Client, getClientConfigHash, type ClientConfig } from "../client.js";
 import type {
   Command,
   DisconnectMode,
+  Durability,
   MultitaskStrategy,
   OnCompletionBehavior,
 } from "../types.js";
@@ -369,7 +370,10 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const [history, setHistory] = useState<ThreadState<StateType>[] | undefined>(
     undefined
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (threadId == null) return false;
+    return true;
+  });
   const [error, setError] = useState<unknown | undefined>(undefined);
 
   const clientHash = getClientConfigHash(client);
@@ -416,7 +420,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   useEffect(() => {
     if (submittingRef.current) return;
     void fetcher(threadId);
-  }, [fetcher, clientHash, limit, submittingRef, threadId]);
+  }, [fetcher, submittingRef, clientHash, limit, threadId]);
 
   return {
     data: history,
@@ -803,6 +807,14 @@ interface SubmitOptions<
    */
   streamSubgraphs?: boolean;
   streamResumable?: boolean;
+  /**
+   * Whether to checkpoint during the run (or only at the end/interruption).
+   * - `"async"`: Save checkpoint asynchronously while the next step executes (default).
+   * - `"sync"`: Save checkpoint synchronously before the next step starts.
+   * - `"exit"`: Save checkpoint only when the graph exits.
+   * @default "async"
+   */
+  durability?: Durability;
   /**
    * The ID to use when creating a new thread. When provided, this ID will be used
    * for thread creation when threadId is `null` or `undefined`.
@@ -1338,6 +1350,7 @@ export function useStream<
         streamMode,
         streamSubgraphs: submitOptions?.streamSubgraphs,
         streamResumable,
+        durability: submitOptions?.durability,
         onRunCreated(params) {
           callbackMeta = {
             run_id: params.run_id,

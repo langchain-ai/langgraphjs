@@ -31,7 +31,7 @@ export const cors = (
         if (originRegex.test(origin)) return origin;
         return undefined;
       }
-    : cors.allow_origins ?? [];
+    : cors.allow_origins;
 
   if (cors.expose_headers?.length) {
     const headersSet = new Set(cors.expose_headers.map((h) => h.toLowerCase()));
@@ -50,15 +50,16 @@ export const cors = (
     }
   }
 
-  // TODO: handle `cors.allow_credentials`
-  return honoCors({
-    origin,
-    maxAge: cors.max_age,
-    allowMethods: cors.allow_methods,
-    allowHeaders: cors.allow_headers,
-    credentials: cors.allow_credentials,
-    exposeHeaders: cors.expose_headers,
-  });
+  const config: Parameters<typeof honoCors>[0] = { origin: origin ?? "*" };
+  if (cors.max_age != null) config.maxAge = cors.max_age;
+  if (cors.allow_methods != null) config.allowMethods = cors.allow_methods;
+  if (cors.allow_headers != null) config.allowHeaders = cors.allow_headers;
+  if (cors.expose_headers != null) config.exposeHeaders = cors.expose_headers;
+  if (cors.allow_credentials != null) {
+    config.credentials = cors.allow_credentials;
+  }
+
+  return honoCors(config);
 };
 
 // This is used to match the behavior of the original LangGraph API

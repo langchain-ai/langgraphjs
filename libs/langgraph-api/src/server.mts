@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { contextStorage } from "hono/context-storage";
 
 import { registerFromEnv } from "./graph/load.mjs";
 
@@ -9,7 +10,7 @@ import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
 
-import { truncate, conn as opsConn } from "./storage/ops.mjs";
+import type { Ops, Store, StorageEnv } from "./storage/types.mjs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { queue } from "./queue.mjs";
@@ -20,6 +21,7 @@ import {
   registerSdkLogger,
 } from "./logging.mjs";
 import { checkpointer } from "./storage/checkpoint.mjs";
+import { FileSystemOps } from "./storage/ops.mjs";
 import { store as graphStore } from "./storage/store.mjs";
 import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
@@ -28,6 +30,7 @@ import { cors, ensureContentType } from "./http/middleware.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import { getConfig } from "@langchain/langgraph";
+import { FileSystemPersistence } from "./storage/persist.mjs";
 
 export const StartServerSchema = z.object({
   port: z.number(),
@@ -71,7 +74,10 @@ export const StartServerSchema = z.object({
     .optional(),
 });
 
-export async function startServer(options: z.infer<typeof StartServerSchema>) {
+export async function startServer(
+  options: z.infer<typeof StartServerSchema>,
+  storage?: { ops?: Ops }
+) {
   const semver = await checkLangGraphSemver();
   const invalidPackages = semver.filter((s) => !s.satisfies);
   if (invalidPackages.length > 0) {
@@ -87,11 +93,27 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   }
 
   logger.info(`Initializing storage...`);
-  const callbacks = await Promise.all([
-    opsConn.initialize(options.cwd),
+  let initCalls: Promise<FileSystemPersistence<unknown>>[] = [
     checkpointer.initialize(options.cwd),
     graphStore.initialize(options.cwd),
-  ]);
+  ];
+
+  let ops = storage?.ops;
+  if (ops == null) {
+    const opsConn = new FileSystemPersistence<Store>(
+      ".langgraphjs_ops.json",
+      () => ({
+        runs: {},
+        threads: {},
+        assistants: {},
+        assistant_versions: [],
+        retry_counter: {},
+      })
+    );
+    initCalls.push(opsConn.initialize(options.cwd));
+    ops = new FileSystemOps(opsConn);
+  }
+  const callbacks = await Promise.all(initCalls);
 
   const cleanup = async () => {
     logger.info(`Flushing to persistent storage, exiting...`);
@@ -120,7 +142,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
       "A graph definition in `langgraph.json` has a `description` property. Local MCP features are not yet supported with the JS CLI and will be ignored."
     );
   }
-  await registerFromEnv(graphPaths, { cwd: options.cwd });
+  await registerFromEnv(ops.assistants, graphPaths, { cwd: options.cwd });
 
   registerRuntimeLogFormatter((info) => {
     const config = getConfig();
@@ -132,7 +154,13 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
     return info;
   });
 
-  const app = new Hono();
+  const app = new Hono<StorageEnv>();
+
+  app.use(contextStorage());
+  app.use(async (c, next) => {
+    c.set("LANGGRAPH_OPS", ops);
+    await next();
+  });
 
   // Loopback fetch used by webhooks and custom routes
   bindLoopbackFetch(app);
@@ -153,7 +181,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
       const { runs, threads, assistants, checkpointer, store } =
         c.req.valid("json");
 
-      truncate({ runs, threads, assistants, checkpointer, store });
+      ops.truncate({ runs, threads, assistants, checkpointer, store });
       return c.json({ ok: true });
     }
   );
@@ -192,7 +220,7 @@ export async function startServer(options: z.infer<typeof StartServerSchema>) {
   }
 
   logger.info(`Starting ${options.nWorkers} workers`);
-  for (let i = 0; i < options.nWorkers; i++) queue();
+  for (let i = 0; i < options.nWorkers; i++) queue(ops);
 
   return new Promise<{ host: string; cleanup: () => Promise<void> }>(
     (resolve) => {

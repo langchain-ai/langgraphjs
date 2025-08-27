@@ -1,5 +1,11 @@
 # @langchain/langgraph-supervisor
 
+## 0.0.19
+
+### Patch Changes
+
+- 4a15efa: feat(supervisor): add passthrough support for preModelHook and postModelHook
+
 ## 0.0.18
 
 ### Patch Changes

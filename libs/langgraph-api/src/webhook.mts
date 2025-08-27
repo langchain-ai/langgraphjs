@@ -1,4 +1,4 @@
-import type { Run } from "./storage/ops.mjs";
+import type { Run } from "./storage/types.mjs";
 import type { StreamCheckpoint } from "./stream.mjs";
 import { serializeError } from "./utils/serde.mjs";
 import { getLoopbackFetch } from "./loopback.mjs";

@@ -1,5 +1,21 @@
 # @langchain/langgraph-api
 
+## 0.0.62
+
+### Patch Changes
+
+- c868796: Exports more graph-related helper functions.
+  - @langchain/langgraph-ui@0.0.62
+
+## 0.0.61
+
+### Patch Changes
+
+- a334897: feat(api): add /count endpoints for threads and assistants
+- 9357bb7: chore(api): abstract internal operations away from createServer
+- 9f13d74: fix(api): prevent overriding default CORS config when applying a single override
+  - @langchain/langgraph-ui@0.0.61
+
 ## 0.0.60
 
 ### Patch Changes

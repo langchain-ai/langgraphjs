@@ -1442,7 +1442,7 @@ export function runPregelTests(
         payload: {
           id: anyStringSame("task1"),
           name: "one",
-          result: [["inbox", 3]],
+          result: { inbox: 3 },
           interrupts: [],
         },
       },
@@ -1453,7 +1453,7 @@ export function runPregelTests(
         payload: {
           id: anyStringSame("task2"),
           name: "two",
-          result: [["output", 13]],
+          result: { output: 13 },
           interrupts: [],
         },
       },
@@ -1476,7 +1476,7 @@ export function runPregelTests(
         payload: {
           id: anyStringSame("task3"),
           name: "two",
-          result: [["output", 4]],
+          result: { output: 4 },
           interrupts: [],
         },
       },
@@ -2942,7 +2942,7 @@ graph TD;
             payload: {
               id: expect.any(String),
               name: "rewrite_query",
-              result: [["query", "query: what is weather in sf"]],
+              result: { query: "query: what is weather in sf" },
               interrupts: [],
             },
           },
@@ -2975,7 +2975,7 @@ graph TD;
             payload: {
               id: expect.any(String),
               name: "retriever_one",
-              result: [["docs", ["doc1", "doc2"]]],
+              result: { docs: ["doc1", "doc2"] },
               interrupts: [],
             },
           },
@@ -2986,7 +2986,7 @@ graph TD;
             payload: {
               id: expect.any(String),
               name: "retriever_two",
-              result: [["docs", ["doc3", "doc4"]]],
+              result: { docs: ["doc3", "doc4"] },
               interrupts: [],
             },
           },
@@ -3011,7 +3011,7 @@ graph TD;
             payload: {
               id: expect.any(String),
               name: "analyzer_one",
-              result: [["query", "analyzed: query: what is weather in sf"]],
+              result: { query: "analyzed: query: what is weather in sf" },
               interrupts: [],
             },
           },
@@ -3038,7 +3038,7 @@ graph TD;
             payload: {
               id: expect.any(String),
               name: "qa",
-              result: [["answer", "doc1,doc2,doc3,doc4"]],
+              result: { answer: "doc1,doc2,doc3,doc4" },
               interrupts: [],
             },
           },
@@ -5430,7 +5430,7 @@ graph TD;
         payload: {
           id: anyStringSame("task1"),
           name: "prepare",
-          result: [["my_key", " prepared"]],
+          result: { my_key: " prepared" },
           interrupts: [],
         },
       },
@@ -5498,7 +5498,7 @@ graph TD;
         payload: {
           id: anyStringSame("task2"),
           name: "tool_two_slow",
-          result: [["my_key", " slow"]],
+          result: { my_key: " slow" },
           interrupts: [],
         },
       },
@@ -5566,7 +5566,7 @@ graph TD;
         payload: {
           id: anyStringSame("task3"),
           name: "finish",
-          result: [["my_key", " finished"]],
+          result: { my_key: " finished" },
           interrupts: [],
         },
       },
@@ -12409,6 +12409,80 @@ graph TD;
 
     const result = await graph.invoke({ visits: "one" });
     expect(result.collect).toEqual(["one", "two"]);
+  });
+
+  it("multiple writes to the same channel from same node", async () => {
+    const checkpointer = await createCheckpointer();
+    const state = Annotation.Root({
+      foo: Annotation<string>({
+        reducer: (a, b) => [a, b].filter(Boolean).join(", "),
+        default: () => "",
+      }),
+    });
+
+    const graph = new StateGraph(state)
+      .addSequence({
+        one: () =>
+          new Command({
+            update: [
+              ["foo", "one.0"],
+              ["foo", "one.1"],
+            ],
+          }),
+        two: () => ({ foo: "two" as const }),
+      })
+      .addEdge("__start__", "one")
+      .compile({ checkpointer });
+
+    const config = { configurable: { thread_id: "1" } };
+
+    expect
+      .soft(
+        await gatherIterator(
+          graph.stream(
+            { foo: "input" },
+            { streamMode: ["updates", "tasks"], ...config }
+          )
+        )
+      )
+      .toMatchObject([
+        ["tasks", { name: "one", input: { foo: "input" } }],
+        ["updates", { one: [{ foo: "one.0" }, { foo: "one.1" }] }],
+        [
+          "tasks",
+          { name: "one", result: { foo: { $writes: ["one.0", "one.1"] } } },
+        ],
+        ["tasks", { name: "two", input: { foo: "input, one.0, one.1" } }],
+        ["updates", { two: { foo: "two" } }],
+        ["tasks", { name: "two", result: { foo: "two" } }],
+      ]);
+
+    expect
+      .soft(await gatherIterator(graph.getStateHistory(config)))
+      .toMatchObject([
+        {
+          metadata: { source: "loop", step: 2 },
+          tasks: [],
+          values: { foo: "input, one.0, one.1, two" },
+        },
+        {
+          metadata: { source: "loop", step: 1 },
+          tasks: [{ name: "two", result: { foo: "two" } }],
+          values: { foo: "input, one.0, one.1" },
+        },
+        {
+          metadata: { source: "loop", step: 0 },
+          tasks: [
+            { name: "one", result: { foo: { $writes: ["one.0", "one.1"] } } },
+          ],
+          values: { foo: "input" },
+        },
+        {
+          metadata: { source: "input", step: -1 },
+          tasks: [{ name: "__start__", result: { foo: "input" } }],
+          values: { foo: "" },
+        },
+      ]);
   });
 }
 

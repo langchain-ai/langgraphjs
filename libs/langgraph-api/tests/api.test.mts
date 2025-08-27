@@ -2686,12 +2686,9 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        result: expect.arrayContaining([
-          [
-            "messages",
-            [expect.objectContaining({ content: "begin", type: "ai" })],
-          ],
-        ]),
+        result: {
+          messages: [expect.objectContaining({ content: "begin", type: "ai" })],
+        },
         interrupts: [],
       },
     },
@@ -2726,18 +2723,15 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "tool",
-        result: expect.arrayContaining([
-          [
-            "messages",
-            [
-              expect.objectContaining({
-                content: "tool_call__begin",
-                tool_call_id: "tool_call_id",
-                type: "tool",
-              }),
-            ],
+        result: {
+          messages: [
+            expect.objectContaining({
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            }),
           ],
-        ]),
+        },
         interrupts: [],
       },
     },
@@ -2782,12 +2776,9 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        result: expect.arrayContaining([
-          [
-            "messages",
-            [expect.objectContaining({ content: "end", type: "ai" })],
-          ],
-        ]),
+        result: {
+          messages: [expect.objectContaining({ content: "end", type: "ai" })],
+        },
         interrupts: [],
       },
     },

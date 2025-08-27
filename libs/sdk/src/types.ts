@@ -6,6 +6,7 @@ export type MultitaskStrategy = "reject" | "interrupt" | "rollback" | "enqueue";
 export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
+export type Durability = "exit" | "async" | "sync";
 export type StreamEvent =
   | "events"
   | "metadata"
@@ -76,8 +77,18 @@ export interface RunsInvokePayload {
 
   /**
    * Whether to checkpoint during the run (or only at the end/interruption).
+   * @deprecated Use `durability` instead.
    */
   checkpointDuring?: boolean;
+
+  /**
+   * Whether to checkpoint during the run (or only at the end/interruption).
+   * - `"async"`: Save checkpoint asynchronously while the next step executes (default).
+   * - `"sync"`: Save checkpoint synchronously before the next step starts.
+   * - `"exit"`: Save checkpoint only when the graph exits.
+   * @default "async"
+   */
+  durability?: Durability;
 
   /**
    * Interrupt execution before entering these nodes.
