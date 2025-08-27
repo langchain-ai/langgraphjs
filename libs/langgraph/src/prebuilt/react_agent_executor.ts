@@ -614,6 +614,8 @@ export type CreateReactAgentParams<
 };
 
 /**
+ * @deprecated Use `createReactAgent` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
+ * 
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
  *
  * @example
@@ -654,8 +656,6 @@ export type CreateReactAgentParams<
  * }
  * // Returns the messages in the state at each step of execution
  * ```
- *
- * @deprecated Use `createReactAgent` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
  */
 export function createReactAgent<
   A extends AnyAnnotationRoot | InteropZodObject = typeof MessagesAnnotation,

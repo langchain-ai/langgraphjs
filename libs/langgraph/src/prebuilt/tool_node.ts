@@ -33,12 +33,12 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
   typeof input === "object" && input != null && "lg_tool_call" in input;
 
 /**
+ * @deprecated Use `ToolNode` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
+ * 
  * A node that runs the tools requested in the last AIMessage. It can be used
  * either in StateGraph with a "messages" key or in MessageGraph. If multiple
  * tool calls are requested, they will be run in parallel. The output will be
  * a list of ToolMessages, one for each tool call.
- * 
- * @deprecated Use `ToolNode` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
  *
  * @example
  * ```ts
