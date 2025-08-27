@@ -370,7 +370,10 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const [history, setHistory] = useState<ThreadState<StateType>[] | undefined>(
     undefined
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (threadId == null) return false;
+    return true;
+  });
   const [error, setError] = useState<unknown | undefined>(undefined);
 
   const clientHash = getClientConfigHash(client);
@@ -417,7 +420,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   useEffect(() => {
     if (submittingRef.current) return;
     void fetcher(threadId);
-  }, [fetcher, clientHash, limit, submittingRef, threadId]);
+  }, [fetcher, submittingRef, clientHash, limit, threadId]);
 
   return {
     data: history,
