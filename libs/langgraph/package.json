@@ -38,8 +38,8 @@
   },
   "peerDependencies": {
     "@langchain/core": ">=0.3.58 < 0.4.0",
-    "zod-to-json-schema": "^3.x",
-    "zod": "^3.25.32 || ^4.1.0"
+    "zod": "^3.25.32 || ^4.1.0",
+    "zod-to-json-schema": "^3.x"
   },
   "peerDependenciesMeta": {
     "zod-to-json-schema": {
