@@ -1,0 +1,22 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "@langchain/langgraph-checkpoint": "0.1.0",
+    "@langchain/langgraph-checkpoint-mongodb": "0.1.0",
+    "@langchain/langgraph-checkpoint-postgres": "0.1.1",
+    "@langchain/langgraph-checkpoint-sqlite": "0.2.0",
+    "@langchain/langgraph-checkpoint-validation": "0.1.0",
+    "create-langgraph": "0.0.3",
+    "@langchain/langgraph": "0.4.7",
+    "@langchain/langgraph-api": "0.0.61",
+    "@langchain/langgraph-cli": "0.0.61",
+    "@langchain/langgraph-cua": "0.1.0",
+    "@langchain/langgraph-supervisor": "0.0.19",
+    "@langchain/langgraph-swarm": "0.0.6",
+    "@langchain/langgraph-ui": "0.0.61",
+    "@langchain/langgraph-sdk": "0.0.111",
+    "@langchain/langgraph-sdk-validation": "0.0.0"
+  },
+  "changesets": []
+}
