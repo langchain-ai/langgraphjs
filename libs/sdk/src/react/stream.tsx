@@ -21,6 +21,7 @@ import { Client, getClientConfigHash, type ClientConfig } from "../client.js";
 import type {
   Command,
   DisconnectMode,
+  Durability,
   MultitaskStrategy,
   OnCompletionBehavior,
 } from "../types.js";
@@ -804,6 +805,14 @@ interface SubmitOptions<
   streamSubgraphs?: boolean;
   streamResumable?: boolean;
   /**
+   * Whether to checkpoint during the run (or only at the end/interruption).
+   * - `"async"`: Save checkpoint asynchronously while the next step executes (default).
+   * - `"sync"`: Save checkpoint synchronously before the next step starts.
+   * - `"exit"`: Save checkpoint only when the graph exits.
+   * @default "async"
+   */
+  durability?: Durability;
+  /**
    * The ID to use when creating a new thread. When provided, this ID will be used
    * for thread creation when threadId is `null` or `undefined`.
    * This enables optimistic UI updates where you know the thread ID
@@ -1338,6 +1347,7 @@ export function useStream<
         streamMode,
         streamSubgraphs: submitOptions?.streamSubgraphs,
         streamResumable,
+        durability: submitOptions?.durability,
         onRunCreated(params) {
           callbackMeta = {
             run_id: params.run_id,
