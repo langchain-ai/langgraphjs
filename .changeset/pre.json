@@ -16,7 +16,12 @@
     "@langchain/langgraph-swarm": "0.0.6",
     "@langchain/langgraph-ui": "0.0.61",
     "@langchain/langgraph-sdk": "0.0.111",
-    "@langchain/langgraph-sdk-validation": "0.0.0"
+    "@langchain/langgraph-sdk-validation": "0.0.0",
+    "@langchain/build": "0.0.1"
   },
-  "changesets": []
+  "changesets": [
+    "bumpy-candies-bake",
+    "early-drinks-fold",
+    "pink-vans-push"
+  ]
 }

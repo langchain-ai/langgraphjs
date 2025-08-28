@@ -1,5 +1,16 @@
 # @langchain/langgraph
 
+## 1.0.0-alpha.0
+
+### Major Changes
+
+- 445c2ae: Make Zod a peer dependency of @langchain/langgraph
+
+### Patch Changes
+
+- 5f9b5a0: Deprecate createReactAgent in favour of `langchain` package.
+- dcc117f: feat(langgraph): add `toLangGraphEventStream` method to stream events in LGP compatible format
+
 ## 0.4.7
 
 ### Patch Changes
