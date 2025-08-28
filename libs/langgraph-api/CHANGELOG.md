@@ -1,5 +1,19 @@
 # @langchain/langgraph-api
 
+## 0.0.63
+
+### Patch Changes
+
+- c9d4dfd: Add support for @langchain/core 1.0.0-alpha and @langchain/langgraph 1.0.0-alpha
+  - @langchain/langgraph-ui@0.0.63
+
+## 0.0.62
+
+### Patch Changes
+
+- c868796: Exports more graph-related helper functions.
+  - @langchain/langgraph-ui@0.0.62
+
 ## 0.0.61
 
 ### Patch Changes

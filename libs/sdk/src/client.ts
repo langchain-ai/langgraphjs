@@ -38,7 +38,11 @@ import type {
   RunsWaitPayload,
   StreamEvent,
 } from "./types.js";
-import type { StreamMode, TypedAsyncGenerator } from "./types.stream.js";
+import type {
+  StreamMode,
+  ThreadStreamMode,
+  TypedAsyncGenerator,
+} from "./types.stream.js";
 import { AsyncCaller, AsyncCallerParams } from "./utils/async_caller.js";
 import { getEnvironmentVariable } from "./utils/env.js";
 import { mergeSignals } from "./utils/signals.js";
@@ -363,6 +367,7 @@ export class CronsClient extends BaseClient {
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
     return this.fetch<CronCreateForThreadResponse>(
       `/threads/${threadId}/runs/crons`,
@@ -396,6 +401,7 @@ export class CronsClient extends BaseClient {
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
@@ -992,6 +998,36 @@ export class ThreadsClient<
       }
     );
   }
+
+  async *joinStream(
+    threadId: string,
+    options?: {
+      lastEventId?: string;
+      streamMode?: ThreadStreamMode | ThreadStreamMode[];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
+    const response = await this.asyncCaller.fetch(
+      ...this.prepareFetchOptions(`/threads/${threadId}/stream`, {
+        method: "GET",
+        headers: options?.lastEventId
+          ? { "Last-Event-ID": options.lastEventId }
+          : undefined,
+        params: options?.streamMode
+          ? { stream_mode: options.streamMode }
+          : undefined,
+      })
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream: ReadableStream<{ event: string; data: any }> = (
+      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+    )
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    yield* IterableReadableStream.fromReadableStream(stream);
+  }
 }
 
 export class RunsClient<
@@ -1075,6 +1111,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
 
     const endpoint =
@@ -1134,6 +1171,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1221,6 +1259,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,

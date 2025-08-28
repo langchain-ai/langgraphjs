@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 0.0.112
+
+### Patch Changes
+
+- a50e02e: feat(sdk): add thread streaming endpoint
+- 7e210a1: feat(sdk): add durability param to run methods
+- 5766b62: Fix `isThreadLoading: false` when initially mounting in useStream
+
 ## 0.0.111
 
 ### Patch Changes
