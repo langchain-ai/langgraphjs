@@ -1,5 +1,4 @@
 ---
-"@langchain/langgraph-swarm": patch
 "@langchain/langgraph": patch
 ---
 
