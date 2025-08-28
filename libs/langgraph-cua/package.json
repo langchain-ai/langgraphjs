@@ -6,8 +6,8 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "homepage": "https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-cua/README.md",
   "repository": {
     "type": "git",
@@ -80,12 +80,12 @@
     },
     "./utils": {
       "import": {
-        "types": "./utils.d.ts",
-        "default": "./utils.js"
+        "types": "./dist/utils.d.ts",
+        "default": "./dist/utils.js"
       },
       "require": {
-        "types": "./utils.d.cts",
-        "default": "./utils.cjs"
+        "types": "./dist/utils.d.cts",
+        "default": "./dist/utils.cjs"
       },
       "input": "./src/utils.ts"
     },
