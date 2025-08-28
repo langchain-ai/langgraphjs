@@ -6,8 +6,8 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
@@ -104,69 +104,80 @@
     },
     "./web": {
       "import": {
-        "types": "./web.d.ts",
-        "default": "./web.js"
+        "types": "./dist/web.d.ts",
+        "default": "./dist/web.js"
       },
       "require": {
-        "types": "./web.d.cts",
-        "default": "./web.cjs"
+        "types": "./dist/web.d.cts",
+        "default": "./dist/web.cjs"
       },
       "input": "./src/web.ts"
     },
     "./pregel": {
       "import": {
-        "types": "./pregel.d.ts",
-        "default": "./pregel.js"
+        "types": "./dist/pregel/index.d.ts",
+        "default": "./dist/pregel/index.js"
       },
       "require": {
-        "types": "./pregel.d.cts",
-        "default": "./pregel.cjs"
+        "types": "./dist/pregel/index.d.cts",
+        "default": "./dist/pregel/index.cjs"
       },
-      "input": "./src/pregel.ts"
+      "input": "./src/pregel/index.ts"
     },
     "./prebuilt": {
       "import": {
-        "types": "./prebuilt.d.ts",
-        "default": "./prebuilt.js"
+        "types": "./dist/prebuilt/index.d.ts",
+        "default": "./dist/prebuilt/index.js"
       },
       "require": {
-        "types": "./prebuilt.d.cts",
-        "default": "./prebuilt.cjs"
+        "types": "./dist/prebuilt/index.d.cts",
+        "default": "./dist/prebuilt/index.cjs"
       },
-      "input": "./src/prebuilt.ts"
+      "input": "./src/prebuilt/index.ts"
     },
     "./remote": {
       "import": {
-        "types": "./remote.d.ts",
-        "default": "./remote.js"
+        "types": "./dist/remote.d.ts",
+        "default": "./dist/remote.js"
       },
       "require": {
-        "types": "./remote.d.cts",
-        "default": "./remote.cjs"
+        "types": "./dist/remote.d.cts",
+        "default": "./dist/remote.cjs"
       },
       "input": "./src/remote.ts"
     },
     "./zod": {
       "import": {
-        "types": "./zod.d.ts",
-        "default": "./zod.js"
+        "types": "./dist/graph/zod/index.d.ts",
+        "default": "./dist/graph/zod/index.js"
       },
       "require": {
-        "types": "./zod.d.cts",
-        "default": "./zod.cjs"
+        "types": "./dist/graph/zod/index.d.cts",
+        "default": "./dist/graph/zod/index.cjs"
       },
-      "input": "./src/zod.ts"
+      "input": "./src/graph/zod/index.ts"
     },
     "./zod/schema": {
       "import": {
-        "types": "./zod/schema.d.ts",
-        "default": "./zod/schema.js"
+        "types": "./dist/graph/zod/schema.d.ts",
+        "default": "./dist/graph/zod/schema.js"
       },
       "require": {
-        "types": "./zod/schema.d.cts",
-        "default": "./zod/schema.cjs"
+        "types": "./dist/graph/zod/schema.d.cts",
+        "default": "./dist/graph/zod/schema.cjs"
       },
-      "input": "./src/zod/schema.ts"
+      "input": "./src/graph/zod/schema.ts"
+    },
+    "./ui": {
+      "import": {
+        "types": "./dist/ui/index.d.ts",
+        "default": "./dist/ui/index.js"
+      },
+      "require": {
+        "types": "./dist/ui/index.d.cts",
+        "default": "./dist/ui/index.cjs"
+      },
+      "input": "./src/ui/index.ts"
     },
     "./package.json": "./package.json"
   },
