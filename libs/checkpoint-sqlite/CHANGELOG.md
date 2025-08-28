@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-sqlite
 
+## 0.2.1
+
+### Patch Changes
+
+- 11c7807: Add support for @langchain/core 1.0.0-alpha
+
 ## 0.2.0
 
 ### Minor Changes
