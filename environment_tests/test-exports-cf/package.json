@@ -8,7 +8,7 @@
     "@cloudflare/workers-types": "^4.20230321.0"
   },
   "dependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "wrangler": "3.19.0",
