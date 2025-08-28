@@ -48,7 +48,7 @@
   "devDependencies": {
     "@langchain/anthropic": "^0.3.12",
     "@langchain/community": "^0.3.27",
-    "@langchain/core": "1.0.0-alpha.1",
+    "@langchain/core": "^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
