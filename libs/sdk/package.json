@@ -7,6 +7,7 @@
     "clean": "rm -rf dist/ dist-cjs/",
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-sdk",
     "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-sdk",
+    "prepublishOnly": "yarn build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
