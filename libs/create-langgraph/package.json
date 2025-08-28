@@ -18,7 +18,7 @@
     "cli:watch": "tsx watch src/cli.mts",
     "build": "yarn turbo:command build:internal --filter=create-langgraph",
     "build:internal": "yarn clean && yarn tsc --outDir dist",
-    "prepublishOnly": "yarn build",
+    "prepublish": "yarn build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

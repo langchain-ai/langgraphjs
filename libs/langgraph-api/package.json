@@ -54,7 +54,7 @@
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-api",
     "build:internal": "yarn clean && node scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts --dev",
-    "prepublishOnly": "yarn build",
+    "prepublish": "yarn build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
