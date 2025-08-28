@@ -15,7 +15,8 @@
   },
   "workspaces": [
     "libs/*",
-    "examples"
+    "examples",
+    "internal/*"
   ],
   "scripts": {
     "build": "turbo run build:internal",

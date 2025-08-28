@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "module": "node16",
-    "moduleResolution": "node16",
-    "declaration": false
-  },
-  "exclude": ["node_modules", "dist", "docs", "**/tests"]
-}

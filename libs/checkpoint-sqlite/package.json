@@ -6,21 +6,20 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-sqlite",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-checkpoint-sqlite",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepack": "yarn build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
@@ -66,13 +65,15 @@
   },
   "exports": {
     ".": {
-      "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./package.json": "./package.json"
   },

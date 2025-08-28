@@ -15,13 +15,12 @@
   },
   "scripts": {
     "build": "yarn turbo build:internal",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-cua",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepack": "yarn build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
@@ -68,22 +67,26 @@
   },
   "exports": {
     ".": {
-      "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./utils": {
-      "types": {
-        "import": "./utils.d.ts",
-        "require": "./utils.d.cts",
-        "default": "./utils.d.ts"
+      "import": {
+        "types": "./utils.d.ts",
+        "default": "./utils.js"
       },
-      "import": "./utils.js",
-      "require": "./utils.cjs"
+      "require": {
+        "types": "./utils.d.cts",
+        "default": "./utils.cjs"
+      },
+      "input": "./src/utils.ts"
     },
     "./package.json": "./package.json"
   },

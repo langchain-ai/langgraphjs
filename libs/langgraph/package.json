@@ -14,13 +14,12 @@
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepack": "yarn build",
     "test": "vitest run",
     "test:browser": "vitest run --mode browser",
     "test:watch": "vitest watch",
@@ -92,67 +91,81 @@
   },
   "exports": {
     ".": {
-      "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./web": {
-      "types": {
-        "import": "./web.d.ts",
-        "require": "./web.d.cts",
-        "default": "./web.d.ts"
+      "import": {
+        "types": "./web.d.ts",
+        "default": "./web.js"
       },
-      "import": "./web.js",
-      "require": "./web.cjs"
+      "require": {
+        "types": "./web.d.cts",
+        "default": "./web.cjs"
+      },
+      "input": "./src/web.ts"
     },
     "./pregel": {
-      "types": {
-        "import": "./pregel.d.ts",
-        "require": "./pregel.d.cts",
-        "default": "./pregel.d.ts"
+      "import": {
+        "types": "./pregel.d.ts",
+        "default": "./pregel.js"
       },
-      "import": "./pregel.js",
-      "require": "./pregel.cjs"
+      "require": {
+        "types": "./pregel.d.cts",
+        "default": "./pregel.cjs"
+      },
+      "input": "./src/pregel.ts"
     },
     "./prebuilt": {
-      "types": {
-        "import": "./prebuilt.d.ts",
-        "require": "./prebuilt.d.cts",
-        "default": "./prebuilt.d.ts"
+      "import": {
+        "types": "./prebuilt.d.ts",
+        "default": "./prebuilt.js"
       },
-      "import": "./prebuilt.js",
-      "require": "./prebuilt.cjs"
+      "require": {
+        "types": "./prebuilt.d.cts",
+        "default": "./prebuilt.cjs"
+      },
+      "input": "./src/prebuilt.ts"
     },
     "./remote": {
-      "types": {
-        "import": "./remote.d.ts",
-        "require": "./remote.d.cts",
-        "default": "./remote.d.ts"
+      "import": {
+        "types": "./remote.d.ts",
+        "default": "./remote.js"
       },
-      "import": "./remote.js",
-      "require": "./remote.cjs"
+      "require": {
+        "types": "./remote.d.cts",
+        "default": "./remote.cjs"
+      },
+      "input": "./src/remote.ts"
     },
     "./zod": {
-      "types": {
-        "import": "./zod.d.ts",
-        "require": "./zod.d.cts",
-        "default": "./zod.d.ts"
+      "import": {
+        "types": "./zod.d.ts",
+        "default": "./zod.js"
       },
-      "import": "./zod.js",
-      "require": "./zod.cjs"
+      "require": {
+        "types": "./zod.d.cts",
+        "default": "./zod.cjs"
+      },
+      "input": "./src/zod.ts"
     },
     "./zod/schema": {
-      "types": {
-        "import": "./zod/schema.d.ts",
-        "require": "./zod/schema.d.cts",
-        "default": "./zod/schema.d.ts"
+      "import": {
+        "types": "./zod/schema.d.ts",
+        "default": "./zod/schema.js"
       },
-      "import": "./zod/schema.js",
-      "require": "./zod/schema.cjs"
+      "require": {
+        "types": "./zod/schema.d.cts",
+        "default": "./zod/schema.cjs"
+      },
+      "input": "./src/zod/schema.ts"
     },
     "./package.json": "./package.json"
   },
