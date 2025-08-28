@@ -89,10 +89,6 @@
     "validate-checkpointer": "./bin/cli.js"
   },
   "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts",
-    "index.d.cts"
+    "dist/"
   ]
 }

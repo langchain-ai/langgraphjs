@@ -182,34 +182,6 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts",
-    "index.d.cts",
-    "web.cjs",
-    "web.js",
-    "web.d.ts",
-    "web.d.cts",
-    "pregel.cjs",
-    "pregel.js",
-    "pregel.d.ts",
-    "pregel.d.cts",
-    "prebuilt.cjs",
-    "prebuilt.js",
-    "prebuilt.d.ts",
-    "prebuilt.d.cts",
-    "remote.cjs",
-    "remote.js",
-    "remote.d.ts",
-    "remote.d.cts",
-    "zod.cjs",
-    "zod.js",
-    "zod.d.ts",
-    "zod.d.cts",
-    "zod/schema.cjs",
-    "zod/schema.js",
-    "zod/schema.d.ts",
-    "zod/schema.d.cts"
+    "dist/"
   ]
 }
