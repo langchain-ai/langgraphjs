@@ -33,7 +33,7 @@
     "uuid": "^10.0.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
   },
   "devDependencies": {
     "@langchain/scripts": ">=0.1.3 <0.2.0",

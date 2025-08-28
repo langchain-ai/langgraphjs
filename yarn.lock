@@ -1796,7 +1796,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1828,7 +1828,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1860,7 +1860,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1901,7 +1901,7 @@ __metadata:
     yargs: "npm:^17.7.2"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   bin:
     validate-checkpointer: ./bin/cli.js
@@ -1933,7 +1933,7 @@ __metadata:
     uuid: "npm:^10.0.0"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
   languageName: unknown
   linkType: soft
 

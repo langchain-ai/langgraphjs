@@ -33,7 +33,7 @@
     "better-sqlite3": "^11.7.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "^0.1.0"
   },
   "devDependencies": {
