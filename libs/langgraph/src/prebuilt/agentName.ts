@@ -95,7 +95,7 @@ export function _addInlineAgentName<T extends BaseMessageLike>(
 
 /**
  * Remove explicit name and content XML tags from the AI message content.
- * 
+ *
  * @deprecated migrated to `langchain` package.
  *
  * Examples:
@@ -122,7 +122,7 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
   if (Array.isArray(message.content)) {
     updatedContent = message.content
       .filter((block) => {
-        if (block.type === "text") {
+        if (block.type === "text" && typeof block.text === "string") {
           const nameMatch = block.text.match(NAME_PATTERN);
           const contentMatch = block.text.match(CONTENT_PATTERN);
           // don't include empty content blocks that were added because there was no text block to modify
@@ -137,7 +137,7 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
         return true;
       })
       .map((block) => {
-        if (block.type === "text") {
+        if (block.type === "text" && typeof block.text === "string") {
           const nameMatch = block.text.match(NAME_PATTERN);
           const contentMatch = block.text.match(CONTENT_PATTERN);
 
@@ -184,7 +184,7 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
  * Attach formatted agent names to the messages passed to and from a language model.
  *
  * This is useful for making a message history with multiple agents more coherent.
- * 
+ *
  * * @deprecated migrated to `langchain` package.
  *
  * NOTE: agent name is consumed from the message.name field.

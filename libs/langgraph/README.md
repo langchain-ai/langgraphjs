@@ -18,9 +18,8 @@ To learn more about how to use LangGraph, check out [the docs](https://langchain
 
 ```ts
 // npm install @langchain-anthropic
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createReactAgent, tool } from "langchain";
 import { ChatAnthropic } from "@langchain/anthropic";
-import { tool } from "@langchain/core/tools";
 
 import { z } from "zod";
 

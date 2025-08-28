@@ -12,7 +12,7 @@
     "test": "next lint"
   },
   "dependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@types/node": "18.15.11",

@@ -6,8 +6,8 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "homepage": "https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-cua/README.md",
   "repository": {
     "type": "git",
@@ -15,13 +15,13 @@
   },
   "scripts": {
     "build": "yarn turbo build:internal",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-cua",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepack": "yarn build",
+    "prepublishOnly": "yarn build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
@@ -35,7 +35,7 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.43",
+    "@langchain/core": "^0.3.43 || ^1.0.0-alpha",
     "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0",
     "@langchain/openai": ">=0.5.1"
   },
@@ -68,35 +68,31 @@
   },
   "exports": {
     ".": {
-      "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./utils": {
-      "types": {
-        "import": "./utils.d.ts",
-        "require": "./utils.d.cts",
-        "default": "./utils.d.ts"
+      "import": {
+        "types": "./dist/utils.d.ts",
+        "default": "./dist/utils.js"
       },
-      "import": "./utils.js",
-      "require": "./utils.cjs"
+      "require": {
+        "types": "./dist/utils.d.cts",
+        "default": "./dist/utils.cjs"
+      },
+      "input": "./src/utils.ts"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts",
-    "index.d.cts",
-    "utils.cjs",
-    "utils.js",
-    "utils.d.ts",
-    "utils.d.cts"
+    "dist/"
   ],
   "resolutions": {
     "typescript": "4.9.5"

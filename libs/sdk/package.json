@@ -6,8 +6,8 @@
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-sdk",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
-    "prepack": "yarn run build",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-sdk",
+    "prepublishOnly": "yarn build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
@@ -16,16 +16,14 @@
     "test": "vitest run",
     "typedoc": "typedoc && typedoc src/react/index.ts --out docs/react --options typedoc.react.json && typedoc src/auth/index.ts --out docs/auth --options typedoc.auth.json"
   },
-  "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "@types/json-schema": "^7.0.15",
     "p-queue": "^6.6.2",
     "p-retry": "4",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^0.3.61",
+    "@langchain/core": "^1.0.0-alpha",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
@@ -48,7 +46,7 @@
     "vitest": "^3.1.2"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },
@@ -63,101 +61,89 @@
       "optional": true
     }
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./client": {
-      "types": {
-        "import": "./client.d.ts",
-        "require": "./client.d.cts",
-        "default": "./client.d.ts"
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
       },
-      "import": "./client.js",
-      "require": "./client.cjs"
+      "require": {
+        "types": "./dist/client.d.cts",
+        "default": "./dist/client.cjs"
+      },
+      "input": "./src/client.ts"
     },
     "./auth": {
-      "types": {
-        "import": "./auth.d.ts",
-        "require": "./auth.d.cts",
-        "default": "./auth.d.ts"
+      "import": {
+        "types": "./dist/auth/index.d.ts",
+        "default": "./dist/auth/index.js"
       },
-      "import": "./auth.js",
-      "require": "./auth.cjs"
+      "require": {
+        "types": "./dist/auth/index.d.cts",
+        "default": "./dist/auth/index.cjs"
+      },
+      "input": "./src/auth/index.ts"
     },
     "./react": {
-      "types": {
-        "import": "./react.d.ts",
-        "require": "./react.d.cts",
-        "default": "./react.d.ts"
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
       },
-      "import": "./react.js",
-      "require": "./react.cjs"
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      },
+      "input": "./src/react/index.ts"
     },
     "./logging": {
-      "types": {
-        "import": "./logging.d.ts",
-        "require": "./logging.d.cts",
-        "default": "./logging.d.ts"
+      "import": {
+        "types": "./dist/logging/index.d.ts",
+        "default": "./dist/logging/index.js"
       },
-      "import": "./logging.js",
-      "require": "./logging.cjs"
+      "require": {
+        "types": "./dist/logging/index.d.cts",
+        "default": "./dist/logging/index.cjs"
+      },
+      "input": "./src/logging/index.ts"
     },
     "./react-ui": {
-      "types": {
-        "import": "./react-ui.d.ts",
-        "require": "./react-ui.d.cts",
-        "default": "./react-ui.d.ts"
+      "import": {
+        "types": "./dist/react-ui/index.d.ts",
+        "default": "./dist/react-ui/index.js"
       },
-      "import": "./react-ui.js",
-      "require": "./react-ui.cjs"
+      "require": {
+        "types": "./dist/react-ui/index.d.cts",
+        "default": "./dist/react-ui/index.cjs"
+      },
+      "input": "./src/react-ui/index.ts"
     },
     "./react-ui/server": {
-      "types": {
-        "import": "./react-ui/server.d.ts",
-        "require": "./react-ui/server.d.cts",
-        "default": "./react-ui/server.d.ts"
+      "import": {
+        "types": "./dist/react-ui/server/index.d.ts",
+        "default": "./dist/react-ui/server/index.js"
       },
-      "import": "./react-ui/server.js",
-      "require": "./react-ui/server.cjs"
+      "require": {
+        "types": "./dist/react-ui/server/index.d.cts",
+        "default": "./dist/react-ui/server/index.cjs"
+      },
+      "input": "./src/react-ui/server/index.ts"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts",
-    "index.d.cts",
-    "client.cjs",
-    "client.js",
-    "client.d.ts",
-    "client.d.cts",
-    "auth.cjs",
-    "auth.js",
-    "auth.d.ts",
-    "auth.d.cts",
-    "react.cjs",
-    "react.js",
-    "react.d.ts",
-    "react.d.cts",
-    "logging.cjs",
-    "logging.js",
-    "logging.d.ts",
-    "logging.d.cts",
-    "react-ui.cjs",
-    "react-ui.js",
-    "react-ui.d.ts",
-    "react-ui.d.cts",
-    "react-ui/server.cjs",
-    "react-ui/server.js",
-    "react-ui/server.d.ts",
-    "react-ui/server.d.cts"
+    "dist/"
   ]
 }
