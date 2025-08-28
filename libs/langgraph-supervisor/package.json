@@ -34,8 +34,8 @@
     "zod": "^3.25.32"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.58",
-    "@langchain/langgraph": "^0.2.72 || ^0.3.0 || ^0.4.0"
+    "@langchain/core": "^0.3.58 || ^1.0.0-alpha",
+    "@langchain/langgraph": "^0.2.72 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha"
   },
   "devDependencies": {
     "@langchain/langgraph": "workspace:*",
