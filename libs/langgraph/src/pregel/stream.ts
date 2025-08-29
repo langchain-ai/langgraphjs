@@ -13,7 +13,7 @@ export class IterableReadableStreamWithAbortSignal<
 > extends IterableReadableStream<T> {
   protected _abortController: AbortController;
 
-  protected _reader: ReadableStreamDefaultReader<T>;
+  protected _innerReader: ReadableStreamDefaultReader<T>;
 
   /**
    * @param readableStream - The stream to wrap.
@@ -43,7 +43,7 @@ export class IterableReadableStreamWithAbortSignal<
       },
     });
     this._abortController = ac;
-    this._reader = reader;
+    this._innerReader = reader;
   }
 
   /**
@@ -53,7 +53,7 @@ export class IterableReadableStreamWithAbortSignal<
    */
   override async cancel(reason?: unknown) {
     this._abortController.abort(reason);
-    this._reader.releaseLock();
+    this._innerReader.releaseLock();
   }
 
   /**
