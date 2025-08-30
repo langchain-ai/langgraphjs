@@ -15,7 +15,8 @@ import {
   PendingWrite,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
-import { RedisSaver, ShallowRedisSaver } from "../index.js";
+import { RedisSaver } from "../index.js";
+import { ShallowRedisSaver } from "../shallow.js";
 import { GenericContainer, StartedTestContainer } from "testcontainers";
 import { createClient } from "redis";
 import { RunnableConfig } from "@langchain/core/runnables";

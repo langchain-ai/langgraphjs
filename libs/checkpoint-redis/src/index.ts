@@ -314,7 +314,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       const limit = options?.limit ?? 10;
 
       try {
-        let documents = [];
+        let documents: any[] = [];
         
         // Handle 'before' parameter - need to find the before checkpoint first
         if (options?.before?.configurable?.checkpoint_id) {
@@ -336,7 +336,7 @@ export class RedisSaver extends BaseCheckpointSaver {
             );
             
             if (beforeSearch.documents.length > 0) {
-              const beforeTimestamp = beforeSearch.documents[0].value.checkpoint_ts;
+              const beforeTimestamp = beforeSearch.documents[0].value.checkpoint_ts as number;
               
               // Now search for checkpoints older than this timestamp
               // Add timestamp constraint to the original query
@@ -869,6 +869,3 @@ function deterministicStringify(obj: any): string {
     return value;
   });
 }
-
-export { ShallowRedisSaver } from "./shallow.js";
-export { RedisStore } from "./store.js";

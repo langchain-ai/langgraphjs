@@ -13,6 +13,8 @@ export const config = {
   internals: [/node\:/, /@langchain\/core\//, /p-queue/, /p-retry/],
   entrypoints: {
     index: "index",
+    shallow: "shallow",
+    store: "store",
   },
   tsConfigPath: resolve("./tsconfig.json"),
   cjsSource: "./dist-cjs",

@@ -42,7 +42,7 @@ For Redis versions lower than 8.0, you'll need to:
 ### Standard Checkpoint Saver
 
 ```typescript
-import {RedisSaver} from "@langchain/langgraph-checkpoint-redis";
+import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
 
 const checkpointer = await RedisSaver.fromUrl(
     "redis://localhost:6379",
@@ -73,7 +73,7 @@ const loaded = await checkpointer.get(config);
 The `ShallowRedisSaver` is a memory-optimized variant that only keeps the latest checkpoint per thread:
 
 ```typescript
-import {ShallowRedisSaver} from "@langchain/langgraph-checkpoint-redis";
+import { ShallowRedisSaver } from "@langchain/langgraph-checkpoint-redis/shallow";
 
 // Create a shallow saver that only keeps the latest checkpoint
 const shallowSaver = await ShallowRedisSaver.fromUrl("redis://localhost:6379");
@@ -110,7 +110,7 @@ Key differences from RedisSaver:
 The `RedisStore` provides a key-value store with optional vector search capabilities:
 
 ```typescript
-import {RedisStore} from "@langchain/langgraph-checkpoint-redis";
+import { RedisStore } from "@langchain/langgraph-checkpoint-redis/store";
 
 // Basic key-value store
 const store = await RedisStore.fromConnString("redis://localhost:6379");
@@ -174,7 +174,7 @@ const checkpointer = await RedisSaver.fromUrl("redis://localhost:6379", ttlConfi
 ### Running Tests
 
 ```bash
-# Run tests (uses TestContainers automatically)
+# Run tests (uses TestContainers)
 yarn test
 
 # Run tests in watch mode
