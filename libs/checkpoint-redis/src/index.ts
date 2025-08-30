@@ -314,76 +314,64 @@ export class RedisSaver extends BaseCheckpointSaver {
       const limit = options?.limit ?? 10;
 
       try {
-        // First get a larger set if we need to filter by 'before'
-        let searchLimit = options?.before ? 100 : limit;
-        let searchQuery = query;
-
-        const results = await this.client.ft.search(
-          "checkpoints",
-          searchQuery,
-          {
-            LIMIT: { from: 0, size: searchLimit },
-            SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
-          }
-        );
-
-        let documents = results.documents;
-
-        // Handle 'before' parameter - need to search cross-namespace for the before checkpoint
+        let documents = [];
+        
+        // Handle 'before' parameter - need to find the before checkpoint first
         if (options?.before?.configurable?.checkpoint_id) {
           const beforeId = options.before.configurable.checkpoint_id;
-          let beforeIndex = documents.findIndex(
-            (doc: any) => doc.value.checkpoint_id === beforeId
-          );
-
-          // If before checkpoint not found in current namespace search, search globally
-          if (
-            beforeIndex === -1 &&
-            config?.configurable?.checkpoint_ns !== undefined
-          ) {
-            try {
-              // Add thread_id to the search query to avoid unnecessarily broad search
-              const threadId = config.configurable.thread_id.replace(/[-.@]/g, "\\$&");
-              const globalSearchQuery = `(@thread_id:{${threadId}})`;
+          
+          // First, find the checkpoint to get its timestamp
+          // We need to search across all namespaces if the checkpoint might be in a different namespace
+          // Escape special characters in checkpoint ID for TAG search
+          const escapedBeforeId = beforeId.replace(/[-.@]/g, "\\$&");
+          const beforeCheckpointQuery = `(@checkpoint_id:{${escapedBeforeId}})`;
+          
+          try {
+            const beforeSearch = await this.client.ft.search(
+              "checkpoints",
+              beforeCheckpointQuery,
+              {
+                LIMIT: { from: 0, size: 1 },
+              }
+            );
+            
+            if (beforeSearch.documents.length > 0) {
+              const beforeTimestamp = beforeSearch.documents[0].value.checkpoint_ts;
               
-              const globalSearch = await this.client.ft.search(
+              // Now search for checkpoints older than this timestamp
+              // Add timestamp constraint to the original query
+              const timestampQuery = `${query} (@checkpoint_ts:[-inf ${beforeTimestamp - 1}])`;
+              
+              const results = await this.client.ft.search(
                 "checkpoints",
-                globalSearchQuery,
+                timestampQuery,
                 {
-                  LIMIT: { from: 0, size: 200 },
+                  LIMIT: { from: 0, size: limit },
                   SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
                 }
               );
-
-              const beforeDoc = globalSearch.documents.find(
-                (doc: any) => doc.value.checkpoint_id === beforeId
-              );
-
-              if (
-                beforeDoc &&
-                beforeDoc.value &&
-                beforeDoc.value.checkpoint_ts !== undefined
-              ) {
-                // Find where this before checkpoint would be in the global timeline
-                const beforeTimestamp = beforeDoc.value.checkpoint_ts;
-
-                // Filter documents to only include those older than the before checkpoint
-                // checkpoint_ts is stored as Date.now() (number) in Redis
-                documents = documents.filter(
-                  (doc: any) => doc.value.checkpoint_ts < beforeTimestamp!
-                );
-              } else {
-                // Before checkpoint not found at all, return all documents
-              }
-            } catch (error) {
-              // Global search failed, return all documents
+              
+              documents = results.documents;
+            } else {
+              // Before checkpoint not found, return empty results
+              documents = [];
             }
-          } else if (beforeIndex >= 0) {
-            // Before checkpoint found in current results, return items after it
-            // Since documents are sorted DESC (newest first), items after the index are older
-            documents = documents.slice(beforeIndex + 1);
+          } catch (error) {
+            // If search fails, return empty results
+            documents = [];
           }
-          // If beforeIndex === -1 and we didn't do global search, return all documents
+        } else {
+          // No 'before' parameter, do normal search
+          const results = await this.client.ft.search(
+            "checkpoints",
+            query,
+            {
+              LIMIT: { from: 0, size: limit },
+              SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
+            }
+          );
+          
+          documents = results.documents;
         }
 
         let yieldedCount = 0;
