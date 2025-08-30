@@ -821,7 +821,14 @@ export class RedisSaver extends BaseCheckpointSaver {
     if (!this.ttlConfig?.defaultTTL) return;
 
     const ttlSeconds = Math.floor(this.ttlConfig.defaultTTL * 60);
-    await Promise.all(keys.map((key) => this.client.expire(key, ttlSeconds)));
+    const results = await Promise.allSettled(keys.map((key) => this.client.expire(key, ttlSeconds)));
+    
+    // Log any failures but don't throw - TTL is best effort
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status === 'rejected') {
+        console.warn(`Failed to set TTL for key ${keys[i]}:`, (results[i] as PromiseRejectedResult).reason);
+      }
+    }
   }
 
   private async ensureIndexes(): Promise<void> {
