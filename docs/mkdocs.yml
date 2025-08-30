@@ -52,14 +52,6 @@ plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
   - autorefs
-  - typedoc:
-      # One level of globbing is intentional
-      source: "../libs/*/*.d.ts"
-      output_dir: "./reference"
-      tsconfig: "../tsconfig.json"
-      options: "typedoc.json"
-      name: "API Reference"
-      title_link: "/" # optional, default: '/'
   - open-in-new-tab
 
 nav:
