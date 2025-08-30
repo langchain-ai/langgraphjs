@@ -18,6 +18,23 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
+// Type guard functions for operations
+export function isPutOperation(op: Operation): op is PutOperation {
+  return "value" in op && "namespace" in op && "key" in op;
+}
+
+export function isGetOperation(op: Operation): op is GetOperation {
+  return "namespace" in op && "key" in op && !("value" in op) && !("namespacePrefix" in op) && !("matchConditions" in op);
+}
+
+export function isSearchOperation(op: Operation): op is SearchOperation {
+  return "namespacePrefix" in op;
+}
+
+export function isListNamespacesOperation(op: Operation): op is ListNamespacesOperation {
+  return "matchConditions" in op;
+}
+
 // Filter types for advanced search operations
 export interface FilterOperators {
   $eq?: any;
@@ -852,29 +869,26 @@ export class RedisStore {
     for (let idx = 0; idx < ops.length; idx++) {
       const op = ops[idx];
 
-      // Execute operation based on discriminated union type
-      if ("value" in op) {
-        // PutOperation
-        const putOp = op as PutOperation;
-        await this.put(putOp.namespace, putOp.key, putOp.value);
+      // Execute operation based on type guards
+      if (isPutOperation(op)) {
+        // TypeScript now knows op is PutOperation
+        await this.put(op.namespace, op.key, op.value);
         results[idx] = null;
-      } else if ("namespacePrefix" in op) {
-        // SearchOperation
-        const searchOp = op as SearchOperation;
-        results[idx] = await this.search(searchOp.namespacePrefix, {
-          filter: searchOp.filter,
-          query: searchOp.query,
-          limit: searchOp.limit,
-          offset: searchOp.offset,
+      } else if (isSearchOperation(op)) {
+        // TypeScript now knows op is SearchOperation
+        results[idx] = await this.search(op.namespacePrefix, {
+          filter: op.filter,
+          query: op.query,
+          limit: op.limit,
+          offset: op.offset,
         });
-      } else if ("matchConditions" in op) {
-        // ListNamespacesOperation
-        const listOp = op as ListNamespacesOperation;
+      } else if (isListNamespacesOperation(op)) {
+        // TypeScript now knows op is ListNamespacesOperation
         let prefix: string[] | undefined = undefined;
         let suffix: string[] | undefined = undefined;
 
-        if (listOp.matchConditions) {
-          for (const condition of listOp.matchConditions) {
+        if (op.matchConditions) {
+          for (const condition of op.matchConditions) {
             if (condition.matchType === "prefix") {
               prefix = condition.path;
             } else if (condition.matchType === "suffix") {
@@ -886,14 +900,16 @@ export class RedisStore {
         results[idx] = await this.listNamespaces({
           prefix,
           suffix,
-          maxDepth: listOp.maxDepth,
-          limit: listOp.limit,
-          offset: listOp.offset,
+          maxDepth: op.maxDepth,
+          limit: op.limit,
+          offset: op.offset,
         });
+      } else if (isGetOperation(op)) {
+        // TypeScript now knows op is GetOperation
+        results[idx] = await this.get(op.namespace, op.key);
       } else {
-        // GetOperation (default case, has namespace and key but no value)
-        const getOp = op as GetOperation;
-        results[idx] = await this.get(getOp.namespace, getOp.key);
+        // This should never happen with proper Operation type
+        throw new Error(`Unknown operation type: ${JSON.stringify(op)}`);
       }
     }
 
