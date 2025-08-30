@@ -342,9 +342,13 @@ export class RedisSaver extends BaseCheckpointSaver {
             config?.configurable?.checkpoint_ns !== undefined
           ) {
             try {
+              // Add thread_id to the search query to avoid unnecessarily broad search
+              const threadId = config.configurable.thread_id.replace(/[-.@]/g, "\\$&");
+              const globalSearchQuery = `(@thread_id:{${threadId}})`;
+              
               const globalSearch = await this.client.ft.search(
                 "checkpoints",
-                "*",
+                globalSearchQuery,
                 {
                   LIMIT: { from: 0, size: 200 },
                   SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },

@@ -496,7 +496,9 @@ export class RedisStore {
     this.validateNamespace(namespace);
     const prefix = namespace.join(".");
     const docId = uuidv4();
-    const now = Date.now() * 1000000; // Microseconds
+    // Use high-resolution time for better timestamp precision
+    const now = Date.now() * 1000000 + Math.floor(performance.now() * 1000); // Microseconds + nanoseconds component
+    let createdAt = now; // Will be overridden if document exists
 
     // Delete existing document if it exists
     // For TEXT fields, we need to match all tokens (split by dots and hyphens)
@@ -514,6 +516,11 @@ export class RedisStore {
 
       if (existing && existing.documents && existing.documents.length > 0) {
         const oldDocId = existing.documents[0].id;
+        // Preserve the original created_at timestamp
+        const existingDoc = await this.client.json.get(oldDocId);
+        if (existingDoc && typeof existingDoc === 'object' && 'created_at' in existingDoc) {
+          createdAt = (existingDoc as any).created_at;
+        }
         await this.client.del(oldDocId);
 
         // Also delete associated vector if it exists
@@ -542,7 +549,7 @@ export class RedisStore {
       prefix,
       key,
       value,
-      created_at: now,
+      created_at: createdAt,
       updated_at: now,
     };
 
