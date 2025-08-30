@@ -24,14 +24,22 @@ export function isPutOperation(op: Operation): op is PutOperation {
 }
 
 export function isGetOperation(op: Operation): op is GetOperation {
-  return "namespace" in op && "key" in op && !("value" in op) && !("namespacePrefix" in op) && !("matchConditions" in op);
+  return (
+    "namespace" in op &&
+    "key" in op &&
+    !("value" in op) &&
+    !("namespacePrefix" in op) &&
+    !("matchConditions" in op)
+  );
 }
 
 export function isSearchOperation(op: Operation): op is SearchOperation {
   return "namespacePrefix" in op;
 }
 
-export function isListNamespacesOperation(op: Operation): op is ListNamespacesOperation {
+export function isListNamespacesOperation(
+  op: Operation
+): op is ListNamespacesOperation {
   return "matchConditions" in op;
 }
 
@@ -535,7 +543,11 @@ export class RedisStore {
         const oldDocId = existing.documents[0].id;
         // Preserve the original created_at timestamp
         const existingDoc = await this.client.json.get(oldDocId);
-        if (existingDoc && typeof existingDoc === 'object' && 'created_at' in existingDoc) {
+        if (
+          existingDoc &&
+          typeof existingDoc === "object" &&
+          "created_at" in existingDoc
+        ) {
           createdAt = (existingDoc as any).created_at;
         }
         await this.client.del(oldDocId);

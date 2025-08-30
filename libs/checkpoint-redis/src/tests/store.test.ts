@@ -1527,15 +1527,19 @@ describe("RedisStore Vector Search with Distance Metrics", () => {
 // ============================================================================
 describe("Operation Type Guards", () => {
   it("should correctly identify PutOperation", async () => {
-    const { isPutOperation, isGetOperation, isSearchOperation, isListNamespacesOperation } = 
-      await import("../store.js");
-    
+    const {
+      isPutOperation,
+      isGetOperation,
+      isSearchOperation,
+      isListNamespacesOperation,
+    } = await import("../store.js");
+
     const putOp = {
       namespace: ["test"],
       key: "key1",
-      value: { data: "test" }
+      value: { data: "test" },
     };
-    
+
     expect(isPutOperation(putOp as any)).toBe(true);
     expect(isGetOperation(putOp as any)).toBe(false);
     expect(isSearchOperation(putOp as any)).toBe(false);
@@ -1543,14 +1547,18 @@ describe("Operation Type Guards", () => {
   });
 
   it("should correctly identify GetOperation", async () => {
-    const { isPutOperation, isGetOperation, isSearchOperation, isListNamespacesOperation } = 
-      await import("../store.js");
-    
+    const {
+      isPutOperation,
+      isGetOperation,
+      isSearchOperation,
+      isListNamespacesOperation,
+    } = await import("../store.js");
+
     const getOp = {
       namespace: ["test"],
-      key: "key1"
+      key: "key1",
     };
-    
+
     expect(isPutOperation(getOp as any)).toBe(false);
     expect(isGetOperation(getOp as any)).toBe(true);
     expect(isSearchOperation(getOp as any)).toBe(false);
@@ -1558,15 +1566,19 @@ describe("Operation Type Guards", () => {
   });
 
   it("should correctly identify SearchOperation", async () => {
-    const { isPutOperation, isGetOperation, isSearchOperation, isListNamespacesOperation } = 
-      await import("../store.js");
-    
+    const {
+      isPutOperation,
+      isGetOperation,
+      isSearchOperation,
+      isListNamespacesOperation,
+    } = await import("../store.js");
+
     const searchOp = {
       namespacePrefix: ["test"],
       filter: { category: "electronics" },
-      limit: 10
+      limit: 10,
     };
-    
+
     expect(isPutOperation(searchOp as any)).toBe(false);
     expect(isGetOperation(searchOp as any)).toBe(false);
     expect(isSearchOperation(searchOp as any)).toBe(true);
@@ -1574,17 +1586,19 @@ describe("Operation Type Guards", () => {
   });
 
   it("should correctly identify ListNamespacesOperation", async () => {
-    const { isPutOperation, isGetOperation, isSearchOperation, isListNamespacesOperation } = 
-      await import("../store.js");
-    
+    const {
+      isPutOperation,
+      isGetOperation,
+      isSearchOperation,
+      isListNamespacesOperation,
+    } = await import("../store.js");
+
     const listOp = {
-      matchConditions: [
-        { matchType: "prefix" as const, path: ["test"] }
-      ],
+      matchConditions: [{ matchType: "prefix" as const, path: ["test"] }],
       maxDepth: 2,
-      limit: 10
+      limit: 10,
     };
-    
+
     expect(isPutOperation(listOp as any)).toBe(false);
     expect(isGetOperation(listOp as any)).toBe(false);
     expect(isSearchOperation(listOp as any)).toBe(false);

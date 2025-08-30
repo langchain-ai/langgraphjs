@@ -285,7 +285,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       // Skip metadata filters in search query when 'before' parameter is used
       // We'll apply them after the before filtering to get correct results
-      if (!options?.before) {
+      if (!options?.before && options?.filter) {
         // Add metadata filters (but skip null values)
         for (const [key, value] of Object.entries(options.filter)) {
           if (value === undefined) {
@@ -312,78 +312,46 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       const query = queryParts.join(" ");
       const limit = options?.limit ?? 10;
+      
 
       try {
-        let documents: any[] = [];
+        // Fetch more results than the limit to handle post-filtering for 'before'
+        // When no thread_id is specified but 'before' is used, we need to fetch all results
+        const fetchLimit = options?.before && !config?.configurable?.thread_id 
+          ? 1000  // Fetch many results for global search with 'before' filtering
+          : options?.before 
+          ? limit * 10 
+          : limit;
         
-        // Handle 'before' parameter - need to find the before checkpoint first
-        if (options?.before?.configurable?.checkpoint_id) {
-          const beforeId = options.before.configurable.checkpoint_id;
-          
-          // First, find the checkpoint to get its timestamp
-          // We need to search across all namespaces if the checkpoint might be in a different namespace
-          // Escape special characters in checkpoint ID for TAG search
-          const escapedBeforeId = beforeId.replace(/[-.@]/g, "\\$&");
-          const beforeCheckpointQuery = `(@checkpoint_id:{${escapedBeforeId}})`;
-          
-          try {
-            const beforeSearch = await this.client.ft.search(
-              "checkpoints",
-              beforeCheckpointQuery,
-              {
-                LIMIT: { from: 0, size: 1 },
-              }
-            );
-            
-            if (beforeSearch.documents.length > 0) {
-              const beforeTimestamp = beforeSearch.documents[0].value.checkpoint_ts as number;
-              
-              // Now search for checkpoints older than this timestamp
-              // Add timestamp constraint to the original query
-              const timestampQuery = `${query} (@checkpoint_ts:[-inf ${beforeTimestamp - 1}])`;
-              
-              const results = await this.client.ft.search(
-                "checkpoints",
-                timestampQuery,
-                {
-                  LIMIT: { from: 0, size: limit },
-                  SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
-                }
-              );
-              
-              documents = results.documents;
-            } else {
-              // Before checkpoint not found, return empty results
-              documents = [];
-            }
-          } catch (error) {
-            // If search fails, return empty results
-            documents = [];
-          }
-        } else {
-          // No 'before' parameter, do normal search
-          const results = await this.client.ft.search(
-            "checkpoints",
-            query,
-            {
-              LIMIT: { from: 0, size: limit },
-              SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
-            }
-          );
-          
-          documents = results.documents;
-        }
+        const results = await this.client.ft.search("checkpoints", query, {
+          LIMIT: { from: 0, size: fetchLimit },
+          SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
+        });
+
+        let documents = results.documents;
 
         let yieldedCount = 0;
 
         for (const doc of documents) {
           if (yieldedCount >= limit) break;
+          
+          // Handle 'before' parameter - filter based on checkpoint_id comparison
+          // UUID6 IDs are time-sortable, so string comparison works for ordering
+          if (options?.before?.configurable?.checkpoint_id) {
+            const currentCheckpointId = doc.value.checkpoint_id as string;
+            const beforeCheckpointId = options.before.configurable.checkpoint_id;
+            
+            // Skip checkpoints that are not before the specified checkpoint
+            if (currentCheckpointId >= beforeCheckpointId) {
+              continue;
+            }
+          }
 
           const jsonDoc = doc.value;
 
           // Apply metadata filters manually (either for null filters or when before parameter was used)
           let matches = true;
-          if (hasNullFilter || options?.before) {
+          if ((hasNullFilter || options?.before) && options?.filter) {
             for (const [filterKey, filterValue] of Object.entries(
               options.filter
             )) {
@@ -435,7 +403,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       // If search failed due to missing index, fall through to regular listing
       if (config?.configurable?.thread_id) {
-        // Fall back to regular listing with manual filtering
+        // Fall back to regular listing with manual filtering when thread_id is specified
         const threadId = config.configurable.thread_id;
         const checkpointNs = config.configurable.checkpoint_ns ?? "";
         const pattern = `checkpoint:${threadId}:${checkpointNs}:*`;
@@ -502,6 +470,81 @@ export class RedisSaver extends BaseCheckpointSaver {
               pendingWrites
             );
           }
+        }
+      } else {
+        // Fall back to global search when thread_id is undefined
+        // This is needed for validation tests that search globally with 'before' parameter
+        const globalPattern = config?.configurable?.checkpoint_ns !== undefined
+          ? `checkpoint:*:${config.configurable.checkpoint_ns === "" ? "__empty__" : config.configurable.checkpoint_ns}:*`
+          : "checkpoint:*";
+        
+        const allKeys = await (this.client as any).keys(globalPattern);
+        const allDocuments: { key: string; doc: CheckpointDocument }[] = [];
+
+        // Load all matching documents
+        for (const key of allKeys) {
+          const jsonDoc = (await this.client.json.get(key)) as CheckpointDocument | null;
+          if (jsonDoc) {
+            allDocuments.push({ key, doc: jsonDoc });
+          }
+        }
+
+        // Sort by timestamp (descending) to match the search behavior
+        allDocuments.sort((a, b) => b.doc.checkpoint_ts - a.doc.checkpoint_ts);
+
+        let yieldedCount = 0;
+        const limit = options?.limit ?? 10;
+
+        for (const { doc: jsonDoc } of allDocuments) {
+          if (yieldedCount >= limit) break;
+
+          // Handle 'before' parameter - filter based on checkpoint_id comparison  
+          if (options?.before?.configurable?.checkpoint_id) {
+            const currentCheckpointId = jsonDoc.checkpoint_id;
+            const beforeCheckpointId = options.before.configurable.checkpoint_id;
+            
+            // Skip checkpoints that are not before the specified checkpoint
+            if (currentCheckpointId >= beforeCheckpointId) {
+              continue;
+            }
+          }
+
+          // Apply metadata filters manually
+          let matches = true;
+          if (options?.filter) {
+            for (const [filterKey, filterValue] of Object.entries(options.filter)) {
+              if (filterValue === null) {
+                // Check if the field exists and is null in metadata
+                const metadataValue = (jsonDoc.metadata as any)?.[filterKey];
+                if (metadataValue !== null) {
+                  matches = false;
+                  break;
+                }
+              } else if (filterValue !== undefined) {
+                // Check other metadata values
+                const metadataValue = (jsonDoc.metadata as any)?.[filterKey];
+                // For objects, do deep equality check with deterministic key ordering
+                if (typeof filterValue === "object" && filterValue !== null) {
+                  if (
+                    deterministicStringify(metadataValue) !==
+                    deterministicStringify(filterValue)
+                  ) {
+                    matches = false;
+                    break;
+                  }
+                } else if (metadataValue !== filterValue) {
+                  matches = false;
+                  break;
+                }
+              }
+            }
+            if (!matches) continue;
+          }
+
+          // Load checkpoint with pending writes and migrate sends
+          const { checkpoint, pendingWrites } = await this.loadCheckpointWithWrites(jsonDoc);
+          yield this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
+          yieldedCount++;
         }
       }
 
@@ -813,12 +856,17 @@ export class RedisSaver extends BaseCheckpointSaver {
     if (!this.ttlConfig?.defaultTTL) return;
 
     const ttlSeconds = Math.floor(this.ttlConfig.defaultTTL * 60);
-    const results = await Promise.allSettled(keys.map((key) => this.client.expire(key, ttlSeconds)));
-    
+    const results = await Promise.allSettled(
+      keys.map((key) => this.client.expire(key, ttlSeconds))
+    );
+
     // Log any failures but don't throw - TTL is best effort
     for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'rejected') {
-        console.warn(`Failed to set TTL for key ${keys[i]}:`, (results[i] as PromiseRejectedResult).reason);
+      if (results[i].status === "rejected") {
+        console.warn(
+          `Failed to set TTL for key ${keys[i]}:`,
+          (results[i] as PromiseRejectedResult).reason
+        );
       }
     }
   }
