@@ -312,17 +312,17 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       const query = queryParts.join(" ");
       const limit = options?.limit ?? 10;
-      
 
       try {
         // Fetch more results than the limit to handle post-filtering for 'before'
         // When no thread_id is specified but 'before' is used, we need to fetch all results
-        const fetchLimit = options?.before && !config?.configurable?.thread_id 
-          ? 1000  // Fetch many results for global search with 'before' filtering
-          : options?.before 
-          ? limit * 10 
-          : limit;
-        
+        const fetchLimit =
+          options?.before && !config?.configurable?.thread_id
+            ? 1000 // Fetch many results for global search with 'before' filtering
+            : options?.before
+            ? limit * 10
+            : limit;
+
         const results = await this.client.ft.search("checkpoints", query, {
           LIMIT: { from: 0, size: fetchLimit },
           SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
@@ -334,13 +334,14 @@ export class RedisSaver extends BaseCheckpointSaver {
 
         for (const doc of documents) {
           if (yieldedCount >= limit) break;
-          
+
           // Handle 'before' parameter - filter based on checkpoint_id comparison
           // UUID6 IDs are time-sortable, so string comparison works for ordering
           if (options?.before?.configurable?.checkpoint_id) {
             const currentCheckpointId = doc.value.checkpoint_id as string;
-            const beforeCheckpointId = options.before.configurable.checkpoint_id;
-            
+            const beforeCheckpointId =
+              options.before.configurable.checkpoint_id;
+
             // Skip checkpoints that are not before the specified checkpoint
             if (currentCheckpointId >= beforeCheckpointId) {
               continue;
@@ -474,16 +475,23 @@ export class RedisSaver extends BaseCheckpointSaver {
       } else {
         // Fall back to global search when thread_id is undefined
         // This is needed for validation tests that search globally with 'before' parameter
-        const globalPattern = config?.configurable?.checkpoint_ns !== undefined
-          ? `checkpoint:*:${config.configurable.checkpoint_ns === "" ? "__empty__" : config.configurable.checkpoint_ns}:*`
-          : "checkpoint:*";
-        
+        const globalPattern =
+          config?.configurable?.checkpoint_ns !== undefined
+            ? `checkpoint:*:${
+                config.configurable.checkpoint_ns === ""
+                  ? "__empty__"
+                  : config.configurable.checkpoint_ns
+              }:*`
+            : "checkpoint:*";
+
         const allKeys = await (this.client as any).keys(globalPattern);
         const allDocuments: { key: string; doc: CheckpointDocument }[] = [];
 
         // Load all matching documents
         for (const key of allKeys) {
-          const jsonDoc = (await this.client.json.get(key)) as CheckpointDocument | null;
+          const jsonDoc = (await this.client.json.get(
+            key
+          )) as CheckpointDocument | null;
           if (jsonDoc) {
             allDocuments.push({ key, doc: jsonDoc });
           }
@@ -498,11 +506,12 @@ export class RedisSaver extends BaseCheckpointSaver {
         for (const { doc: jsonDoc } of allDocuments) {
           if (yieldedCount >= limit) break;
 
-          // Handle 'before' parameter - filter based on checkpoint_id comparison  
+          // Handle 'before' parameter - filter based on checkpoint_id comparison
           if (options?.before?.configurable?.checkpoint_id) {
             const currentCheckpointId = jsonDoc.checkpoint_id;
-            const beforeCheckpointId = options.before.configurable.checkpoint_id;
-            
+            const beforeCheckpointId =
+              options.before.configurable.checkpoint_id;
+
             // Skip checkpoints that are not before the specified checkpoint
             if (currentCheckpointId >= beforeCheckpointId) {
               continue;
@@ -512,7 +521,9 @@ export class RedisSaver extends BaseCheckpointSaver {
           // Apply metadata filters manually
           let matches = true;
           if (options?.filter) {
-            for (const [filterKey, filterValue] of Object.entries(options.filter)) {
+            for (const [filterKey, filterValue] of Object.entries(
+              options.filter
+            )) {
               if (filterValue === null) {
                 // Check if the field exists and is null in metadata
                 const metadataValue = (jsonDoc.metadata as any)?.[filterKey];
@@ -542,7 +553,8 @@ export class RedisSaver extends BaseCheckpointSaver {
           }
 
           // Load checkpoint with pending writes and migrate sends
-          const { checkpoint, pendingWrites } = await this.loadCheckpointWithWrites(jsonDoc);
+          const { checkpoint, pendingWrites } =
+            await this.loadCheckpointWithWrites(jsonDoc);
           yield this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
           yieldedCount++;
         }
