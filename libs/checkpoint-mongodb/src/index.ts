@@ -36,11 +36,22 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   checkpointWritesCollectionName = "checkpoint_writes";
 
   async setup(): Promise<void> {
-    await this.db.createIndex(
-      this.checkpointCollectionName,
-      { _createdAtForTTL: 1 },
-      { expireAfterSeconds: 60 * 60 }
-    );
+    if (this.ttl != null) {
+      const { expireAfterSeconds } = this.ttl;
+      await Promise.all([
+        this.db.createIndex(
+          this.checkpointCollectionName,
+          { _createdAtForTTL: 1 },
+          { expireAfterSeconds }
+        ),
+        this.db.createIndex(
+          this.checkpointWritesCollectionName,
+          { _createdAtForTTL: 1 },
+          { expireAfterSeconds }
+        ),
+      ]);
+    }
+
     this.isSetup = true;
   }
 
