@@ -1,5 +1,17 @@
 # @langchain/langgraph-sdk
 
+## 0.1.0
+
+### Minor Changes
+
+- 35a0f1c: feat(sdk): set default limit of fetch history to 10
+- 35a0f1c: feat(sdk): set default of `fetchStateHistory` to `false`
+
+### Patch Changes
+
+- 35a0f1c: chore(sdk): decouple stream manager from React
+- 35a0f1c: fix(sdk): prevent partial history from hiding all values
+
 ## 0.0.112
 
 ### Patch Changes
