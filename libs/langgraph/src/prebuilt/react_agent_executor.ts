@@ -480,7 +480,7 @@ type ToAnnotationRoot<A extends AnyAnnotationRoot | InteropZodObject> =
 
 /**
  * @deprecated `CreateReactAgentParams` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
- * Update your import to `import { CreateReactAgentParams } from "langchain";`
+ * Update your import to `import { CreateAgentParams } from "langchain";`
  */
 export type CreateReactAgentParams<
   A extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
@@ -623,7 +623,7 @@ export type CreateReactAgentParams<
 
 /**
  * @deprecated `createReactAgent` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
- * Update your import to `import { createReactAgent } from "langchain";`
+ * Update your import to `import { createAgent } from "langchain";`
  *
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
  *
