@@ -39,16 +39,12 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     if (this.ttl != null) {
       const { expireAfterSeconds } = this.ttl;
       await Promise.all([
-        this.db.createIndex(
-          this.checkpointCollectionName,
-          { _createdAtForTTL: 1 },
-          { expireAfterSeconds }
-        ),
-        this.db.createIndex(
-          this.checkpointWritesCollectionName,
-          { _createdAtForTTL: 1 },
-          { expireAfterSeconds }
-        ),
+        this.db
+          .collection(this.checkpointCollectionName)
+          .createIndex({ _createdAtForTTL: 1 }, { expireAfterSeconds }),
+        this.db
+          .collection(this.checkpointWritesCollectionName)
+          .createIndex({ _createdAtForTTL: 1 }, { expireAfterSeconds }),
       ]);
     }
 
@@ -338,7 +334,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         return {
           updateOne: {
             filter: upsertQuery,
-            update: { $set: { channel, type, value: serializedValue } },
+            update: {
+              $set: {
+                channel,
+                type,
+                value: serializedValue,
+                ...(this.ttl ? { _createdAtForTTL: new Date() } : {}),
+              },
+            },
             upsert: true,
           },
         };

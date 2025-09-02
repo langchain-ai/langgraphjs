@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterEach, afterAll } from "vitest";
 import { MongoClient } from "mongodb";
 import {
   Checkpoint,
@@ -47,128 +47,149 @@ const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!, {
   auth: { username: "user", password: "password" },
 });
 
-afterAll(async () => {
+afterEach(async () => {
   const db = client.db();
   await db.dropCollection("checkpoints");
   await db.dropCollection("checkpoint_writes");
+});
+
+afterAll(async () => {
   await client.close();
 });
 
 describe("MongoDBSaver", () => {
-  it("should save and retrieve checkpoints correctly", async () => {
-    const saver = new MongoDBSaver({ client });
+  it.each([{ ttl: undefined }, { ttl: { expireAfterSeconds: 60 * 60 } }])(
+    "should save and retrieve checkpoints correctly (%s)",
+    async ({ ttl }) => {
+      const saver = new MongoDBSaver({ client, ttl });
+      await saver.setup();
 
-    // get undefined checkpoint
-    const undefinedCheckpoint = await saver.getTuple({
-      configurable: { thread_id: "1" },
-    });
-    expect(undefinedCheckpoint).toBeUndefined();
+      const threadId = crypto.randomUUID();
 
-    // save first checkpoint
-    const runnableConfig = await saver.put(
-      { configurable: { thread_id: "1" } },
-      checkpoint1,
-      { source: "update", step: -1, parents: {} }
-    );
-    expect(runnableConfig).toEqual({
-      configurable: {
-        thread_id: "1",
-        checkpoint_ns: "",
-        checkpoint_id: checkpoint1.id,
-      },
-    });
+      // get undefined checkpoint
+      const undefinedCheckpoint = await saver.getTuple({
+        configurable: { thread_id: threadId },
+      });
+      expect(undefinedCheckpoint).toBeUndefined();
 
-    // add some writes
-    await saver.putWrites(
-      {
+      // save first checkpoint
+      const runnableConfig = await saver.put(
+        { configurable: { thread_id: threadId } },
+        checkpoint1,
+        { source: "update", step: -1, parents: {} }
+      );
+      expect(runnableConfig).toEqual({
         configurable: {
-          checkpoint_id: checkpoint1.id,
+          thread_id: threadId,
           checkpoint_ns: "",
-          thread_id: "1",
+          checkpoint_id: checkpoint1.id,
         },
-      },
-      [["bar", "baz"]],
-      "foo"
-    );
+      });
 
-    // get first checkpoint tuple
-    const firstCheckpointTuple = await saver.getTuple({
-      configurable: { thread_id: "1" },
-    });
-    expect(firstCheckpointTuple?.config).toEqual({
-      configurable: {
-        thread_id: "1",
-        checkpoint_ns: "",
-        checkpoint_id: checkpoint1.id,
-      },
-    });
-    expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
-    expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
-    expect(firstCheckpointTuple?.pendingWrites).toEqual([
-      ["foo", "bar", "baz"],
-    ]);
+      // add some writes
+      await saver.putWrites(
+        {
+          configurable: {
+            checkpoint_id: checkpoint1.id,
+            checkpoint_ns: "",
+            thread_id: threadId,
+          },
+        },
+        [["bar", "baz"]],
+        "foo"
+      );
 
-    // save second checkpoint
-    await saver.put(
-      {
+      // get first checkpoint tuple
+      const firstCheckpointTuple = await saver.getTuple({
+        configurable: { thread_id: threadId },
+      });
+      expect(firstCheckpointTuple?.config).toEqual({
         configurable: {
-          thread_id: "1",
+          thread_id: threadId,
+          checkpoint_ns: "",
+          checkpoint_id: checkpoint1.id,
+        },
+      });
+      expect(firstCheckpointTuple?.checkpoint).toEqual(checkpoint1);
+      expect(firstCheckpointTuple?.parentConfig).toBeUndefined();
+      expect(firstCheckpointTuple?.pendingWrites).toEqual([
+        ["foo", "bar", "baz"],
+      ]);
+
+      // save second checkpoint
+      await saver.put(
+        {
+          configurable: {
+            thread_id: threadId,
+            checkpoint_id: "2024-04-18T17:19:07.952Z",
+          },
+        },
+        checkpoint2,
+        { source: "update", step: -1, parents: {} }
+      );
+
+      // verify that parentTs is set and retrieved correctly for second checkpoint
+      const secondCheckpointTuple = await saver.getTuple({
+        configurable: { thread_id: threadId },
+      });
+      expect(secondCheckpointTuple?.parentConfig).toEqual({
+        configurable: {
+          thread_id: threadId,
+          checkpoint_ns: "",
           checkpoint_id: "2024-04-18T17:19:07.952Z",
         },
-      },
-      checkpoint2,
-      { source: "update", step: -1, parents: {} }
-    );
+      });
 
-    // verify that parentTs is set and retrieved correctly for second checkpoint
-    const secondCheckpointTuple = await saver.getTuple({
-      configurable: { thread_id: "1" },
-    });
-    expect(secondCheckpointTuple?.parentConfig).toEqual({
-      configurable: {
-        thread_id: "1",
-        checkpoint_ns: "",
-        checkpoint_id: "2024-04-18T17:19:07.952Z",
-      },
-    });
+      // list checkpoints
+      const checkpointTupleGenerator = saver.list({
+        configurable: { thread_id: threadId },
+      });
+      const checkpointTuples: CheckpointTuple[] = [];
+      for await (const checkpoint of checkpointTupleGenerator) {
+        checkpointTuples.push(checkpoint);
+      }
+      expect(checkpointTuples.length).toBe(2);
 
-    // list checkpoints
-    const checkpointTupleGenerator = saver.list({
-      configurable: { thread_id: "1" },
-    });
-    const checkpointTuples: CheckpointTuple[] = [];
-    for await (const checkpoint of checkpointTupleGenerator) {
-      checkpointTuples.push(checkpoint);
+      const checkpointTuple1 = checkpointTuples[0];
+      const checkpointTuple2 = checkpointTuples[1];
+      expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
+      expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
     }
-    expect(checkpointTuples.length).toBe(2);
-
-    const checkpointTuple1 = checkpointTuples[0];
-    const checkpointTuple2 = checkpointTuples[1];
-    expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
-    expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
-  });
+  );
 
   it("should delete thread", async () => {
+    const threadId1 = crypto.randomUUID();
+    const threadId2 = crypto.randomUUID();
+
     const saver = new MongoDBSaver({ client });
-    await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
-      source: "update",
-      step: -1,
-      parents: {},
-    });
 
-    await saver.put({ configurable: { thread_id: "2" } }, emptyCheckpoint(), {
-      source: "update",
-      step: -1,
-      parents: {},
-    });
+    await saver.put(
+      { configurable: { thread_id: threadId1 } },
+      emptyCheckpoint(),
+      {
+        source: "update",
+        step: -1,
+        parents: {},
+      }
+    );
 
-    await saver.deleteThread("1");
+    await saver.put(
+      { configurable: { thread_id: threadId2 } },
+      emptyCheckpoint(),
+      {
+        source: "update",
+        step: -1,
+        parents: {},
+      }
+    );
+
+    await saver.deleteThread(threadId1);
 
     expect(
-      await saver.getTuple({ configurable: { thread_id: "1" } })
+      await saver.getTuple({ configurable: { thread_id: threadId1 } })
     ).toBeUndefined();
     expect(
-      await saver.getTuple({ configurable: { thread_id: "2" } })
+      await saver.getTuple({ configurable: { thread_id: threadId2 } })
     ).toBeDefined();
   });
 });
