@@ -28,7 +28,7 @@ export OPENAI_API_KEY=<your_api_key>
 ```ts
 import { z } from "zod";
 import { ChatOpenAI } from "@langchain/openai";
-import { tool, createReactAgent } from "langchain";
+import { tool, createAgent } from "langchain";
 import { MemorySaver } from "@langchain/langgraph";
 import { createSwarm, createHandoffTool } from "@langchain/langgraph-swarm";
 
@@ -48,14 +48,14 @@ const add = tool(
 );
 
 // Create agents with handoff tools
-const alice = createReactAgent({
+const alice = createAgent({
   llm: model,
   tools: [add, createHandoffTool({ agentName: "Bob" })],
   name: "Alice",
   prompt: "You are Alice, an addition expert."
 });
 
-const bob = createReactAgent({
+const bob = createAgent({
   llm: model,
   tools: [createHandoffTool({ 
     agentName: "Alice", 
