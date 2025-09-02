@@ -16,11 +16,7 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
-   /**
-   * Change 1 Made ttl optional 
-   */
-   enableTTL?:boolean
-  
+  ttl?: { expireAfterSeconds: number };
 };
 
 /**
@@ -28,18 +24,36 @@ export type MongoDBSaverParams = {
  */
 export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
-  
+
   protected db: MongoDatabase;
+
+  protected ttl: { expireAfterSeconds: number } | undefined;
+
+  protected isSetup: boolean;
 
   checkpointCollectionName = "checkpoints";
 
   checkpointWritesCollectionName = "checkpoint_writes";
-      /** Change 2:
-       * Conditionally Added _createdATForTTL if ttl is enabled
-       */
-  protected enableTTL:boolean
- 
 
+  async setup(): Promise<void> {
+    await this.db.createIndex(
+      this.checkpointCollectionName,
+      { _createdAtForTTL: 1 },
+      { expireAfterSeconds: 60 * 60 }
+    );
+    this.isSetup = true;
+  }
+
+  protected assertSetup() {
+    // Skip setup check if TTL is not enabled
+    if (this.ttl == null) return;
+
+    if (!this.isSetup) {
+      throw new Error(
+        "MongoDBSaver is not initialized. Please call `MongoDBSaver.setup()` first before using the checkpointer."
+      );
+    }
+  }
 
   constructor(
     {
@@ -47,14 +61,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
-      enableTTL,
+      ttl,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
     super(serde);
     this.client = client;
-    this.enableTTL = enableTTL ?? false;
+    this.ttl = ttl;
     this.db = this.client.db(dbName);
+    this.isSetup = false;
+
     this.checkpointCollectionName =
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
@@ -68,6 +84,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
    * for the given thread ID is retrieved.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    this.assertSetup();
+
     const {
       thread_id,
       checkpoint_ns = "",
@@ -97,7 +115,6 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       thread_id,
       checkpoint_ns,
       checkpoint_id: doc.checkpoint_id,
-
     };
     const checkpoint = (await this.serde.loadsTyped(
       doc.type,
@@ -149,6 +166,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    this.assertSetup();
+
     const { limit, before, filter } = options ?? {};
     const query: Record<string, unknown> = {};
 
@@ -224,6 +243,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
+    this.assertSetup();
+
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     const checkpoint_id = checkpoint.id;
@@ -243,20 +264,13 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     if (checkpointType !== metadataType) {
       throw new Error("Mismatched checkpoint and metadata types.");
     }
-
     const doc = {
       parent_checkpoint_id: config.configurable?.checkpoint_id,
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
-      /** Change 3:
-       * Conditionally Added _createdATForTTL if ttl is enabled
-       */
-      ...(this.enableTTL ? { _createdAtForTTL: new Date() } : {}),
+      ...(this.ttl ? { _createdAtForTTL: new Date() } : {}),
     };
-    
-
-
     const upsertQuery = {
       thread_id,
       checkpoint_ns,
@@ -283,6 +297,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void> {
+    this.assertSetup();
+
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
     const checkpoint_id = config.configurable?.checkpoint_id;
