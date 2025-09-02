@@ -44,7 +44,10 @@ const threads: ThreadSaver = (() => {
 
 const checkpointer = new MemorySaver();
 
-const model = new FakeStreamingChatModel({ responses: [new AIMessage("Hey")] });
+const model = new FakeStreamingChatModel({
+  responses: [new AIMessage("Hey")],
+  sleep: 100,
+});
 const agent = new StateGraph(MessagesAnnotation)
   .addNode(
     "agent",
@@ -279,6 +282,68 @@ describe("useStream", () => {
         assistant_id: "agent",
       },
     });
+  });
+
+  it("onStop does not clear stream values", async () => {
+    const user = userEvent.setup();
+
+    function TestComponent() {
+      const { submit, stop, isLoading, messages } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+      });
+
+      return (
+        <div>
+          <div data-testid="loading">
+            {isLoading ? "Loading..." : "Not loading"}
+          </div>
+
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({
+                messages: [{ content: "Hello", type: "human" }],
+              })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={stop}>
+            Stop
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    // Wait until the first character is streamed
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("Loading...");
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("H");
+    });
+
+    // Cancel the stream
+    await user.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("Not loading");
+    });
+
+    expect(screen.getByTestId("message-1")).toHaveTextContent("H");
   });
 
   it("onStop callback is called when stop is called", async () => {
@@ -565,6 +630,7 @@ describe("useStream", () => {
       const { submit, messages, getMessagesMetadata, setBranch } = useStream({
         assistantId: "agent",
         apiKey: "test-api-key",
+        fetchStateHistory: true,
       });
 
       return (
@@ -731,48 +797,58 @@ describe("useStream", () => {
     });
   });
 
-  it("fetchStateHistory: false", async () => {
-    const user = userEvent.setup();
+  it.each([false, { limit: 2 }])(
+    "fetchStateHistory: %s",
+    async (fetchStateHistory) => {
+      const user = userEvent.setup();
 
-    function TestComponent() {
-      const { submit, messages } = useStream({
-        assistantId: "agent",
-        apiKey: "test-api-key",
-        fetchStateHistory: false,
+      function TestComponent() {
+        const { submit, messages, isLoading } = useStream({
+          assistantId: "agent",
+          apiKey: "test-api-key",
+          fetchStateHistory,
+        });
+
+        return (
+          <div>
+            <div data-testid="loading">
+              {isLoading ? "Loading..." : "Not loading"}
+            </div>
+            <div data-testid="messages">
+              {messages.map((msg, i) => (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  {typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content)}
+                </div>
+              ))}
+            </div>
+            <button
+              data-testid="submit"
+              onClick={() =>
+                submit({ messages: [{ content: "Hello", type: "human" }] })
+              }
+            >
+              Send
+            </button>
+          </div>
+        );
+      }
+
+      render(<TestComponent />);
+
+      await user.click(screen.getByTestId("submit"));
+      await waitFor(() => {
+        expect(screen.getByTestId("loading")).toHaveTextContent("Loading...");
       });
 
-      return (
-        <div>
-          <div data-testid="messages">
-            {messages.map((msg, i) => (
-              <div key={msg.id ?? i} data-testid={`message-${i}`}>
-                {typeof msg.content === "string"
-                  ? msg.content
-                  : JSON.stringify(msg.content)}
-              </div>
-            ))}
-          </div>
-          <button
-            data-testid="submit"
-            onClick={() =>
-              submit({ messages: [{ content: "Hello", type: "human" }] })
-            }
-          >
-            Send
-          </button>
-        </div>
-      );
+      await waitFor(() => {
+        expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+        expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+        expect(screen.getByTestId("loading")).toHaveTextContent("Not loading");
+      });
     }
-
-    render(<TestComponent />);
-
-    await user.click(screen.getByTestId("submit"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
-      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
-    });
-  });
+  );
 
   it("streamSubgraphs: true", async () => {
     const user = userEvent.setup();
@@ -935,6 +1011,7 @@ describe("useStream", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
       expect(screen.getByTestId("stream-metadata")).toHaveTextContent("agent");
     });
   });
