@@ -32,8 +32,8 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "^0.1.0",
-    "@langchain/langgraph-sdk": "~0.0.112",
+    "@langchain/langgraph-checkpoint": "^0.1.1",
+    "@langchain/langgraph-sdk": "~0.1.0",
     "uuid": "^10.0.0"
   },
   "peerDependencies": {
