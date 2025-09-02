@@ -9,6 +9,7 @@ export function isBaseChannel(obj: unknown): obj is BaseChannel {
   return obj != null && (obj as BaseChannel).lg_is_channel === true;
 }
 
+/** @internal */
 export abstract class BaseChannel<
   ValueType = unknown,
   UpdateType = unknown,
