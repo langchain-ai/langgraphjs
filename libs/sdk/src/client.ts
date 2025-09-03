@@ -817,6 +817,10 @@ export class ThreadsClient<
      */
     metadata?: Metadata;
     /**
+     * Filter by specific thread IDs.
+     */
+    ids?: string[];
+    /**
      * Maximum number of threads to return.
      * Defaults to 10
      */
@@ -844,6 +848,7 @@ export class ThreadsClient<
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
+        ids: query?.ids ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
         status: query?.status,

@@ -636,6 +636,7 @@ export class FileSystemThreads implements ThreadsRepo {
   async *search(
     options: {
       metadata?: Metadata;
+      ids?: string[];
       status?: ThreadStatus;
       values?: Record<string, unknown>;
       limit: number;
@@ -647,6 +648,7 @@ export class FileSystemThreads implements ThreadsRepo {
   ): AsyncGenerator<{ thread: Thread; total: number }> {
     const [filters] = await handleAuthEvent(auth, "threads:search", {
       metadata: options.metadata,
+      ids: options.ids,
       status: options.status,
       values: options.values,
       limit: options.limit,
@@ -656,6 +658,9 @@ export class FileSystemThreads implements ThreadsRepo {
     yield* this.conn.withGenerator(async function* (STORE) {
       const filtered = Object.values(STORE.threads)
         .filter((thread) => {
+          if (options.ids != null && options.ids.length > 0) {
+            if (!options.ids.includes(thread["thread_id"])) return false;
+          }
           if (
             options.metadata != null &&
             !isJsonbContained(thread["metadata"], options.metadata)
