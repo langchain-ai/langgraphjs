@@ -1,0 +1,119 @@
+diff --git a/dist/lib/converter/converter.js b/dist/lib/converter/converter.js
+index 2438a37c1ce94b8b2b2537965c374a6471a7e729..3855e44031a41c27b52ed00566dc735605fc5a60 100644
+--- a/dist/lib/converter/converter.js
++++ b/dist/lib/converter/converter.js
+@@ -442,7 +442,8 @@ let Converter = (() => {
+                 // Clone context in case deferred conversion uses different programs
+                 const entryContext = context.withScope(context.scope);
+                 entryContext.setActiveProgram(entry.program);
+-                this.convertExports(entryContext, entry, createModuleReflections);
++                // Hack 3, make sure that we flatten `index` into the root module
++                this.convertExports(entryContext, entry, entry.displayName === "index" ? false : createModuleReflections);
+             }
+             this.finalizeDeferredConversion();
+         }
+diff --git a/dist/lib/converter/plugins/GroupPlugin.js b/dist/lib/converter/plugins/GroupPlugin.js
+index 1f5ab57d619ff2a20f4b59e26d8d234f6553d9af..e879fe67665906ff2b7c901737bc4da9b3076b62 100644
+--- a/dist/lib/converter/plugins/GroupPlugin.js
++++ b/dist/lib/converter/plugins/GroupPlugin.js
+@@ -193,6 +193,10 @@ let GroupPlugin = (() => {
+                 groups.add(String(reflection.frontmatter["group"]));
+             }
+             groups.delete("");
++            // Hack: we want to group deprecated items in a separate group
++            if (reflection.isDeprecated()) {
++                groups.add("Deprecated");
++            }
+             if (groups.size === 0) {
+                 if (reflection instanceof ReferenceReflection &&
+                     groupReferencesByType) {
+diff --git a/dist/lib/output/router.js b/dist/lib/output/router.js
+index 2dadd8df70cefca52fb2d1cc104c8bf5783d1195..50c5f263740b52639681baa16abce8ccec629c6b 100644
+--- a/dist/lib/output/router.js
++++ b/dist/lib/output/router.js
+@@ -359,6 +359,8 @@ export class KindRouter extends BaseRouter {
+             reflection = reflection.parent;
+             parts.unshift(createNormalizedUrl(reflection.name));
+         }
++        const prefix = createNormalizedUrl("@langchain/");
++        if (parts[0].startsWith(prefix)) parts[0] = parts[0].slice(prefix.length);
+         const baseName = parts.join(".");
+         return `${dir}/${baseName}`;
+     }
+@@ -396,6 +398,8 @@ export class StructureRouter extends BaseRouter {
+             reflection = reflection.parent;
+             parts.unshift(...reflection.name.split("/").map(createNormalizedUrl));
+         }
++        // Hack: Make sure that we're not creating a dummy _langchain folder
++        if (parts[0] === createNormalizedUrl("@langchain")) parts.shift()
+         // This should only happen if someone tries to break things with @module
+         // I don't think it will ever occur in normal usage.
+         if (parts.includes("..")) {
+diff --git a/dist/lib/output/themes/default/DefaultTheme.js b/dist/lib/output/themes/default/DefaultTheme.js
+index b6c97e6cd7c832256ed861f2da1c414c1485f8a8..7202ab3f44ca5db6353cbae64e3a4f2a1bd6923a 100644
+--- a/dist/lib/output/themes/default/DefaultTheme.js
++++ b/dist/lib/output/themes/default/DefaultTheme.js
+@@ -234,7 +234,11 @@ let DefaultTheme = (() => {
+                     return filterMapWithNoneCollection(parent.categories);
+                 }
+                 if (parent.groups && shouldShowGroups(parent, opts)) {
+-                    return filterMapWithNoneCollection(parent.groups);
++                    // Hack: We want to group only certain groups, not all
++                    const includeGroups = ["Interfaces", "Type Aliases", "Deprecated", "Errors", "Graphs", "Functional API", "Pregel", "Constants", "Storage"];
++                    const grouped = parent.groups.filter(g => includeGroups.includes(g.title))
++                    const notGrouped = parent.groups.filter(g => !includeGroups.includes(g.title))
++                    return [...filterMap(notGrouped.flatMap(g => g.children), toNavigation), ...filterMapWithNoneCollection(grouped)];
+                 }
+                 if (opts.includeFolders && parent.childrenIncludingDocuments?.some((child) => child.name.includes("/"))) {
+                     return deriveModuleFolders(parent.childrenIncludingDocuments);
+diff --git a/dist/lib/utils/entry-point.js b/dist/lib/utils/entry-point.js
+index 0ba34b1f0d960ae1aef109c7b5bd7e2522fce418..c4d324bda6abc540f0a78647bc50f66ed2dae0a0 100644
+--- a/dist/lib/utils/entry-point.js
++++ b/dist/lib/utils/entry-point.js
+@@ -6,6 +6,7 @@ import { deriveRootDir, getCommonDirectory, MinimatchSet, nicePath, normalizePat
+ import { discoverPackageJson, glob, inferPackageEntryPointPaths, isDir } from "./fs.js";
+ import { assertNever, i18n } from "#utils";
+ import { addInferredDeclarationMapPaths, resolveDeclarationMaps } from "./declaration-maps.js";
++import { createRequire } from "node:module";
+ /**
+  * Defines how entry points are interpreted.
+  * @enum
+@@ -37,8 +38,25 @@ export function inferEntryPoints(logger, options, programs) {
+         logger.warn(i18n.no_entry_points_provided());
+         return [];
+     }
+-    const pathEntries = inferPackageEntryPointPaths(packageJson.file);
++    let pathEntries = inferPackageEntryPointPaths(packageJson.file);
+     const entryPoints = [];
++    // Hack 1: see if we can rewrite to source files
++    try {
++        const lcRootDir = getCommonDirectory(pathEntries.map((p) => p[1]));
++        const lcConfig = createRequire(import.meta.url)(join(lcRootDir, "langchain.config.js"));
++        
++        pathEntries = pathEntries.map(([origName, origPath]) => {
++            let lcName = origName;
++            if (lcName.startsWith("./")) lcName = lcName.slice(2);
++            if (lcName.startsWith(".")) lcName = "index";
++    
++            const lcEntryPoint = lcConfig.config.entrypoints[lcName];
++            if (lcEntryPoint) return [origName, resolve(lcRootDir, "src", lcEntryPoint + ".ts")];
++            return [origName, origPath];
++        });
++    } catch {
++        // pass
++    }
+     programs ||= getEntryPrograms(pathEntries.map((p) => p[1]), logger, options);
+     // See also: addInferredDeclarationMapPaths in symbol-id factory
+     const jsToTsSource = new Map();
+@@ -53,7 +71,10 @@ export function inferEntryPoints(logger, options, programs) {
+     }
+     for (const [name, path] of pathEntries) {
+         // Strip leading ./ from the display name
+-        const displayName = name.replace(/^\.\/?/, "");
++        let displayName = name.replace(/^\.\/?/, "");
++        // Hack 2: make sure we resolve displayName to "." for "index"
++        // That will allow us to collapse the URL
++        displayName ||= "index"
+         const targetPath = jsToTsSource.get(path) || resolveDeclarationMaps(path) || path;
+         const program = programs.find((p) => p.getSourceFile(targetPath));
+         if (program) {
