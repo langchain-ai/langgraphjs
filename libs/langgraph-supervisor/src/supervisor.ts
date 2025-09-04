@@ -78,7 +78,6 @@ const makeCallAgent = (
     if (agent instanceof RemoteGraph) {
       const threadId = config?.configurable?.thread_id;
       const agentThreadId = threadId && agent.name ? uuidv5(agent.name, threadId) : null;
-      // TODO: is this config right? (based on python implementation)
       conf = {
         ...config ?? {},
         configurable: {
@@ -407,7 +406,6 @@ const createSupervisor = <
     builder = builder.addNode(
       agent.name!,
       makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
-      // TODO: can this just be removed? why is an agent a subgraph of itself? Is adding the node with a the agent graph not enough?
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);
   }
