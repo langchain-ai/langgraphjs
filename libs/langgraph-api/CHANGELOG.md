@@ -1,5 +1,19 @@
 # @langchain/langgraph-api
 
+## 0.0.64
+
+### Patch Changes
+
+- 30bcfcd: Assume `http` protocol only when accessing UI components from frontend served from `localhost` or `127.0.0.1` (#1596, #1573)
+- 572de43: feat(threads): add `ids` filter to Threads.search
+
+  - SDK: `ThreadsClient.search` now accepts `ids?: string[]` and forwards it to `/threads/search`.
+  - API: `/threads/search` schema accepts `ids` and storage filters by provided thread IDs.
+
+  This enables fetching a specific set of threads directly via the search endpoint, while remaining backward compatible.
+
+  - @langchain/langgraph-ui@0.0.64
+
 ## 0.0.63
 
 ### Patch Changes
