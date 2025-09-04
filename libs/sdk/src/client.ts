@@ -1007,17 +1007,18 @@ export class ThreadsClient<
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
-    const response = await this.asyncCaller.fetch(
-      ...this.prepareFetchOptions(`/threads/${threadId}/stream`, {
-        method: "GET",
-        headers: options?.lastEventId
-          ? { "Last-Event-ID": options.lastEventId }
-          : undefined,
-        params: options?.streamMode
-          ? { stream_mode: options.streamMode }
-          : undefined,
-      })
-    );
+    let [url, init] = this.prepareFetchOptions(`/threads/${threadId}/stream`, {
+      method: "GET",
+      headers: options?.lastEventId
+        ? { "Last-Event-ID": options.lastEventId }
+        : undefined,
+      params: options?.streamMode
+        ? { stream_mode: options.streamMode }
+        : undefined,
+    });
+
+    if (this.onRequest != null) init = await this.onRequest(url, init);
+    const response = await this.asyncCaller.fetch(url, init);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: ReadableStream<{ event: string; data: any }> = (
@@ -1117,14 +1118,14 @@ export class RunsClient<
     const endpoint =
       threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`;
 
-    const response = await this.asyncCaller.fetch(
-      ...this.prepareFetchOptions(endpoint, {
-        method: "POST",
-        json,
-        timeoutMs: null,
-        signal: payload?.signal,
-      })
-    );
+    let [url, init] = this.prepareFetchOptions(endpoint, {
+      method: "POST",
+      json,
+      timeoutMs: null,
+      signal: payload?.signal,
+    });
+    if (this.onRequest != null) init = await this.onRequest(url, init);
+    const response = await this.asyncCaller.fetch(url, init);
 
     const runMetadata = getRunMetadataFromResponse(response);
     if (runMetadata) payload?.onRunCreated?.(runMetadata);
@@ -1422,25 +1423,26 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
-    const response = await this.asyncCaller.fetch(
-      ...this.prepareFetchOptions(
-        threadId != null
-          ? `/threads/${threadId}/runs/${runId}/stream`
-          : `/runs/${runId}/stream`,
-        {
-          method: "GET",
-          timeoutMs: null,
-          signal: opts?.signal,
-          headers: opts?.lastEventId
-            ? { "Last-Event-ID": opts.lastEventId }
-            : undefined,
-          params: {
-            cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
-            stream_mode: opts?.streamMode,
-          },
-        }
-      )
+    let [url, init] = this.prepareFetchOptions(
+      threadId != null
+        ? `/threads/${threadId}/runs/${runId}/stream`
+        : `/runs/${runId}/stream`,
+      {
+        method: "GET",
+        timeoutMs: null,
+        signal: opts?.signal,
+        headers: opts?.lastEventId
+          ? { "Last-Event-ID": opts.lastEventId }
+          : undefined,
+        params: {
+          cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
+          stream_mode: opts?.streamMode,
+        },
+      }
     );
+
+    if (this.onRequest != null) init = await this.onRequest(url, init);
+    const response = await this.asyncCaller.fetch(url, init);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: ReadableStream<{ event: string; data: any }> = (
@@ -1735,16 +1737,17 @@ class UiClient extends BaseClient {
     return UiClient.getOrCached(
       `${this.apiUrl}-${assistantId}-${agentName}`,
       async () => {
-        const response = await this.asyncCaller.fetch(
-          ...this.prepareFetchOptions(`/ui/${assistantId}`, {
-            headers: {
-              Accept: "text/html",
-              "Content-Type": "application/json",
-            },
-            method: "POST",
-            json: { name: agentName },
-          })
-        );
+        let [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
+          headers: {
+            Accept: "text/html",
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          json: { name: agentName },
+        });
+        if (this.onRequest != null) init = await this.onRequest(url, init);
+
+        const response = await this.asyncCaller.fetch(url, init);
         return response.text();
       }
     );

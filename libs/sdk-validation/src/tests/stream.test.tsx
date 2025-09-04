@@ -1015,4 +1015,72 @@ describe("useStream", () => {
       expect(screen.getByTestId("stream-metadata")).toHaveTextContent("agent");
     });
   });
+
+  it("onRequest gets called when a request is made", async () => {
+    const user = userEvent.setup();
+    const onRequestCallback = vi.fn();
+
+    const client = new Client({
+      onRequest: (url, init) => {
+        onRequestCallback(url.toString(), {
+          ...init,
+          body: init.body ? JSON.parse(init.body as string) : undefined,
+        });
+        return init;
+      },
+    });
+
+    function TestComponent() {
+      const { submit, messages } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+        client,
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+    });
+
+    expect(onRequestCallback.mock.calls).toMatchObject([
+      [expect.stringContaining("/threads"), { method: "POST" }],
+      [
+        expect.stringContaining("/runs/stream"),
+        {
+          method: "POST",
+          body: {
+            input: { messages: [{ content: "Hello", type: "human" }] },
+            assistant_id: "agent",
+          },
+        },
+      ],
+    ]);
+  });
 });
