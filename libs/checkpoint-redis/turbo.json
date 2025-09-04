@@ -1,0 +1,31 @@
+{
+  "extends": [
+    "//"
+  ],
+  "tasks": {
+    "build": {
+      "outputs": [
+        "dist/**",
+        "*.js",
+        "*.cjs",
+        "*.d.ts",
+        "*.d.cts"
+      ],
+      "dependsOn": [
+        "^build:internal"
+      ]
+    },
+    "build:internal": {
+      "outputs": [
+        "dist/**",
+        "*.js",
+        "*.cjs",
+        "*.d.ts",
+        "*.d.cts"
+      ],
+      "dependsOn": [
+        "^build:internal"
+      ]
+    }
+  }
+}
