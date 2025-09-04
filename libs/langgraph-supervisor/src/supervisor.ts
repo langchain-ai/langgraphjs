@@ -20,9 +20,9 @@ import {
   BaseChatModel,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
-import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import { v5 as uuidv5 } from "uuid";
+import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 
 export type { AgentNameMode };
 export { withAgentName };
@@ -75,11 +75,13 @@ const makeCallAgent = (
 
   return async (state: Record<string, unknown>, config?: RunnableConfig) => {
     let conf = config;
+    /* eslint-disable-next-line */
     if (agent instanceof RemoteGraph) {
       const threadId = config?.configurable?.thread_id;
-      const agentThreadId = threadId && agent.name ? uuidv5(agent.name, threadId) : null;
+      const agentThreadId =
+        threadId && agent.name ? uuidv5(agent.name, threadId) : null;
       conf = {
-        ...config ?? {},
+        ...(config ?? {}),
         configurable: {
           ...(config?.configurable ?? {}),
           ...{ thread_id: agentThreadId },
@@ -109,13 +111,16 @@ export type CreateSupervisorParams<
   /**
    * List of agents to manage
    */
-  agents: (CompiledStateGraph<
-    AnnotationRootT["State"],
-    AnnotationRootT["Update"],
-    string,
-    AnnotationRootT["spec"],
-    AnnotationRootT["spec"]
-  > | RemoteGraph)[];
+  agents: (
+    | CompiledStateGraph<
+        AnnotationRootT["State"],
+        AnnotationRootT["Update"],
+        string,
+        AnnotationRootT["spec"],
+        AnnotationRootT["spec"]
+      >
+    | RemoteGraph
+  )[];
 
   /**
    * Language model to use for the supervisor
@@ -340,7 +345,9 @@ const createSupervisor = <
   const handoffTools = agents.map((agent) =>
     createHandoffTool({
       agentName: agent.name!,
-      agentDescription: 'description' in agent ? (agent as any).description : undefined
+      agentDescription:
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "description" in agent ? (agent as any).description : undefined,
     })
   );
   const allTools = [...(tools ?? []), ...handoffTools];
@@ -405,7 +412,7 @@ const createSupervisor = <
   for (const agent of agents) {
     builder = builder.addNode(
       agent.name!,
-      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
+      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName)
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);
   }
