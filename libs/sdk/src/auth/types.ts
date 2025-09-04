@@ -100,6 +100,7 @@ interface ThreadDelete {
  */
 interface ThreadSearch {
   thread_id?: Maybe<string>;
+  ids?: Maybe<string[]>;
   status?: Maybe<"idle" | "busy" | "interrupted" | "error" | (string & {})>; // eslint-disable-line @typescript-eslint/ban-types
   metadata?: Maybe<Record<string, unknown>>;
   values?: Maybe<Record<string, unknown>>;

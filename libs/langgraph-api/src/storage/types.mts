@@ -283,6 +283,7 @@ export interface ThreadsRepo {
   search(
     options: {
       metadata?: Metadata;
+      ids?: string[];
       status?: ThreadStatus;
       values?: Record<string, unknown>;
       limit: number;

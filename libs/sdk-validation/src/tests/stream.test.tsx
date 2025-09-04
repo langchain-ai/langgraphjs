@@ -13,6 +13,8 @@ import {
   MessagesAnnotation,
   START,
   Runtime,
+  interrupt,
+  END,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
@@ -66,8 +68,25 @@ const parentAgent = new StateGraph(MessagesAnnotation)
   .addEdge(START, "child")
   .compile();
 
+const interruptAgent = new StateGraph(MessagesAnnotation)
+  .addNode("beforeInterrupt", async () => {
+    return { messages: [new AIMessage("Before interrupt")] };
+  })
+  .addNode("agent", async () => {
+    const resume = interrupt({ nodeName: "agent" });
+    return { messages: [new AIMessage(`Hey: ${resume}`)] };
+  })
+  .addNode("afterInterrupt", async () => {
+    return { messages: [new AIMessage("After interrupt")] };
+  })
+  .addEdge(START, "beforeInterrupt")
+  .addEdge("beforeInterrupt", "agent")
+  .addEdge("agent", "afterInterrupt")
+  .addEdge("afterInterrupt", END)
+  .compile();
+
 const app = createEmbedServer({
-  graph: { agent, parentAgent },
+  graph: { agent, parentAgent, interruptAgent },
   checkpointer,
   threads,
 });
@@ -1015,4 +1034,164 @@ describe("useStream", () => {
       expect(screen.getByTestId("stream-metadata")).toHaveTextContent("agent");
     });
   });
+
+  it("onRequest gets called when a request is made", async () => {
+    const user = userEvent.setup();
+    const onRequestCallback = vi.fn();
+
+    const client = new Client({
+      onRequest: (url, init) => {
+        onRequestCallback(url.toString(), {
+          ...init,
+          body: init.body ? JSON.parse(init.body as string) : undefined,
+        });
+        return init;
+      },
+    });
+
+    function TestComponent() {
+      const { submit, messages } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+        client,
+      });
+
+      return (
+        <div>
+          <div data-testid="messages">
+            {messages.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+    });
+
+    expect(onRequestCallback.mock.calls).toMatchObject([
+      [expect.stringContaining("/threads"), { method: "POST" }],
+      [
+        expect.stringContaining("/runs/stream"),
+        {
+          method: "POST",
+          body: {
+            input: { messages: [{ content: "Hello", type: "human" }] },
+            assistant_id: "agent",
+          },
+        },
+      ],
+    ]);
+  });
+
+  it.each([[{ fetchStateHistory: false }], [{ fetchStateHistory: true }]])(
+    "interrupts (%s)",
+    async ({ fetchStateHistory }) => {
+      const user = userEvent.setup();
+
+      function TestComponent() {
+        const { submit, interrupt, messages } = useStream<
+          { messages: Message[] },
+          { InterruptType: { nodeName: string } }
+        >({
+          assistantId: "interruptAgent",
+          apiKey: "test-api-key",
+          fetchStateHistory,
+        });
+
+        return (
+          <div>
+            <div data-testid="messages">
+              {messages.map((msg, i) => (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  {typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content)}
+                </div>
+              ))}
+            </div>
+            {interrupt ? (
+              <>
+                <div data-testid="interrupt">
+                  {interrupt.when ?? interrupt.value?.nodeName}
+                </div>
+                <button
+                  data-testid="resume"
+                  onClick={() =>
+                    submit(null, { command: { resume: "Resuming" } })
+                  }
+                >
+                  Resume
+                </button>
+              </>
+            ) : null}
+            <button
+              data-testid="submit"
+              onClick={() =>
+                submit(
+                  { messages: [{ content: "Hello", type: "human" }] },
+                  { interruptBefore: ["beforeInterrupt"] }
+                )
+              }
+            >
+              Send
+            </button>
+          </div>
+        );
+      }
+
+      render(<TestComponent />);
+
+      await user.click(screen.getByTestId("submit"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+        expect(screen.getByTestId("interrupt")).toHaveTextContent("breakpoint");
+      });
+
+      await user.click(screen.getByTestId("resume"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+        expect(screen.getByTestId("message-1")).toHaveTextContent(
+          "Before interrupt"
+        );
+        expect(screen.getByTestId("interrupt")).toHaveTextContent("agent");
+      });
+
+      await user.click(screen.getByTestId("resume"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("message-0")).toHaveTextContent("Hello");
+        expect(screen.getByTestId("message-1")).toHaveTextContent(
+          "Before interrupt"
+        );
+        expect(screen.getByTestId("message-2")).toHaveTextContent(
+          "Hey: Resuming"
+        );
+        expect(screen.getByTestId("message-3")).toHaveTextContent(
+          "After interrupt"
+        );
+      });
+    }
+  );
 });

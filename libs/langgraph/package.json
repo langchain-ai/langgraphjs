@@ -33,7 +33,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/langgraph-checkpoint": "^0.1.1",
-    "@langchain/langgraph-sdk": "~0.1.0",
+    "@langchain/langgraph-sdk": "~0.1.1",
     "uuid": "^10.0.0"
   },
   "peerDependencies": {
