@@ -1,6 +1,6 @@
 ---
 "@langchain/langgraph-sdk": patch
-"@langchain/langgraph-api": minor
+"@langchain/langgraph-api": patch
 ---
 
 feat(threads): add `ids` filter to Threads.search
