@@ -683,12 +683,12 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   // Helper method to load channel blobs (simplified - no blob support for now)
-  private async loadChannelBlobs(
-    checkpoint: Checkpoint & { channel_blobs?: any }
-  ): Promise<Checkpoint> {
-    // Since we're not using blobs anymore, just return the checkpoint as-is
-    return checkpoint;
-  }
+  // private async loadChannelBlobs(
+  //   checkpoint: Checkpoint & { channel_blobs?: any }
+  // ): Promise<Checkpoint> {
+  //   // Since we're not using blobs anymore, just return the checkpoint as-is
+  //   return checkpoint;
+  // }
 
   // Helper method to load pending writes
   private async loadPendingWrites(
