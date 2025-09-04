@@ -47,6 +47,7 @@ api.post(
         status: payload.status,
         values: payload.values,
         metadata: payload.metadata,
+        ids: payload.ids,
         limit: payload.limit ?? 10,
         offset: payload.offset ?? 0,
         sort_by: payload.sort_by ?? "created_at",

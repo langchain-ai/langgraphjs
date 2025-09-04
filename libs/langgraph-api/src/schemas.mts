@@ -332,6 +332,10 @@ export const ThreadSearchRequest = z
       .record(z.unknown())
       .describe("Metadata to search for.")
       .optional(),
+    ids: z
+      .array(z.string().uuid())
+      .describe("Filter by thread IDs.")
+      .optional(),
     status: z
       .enum(["idle", "busy", "interrupted", "error"])
       .describe("Filter by thread status.")
