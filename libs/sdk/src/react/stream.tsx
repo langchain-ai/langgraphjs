@@ -595,7 +595,20 @@ export function useStream<
     },
 
     get interrupt() {
-      // Don't show the interrupt if the stream is loading
+      if (
+        values != null &&
+        "__interrupt__" in values &&
+        Array.isArray(values.__interrupt__)
+      ) {
+        const valueInterrupts = values.__interrupt__;
+        if (valueInterrupts.length === 0) return { when: "breakpoint" };
+        if (valueInterrupts.length === 1) return valueInterrupts[0];
+
+        // TODO: fix the typing of interrupts if multiple interrupts are returned
+        return valueInterrupts;
+      }
+
+      // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
       if (stream.isLoading) return undefined;
 
       const interrupts = branchContext.threadHead?.tasks?.at(-1)?.interrupts;

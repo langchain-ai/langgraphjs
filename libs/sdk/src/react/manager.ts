@@ -271,9 +271,11 @@ export class StreamManager<
         }
 
         if (event === "values") {
-          // don't update values on interrupt values event
-          if ("__interrupt__" in data) continue;
-          this.setStreamValues(data);
+          if ("__interrupt__" in data) {
+            this.setStreamValues((prev) => ({ ...prev, ...data }));
+          } else {
+            this.setStreamValues(data);
+          }
         }
 
         if (this.matchEventType("messages", event, data)) {
