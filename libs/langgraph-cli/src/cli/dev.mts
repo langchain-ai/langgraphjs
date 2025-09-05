@@ -16,6 +16,8 @@ import { logError, logger } from "../utils/logging.mjs";
 import { withAnalytics } from "./utils/analytics.mjs";
 import { gracefulExit } from "exit-hook";
 
+const DEFAULT_STUDIO_URL = "https://smith.langchain.com";
+
 builder
   .command("dev")
   .description(
@@ -29,6 +31,10 @@ builder
   .option(
     "--tunnel",
     "use Cloudflare Tunnel to expose the server to the internet"
+  )
+  .option(
+    "--studio-url",
+    `URL of the LangGraph Studio instance to connect to. Defaults to ${DEFAULT_STUDIO_URL}`
   )
   .allowExcessArguments()
   .allowUnknownOption()
@@ -57,7 +63,6 @@ builder
       let child: ChildProcess | undefined = undefined;
       let tunnel: CloudflareTunnel | undefined = undefined;
 
-      let hostUrl = "https://smith.langchain.com";
       let envNoBrowser = process.env.BROWSER === "none";
 
       server.on("data", async (data) => {
