@@ -5,7 +5,6 @@ import {
   type BaseCache,
   BaseCheckpointSaver,
   BaseStore,
-  INTERRUPT,
 } from "@langchain/langgraph-checkpoint";
 import {
   type InteropZodObject,
@@ -640,12 +639,7 @@ export class StateGraph<
       isMultipleNodes(args) // eslint-disable-line no-nested-ternary
         ? Array.isArray(args[0])
           ? args[0]
-          : Object.entries(args[0]).map(([key, action]) => [
-              key,
-              action,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
-            ])
+          : Object.entries(args[0]).map(([key, action]) => [key, action])
         : [[args[0], args[1], args[2]]]
     ) as [
       K,
@@ -843,18 +837,7 @@ export class StateGraph<
     C,
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   > {
-    const parsedNodes = Array.isArray(nodes)
-      ? nodes
-      : (Object.entries(nodes).map(([key, action]) => [
-          key,
-          action,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
-        ]) as [
-          K,
-          NodeAction<S, U, C, InterruptType, WriterType>,
-          StateGraphAddNodeOptions | undefined
-        ][]);
+    const parsedNodes = Array.isArray(nodes) ? nodes : Object.entries(nodes);
 
     if (parsedNodes.length === 0) {
       throw new Error("Sequence requires at least one node.");
@@ -1319,9 +1302,9 @@ export class CompiledStateGraph<
     return input;
   }
 
-  public isInterrupted(
-    input: unknown
-  ): input is { [INTERRUPT]: Interrupt<InterruptInputType<InterruptType>>[] } {
+  public isInterrupted(input: unknown): input is {
+    __interrupt__: Interrupt<InterruptInputType<InterruptType>>[];
+  } {
     return isInterrupted(input);
   }
 
