@@ -73,7 +73,11 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   }
 
   const checkpointer: BaseCheckpointSaver = conf[CONFIG_KEY_CHECKPOINTER];
-  if (!checkpointer) throw new GraphValueError("No checkpointer set");
+  if (!checkpointer) {
+    throw new GraphValueError("No checkpointer set", {
+      lc_error_code: "MISSING_CHECKPOINTER",
+    });
+  }
 
   // Track interrupt index
   const scratchpad: PregelScratchpad = conf[CONFIG_KEY_SCRATCHPAD];

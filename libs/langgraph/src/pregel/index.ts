@@ -931,7 +931,9 @@ export class Pregel<
     const checkpointer =
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
     }
 
     const checkpointNamespace: string =
@@ -991,7 +993,9 @@ export class Pregel<
     const checkpointer: BaseCheckpointSaver =
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
     }
 
     const checkpointNamespace: string =
@@ -1065,7 +1069,9 @@ export class Pregel<
     const checkpointer: BaseCheckpointSaver | undefined =
       startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
     }
     if (supersteps.length === 0) {
       throw new Error("No supersteps provided");
@@ -2038,12 +2044,7 @@ export class Pregel<
       stream.push([ns ?? [], "custom", chunk]);
     };
 
-    config.interrupt ??=
-      this.checkpointer != null
-        ? interrupt
-        : () => {
-            throw new GraphValueError("No checkpointer set");
-          };
+    config.interrupt ??= interrupt;
 
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
