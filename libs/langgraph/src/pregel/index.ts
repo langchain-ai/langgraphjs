@@ -2025,7 +2025,7 @@ export class Pregel<
       }
     }
 
-    config.writer = (chunk: unknown) => {
+    config.writer ??= (chunk: unknown) => {
       if (!streamMode.includes("custom")) return;
       const ns = (
         getConfig()?.configurable?.[CONFIG_KEY_CHECKPOINT_NS] as
@@ -2038,7 +2038,7 @@ export class Pregel<
       stream.push([ns ?? [], "custom", chunk]);
     };
 
-    config.interrupt =
+    config.interrupt ??=
       this.checkpointer != null
         ? interrupt
         : () => {
