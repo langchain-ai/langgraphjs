@@ -6,7 +6,10 @@ export {
 export type { BinaryOperator } from "./binop.js";
 export { AnyValue } from "./any_value.js";
 export { LastValue, LastValueAfterFinish } from "./last_value.js";
-export { WaitForNames, DynamicBarrierValue } from "./dynamic_barrier_value.js";
+export {
+  type WaitForNames,
+  DynamicBarrierValue,
+} from "./dynamic_barrier_value.js";
 export { BinaryOperatorAggregate } from "./binop.js";
 export { EphemeralValue } from "./ephemeral_value.js";
 export {
