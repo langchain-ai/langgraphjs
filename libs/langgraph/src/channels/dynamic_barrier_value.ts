@@ -20,7 +20,6 @@ function isWaitForNames<Value>(
  * - in the "waiting" state it collects named values until all are received.
  *     - once all named values are received, it can be read once, and it switches
  *       back to the "priming" state.
- * @internal
  */
 export class DynamicBarrierValue<Value> extends BaseChannel<
   void,
