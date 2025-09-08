@@ -1,5 +1,8 @@
+/* eslint-disable no-constant-condition */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 import "../graph/zod/plugin.js";
+import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { z } from "zod/v3";
 import { z as z4 } from "zod/v4";
 
@@ -18,7 +21,6 @@ import { registry } from "../graph/zod/zod-registry.js";
 import { MessagesZodMeta } from "../graph/messages_annotation.js";
 import { writer } from "../writer.js";
 import { interrupt } from "../interrupt.js";
-import { MemorySaver } from "@langchain/langgraph-checkpoint";
 
 beforeAll(() => {
   // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
@@ -582,6 +584,7 @@ it("state graph builder", async () => {
 
   if (false) {
     // @ts-expect-error - Invalid goto value
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const invalidGoto: typeof builder.Node = async () => {
       return new Command({ goto: "invalid" });
     };
@@ -608,10 +611,10 @@ it("state graph builder", async () => {
   }
 
   // @ts-expect-error - Invalid goto value
-  if (false) thread.invoke(new Command({ goto: "xxx" }));
+  if (false) await thread.invoke(new Command({ goto: "xxx" }));
 
   // @ts-expect-error - Invalid update value
-  if (false) thread.invoke(new Command({ update: { messages: true } }));
+  if (false) await thread.invoke(new Command({ update: { messages: true } }));
 
   const second = await gatherIterator(
     thread.stream(new Command({ resume: { messages: ["resume: hello"] } }), {

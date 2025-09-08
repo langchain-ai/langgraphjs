@@ -38,7 +38,7 @@ export async function registerFromEnv(
   assistants: AssistantsRepo,
   specs: Record<string, string>,
   options: { cwd: string }
-) {
+): Promise<(CompiledGraph<string> | CompiledGraphFactory<string>)[]> {
   const envConfig = process.env.LANGGRAPH_CONFIG
     ? ConfigSchema.parse(JSON.parse(process.env.LANGGRAPH_CONFIG))
     : undefined;
@@ -83,7 +83,7 @@ export async function getGraph(
     checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
   }
-) {
+): Promise<CompiledGraph<string>> {
   assertGraphExists(graphId);
 
   const compiled =
