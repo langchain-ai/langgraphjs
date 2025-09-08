@@ -51,6 +51,7 @@ import {
   CommandInstance,
   isInterrupted,
   Interrupt,
+  INTERRUPT,
 } from "../constants.js";
 import { InvalidUpdateError, ParentCommand } from "../errors.js";
 import {
@@ -1305,7 +1306,7 @@ export class CompiledStateGraph<
   }
 
   public isInterrupted(input: unknown): input is {
-    __interrupt__: Interrupt<InterruptInputType<InterruptType>>[];
+    [INTERRUPT]: Interrupt<InterruptInputType<InterruptType>>[];
   } {
     return isInterrupted(input);
   }
