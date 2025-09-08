@@ -15,6 +15,7 @@ import {
 import type {
   RunnableLike,
   LangGraphRunnableConfig,
+  Runtime,
 } from "../pregel/runnable_types.js";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
@@ -171,7 +172,7 @@ type StrictNodeAction<
   InterruptType,
   WriterType
 > = RunnableLike<
-  S,
+  Prettify<S>,
   | U
   | Command<
       InterruptResumeType<InterruptType>,
@@ -179,11 +180,7 @@ type StrictNodeAction<
       U & Record<string, any>,
       Nodes
     >,
-  LangGraphRunnableConfig<
-    StateType<ToStateDefinition<C>>,
-    InterruptType,
-    WriterType
-  >
+  Runtime<StateType<ToStateDefinition<C>>, InterruptType, WriterType>
 >;
 
 const PartialStateSchema = Symbol.for("langgraph.state.partial");
