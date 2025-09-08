@@ -6,8 +6,6 @@ import { BaseChannel } from "./base.js";
  *
  * Note: Unlike 'LastValue' if multiple nodes write to this channel in a single step, the values
  * will be continuously overwritten.
- *
- * @internal
  */
 export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "AnyValue";

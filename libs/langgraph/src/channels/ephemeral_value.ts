@@ -1,9 +1,8 @@
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
-import { BaseChannel } from "./index.js";
+import { BaseChannel } from "./base.js";
 
 /**
  * Stores the value received in the step immediately preceding, clears after.
- * @internal
  */
 export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
   lc_graph_name = "EphemeralValue";

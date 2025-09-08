@@ -62,7 +62,6 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
 /**
  * Stores the last value received, but only made available after finish().
  * Once made available, clears the value.
- * @internal
  */
 export class LastValueAfterFinish<Value> extends BaseChannel<
   Value,

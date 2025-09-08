@@ -113,6 +113,17 @@
       },
       "input": "./src/web.ts"
     },
+    "./channels": {
+      "import": {
+        "types": "./dist/channels/index.d.ts",
+        "default": "./dist/channels/index.js"
+      },
+      "require": {
+        "types": "./dist/channels/index.d.cts",
+        "default": "./dist/channels/index.cjs"
+      },
+      "input": "./src/channels/index.ts"
+    },
     "./pregel": {
       "import": {
         "types": "./dist/pregel/index.d.ts",
