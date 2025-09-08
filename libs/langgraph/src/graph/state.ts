@@ -151,8 +151,8 @@ type NodeAction<
   S,
   U,
   C extends SDZod,
-  InterruptType = unknown,
-  WriterType = unknown
+  InterruptType,
+  WriterType
 > = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -167,9 +167,9 @@ type StrictNodeAction<
   S,
   U,
   C extends SDZod,
-  Nodes extends string = string,
-  InterruptType = unknown,
-  WriterType = unknown
+  Nodes extends string,
+  InterruptType,
+  WriterType
 > = RunnableLike<
   S,
   | U
@@ -646,7 +646,7 @@ export class StateGraph<
         : [[args[0], args[1], args[2]]]
     ) as [
       K,
-      NodeAction<NodeInput, U, C>,
+      NodeAction<NodeInput, U, C, InterruptType, WriterType>,
       StateGraphAddNodeOptions | undefined
     ][];
 
