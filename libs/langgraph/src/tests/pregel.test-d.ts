@@ -550,33 +550,29 @@ it("state graph builder", async () => {
 
   const hello: typeof builder.Node = async (_, runtime) => {
     // @ts-expect-error - Invalid interrupt input
-    if (false) runtime.interrupt?.({ reason: false });
+    if (false) runtime.interrupt({ reason: false });
 
     // @ts-expect-error - Invalid writer input
-    if (false) runtime.interrupt?.();
+    if (false) runtime.interrupt();
 
-    const result = runtime.interrupt?.({ reason: "hello" });
+    const result = runtime.interrupt({ reason: "hello" });
 
-    if (result != null) {
-      runtime.writer?.({ custom: "hello" });
+    runtime.writer({ custom: "hello" });
 
-      // @ts-expect-error - Invalid writer value
-      if (false) runtime.writer?.({ invalid: "hello" });
+    // @ts-expect-error - Invalid writer value
+    if (false) runtime.writer({ invalid: "hello" });
 
-      // @ts-expect-error - Invalid interrupt value
-      if (false) runtime.writer?.();
+    // @ts-expect-error - Invalid interrupt value
+    if (false) runtime.writer();
 
-      return new Command({
-        update: { messages: result.messages },
-        goto: "what",
-      });
-    }
-
-    return new Command({ goto: "what" });
+    return new Command({
+      update: { messages: result.messages },
+      goto: "what",
+    });
   };
 
   const what: typeof builder.Node = async (_, runtime) => {
-    const result = runtime.interrupt?.({ reason: "what" });
+    const result = runtime.interrupt({ reason: "what" });
     if (result != null) return { messages: result.messages };
     return {};
   };

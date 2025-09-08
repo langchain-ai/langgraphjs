@@ -14,7 +14,6 @@ import {
 } from "@langchain/core/messages";
 import {
   Runnable,
-  RunnableConfig,
   RunnableLambda,
   RunnableToolLike,
   RunnableSequence,
@@ -742,10 +741,10 @@ export function createReactAgent<
   const _getDynamicModel = async (
     llm: (
       state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-      runtime: LangGraphRunnableConfig
+      runtime: Runtime<ToAnnotationRoot<C>["State"]>
     ) => Promise<LanguageModelLike> | LanguageModelLike,
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config: LangGraphRunnableConfig
+    config: Runtime<ToAnnotationRoot<C>["State"]>
   ) => {
     const model = await llm(state, config);
 
@@ -777,7 +776,7 @@ export function createReactAgent<
 
   const generateStructuredResponse = async (
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config: RunnableConfig
+    config: Runtime<ToAnnotationRoot<C>["State"]>
   ) => {
     if (responseFormat == null) {
       throw new Error(
@@ -816,7 +815,7 @@ export function createReactAgent<
 
   const callModel = async (
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config: RunnableConfig
+    config: Runtime<ToAnnotationRoot<C>["State"]>
   ) => {
     // NOTE: we're dynamically creating the model runnable here
     // to ensure that we can validate ConfigurableModel properly
