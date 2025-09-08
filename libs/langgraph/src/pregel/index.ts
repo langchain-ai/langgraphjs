@@ -573,7 +573,7 @@ export class Pregel<
    * @returns A new Pregel instance with the merged configuration
    */
   override withConfig(
-    config: Omit<LangGraphRunnableConfig, "store" | "writer">
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt">
   ): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2025,24 +2025,25 @@ export class Pregel<
       }
     }
 
-    // setup custom stream mode
-    if (streamMode.includes("custom")) {
-      config.writer = (chunk: unknown) => {
-        const ns = (
-          getConfig()?.configurable?.[CONFIG_KEY_CHECKPOINT_NS] as
-            | string
-            | undefined
-        )
-          ?.split(CHECKPOINT_NAMESPACE_SEPARATOR)
-          .slice(0, -1);
+    config.writer = (chunk: unknown) => {
+      if (!streamMode.includes("custom")) return;
+      const ns = (
+        getConfig()?.configurable?.[CONFIG_KEY_CHECKPOINT_NS] as
+          | string
+          | undefined
+      )
+        ?.split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .slice(0, -1);
 
-        stream.push([ns ?? [], "custom", chunk]);
-      };
-    }
+      stream.push([ns ?? [], "custom", chunk]);
+    };
 
-    if (this.checkpointer != null) {
-      config.interrupt = interrupt;
-    }
+    config.interrupt =
+      this.checkpointer != null
+        ? interrupt
+        : () => {
+            throw new GraphValueError("No checkpointer set");
+          };
 
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(

@@ -157,11 +157,7 @@ type NodeAction<
 > = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
-  LangGraphRunnableConfig<
-    StateType<ToStateDefinition<C>>,
-    InterruptType,
-    WriterType
-  >
+  Runtime<StateType<ToStateDefinition<C>>, InterruptType, WriterType>
 >;
 
 type StrictNodeAction<
