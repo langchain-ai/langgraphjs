@@ -137,6 +137,16 @@ type ToStateDefinition<T> = T extends InteropZodObject
   ? T
   : never;
 
+type InterruptResumeType<T> = T extends typeof interrupt<unknown, infer R>
+  ? R
+  : unknown;
+
+type InterruptInputType<T> = T extends typeof interrupt<infer I, unknown>
+  ? I
+  : unknown;
+
+type InferWriterType<T> = T extends typeof writer<infer C> ? C : any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
 type NodeAction<
   S,
   U,
@@ -153,28 +163,20 @@ type NodeAction<
   >
 >;
 
-type InterruptResumeType<T> = T extends typeof interrupt<unknown, infer R>
-  ? R
-  : unknown;
-
-type InterruptInputType<T> = T extends typeof interrupt<infer I, unknown>
-  ? I
-  : unknown;
-
-type InferWriterType<T> = T extends typeof writer<infer C> ? C : any; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-type TypedNodeAction<
-  SD extends SDZod | unknown,
-  C extends SDZod = StateDefinition,
+type StrictNodeAction<
+  S,
+  U,
+  C extends SDZod,
   Nodes extends string = string,
   InterruptType = unknown,
   WriterType = unknown
 > = RunnableLike<
-  StateType<ToStateDefinition<SD>>,
-  | UpdateType<ToStateDefinition<SD>>
+  S,
+  | U
   | Command<
       InterruptResumeType<InterruptType>,
-      UpdateType<ToStateDefinition<SD>>,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      U & Record<string, any>,
       Nodes
     >,
   LangGraphRunnableConfig<
@@ -314,7 +316,7 @@ export class StateGraph<
   /** @internal */
   _writer: WriterType;
 
-  declare Node: TypedNodeAction<SD, C, N, InterruptType, WriterType>;
+  declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
   constructor(
     state: SD extends InteropZodObject
