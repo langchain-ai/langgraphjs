@@ -13,6 +13,7 @@ type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   StreamValues,
   unknown,
   string,
+  unknown,
   unknown
 >;
 
@@ -143,6 +144,7 @@ export async function* toLangGraphEventStream<
           unknown,
           unknown,
           string,
+          unknown,
           unknown
         >;
 

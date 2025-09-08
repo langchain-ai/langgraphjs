@@ -99,8 +99,16 @@ const COMMAND_SYMBOL = Symbol.for("langgraph.command");
  * @see {@link Command}
  * @internal
  */
-export class CommandInstance {
-  [COMMAND_SYMBOL]: true;
+export class CommandInstance<
+  Resume = unknown,
+  Update extends Record<string, unknown> = Record<string, unknown>,
+  Nodes extends string = string
+> {
+  [COMMAND_SYMBOL]: CommandParams<Resume, Update, Nodes>;
+
+  constructor(args: CommandParams<Resume, Update, Nodes>) {
+    this[COMMAND_SYMBOL] = args;
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -329,7 +337,7 @@ export class Command<
   Resume = unknown,
   Update extends Record<string, unknown> = Record<string, unknown>,
   Nodes extends string = string
-> extends CommandInstance {
+> extends CommandInstance<Resume, Update, Nodes> {
   readonly lg_name = "Command";
 
   lc_direct_tool_output = true;
@@ -364,8 +372,8 @@ export class Command<
 
   static PARENT = "__parent__";
 
-  constructor(args: CommandParams<Resume, Update, Nodes>) {
-    super();
+  constructor(args: Omit<CommandParams<Resume, Update, Nodes>, "lg_name">) {
+    super(args);
     this.resume = args.resume;
     this.graph = args.graph;
     this.update = args.update;
