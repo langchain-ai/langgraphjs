@@ -28,7 +28,6 @@ import {
   _isSend,
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
-  CommandInstance,
   END,
   Send,
   START,
