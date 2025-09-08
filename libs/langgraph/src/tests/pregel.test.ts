@@ -5080,7 +5080,7 @@ graph TD;
             id: "__start__",
             type: "schema",
             data: {
-              $schema: "http://json-schema.org/draft-07/schema#",
+              $schema: expect.any(String),
               title: undefined,
             },
           },
@@ -5104,7 +5104,7 @@ graph TD;
             id: "__end__",
             type: "schema",
             data: {
-              $schema: "http://json-schema.org/draft-07/schema#",
+              $schema: expect.any(String),
               title: undefined,
             },
           },

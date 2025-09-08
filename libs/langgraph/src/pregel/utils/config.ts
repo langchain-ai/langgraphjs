@@ -23,6 +23,7 @@ const CONFIG_KEYS = [
   "streamMode",
   "store",
   "writer",
+  "interrupt",
   "context",
   "interruptBefore",
   "interruptAfter",

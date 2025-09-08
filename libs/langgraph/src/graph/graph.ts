@@ -12,7 +12,7 @@ import {
   Graph as DrawableGraph,
 } from "@langchain/core/runnables/graph";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { validate as isUuid } from "uuid";
 import type {
   RunnableLike,
@@ -28,6 +28,7 @@ import {
   _isSend,
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  CommandInstance,
   END,
   Send,
   START,
@@ -581,7 +582,10 @@ export class CompiledGraph<
   InputType = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   OutputType = any,
-  NodeReturnType = unknown
+  NodeReturnType = unknown,
+  CommandType = CommandInstance,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StreamCustomType = any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
@@ -591,7 +595,9 @@ export class CompiledGraph<
   OutputType,
   InputType,
   OutputType,
-  NodeReturnType
+  NodeReturnType,
+  CommandType,
+  StreamCustomType
 > {
   declare NodeType: N;
 
@@ -694,12 +700,7 @@ export class CompiledGraph<
     const xray = config?.xray;
     const graph = new DrawableGraph();
     const startNodes: Record<string, DrawableGraphNode> = {
-      [START]: graph.addNode(
-        {
-          schema: z.any(),
-        },
-        START
-      ),
+      [START]: graph.addNode({ schema: z.any() }, START),
     };
     const endNodes: Record<string, DrawableGraphNode> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -41,9 +41,6 @@ export type PregelOutputType = any;
 type StreamMessageOutput = [BaseMessage, Record<string, any>];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type StreamCustomOutput = any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StreamDebugOutput = Record<string, any>;
 
 type StreamCheckpointsOutput<StreamValues> = {
@@ -83,7 +80,8 @@ export type StreamOutputMap<
   StreamUpdates,
   StreamValues,
   Nodes,
-  NodeReturnType
+  NodeReturnType,
+  StreamCustom
 > = (
   undefined extends TStreamMode
     ? []
@@ -106,7 +104,7 @@ export type StreamOutputMap<
             : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], "messages", StreamMessageOutput];
-        custom: [string[], "custom", StreamCustomOutput];
+        custom: [string[], "custom", StreamCustom];
         checkpoints: [
           string[],
           "checkpoints",
@@ -128,7 +126,7 @@ export type StreamOutputMap<
             : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: ["messages", StreamMessageOutput];
-        custom: ["custom", StreamCustomOutput];
+        custom: ["custom", StreamCustom];
         checkpoints: ["checkpoints", StreamCheckpointsOutput<StreamValues>];
         tasks: ["tasks", StreamTasksOutput<StreamUpdates, StreamValues, Nodes>];
         debug: ["debug", StreamDebugOutput];
@@ -146,7 +144,7 @@ export type StreamOutputMap<
             : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], StreamMessageOutput];
-        custom: [string[], StreamCustomOutput];
+        custom: [string[], StreamCustom];
         checkpoints: [string[], StreamCheckpointsOutput<StreamValues>];
         tasks: [
           string[],
@@ -160,7 +158,7 @@ export type StreamOutputMap<
           ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
           : Record<Nodes extends string ? Nodes : string, StreamUpdates>;
         messages: StreamMessageOutput;
-        custom: StreamCustomOutput;
+        custom: StreamCustom;
         checkpoints: StreamCheckpointsOutput<StreamValues>;
         tasks: StreamTasksOutput<StreamUpdates, StreamValues, Nodes>;
         debug: StreamDebugOutput;

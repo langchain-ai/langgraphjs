@@ -119,6 +119,7 @@ import { findSubgraphPregel } from "./utils/subgraph.js";
 import { validateGraph, validateKeys } from "./validate.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { Topic } from "../channels/topic.js";
+import { interrupt } from "../interrupt.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -387,10 +388,13 @@ export class Pregel<
     OutputType = PregelOutputType,
     StreamUpdatesType = InputType,
     StreamValuesType = OutputType,
-    NodeReturnType = unknown
+    NodeReturnType = unknown,
+    CommandType = CommandInstance,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    StreamCustom = any
   >
   extends PartialRunnable<
-    InputType | CommandInstance | null,
+    InputType | CommandType | null,
     OutputType,
     PregelOptions<Nodes, Channels, ContextType>
   >
@@ -1818,7 +1822,7 @@ export class Pregel<
     TStreamMode extends StreamMode | StreamMode[] | undefined,
     TSubgraphs extends boolean
   >(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options?: Partial<
       PregelOptions<Nodes, Channels, ContextType, TStreamMode, TSubgraphs>
     >
@@ -1830,7 +1834,8 @@ export class Pregel<
         StreamUpdatesType,
         StreamValuesType,
         keyof Nodes,
-        NodeReturnType
+        NodeReturnType,
+        StreamCustom
       >
     >
   > {
@@ -1856,7 +1861,8 @@ export class Pregel<
           StreamUpdatesType,
           StreamValuesType,
           keyof Nodes,
-          NodeReturnType
+          NodeReturnType,
+          StreamCustom
         >
       >,
       abortController
@@ -1867,7 +1873,7 @@ export class Pregel<
    * @inheritdoc
    */
   override streamEvents(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
@@ -1875,7 +1881,7 @@ export class Pregel<
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
       encoding: "text/event-stream";
@@ -1884,7 +1890,7 @@ export class Pregel<
   ): IterableReadableStream<Uint8Array>;
 
   override streamEvents(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
@@ -2034,6 +2040,10 @@ export class Pregel<
       };
     }
 
+    if (this.checkpointer != null) {
+      config.interrupt = interrupt;
+    }
+
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(), // chain
@@ -2163,7 +2173,7 @@ export class Pregel<
    * @param options The configuration to use for the run.
    */
   override async invoke(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
