@@ -1,5 +1,5 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { LangGraphRunnableConfig } from "./pregel/runnable_types";
+import { LangGraphRunnableConfig } from "./pregel/runnable_types.js";
 
 export function writer<T>(chunk: T): void {
   const config: LangGraphRunnableConfig | undefined =

@@ -153,15 +153,15 @@ type NodeAction<
   >
 >;
 
-type InterruptResumeType<T> = T extends typeof interrupt<infer _I, infer R>
+type InterruptResumeType<T> = T extends typeof interrupt<unknown, infer R>
   ? R
   : unknown;
 
-type InterruptInputType<T> = T extends typeof interrupt<infer I, infer _R>
+type InterruptInputType<T> = T extends typeof interrupt<infer I, unknown>
   ? I
   : unknown;
 
-type InferWriterType<T> = T extends typeof writer<infer C> ? C : any;
+type InferWriterType<T> = T extends typeof writer<infer C> ? C : any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 type TypedNodeAction<
   SD extends SDZod | unknown,
