@@ -2,7 +2,7 @@ import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./base.js";
 
 /**
- * @internal
+ * A configurable PubSub Topic.
  */
 export class Topic<Value> extends BaseChannel<
   Array<Value>,
@@ -19,7 +19,16 @@ export class Topic<Value> extends BaseChannel<
 
   values: Value[];
 
-  constructor(fields?: { unique?: boolean; accumulate?: boolean }) {
+  constructor(fields?: {
+    /**
+     * Whether to only add unique values to the topic. If `true`, only unique values (using reference equality) will be added to the topic.
+     */
+    unique?: boolean;
+    /**
+     * Whether to accumulate values across steps. If `false`, the channel will be emptied after each step.
+     */
+    accumulate?: boolean;
+  }) {
     super();
 
     this.unique = fields?.unique ?? this.unique;
