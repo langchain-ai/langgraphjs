@@ -71,7 +71,7 @@ import {
   schemaMetaRegistry,
 } from "./zod/meta.js";
 import { interrupt } from "../interrupt.js";
-import { writer } from "../pregel/writer.js";
+import { writer } from "../writer.js";
 
 const ROOT = "__root__";
 

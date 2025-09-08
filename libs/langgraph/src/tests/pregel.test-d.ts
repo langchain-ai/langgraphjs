@@ -16,7 +16,7 @@ import { withLangGraph } from "../graph/zod/meta.js";
 import { Runtime } from "../pregel/runnable_types.js";
 import { registry } from "../graph/zod/zod-registry.js";
 import { MessagesZodMeta } from "../graph/messages_annotation.js";
-import { writer } from "../pregel/writer.js";
+import { writer } from "../writer.js";
 import { interrupt } from "../interrupt.js";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 
