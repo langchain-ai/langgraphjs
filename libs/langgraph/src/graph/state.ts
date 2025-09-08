@@ -1043,7 +1043,9 @@ export class CompiledStateGraph<
       StateType<ToStateDefinition<C>>,
       UpdateType<ToStateDefinition<I>>,
       StateType<ToStateDefinition<O>>,
-      NodeReturnType
+      NodeReturnType,
+      CommandInstance<InterruptResumeType<InterruptType>, Prettify<U>, N>,
+      InferWriterType<WriterType>
     >
   >[0]) {
     super(rest);

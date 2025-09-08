@@ -583,7 +583,7 @@ export class CompiledGraph<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   OutputType = any,
   NodeReturnType = unknown,
-  CommandType = CommandInstance,
+  CommandType = unknown,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StreamCustomType = any
 > extends Pregel<
