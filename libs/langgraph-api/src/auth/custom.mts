@@ -28,6 +28,9 @@ export const auth = (): MiddlewareHandler => {
     // skip for /info
     if (c.req.path === "/info") return next();
 
+    // skip for UI asset requests
+    if (c.req.path.startsWith("/ui") && c.req.method === "GET") return next();
+
     if (
       !isStudioAuthDisabled() &&
       c.req.header("x-auth-scheme") === "langsmith"
