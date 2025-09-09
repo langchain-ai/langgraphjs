@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-redis",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-checkpoint-postgres",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
@@ -35,7 +35,7 @@
     "ulid": "^2.3.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "^0.1.0"
   },
   "devDependencies": {
@@ -67,46 +67,40 @@
   "exports": {
     ".": {
       "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+        "import": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./index.d.cts",
+        "default": "./index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./shallow": {
       "types": {
-        "import": "./shallow.d.ts",
-        "require": "./shallow.d.cts",
-        "default": "./shallow.d.ts"
+        "import": "./dist/shallow.d.ts",
+        "default": "./dist/shallow.js"
       },
-      "import": "./shallow.js",
-      "require": "./shallow.cjs"
+      "require": {
+        "types": "./dist/shallow.d.cts",
+        "default": "./dist/shallow.cjs"
+      },
+      "input": "./src/shallow.ts"
     },
     "./store": {
       "types": {
-        "import": "./store.d.ts",
-        "require": "./store.d.cts",
-        "default": "./store.d.ts"
+        "import": "./dist/store.d.ts",
+        "default": "./dist/store.js"
       },
-      "import": "./store.js",
-      "require": "./store.cjs"
+      "require": {
+        "types": "./dist/store.d.cts",
+        "default": "./dist/store.cjs"
+      },
+      "input": "./src/store.ts"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts",
-    "index.d.cts",
-    "shallow.cjs",
-    "shallow.js",
-    "shallow.d.ts",
-    "shallow.d.cts",
-    "store.cjs",
-    "store.js",
-    "store.d.ts",
-    "store.d.cts"
+    "dist/"
   ]
 }
