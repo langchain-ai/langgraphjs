@@ -54,6 +54,7 @@ import {
   PREVIOUS,
   CACHE_NS_WRITES,
   CONFIG_KEY_RESUME_MAP,
+  START,
 } from "../constants.js";
 import {
   Call,
@@ -116,15 +117,23 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   const seen = checkpoint.versions_seen[INTERRUPT] ?? {};
 
   let anyChannelUpdated = false;
-  for (const chan in checkpoint.channel_versions) {
-    if (
-      !Object.prototype.hasOwnProperty.call(checkpoint.channel_versions, chan)
-    )
-      continue;
 
-    if (checkpoint.channel_versions[chan] > (seen[chan] ?? nullVersion)) {
-      anyChannelUpdated = true;
-      break;
+  if (
+    (checkpoint.channel_versions[START] ?? nullVersion) >
+    (seen[START] ?? nullVersion)
+  ) {
+    anyChannelUpdated = true;
+  } else {
+    for (const chan in checkpoint.channel_versions) {
+      if (
+        !Object.prototype.hasOwnProperty.call(checkpoint.channel_versions, chan)
+      )
+        continue;
+
+      if (checkpoint.channel_versions[chan] > (seen[chan] ?? nullVersion)) {
+        anyChannelUpdated = true;
+        break;
+      }
     }
   }
 
