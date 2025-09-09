@@ -862,6 +862,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fastify/busboy@npm:^2.0.0":
+  version: 2.1.1
+  resolution: "@fastify/busboy@npm:2.1.1"
+  checksum: 10/2bb8a7eca8289ed14c9eb15239bc1019797454624e769b39a0b90ed204d032403adc0f8ed0d2aef8a18c772205fa7808cf5a1b91f21c7bfc7b6032150b1062c5
+  languageName: node
+  linkType: hard
+
 "@grpc/grpc-js@npm:^1.11.1":
   version: 1.13.4
   resolution: "@grpc/grpc-js@npm:1.13.4"
@@ -1758,8 +1765,8 @@ __metadata:
     winston-console-format: "npm:^1.0.8"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ^0.3.59
-    "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0
+    "@langchain/core": ^0.3.59 || ^1.0.0-alpha
+    "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha
     "@langchain/langgraph-checkpoint": ~0.0.16 || ^0.1.0
     "@langchain/langgraph-sdk": ~0.0.70 || ^0.1.0
     typescript: ^5.5.4
@@ -1796,7 +1803,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1826,6 +1833,39 @@ __metadata:
     rollup: "npm:^4.37.0"
     tsx: "npm:^4.19.3"
     typescript: "npm:^4.9.5 || ^5.4.5"
+    vitest: "npm:^3.1.2"
+  peerDependencies:
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/langgraph-checkpoint": ^0.1.0
+  languageName: unknown
+  linkType: soft
+
+"@langchain/langgraph-checkpoint-redis@workspace:*, @langchain/langgraph-checkpoint-redis@workspace:libs/checkpoint-redis":
+  version: 0.0.0-use.local
+  resolution: "@langchain/langgraph-checkpoint-redis@workspace:libs/checkpoint-redis"
+  dependencies:
+    "@langchain/langgraph-checkpoint": "workspace:*"
+    "@langchain/scripts": "npm:>=0.1.2 <0.2.0"
+    "@tsconfig/recommended": "npm:^1.0.3"
+    "@types/node": "npm:^20"
+    "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
+    "@typescript-eslint/parser": "npm:^6.12.0"
+    dotenv: "npm:^16.3.1"
+    dpdm: "npm:^3.12.0"
+    eslint: "npm:^8.33.0"
+    eslint-config-airbnb-base: "npm:^15.0.0"
+    eslint-config-prettier: "npm:^8.6.0"
+    eslint-plugin-import: "npm:^2.29.1"
+    eslint-plugin-no-instanceof: "npm:^1.0.1"
+    eslint-plugin-prettier: "npm:^4.2.1"
+    prettier: "npm:^2.8.3"
+    redis: "npm:^4.7.0"
+    release-it: "npm:^19.0.2"
+    rollup: "npm:^4.37.0"
+    testcontainers: "npm:^10.0.0"
+    tsx: "npm:^4.19.3"
+    typescript: "npm:^4.9.5 || ^5.4.5"
+    ulid: "npm:^2.3.0"
     vitest: "npm:^3.1.2"
   peerDependencies:
     "@langchain/core": ">=0.2.31 <0.4.0"
@@ -1860,7 +1900,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1872,6 +1912,7 @@ __metadata:
     "@langchain/langgraph-checkpoint": "workspace:*"
     "@langchain/langgraph-checkpoint-mongodb": "workspace:*"
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
+    "@langchain/langgraph-checkpoint-redis": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/scripts": "npm:>=0.1.3 <0.2.0"
     "@testcontainers/mongodb": "npm:^11.0.3"
@@ -1901,7 +1942,7 @@ __metadata:
     yargs: "npm:^17.7.2"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
     "@langchain/langgraph-checkpoint": ^0.1.0
   bin:
     validate-checkpointer: ./bin/cli.js
@@ -1933,7 +1974,7 @@ __metadata:
     uuid: "npm:^10.0.0"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0"
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
   languageName: unknown
   linkType: soft
 
@@ -2698,6 +2739,62 @@ __metadata:
   version: 1.1.0
   resolution: "@protobufjs/utf8@npm:1.1.0"
   checksum: 10/131e289c57534c1d73a0e55782d6751dd821db1583cb2f7f7e017c9d6747addaebe79f28120b2e0185395d990aad347fb14ffa73ef4096fa38508d61a0e64602
+  languageName: node
+  linkType: hard
+
+"@redis/bloom@npm:1.2.0":
+  version: 1.2.0
+  resolution: "@redis/bloom@npm:1.2.0"
+  peerDependencies:
+    "@redis/client": ^1.0.0
+  checksum: 10/a16408f729ddd032a52c9d998661dfa7beabc0e92760d30619c3166c7a53a98c037956d93d230b787005fd8a599a7456461ca7429c1916893c2d13d59a41e0e6
+  languageName: node
+  linkType: hard
+
+"@redis/client@npm:1.6.1":
+  version: 1.6.1
+  resolution: "@redis/client@npm:1.6.1"
+  dependencies:
+    cluster-key-slot: "npm:1.1.2"
+    generic-pool: "npm:3.9.0"
+    yallist: "npm:4.0.0"
+  checksum: 10/3ef20235b9b0ecba728bbc7208eabbdfc2eebb50c6fb95b20486a0c14e9d6f3ce620ac0d3d14d7f682ea7cb953b13bf89bd94932b7ab3babeb12ba77136b4291
+  languageName: node
+  linkType: hard
+
+"@redis/graph@npm:1.1.1":
+  version: 1.1.1
+  resolution: "@redis/graph@npm:1.1.1"
+  peerDependencies:
+    "@redis/client": ^1.0.0
+  checksum: 10/96b8ee9bec124947465848b56a014805f9639e09704e03c75a92072a319599ac9dcd4f9ace22970a7f72131a241166ad31db4dc6931b34808d22a5ca94649ba5
+  languageName: node
+  linkType: hard
+
+"@redis/json@npm:1.0.7":
+  version: 1.0.7
+  resolution: "@redis/json@npm:1.0.7"
+  peerDependencies:
+    "@redis/client": ^1.0.0
+  checksum: 10/df0ac5035608d2e82289237d1adbf541af3743a86692df9958a2c89281bce024eeecfc031db51774d8a46639c5ec34ce9f8b71ebec7bce21865920e36ca3db57
+  languageName: node
+  linkType: hard
+
+"@redis/search@npm:1.2.0":
+  version: 1.2.0
+  resolution: "@redis/search@npm:1.2.0"
+  peerDependencies:
+    "@redis/client": ^1.0.0
+  checksum: 10/25bba222c0fb1ec1f2db08fe157d30d56a8ffe234214c72d3a7a991daefe77f18c5e6440ab3aa297aef88bafd5448b04ac9fcd84671f2dadc8989712c06b63b4
+  languageName: node
+  linkType: hard
+
+"@redis/time-series@npm:1.1.0":
+  version: 1.1.0
+  resolution: "@redis/time-series@npm:1.1.0"
+  peerDependencies:
+    "@redis/client": ^1.0.0
+  checksum: 10/e1d000eef7f37645f7f4ff94f32dd998384360b12fed1e4d614d828c065b72d7627e27444fab781fac4fdfe301c45f893417550fb1011d3b75237566ff0954e0
   languageName: node
   linkType: hard
 
@@ -3888,6 +3985,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/dockerode@npm:^3.3.35":
+  version: 3.3.42
+  resolution: "@types/dockerode@npm:3.3.42"
+  dependencies:
+    "@types/docker-modem": "npm:*"
+    "@types/node": "npm:*"
+    "@types/ssh2": "npm:*"
+  checksum: 10/eb1ed7dd3b2dde1cf15ec67647e8f0687be6287c9d66c57acbf872a72652156d26f32d5e4cef73b33c54c55aadb7ee4286fa381619625b5b7b43f715e47b3ed9
+  languageName: node
+  linkType: hard
+
 "@types/dockerode@npm:^3.3.39":
   version: 3.3.41
   resolution: "@types/dockerode@npm:3.3.41"
@@ -4007,6 +4115,15 @@ __metadata:
   dependencies:
     undici-types: "npm:~5.26.4"
   checksum: 10/e5816356e3bcf1af272587d6a95c172199532a86bdb379e4d314a10605463908b36316af51ff6d3c19d9f1965e14a6f62c6a5cbab876aafffe71e1211512084a
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^20":
+  version: 20.19.11
+  resolution: "@types/node@npm:20.19.11"
+  dependencies:
+    undici-types: "npm:~6.21.0"
+  checksum: 10/7179ed464a781cad20117362df58c12839b40922b53356e1a74f86c99d9d1ef9a27edce360901608f896c247c9c4131ba9c7222331e92cde17b723c75d5c8f2e
   languageName: node
   linkType: hard
 
@@ -5634,6 +5751,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"cluster-key-slot@npm:1.1.2":
+  version: 1.1.2
+  resolution: "cluster-key-slot@npm:1.1.2"
+  checksum: 10/516ed8b5e1a14d9c3a9c96c72ef6de2d70dfcdbaa0ec3a90bc7b9216c5457e39c09a5775750c272369070308542e671146120153062ab5f2f481bed5de2c925f
+  languageName: node
+  linkType: hard
+
 "code-block-writer@npm:^12.0.0":
   version: 12.0.0
   resolution: "code-block-writer@npm:12.0.0"
@@ -6456,7 +6580,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"debug@npm:^4.1.0, debug@npm:^4.4.1":
+"debug@npm:^4.1.0, debug@npm:^4.3.5, debug@npm:^4.4.1":
   version: 4.4.1
   resolution: "debug@npm:4.4.1"
   dependencies:
@@ -6690,6 +6814,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"docker-compose@npm:^0.24.8":
+  version: 0.24.8
+  resolution: "docker-compose@npm:0.24.8"
+  dependencies:
+    yaml: "npm:^2.2.2"
+  checksum: 10/2b8526f9797a55c819ff2d7dcea57085b012b3a3d77bc2e1a6b45c3fc9e82196312f5298cbe8299966462454a5ac8f68814bb407736b4385e0d226a2a39e877a
+  languageName: node
+  linkType: hard
+
 "docker-compose@npm:^1.2.0":
   version: 1.2.0
   resolution: "docker-compose@npm:1.2.0"
@@ -6711,7 +6844,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dockerode@npm:^4.0.7":
+"dockerode@npm:^4.0.5, dockerode@npm:^4.0.7":
   version: 4.0.7
   resolution: "dockerode@npm:4.0.7"
   dependencies:
@@ -8131,6 +8264,13 @@ __metadata:
   dependencies:
     loader-utils: "npm:^3.2.0"
   checksum: 10/ef05166395a17fbdcc7ceaa59635318b6ae89125391780c4d4abbc1e7ae7a6e07a31602fbc785860cf701cee08f790f71e286676c80db634f56d3d1af2703319
+  languageName: node
+  linkType: hard
+
+"generic-pool@npm:3.9.0":
+  version: 3.9.0
+  resolution: "generic-pool@npm:3.9.0"
+  checksum: 10/3c632d30a6a7d47412dc67ddc517992691e0fde819c0cb6b5871bc87d10f61a7c09f12a60dbd77c78ae3e6ca10db41e2eaee28985ce724d9620354a006205ce1
   languageName: node
   linkType: hard
 
@@ -12156,6 +12296,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"redis@npm:^4.7.0":
+  version: 4.7.1
+  resolution: "redis@npm:4.7.1"
+  dependencies:
+    "@redis/bloom": "npm:1.2.0"
+    "@redis/client": "npm:1.6.1"
+    "@redis/graph": "npm:1.1.1"
+    "@redis/json": "npm:1.0.7"
+    "@redis/search": "npm:1.2.0"
+    "@redis/time-series": "npm:1.1.0"
+  checksum: 10/42e55071c6e6191940b88466f444db409d6a4f953e06588141a791a4cc2d3f1bc068dd0fad18eeee105353b1e3b885406abf23dcc56f80972f27e4f8507bd388
+  languageName: node
+  linkType: hard
+
 "regenerator-runtime@npm:^0.14.0":
   version: 0.14.1
   resolution: "regenerator-runtime@npm:0.14.1"
@@ -13412,6 +13566,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"tar-fs@npm:^3.0.7":
+  version: 3.1.0
+  resolution: "tar-fs@npm:3.1.0"
+  dependencies:
+    bare-fs: "npm:^4.0.1"
+    bare-path: "npm:^3.0.0"
+    pump: "npm:^3.0.0"
+    tar-stream: "npm:^3.1.5"
+  dependenciesMeta:
+    bare-fs:
+      optional: true
+    bare-path:
+      optional: true
+  checksum: 10/272054aa93adf66f3febac1ab666c2e1ae80fb7d9b7483efa9e9216aca6f7900dfecb9ef04e83f179251f95a965f960d760c42ebbb1e04580a182da997af98da
+  languageName: node
+  linkType: hard
+
 "tar-stream@npm:^2.1.4":
   version: 2.2.0
   resolution: "tar-stream@npm:2.2.0"
@@ -13461,6 +13632,29 @@ __metadata:
     mkdirp: "npm:^3.0.1"
     yallist: "npm:^5.0.0"
   checksum: 10/12a2a4fc6dee23e07cc47f1aeb3a14a1afd3f16397e1350036a8f4cdfee8dcac7ef5978337a4e7b2ac2c27a9a6d46388fc2088ea7c80cb6878c814b1425f8ecf
+  languageName: node
+  linkType: hard
+
+"testcontainers@npm:^10.0.0":
+  version: 10.28.0
+  resolution: "testcontainers@npm:10.28.0"
+  dependencies:
+    "@balena/dockerignore": "npm:^1.0.2"
+    "@types/dockerode": "npm:^3.3.35"
+    archiver: "npm:^7.0.1"
+    async-lock: "npm:^1.4.1"
+    byline: "npm:^5.0.0"
+    debug: "npm:^4.3.5"
+    docker-compose: "npm:^0.24.8"
+    dockerode: "npm:^4.0.5"
+    get-port: "npm:^7.1.0"
+    proper-lockfile: "npm:^4.1.2"
+    properties-reader: "npm:^2.3.0"
+    ssh-remote-port-forward: "npm:^1.0.4"
+    tar-fs: "npm:^3.0.7"
+    tmp: "npm:^0.2.3"
+    undici: "npm:^5.29.0"
+  checksum: 10/434d3677e10a114805420f2420831a8eae4091acdaf242787fb100a8755140af0e11eab3932cdb29267f0869af22d0b572532f72ee5450d60f63f3fed30d098c
   languageName: node
   linkType: hard
 
@@ -14021,6 +14215,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ulid@npm:^2.3.0":
+  version: 2.4.0
+  resolution: "ulid@npm:2.4.0"
+  bin:
+    ulid: bin/cli.js
+  checksum: 10/409ad0a703ea9f25d2a35cf790b767030a2c7b5ca0df6acb73669628156ab63bb97925a3fd7aaaf0b2384d39bd3ed2f7cd2c2de9f1171df6bc79b8c097865d92
+  languageName: node
+  linkType: hard
+
 "unbox-primitive@npm:^1.0.2":
   version: 1.0.2
   resolution: "unbox-primitive@npm:1.0.2"
@@ -14040,10 +14243,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"undici-types@npm:~6.21.0":
+  version: 6.21.0
+  resolution: "undici-types@npm:6.21.0"
+  checksum: 10/ec8f41aa4359d50f9b59fa61fe3efce3477cc681908c8f84354d8567bb3701fafdddf36ef6bff307024d3feb42c837cf6f670314ba37fc8145e219560e473d14
+  languageName: node
+  linkType: hard
+
 "undici@npm:6.21.2":
   version: 6.21.2
   resolution: "undici@npm:6.21.2"
   checksum: 10/9cd9ead22599c23aa2a7dfa5b80fa1491bebb294bf1dc64c9c0f90ea4ec8e272a4db2810e2565d65b952249f105523d2929d7cc951f88cf0a1f082143bae8d75
+  languageName: node
+  linkType: hard
+
+"undici@npm:^5.29.0":
+  version: 5.29.0
+  resolution: "undici@npm:5.29.0"
+  dependencies:
+    "@fastify/busboy": "npm:^2.0.0"
+  checksum: 10/0ceca8924a32acdcc0cfb8dd2d368c217840970aa3f5e314fc169608474be6341c5b8e50cad7bd257dbe3b4e432bc5d0a0d000f83644b54fa11a48735ec52b93
   languageName: node
   linkType: hard
 
@@ -14694,17 +14913,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"yallist@npm:4.0.0, yallist@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "yallist@npm:4.0.0"
+  checksum: 10/4cb02b42b8a93b5cf50caf5d8e9beb409400a8a4d85e83bb0685c1457e9ac0b7a00819e9f5991ac25ffabb56a78e2f017c1acc010b3a1babfe6de690ba531abd
+  languageName: node
+  linkType: hard
+
 "yallist@npm:^3.0.2":
   version: 3.1.1
   resolution: "yallist@npm:3.1.1"
   checksum: 10/9af0a4329c3c6b779ac4736c69fae4190ac03029fa27c1aef4e6bcc92119b73dea6fe5db5fe881fb0ce2a0e9539a42cdf60c7c21eda04d1a0b8c082e38509efb
-  languageName: node
-  linkType: hard
-
-"yallist@npm:^4.0.0":
-  version: 4.0.0
-  resolution: "yallist@npm:4.0.0"
-  checksum: 10/4cb02b42b8a93b5cf50caf5d8e9beb409400a8a4d85e83bb0685c1457e9ac0b7a00819e9f5991ac25ffabb56a78e2f017c1acc010b3a1babfe6de690ba531abd
   languageName: node
   linkType: hard
 

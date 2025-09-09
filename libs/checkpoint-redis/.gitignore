@@ -1,0 +1,15 @@
+index.cjs
+index.js
+index.d.ts
+index.d.cts
+shallow.cjs
+shallow.js
+shallow.d.ts
+shallow.d.cts
+store.cjs
+store.js
+store.d.ts
+store.d.cts
+node_modules
+dist
+.yarn

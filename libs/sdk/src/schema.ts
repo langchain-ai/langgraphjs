@@ -365,3 +365,54 @@ export type CronSortBy =
   | "next_run_date";
 
 export type SortOrder = "asc" | "desc";
+
+// Select field aliases for client-side typing of `select` parameters.
+// These mirror the server's allowed field sets.
+
+export type AssistantSelectField =
+  | "assistant_id"
+  | "graph_id"
+  | "name"
+  | "description"
+  | "config"
+  | "context"
+  | "created_at"
+  | "updated_at"
+  | "metadata"
+  | "version";
+
+export type ThreadSelectField =
+  | "thread_id"
+  | "created_at"
+  | "updated_at"
+  | "metadata"
+  | "config"
+  | "context"
+  | "status"
+  | "values"
+  | "interrupts";
+
+export type RunSelectField =
+  | "run_id"
+  | "thread_id"
+  | "assistant_id"
+  | "created_at"
+  | "updated_at"
+  | "status"
+  | "metadata"
+  | "kwargs"
+  | "multitask_strategy";
+
+export type CronSelectField =
+  | "cron_id"
+  | "assistant_id"
+  | "thread_id"
+  | "end_time"
+  | "schedule"
+  | "created_at"
+  | "updated_at"
+  | "user_id"
+  | "payload"
+  | "next_run_date"
+  | "metadata"
+  | "now";

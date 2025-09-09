@@ -1,5 +1,56 @@
 # @langchain/langgraph-api
 
+## 0.0.64
+
+### Patch Changes
+
+- 30bcfcd: Assume `http` protocol only when accessing UI components from frontend served from `localhost` or `127.0.0.1` (#1596, #1573)
+- 572de43: feat(threads): add `ids` filter to Threads.search
+
+  - SDK: `ThreadsClient.search` now accepts `ids?: string[]` and forwards it to `/threads/search`.
+  - API: `/threads/search` schema accepts `ids` and storage filters by provided thread IDs.
+
+  This enables fetching a specific set of threads directly via the search endpoint, while remaining backward compatible.
+
+  - @langchain/langgraph-ui@0.0.64
+
+## 0.0.63
+
+### Patch Changes
+
+- c9d4dfd: Add support for @langchain/core 1.0.0-alpha and @langchain/langgraph 1.0.0-alpha
+  - @langchain/langgraph-ui@0.0.63
+
+## 0.0.62
+
+### Patch Changes
+
+- c868796: Exports more graph-related helper functions.
+  - @langchain/langgraph-ui@0.0.62
+
+## 0.0.61
+
+### Patch Changes
+
+- a334897: feat(api): add /count endpoints for threads and assistants
+- 9357bb7: chore(api): abstract internal operations away from createServer
+- 9f13d74: fix(api): prevent overriding default CORS config when applying a single override
+  - @langchain/langgraph-ui@0.0.61
+
+## 0.0.60
+
+### Patch Changes
+
+- 9c57526: fix(api): serialization of "checkpoints" and "tasks" stream modes
+  - @langchain/langgraph-ui@0.0.60
+
+## 0.0.59
+
+### Patch Changes
+
+- 3412f9f: fix(api): unintended schema inference to BaseMessage[] for all state keys when `strictFunctionTypes: true`
+  - @langchain/langgraph-ui@0.0.59
+
 ## 0.0.58
 
 ### Patch Changes

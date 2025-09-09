@@ -297,11 +297,44 @@ export const AssistantSearchRequest = z
   })
   .describe("Payload for listing assistants.");
 
+export const AssistantCountRequest = z
+  .object({
+    metadata: z
+      .record(z.unknown())
+      .describe("Metadata to search for.")
+      .optional(),
+    graph_id: z.string().describe("Filter by graph ID.").optional(),
+  })
+  .describe("Payload for counting assistants.");
+
+export const ThreadCountRequest = z
+  .object({
+    metadata: z
+      .record(z.unknown())
+      .describe("Metadata to search for.")
+      .optional(),
+
+    status: z
+      .enum(["idle", "busy", "interrupted", "error"])
+      .describe("Filter by thread status.")
+      .optional(),
+
+    values: z
+      .record(z.unknown())
+      .describe("Filter by thread values.")
+      .optional(),
+  })
+  .describe("Payload for counting threads.");
+
 export const ThreadSearchRequest = z
   .object({
     metadata: z
       .record(z.unknown())
       .describe("Metadata to search for.")
+      .optional(),
+    ids: z
+      .array(z.string().uuid())
+      .describe("Filter by thread IDs.")
       .optional(),
     status: z
       .enum(["idle", "busy", "interrupted", "error"])

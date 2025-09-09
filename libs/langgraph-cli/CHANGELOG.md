@@ -1,5 +1,51 @@
 # @langchain/langgraph-cli
 
+## 0.0.64
+
+### Patch Changes
+
+- Updated dependencies [30bcfcd]
+- Updated dependencies [572de43]
+  - @langchain/langgraph-api@0.0.64
+
+## 0.0.63
+
+### Patch Changes
+
+- Updated dependencies [c9d4dfd]
+  - @langchain/langgraph-api@0.0.63
+
+## 0.0.62
+
+### Patch Changes
+
+- Updated dependencies [c868796]
+  - @langchain/langgraph-api@0.0.62
+
+## 0.0.61
+
+### Patch Changes
+
+- Updated dependencies [a334897]
+- Updated dependencies [9357bb7]
+- Updated dependencies [9f13d74]
+  - @langchain/langgraph-api@0.0.61
+
+## 0.0.60
+
+### Patch Changes
+
+- Updated dependencies [9c57526]
+  - @langchain/langgraph-api@0.0.60
+
+## 0.0.59
+
+### Patch Changes
+
+- d28a9d7: fix(cli): sysinfo command failing to obtain dep versions for Node.js 20.x
+- Updated dependencies [3412f9f]
+  - @langchain/langgraph-api@0.0.59
+
 ## 0.0.58
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 0.1.2
+
+### Patch Changes
+
+- 11c7807: Add support for @langchain/core 1.0.0-alpha
+
 ## 0.1.1
 
 ### Patch Changes

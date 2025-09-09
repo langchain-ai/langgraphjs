@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "0.0.58",
+  "version": "0.0.64",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-postgres",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -33,7 +33,7 @@
     "pg": "^8.12.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "^0.1.0"
   },
   "devDependencies": {

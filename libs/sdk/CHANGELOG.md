@@ -1,5 +1,51 @@
 # @langchain/langgraph-sdk
 
+## 0.1.1
+
+### Patch Changes
+
+- 7de6680: Fix `onRequest` not being called when streaming runs or threads (#1585)
+- df8b662: Fix interrupts not being exposed in `useStream["interrupt"]` when `fetchStateHistory: false`
+- 572de43: feat(threads): add `ids` filter to Threads.search
+
+  - SDK: `ThreadsClient.search` now accepts `ids?: string[]` and forwards it to `/threads/search`.
+  - API: `/threads/search` schema accepts `ids` and storage filters by provided thread IDs.
+
+  This enables fetching a specific set of threads directly via the search endpoint, while remaining backward compatible.
+
+## 0.1.0
+
+### Minor Changes
+
+- 35a0f1c: feat(sdk): set default limit of fetch history to 10
+- 35a0f1c: feat(sdk): set default of `fetchStateHistory` to `false`
+
+### Patch Changes
+
+- 35a0f1c: chore(sdk): decouple stream manager from React
+- 35a0f1c: fix(sdk): prevent partial history from hiding all values
+
+## 0.0.112
+
+### Patch Changes
+
+- a50e02e: feat(sdk): add thread streaming endpoint
+- 7e210a1: feat(sdk): add durability param to run methods
+- 5766b62: Fix `isThreadLoading: false` when initially mounting in useStream
+
+## 0.0.111
+
+### Patch Changes
+
+- b5f14d0: Add methods to connect with the /count endpoints
+
+## 0.0.109
+
+### Patch Changes
+
+- e8b4540: Add support for select statements in the search endpoints
+- 9c57526: fix(sdk): expose subgraph events in useStream callbacks
+
 ## 0.0.107
 
 ### Patch Changes

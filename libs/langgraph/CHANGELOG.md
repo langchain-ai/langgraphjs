@@ -1,5 +1,49 @@
 # @langchain/langgraph
 
+## 0.4.9
+
+### Patch Changes
+
+- Updated dependencies [35a0f1c]
+- Updated dependencies [35a0f1c]
+- Updated dependencies [35a0f1c]
+- Updated dependencies [35a0f1c]
+  - @langchain/langgraph-sdk@0.1.0
+
+## 0.4.8
+
+### Patch Changes
+
+- bb0df7c: Fix "This stream has already been locked for exclusive reading by another reader" error when using `web-streams-polyfill`
+
+## 0.4.7
+
+### Patch Changes
+
+- 60e9258: fix(langgraph): task result from stream mode debug / tasks should match format from getStateHistory / getState
+- 07a5b2f: fix(langgraph): avoid accepting incorrect keys in withLangGraph
+- Updated dependencies [b5f14d0]
+  - @langchain/langgraph-sdk@0.0.111
+
+## 0.4.6
+
+### Patch Changes
+
+- 5f1db81: fix(langgraph): `withConfig` should accept `context`
+- c53ca47: Avoid iterating on channels if no managed values are present
+- a3707fb: fix(langgraph): allow `updateState` after resuming from an interrupt
+- Updated dependencies [e8b4540]
+- Updated dependencies [9c57526]
+  - @langchain/langgraph-sdk@0.0.109
+
+## 0.4.5
+
+### Patch Changes
+
+- d22113a: fix(pregel/utils): propagate abort reason in combineAbortSignals
+- 2284045: fix(langgraph): send checkpoint namespace when yielding custom events in subgraphs
+- 4774013: fix(langgraph): persist resume map values
+
 ## 0.4.4
 
 ### Patch Changes

@@ -104,6 +104,33 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
   }
 }
 
+function isMultipleChannelWrite(
+  value: unknown
+): value is { $writes: unknown[] } {
+  if (typeof value !== "object" || value === null) return false;
+  return "$writes" in value && Array.isArray(value.$writes);
+}
+
+function mapTaskResultWrites(writes: PendingWrite<unknown>[]) {
+  const result: Record<string, unknown> = {};
+
+  for (const [channel, value] of writes) {
+    const strChannel = String(channel);
+
+    if (strChannel in result) {
+      const channelWrites = isMultipleChannelWrite(result[strChannel])
+        ? result[strChannel].$writes
+        : [result[strChannel]];
+
+      channelWrites.push(value);
+      result[strChannel] = { $writes: channelWrites };
+    } else {
+      result[strChannel] = value;
+    }
+  }
+  return result;
+}
+
 export function* mapDebugTaskResults<
   N extends PropertyKey,
   C extends PropertyKey
@@ -116,11 +143,13 @@ export function* mapDebugTaskResults<
     yield {
       id,
       name,
-      result: writes.filter(([channel]) => {
-        return Array.isArray(streamChannels)
-          ? streamChannels.includes(channel)
-          : channel === streamChannels;
-      }),
+      result: mapTaskResultWrites(
+        writes.filter(([channel]) => {
+          return Array.isArray(streamChannels)
+            ? streamChannels.includes(channel)
+            : channel === streamChannels;
+        })
+      ),
       interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
     };
   }
@@ -235,10 +264,10 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       if (Array.isArray(outputKeys)) {
         const results = pendingWrites
           .filter(([tid, n]) => tid === task.id && outputKeys.includes(n))
-          .map(([, n, v]) => [n, v]);
+          .map(([, n, v]) => [n, v] as PendingWrite<C>);
 
         if (!results.length) return undefined;
-        return Object.fromEntries(results);
+        return mapTaskResultWrites(results);
       }
 
       return undefined;

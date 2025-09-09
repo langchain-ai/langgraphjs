@@ -32,7 +32,7 @@ import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
-  isBaseChannel,
+  getOnlyChannels,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -568,7 +568,9 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  override withConfig(config: RunnableConfig): typeof this {
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer">
+  ): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)({ ...this, config: mergedConfig });
@@ -1477,6 +1479,7 @@ export class Pregel<
               });
             })
             .flat()
+            .filter(([_, v]) => v !== INTERRUPT)
             .sort(([aNumber], [bNumber]) =>
               compareChannelVersions(aNumber, bNumber)
             );
@@ -2042,13 +2045,7 @@ export class Pregel<
       config?.runName ?? this.getName() // run_name
     );
 
-    const channelSpecs: Record<string, BaseChannel> = {};
-    for (const [name, spec] of Object.entries(this.channels)) {
-      if (isBaseChannel(spec)) {
-        channelSpecs[name] = spec;
-      }
-    }
-
+    const channelSpecs = getOnlyChannels(this.channels);
     let loop: PregelLoop | undefined;
     let loopError: unknown;
 
