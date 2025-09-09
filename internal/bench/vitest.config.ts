@@ -1,11 +1,14 @@
-import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  plugins: [react()],
   test: {
-    environment: "jsdom",
     globals: true,
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    fileParallelism: false,
+    maxConcurrency: 1,
+    include: ["**/*.test.ts"],
+    testTimeout: 300_000, // 5 minutes for benchmarks
+    benchmark: {
+      include: ["**/*.test.ts"],
+    },
   },
 });

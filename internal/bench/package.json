@@ -6,7 +6,7 @@
   "scripts": {
     "format": "prettier --write src",
     "lint": "prettier --check src",
-    "test": "vitest run"
+    "bench": "vitest bench"
   },
   "main": "index.js",
   "license": "MIT",
