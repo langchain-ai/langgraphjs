@@ -92,6 +92,19 @@ export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
 
+function triggersNextStep(
+  updatedChannels: Set<string>,
+  triggerToNodes: Record<string, string[]> | undefined
+) {
+  if (triggerToNodes == null) return false;
+
+  for (const chan of updatedChannels) {
+    if (triggerToNodes[chan]) return true;
+  }
+
+  return false;
+}
+
 // Avoids unnecessary double iteration
 function maxChannelMapVersion(
   channelVersions: Record<string, number | string>
@@ -348,6 +361,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       const channel = onlyChannels[chan];
       if (channel.isAvailable() && !updatedChannels.has(chan)) {
         const updated = channel.update([]);
+
         if (updated && getNextVersion !== undefined) {
           checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
@@ -359,12 +373,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // If this is (tentatively) the last superstep, notify all channels of finish
-  if (
-    bumpStep &&
-    !Object.keys(triggerToNodes ?? {}).some((channel) =>
-      updatedChannels.has(channel)
-    )
-  ) {
+  if (bumpStep && !triggersNextStep(updatedChannels, triggerToNodes)) {
     for (const chan in onlyChannels) {
       if (!Object.prototype.hasOwnProperty.call(onlyChannels, chan)) continue;
 
