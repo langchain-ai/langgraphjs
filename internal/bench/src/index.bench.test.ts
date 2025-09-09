@@ -3,7 +3,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { createSequential } from "./sequential.js";
 import { reactAgent } from "./react_agent.js";
-import { runGraph, runFirstEventLatency } from "./bench.utils.js";
+import { runGraph, runFirstEventLatency } from "./utils.js";
 
 // Sequential benchmarks
 describe("sequential_10", () => {

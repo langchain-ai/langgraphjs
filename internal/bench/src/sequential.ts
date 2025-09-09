@@ -1,12 +1,10 @@
-/* eslint-disable no-promise-executor-return */
-/* eslint-disable import/order */
-/* eslint-disable import/first */
+/* eslint-disable no-promise-executor-return, import/order, import/first */
 import {
   MessagesAnnotation,
   StateGraph,
   StateType,
   UpdateType,
-} from "../../index.js";
+} from "@langchain/langgraph";
 
 /**
  * Create a sequential no-op graph consisting of many nodes.
@@ -53,7 +51,7 @@ async function main() {
   console.timeEnd("stream");
 
   if (inspector.url()) {
-    await new Promise((resolve) => setTimeout(resolve, 360_000));
+    await new Promise((resolve) => setTimeout(resolve, 3_600_000));
   }
 
   return result.length;

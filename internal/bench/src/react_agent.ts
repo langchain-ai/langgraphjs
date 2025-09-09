@@ -1,13 +1,11 @@
-/* eslint-disable no-promise-executor-return */
-/* eslint-disable import/order */
-/* eslint-disable import/first */
+/* eslint-disable no-promise-executor-return, import/order, import/first */
 import { v4 as uuid } from "uuid";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v3";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { createReactAgent } from "../../prebuilt/index.js";
-import { FakeToolCallingChatModel } from "../utils.models.js";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { FakeToolCallingChatModel } from "./utils.js";
 
 /**
  * Creates a React agent with specified number of tools for benchmarking.
@@ -78,7 +76,7 @@ async function main() {
   console.timeEnd("stream");
 
   if (inspector.url()) {
-    await new Promise((resolve) => setTimeout(resolve, 360_000));
+    await new Promise((resolve) => setTimeout(resolve, 3_600_000));
   }
 
   return result.length;
