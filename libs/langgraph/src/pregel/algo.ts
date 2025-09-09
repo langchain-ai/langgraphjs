@@ -106,6 +106,10 @@ function triggersNextStep(
 }
 
 // Avoids unnecessary double iteration
+const MAX_CHANNEL_MAP_VERSION_CACHE = new WeakMap<
+  Record<string, number | string>,
+  number | string
+>();
 function maxChannelMapVersion(
   channelVersions: Record<string, number | string>
 ): number | string | undefined {
@@ -285,7 +289,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  let maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
+  let maxVersion =
+    MAX_CHANNEL_MAP_VERSION_CACHE.get(checkpoint.channel_versions) ??
+    maxChannelMapVersion(checkpoint.channel_versions);
 
   // Consume all channels that were read
   const channelsToConsume = new Set(
@@ -294,12 +300,12 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       .filter((chan) => !RESERVED.includes(chan))
   );
 
-  let usedNewVersion = false;
+  let usedNextVersion = false;
   for (const chan of channelsToConsume) {
     if (chan in onlyChannels && onlyChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
-        usedNewVersion = true;
+        usedNextVersion = true;
       }
     }
   }
@@ -318,8 +324,11 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  if (maxVersion != null && getNextVersion != null) {
-    maxVersion = usedNewVersion ? getNextVersion(maxVersion) : maxVersion;
+  if (maxVersion != null && getNextVersion != null && usedNextVersion) {
+    maxVersion = getNextVersion(maxVersion);
+    usedNextVersion = false;
+
+    MAX_CHANNEL_MAP_VERSION_CACHE.set(checkpoint.channel_versions, maxVersion!);
   }
 
   const updatedChannels: Set<string> = new Set();
@@ -346,6 +355,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
       if (updated && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+        usedNextVersion = true;
 
         // unavailable channels can't trigger tasks, so don't add them
         if (channel.isAvailable()) updatedChannels.add(chan);
@@ -364,6 +374,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
         if (updated && getNextVersion !== undefined) {
           checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+          usedNextVersion = true;
 
           // unavailable channels can't trigger tasks, so don't add them
           if (channel.isAvailable()) updatedChannels.add(chan);
@@ -380,11 +391,18 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       const channel = onlyChannels[chan];
       if (channel.finish() && getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+        usedNextVersion = true;
 
         // unavailable channels can't trigger tasks, so don't add them
         if (channel.isAvailable()) updatedChannels.add(chan);
       }
     }
+  }
+
+  if (maxVersion != null && getNextVersion != null && usedNextVersion) {
+    maxVersion = getNextVersion(maxVersion);
+    usedNextVersion = false;
+    MAX_CHANNEL_MAP_VERSION_CACHE.set(checkpoint.channel_versions, maxVersion!);
   }
 
   return updatedChannels;
