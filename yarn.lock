@@ -1948,6 +1948,19 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@langchain/langgraph-benchmark@workspace:internal/bench":
+  version: 0.0.0-use.local
+  resolution: "@langchain/langgraph-benchmark@workspace:internal/bench"
+  dependencies:
+    "@langchain/langgraph": "workspace:*"
+    "@tsconfig/recommended": "npm:^1.0.2"
+    "@types/node": "npm:^18.15.11"
+    prettier: "npm:^2.8.3"
+    typescript: "npm:^4.9.5 || ^5.4.5"
+    vitest: "npm:^3.1.2"
+  languageName: unknown
+  linkType: soft
+
 "@langchain/langgraph-checkpoint-mongodb@workspace:*, @langchain/langgraph-checkpoint-mongodb@workspace:libs/checkpoint-mongodb":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint-mongodb@workspace:libs/checkpoint-mongodb"
