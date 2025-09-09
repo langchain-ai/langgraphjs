@@ -4,7 +4,7 @@
 import { test } from "vitest";
 import { pull } from "langchain/hub";
 import { ChatOpenAI } from "@langchain/openai";
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+import { TavilySearch } from "@langchain/tavily";
 import {
   ChatPromptTemplate,
   MessagesPlaceholder,
@@ -30,7 +30,7 @@ import { createAgentExecutor } from "../prebuilt/agent_executor.js";
 import { StateGraph, END, START } from "../index.js";
 
 test.skip("Can invoke with tracing", async () => {
-  const tools = [new TavilySearchResults({ maxResults: 1 })];
+  const tools = [new TavilySearch({ maxResults: 1 })];
 
   // Get the prompt to use - you can modify this!
   const prompt = await pull<ChatPromptTemplate>(
@@ -138,7 +138,7 @@ test.skip("Can invoke with tracing", async () => {
 });
 
 test.skip("Can nest an agent executor", async () => {
-  const tools = [new TavilySearchResults({ maxResults: 3 })];
+  const tools = [new TavilySearch({ maxResults: 3 })];
   const llm = new ChatOpenAI({
     modelName: "gpt-4-1106-preview",
     temperature: 0,
@@ -258,7 +258,7 @@ test.skip("Can nest an agent executor", async () => {
 });
 
 test.skip("Can nest a graph within a graph", async () => {
-  const tools = [new TavilySearchResults({ maxResults: 3 })];
+  const tools = [new TavilySearch({ maxResults: 3 })];
   const llm = new ChatOpenAI({
     modelName: "gpt-4-1106-preview",
     temperature: 0,
@@ -376,7 +376,7 @@ test.skip("Can nest a graph within a graph", async () => {
 });
 
 test.skip("Should trace plan and execute flow", async () => {
-  const tools = [new TavilySearchResults({ maxResults: 3 })];
+  const tools = [new TavilySearch({ maxResults: 3 })];
   // Get the prompt to use - you can modify this!
   const prompt = await pull<ChatPromptTemplate>(
     "hwchase17/openai-functions-agent"
