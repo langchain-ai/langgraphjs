@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.12
 
@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Use Node.js 18.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 18.x
           cache: "yarn"

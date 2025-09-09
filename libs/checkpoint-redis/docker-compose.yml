@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_ARGS=--save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+
+volumes:
+  redis_data:
