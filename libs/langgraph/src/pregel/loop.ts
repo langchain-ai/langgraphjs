@@ -255,6 +255,8 @@ export class PregelLoop {
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
+  protected updatedChannels: Set<string> | undefined;
+
   status:
     | "pending"
     | "done"
@@ -701,7 +703,7 @@ export class PregelLoop {
       // finish superstep
       const writes = Object.values(this.tasks).flatMap((t) => t.writes);
       // All tasks have finished
-      _applyWrites(
+      this.updatedChannels = _applyWrites(
         this.checkpoint,
         this.channels,
         Object.values(this.tasks),
@@ -757,6 +759,8 @@ export class PregelLoop {
         manager: this.manager,
         store: this.store,
         stream: this.stream,
+        triggerToNodes: this.triggerToNodes,
+        updatedChannels: this.updatedChannels,
       }
     );
     this.tasks = nextTasks;
@@ -857,7 +861,7 @@ export class PregelLoop {
         this.checkpointPendingWrites.length > 0 &&
         Object.values(this.tasks).some((task) => task.writes.length > 0)
       ) {
-        _applyWrites(
+        this.updatedChannels = _applyWrites(
           this.checkpoint,
           this.channels,
           Object.values(this.tasks),
@@ -1067,7 +1071,7 @@ export class PregelLoop {
           true,
           { step: this.step }
         );
-        _applyWrites(
+        this.updatedChannels = _applyWrites(
           this.checkpoint,
           this.channels,
           (Object.values(discardTasks) as WritesProtocol[]).concat([

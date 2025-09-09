@@ -547,6 +547,7 @@ export class Pregel<
     this.store = fields.store;
     this.cache = fields.cache;
     this.name = fields.name;
+    this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
 
     if (this.autoValidate) {
       this.validate();

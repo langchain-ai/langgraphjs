@@ -478,6 +478,12 @@ export type PregelParams<
    * Storage used for node caching.
    */
   cache?: BaseCache;
+
+  /**
+   * The trigger to node mapping for the graph run.
+   * @internal
+   */
+  triggerToNodes?: Record<string, string[]>;
 };
 
 export interface PregelTaskDescription {
