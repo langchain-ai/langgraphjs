@@ -6,8 +6,8 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
@@ -66,8 +66,8 @@
   },
   "exports": {
     ".": {
-      "types": {
-        "import": "./dist/index.d.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
       "require": {
@@ -77,8 +77,8 @@
       "input": "./src/index.ts"
     },
     "./shallow": {
-      "types": {
-        "import": "./dist/shallow.d.ts",
+      "import": {
+        "types": "./dist/shallow.d.ts",
         "default": "./dist/shallow.js"
       },
       "require": {
@@ -88,8 +88,8 @@
       "input": "./src/shallow.ts"
     },
     "./store": {
-      "types": {
-        "import": "./dist/store.d.ts",
+      "import": {
+        "types": "./dist/store.d.ts",
         "default": "./dist/store.js"
       },
       "require": {
