@@ -272,10 +272,12 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       .filter((chan) => !RESERVED.includes(chan))
   );
 
+  let usedNewVersion = false;
   for (const chan of channelsToConsume) {
     if (chan in onlyChannels && onlyChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+        usedNewVersion = true;
       }
     }
   }
@@ -294,7 +296,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
+  if (maxVersion != null && getNextVersion != null) {
+    maxVersion = usedNewVersion ? getNextVersion(maxVersion) : maxVersion;
+  }
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
