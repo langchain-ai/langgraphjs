@@ -44,6 +44,7 @@ export const AssistantCreate = z
       .union([z.literal("raise"), z.literal("do_nothing")])
       .optional(),
     name: z.string().optional(),
+    description: z.string().optional(),
   })
   .describe("Payload for creating an assistant.");
 
@@ -53,6 +54,7 @@ export const AssistantPatch = z
     config: AssistantConfig.optional(),
     context: z.unknown().optional(),
     name: z.string().optional(),
+    description: z.string().optional(),
     metadata: z
       .object({})
       .catchall(z.any())

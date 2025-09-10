@@ -321,6 +321,7 @@ export class FileSystemAssistants implements AssistantsRepo {
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
       name?: string;
+      description?: string;
     },
     auth: AuthContext | undefined
   ): Promise<Assistant> {
@@ -335,6 +336,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         metadata: options.metadata,
         if_exists: options.if_exists,
         name: options.name,
+        description: options.description,
       }
     );
 
@@ -365,6 +367,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         graph_id: options.graph_id,
         metadata: mutable.metadata ?? ({} as Metadata),
         name: options.name || options.graph_id,
+        description: options.description,
       };
 
       STORE.assistant_versions.push({
@@ -376,6 +379,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         metadata: mutable.metadata ?? ({} as Metadata),
         created_at: now,
         name: options.name || options.graph_id,
+        description: options.description,
       });
 
       return STORE.assistants[assistant_id];
@@ -390,6 +394,7 @@ export class FileSystemAssistants implements AssistantsRepo {
       graph_id?: string;
       metadata?: Metadata;
       name?: string;
+      description?: string;
     },
     auth: AuthContext | undefined
   ): Promise<Assistant> {
@@ -402,6 +407,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         config: options?.config,
         metadata: options?.metadata,
         name: options?.name,
+        description: options?.description,
       }
     );
 
@@ -440,6 +446,10 @@ export class FileSystemAssistants implements AssistantsRepo {
       if (options?.name != null) {
         assistant["name"] = options?.name ?? assistant["name"];
       }
+      if (options?.description != null) {
+        assistant["description"] =
+          options?.description ?? assistant["description"];
+      }
 
       if (metadata != null) {
         assistant["metadata"] = metadata ?? assistant["metadata"];
@@ -463,6 +473,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         config: options?.config ?? assistant["config"],
         context: options?.context ?? assistant["context"],
         name: options?.name ?? assistant["name"],
+        description: options?.description ?? assistant["description"],
         metadata: metadata ?? assistant["metadata"],
         created_at: now,
       };
