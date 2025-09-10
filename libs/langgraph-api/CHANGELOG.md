@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.66
+
+### Patch Changes
+
+- edd4088: chore(sdk, api): add description field for assistants
+  - @langchain/langgraph-ui@0.0.66
+
 ## 0.0.65
 
 ### Patch Changes
