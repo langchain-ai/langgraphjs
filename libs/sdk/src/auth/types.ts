@@ -21,7 +21,6 @@ interface AssistantCreate {
   context?: Maybe<unknown>;
   if_exists?: Maybe<"raise" | "do_nothing">;
   name?: Maybe<string>;
-  description?: Maybe<string>;
   graph_id: string;
 }
 
@@ -43,7 +42,6 @@ interface AssistantUpdate {
   context?: Maybe<unknown>;
   graph_id?: Maybe<string>;
   name?: Maybe<string>;
-  description?: Maybe<string>;
   version?: Maybe<number>;
 }
 
