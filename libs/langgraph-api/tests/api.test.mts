@@ -71,14 +71,31 @@ describe("assistants", () => {
     const graphId = "agent";
     const config = { configurable: { model_name: "gpt" } };
 
-    let res = await client.assistants.create({ graphId, config });
-    expect(res).toMatchObject({ graph_id: graphId, config });
+    let res = await client.assistants.create({
+      graphId,
+      config,
+      description: "foo",
+    });
+    expect(res).toMatchObject({
+      graph_id: graphId,
+      config,
+      description: "foo",
+    });
 
     const metadata = { name: "woof" };
-    await client.assistants.update(res.assistant_id, { graphId, metadata });
+    await client.assistants.update(res.assistant_id, {
+      graphId,
+      metadata,
+      description: "bar",
+    });
 
     res = await client.assistants.get(res.assistant_id);
-    expect(res).toMatchObject({ graph_id: graphId, config, metadata });
+    expect(res).toMatchObject({
+      graph_id: graphId,
+      config,
+      metadata,
+      description: "bar",
+    });
 
     await client.assistants.delete(res.assistant_id);
     await expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
