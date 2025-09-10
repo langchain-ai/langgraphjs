@@ -2,4 +2,4 @@
 "@langchain/langgraph-sdk": patch
 ---
 
-chore(sdk): add description field for assistants
+Add `description` field for assistants auth handlers
