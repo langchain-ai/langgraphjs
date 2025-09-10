@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.65
+
+### Patch Changes
+
+- 0aefafe: Skip auth middleware when requesting JS/CSS assets for built-in generative UI
+  - @langchain/langgraph-ui@0.0.65
+
 ## 0.0.64
 
 ### Patch Changes
