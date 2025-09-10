@@ -103,4 +103,18 @@ export const auth = new Auth()
     if (!identity || !value.namespace?.includes(identity)) {
       throw new HTTPException(403, { message: "Not authorized" });
     }
+  })
+  .on("threads:create", ({ value, user, permissions }) => {
+    if (
+      !["me", "threads:write", "threads:*"].some((p) =>
+        permissions?.includes(p)
+      )
+    ) {
+      throw new HTTPException(403, { message: "Not authorized" });
+    }
+
+    const filters = { owner: user.identity };
+    value.metadata ??= {};
+    value.metadata["owner"] = user.identity;
+    return filters;
   });

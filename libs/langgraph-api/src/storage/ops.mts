@@ -908,7 +908,7 @@ export class FileSystemThreads implements ThreadsRepo {
       thread_id,
     });
 
-    return this.conn.with((STORE) => {
+    const fromThread = await this.conn.with((STORE) => {
       const thread = STORE.threads[thread_id];
       if (!thread)
         throw new HTTPException(409, { message: "Thread not found" });
@@ -916,14 +916,23 @@ export class FileSystemThreads implements ThreadsRepo {
       if (!isAuthMatching(thread["metadata"], filters)) {
         throw new HTTPException(409, { message: "Thread not found" });
       }
+      return thread;
+    });
 
-      const newThreadId = uuid4();
-      const now = new Date();
+    const newThreadId = uuid4();
+    const now = new Date();
+    const newMetadata = { ...fromThread.metadata, thread_id: newThreadId };
+    await handleAuthEvent(auth, "threads:create", {
+      thread_id: newThreadId,
+      metadata: newMetadata,
+    });
+
+    return this.conn.with((STORE) => {
       STORE.threads[newThreadId] = {
         thread_id: newThreadId,
         created_at: now,
         updated_at: now,
-        metadata: { ...thread.metadata, thread_id: newThreadId },
+        metadata: newMetadata,
         config: {},
         status: "idle",
       };

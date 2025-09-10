@@ -684,7 +684,7 @@ it.skipIf(process.version.startsWith("v18."))(
 );
 
 it.skipIf(process.version.startsWith("v18."))(
-  "thread copy authorization",
+  "thread copy authorization (by owner)",
   async () => {
     const owner = await createJwtClient("johndoe", ["me"]);
     const otherUser = await createJwtClient("alice", ["me"]);
@@ -699,6 +699,31 @@ it.skipIf(process.version.startsWith("v18."))(
     // Owner can copy the thread
     const copiedThread = await owner.threads.copy(thread.thread_id);
     expect(copiedThread).not.toBeNull();
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "thread copy authorization (requires read and write)",
+  async () => {
+    const writer = await createJwtClient("johndoe", ["me"]);
+    const reader = await createJwtClient("johndoe", ["threads:read"]);
+
+    const thread = await writer.threads.create();
+
+    // Can read the thread from both...
+    const readerThread = await reader.threads.get(thread.thread_id);
+    const writerThread = await writer.threads.get(thread.thread_id);
+    expect(thread).toEqual(readerThread);
+    expect(thread).toEqual(writerThread);
+
+    // But can only copy the thread from the writer
+    const copiedThread = await writer.threads.copy(thread.thread_id);
+    expect(copiedThread).not.toBeNull();
+    expect(copiedThread.thread_id).not.toBe(thread.thread_id);
+
+    await expect(reader.threads.copy(thread.thread_id)).rejects.toThrow(
+      "HTTP 403: Not authorized"
+    );
   }
 );
 
