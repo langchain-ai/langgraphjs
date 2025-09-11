@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph-sdk": minor
+"@langchain/langgraph-sdk": patch 
 ---
 
 Add TTL support to ThreadsClient in TypeScript to match Python SDK:
