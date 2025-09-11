@@ -67,6 +67,7 @@ function isRemoteGraph(agent: unknown): agent is RemoteGraph {
   if (agent == null || typeof agent !== "object") return false;
   if (!("lc_id" in agent)) return false;
   if (!Array.isArray(agent.lc_id)) return false;
+
   return agent.lc_id.join(".") === "langgraph.pregel.RemoteGraph";
 }
 
@@ -90,6 +91,7 @@ const makeCallAgent = (
       const threadId = config?.configurable?.thread_id;
       const agentThreadId =
         threadId && agent.name ? uuidv5(agent.name, threadId) : null;
+
       conf = {
         ...(config ?? {}),
         configurable: {
@@ -352,14 +354,15 @@ const createSupervisor = <
     agentNames.add(agent.name);
   }
 
-  const handoffTools = agents.map((agent) =>
-    createHandoffTool({
-      agentName: agent.name!,
-      agentDescription:
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        "description" in agent ? (agent as any).description : undefined,
-    })
-  );
+  const handoffTools = agents.map((agent) => {
+    const agentName = agent.name!;
+    const agentDescription =
+      "description" in agent && typeof agent.description === "string"
+        ? agent.description
+        : undefined;
+
+    return createHandoffTool({ agentName, agentDescription });
+  });
   const allTools = [...(tools ?? []), ...handoffTools];
 
   let supervisorLLM = llm;
@@ -422,7 +425,8 @@ const createSupervisor = <
   for (const agent of agents) {
     builder = builder.addNode(
       agent.name!,
-      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName)
+      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
+      { subgraphs: isRemoteGraph(agent) ? undefined : [agent] }
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);
   }

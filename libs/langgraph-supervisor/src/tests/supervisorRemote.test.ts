@@ -9,6 +9,10 @@ import { FakeToolCallingChatModel } from "./utils.js";
 class FakeRemoteGraph extends RemoteGraph {
   public receivedThreadIds: Array<string | undefined> = [];
 
+  get lc_id(): string[] {
+    return ["langgraph", "pregel", "RemoteGraph"];
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override async invoke(_state: any, config?: any) {
     this.receivedThreadIds.push(config?.configurable?.thread_id);
@@ -43,7 +47,8 @@ describe("Supervisor with RemoteGraph agents", () => {
     // Prepare RemoteGraph agent
     const remote = new FakeRemoteGraph({ graphId: "dummy" });
     (remote as unknown as { name?: string }).name = "remote_expert";
-    (remote as unknown as { description?: string }).description = "Remote expert doing remote things.";
+    (remote as unknown as { description?: string }).description =
+      "Remote expert doing remote things.";
 
     // Build supervisor workflow
     const workflow = createSupervisor({
