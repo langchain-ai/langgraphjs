@@ -740,7 +740,19 @@ export class ThreadsClient<
     supersteps?: Array<{
       updates: Array<{ values: unknown; command?: Command; asNode: string }>;
     }>;
+    /**
+     * Optional time-to-live in minutes for the thread.
+     * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+     * You may also provide an object { ttl: number, strategy?: "delete" }.
+     */
+    ttl?: number | { ttl: number; strategy?: "delete" };
   }): Promise<Thread<TStateType>> {
+    // Normalize ttl to an object if a number is provided
+    const ttlPayload =
+      typeof payload?.ttl === "number"
+        ? { ttl: payload.ttl, strategy: "delete" as const }
+        : payload?.ttl;
+
     return this.fetch<Thread<TStateType>>(`/threads`, {
       method: "POST",
       json: {
@@ -757,6 +769,7 @@ export class ThreadsClient<
             as_node: u.asNode,
           })),
         })),
+        ttl: ttlPayload,
       },
     });
   }
@@ -786,11 +799,22 @@ export class ThreadsClient<
        * Metadata for the thread.
        */
       metadata?: Metadata;
+      /**
+       * Optional time-to-live in minutes for the thread.
+       * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+       * You may also provide an object { ttl: number, strategy?: "delete" }.
+       */
+      ttl?: number | { ttl: number; strategy?: "delete" };
     }
   ): Promise<Thread> {
+    const ttlPayload =
+      typeof payload?.ttl === "number"
+        ? { ttl: payload.ttl, strategy: "delete" as const }
+        : payload?.ttl;
+
     return this.fetch<Thread>(`/threads/${threadId}`, {
       method: "PATCH",
-      json: { metadata: payload?.metadata },
+      json: { metadata: payload?.metadata, ttl: ttlPayload },
     });
   }
 
