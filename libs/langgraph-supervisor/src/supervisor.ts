@@ -1,6 +1,9 @@
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { StructuredToolInterface, DynamicTool } from "@langchain/core/tools";
-import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
+import type {
+  RunnableConfig,
+  RunnableToolLike,
+} from "@langchain/core/runnables";
 import { InteropZodType } from "@langchain/core/utils/types";
 import {
   START,
@@ -20,7 +23,7 @@ import {
   BaseChatModel,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
-import { RemoteGraph } from "@langchain/langgraph/remote";
+import type { RemoteGraph } from "@langchain/langgraph/remote";
 import { v5 as uuidv5 } from "uuid";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 
@@ -60,6 +63,13 @@ function isChatModelWithParallelToolCallsParam(
   return llm.bindTools.length >= 2;
 }
 
+function isRemoteGraph(agent: unknown): agent is RemoteGraph {
+  if (agent == null || typeof agent !== "object") return false;
+  if (!("lc_id" in agent)) return false;
+  if (!Array.isArray(agent.lc_id)) return false;
+  return agent.lc_id.join(".") === "langgraph.pregel.RemoteGraph";
+}
+
 const makeCallAgent = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   agent: any, // TODO: agent should not be `any`
@@ -75,8 +85,8 @@ const makeCallAgent = (
 
   return async (state: Record<string, unknown>, config?: RunnableConfig) => {
     let conf = config;
-    /* eslint-disable-next-line */
-    if (agent instanceof RemoteGraph) {
+
+    if (isRemoteGraph(agent)) {
       const threadId = config?.configurable?.thread_id;
       const agentThreadId =
         threadId && agent.name ? uuidv5(agent.name, threadId) : null;
