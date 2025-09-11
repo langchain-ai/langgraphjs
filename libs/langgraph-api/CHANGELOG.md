@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 0.0.66
+
+### Patch Changes
+
+- 5176f1c: chore(api): add description field for assistants
+- 68a1aa8: fix(api): call threads:create auth handler when copying a thread
+  - @langchain/langgraph-ui@0.0.66
+
 ## 0.0.65
 
 ### Patch Changes
