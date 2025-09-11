@@ -1,5 +1,20 @@
 # @langchain/langgraph
 
+## 1.0.0-alpha.1
+
+### Patch Changes
+
+- a05436d: Improve performance of scheduling tasks with large graphs
+- d35db59: Improve graph execution performance by avoiding unnecessary cloning of checkpoints after every tick
+- 7e01d08: Update troubleshooting link for common errors, add MISSING_CHECKPOINTER troubleshooting page
+- a527fc7: Improve tick performance by detecting interrupts faster within a tick.
+- 27934c0: Improve tick performance by calling `maxChannelMapVersion` only once
+- dc2e5f2: fix(createReactAgent): update deprecation messages to contain reactAgent
+- e8f5084: `writer`, `interrupt` and `signal` is no longer an optional property of `Runtime`
+- 20f1d64: Channels are now part of the public API, allowing users to customise behaviour of checkpointing per channel (#976)
+- 2311efc: Allow defining types for interrupt and custom events upfront
+- c6f75b6: Fix performance regression due to deferred nodes
+
 ## 1.0.0-alpha.0
 
 ### Major Changes
