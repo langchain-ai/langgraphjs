@@ -1,6 +1,9 @@
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { StructuredToolInterface, DynamicTool } from "@langchain/core/tools";
-import { RunnableToolLike } from "@langchain/core/runnables";
+import type {
+  RunnableConfig,
+  RunnableToolLike,
+} from "@langchain/core/runnables";
 import { InteropZodType } from "@langchain/core/utils/types";
 import {
   START,
@@ -20,6 +23,8 @@ import {
   BaseChatModel,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
+import type { RemoteGraph } from "@langchain/langgraph/remote";
+import { v5 as uuidv5 } from "uuid";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 
 export type { AgentNameMode };
@@ -58,6 +63,14 @@ function isChatModelWithParallelToolCallsParam(
   return llm.bindTools.length >= 2;
 }
 
+function isRemoteGraph(agent: unknown): agent is RemoteGraph {
+  if (agent == null || typeof agent !== "object") return false;
+  if (!("lc_id" in agent)) return false;
+  if (!Array.isArray(agent.lc_id)) return false;
+
+  return agent.lc_id.join(".") === "langgraph.pregel.RemoteGraph";
+}
+
 const makeCallAgent = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   agent: any, // TODO: agent should not be `any`
@@ -71,8 +84,23 @@ const makeCallAgent = (
     );
   }
 
-  return async (state: Record<string, unknown>) => {
-    const output = await agent.invoke(state);
+  return async (state: Record<string, unknown>, config?: RunnableConfig) => {
+    let conf = config;
+
+    if (isRemoteGraph(agent)) {
+      const threadId = config?.configurable?.thread_id;
+      const agentThreadId =
+        threadId && agent.name ? uuidv5(agent.name, threadId) : null;
+
+      conf = {
+        ...(config ?? {}),
+        configurable: {
+          ...(config?.configurable ?? {}),
+          ...{ thread_id: agentThreadId },
+        },
+      };
+    }
+    const output = await agent.invoke(state, conf);
     let { messages } = output;
 
     if (outputMode === "last_message") {
@@ -95,13 +123,16 @@ export type CreateSupervisorParams<
   /**
    * List of agents to manage
    */
-  agents: CompiledStateGraph<
-    AnnotationRootT["State"],
-    AnnotationRootT["Update"],
-    string,
-    AnnotationRootT["spec"],
-    AnnotationRootT["spec"]
-  >[];
+  agents: (
+    | CompiledStateGraph<
+        AnnotationRootT["State"],
+        AnnotationRootT["Update"],
+        string,
+        AnnotationRootT["spec"],
+        AnnotationRootT["spec"]
+      >
+    | RemoteGraph
+  )[];
 
   /**
    * Language model to use for the supervisor
@@ -323,9 +354,15 @@ const createSupervisor = <
     agentNames.add(agent.name);
   }
 
-  const handoffTools = agents.map(({ name, description }) =>
-    createHandoffTool({ agentName: name!, agentDescription: description })
-  );
+  const handoffTools = agents.map((agent) => {
+    const agentName = agent.name!;
+    const agentDescription =
+      "description" in agent && typeof agent.description === "string"
+        ? agent.description
+        : undefined;
+
+    return createHandoffTool({ agentName, agentDescription });
+  });
   const allTools = [...(tools ?? []), ...handoffTools];
 
   let supervisorLLM = llm;
@@ -389,7 +426,7 @@ const createSupervisor = <
     builder = builder.addNode(
       agent.name!,
       makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
-      { subgraphs: [agent] }
+      { subgraphs: isRemoteGraph(agent) ? undefined : [agent] }
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);
   }
