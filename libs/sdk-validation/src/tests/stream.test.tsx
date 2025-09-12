@@ -18,7 +18,11 @@ import {
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
-import { AIMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  BaseMessage,
+  RemoveMessage,
+} from "@langchain/core/messages";
 import {
   createEmbedServer,
   type ThreadSaver,
@@ -85,8 +89,47 @@ const interruptAgent = new StateGraph(MessagesAnnotation)
   .addEdge("afterInterrupt", END)
   .compile();
 
+const removeMessageAgent = new StateGraph(MessagesAnnotation)
+  .addSequence({
+    step1: () => ({ messages: [new AIMessage("Step 1: To Remove")] }),
+    step2: async (state, config) => {
+      // Send message before persisting to state
+      // TODO: replace with `pushMessage` when part of 1.x
+      const messages: BaseMessage[] = [
+        ...state.messages
+          .filter((m) => m.getType() === "ai")
+          .map((m) => new RemoveMessage({ id: m.id! })),
+        new AIMessage({ id: randomUUID(), content: "Step 2: To Keep" }),
+      ];
+
+      const messagesHandler = (
+        config.callbacks as { handlers: object[] }
+      )?.handlers?.find(
+        (
+          cb
+        ): cb is {
+          _emit: (
+            chunk: [namespace: string[], metadata: Record<string, unknown>],
+            message: BaseMessage,
+            runId: string | undefined,
+            dedupe: boolean
+          ) => void;
+        } => "name" in cb && cb.name === "StreamMessagesHandler"
+      );
+
+      for (const message of messages) {
+        messagesHandler?._emit([[], {}], message, undefined, false);
+      }
+
+      return { messages };
+    },
+    step3: () => ({ messages: [new AIMessage("Step 3: To Keep")] }),
+  })
+  .addEdge(START, "step1")
+  .compile();
+
 const app = createEmbedServer({
-  graph: { agent, parentAgent, interruptAgent },
+  graph: { agent, parentAgent, interruptAgent, removeMessageAgent },
   checkpointer,
   threads,
 });
@@ -1194,4 +1237,75 @@ describe("useStream", () => {
       });
     }
   );
+
+  it("handle message removal", async () => {
+    const user = userEvent.setup();
+    const messagesValues = new Set<string>();
+
+    function TestComponent() {
+      const { submit, messages, isLoading } = useStream({
+        assistantId: "removeMessageAgent",
+        apiKey: "test-api-key",
+      });
+
+      const rawMessages = messages.map((msg, i) => ({
+        id: msg.id ?? i,
+        content: `${msg.type}: ${
+          typeof msg.content === "string"
+            ? msg.content
+            : JSON.stringify(msg.content)
+        }`,
+      }));
+
+      messagesValues.add(rawMessages.map((msg) => msg.content).join("\n"));
+
+      return (
+        <div>
+          <div data-testid="loading">
+            {isLoading ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="messages">
+            {rawMessages.map((msg, i) => (
+              <div key={msg.id} data-testid={`message-${i}`}>
+                <span>{msg.content}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("Not loading");
+      expect(screen.getByTestId("message-0")).toHaveTextContent("human: Hello");
+      expect(screen.getByTestId("message-1")).toHaveTextContent(
+        "ai: Step 2: To Keep"
+      );
+      expect(screen.getByTestId("message-2")).toHaveTextContent(
+        "ai: Step 3: To Keep"
+      );
+    });
+
+    expect([...messagesValues.values()]).toMatchObject(
+      [
+        [],
+        ["human: Hello"],
+        ["human: Hello", "ai: Step 1: To Remove"],
+        ["human: Hello", "ai: Step 2: To Keep"],
+        ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
+      ].map((msg) => msg.join("\n"))
+    );
+  });
 });
