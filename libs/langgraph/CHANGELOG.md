@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.0.0-alpha.2
+
+### Patch Changes
+
+- 5184725: Add `pushMessage` method for manually publishing to messages stream channel
+
 ## 1.0.0-alpha.1
 
 ### Patch Changes
