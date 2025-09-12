@@ -16,6 +16,7 @@ export {
 export {
   MessageGraph,
   messagesStateReducer,
+  pushMessage,
   REMOVE_ALL_MESSAGES,
   type Messages,
 } from "./message.js";
