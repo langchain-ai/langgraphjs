@@ -1529,7 +1529,7 @@ __metadata:
     dedent: "npm:^1.5.3"
     dotenv: "npm:^16.4.7"
     exit-hook: "npm:^4.0.0"
-    hono: "npm:^4.5.4"
+    hono: "npm:^4.9.7"
     jose: "npm:^6.0.10"
     langsmith: "npm:^0.3.33"
     open: "npm:^10.1.0"
@@ -1838,7 +1838,7 @@ __metadata:
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@vitejs/plugin-react": "npm:^4.4.1"
-    hono: "npm:^4.8.2"
+    hono: "npm:^4.9.7"
     jsdom: "npm:^26.1.0"
     msw: "npm:^2.8.2"
     prettier: "npm:^2.8.3"
@@ -8187,10 +8187,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hono@npm:^4.5.4, hono@npm:^4.8.2":
-  version: 4.9.6
-  resolution: "hono@npm:4.9.6"
-  checksum: 10/2c757781b72d4f3ffa4b07641059f32845d2f38a158248e82be461b75746d09a2c9a946b7795c730c2b869d03de2665d13c9f42be4d208b32f3fd55b68f82817
+"hono@npm:^4.9.7":
+  version: 4.9.7
+  resolution: "hono@npm:4.9.7"
+  checksum: 10/e1fb57658396a530520583cd4feed160263c828461c532cfa907e7aedd2af0cc48fbfc349f01d6058bf4e3ebf6c601925e2c39400ae25cd4feed948c7ba873b3
   languageName: node
   linkType: hard
 
