@@ -123,14 +123,24 @@ function _default(obj: any): any {
   }
 }
 
+function _defaultReplacer(this: any, key: string, value: any) {
+  const original = this[key] as unknown;
+  if (
+    typeof original === "object" &&
+    original != null &&
+    "toSerialized" in original &&
+    typeof original.toSerialized === "function"
+  ) {
+    return original.toSerialized();
+  }
+
+  return _default(value);
+}
+
 export class JsonPlusSerializer implements SerializerProtocol {
   protected _dumps(obj: any): Uint8Array {
     const encoder = new TextEncoder();
-    return encoder.encode(
-      stringify(obj, (_: string, value: any) => {
-        return _default(value);
-      })
-    );
+    return encoder.encode(stringify(obj, _defaultReplacer));
   }
 
   async dumpsTyped(obj: any): Promise<[string, Uint8Array]> {
