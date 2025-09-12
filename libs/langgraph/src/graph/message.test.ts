@@ -223,7 +223,7 @@ describe("pushMessage", () => {
         },
       },
     };
-    pushMessage(message, config, { stateKey: "custom" });
+    pushMessage(message, { ...config, stateKey: "custom" });
   });
 
   it("should push messages in graph", async () => {
