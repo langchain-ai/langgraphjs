@@ -399,6 +399,7 @@ export interface SubmitOptions<
   multitaskStrategy?: MultitaskStrategy;
   onCompletion?: OnCompletionBehavior;
   onDisconnect?: DisconnectMode;
+  onError?: (error: unknown) => void;
   feedbackKeys?: string[];
   streamMode?: Array<StreamMode>;
   optimisticValues?:
