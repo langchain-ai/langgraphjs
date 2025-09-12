@@ -1,5 +1,16 @@
 # @langchain/langgraph-sdk
 
+## 0.1.3
+
+### Patch Changes
+
+- ba7682f: Add TTL support to ThreadsClient in TypeScript to match Python SDK:
+
+  - `threads.create({ ttl })` now accepts either a number (minutes) or an object `{ ttl: number, strategy?: "delete" }`.
+  - `threads.update(threadId, { ttl })` accepts the same forms.
+
+  Numeric TTL values are normalized to `{ ttl, strategy: "delete" }` in the request payload.
+
 ## 0.1.2
 
 ### Patch Changes
