@@ -1,5 +1,6 @@
-import { useStream as useStreamLGP } from "./streamLgp.js";
-import { useStreamCustom } from "./streamCustom.js";
+import { useState } from "react";
+import { useStreamLGP } from "./stream.lgp.js";
+import { useStreamCustom } from "./stream.custom.js";
 import {
   BagTemplate,
   UseStream,
@@ -61,11 +62,14 @@ export function useStream<
     | (UseStreamOptions<StateType, Bag> & { variant?: "lgp" })
     | (UseStreamCustomOptions<StateType, Bag> & { variant: "custom" })
 ): UseStream<StateType, Bag> | UseStreamCustom<StateType, Bag> {
-  if (isCustomOptions(options)) {
+  // Store this in useState to make sure we're not changing the implementation in re-renders
+  const [isCustom] = useState(isCustomOptions(options));
+
+  if (isCustom) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useStreamCustom(options);
+    return useStreamCustom(options as UseStreamCustomOptions<StateType, Bag>);
   }
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  return useStreamLGP(options);
+  return useStreamLGP(options as UseStreamOptions<StateType, Bag>);
 }
