@@ -10,6 +10,8 @@ import type {
   GetCustomEventType,
   GetInterruptType,
   RunCallbackMeta,
+  SubmitOptions,
+  GetConfigurableType,
 } from "./types.js";
 import type { Message } from "../types.messages.js";
 import type {
@@ -159,6 +161,7 @@ export function useStreamCustom<
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
+  type ConfigurableType = GetConfigurableType<Bag>;
 
   const [messageManager] = useState(() => new MessageTupleManager());
   const [stream] = useState(
@@ -181,12 +184,29 @@ export function useStreamCustom<
     return { ...current, [messagesKey]: messages };
   };
 
-  const stop = () =>
-    stream.stop(stream.values ?? ({} as StateType), { onStop: options.onStop });
+  const historyValues = options.initialValues ?? ({} as StateType);
+
+  const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
   // --- TRANSPORT ---
-  const submit = async (values: UpdateType | null | undefined) => {
+  const submit = async (
+    values: UpdateType | null | undefined,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+  ) => {
     let callbackMeta: RunCallbackMeta | undefined;
+
+    stream.setStreamValues(() => {
+      if (submitOptions?.optimisticValues != null) {
+        return {
+          ...historyValues,
+          ...(typeof submitOptions.optimisticValues === "function"
+            ? submitOptions.optimisticValues(historyValues)
+            : submitOptions.optimisticValues),
+        };
+      }
+
+      return { ...historyValues };
+    });
 
     await stream.start(
       async (signal: AbortSignal) => {
