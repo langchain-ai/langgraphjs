@@ -10,19 +10,12 @@ import type {
   GetCustomEventType,
   GetInterruptType,
   RunCallbackMeta,
-  SubmitOptions,
   GetConfigurableType,
+  UseStreamCustomOptions,
+  UseStreamCustom,
+  CustomSubmitOptions,
 } from "./types.js";
 import type { Message } from "../types.messages.js";
-import type {
-  CheckpointsStreamEvent,
-  CustomStreamEvent,
-  DebugStreamEvent,
-  EventsStreamEvent,
-  MetadataStreamEvent,
-  TasksStreamEvent,
-  UpdatesStreamEvent,
-} from "../types.stream.js";
 import { MessageTupleManager } from "./messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
@@ -36,128 +29,9 @@ export function useStreamCustom<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate
->(options: {
-  /**
-   * The URL of the API to use.
-   */
-  apiUrl: string;
-
-  /**
-   * Specify the key within the state that contains messages.
-   * Defaults to "messages".
-   *
-   * @default "messages"
-   */
-  messagesKey?: string;
-
-  /**
-   * Callback that is called when an error occurs.
-   */
-  onError?: (error: unknown, run: RunCallbackMeta | undefined) => void;
-
-  /**
-   * Callback that is called when a new stream is created.
-   */
-  onCreated?: (run: RunCallbackMeta) => void;
-
-  /**
-   * Callback that is called when an update event is received.
-   */
-  onUpdateEvent?: (
-    data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"],
-    options: {
-      namespace: string[] | undefined;
-      mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-      ) => void;
-    }
-  ) => void;
-
-  /**
-   * Callback that is called when a custom event is received.
-   */
-  onCustomEvent?: (
-    data: CustomStreamEvent<GetCustomEventType<Bag>>["data"],
-    options: {
-      namespace: string[] | undefined;
-      mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-      ) => void;
-    }
-  ) => void;
-
-  /**
-   * Callback that is called when a metadata event is received.
-   */
-  onMetadataEvent?: (data: MetadataStreamEvent["data"]) => void;
-
-  /**
-   * Callback that is called when a LangChain event is received.
-   * @see https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_events/#stream-graph-in-events-mode for more details.
-   */
-  onLangChainEvent?: (data: EventsStreamEvent["data"]) => void;
-
-  /**
-   * Callback that is called when a debug event is received.
-   * @internal This API is experimental and subject to change.
-   */
-  onDebugEvent?: (
-    data: DebugStreamEvent["data"],
-    options: { namespace: string[] | undefined }
-  ) => void;
-
-  /**
-   * Callback that is called when a checkpoints event is received.
-   */
-  onCheckpointEvent?: (
-    data: CheckpointsStreamEvent<StateType>["data"],
-    options: { namespace: string[] | undefined }
-  ) => void;
-
-  /**
-   * Callback that is called when a tasks event is received.
-   */
-  onTaskEvent?: (
-    data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
-    options: { namespace: string[] | undefined }
-  ) => void;
-
-  /**
-   * Callback that is called when the stream is stopped by the user.
-   * Provides a mutate function to update the stream state immediately
-   * without requiring a server roundtrip.
-   *
-   * @example
-   * ```typescript
-   * onStop: ({ mutate }) => {
-   *   mutate((prev) => ({
-   *     ...prev,
-   *     ui: prev.ui?.map(component =>
-   *       component.props.isLoading
-   *         ? { ...component, props: { ...component.props, stopped: true, isLoading: false }}
-   *         : component
-   *     )
-   *   }));
-   * }
-   * ```
-   */
-  onStop?: (options: {
-    mutate: (
-      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-    ) => void;
-  }) => void;
-
-  /**
-   * Initial values to display immediately when loading a thread.
-   * Useful for displaying cached thread data while official history loads.
-   * These values will be replaced when official thread data is fetched.
-   *
-   * Note: UI components from initialValues will render immediately if they're
-   * predefined in LoadExternalComponent's components prop, providing instant
-   * cached UI display without server fetches.
-   */
-  initialValues?: StateType | null;
-}) {
+>(
+  options: UseStreamCustomOptions<StateType, Bag>
+): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
@@ -191,7 +65,7 @@ export function useStreamCustom<
   // --- TRANSPORT ---
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
     let callbackMeta: RunCallbackMeta | undefined;
 

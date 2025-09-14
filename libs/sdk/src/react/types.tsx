@@ -436,3 +436,41 @@ export interface SubmitOptions<
    */
   threadId?: string;
 }
+
+export type UseStreamCustomOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> = Pick<
+  UseStreamOptions<StateType, Bag>,
+  | "apiUrl"
+  | "messagesKey"
+  | "onError"
+  | "onCreated"
+  | "onUpdateEvent"
+  | "onCustomEvent"
+  | "onMetadataEvent"
+  | "onLangChainEvent"
+  | "onDebugEvent"
+  | "onCheckpointEvent"
+  | "onTaskEvent"
+  | "onStop"
+  | "initialValues"
+> & { apiUrl: string };
+
+export type UseStreamCustom<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> = Pick<
+  UseStream<StateType, Bag>,
+  "values" | "error" | "isLoading" | "stop" | "interrupt" | "messages"
+> & {
+  submit: (
+    values: GetUpdateType<Bag, StateType> | null | undefined,
+    options?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+  ) => Promise<void>;
+};
+
+export type CustomSubmitOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  ConfigurableType extends Record<string, unknown> = Record<string, unknown>
+> = Pick<SubmitOptions<StateType, ConfigurableType>, "optimisticValues">;
