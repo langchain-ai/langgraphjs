@@ -143,7 +143,7 @@ const useControllableThreadId = (options?: {
   return [options.threadId ?? null, onThreadId];
 };
 
-export function useStream<
+export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends {
     ConfigurableType?: Record<string, unknown>;
