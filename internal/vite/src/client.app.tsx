@@ -1,7 +1,7 @@
-import { useStreamCustom } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/langgraph-sdk/react";
 
 export function App() {
-  const stream = useStreamCustom({ apiUrl: "/api/stream" });
+  const stream = useStream({ variant: "custom", apiUrl: "/api/stream" });
 
   return (
     <div className="max-w-xl mx-auto">
