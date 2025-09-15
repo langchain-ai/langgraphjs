@@ -298,7 +298,11 @@ export class StreamManager<
               this.messages.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
-            messages[index] = toMessageDict(chunk);
+            if (chunk.getType() === "remove") {
+              messages.splice(index, 1);
+            } else {
+              messages[index] = toMessageDict(chunk);
+            }
 
             return options.setMessages(values, messages);
           });
