@@ -437,12 +437,27 @@ export interface SubmitOptions<
   threadId?: string;
 }
 
+/**
+ * Transport used to stream the thread.
+ * Only applicable for custom endpoints using `toLangGraphEventStream` or `toLangGraphEventStreamResponse`.
+ */
+export interface UseStreamTransport<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> {
+  stream: (payload: {
+    input: GetUpdateType<Bag, StateType> | null | undefined;
+    context: GetConfigurableType<Bag> | undefined;
+    command: Command | undefined;
+    signal: AbortSignal;
+  }) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
+}
+
 export type UseStreamCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > = Pick<
   UseStreamOptions<StateType, Bag>,
-  | "apiUrl"
   | "messagesKey"
   | "onError"
   | "onCreated"
@@ -455,7 +470,7 @@ export type UseStreamCustomOptions<
   | "onTaskEvent"
   | "onStop"
   | "initialValues"
-> & { apiUrl: string };
+> & { transport: UseStreamTransport<StateType, Bag> };
 
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -473,4 +488,7 @@ export type UseStreamCustom<
 export type CustomSubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ConfigurableType extends Record<string, unknown> = Record<string, unknown>
-> = Pick<SubmitOptions<StateType, ConfigurableType>, "optimisticValues">;
+> = Pick<
+  SubmitOptions<StateType, ConfigurableType>,
+  "optimisticValues" | "context" | "command"
+>;
