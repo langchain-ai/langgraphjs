@@ -1,5 +1,12 @@
 # @langchain/langgraph-sdk
 
+## 0.1.4
+
+### Patch Changes
+
+- 599a8c5: Add support for streaming of RemoveMessage in useStream
+- 15afabe: Allow `@langchain/core@1.0.0-alpha` installed alongside SDK
+
 ## 0.1.3
 
 ### Patch Changes
