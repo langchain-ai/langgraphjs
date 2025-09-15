@@ -21,16 +21,19 @@ const graph = new StateGraph(
   .addEdge(START, "agent")
   .compile();
 
+export type GraphType = typeof graph;
+
 const app = new Hono();
 
 app.post("/api/stream", async (c) => {
-  const { content } = await c.req.json<{ content: string }>();
+  type InputType = GraphType["~InputType"];
+  const { input } = await c.req.json<{ input: InputType }>();
 
   return toLangGraphEventStreamResponse({
-    stream: graph.streamEvents(
-      { messages: content },
-      { version: "v2", streamMode: ["values", "messages"] }
-    ),
+    stream: graph.streamEvents(input, {
+      version: "v2",
+      streamMode: ["values", "messages"],
+    }),
   });
 });
 

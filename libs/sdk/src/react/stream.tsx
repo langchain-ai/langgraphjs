@@ -22,7 +22,7 @@ function isCustomOptions<
     | UseStreamOptions<StateType, Bag>
     | UseStreamCustomOptions<StateType, Bag>
 ): options is UseStreamCustomOptions<StateType, Bag> {
-  return "variant" in options && options.variant === "custom";
+  return "transport" in options && options.transport !== undefined;
 }
 
 export function useStream<
@@ -33,9 +33,7 @@ export function useStream<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate
->(
-  options: UseStreamOptions<StateType, Bag> & { variant?: "lgp" }
-): UseStream<StateType, Bag>;
+>(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag>;
 
 export function useStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -46,7 +44,7 @@ export function useStream<
     UpdateType?: unknown;
   } = BagTemplate
 >(
-  options: UseStreamCustomOptions<StateType, Bag> & { variant: "custom" }
+  options: UseStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag>;
 
 export function useStream<
@@ -59,8 +57,8 @@ export function useStream<
   } = BagTemplate
 >(
   options:
-    | (UseStreamOptions<StateType, Bag> & { variant?: "lgp" })
-    | (UseStreamCustomOptions<StateType, Bag> & { variant: "custom" })
+    | UseStreamOptions<StateType, Bag>
+    | UseStreamCustomOptions<StateType, Bag>
 ): UseStream<StateType, Bag> | UseStreamCustom<StateType, Bag> {
   // Store this in useState to make sure we're not changing the implementation in re-renders
   const [isCustom] = useState(isCustomOptions(options));

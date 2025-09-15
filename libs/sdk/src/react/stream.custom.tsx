@@ -13,6 +13,7 @@ import type {
   GetConfigurableType,
   UseStreamCustomOptions,
   UseStreamCustom,
+  UseStreamTransport,
   CustomSubmitOptions,
 } from "./types.js";
 import type { Message } from "../types.messages.js";
@@ -20,6 +21,80 @@ import { MessageTupleManager } from "./messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
+import { Command } from "../types.js";
+
+interface FetchStreamTransportOptions {
+  /**
+   * The URL of the API to use.
+   */
+  apiUrl: string;
+
+  /**
+   * Default headers to send with requests.
+   */
+  defaultHeaders?: HeadersInit;
+
+  /**
+   * Specify a custom fetch implementation.
+   */
+  fetch?: typeof fetch | ((...args: any[]) => any); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  /**
+   * Callback that is called before the request is made.
+   */
+  onRequest?: (
+    url: string,
+    init: RequestInit
+  ) => Promise<RequestInit> | RequestInit;
+}
+
+export class FetchStreamTransport<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> implements UseStreamTransport<StateType, Bag>
+{
+  constructor(private readonly options: FetchStreamTransportOptions) {}
+
+  async stream(payload: {
+    input: GetUpdateType<Bag, StateType> | null | undefined;
+    context: GetConfigurableType<Bag> | undefined;
+    command: Command | undefined;
+    signal: AbortSignal;
+  }): Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>> {
+    const { signal, ...body } = payload;
+
+    let requestInit: RequestInit = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.options.defaultHeaders,
+      },
+      body: JSON.stringify(body),
+      signal,
+    };
+
+    if (this.options.onRequest) {
+      requestInit = await this.options.onRequest(
+        this.options.apiUrl,
+        requestInit
+      );
+    }
+    const fetchFn = this.options.fetch ?? fetch;
+
+    const response = await fetchFn(this.options.apiUrl, requestInit);
+    if (!response.ok) {
+      throw new Error(`Failed to stream: ${response.statusText}`);
+    }
+
+    const stream = (
+      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+    )
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    return IterableReadableStream.fromReadableStream(stream);
+  }
+}
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -62,7 +137,6 @@ export function useStreamCustom<
 
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
-  // --- TRANSPORT ---
   const submit = async (
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
@@ -83,30 +157,15 @@ export function useStreamCustom<
     });
 
     await stream.start(
-      async (signal: AbortSignal) => {
-        const response = await fetch(options.apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
+      async (signal: AbortSignal) =>
+        options.transport.stream({
+          input: values,
+          context: submitOptions?.context,
+          command: submitOptions?.command,
           signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to stream: ${response.statusText}`);
-        }
-
-        const stream = (
-          response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-        )
-          .pipeThrough(BytesLineDecoder())
-          .pipeThrough(SSEDecoder());
-
-        return IterableReadableStream.fromReadableStream(
-          stream
-        ) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
-      },
+        }) as Promise<
+          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
+        >,
       {
         getMessages,
         setMessages,
@@ -121,7 +180,6 @@ export function useStreamCustom<
       }
     );
   };
-  // --- END TRANSPORT ---
 
   return {
     get values() {

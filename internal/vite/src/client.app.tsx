@@ -1,7 +1,14 @@
-import { useStream } from "@langchain/langgraph-sdk/react";
+import {
+  useStream,
+  FetchStreamTransport,
+} from "@langchain/langgraph-sdk/react";
 
 export function App() {
-  const stream = useStream({ variant: "custom", apiUrl: "/api/stream" });
+  const stream = useStream({
+    transport: new FetchStreamTransport({
+      apiUrl: "/api/stream",
+    }),
+  });
 
   return (
     <div className="max-w-xl mx-auto">
@@ -22,7 +29,7 @@ export function App() {
           const content = formData.get("content") as string;
 
           form.reset();
-          stream.submit({ content });
+          stream.submit({ messages: [{ content, type: "human" }] });
         }}
       >
         <textarea
