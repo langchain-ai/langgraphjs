@@ -4,8 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "build": "yarn turbo:command build:internal --filter=vite",
-    "dev": "turbo dev:client dev:server",
     "dev:client": "vite",
     "dev:server": "tsx watch --env-file=.env --clear-screen=false src/server.mts",
     "build:internal": "tsc -b && vite build",
@@ -29,6 +27,7 @@
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.4.1",
     "prettier": "^2.8.3",
+    "tsx": "^4.19.3",
     "typescript": "~5.8.3",
     "vite": "^6.0.0"
   }

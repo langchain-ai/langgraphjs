@@ -13193,6 +13193,7 @@ __metadata:
     prettier: "npm:^2.8.3"
     react: "npm:^19.0.0"
     react-dom: "npm:^19.0.0"
+    tsx: "npm:^4.19.3"
     typescript: "npm:~5.8.3"
     vite: "npm:^6.0.0"
     zod: "npm:^3.23.8"
