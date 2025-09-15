@@ -16,6 +16,7 @@
   "workspaces": [
     "docs",
     "examples",
+    "examples/*",
     "libs/*",
     "internal/*"
   ],
