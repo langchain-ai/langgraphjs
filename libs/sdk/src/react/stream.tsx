@@ -22,7 +22,7 @@ function isCustomOptions<
     | UseStreamOptions<StateType, Bag>
     | UseStreamCustomOptions<StateType, Bag>
 ): options is UseStreamCustomOptions<StateType, Bag> {
-  return "transport" in options && options.transport !== undefined;
+  return "transport" in options;
 }
 
 export function useStream<
