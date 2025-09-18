@@ -1,5 +1,12 @@
 # @langchain/langgraph
 
+## 1.0.0-alpha.3
+
+### Patch Changes
+
+- 05619e2: Add `stream.encoding` option to emit LangGraph API events as Server-Sent Events. This allows for sending events through the wire by piping the stream to a `Response` object.
+- 14cb042: Fix `stateKey` property in `pushMessage` being ignored when RunnableConfig is automatically inherited
+
 ## 1.0.0-alpha.2
 
 ### Patch Changes
