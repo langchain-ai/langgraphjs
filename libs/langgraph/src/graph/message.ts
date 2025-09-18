@@ -4,9 +4,9 @@ import {
   coerceMessageLikeToMessage,
 } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { v4 } from "uuid";
 import { StateGraph } from "./state.js";
+import { ensureLangGraphConfig } from "../pregel/utils/config.js";
 import type { StreamMessagesHandler } from "../pregel/messages.js";
 
 export const REMOVE_ALL_MESSAGES = "__remove_all__";
@@ -123,16 +123,9 @@ export function pushMessage(
     stateKey?: string | null;
   }
 ) {
-  const rawOptions:
-    | (RunnableConfig & { stateKey?: string | null })
-    | undefined =
-    options ?? AsyncLocalStorageProviderSingleton.getRunnableConfig();
+  const { stateKey: userStateKey, ...userConfig } = options ?? {};
+  const config = ensureLangGraphConfig(userConfig);
 
-  if (rawOptions == null) {
-    throw new Error("Calling pushMessage outside the context of a graph.");
-  }
-
-  const { stateKey: userStateKey, ...config } = rawOptions;
   let stateKey: string | undefined = userStateKey ?? "messages";
   if (userStateKey === null) stateKey = undefined;
 
