@@ -33,7 +33,9 @@ export function useStream<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate
->(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag>;
+>(
+  options: UseStreamCustomOptions<StateType, Bag>
+): UseStreamCustom<StateType, Bag>;
 
 export function useStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -43,9 +45,7 @@ export function useStream<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate
->(
-  options: UseStreamCustomOptions<StateType, Bag>
-): UseStreamCustom<StateType, Bag>;
+>(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag>;
 
 export function useStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
