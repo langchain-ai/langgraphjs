@@ -398,9 +398,7 @@ export class Pregel<
     OutputType,
     PregelOptions<Nodes, Channels, ContextType>
   >
-  implements
-    PregelInterface<Nodes, Channels, ContextType>,
-    PregelParams<Nodes, Channels>
+  implements PregelInterface<Nodes, Channels, ContextType>
 {
   /**
    * Name of the class when serialized
@@ -496,12 +494,20 @@ export class Pregel<
    */
   store?: BaseStore;
 
-  triggerToNodes: Record<string, string[]> = {};
-
   /**
    * Optional cache for the graph, useful for caching tasks.
    */
   cache?: BaseCache;
+
+  /**
+   * Optional interrupt helper function.
+   */
+  private userInterrupt?: unknown;
+
+  /**
+   * The trigger to node mapping for the graph run.
+   */
+  private triggerToNodes: Record<string, string[]> = {};
 
   /**
    * Constructor for Pregel - meant for internal use only.
@@ -548,6 +554,7 @@ export class Pregel<
     this.cache = fields.cache;
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
+    this.userInterrupt = fields.userInterrupt;
 
     if (this.autoValidate) {
       this.validate();
@@ -2045,7 +2052,7 @@ export class Pregel<
       stream.push([ns ?? [], "custom", chunk]);
     };
 
-    config.interrupt ??= interrupt;
+    config.interrupt ??= (this.userInterrupt as typeof interrupt) ?? interrupt;
 
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(

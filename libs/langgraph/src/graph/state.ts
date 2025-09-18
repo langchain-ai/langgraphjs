@@ -71,8 +71,11 @@ import {
   InteropZodToStateDefinition,
   schemaMetaRegistry,
 } from "./zod/meta.js";
-import { interrupt } from "../interrupt.js";
-import { writer } from "../writer.js";
+import type {
+  InferInterruptResumeType,
+  InferInterruptInputType,
+} from "../interrupt.js";
+import type { InferWriterType } from "../writer.js";
 
 const ROOT = "__root__";
 
@@ -138,16 +141,6 @@ type ToStateDefinition<T> = T extends InteropZodObject
   ? T
   : never;
 
-type InterruptResumeType<T> = T extends typeof interrupt<unknown, infer R>
-  ? R
-  : unknown;
-
-type InterruptInputType<T> = T extends typeof interrupt<infer I, unknown>
-  ? I
-  : unknown;
-
-type InferWriterType<T> = T extends typeof writer<infer C> ? C : any; // eslint-disable-line @typescript-eslint/no-explicit-any
-
 type NodeAction<
   S,
   U,
@@ -171,7 +164,7 @@ type StrictNodeAction<
   Prettify<S>,
   | U
   | Command<
-      InterruptResumeType<InterruptType>,
+      InferInterruptResumeType<InterruptType>,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       U & Record<string, any>,
       Nodes
@@ -484,11 +477,12 @@ export class StateGraph<
     }
 
     // Handle runtime config options
-
     if (isOptions(contextSchema)) {
       if (isInteropZodObject(contextSchema.context)) {
         this._configRuntimeSchema = contextSchema.context;
       }
+      this._interrupt = contextSchema.interrupt as InterruptType;
+      this._writer = contextSchema.writer as WriterType;
     } else if (isInteropZodObject(contextSchema)) {
       this._configRuntimeSchema = contextSchema;
     }
@@ -926,8 +920,20 @@ export class StateGraph<
     const streamChannels =
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
+    const userInterrupt = this._interrupt;
+
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N, I, O, C, NodeReturnType>({
+    const compiled = new CompiledStateGraph<
+      S,
+      U,
+      N,
+      I,
+      O,
+      C,
+      NodeReturnType,
+      InterruptType,
+      WriterType
+    >({
       builder: this,
       checkpointer,
       interruptAfter,
@@ -946,6 +952,7 @@ export class StateGraph<
       cache,
       name,
       description,
+      userInterrupt,
     });
 
     // attach nodes, edges and branches
@@ -1024,7 +1031,7 @@ export class CompiledStateGraph<
   UpdateType<ToStateDefinition<I>>,
   StateType<ToStateDefinition<O>>,
   NodeReturnType,
-  CommandInstance<InterruptResumeType<InterruptType>, Prettify<U>, N>,
+  CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
   InferWriterType<WriterType>
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
@@ -1050,7 +1057,7 @@ export class CompiledStateGraph<
       UpdateType<ToStateDefinition<I>>,
       StateType<ToStateDefinition<O>>,
       NodeReturnType,
-      CommandInstance<InterruptResumeType<InterruptType>, Prettify<U>, N>,
+      CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
       InferWriterType<WriterType>
     >
   >[0]) {
@@ -1311,7 +1318,7 @@ export class CompiledStateGraph<
   }
 
   public isInterrupted(input: unknown): input is {
-    [INTERRUPT]: Interrupt<InterruptInputType<InterruptType>>[];
+    [INTERRUPT]: Interrupt<InferInterruptInputType<InterruptType>>[];
   } {
     return isInterrupted(input);
   }
