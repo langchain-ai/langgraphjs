@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.1.5
+
+### Patch Changes
+
+- f21fd04: Fix mutate function in `onCustomEvent` and in `onUpdateEvent` receiving incorrect previous value
+
 ## 0.1.4
 
 ### Patch Changes
