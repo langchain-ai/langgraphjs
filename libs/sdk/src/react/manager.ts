@@ -163,7 +163,10 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
-      const prev = { ...historyValues, ...this.state.values };
+      const prev = {
+        ...historyValues,
+        ...(this.state.values ?? [null, "stream"])[0],
+      };
       const next = typeof update === "function" ? update(prev) : update;
       this.setStreamValues({ ...prev, ...next }, kind);
     };
