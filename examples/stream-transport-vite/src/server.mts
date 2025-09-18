@@ -9,11 +9,11 @@ import { Hono } from "hono";
 
 const llm = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-const graph = new StateGraph(
-  z.object({
-    messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
-  })
-)
+const schema = z.object({
+  messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
+});
+
+const graph = new StateGraph(schema)
   .addNode("agent", async ({ messages }) => ({
     messages: await llm.invoke(messages),
   }))
@@ -25,8 +25,7 @@ export type GraphType = typeof graph;
 const app = new Hono();
 
 app.post("/api/stream", async (c) => {
-  type InputType = GraphType["~InputType"];
-  const { input } = await c.req.json<{ input: InputType }>();
+  const { input } = z.object({ input: schema }).parse(await c.req.json());
 
   const stream = await graph.stream(input, {
     encoding: "text/event-stream",
