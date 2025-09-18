@@ -199,6 +199,16 @@ it("state graph annotation", async () => {
         ]
     )[]
   >();
+
+  expectTypeOf(
+    await gatherIterator(
+      graph.stream(input, {
+        encoding: "text/event-stream",
+        streamMode: "values",
+        subgraphs: true,
+      })
+    )
+  ).toExtend<Uint8Array[]>();
 });
 
 it("state graph configurable", async () => {

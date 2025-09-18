@@ -74,6 +74,12 @@ type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
 
 type DefaultStreamMode = "updates";
 
+export type IsEventStream<T> = [T] extends ["text/event-stream"]
+  ? ["text/event-stream"] extends [T]
+    ? true
+    : false
+  : false;
+
 export type StreamOutputMap<
   TStreamMode extends StreamMode | StreamMode[] | undefined,
   TStreamSubgraphs extends boolean,
@@ -81,18 +87,21 @@ export type StreamOutputMap<
   StreamValues,
   Nodes,
   NodeReturnType,
-  StreamCustom
-> = (
-  undefined extends TStreamMode
-    ? []
-    : StreamMode | StreamMode[] extends TStreamMode
-    ? TStreamMode extends StreamMode[]
-      ? TStreamMode[number]
-      : TStreamMode
-    : TStreamMode extends StreamMode[]
-    ? TStreamMode[number]
-    : []
-) extends infer Multiple extends StreamMode
+  StreamCustom,
+  TEncoding extends "text/event-stream" | undefined
+> = IsEventStream<TEncoding> extends true
+  ? Uint8Array
+  : (
+      undefined extends TStreamMode
+        ? []
+        : StreamMode | StreamMode[] extends TStreamMode
+        ? TStreamMode extends StreamMode[]
+          ? TStreamMode[number]
+          : TStreamMode
+        : TStreamMode extends StreamMode[]
+        ? TStreamMode[number]
+        : []
+    ) extends infer Multiple extends StreamMode
   ? [TStreamSubgraphs] extends [true]
     ? {
         values: [string[], "values", StreamValues];
@@ -182,7 +191,10 @@ export interface PregelOptions<
     | StreamMode
     | StreamMode[]
     | undefined,
-  TSubgraphs extends boolean = boolean
+  TSubgraphs extends boolean = boolean,
+  TEncoding extends "text/event-stream" | undefined =
+    | "text/event-stream"
+    | undefined
 > extends RunnableConfig<ContextType> {
   /**
    * Controls what information is streamed during graph execution.
@@ -316,6 +328,14 @@ export interface PregelOptions<
    * Static context for the graph run, like `userId`, `dbConnection` etc.
    */
   context?: ContextType;
+
+  /**
+   * The encoding to use for the stream.
+   * - `undefined`: Use the default format.
+   * - `"text/event-stream"`: Use the Server-Sent Events format.
+   * @default undefined
+   */
+  encoding?: TEncoding;
 }
 
 /**

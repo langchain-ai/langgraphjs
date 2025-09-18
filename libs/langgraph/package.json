@@ -178,17 +178,6 @@
       },
       "input": "./src/graph/zod/schema.ts"
     },
-    "./ui": {
-      "import": {
-        "types": "./dist/ui/index.d.ts",
-        "default": "./dist/ui/index.js"
-      },
-      "require": {
-        "types": "./dist/ui/index.d.cts",
-        "default": "./dist/ui/index.cjs"
-      },
-      "input": "./src/ui/index.ts"
-    },
     "./package.json": "./package.json"
   },
   "files": [
