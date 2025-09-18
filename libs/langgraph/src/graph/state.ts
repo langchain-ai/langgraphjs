@@ -312,11 +312,21 @@ export class StateGraph<
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
   constructor(
-    state: SD extends InteropZodObject
-      ? SD
-      : SD extends StateDefinition
-      ? AnnotationRoot<SD>
-      : never,
+    state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
+    options?: {
+      context?: C | AnnotationRoot<ToStateDefinition<C>>;
+      input?: I | AnnotationRoot<ToStateDefinition<I>>;
+      output?: O | AnnotationRoot<ToStateDefinition<O>>;
+
+      interrupt?: InterruptType;
+      writer?: WriterType;
+
+      nodes?: N[];
+    }
+  );
+
+  constructor(
+    state: SD extends InteropZodObject ? SD : never,
     options?: {
       context?: C | AnnotationRoot<ToStateDefinition<C>>;
       input?: I | AnnotationRoot<ToStateDefinition<I>>;
