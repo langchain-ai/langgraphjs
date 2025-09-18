@@ -1,6 +1,5 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { StateGraph, MessagesZodMeta, START } from "@langchain/langgraph";
-import { toLangGraphEventStreamResponse } from "@langchain/langgraph/ui";
 import { registry } from "@langchain/langgraph/zod";
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod/v4";
@@ -29,11 +28,13 @@ app.post("/api/stream", async (c) => {
   type InputType = GraphType["~InputType"];
   const { input } = await c.req.json<{ input: InputType }>();
 
-  return toLangGraphEventStreamResponse({
-    stream: graph.streamEvents(input, {
-      version: "v2",
-      streamMode: ["values", "messages"],
-    }),
+  const stream = await graph.stream(input, {
+    encoding: "text/event-stream",
+    streamMode: ["values", "messages", "updates"],
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream" },
   });
 });
 

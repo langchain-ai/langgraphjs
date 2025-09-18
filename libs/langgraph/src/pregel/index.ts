@@ -86,6 +86,7 @@ import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
+  toEventStream,
 } from "./stream.js";
 import type {
   Durability,
@@ -1827,11 +1828,19 @@ export class Pregel<
    */
   override async stream<
     TStreamMode extends StreamMode | StreamMode[] | undefined,
-    TSubgraphs extends boolean
+    TSubgraphs extends boolean,
+    TEncoding extends "text/event-stream" | undefined
   >(
     input: InputType | CommandType | null,
     options?: Partial<
-      PregelOptions<Nodes, Channels, ContextType, TStreamMode, TSubgraphs>
+      PregelOptions<
+        Nodes,
+        Channels,
+        ContextType,
+        TStreamMode,
+        TSubgraphs,
+        TEncoding
+      >
     >
   ): Promise<
     IterableReadableStream<
@@ -1842,7 +1851,8 @@ export class Pregel<
         StreamValuesType,
         keyof Nodes,
         NodeReturnType,
-        StreamCustom
+        StreamCustom,
+        TEncoding
       >
     >
   > {
@@ -1860,18 +1870,11 @@ export class Pregel<
         .signal,
     };
 
+    const stream = await super.stream(input, config);
     return new IterableReadableStreamWithAbortSignal(
-      (await super.stream(input, config)) as IterableReadableStream<
-        StreamOutputMap<
-          TStreamMode,
-          TSubgraphs,
-          StreamUpdatesType,
-          StreamValuesType,
-          keyof Nodes,
-          NodeReturnType,
-          StreamCustom
-        >
-      >,
+      options?.encoding === "text/event-stream"
+        ? toEventStream(stream)
+        : stream,
       abortController
     );
   }
@@ -1958,6 +1961,9 @@ export class Pregel<
     input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nodes, Channels>>
   ): AsyncGenerator<PregelOutputType> {
+    // Skip LGP encoding option is `streamEvents` is used
+    const streamEncoding =
+      "version" in (options ?? {}) ? undefined : options?.encoding ?? undefined;
     const streamSubgraphs = options?.subgraphs;
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
@@ -2144,6 +2150,14 @@ export class Pregel<
         }
         const [namespace, mode, payload] = chunk;
         if (streamMode.includes(mode)) {
+          if (streamEncoding === "text/event-stream") {
+            if (streamSubgraphs) {
+              yield [namespace, mode, payload];
+            } else {
+              yield [null, mode, payload];
+            }
+            continue;
+          }
           if (streamSubgraphs && !streamModeSingle) {
             yield [namespace, mode, payload];
           } else if (!streamModeSingle) {
@@ -2177,13 +2191,16 @@ export class Pregel<
    */
   override async invoke(
     input: InputType | CommandType | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
+    options?: Partial<
+      Omit<PregelOptions<Nodes, Channels, ContextType>, "encoding">
+    >
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,
       outputKeys: options?.outputKeys ?? this.outputChannels,
       streamMode,
+      encoding: undefined,
     };
     const chunks = [];
     const stream = await this.stream(input, config);

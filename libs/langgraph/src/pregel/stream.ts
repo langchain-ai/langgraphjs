@@ -1,8 +1,31 @@
 import { IterableReadableStream } from "@langchain/core/utils/stream";
-import { StreamMode } from "./types.js";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import type { StreamMode, StreamOutputMap } from "./types.js";
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
+
+type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
+  "checkpoints",
+  false,
+  StreamValues,
+  unknown,
+  string,
+  unknown,
+  unknown,
+  undefined
+>;
+
+type AnyStreamOutput = StreamOutputMap<
+  StreamMode[],
+  true,
+  unknown,
+  unknown,
+  string,
+  unknown,
+  unknown,
+  undefined
+>;
 
 /**
  * A wrapper around an IterableReadableStream that allows for aborting the stream when
@@ -124,4 +147,146 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   error(e: any) {
     this.controller.error(e);
   }
+}
+
+function _stringifyAsDict(obj: unknown) {
+  return JSON.stringify(obj, function (key: string | number, value: unknown) {
+    const rawValue = this[key];
+    if (
+      rawValue != null &&
+      typeof rawValue === "object" &&
+      "toDict" in rawValue &&
+      typeof rawValue.toDict === "function"
+    ) {
+      const { type, data } = rawValue.toDict();
+      return { ...data, type };
+    }
+
+    return value;
+  });
+}
+
+function _serializeError(error: unknown) {
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  if (error instanceof Error) {
+    return { error: error.name, message: error.message };
+  }
+  return { error: "Error", message: JSON.stringify(error) };
+}
+
+function _isRunnableConfig(
+  config: unknown
+): config is RunnableConfig & { configurable: Record<string, unknown> } {
+  if (typeof config !== "object" || config == null) return false;
+  return (
+    "configurable" in config &&
+    typeof config.configurable === "object" &&
+    config.configurable != null
+  );
+}
+
+function _extractCheckpointFromConfig(
+  config: RunnableConfig | null | undefined
+) {
+  if (!_isRunnableConfig(config) || !config.configurable.thread_id) {
+    return null;
+  }
+
+  return {
+    thread_id: config.configurable.thread_id,
+    checkpoint_ns: config.configurable.checkpoint_ns || "",
+    checkpoint_id: config.configurable.checkpoint_id || null,
+    checkpoint_map: config.configurable.checkpoint_map || null,
+  };
+}
+
+function _serializeConfig(config: unknown) {
+  if (_isRunnableConfig(config)) {
+    const configurable = Object.fromEntries(
+      Object.entries(config.configurable).filter(
+        ([key]) => !key.startsWith("__")
+      )
+    );
+
+    const newConfig = { ...config, configurable };
+    delete newConfig.callbacks;
+    return newConfig;
+  }
+
+  return config;
+}
+
+function _serializeCheckpoint(payload: StreamCheckpointsOutput<unknown>) {
+  const result: Record<string, unknown> = {
+    ...payload,
+    checkpoint: _extractCheckpointFromConfig(payload.config),
+    parent_checkpoint: _extractCheckpointFromConfig(payload.parentConfig),
+
+    config: _serializeConfig(payload.config),
+    parent_config: _serializeConfig(payload.parentConfig),
+
+    tasks: payload.tasks.map((task) => {
+      if (_isRunnableConfig(task.state)) {
+        const checkpoint = _extractCheckpointFromConfig(task.state);
+        if (checkpoint != null) {
+          const cloneTask: Record<string, unknown> = { ...task, checkpoint };
+          delete cloneTask.state;
+          return cloneTask;
+        }
+      }
+
+      return task;
+    }),
+  };
+
+  delete result.parentConfig;
+  return result;
+}
+
+export function toEventStream(stream: AsyncGenerator) {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const enqueueChunk = (sse: {
+        id?: string;
+        event: string;
+        data: unknown;
+      }) => {
+        controller.enqueue(
+          encoder.encode(
+            `event: ${sse.event}\ndata: ${_stringifyAsDict(sse.data)}\n\n`
+          )
+        );
+      };
+
+      try {
+        for await (const payload of stream) {
+          const [ns, mode, chunk] = payload as AnyStreamOutput;
+
+          let data: unknown = chunk;
+          if (mode === "debug") {
+            const debugChunk = chunk;
+
+            if (debugChunk.type === "checkpoint") {
+              data = {
+                ...debugChunk,
+                payload: _serializeCheckpoint(debugChunk.payload),
+              };
+            }
+          }
+
+          if (mode === "checkpoints") {
+            data = _serializeCheckpoint(chunk);
+          }
+
+          const event = ns?.length ? `${mode}|${ns.join("|")}` : mode;
+          enqueueChunk({ event, data });
+        }
+      } catch (error) {
+        enqueueChunk({ event: "error", data: _serializeError(error) });
+      }
+
+      controller.close();
+    },
+  });
 }
