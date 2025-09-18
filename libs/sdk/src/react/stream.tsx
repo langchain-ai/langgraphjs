@@ -471,6 +471,7 @@ export function useStream<
           return undefined;
         },
         onError(error) {
+          submitOptions?.onError?.(error);
           options.onError?.(error, callbackMeta);
         },
       }
