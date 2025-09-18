@@ -22,7 +22,9 @@
     "@langchain/langgraph-checkpoint-redis": "0.0.1"
   },
   "changesets": [
+    "breezy-llamas-laugh",
     "bumpy-candies-bake",
+    "calm-doodles-shave",
     "early-drinks-fold",
     "every-windows-lose",
     "famous-oranges-pay",
