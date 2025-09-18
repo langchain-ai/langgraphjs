@@ -13,7 +13,11 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@langchain/langgraph-sdk-validation", "examples"],
+  "ignore": [
+    "@langchain/langgraph-sdk-validation",
+    "examples",
+    "stream-transport-vite"
+  ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }
