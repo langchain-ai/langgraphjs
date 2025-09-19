@@ -32,6 +32,15 @@ import type { Message } from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "./messages.js";
+import { useControllableThreadId } from "./thread.js";
+
+function getFetchHistoryKey(
+  client: Client,
+  threadId: string | undefined | null,
+  limit: boolean | number
+) {
+  return [getClientConfigHash(client), threadId, limit].join(":");
+}
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -50,98 +59,81 @@ function fetchHistory<StateType extends Record<string, unknown>>(
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(
-  threadId: string | undefined | null,
   client: Client,
+  threadId: string | undefined | null,
   limit: boolean | number,
-  clearCallbackRef: RefObject<(() => void) | undefined>,
-  submittingRef: RefObject<boolean>,
-  onErrorRef: RefObject<((error: unknown) => void) | undefined>
+  options: {
+    submittingRef: RefObject<string | null>;
+    onError?: (error: unknown, run?: RunCallbackMeta) => void;
+  }
 ) {
-  const [history, setHistory] = useState<ThreadState<StateType>[] | undefined>(
-    undefined
-  );
-  const [isLoading, setIsLoading] = useState(() => {
-    if (threadId == null) return false;
-    return true;
-  });
-  const [error, setError] = useState<unknown | undefined>(undefined);
+  const key = getFetchHistoryKey(client, threadId, limit);
+  const [state, setState] = useState<{
+    data: ThreadState<StateType>[] | undefined;
+    error: unknown | undefined;
+    isLoading: boolean;
+  }>(() => ({
+    data: undefined,
+    error: undefined,
+    isLoading: threadId != null,
+  }));
 
-  const clientHash = getClientConfigHash(client);
   const clientRef = useRef(client);
   clientRef.current = client;
 
+  const onErrorRef = useRef(options?.onError);
+  onErrorRef.current = options?.onError;
+
   const fetcher = useCallback(
     (
-      threadId: string | undefined | null
+      threadId: string | undefined | null,
+      limit: boolean | number
     ): Promise<ThreadState<StateType>[]> => {
       if (threadId != null) {
         const client = clientRef.current;
 
-        setIsLoading(true);
-        return fetchHistory<StateType>(client, threadId, {
-          limit,
-        })
-          .then(
-            (history) => {
-              setHistory(history);
-              return history;
-            },
-            (error) => {
-              setError(error);
-              onErrorRef.current?.(error);
-              return Promise.reject(error);
-            }
-          )
-          .finally(() => {
-            setIsLoading(false);
-          });
+        setState((state) => ({ ...state, isLoading: true }));
+        return fetchHistory<StateType>(client, threadId, { limit }).then(
+          (data) => {
+            setState({ data, error: undefined, isLoading: false });
+            return data;
+          },
+          (error) => {
+            setState(({ data }) => ({ data, error, isLoading: false }));
+            onErrorRef.current?.(error);
+            return Promise.reject(error);
+          }
+        );
       }
 
-      setHistory(undefined);
-      setError(undefined);
-      setIsLoading(false);
-
-      clearCallbackRef.current?.();
+      setState({ data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
-    [clearCallbackRef, onErrorRef, limit]
+    []
   );
 
   useEffect(() => {
-    if (submittingRef.current) return;
-    void fetcher(threadId);
-  }, [fetcher, submittingRef, clientHash, limit, threadId]);
+    // Skip if a stream is already in progress, no need to fetch history
+    if (
+      options.submittingRef.current != null &&
+      options.submittingRef.current === threadId
+    ) {
+      return;
+    }
+
+    void fetcher(threadId, limit);
+    // The `threadId` and `limit` arguments are already present in `key`
+    // Thus we don't need to include them in the dependency array
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher, key]);
 
   return {
-    data: history,
-    isLoading,
-    error,
-    mutate: (mutateId?: string) => fetcher(mutateId ?? threadId),
+    data: state.data,
+    error: state.error,
+    isLoading: state.isLoading,
+    mutate: (mutateId?: string) => fetcher(mutateId ?? threadId, limit),
   };
 }
-
-const useControllableThreadId = (options?: {
-  threadId?: string | null;
-  onThreadId?: (threadId: string) => void;
-}): [string | null, (threadId: string) => void] => {
-  const [localThreadId, _setLocalThreadId] = useState<string | null>(
-    options?.threadId ?? null
-  );
-
-  const onThreadIdRef = useRef(options?.onThreadId);
-  onThreadIdRef.current = options?.onThreadId;
-
-  const onThreadId = useCallback((threadId: string) => {
-    _setLocalThreadId(threadId);
-    onThreadIdRef.current?.(threadId);
-  }, []);
-
-  if (!options || !("threadId" in options)) {
-    return [localThreadId, onThreadId];
-  }
-
-  return [options.threadId ?? null, onThreadId];
-};
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -236,13 +228,16 @@ export function useStreamLGP<
   const clearCallbackRef = useRef<() => void>(null!);
   clearCallbackRef.current = stream.clear;
 
-  const submittingRef = useRef(false);
-  submittingRef.current = stream.isLoading;
+  const threadIdRef = useRef<string | null>(threadId);
+  const threadIdStreamingRef = useRef<string | null>(null);
 
-  const onErrorRef = useRef<
-    ((error: unknown, run?: RunCallbackMeta) => void) | undefined
-  >(undefined);
-  onErrorRef.current = options.onError;
+  // Cancel the stream if thread ID has changed
+  useEffect(() => {
+    if (threadIdRef.current !== threadId) {
+      threadIdRef.current = threadId;
+      stream.clear();
+    }
+  }, [threadId, stream]);
 
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
@@ -250,14 +245,10 @@ export function useStreamLGP<
       ? options.fetchStateHistory.limit ?? false
       : options.fetchStateHistory ?? false;
 
-  const history = useThreadHistory<StateType>(
-    threadId,
-    client,
-    historyLimit,
-    clearCallbackRef,
-    submittingRef,
-    onErrorRef
-  );
+  const history = useThreadHistory<StateType>(client, threadId, historyLimit, {
+    submittingRef: threadIdStreamingRef,
+    onError: options.onError,
+  });
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -328,7 +319,18 @@ export function useStreamLGP<
     );
   })();
 
-  const stop = () => stream.stop(historyValues, { onStop: options.onStop });
+  const stop = () =>
+    stream.stop(historyValues, {
+      onStop: (args) => {
+        if (runMetadataStorage && threadId) {
+          const runId = runMetadataStorage.getItem(`lg:stream:${threadId}`);
+          if (runId) void client.runs.cancel(threadId, runId);
+          runMetadataStorage.removeItem(`lg:stream:${threadId}`);
+        }
+
+        options.onStop?.(args);
+      },
+    });
 
   // --- TRANSPORT ---
   const submit = async (
@@ -372,13 +374,23 @@ export function useStreamLGP<
             threadId: submitOptions?.threadId,
             metadata: submitOptions?.metadata,
           });
-          onThreadId(thread.thread_id);
+
           usableThreadId = thread.thread_id;
+
+          // Pre-emptively update the thread ID before
+          // stream cancellation is kicked off and thread
+          // is being refetched
+          threadIdRef.current = usableThreadId;
+          threadIdStreamingRef.current = usableThreadId;
+
+          onThreadId(usableThreadId);
         }
 
         if (!usableThreadId) {
           throw new Error("Failed to obtain valid thread ID.");
         }
+
+        threadIdStreamingRef.current = usableThreadId;
 
         const streamMode = unique([
           ...(submitOptions?.streamMode ?? []),
@@ -473,6 +485,9 @@ export function useStreamLGP<
         onError(error) {
           options.onError?.(error, callbackMeta);
         },
+        onFinish() {
+          threadIdStreamingRef.current = null;
+        },
       }
     );
   };
@@ -493,6 +508,7 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
+        threadIdStreamingRef.current = threadId;
         return client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
@@ -515,6 +531,9 @@ export function useStreamLGP<
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
+        },
+        onFinish() {
+          threadIdStreamingRef.current = null;
         },
       }
     );
@@ -547,7 +566,6 @@ export function useStreamLGP<
       void joinStreamRef.current?.(reconnectKey.runId);
     }
   }, [reconnectKey]);
-  // --- END TRANSPORT ---
 
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;

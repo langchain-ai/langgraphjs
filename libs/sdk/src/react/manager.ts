@@ -227,6 +227,8 @@ export class StreamManager<
         | Promise<StateType | null | undefined | void>;
 
       onError: (error: unknown) => void | Promise<void>;
+
+      onFinish?: () => void;
     }
   ): Promise<void> => {
     if (this.state.isLoading) return;
@@ -330,6 +332,7 @@ export class StreamManager<
     } finally {
       this.setState({ isLoading: false });
       this.abortRef = new AbortController();
+      options.onFinish?.();
     }
   };
 
@@ -343,16 +346,21 @@ export class StreamManager<
       }) => void;
     }
   ): Promise<void> => {
-    if (this.abortRef) {
-      this.abortRef.abort();
-      this.abortRef = new AbortController();
-    }
+    this.abortRef.abort();
+    this.abortRef = new AbortController();
 
     options.onStop?.({ mutate: this.getMutateFn("stop", historyValues) });
   };
 
   clear = () => {
+    // Cancel any running streams
+    this.abortRef.abort();
+    this.abortRef = new AbortController();
+
+    // Set the stream state to null
     this.setState({ error: undefined, values: null });
+
+    // Clear any pending messages
     this.messages.clear();
   };
 }

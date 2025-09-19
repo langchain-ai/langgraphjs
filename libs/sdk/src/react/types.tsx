@@ -449,6 +449,7 @@ export interface UseStreamTransport<
     input: GetUpdateType<Bag, StateType> | null | undefined;
     context: GetConfigurableType<Bag> | undefined;
     command: Command | undefined;
+    config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
     signal: AbortSignal;
   }) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
 }
@@ -459,6 +460,8 @@ export type UseStreamCustomOptions<
 > = Pick<
   UseStreamOptions<StateType, Bag>,
   | "messagesKey"
+  | "threadId"
+  | "onThreadId"
   | "onError"
   | "onCreated"
   | "onUpdateEvent"
@@ -490,5 +493,5 @@ export type CustomSubmitOptions<
   ConfigurableType extends Record<string, unknown> = Record<string, unknown>
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
-  "optimisticValues" | "context" | "command"
+  "optimisticValues" | "context" | "command" | "config"
 >;
