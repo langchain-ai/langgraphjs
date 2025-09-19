@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { EventStreamEvent, StreamManager } from "./manager.js";
 import type {
   BagTemplate,
@@ -21,6 +21,7 @@ import { MessageTupleManager } from "./messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
+import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 
 interface FetchStreamTransportOptions {
@@ -123,6 +124,17 @@ export function useStreamCustom<
     stream.getSnapshot
   );
 
+  const [threadId, onThreadId] = useControllableThreadId(options);
+  const threadIdRef = useRef<string | null>(threadId);
+
+  // Cancel the stream if thread ID has changed
+  useEffect(() => {
+    if (threadIdRef.current !== threadId) {
+      threadIdRef.current = threadId;
+      stream.clear();
+    }
+  }, [threadId, stream]);
+
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
     return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
@@ -142,6 +154,7 @@ export function useStreamCustom<
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
     let callbackMeta: RunCallbackMeta | undefined;
+    let usableThreadId = threadId;
 
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
@@ -157,15 +170,34 @@ export function useStreamCustom<
     });
 
     await stream.start(
-      async (signal: AbortSignal) =>
-        options.transport.stream({
+      async (signal: AbortSignal) => {
+        if (!usableThreadId) {
+          // generate random thread id
+          usableThreadId = crypto.randomUUID();
+          threadIdRef.current = usableThreadId;
+          onThreadId(usableThreadId);
+        }
+
+        if (!usableThreadId) {
+          throw new Error("Failed to obtain valid thread ID.");
+        }
+
+        return options.transport.stream({
           input: values,
           context: submitOptions?.context,
           command: submitOptions?.command,
           signal,
+          config: {
+            ...submitOptions?.config,
+            configurable: {
+              thread_id: usableThreadId,
+              ...submitOptions?.config?.configurable,
+            } as unknown as GetConfigurableType<Bag>,
+          },
         }) as Promise<
           AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
-        >,
+        >;
+      },
       {
         getMessages,
         setMessages,
