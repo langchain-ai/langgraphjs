@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 0.1.6
+
+### Patch Changes
+
+- 5603276: Fix `useStream()` keeping stale thread history when switching threads mid-stream (#1632)
+- b65c80b: Add `transport` option to useStream, allowing custom endpoints, that emit compatible Server-Sent Events to be used with `useStream`.
+- 5603276: Fix `stop()` behavior when cancelling a resumable stream via `useStream()` (#1610)
+
 ## 0.1.5
 
 ### Patch Changes
