@@ -88,7 +88,9 @@ api.post(
         total = item.total;
       }
     }
-
+    if (total == payload.limit) {
+      c.res.headers.set("X-Pagination-Next", (payload.offset ?? 0 + payload.limit + 1).toString());
+    }
     c.res.headers.set("X-Pagination-Total", total.toString());
     return c.json(result);
   }

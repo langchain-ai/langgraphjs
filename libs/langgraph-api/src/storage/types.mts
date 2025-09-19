@@ -390,6 +390,9 @@ export interface AssistantsRepo {
       metadata?: Metadata;
       limit: number;
       offset: number;
+      sort_by?: "assistant_id" | "created_at" | "updated_at" | "name" | "graph_id";
+      sort_order?: "asc" | "desc";
+      select?: string[];
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ assistant: Assistant; total: number }>;
