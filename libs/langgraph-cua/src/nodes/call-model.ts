@@ -131,6 +131,7 @@ export async function callModel(
       previous_response_id: previousResponseId,
     });
 
+  /** @inline */
   type AIMessageChunkOpenAI = AIMessageChunk & {
     additional_kwargs: {
       tool_outputs?: {
