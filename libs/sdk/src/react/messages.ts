@@ -1,6 +1,7 @@
 import {
   type BaseMessage,
   type BaseMessageChunk,
+  RemoveMessage,
   convertToChunk,
   coerceMessageLikeToMessage,
   isBaseMessageChunk,
@@ -15,6 +16,16 @@ function tryConvertToChunk(message: BaseMessage): BaseMessageChunk | null {
     return null;
   }
 }
+
+function tryCoerceMessageLikeToMessage(message: Message): BaseMessage {
+  // TODO: this is unnecessary with https://github.com/langchain-ai/langchainjs/pull/8941
+  if (message.type === "remove" && message.id != null) {
+    return new RemoveMessage({ ...message, id: message.id });
+  }
+
+  return coerceMessageLikeToMessage(message);
+}
+
 export class MessageTupleManager {
   chunks: Record<
     string,
@@ -42,7 +53,7 @@ export class MessageTupleManager {
         .toLowerCase() as Message["type"];
     }
 
-    const message = coerceMessageLikeToMessage(serialized);
+    const message = tryCoerceMessageLikeToMessage(serialized);
     const chunk = tryConvertToChunk(message);
 
     const { id } = chunk ?? message;

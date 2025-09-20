@@ -60,6 +60,7 @@ export interface RunnableConfig {
 
 export interface Assistant {
   name: string | undefined;
+  description: string | undefined;
   assistant_id: string;
   graph_id: string;
   created_at: Date;
@@ -79,6 +80,7 @@ export interface AssistantVersion {
   metadata: Metadata;
   created_at: Date;
   name: string | undefined;
+  description: string | undefined;
 }
 
 export interface RunKwargs {
@@ -388,6 +390,14 @@ export interface AssistantsRepo {
       metadata?: Metadata;
       limit: number;
       offset: number;
+      sort_by?:
+        | "assistant_id"
+        | "created_at"
+        | "updated_at"
+        | "name"
+        | "graph_id";
+      sort_order?: "asc" | "desc";
+      select?: string[];
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ assistant: Assistant; total: number }>;
@@ -403,6 +413,7 @@ export interface AssistantsRepo {
       metadata?: Metadata;
       if_exists: OnConflictBehavior;
       name?: string;
+      description?: string;
     },
     auth: AuthContext | undefined
   ): Promise<Assistant>;
@@ -415,6 +426,7 @@ export interface AssistantsRepo {
       graph_id?: string;
       metadata?: Metadata;
       name?: string;
+      description?: string;
     },
     auth: AuthContext | undefined
   ): Promise<Assistant>;

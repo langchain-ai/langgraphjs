@@ -44,6 +44,7 @@ export const AssistantCreate = z
       .union([z.literal("raise"), z.literal("do_nothing")])
       .optional(),
     name: z.string().optional(),
+    description: z.string().optional(),
   })
   .describe("Payload for creating an assistant.");
 
@@ -53,6 +54,7 @@ export const AssistantPatch = z
     config: AssistantConfig.optional(),
     context: z.unknown().optional(),
     name: z.string().optional(),
+    description: z.string().optional(),
     metadata: z
       .object({})
       .catchall(z.any())
@@ -294,6 +296,11 @@ export const AssistantSearchRequest = z
       .gte(0)
       .describe("Offset to start from.")
       .optional(),
+    sort_by: z
+      .enum(["assistant_id", "graph_id", "created_at", "updated_at", "name"])
+      .optional(),
+    sort_order: z.enum(["asc", "desc"]).optional(),
+    select: z.array(z.string()).optional(),
   })
   .describe("Payload for listing assistants.");
 

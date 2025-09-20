@@ -1,5 +1,43 @@
 # @langchain/langgraph-sdk
 
+## 0.1.6
+
+### Patch Changes
+
+- 5603276: Fix `useStream()` keeping stale thread history when switching threads mid-stream (#1632)
+- b65c80b: Add `transport` option to useStream, allowing custom endpoints, that emit compatible Server-Sent Events to be used with `useStream`.
+- 5603276: Fix `stop()` behavior when cancelling a resumable stream via `useStream()` (#1610)
+
+## 0.1.5
+
+### Patch Changes
+
+- f21fd04: Fix mutate function in `onCustomEvent` and in `onUpdateEvent` receiving incorrect previous value
+
+## 0.1.4
+
+### Patch Changes
+
+- 599a8c5: Add support for streaming of RemoveMessage in useStream
+- 15afabe: Allow `@langchain/core@1.0.0-alpha` installed alongside SDK
+
+## 0.1.3
+
+### Patch Changes
+
+- ba7682f: Add TTL support to ThreadsClient in TypeScript to match Python SDK:
+
+  - `threads.create({ ttl })` now accepts either a number (minutes) or an object `{ ttl: number, strategy?: "delete" }`.
+  - `threads.update(threadId, { ttl })` accepts the same forms.
+
+  Numeric TTL values are normalized to `{ ttl, strategy: "delete" }` in the request payload.
+
+## 0.1.2
+
+### Patch Changes
+
+- 3b1e137: Add `description` field for assistants auth handlers
+
 ## 0.1.1
 
 ### Patch Changes

@@ -163,7 +163,10 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
-      const prev = { ...historyValues, ...this.state.values };
+      const prev = {
+        ...historyValues,
+        ...(this.state.values ?? [null, "stream"])[0],
+      };
       const next = typeof update === "function" ? update(prev) : update;
       this.setStreamValues({ ...prev, ...next }, kind);
     };
@@ -224,6 +227,8 @@ export class StreamManager<
         | Promise<StateType | null | undefined | void>;
 
       onError: (error: unknown) => void | Promise<void>;
+
+      onFinish?: () => void;
     }
   ): Promise<void> => {
     if (this.state.isLoading) return;
@@ -298,7 +303,11 @@ export class StreamManager<
               this.messages.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
-            messages[index] = toMessageDict(chunk);
+            if (chunk.getType() === "remove") {
+              messages.splice(index, 1);
+            } else {
+              messages[index] = toMessageDict(chunk);
+            }
 
             return options.setMessages(values, messages);
           });
@@ -323,6 +332,7 @@ export class StreamManager<
     } finally {
       this.setState({ isLoading: false });
       this.abortRef = new AbortController();
+      options.onFinish?.();
     }
   };
 
@@ -336,16 +346,21 @@ export class StreamManager<
       }) => void;
     }
   ): Promise<void> => {
-    if (this.abortRef) {
-      this.abortRef.abort();
-      this.abortRef = new AbortController();
-    }
+    this.abortRef.abort();
+    this.abortRef = new AbortController();
 
     options.onStop?.({ mutate: this.getMutateFn("stop", historyValues) });
   };
 
   clear = () => {
+    // Cancel any running streams
+    this.abortRef.abort();
+    this.abortRef = new AbortController();
+
+    // Set the stream state to null
     this.setState({ error: undefined, values: null });
+
+    // Clear any pending messages
     this.messages.clear();
   };
 }
