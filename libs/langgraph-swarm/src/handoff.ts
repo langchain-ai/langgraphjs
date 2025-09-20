@@ -28,6 +28,8 @@ function _normalizeAgentName(agentName: string): string {
 interface CreateHandoffToolParams {
   agentName: string;
   description?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  updateState?: (state: any) => Record<string, any>;
 }
 
 // type guard
@@ -45,6 +47,7 @@ function isDynamicTool(
 const createHandoffTool = ({
   agentName,
   description,
+  updateState,
 }: CreateHandoffToolParams) => {
   /**
    * Create a tool that can handoff control to the requested agent.
@@ -56,6 +59,7 @@ const createHandoffTool = ({
    *   nodes as well as the tool names accepted by LLM providers
    *   (the tool name will look like this: `transfer_to_<agent_name>`).
    * @param description - Optional description for the handoff tool.
+   * @param updateState - Optional function to customize state updates during handoff.
    */
   const toolName = `transfer_to_${_normalizeAgentName(agentName)}`;
   const toolDescription = description || `Ask agent '${agentName}' for help`;
@@ -74,13 +78,22 @@ const createHandoffTool = ({
       // inject the current agent state
       const state =
         getCurrentTaskInput() as (typeof MessagesAnnotation)["State"];
+
+      // Base update object containing essential state updates
+      const baseUpdate = {
+        messages: state.messages.concat(toolMessage),
+        activeAgent: agentName,
+      };
+
+      // Merge custom updates with base updates if updateState function is provided
+      const finalUpdate = updateState
+        ? { ...baseUpdate, ...updateState(state) }
+        : baseUpdate;
+
       return new Command({
         goto: agentName,
         graph: Command.PARENT,
-        update: {
-          messages: state.messages.concat(toolMessage),
-          activeAgent: agentName,
-        },
+        update: finalUpdate,
       });
     },
     {
