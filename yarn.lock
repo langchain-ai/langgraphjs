@@ -1765,6 +1765,7 @@ __metadata:
     "@types/node": "npm:^18.15.11"
     chokidar: "npm:^4.0.3"
     commander: "npm:^13.0.0"
+    create-langgraph: "workspace:*"
     dedent: "npm:^1.5.3"
     dotenv: "npm:^16.4.7"
     execa: "npm:^9.5.2"
@@ -5707,7 +5708,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"create-langgraph@workspace:libs/create-langgraph":
+"create-langgraph@workspace:*, create-langgraph@workspace:libs/create-langgraph":
   version: 0.0.0-use.local
   resolution: "create-langgraph@workspace:libs/create-langgraph"
   dependencies:
