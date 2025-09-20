@@ -15,3 +15,5 @@ export function writer<T>(chunk: T): void {
 
   return conf.writer?.(chunk);
 }
+
+export type InferWriterType<T> = T extends typeof writer<infer C> ? C : any; // eslint-disable-line @typescript-eslint/no-explicit-any

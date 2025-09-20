@@ -549,7 +549,10 @@ it("state graph builder", async () => {
       }),
 
       writer: writer<{ custom: string }>,
-      interrupt: interrupt<{ reason: string }, { messages: string[] }>,
+      interrupt: {
+        simple: interrupt<{ reason: string }, { messages: string[] }>,
+        complex: interrupt<{ complex: string }, { messages: string[] }>,
+      },
 
       // Allow optionally specifying all nodes upfront.
       // This is needed to properly type `goto` commands and removes
@@ -565,7 +568,7 @@ it("state graph builder", async () => {
     // @ts-expect-error - Invalid writer input
     if (false) runtime.interrupt();
 
-    const result = runtime.interrupt({ reason: "hello" });
+    const result = runtime.interrupt.simple({ reason: "hello" });
 
     runtime.writer({ custom: "hello" });
 
@@ -582,7 +585,7 @@ it("state graph builder", async () => {
   };
 
   const what: typeof builder.Node = async (_, runtime) => {
-    const result = runtime.interrupt({ reason: "what" });
+    const result = runtime.interrupt.complex({ complex: "what" });
     if (result != null) return { messages: result.messages };
     return {};
   };
@@ -611,7 +614,7 @@ it("state graph builder", async () => {
 
   if (graph.isInterrupted(first)) {
     expectTypeOf(first.__interrupt__).toExtend<
-      { id?: string; value?: { reason: string } }[]
+      { id?: string; value?: { reason: string } | { complex: string } }[]
     >();
   }
 
@@ -620,6 +623,9 @@ it("state graph builder", async () => {
 
   // @ts-expect-error - Invalid update value
   if (false) await thread.invoke(new Command({ update: { messages: true } }));
+
+  // @ts-expect-error - Invalid resume value
+  if (false) await thread.invoke(new Command({ resume: { messages: true } }));
 
   const second = await gatherIterator(
     thread.stream(new Command({ resume: { messages: ["resume: hello"] } }), {
@@ -634,7 +640,7 @@ it("state graph builder", async () => {
     [
       "values",
       {
-        __interrupt__: [{ id: expect.any(String), value: { reason: "what" } }],
+        __interrupt__: [{ id: expect.any(String), value: { complex: "what" } }],
       },
     ],
   ]);
@@ -643,7 +649,7 @@ it("state graph builder", async () => {
     if (mode === "values") {
       if (graph.isInterrupted(value)) {
         expectTypeOf(value.__interrupt__).toExtend<
-          { id?: string; value?: { reason: string } }[]
+          { id?: string; value?: { reason: string } | { complex: string } }[]
         >();
       }
     }

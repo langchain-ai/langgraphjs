@@ -504,6 +504,12 @@ export type PregelParams<
    * @internal
    */
   triggerToNodes?: Record<string, string[]>;
+
+  /**
+   * Interrupt helper function.
+   * @internal
+   */
+  userInterrupt?: unknown;
 };
 
 export interface PregelTaskDescription {
