@@ -65,6 +65,7 @@
   },
   "exports": {
     ".": {
+      "typedoc": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -76,6 +77,7 @@
       "input": "./src/index.ts"
     },
     "./shallow": {
+      "typedoc": "./src/shallow.ts",
       "import": {
         "types": "./dist/shallow.d.ts",
         "default": "./dist/shallow.js"
@@ -87,6 +89,7 @@
       "input": "./src/shallow.ts"
     },
     "./store": {
+      "typedoc": "./src/store.ts",
       "import": {
         "types": "./dist/store.d.ts",
         "default": "./dist/store.js"

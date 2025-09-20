@@ -91,6 +91,8 @@
   },
   "exports": {
     ".": {
+      "input": "./src/index.ts",
+      "typedoc": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -98,10 +100,11 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
-      },
-      "input": "./src/index.ts"
+      }
     },
     "./web": {
+      "input": "./src/web.ts",
+      "typedoc": "./src/web.ts",
       "import": {
         "types": "./dist/web.d.ts",
         "default": "./dist/web.js"
@@ -109,10 +112,11 @@
       "require": {
         "types": "./dist/web.d.cts",
         "default": "./dist/web.cjs"
-      },
-      "input": "./src/web.ts"
+      }
     },
     "./channels": {
+      "input": "./src/channels/index.ts",
+      "typedoc": "./src/channels/index.ts",
       "import": {
         "types": "./dist/channels/index.d.ts",
         "default": "./dist/channels/index.js"
@@ -120,10 +124,11 @@
       "require": {
         "types": "./dist/channels/index.d.cts",
         "default": "./dist/channels/index.cjs"
-      },
-      "input": "./src/channels/index.ts"
+      }
     },
     "./pregel": {
+      "input": "./src/pregel/index.ts",
+      "typedoc": "./src/pregel/index.ts",
       "import": {
         "types": "./dist/pregel/index.d.ts",
         "default": "./dist/pregel/index.js"
@@ -131,10 +136,11 @@
       "require": {
         "types": "./dist/pregel/index.d.cts",
         "default": "./dist/pregel/index.cjs"
-      },
-      "input": "./src/pregel/index.ts"
+      }
     },
     "./prebuilt": {
+      "input": "./src/prebuilt/index.ts",
+      "typedoc": "./src/prebuilt/index.ts",
       "import": {
         "types": "./dist/prebuilt/index.d.ts",
         "default": "./dist/prebuilt/index.js"
@@ -142,10 +148,11 @@
       "require": {
         "types": "./dist/prebuilt/index.d.cts",
         "default": "./dist/prebuilt/index.cjs"
-      },
-      "input": "./src/prebuilt/index.ts"
+      }
     },
     "./remote": {
+      "input": "./src/remote.ts",
+      "typedoc": "./src/remote.ts",
       "import": {
         "types": "./dist/remote.d.ts",
         "default": "./dist/remote.js"
@@ -153,10 +160,11 @@
       "require": {
         "types": "./dist/remote.d.cts",
         "default": "./dist/remote.cjs"
-      },
-      "input": "./src/remote.ts"
+      }
     },
     "./zod": {
+      "input": "./src/graph/zod/index.ts",
+      "typedoc": "./src/graph/zod/index.ts",
       "import": {
         "types": "./dist/graph/zod/index.d.ts",
         "default": "./dist/graph/zod/index.js"
@@ -164,10 +172,11 @@
       "require": {
         "types": "./dist/graph/zod/index.d.cts",
         "default": "./dist/graph/zod/index.cjs"
-      },
-      "input": "./src/graph/zod/index.ts"
+      }
     },
     "./zod/schema": {
+      "input": "./src/graph/zod/schema.ts",
+      "typedoc": "./src/graph/zod/schema.ts",
       "import": {
         "types": "./dist/graph/zod/schema.d.ts",
         "default": "./dist/graph/zod/schema.js"
@@ -175,8 +184,7 @@
       "require": {
         "types": "./dist/graph/zod/schema.d.cts",
         "default": "./dist/graph/zod/schema.cjs"
-      },
-      "input": "./src/graph/zod/schema.ts"
+      }
     },
     "./package.json": "./package.json"
   },

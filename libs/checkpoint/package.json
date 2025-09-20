@@ -61,6 +61,8 @@
   },
   "exports": {
     ".": {
+      "input": "./src/index.ts",
+      "typedoc": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -68,8 +70,7 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
-      },
-      "input": "./src/index.ts"
+      }
     },
     "./package.json": "./package.json"
   },
