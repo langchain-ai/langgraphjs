@@ -64,6 +64,7 @@
   },
   "exports": {
     ".": {
+      "typedoc": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -75,6 +76,8 @@
       "input": "./src/index.ts"
     },
     "./store": {
+      "input": "./src/store/index.ts",
+      "typedoc": "./src/store/index.ts",
       "import": {
         "types": "./dist/store/index.d.ts",
         "default": "./dist/store/index.js"
@@ -82,8 +85,7 @@
       "require": {
         "types": "./dist/store/index.d.cts",
         "default": "./dist/store/index.cjs"
-      },
-      "input": "./src/store/index.ts"
+      }
     },
     "./package.json": "./package.json"
   },

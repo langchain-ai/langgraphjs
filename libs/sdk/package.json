@@ -13,8 +13,7 @@
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
     "lint": "yarn lint:eslint",
     "lint:fix": "yarn lint:eslint --fix",
-    "test": "vitest run",
-    "typedoc": "typedoc && typedoc src/react/index.ts --out docs/react --options typedoc.react.json && typedoc src/auth/index.ts --out docs/auth --options typedoc.auth.json"
+    "test": "vitest run"
   },
   "license": "MIT",
   "dependencies": {
@@ -65,6 +64,8 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "input": "./src/index.ts",
+      "typedoc": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -72,10 +73,11 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
-      },
-      "input": "./src/index.ts"
+      }
     },
     "./client": {
+      "input": "./src/client.ts",
+      "typedoc": "./src/client.ts",
       "import": {
         "types": "./dist/client.d.ts",
         "default": "./dist/client.js"
@@ -83,10 +85,11 @@
       "require": {
         "types": "./dist/client.d.cts",
         "default": "./dist/client.cjs"
-      },
-      "input": "./src/client.ts"
+      }
     },
     "./auth": {
+      "input": "./src/auth/index.ts",
+      "typedoc": "./src/auth/index.ts",
       "import": {
         "types": "./dist/auth/index.d.ts",
         "default": "./dist/auth/index.js"
@@ -94,10 +97,11 @@
       "require": {
         "types": "./dist/auth/index.d.cts",
         "default": "./dist/auth/index.cjs"
-      },
-      "input": "./src/auth/index.ts"
+      }
     },
     "./react": {
+      "input": "./src/react/index.ts",
+      "typedoc": "./src/react/index.ts",
       "import": {
         "types": "./dist/react/index.d.ts",
         "default": "./dist/react/index.js"
@@ -105,10 +109,11 @@
       "require": {
         "types": "./dist/react/index.d.cts",
         "default": "./dist/react/index.cjs"
-      },
-      "input": "./src/react/index.ts"
+      }
     },
     "./logging": {
+      "input": "./src/logging/index.ts",
+      "typedoc": "./src/logging/index.ts",
       "import": {
         "types": "./dist/logging/index.d.ts",
         "default": "./dist/logging/index.js"
@@ -116,10 +121,11 @@
       "require": {
         "types": "./dist/logging/index.d.cts",
         "default": "./dist/logging/index.cjs"
-      },
-      "input": "./src/logging/index.ts"
+      }
     },
     "./react-ui": {
+      "input": "./src/react-ui/index.ts",
+      "typedoc": "./src/react-ui/index.ts",
       "import": {
         "types": "./dist/react-ui/index.d.ts",
         "default": "./dist/react-ui/index.js"
@@ -127,10 +133,11 @@
       "require": {
         "types": "./dist/react-ui/index.d.cts",
         "default": "./dist/react-ui/index.cjs"
-      },
-      "input": "./src/react-ui/index.ts"
+      }
     },
     "./react-ui/server": {
+      "input": "./src/react-ui/server/index.ts",
+      "typedoc": "./src/react-ui/server/index.ts",
       "import": {
         "types": "./dist/react-ui/server/index.d.ts",
         "default": "./dist/react-ui/server/index.js"
@@ -138,8 +145,7 @@
       "require": {
         "types": "./dist/react-ui/server/index.d.cts",
         "default": "./dist/react-ui/server/index.cjs"
-      },
-      "input": "./src/react-ui/server/index.ts"
+      }
     },
     "./package.json": "./package.json"
   },
