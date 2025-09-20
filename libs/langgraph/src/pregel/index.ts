@@ -501,11 +501,13 @@ export class Pregel<
 
   /**
    * Optional interrupt helper function.
+   * @internal
    */
   private userInterrupt?: unknown;
 
   /**
    * The trigger to node mapping for the graph run.
+   * @internal
    */
   private triggerToNodes: Record<string, string[]> = {};
 

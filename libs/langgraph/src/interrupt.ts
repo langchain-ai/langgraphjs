@@ -127,8 +127,6 @@ export type InferInterruptInputType<T> = T extends typeof interrupt<
   : // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends { [key: string]: typeof interrupt<any, any> }
   ? { [K in keyof T]: InferInterruptInputType<T[K]> }[keyof T]
-  : T extends { _builder: { _interrupt: infer I } } | { _interrupt: infer I }
-  ? InferInterruptInputType<I>
   : unknown;
 
 export type InferInterruptResumeType<

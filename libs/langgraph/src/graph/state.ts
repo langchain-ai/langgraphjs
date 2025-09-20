@@ -921,7 +921,6 @@ export class StateGraph<
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
     const userInterrupt = this._interrupt;
-
     // create empty compiled graph
     const compiled = new CompiledStateGraph<
       S,
