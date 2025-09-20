@@ -25,8 +25,19 @@ function _normalizeAgentName(agentName: string): string {
   return agentName.trim().replace(WHITESPACE_RE, "_").toLowerCase();
 }
 
+/** @inline */
 interface CreateHandoffToolParams {
+  /**
+   * The name of the agent to handoff control to, i.e. the name of the agent node in the multi-agent graph.
+   *
+   * Agent names should be simple, clear and unique, preferably in snake_case,
+   * although you are only limited to the names accepted by LangGraph
+   * nodes as well as the tool names accepted by LLM providers
+   * (the tool name will look like this: `transfer_to_<agent_name>`).
+   */
   agentName: string;
+
+  /** Optional description for the handoff tool. */
   description?: string;
 }
 
@@ -42,21 +53,15 @@ function isDynamicTool(
   );
 }
 
+/**
+ * Create a tool that can handoff control to the requested agent.
+ *
+ * @param params Parameters for the handoff tool.
+ */
 const createHandoffTool = ({
   agentName,
   description,
 }: CreateHandoffToolParams) => {
-  /**
-   * Create a tool that can handoff control to the requested agent.
-   *
-   * @param agentName - The name of the agent to handoff control to, i.e.
-   *   the name of the agent node in the multi-agent graph.
-   *   Agent names should be simple, clear and unique, preferably in snake_case,
-   *   although you are only limited to the names accepted by LangGraph
-   *   nodes as well as the tool names accepted by LLM providers
-   *   (the tool name will look like this: `transfer_to_<agent_name>`).
-   * @param description - Optional description for the handoff tool.
-   */
   const toolName = `transfer_to_${_normalizeAgentName(agentName)}`;
   const toolDescription = description || `Ask agent '${agentName}' for help`;
 

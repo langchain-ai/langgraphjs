@@ -24,7 +24,6 @@ export interface ChannelProtocol<
    * Can be thought of as a "restoration" from a checkpoint which is a "snapshot" of the channel's state.
    *
    * @param {CheckpointType | undefined} checkpoint
-   * @param {CheckpointType | undefined} initialValue
    * @returns {this}
    */
   fromCheckpoint(checkpoint?: CheckpointType): this;

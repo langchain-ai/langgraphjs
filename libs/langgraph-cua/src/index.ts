@@ -58,6 +58,7 @@ function reinvokeModelOrEnd(state: CUAState): "callModel" | typeof END {
 
 /**
  * Configuration for the Computer Use Agent.
+ * @inline
  */
 interface CreateCuaParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,6 +147,7 @@ interface CreateCuaParams<
 /**
  * Creates and configures a Computer Use Agent.
  *
+ * @param params The parameters for the Computer Use Agent.
  * @returns The configured graph.
  */
 export function createCua<

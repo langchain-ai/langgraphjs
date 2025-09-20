@@ -147,8 +147,8 @@ export class Channel {
    * const node = Channel.subscribeTo("messages", { key: "chat" });
    * ```
    *
-   * @param channel - Single channel name to subscribe to
-   * @param options - Subscription options
+   * @param channel Single channel name to subscribe to
+   * @param options Subscription options
    * @returns A PregelNode configured to receive from the specified channels
    * @throws {Error} If a key is specified when subscribing to multiple channels
    */
@@ -173,8 +173,8 @@ export class Channel {
    * const node = Channel.subscribeTo("messages", { key: "chat" });
    * ```
    *
-   * @param channel - Single channel name to subscribe to
-   * @param options - Subscription options
+   * @param channels Single channel name to subscribe to
+   * @param options Subscription options
    * @returns A PregelNode configured to receive from the specified channels
    * @throws {Error} If a key is specified when subscribing to multiple channels
    */
@@ -1807,8 +1807,9 @@ export class Pregel<
    * - "updates": Emits only state changes after each step
    * - "debug": Emits detailed debug information
    * - "messages": Emits messages from within nodes
-   *
-   * For more details, see the [Streaming how-to guides](../../how-tos/#streaming_1).
+   * - "custom": Emits custom events from within nodes
+   * - "checkpoints": Emits checkpoints from within nodes
+   * - "tasks": Emits tasks from within nodes
    *
    * @param input - The input to start graph execution with
    * @param options - Configuration options for streaming

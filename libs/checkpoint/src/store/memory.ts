@@ -43,7 +43,7 @@ import { tokenizePath, compareValues, getTextAtPath } from "./utils.js";
  * const results = await store.search(["docs"], { query: "python programming" });
  * ```
  *
- * @warning This store keeps all data in memory. Data is lost when the process exits.
+ * **Warning**: This store keeps all data in memory. Data is lost when the process exits.
  * For persistence, use a database-backed store.
  */
 export class InMemoryStore extends BaseStore {
