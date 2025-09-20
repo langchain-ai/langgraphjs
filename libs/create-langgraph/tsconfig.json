@@ -9,6 +9,7 @@
     "allowJs": true,
     "verbatimModuleSyntax": true,
     "noUnusedLocals": true,
+    "declaration": true,
     "outDir": "dist"
   },
   "exclude": ["scripts/*", "dist/*"]
