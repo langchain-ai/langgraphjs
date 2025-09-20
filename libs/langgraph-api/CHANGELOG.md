@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.67
+
+### Patch Changes
+
+- e23fa7f: Add support for `sort_by`, `sort_order` and `select` when searching for assistants and add support for pagination headers.
+  - @langchain/langgraph-ui@0.0.67
+
 ## 0.0.66
 
 ### Patch Changes
