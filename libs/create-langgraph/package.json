@@ -1,6 +1,6 @@
 {
   "name": "create-langgraph",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Create a new LangGraph project",
   "license": "MIT",
   "main": "dist/index.mjs",
