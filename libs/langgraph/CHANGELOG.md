@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.0.0-alpha.4
+
+### Patch Changes
+
+- c3f326d: Add support for defining multiple interrupts in StateGraph constructor. Interrupts from the map can be picked from the `Runtime` object, ensuring type-safety across multiple interrupts.
+
 ## 1.0.0-alpha.3
 
 ### Patch Changes
