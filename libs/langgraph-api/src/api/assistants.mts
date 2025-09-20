@@ -80,16 +80,38 @@ api.post(
         metadata: payload.metadata,
         limit: payload.limit ?? 10,
         offset: payload.offset ?? 0,
+        sort_by: payload.sort_by,
+        sort_order: payload.sort_order,
+        select: payload.select,
       },
       c.var.auth
     )) {
-      result.push(item.assistant);
+      result.push(
+        Object.fromEntries(
+          Object.entries(item.assistant).filter(
+            ([k]) => !payload.select || payload.select.includes(k)
+          )
+        )
+      );
       if (total === 0) {
         total = item.total;
       }
     }
-
-    c.res.headers.set("X-Pagination-Total", total.toString());
+    if (total === payload.limit) {
+      c.res.headers.set(
+        "X-Pagination-Next",
+        ((payload.offset ?? 0) + total).toString()
+      );
+      c.res.headers.set(
+        "X-Pagination-Total",
+        ((payload.offset ?? 0) + total + 1).toString()
+      );
+    } else {
+      c.res.headers.set(
+        "X-Pagination-Total",
+        ((payload.offset ?? 0) + total).toString()
+      );
+    }
     return c.json(result);
   }
 );

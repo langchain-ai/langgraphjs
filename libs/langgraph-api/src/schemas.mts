@@ -296,6 +296,11 @@ export const AssistantSearchRequest = z
       .gte(0)
       .describe("Offset to start from.")
       .optional(),
+    sort_by: z
+      .enum(["assistant_id", "graph_id", "created_at", "updated_at", "name"])
+      .optional(),
+    sort_order: z.enum(["asc", "desc"]).optional(),
+    select: z.array(z.string()).optional(),
   })
   .describe("Payload for listing assistants.");
 
