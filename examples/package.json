@@ -8,7 +8,6 @@
   },
   "devDependencies": {
     "@langchain/anthropic": "^0.3.12",
-    "@langchain/community": "^0.3.27",
     "@langchain/core": "^1.0.0-alpha",
     "@langchain/groq": "^0.1.3",
     "@langchain/langgraph": "workspace:*",
@@ -21,7 +20,7 @@
     "chromadb": "^1.8.1",
     "d3": "^7.9.0",
     "dotenv": "^16.4.5",
-    "langchain": "^0.3.13",
+    "langchain": "^1.0.0-alpha",
     "pg": "^8.11.0",
     "tslab": "^1.0.22",
     "tsx": "^4.19.3",
