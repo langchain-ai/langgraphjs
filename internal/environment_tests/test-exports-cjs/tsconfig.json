@@ -8,6 +8,8 @@
       "ES2022.Object",
       "DOM"
     ],
+    "module": "Node16",
+    "moduleResolution": "node16",
     "target": "ES2021",
   },
   "include": [
