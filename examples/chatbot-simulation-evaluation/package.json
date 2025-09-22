@@ -1,4 +1,5 @@
 {
+  "name": "@examples/chatbot-simulation-evaluation",
   "type": "module",
   "private": true,
   "devDependencies": {
