@@ -30,7 +30,7 @@
     "test:int": "yarn test:int:deps && turbo run test:int ; yarn test:int:deps:down",
     "test:int:deps": "docker compose -f int-test-deps-docker-compose.yml up -d",
     "test:int:deps:down": "docker compose -f int-test-deps-docker-compose.yml down",
-    "test:exports:docker": "docker compose -f environment_tests/docker-compose.yml up --force-recreate",
+    "test:exports:docker": "docker compose -f internal/environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "release": "yarn workspaces foreach --all --no-private --topological --verbose npm publish --tolerate-republish --tag next"
