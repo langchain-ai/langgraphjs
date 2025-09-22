@@ -1,5 +1,5 @@
 {
-  "name": "ui-react-transport",
+  "name": "@examples/ui-react-transport",
   "private": true,
   "type": "module",
   "scripts": {

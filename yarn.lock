@@ -961,6 +961,333 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@examples/agent_executor@workspace:examples/agent_executor":
+  version: 0.0.0-use.local
+  resolution: "@examples/agent_executor@workspace:examples/agent_executor"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/tavily": "npm:^0.1.5"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    tslab: "npm:^1.0.22"
+    zod: "npm:^3.23.8"
+  languageName: unknown
+  linkType: soft
+
+"@examples/chat_agent_executor_with_function_calling@workspace:examples/chat_agent_executor_with_function_calling":
+  version: 0.0.0-use.local
+  resolution: "@examples/chat_agent_executor_with_function_calling@workspace:examples/chat_agent_executor_with_function_calling"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/tavily": "npm:^0.1.5"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    tslab: "npm:^1.0.22"
+    zod: "npm:^3.23.8"
+  languageName: unknown
+  linkType: soft
+
+"@examples/chatbot-simulation-evaluation@workspace:examples/chatbot-simulation-evaluation":
+  version: 0.0.0-use.local
+  resolution: "@examples/chatbot-simulation-evaluation@workspace:examples/chatbot-simulation-evaluation"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/chatbots@workspace:examples/chatbots":
+  version: 0.0.0-use.local
+  resolution: "@examples/chatbots@workspace:examples/chatbots"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/how-tos@workspace:examples/how-tos":
+  version: 0.0.0-use.local
+  resolution: "@examples/how-tos@workspace:examples/how-tos"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/multi_agent@workspace:examples/multi_agent":
+  version: 0.0.0-use.local
+  resolution: "@examples/multi_agent@workspace:examples/multi_agent"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/plan-and-execute@workspace:examples/plan-and-execute":
+  version: 0.0.0-use.local
+  resolution: "@examples/plan-and-execute@workspace:examples/plan-and-execute"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/quickstart@workspace:examples/quickstart":
+  version: 0.0.0-use.local
+  resolution: "@examples/quickstart@workspace:examples/quickstart"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/rag@workspace:examples/rag":
+  version: 0.0.0-use.local
+  resolution: "@examples/rag@workspace:examples/rag"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/reflection@workspace:examples/reflection":
+  version: 0.0.0-use.local
+  resolution: "@examples/reflection@workspace:examples/reflection"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/rewoo@workspace:examples/rewoo":
+  version: 0.0.0-use.local
+  resolution: "@examples/rewoo@workspace:examples/rewoo"
+  dependencies:
+    "@langchain/anthropic": "npm:^0.3.12"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/mistralai": "npm:^0.2.0"
+    "@langchain/ollama": "npm:^0.1.0"
+    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/textsplitters": "npm:^0.1.0"
+    "@xenova/transformers": "npm:2.17.2"
+    cheerio: "npm:^1.0.0"
+    chromadb: "npm:^1.8.1"
+    d3: "npm:^7.9.0"
+    dotenv: "npm:^16.4.5"
+    langchain: "npm:^1.0.0-alpha"
+    pg: "npm:^8.11.0"
+    tslab: "npm:^1.0.22"
+    tsx: "npm:^4.19.3"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.23.8"
+    zod-to-json-schema: "npm:^3.23.2"
+  languageName: unknown
+  linkType: soft
+
+"@examples/ui-react-transport@workspace:examples/ui-react-transport":
+  version: 0.0.0-use.local
+  resolution: "@examples/ui-react-transport@workspace:examples/ui-react-transport"
+  dependencies:
+    "@hono/node-server": "npm:^1.12.0"
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/langgraph-sdk": "workspace:*"
+    "@langchain/openai": "npm:^0.4.4"
+    "@types/react": "npm:^19.0.8"
+    "@types/react-dom": "npm:^19.0.3"
+    "@vitejs/plugin-react": "npm:^4.4.1"
+    hono: "npm:^4.8.2"
+    prettier: "npm:^2.8.3"
+    react: "npm:^19.0.0"
+    react-dom: "npm:^19.0.0"
+    tsx: "npm:^4.19.3"
+    typescript: "npm:^5.4.5"
+    vite: "npm:^6.0.0"
+    zod: "npm:^3.23.8"
+  languageName: unknown
+  linkType: soft
+
+"@examples/ui-react@workspace:examples/ui-react":
+  version: 0.0.0-use.local
+  resolution: "@examples/ui-react@workspace:examples/ui-react"
+  dependencies:
+    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/langgraph": "workspace:*"
+    "@langchain/langgraph-cli": "workspace:*"
+    "@langchain/langgraph-sdk": "workspace:*"
+    "@langchain/openai": "npm:^0.4.4"
+    "@types/react": "npm:^19.0.8"
+    "@types/react-dom": "npm:^19.0.3"
+    "@vitejs/plugin-react": "npm:^4.4.1"
+    prettier: "npm:^2.8.3"
+    react: "npm:^19.0.0"
+    react-dom: "npm:^19.0.0"
+    tsx: "npm:^4.19.3"
+    typescript: "npm:^5.4.5"
+    vite: "npm:^6.0.0"
+    zod: "npm:^3.23.8"
+  languageName: unknown
+  linkType: soft
+
 "@fastify/busboy@npm:^2.0.0":
   version: 2.1.1
   resolution: "@fastify/busboy@npm:2.1.1"
@@ -4632,21 +4959,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"agent_executor-cc6cfd@workspace:examples/agent_executor":
-  version: 0.0.0-use.local
-  resolution: "agent_executor-cc6cfd@workspace:examples/agent_executor"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/tavily": "npm:^0.1.5"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    tslab: "npm:^1.0.22"
-    zod: "npm:^3.23.8"
-  languageName: unknown
-  linkType: soft
-
 "agentkeepalive@npm:^4.2.1":
   version: 4.5.0
   resolution: "agentkeepalive@npm:4.5.0"
@@ -5480,77 +5792,6 @@ __metadata:
   checksum: 10/cb3f3e594913d63b1814d7ca7c9bafbf895f75fbf93b92991980610dfd7b48500af4e3a5d4e3a8f337990a96b168d7eb84ee55efdce965e2ee8efc20f8c8f139
   languageName: node
   linkType: hard
-
-"chat_agent_executor_with_function_calling-8dfe0a@workspace:examples/chat_agent_executor_with_function_calling":
-  version: 0.0.0-use.local
-  resolution: "chat_agent_executor_with_function_calling-8dfe0a@workspace:examples/chat_agent_executor_with_function_calling"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/tavily": "npm:^0.1.5"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    tslab: "npm:^1.0.22"
-    zod: "npm:^3.23.8"
-  languageName: unknown
-  linkType: soft
-
-"chatbot-simulation-evaluation-58fafe@workspace:examples/chatbot-simulation-evaluation":
-  version: 0.0.0-use.local
-  resolution: "chatbot-simulation-evaluation-58fafe@workspace:examples/chatbot-simulation-evaluation"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
-"chatbots-e77561@workspace:examples/chatbots":
-  version: 0.0.0-use.local
-  resolution: "chatbots-e77561@workspace:examples/chatbots"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
 
 "check-error@npm:^2.1.1":
   version: 2.1.1
@@ -8535,34 +8776,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"how-tos-4b269a@workspace:examples/how-tos":
-  version: 0.0.0-use.local
-  resolution: "how-tos-4b269a@workspace:examples/how-tos"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
 "html-encoding-sniffer@npm:^4.0.0":
   version: 4.0.0
   resolution: "html-encoding-sniffer@npm:4.0.0"
@@ -10199,34 +10412,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"multi_agent-44989a@workspace:examples/multi_agent":
-  version: 0.0.0-use.local
-  resolution: "multi_agent-44989a@workspace:examples/multi_agent"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
 "mustache@npm:^4.2.0":
   version: 4.2.0
   resolution: "mustache@npm:4.2.0"
@@ -11181,34 +11366,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"plan-and-execute-75c905@workspace:examples/plan-and-execute":
-  version: 0.0.0-use.local
-  resolution: "plan-and-execute-75c905@workspace:examples/plan-and-execute"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
 "platform@npm:^1.3.6":
   version: 1.3.6
   resolution: "platform@npm:1.3.6"
@@ -11712,62 +11869,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"quickstart-4ef914@workspace:examples/quickstart":
-  version: 0.0.0-use.local
-  resolution: "quickstart-4ef914@workspace:examples/quickstart"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
-"rag-01e79d@workspace:examples/rag":
-  version: 0.0.0-use.local
-  resolution: "rag-01e79d@workspace:examples/rag"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
 "randombytes@npm:^2.0.0, randombytes@npm:^2.0.1, randombytes@npm:^2.0.5, randombytes@npm:^2.1.0":
   version: 2.1.0
   resolution: "randombytes@npm:2.1.0"
@@ -11941,34 +12042,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"reflection-13ff76@workspace:examples/reflection":
-  version: 0.0.0-use.local
-  resolution: "reflection-13ff76@workspace:examples/reflection"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
-
 "regenerator-runtime@npm:^0.14.0":
   version: 0.14.1
   resolution: "regenerator-runtime@npm:0.14.1"
@@ -12098,34 +12171,6 @@ __metadata:
   checksum: 10/14222c9e1d3f9ae01480c50d96057228a8524706db79cdeb5a2ce5bb7070dd9f409a6f84a02cbef8cdc80d39aef86f2dd03d155188a1300c599b05437dcd2ffb
   languageName: node
   linkType: hard
-
-"rewoo-a64bdc@workspace:examples/rewoo":
-  version: 0.0.0-use.local
-  resolution: "rewoo-a64bdc@workspace:examples/rewoo"
-  dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
-    "@xenova/transformers": "npm:2.17.2"
-    cheerio: "npm:^1.0.0"
-    chromadb: "npm:^1.8.1"
-    d3: "npm:^7.9.0"
-    dotenv: "npm:^16.4.5"
-    langchain: "npm:^1.0.0-alpha"
-    pg: "npm:^8.11.0"
-    tslab: "npm:^1.0.22"
-    tsx: "npm:^4.19.3"
-    uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.23.2"
-  languageName: unknown
-  linkType: soft
 
 "rimraf@npm:^3.0.2":
   version: 3.0.2
@@ -13992,51 +14037,6 @@ __metadata:
   checksum: 10/37197358242eb9afe367502d4638ac8c5838b78792ab218eafe48287b0ed28aaca268ec0392cc5729f6c90266744de32c06ae938549aee041fc93b0f9672d6b2
   languageName: node
   linkType: hard
-
-"ui-react-transport@workspace:examples/ui-react-transport":
-  version: 0.0.0-use.local
-  resolution: "ui-react-transport@workspace:examples/ui-react-transport"
-  dependencies:
-    "@hono/node-server": "npm:^1.12.0"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/langgraph-sdk": "workspace:*"
-    "@langchain/openai": "npm:^0.4.4"
-    "@types/react": "npm:^19.0.8"
-    "@types/react-dom": "npm:^19.0.3"
-    "@vitejs/plugin-react": "npm:^4.4.1"
-    hono: "npm:^4.8.2"
-    prettier: "npm:^2.8.3"
-    react: "npm:^19.0.0"
-    react-dom: "npm:^19.0.0"
-    tsx: "npm:^4.19.3"
-    typescript: "npm:^5.4.5"
-    vite: "npm:^6.0.0"
-    zod: "npm:^3.23.8"
-  languageName: unknown
-  linkType: soft
-
-"ui-react@workspace:examples/ui-react":
-  version: 0.0.0-use.local
-  resolution: "ui-react@workspace:examples/ui-react"
-  dependencies:
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/langgraph": "workspace:*"
-    "@langchain/langgraph-cli": "workspace:*"
-    "@langchain/langgraph-sdk": "workspace:*"
-    "@langchain/openai": "npm:^0.4.4"
-    "@types/react": "npm:^19.0.8"
-    "@types/react-dom": "npm:^19.0.3"
-    "@vitejs/plugin-react": "npm:^4.4.1"
-    prettier: "npm:^2.8.3"
-    react: "npm:^19.0.0"
-    react-dom: "npm:^19.0.0"
-    tsx: "npm:^4.19.3"
-    typescript: "npm:^5.4.5"
-    vite: "npm:^6.0.0"
-    zod: "npm:^3.23.8"
-  languageName: unknown
-  linkType: soft
 
 "ulid@npm:^2.3.0":
   version: 2.4.0

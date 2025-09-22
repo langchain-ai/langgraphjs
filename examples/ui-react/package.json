@@ -1,5 +1,5 @@
 {
-  "name": "ui-react",
+  "name": "@examples/ui-react",
   "private": true,
   "type": "module",
   "scripts": {
