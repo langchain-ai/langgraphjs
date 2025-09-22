@@ -37,7 +37,7 @@ export class LanggraphZodMetaRegistry<
   constructor(protected parent: SchemaMetaRegistry) {
     super();
     // Use the parent's map for metadata storage
-    this._map = this.parent._map as WeakMap<
+    this._map = this.parent._map as Map<
       Schema,
       $replace<Meta & { [key: string]: unknown }, Schema>
     >;

@@ -3,6 +3,7 @@ import {
   ToolMessage,
   AIMessage,
   isBaseMessage,
+  isAIMessage,
 } from "@langchain/core/messages";
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
@@ -241,13 +242,13 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       let aiMessage: AIMessage | undefined;
       for (let i = messages.length - 1; i >= 0; i -= 1) {
         const message = messages[i];
-        if (message.getType() === "ai") {
+        if (isAIMessage(message)) {
           aiMessage = message;
           break;
         }
       }
 
-      if (aiMessage?.getType() !== "ai") {
+      if (aiMessage == null || !isAIMessage(aiMessage)) {
         throw new Error("ToolNode only accepts AIMessages as input.");
       }
 

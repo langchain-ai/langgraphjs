@@ -1,6 +1,7 @@
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import {
   AIMessage,
+  AIMessageFields,
   BaseMessage,
   BaseMessageLike,
   isAIMessage,
@@ -47,10 +48,14 @@ export function _addInlineAgentName<T extends BaseMessageLike>(
   const { name } = message;
 
   if (typeof message.content === "string") {
-    return new AIMessage({
-      ...(Object.keys(message.lc_kwargs ?? {}).length > 0
+    const fields = (
+      Object.keys(message.lc_kwargs ?? {}).length > 0
         ? message.lc_kwargs
-        : message),
+        : message
+    ) as AIMessageFields;
+
+    return new AIMessage({
+      ...fields,
       content: `<name>${name}</name><content>${message.content}</content>`,
       name: undefined,
     });
