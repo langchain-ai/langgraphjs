@@ -441,7 +441,7 @@ describe("Pregel AbortSignal", () => {
           }
         )
       ).rejects.toThrow(
-        abortCause === "exception" ? "Should not be called!" : "Abort"
+        abortCause === "exception" ? "Should not be called!" : "aborted"
       );
 
       expect(oneCount).toEqual(4);

@@ -3890,7 +3890,7 @@ graph TD;
 
       const toolsNode = async (toolCall: ToolCall) => {
         await new Promise((resolve) =>
-          setTimeout(resolve, (toolCall.args.idx ?? 0 + 1) * 100)
+          setTimeout(resolve, ((toolCall.args.idx as number) ?? 0 + 1) * 100)
         );
         const toolMessage = await toolsByName[toolCall.name].invoke(toolCall);
         return {

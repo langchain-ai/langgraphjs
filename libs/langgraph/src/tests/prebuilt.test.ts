@@ -237,18 +237,17 @@ describe.each([["v1" as const], ["v2" as const]])(
           llm,
           tools,
           version,
-          prompt: (state) => {
-            return [new AIMessage("foobar")].concat(state.messages);
-          },
+          prompt: (state) => [new AIMessage("foobar"), ...state.messages],
         });
 
         const agent2 = createReactAgent({
           llm,
           tools,
           version,
-          stateModifier: (state) => {
-            return [new AIMessage("foobar")].concat(state.messages);
-          },
+          stateModifier: (state) => [
+            new AIMessage("foobar"),
+            ...state.messages,
+          ],
         });
         for (const agent of [agent1, agent2]) {
           const result = await agent.invoke({
@@ -641,7 +640,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           name: "test agent",
         });
 
-        const messages = [new HumanMessage("Hello!")];
+        const messages: BaseMessage[] = [new HumanMessage("Hello!")];
         const result1 = await agent.invoke({ messages });
         const outputMessage1 = result1.messages.at(-1) as AIMessage;
         messages.push(outputMessage1);
@@ -693,7 +692,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           name: "test agent",
         });
 
-        const messages = [new HumanMessage("Hello!")];
+        const messages: BaseMessage[] = [new HumanMessage("Hello!")];
         const result1 = await agent.invoke({ messages });
         const outputMessage1 = result1.messages.at(-1) as AIMessage;
         messages.push(outputMessage1);
@@ -748,7 +747,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           name: "test agent",
         });
 
-        const messages = [new HumanMessage("Hello!")];
+        const messages: BaseMessage[] = [new HumanMessage("Hello!")];
         const result1 = await agent.invoke({ messages });
         const outputMessage1 = result1.messages.at(-1) as AIMessage;
         messages.push(outputMessage1);
@@ -890,9 +889,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           llm,
           tools,
           version,
-          messageModifier: (messages) => {
-            return [new AIMessage("foobar")].concat(messages);
-          },
+          messageModifier: (messages) => [new AIMessage("foobar"), ...messages],
         });
 
         const result = await agent.invoke({
@@ -1360,7 +1357,7 @@ describe.each([["v1" as const], ["v2" as const]])(
               reducer: {
                 fn: (a, b) =>
                   [a, ...b].reduce((acc, curr) => acc || curr, false),
-                schema: z.array(z.boolean()),
+                schema: z4.array(z4.boolean()),
               },
               default: () => false,
             }),
@@ -2711,7 +2708,8 @@ describe("ToolNode", () => {
     function shouldContinue({
       messages,
     }: typeof AgentAnnotation.State): "tools" | "__end__" {
-      const lastMessage: AIMessage = messages[messages.length - 1];
+      const lastMessage = messages[messages.length - 1];
+      if (!isAIMessage(lastMessage)) return "__end__";
 
       // If the LLM makes a tool call, then we route to the "tools" node
       if ((lastMessage.tool_calls?.length ?? 0) > 0) {

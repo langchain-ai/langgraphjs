@@ -155,21 +155,14 @@ describe("assistants", () => {
       properties: {
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: [
-            { $ref: "#/definitions/BaseMessageChunk" },
-            { $ref: "#/definitions/ToolMessage" },
-            { $ref: "#/definitions/AIMessage" },
-            { $ref: "#/definitions/ChatMessage" },
-            { $ref: "#/definitions/FunctionMessage" },
-            { $ref: "#/definitions/HumanMessage" },
-            { $ref: "#/definitions/SystemMessage" },
-            { $ref: "#/definitions/RemoveMessage" },
-          ],
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
