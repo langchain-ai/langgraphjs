@@ -27,7 +27,7 @@ const weather = new StateGraph(weatherState)
       ],
     });
 
-    return { city: llm.tool_calls![0].args.city };
+    return { city: llm.tool_calls![0].args.city as string };
   })
   .addNode("weather_node", async (state) => {
     const result = `It's sunny in ${state.city}!`;
