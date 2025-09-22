@@ -1357,7 +1357,7 @@ describe.each([["v1" as const], ["v2" as const]])(
               reducer: {
                 fn: (a, b) =>
                   [a, ...b].reduce((acc, curr) => acc || curr, false),
-                schema: z.array(z.boolean()),
+                schema: z4.array(z4.boolean()),
               },
               default: () => false,
             }),
