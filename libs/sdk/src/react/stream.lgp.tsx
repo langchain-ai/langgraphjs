@@ -11,10 +11,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { findLast, unique } from "./utils.js";
-import { StreamError } from "./errors.js";
-import { getBranchContext } from "./branching.js";
-import { EventStreamEvent, StreamManager } from "./manager.js";
+import { findLast, unique } from "../ui/utils.js";
+import { StreamError } from "../ui/errors.js";
+import { getBranchContext } from "../ui/branching.js";
+import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   BagTemplate,
   UseStreamOptions,
@@ -31,7 +31,7 @@ import { Client, getClientConfigHash } from "../client.js";
 import type { Message } from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
-import { MessageTupleManager } from "./messages.js";
+import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
 
 function getFetchHistoryKey(

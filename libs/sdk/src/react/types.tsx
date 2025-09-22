@@ -26,7 +26,7 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { Sequence } from "./branching.js";
+import type { Sequence } from "../ui/branching.js";
 
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
   /**
