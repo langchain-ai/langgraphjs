@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "0.0.67",
+  "version": "0.0.68",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -36,6 +36,7 @@
     "@langchain/langgraph-api": "workspace:*",
     "chokidar": "^4.0.3",
     "commander": "^13.0.0",
+    "create-langgraph": "workspace:*",
     "dedent": "^1.5.3",
     "dotenv": "^16.4.7",
     "execa": "^9.5.2",

@@ -189,8 +189,8 @@ export interface EntrypointFunction {
    *
    * @typeParam ValueT - The type of the value to return to the caller
    * @typeParam SaveT - The type of the state to save to the checkpoint
-   * @param value - The value to return to the caller
-   * @param save - The value to save to the checkpoint
+   * @param options.value - The value to return to the caller
+   * @param options.save - The value to save to the checkpoint
    * @returns An object with the value and save properties
    *
    * @example

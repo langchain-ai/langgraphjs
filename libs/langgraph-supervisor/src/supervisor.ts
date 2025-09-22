@@ -114,6 +114,7 @@ const makeCallAgent = (
   };
 };
 
+/** @inline */
 export type CreateSupervisorParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any>,
@@ -155,6 +156,21 @@ export type CreateSupervisorParams<
 
   /**
    * An optional schema for the final supervisor output.
+   *
+   * If provided, output will be formatted to match the given schema and returned in the 'structuredResponse' state key.
+   * If not provided, `structuredResponse` will not be present in the output state.
+   *
+   * Can be passed in as:
+   *   - Zod schema
+   *   - JSON schema
+   *   - { prompt, schema }, where schema is one of the above.
+   *        The prompt will be used together with the model that is being used to generate the structured response.
+   *
+   * @remarks
+   * **Important**: `responseFormat` requires the model to support `.withStructuredOutput()`.
+   *
+   * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
+   * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
    */
   responseFormat?:
     | InteropZodType<StructuredResponseFormat>
@@ -243,67 +259,8 @@ export type CreateSupervisorParams<
 /**
  * Create a multi-agent supervisor.
  *
- * @param agents List of agents to manage
- * @param llm Language model to use for the supervisor
- * @param tools Tools to use for the supervisor
- * @param prompt Optional prompt to use for the supervisor. Can be one of:
- *   - string: This is converted to a SystemMessage and added to the beginning of the list of messages in state["messages"]
- *   - SystemMessage: this is added to the beginning of the list of messages in state["messages"]
- *   - Function: This function should take in full graph state and the output is then passed to the language model
- *   - Runnable: This runnable should take in full graph state and the output is then passed to the language model
- * @param responseFormat An optional schema for the final supervisor output.
- *
- * If provided, output will be formatted to match the given schema and returned in the 'structuredResponse' state key.
- * If not provided, `structuredResponse` will not be present in the output state.
- *
- * Can be passed in as:
- *   - Zod schema
- *   - JSON schema
- *   - { prompt, schema }, where schema is one of the above.
- *        The prompt will be used together with the model that is being used to generate the structured response.
- *
- * @remarks
- * **Important**: `responseFormat` requires the model to support `.withStructuredOutput()`.
- *
- * **Note**: The graph will make a separate call to the LLM to generate the structured response after the agent loop is finished.
- * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
- * @param preModelHook An optional node to add before the LLM node in the supervisor agent (i.e., the node that calls the LLM).
- *   Useful for managing long message histories (e.g., message trimming, summarization, etc.).
- *   Pre-model hook must be a callable or a runnable that takes in current graph state and returns a state update in the form of:
- *   ```javascript
- *   // At least one of `messages` or `llmInputMessages` MUST be provided
- *   {
- *     // If provided, will UPDATE the `messages` in the state
- *     messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...],
- *     // If provided, will be used as the input to the LLM,
- *     // and will NOT UPDATE `messages` in the state
- *     llmInputMessages: [...]
- *     // Any other state keys that need to be propagated...
- *   }
- *   ```
- *   **Important**: At least one of `messages` or `llmInputMessages` MUST be provided and will be used as an input to the `agent` node.
- *   The rest of the keys will be added to the graph state.
- *
- *   **Warning**: If you are returning `messages` in the pre-model hook, you should OVERWRITE the `messages` key by doing the following:
- *   ```javascript
- *   { messages: [new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), ...newMessages], ... }
- *   ```
- * @param postModelHook An optional node to add after the LLM node in the supervisor agent (i.e., the node that calls the LLM).
- *   Useful for implementing human-in-the-loop, guardrails, validation, or other post-processing.
- *   Post-model hook must be a callable or a runnable that takes in current graph state and returns a state update.
- * @param stateSchema State schema to use for the supervisor graph
- * @param contextSchema Context schema to use for the supervisor graph
- * @param outputMode Mode for adding managed agents' outputs to the message history in the multi-agent workflow.
- *   Can be one of:
- *   - `full_history`: add the entire agent message history
- *   - `last_message`: add only the last message (default)
- * @param addHandoffBackMessages Whether to add a pair of (AIMessage, ToolMessage) to the message history
- *   when returning control to the supervisor to indicate that a handoff has occurred
- * @param supervisorName Name of the supervisor node
- * @param includeAgentName Use to specify how to expose the agent name to the underlying supervisor LLM.
- *   - undefined: Relies on the LLM provider using the name attribute on the AI message. Currently, only OpenAI supports this.
- *   - "inline": Add the agent name directly into the content field of the AI message using XML-style tags.
- *     Example: "How can I help you" -> "<name>agent_name</name><content>How can I help you?</content>"
+ * @param params Parameters for the supervisor.
+ * @returns The supervisor graph.
  */
 const createSupervisor = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

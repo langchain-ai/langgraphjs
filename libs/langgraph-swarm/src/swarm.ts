@@ -20,14 +20,14 @@ const SwarmState = Annotation.Root({
  * Add a router to the currently active agent to the StateGraph.
  *
  * @param builder The graph builder (StateGraph) to add the router to.
- * @param routeTo A list of agent (node) names to route to.
- * @param defaultActiveAgent Name of the agent to route to by default (if no agents are currently active).
+ * @param params Parameters for the router.
  * @returns StateGraph with the router added.
  */
 const addActiveAgentRouter = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState
 >(
+  /** The graph builder (StateGraph) to add the router to. */
   builder: StateGraph<
     AnnotationRootT["spec"],
     AnnotationRootT["State"],
@@ -41,7 +41,9 @@ const addActiveAgentRouter = <
     routeTo,
     defaultActiveAgent,
   }: {
+    /** A list of agent (node) names to route to. */
     routeTo: string[];
+    /** Name of the agent to route to by default (if no agents are currently active). */
     defaultActiveAgent: string;
   }
 ): StateGraph<
@@ -67,12 +69,14 @@ const addActiveAgentRouter = <
   return builder;
 };
 
+/** @inline */
 export type CreateSwarmParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AgentAnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation
 > = {
+  /** List of agents to add to the swarm */
   agents: CompiledStateGraph<
     AgentAnnotationRootT["State"],
     AgentAnnotationRootT["Update"],
@@ -80,16 +84,18 @@ export type CreateSwarmParams<
     AgentAnnotationRootT["spec"],
     AgentAnnotationRootT["spec"]
   >[];
+
+  /** Name of the agent to route to by default (if no agents are currently active) */
   defaultActiveAgent: string;
+
+  /** State schema to use for the multi-agent graph */
   stateSchema?: AnnotationRootT;
 };
 
 /**
  * Create a multi-agent swarm.
  *
- * @param agents List of agents to add to the swarm
- * @param defaultActiveAgent Name of the agent to route to by default (if no agents are currently active).
- * @param stateSchema State schema to use for the multi-agent graph.
+ * @param params Parameters for the multi-agent swarm.
  * @returns A multi-agent swarm StateGraph.
  */
 const createSwarm = <

@@ -7,6 +7,7 @@ import "./dev.mjs";
 import "./docker.mjs";
 import "./build.mjs";
 import "./up.mjs";
+import "./new.mjs";
 import "./sysinfo.mjs";
 
 builder.exitOverride((error) => gracefulExit(error.exitCode));

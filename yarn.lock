@@ -1560,6 +1560,7 @@ __metadata:
     "@types/node": "npm:^18.15.11"
     chokidar: "npm:^4.0.3"
     commander: "npm:^13.0.0"
+    create-langgraph: "workspace:*"
     dedent: "npm:^1.5.3"
     dotenv: "npm:^16.4.7"
     execa: "npm:^9.5.2"
@@ -4967,13 +4968,13 @@ __metadata:
   linkType: hard
 
 "axios@npm:^1.6.7":
-  version: 1.8.3
-  resolution: "axios@npm:1.8.3"
+  version: 1.12.2
+  resolution: "axios@npm:1.12.2"
   dependencies:
     follow-redirects: "npm:^1.15.6"
-    form-data: "npm:^4.0.0"
+    form-data: "npm:^4.0.4"
     proxy-from-env: "npm:^1.1.0"
-  checksum: 10/050f911cadd6d47a38ddbf91d2f8da2c34661dda8077e7ad6546e8178701125366fddbba07211a648b6815cf6c2c3c91c0a65d8b968e3d1a6054a21141ff9c01
+  checksum: 10/886a79770594eaad76493fecf90344b567bd956240609b5dcd09bd0afe8d3e6f1ad6d3257a93a483b6192b409d4b673d9515a34619e3e3ed1b2c0ec2a83b20ba
   languageName: node
   linkType: hard
 
@@ -6020,7 +6021,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"create-langgraph@workspace:libs/create-langgraph":
+"create-langgraph@workspace:*, create-langgraph@workspace:libs/create-langgraph":
   version: 0.0.0-use.local
   resolution: "create-langgraph@workspace:libs/create-langgraph"
   dependencies:
@@ -7968,7 +7969,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"form-data@npm:^4.0.0":
+"form-data@npm:^4.0.0, form-data@npm:^4.0.4":
   version: 4.0.4
   resolution: "form-data@npm:4.0.4"
   dependencies:
@@ -8521,9 +8522,9 @@ __metadata:
   linkType: hard
 
 "hono@npm:^4.5.4, hono@npm:^4.8.2":
-  version: 4.9.6
-  resolution: "hono@npm:4.9.6"
-  checksum: 10/2c757781b72d4f3ffa4b07641059f32845d2f38a158248e82be461b75746d09a2c9a946b7795c730c2b869d03de2665d13c9f42be4d208b32f3fd55b68f82817
+  version: 4.9.8
+  resolution: "hono@npm:4.9.8"
+  checksum: 10/82c9f91264ba428d65fe2d41849d872aeda04644ef24a8ddd25839ad6617724290def6cbf24473c0b2c512fd072c6fe55a706ab4ad7fd6e9c98f7192488d7b48
   languageName: node
   linkType: hard
 

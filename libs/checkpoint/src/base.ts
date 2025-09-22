@@ -9,6 +9,7 @@ import type {
 import { ERROR, INTERRUPT, RESUME, SCHEDULED } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
+/** @inline */
 type ChannelVersion = number | string;
 
 export type ChannelVersions = Record<string, ChannelVersion>;

@@ -1,5 +1,14 @@
 # @langchain/langgraph-cli
 
+## 0.0.68
+
+### Patch Changes
+
+- 7770c6a: Add `new` command to `@langchain/langgraph-cli` CLI
+- Updated dependencies [7770c6a]
+  - create-langgraph@0.0.4
+  - @langchain/langgraph-api@0.0.68
+
 ## 0.0.67
 
 ### Patch Changes
