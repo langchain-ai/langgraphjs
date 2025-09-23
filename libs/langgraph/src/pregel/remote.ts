@@ -574,15 +574,6 @@ export class RemoteGraph<
     return this._createStateSnapshot(state);
   }
 
-  /** @deprecated Use getGraphAsync instead. The async method will become the default in the next minor release. */
-  override getGraph(
-    _?: RunnableConfig & { xray?: boolean | number }
-  ): DrawableGraph {
-    throw new Error(
-      `The synchronous "getGraph" is not supported for this graph. Call "getGraphAsync" instead.`
-    );
-  }
-
   /**
    * Returns a drawable representation of the computation graph.
    */
@@ -594,13 +585,6 @@ export class RemoteGraph<
       nodes: this._getDrawableNodes(graph.nodes),
       edges: graph.edges,
     });
-  }
-
-  /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
-  getSubgraphs(): Generator<[string, PregelInterface<Nn, Cc, ContextType>]> {
-    throw new Error(
-      `The synchronous "getSubgraphs" method is not supported for this graph. Call "getSubgraphsAsync" instead.`
-    );
   }
 
   async *getSubgraphsAsync(

@@ -359,13 +359,6 @@ export interface PregelInterface<
     config: RunnableConfig & { xray?: boolean | number }
   ): Promise<DrawableGraph>;
 
-  /** @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release. */
-  getSubgraphs(
-    namespace?: string,
-    recurse?: boolean
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Generator<[string, PregelInterface<any, any>]>;
-
   getSubgraphsAsync(
     namespace?: string,
     recurse?: boolean

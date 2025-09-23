@@ -33,11 +33,7 @@ import {
   START,
   TAG_HIDDEN,
 } from "../constants.js";
-import {
-  gatherIterator,
-  gatherIteratorSync,
-  RunnableCallable,
-} from "../utils.js";
+import { gatherIterator, RunnableCallable } from "../utils.js";
 import {
   InvalidUpdateError,
   NodeInterrupt,
@@ -755,13 +751,32 @@ export class CompiledGraph<
       }
       if (xray) {
         const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
-        const drawableSubgraph =
-          subgraphs[key] !== undefined
-            ? await subgraphs[key].getGraphAsync({
-                ...config,
-                xray: newXrayValue,
-              })
+
+        const hasGraphAsync = (
+          node: unknown
+        ): node is {
+          getGraphAsync: (config: RunnableConfig) => Promise<DrawableGraph>;
+        } => {
+          return (
+            typeof node === "object" &&
+            node !== null &&
+            "getGraphAsync" in node &&
+            typeof node.getGraphAsync === "function"
+          );
+        };
+
+        const drawableSubgraph = await (async () => {
+          if (subgraphs[key] !== undefined) {
+            return subgraphs[key].getGraphAsync({
+              ...config,
+              xray: newXrayValue,
+            });
+          }
+
+          return hasGraphAsync(node)
+            ? node.getGraphAsync(config)
             : node.getGraph(config);
+        })();
 
         drawableSubgraph.trimFirstNode();
         drawableSubgraph.trimLastNode();
@@ -890,182 +905,12 @@ export class CompiledGraph<
   /**
    * Returns a drawable representation of the computation graph.
    *
-   * @deprecated Use getGraphAsync instead. The async method will be the default in the next minor core release.
+   * @deprecated Use getGraphAsync instead.
    */
-  override getGraph(
-    config?: RunnableConfig & { xray?: boolean | number }
-  ): DrawableGraph {
-    const xray = config?.xray;
-    const graph = new DrawableGraph();
-    const startNodes: Record<string, DrawableGraphNode> = {
-      [START]: graph.addNode(
-        {
-          schema: z.any(),
-        },
-        START
-      ),
-    };
-    const endNodes: Record<string, DrawableGraphNode> = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let subgraphs: Record<string, CompiledGraph<any>> = {};
-    if (xray) {
-      subgraphs = Object.fromEntries(
-        gatherIteratorSync(this.getSubgraphs()).filter(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (x): x is [string, CompiledGraph<any>] => isCompiledGraph(x[1])
-        )
-      );
-    }
-
-    function addEdge(
-      start: string,
-      end: string,
-      label?: string,
-      conditional = false
-    ) {
-      if (end === END && endNodes[END] === undefined) {
-        endNodes[END] = graph.addNode({ schema: z.any() }, END);
-      }
-      return graph.addEdge(
-        startNodes[start],
-        endNodes[end],
-        label !== end ? label : undefined,
-        conditional
-      );
-    }
-
-    for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
-      N,
-      NodeSpec<State, Update>
-    ][]) {
-      const displayKey = _escapeMermaidKeywords(key);
-      const node = nodeSpec.runnable;
-      const metadata = nodeSpec.metadata ?? {};
-      if (
-        this.interruptBefore?.includes(key) &&
-        this.interruptAfter?.includes(key)
-      ) {
-        metadata.__interrupt = "before,after";
-      } else if (this.interruptBefore?.includes(key)) {
-        metadata.__interrupt = "before";
-      } else if (this.interruptAfter?.includes(key)) {
-        metadata.__interrupt = "after";
-      }
-      if (xray) {
-        const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
-        const drawableSubgraph =
-          subgraphs[key] !== undefined
-            ? subgraphs[key].getGraph({
-                ...config,
-                xray: newXrayValue,
-              })
-            : node.getGraph(config);
-        drawableSubgraph.trimFirstNode();
-        drawableSubgraph.trimLastNode();
-        if (Object.keys(drawableSubgraph.nodes).length > 1) {
-          const [e, s] = graph.extend(drawableSubgraph, displayKey);
-          if (e === undefined) {
-            throw new Error(
-              `Could not extend subgraph "${key}" due to missing entrypoint.`
-            );
-          }
-
-          // TODO: Remove default name once we stop supporting core 0.2.0
-          // eslint-disable-next-line no-inner-declarations
-          function _isRunnableInterface(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            thing: any
-          ): thing is RunnableInterface {
-            return thing ? thing.lc_runnable : false;
-          }
-          // eslint-disable-next-line no-inner-declarations
-          function _nodeDataStr(
-            id: string | undefined,
-            data: RunnableInterface | RunnableIOSchema
-          ): string {
-            if (id !== undefined && !isUuid(id)) {
-              return id;
-            } else if (_isRunnableInterface(data)) {
-              try {
-                let dataStr = data.getName();
-                dataStr = dataStr.startsWith("Runnable")
-                  ? dataStr.slice("Runnable".length)
-                  : dataStr;
-                return dataStr;
-              } catch (error) {
-                return data.getName();
-              }
-            } else {
-              return data.name ?? "UnknownSchema";
-            }
-          }
-          // TODO: Remove casts when we stop supporting core 0.2.0
-          if (s !== undefined) {
-            startNodes[displayKey] = {
-              name: _nodeDataStr(s.id, s.data),
-              ...s,
-            } as DrawableGraphNode;
-          }
-          endNodes[displayKey] = {
-            name: _nodeDataStr(e.id, e.data),
-            ...e,
-          } as DrawableGraphNode;
-        } else {
-          // TODO: Remove when we stop supporting core 0.2.0
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          const newNode = graph.addNode(node, displayKey, metadata);
-          startNodes[displayKey] = newNode;
-          endNodes[displayKey] = newNode;
-        }
-      } else {
-        // TODO: Remove when we stop supporting core 0.2.0
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const newNode = graph.addNode(node, displayKey, metadata);
-        startNodes[displayKey] = newNode;
-        endNodes[displayKey] = newNode;
-      }
-    }
-    const sortedEdges = [...this.builder.allEdges].sort(([a], [b]) => {
-      if (a < b) {
-        return -1;
-      } else if (b > a) {
-        return 1;
-      } else {
-        return 0;
-      }
-    });
-    for (const [start, end] of sortedEdges) {
-      addEdge(_escapeMermaidKeywords(start), _escapeMermaidKeywords(end));
-    }
-    for (const [start, branches] of Object.entries(this.builder.branches)) {
-      const defaultEnds: Record<string, string> = {
-        ...Object.fromEntries(
-          Object.keys(this.builder.nodes)
-            .filter((k) => k !== start)
-            .map((k) => [_escapeMermaidKeywords(k), _escapeMermaidKeywords(k)])
-        ),
-        [END]: END,
-      };
-      for (const branch of Object.values(branches)) {
-        let ends;
-        if (branch.ends !== undefined) {
-          ends = branch.ends;
-        } else {
-          ends = defaultEnds;
-        }
-        for (const [label, end] of Object.entries(ends)) {
-          addEdge(
-            _escapeMermaidKeywords(start),
-            _escapeMermaidKeywords(end),
-            label,
-            true
-          );
-        }
-      }
-    }
-    return graph;
+  override getGraph(): DrawableGraph {
+    throw new Error(
+      `The synchronous "getGraph" is not supported for this graph. Call "getGraphAsync" instead.`
+    );
   }
 }
 
