@@ -571,25 +571,18 @@ export class Graph<
 
 export class CompiledGraph<
   N extends string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  State = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Update = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType extends Record<string, any> = Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  InputType = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  OutputType = any,
+  State = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Update = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  InputType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  OutputType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
   NodeReturnType = unknown,
   CommandType = unknown,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StreamCustomType = any
+  StreamCustomType = any // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType & Record<string, any>,
+  ContextType & Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   InputType,
   OutputType,
   InputType,
@@ -598,13 +591,13 @@ export class CompiledGraph<
   CommandType,
   StreamCustomType
 > {
-  declare NodeType: N;
+  declare "~NodeType": N;
 
   declare "~NodeReturnType": NodeReturnType;
 
-  declare RunInput: State;
+  declare "~RunInput": Update;
 
-  declare RunOutput: Update;
+  declare "~RunOutput": State;
 
   builder: Graph<N, State, Update>;
 
