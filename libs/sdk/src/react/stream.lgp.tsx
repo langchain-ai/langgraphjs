@@ -69,10 +69,12 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 ) {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
+    key: string | undefined;
     data: ThreadState<StateType>[] | undefined;
     error: unknown | undefined;
     isLoading: boolean;
   }>(() => ({
+    key: undefined,
     data: undefined,
     error: undefined,
     isLoading: threadId != null,
@@ -89,24 +91,34 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       threadId: string | undefined | null,
       limit: boolean | number
     ): Promise<ThreadState<StateType>[]> => {
-      if (threadId != null) {
-        const client = clientRef.current;
+      const client = clientRef.current;
+      const key = getFetchHistoryKey(client, threadId, limit);
 
-        setState((state) => ({ ...state, isLoading: true }));
+      if (threadId != null) {
+        setState((state) => {
+          if (state.key === key) return { ...state, isLoading: true };
+          return { key, data: undefined, error: undefined, isLoading: true };
+        });
         return fetchHistory<StateType>(client, threadId, { limit }).then(
           (data) => {
-            setState({ data, error: undefined, isLoading: false });
+            setState((state) => {
+              if (state.key !== key) return state;
+              return { key, data, error: undefined, isLoading: false };
+            });
             return data;
           },
           (error) => {
-            setState(({ data }) => ({ data, error, isLoading: false }));
+            setState((state) => {
+              if (state.key !== key) return state;
+              return { key, data: state.data, error, isLoading: false };
+            });
             onErrorRef.current?.(error);
             return Promise.reject(error);
           }
         );
       }
 
-      setState({ data: undefined, error: undefined, isLoading: false });
+      setState({ key, data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
     []
