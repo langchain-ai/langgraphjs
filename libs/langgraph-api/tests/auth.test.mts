@@ -1,9 +1,10 @@
 import { Client } from "@langchain/langgraph-sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, describe } from "vitest";
 import { gatherIterator, truncate } from "./utils.mjs";
 import { SignJWT } from "jose";
 import waitPort from "wait-port";
 import { type ChildProcess, spawn } from "node:child_process";
+import { isAuthMatching, type AuthFilters } from "../src/auth/index.mjs";
 
 const API_URL = "http://localhost:2025";
 const config = { configurable: { user_id: "123" } };
@@ -775,4 +776,114 @@ it("info endpoint", async () => {
 
   const json = await res.json();
   expect(json).toMatchObject({ version: expect.any(String) });
+});
+
+describe("auth filter matching", () => {
+  it.each([
+    // undefined/empty cases
+    [
+      "should return true when filters is undefined",
+      { a: "value" },
+      undefined,
+      true,
+    ],
+    ["should handle empty metadata", {}, { a: "foo" }, false],
+    ["should handle empty filters", { a: "foo", b: "bar" }, {}, true],
+    // Exact string matching
+    [
+      "should match exact string values",
+      { a: "foo", b: "bar" },
+      { a: "foo" },
+      true,
+    ],
+    [
+      "should not match different string values",
+      { a: "foo", b: "bar" },
+      { a: "baz" },
+      false,
+    ],
+    // $eq operator
+    [
+      "should match using $eq operator",
+      { a: "foo", b: "bar" },
+      { a: { $eq: "foo" } },
+      true,
+    ],
+    [
+      "should not match using $eq operator with different values",
+      { a: "foo", b: "bar" },
+      { a: { $eq: "baz" } },
+      false,
+    ],
+    // $contains operator with string
+    [
+      "should match using $contains operator with string",
+      { a: ["foo", "bar", "baz"] },
+      { a: { $contains: "bar" } },
+      true,
+    ],
+    [
+      "should not match using $contains operator when value not in array",
+      { a: ["foo", "bar", "baz"] },
+      { a: { $contains: "qux" } },
+      false,
+    ],
+    [
+      "should return false when using $contains on non-array metadata",
+      { a: "bar" },
+      { a: { $contains: "bar" } },
+      false,
+    ],
+    // $contains operator with array
+    [
+      "should match using $contains operator with array (all values must be present)",
+      { a: ["foo", "bar", "baz", "qux"] },
+      { a: { $contains: ["bar", "baz"] } },
+      true,
+    ],
+    [
+      "should not match using $contains operator with array when not all values present",
+      { a: ["foo", "bar"] },
+      { a: { $contains: ["bar", "baz"] } },
+      false,
+    ],
+    // Multiple conditions
+    [
+      "should match multiple filter conditions",
+      {
+        a: "foo",
+        b: "bar",
+        c: ["baz", "qux"],
+      },
+      {
+        a: "foo",
+        c: { $contains: "baz" },
+      },
+      true,
+    ],
+    [
+      "should not match when any filter condition fails",
+      {
+        a: "foo",
+        b: "bar",
+        c: ["baz", "qux"],
+      },
+      {
+        a: "different",
+        c: { $contains: "baz" },
+      },
+      false,
+    ],
+    ["should handle missing metadata keys", { a: "foo" }, { b: "bar" }, false],
+  ])(
+    "$1",
+    (
+      name: string,
+      metadata: Record<string, unknown> | undefined,
+      filters: AuthFilters,
+      expected: boolean
+    ) => {
+      expect(isAuthMatching(metadata, filters)).toBe(expected);
+    }
+  );
 });
