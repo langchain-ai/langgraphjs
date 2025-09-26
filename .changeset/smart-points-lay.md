@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph-api": minor
+"@langchain/langgraph-api": patch
 ---
 
 Updated typing of auth filters
