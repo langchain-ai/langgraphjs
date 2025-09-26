@@ -1178,7 +1178,7 @@ export class RunsClient<
    * @returns The created run.
    */
   async create(
-    threadId: string,
+    threadId: string | null,
     assistantId: string,
     payload?: RunsCreatePayload
   ): Promise<Run> {
@@ -1210,7 +1210,8 @@ export class RunsClient<
         : undefined,
     };
 
-    const [run, response] = await this.fetch<Run>(`/threads/${threadId}/runs`, {
+    const endpoint = threadId === null ? '/runs' : `/threads/${threadId}/runs`;
+    const [run, response] = await this.fetch<Run>(endpoint, {
       method: "POST",
       json,
       signal: payload?.signal,
