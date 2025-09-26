@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.1.7
+
+### Patch Changes
+
+- bbc90e6: Fix thread history state being kept stale when changing `thread_id`
+
 ## 0.1.6
 
 ### Patch Changes
