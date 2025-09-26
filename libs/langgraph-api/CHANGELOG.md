@@ -1,5 +1,15 @@
 # @langchain/langgraph-api
 
+## 0.1.0
+
+### Minor Changes
+
+- f2aa533: Updated typing of auth filters
+
+### Patch Changes
+
+- @langchain/langgraph-ui@0.1.0
+
 ## 0.0.68
 
 ### Patch Changes
