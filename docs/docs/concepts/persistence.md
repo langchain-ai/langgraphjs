@@ -28,7 +28,7 @@ Let's see what checkpoints are saved when a simple graph is invoked as follows:
 import { StateGraph, START, END, MemorySaver, Annotation } from "@langchain/langgraph";
 
 const GraphAnnotation = Annotation.Root({
-  foo: Annotation<string>
+  foo: Annotation<string>,
   bar: Annotation<string[]>({
     reducer: (a, b) => [...a, ...b],
     default: () => [],
@@ -43,7 +43,7 @@ function nodeB(state: typeof GraphAnnotation.State) {
   return { foo: "b", bar: ["b"] };
 }
 
-const workflow = new StateGraph(GraphAnnotation);
+const workflow = new StateGraph(GraphAnnotation)
   .addNode("nodeA", nodeA)
   .addNode("nodeB", nodeB)
   .addEdge(START, "nodeA")
