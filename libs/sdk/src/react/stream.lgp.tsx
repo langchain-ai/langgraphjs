@@ -26,6 +26,7 @@ import type {
   RunCallbackMeta,
   SubmitOptions,
   MessageMetadata,
+  UseStreamThread,
 } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
 import type { Message } from "../types.messages.js";
@@ -63,10 +64,11 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   threadId: string | undefined | null,
   limit: boolean | number,
   options: {
+    passthrough: boolean;
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
-) {
+): UseStreamThread<StateType> {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
     key: string | undefined;
@@ -91,6 +93,9 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       threadId: string | undefined | null,
       limit: boolean | number
     ): Promise<ThreadState<StateType>[]> => {
+      // If only passthrough is enabled, don't fetch history
+      if (options.passthrough) return Promise.resolve([]);
+
       const client = clientRef.current;
       const key = getFetchHistoryKey(client, threadId, limit);
 
@@ -121,7 +126,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       setState({ key, data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
-    []
+    [options.passthrough]
   );
 
   useEffect(() => {
@@ -257,10 +262,17 @@ export function useStreamLGP<
       ? options.fetchStateHistory.limit ?? false
       : options.fetchStateHistory ?? false;
 
-  const history = useThreadHistory<StateType>(client, threadId, historyLimit, {
-    submittingRef: threadIdStreamingRef,
-    onError: options.onError,
-  });
+  const builtInHistory = useThreadHistory<StateType>(
+    client,
+    threadId,
+    historyLimit,
+    {
+      passthrough: options.experimental_thread != null,
+      submittingRef: threadIdStreamingRef,
+      onError: options.onError,
+    }
+  );
+  const history = options.experimental_thread ?? builtInHistory;
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -273,7 +285,7 @@ export function useStreamLGP<
   };
 
   const [branch, setBranch] = useState<string>("");
-  const branchContext = getBranchContext(branch, history.data);
+  const branchContext = getBranchContext(branch, history.data ?? undefined);
 
   const historyValues =
     branchContext.threadHead?.values ??
@@ -483,7 +495,7 @@ export function useStreamLGP<
 
           if (shouldRefetch) {
             const newHistory = await history.mutate(usableThreadId!);
-            const lastHead = newHistory.at(0);
+            const lastHead = newHistory?.at(0);
             if (lastHead) {
               // We now have the latest update from /history
               // Thus we can clear the local stream state
@@ -538,7 +550,7 @@ export function useStreamLGP<
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
           const newHistory = await history.mutate(threadId);
-          const lastHead = newHistory.at(0);
+          const lastHead = newHistory?.at(0);
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);
         },
         onError(error) {
