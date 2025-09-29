@@ -1210,7 +1210,7 @@ export class RunsClient<
         : undefined,
     };
 
-    const endpoint = threadId === null ? '/runs' : `/threads/${threadId}/runs`;
+    const endpoint = threadId === null ? "/runs" : `/threads/${threadId}/runs`;
     const [run, response] = await this.fetch<Run>(endpoint, {
       method: "POST",
       json,
