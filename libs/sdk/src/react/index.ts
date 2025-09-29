@@ -7,4 +7,5 @@ export type {
   UseStreamCustom,
   UseStreamCustomOptions,
   UseStreamTransport,
+  UseStreamThread,
 } from "./types.js";

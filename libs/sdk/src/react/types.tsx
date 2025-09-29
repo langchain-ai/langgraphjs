@@ -94,6 +94,15 @@ export interface RunCallbackMeta {
   thread_id: string;
 }
 
+export interface UseStreamThread<StateType extends Record<string, unknown>> {
+  data: ThreadState<StateType>[] | null | undefined;
+  error: unknown;
+  isLoading: boolean;
+  mutate: (
+    mutateId?: string
+  ) => Promise<ThreadState<StateType>[] | null | undefined>;
+}
+
 export interface UseStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
@@ -272,6 +281,12 @@ export interface UseStreamOptions<
    * @default true
    */
   fetchStateHistory?: boolean | { limit: number };
+
+  /**
+   * Manage the thread state externally.
+   * @experimental
+   */
+  experimental_thread?: UseStreamThread<StateType>;
 }
 
 interface RunMetadataStorage {
