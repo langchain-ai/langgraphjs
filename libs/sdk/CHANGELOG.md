@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.1.8
+
+### Patch Changes
+
+- 90dcb8b: Add support for managing thread state manually outside of useStream hook via `experimental_thread` option
+
 ## 0.1.7
 
 ### Patch Changes
