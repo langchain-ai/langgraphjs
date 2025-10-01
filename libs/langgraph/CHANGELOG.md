@@ -1,5 +1,12 @@
 # @langchain/langgraph
 
+## 1.0.0-alpha.5
+
+### Patch Changes
+
+- b6d6701: fix(@langchain/langgraph): export missing `CommandParams` symbol
+- d5be09c: fix(@langchain/langgraph): export missing `CommandInstance` symbol
+
 ## 1.0.0-alpha.4
 
 ### Patch Changes
