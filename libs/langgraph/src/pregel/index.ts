@@ -666,19 +666,18 @@ export class Pregel<
   }
 
   /**
-   * Gets all subgraphs within this graph.
+   * Gets all subgraphs within this graph asynchronously.
    * A subgraph is a Pregel instance that is nested within a node of this graph.
    *
-   * @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release.
    * @param namespace - Optional namespace to filter subgraphs
    * @param recurse - Whether to recursively get subgraphs of subgraphs
-   * @returns Generator yielding tuples of [name, subgraph]
+   * @returns AsyncGenerator yielding tuples of [name, subgraph]
    */
-  *getSubgraphs(
+  async *getSubgraphsAsync(
     namespace?: string,
     recurse?: boolean
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Generator<[string, Pregel<any, any>]> {
+  ): AsyncGenerator<[string, Pregel<any, any>]> {
     for (const [name, node] of Object.entries(this.nodes)) {
       // filter by prefix
       if (namespace !== undefined) {
@@ -710,10 +709,10 @@ export class Pregel<
             if (namespace !== undefined) {
               newNamespace = namespace.slice(name.length + 1);
             }
-            for (const [subgraphName, subgraph] of graph.getSubgraphs(
-              newNamespace,
-              recurse
-            )) {
+            for await (const [
+              subgraphName,
+              subgraph,
+            ] of graph.getSubgraphsAsync(newNamespace, recurse)) {
               yield [
                 `${name}${CHECKPOINT_NAMESPACE_SEPARATOR}${subgraphName}`,
                 subgraph,
@@ -723,22 +722,6 @@ export class Pregel<
         }
       }
     }
-  }
-
-  /**
-   * Gets all subgraphs within this graph asynchronously.
-   * A subgraph is a Pregel instance that is nested within a node of this graph.
-   *
-   * @param namespace - Optional namespace to filter subgraphs
-   * @param recurse - Whether to recursively get subgraphs of subgraphs
-   * @returns AsyncGenerator yielding tuples of [name, subgraph]
-   */
-  async *getSubgraphsAsync(
-    namespace?: string,
-    recurse?: boolean
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): AsyncGenerator<[string, Pregel<any, any>]> {
-    yield* this.getSubgraphs(namespace, recurse);
   }
 
   /**
