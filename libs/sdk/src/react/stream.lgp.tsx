@@ -369,23 +369,34 @@ export function useStreamLGP<
         : ""
     );
 
-    stream.setStreamValues(() => {
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...historyValues,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(historyValues)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...historyValues };
-    });
-
     // When `fetchStateHistory` is requested, thus we assume that branching
     // is enabled. We then need to include the implicit branch.
     const includeImplicitBranch =
       historyLimit === true || typeof historyLimit === "number";
+
+    const shouldRefetch =
+      // We're expecting the whole thread state in onFinish
+      options.onFinish != null ||
+      // We're fetching history, thus we need the latest checkpoint
+      // to ensure we're not accidentally submitting to a wrong branch
+      includeImplicitBranch;
+
+    stream.setStreamValues(() => {
+      const prev = shouldRefetch
+        ? historyValues
+        : { ...historyValues, ...stream.values };
+
+      if (submitOptions?.optimisticValues != null) {
+        return {
+          ...prev,
+          ...(typeof submitOptions.optimisticValues === "function"
+            ? submitOptions.optimisticValues(prev)
+            : submitOptions.optimisticValues),
+        };
+      }
+
+      return { ...prev };
+    });
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
@@ -486,12 +497,6 @@ export function useStreamLGP<
 
         async onSuccess() {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-          const shouldRefetch =
-            // We're expecting the whole thread state in onFinish
-            options.onFinish != null ||
-            // We're fetching history, thus we need the latest checkpoint
-            // to ensure we're not accidentally submitting to a wrong branch
-            includeImplicitBranch;
 
           if (shouldRefetch) {
             const newHistory = await history.mutate(usableThreadId!);
