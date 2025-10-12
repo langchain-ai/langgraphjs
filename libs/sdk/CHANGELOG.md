@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 0.1.10
+
+### Patch Changes
+
+- 47cdce7: Fix stale values being received by optimistic values callback in `stream.submit(...)`
+
 ## 0.1.9
 
 ### Patch Changes
