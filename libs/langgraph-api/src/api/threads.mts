@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as schemas from "../schemas.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
 import { threads } from "../storage/context.mjs";
-import type { RunnableConfig } from "../storage/types.mjs";
+import type { RunnableConfig, ThreadSelectField } from "../storage/types.mjs";
 import { jsonExtra } from "../utils/hono.mjs";
 
 const api = new Hono();
@@ -52,6 +52,7 @@ api.post(
         offset: payload.offset ?? 0,
         sort_by: payload.sort_by ?? "created_at",
         sort_order: payload.sort_order ?? "desc",
+        select: payload.select as ThreadSelectField[],
       },
       c.var.auth
     )) {

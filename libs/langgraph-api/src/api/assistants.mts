@@ -14,6 +14,7 @@ import { getRuntimeGraphSchema } from "../graph/parser/index.mjs";
 import { HTTPException } from "hono/http-exception";
 import * as schemas from "../schemas.mjs";
 import { assistants } from "../storage/context.mjs";
+import { AssistantSelectField } from "../storage/types.mjs";
 const api = new Hono();
 
 const RunnableConfigSchema = z.object({
@@ -82,7 +83,7 @@ api.post(
         offset: payload.offset ?? 0,
         sort_by: payload.sort_by,
         sort_order: payload.sort_order,
-        select: payload.select,
+        select: payload.select as AssistantSelectField[],
       },
       c.var.auth
     )) {
