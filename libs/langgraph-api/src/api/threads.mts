@@ -56,11 +56,13 @@ api.post(
       },
       c.var.auth
     )) {
-      result.push({
-        ...item.thread,
-        created_at: item.thread.created_at.toISOString(),
-        updated_at: item.thread.updated_at.toISOString(),
-      });
+      result.push(
+        Object.fromEntries(
+          Object.entries(item.thread).filter(
+            ([k]) => !payload.select || payload.select.includes(k)
+          )
+        )
+      );
       // Only set total if it's the first item
       if (total === 0) {
         total = item.total;
