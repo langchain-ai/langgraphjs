@@ -369,6 +369,7 @@ export const ThreadSearchRequest = z
       .describe("Sort by field.")
       .optional(),
     sort_order: z.enum(["asc", "desc"]).describe("Sort order.").optional(),
+    select: z.array(z.string()).optional(),
   })
   .describe("Payload for listing threads.");
 
