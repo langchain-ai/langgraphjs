@@ -17,9 +17,28 @@ export type StorageEnv = {
 
 export type Metadata = Record<string, unknown>;
 
-export type AssistantSelectField = "assistant_id" | "graph_id" | "name" | "description" | "config" | "context" | "created_at" | "updated_at" | "metadata" | "version";
+export type AssistantSelectField =
+  | "assistant_id"
+  | "graph_id"
+  | "name"
+  | "description"
+  | "config"
+  | "context"
+  | "created_at"
+  | "updated_at"
+  | "metadata"
+  | "version";
 
-export type ThreadSelectField = "thread_id" | "created_at" | "updated_at" | "metadata" | "config" | "context" | "status" | "values" | "interrupts";
+export type ThreadSelectField =
+  | "thread_id"
+  | "created_at"
+  | "updated_at"
+  | "metadata"
+  | "config"
+  | "context"
+  | "status"
+  | "values"
+  | "interrupts";
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
 
