@@ -17,6 +17,10 @@ export type StorageEnv = {
 
 export type Metadata = Record<string, unknown>;
 
+export type AssistantSelectField = "assistant_id" | "graph_id" | "name" | "description" | "config" | "context" | "created_at" | "updated_at" | "metadata" | "version";
+
+export type ThreadSelectField = "thread_id" | "created_at" | "updated_at" | "metadata" | "config" | "context" | "status" | "values" | "interrupts";
+
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
 
 export type RunStatus =
@@ -292,6 +296,7 @@ export interface ThreadsRepo {
       offset: number;
       sort_by?: "thread_id" | "status" | "created_at" | "updated_at";
       sort_order?: "asc" | "desc";
+      select?: ThreadSelectField[];
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ thread: Thread; total: number }>;
@@ -397,7 +402,7 @@ export interface AssistantsRepo {
         | "name"
         | "graph_id";
       sort_order?: "asc" | "desc";
-      select?: string[];
+      select?: AssistantSelectField[];
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ assistant: Assistant; total: number }>;
