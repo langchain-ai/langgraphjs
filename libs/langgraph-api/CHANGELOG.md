@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 0.0.70
+
+### Patch Changes
+
+- 636e142: Updated types to match python api
+  - @langchain/langgraph-ui@0.0.70
+
 ## 0.0.69
 
 ### Patch Changes
