@@ -439,6 +439,10 @@ def on_post_build(config):
     site_dir = config["site_dir"]
 
     for page_old, page_new in REDIRECT_MAP.items():
+        # Skip directory paths (ending with /)
+        if page_old.endswith("/"):
+            continue
+            
         page_old = page_old.replace(".ipynb", ".md")
         page_new = page_new.replace(".ipynb", ".md")
         page_new_before_hash, hash, suffix = page_new.partition("#")
