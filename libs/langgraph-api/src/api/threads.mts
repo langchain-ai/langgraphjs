@@ -68,19 +68,20 @@ api.post(
         total = item.total;
       }
     }
+    const nextOffset = (payload.offset ?? 0) + total
     if (total === payload.limit) {
       c.res.headers.set(
         "X-Pagination-Next",
-        ((payload.offset ?? 0) + total).toString()
+        nextOffset.toString()
       );
       c.res.headers.set(
         "X-Pagination-Total",
-        ((payload.offset ?? 0) + total + 1).toString()
+        (nextOffset + 1).toString()
       );
     } else {
       c.res.headers.set(
         "X-Pagination-Total",
-        ((payload.offset ?? 0) + total).toString()
+        nextOffset.toString()
       );
     }
     return jsonExtra(c, result);
