@@ -211,7 +211,20 @@ REDIRECT_MAP = {
     "agents/evals.md": "https://docs.langchain.com/oss/javascript/langgraph/evaluations",
     "agents/deployment.md": "https://docs.langchain.com/langsmith/deployment-options",
     "agents/ui.md": "https://docs.langchain.com/oss/javascript/langgraph/ui",
-    "agents/prebuilt.md": "https://docs.langchain.com/oss/javascript/langchain/agents" 
+    "agents/prebuilt.md": "https://docs.langchain.com/oss/javascript/langchain/agents",
+    "reference/index.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph.html",
+    "reference": "https://reference.langchain.com/javascript/modules/_langchain_langgraph.html",
+    "reference/modules/checkpoint.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint.html",
+    "reference/modules/checkpoint_mongodb.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint-mongodb.html",
+    "reference/modules/checkpoint_postgres.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint-postgres.html",
+    "reference/modules/checkpoint_redis.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint-redis.html",
+    "reference/modules/checkpoint_sqlite.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint-sqlite.html",
+    "reference/modules/checkpoint_validation.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint.html",
+    "reference/modules/langgraph.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph.html",
+    "reference/modules/langgraph_cua.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-cua.html",
+    "reference/modules/langgraph_supervisor.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-supervisor.html",
+    "reference/modules/langgraph_swarm.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-swarm.html",
+    "reference/modules/sdk.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-sdk.html"
 }
 
 
