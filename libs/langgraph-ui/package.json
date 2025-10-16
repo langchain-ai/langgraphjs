@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-ui",
-  "version": "0.0.70",
+  "version": "0.0.71",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
