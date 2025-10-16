@@ -34,7 +34,8 @@ async function logData(data: LogData): Promise<void> {
 let analyticsPromise = Promise.resolve();
 
 export function withAnalytics<TCommand extends Command<any, any, any>>(
-  fn?: (command: TCommand) => Record<string, boolean>
+  fn?: (command: TCommand) => Record<string, boolean>,
+  options?: { name?: string }
 ) {
   if (process.env.LANGGRAPH_CLI_NO_ANALYTICS === "1") {
     return () => void 0;
@@ -47,7 +48,7 @@ export function withAnalytics<TCommand extends Command<any, any, any>>(
         os_version: os.release(),
         node_version: process.version,
         cli_version: version,
-        cli_command: actionCommand.name(),
+        cli_command: options?.name ?? actionCommand.name(),
         params: fn?.(actionCommand) ?? {},
       }).catch(() => {})
     );

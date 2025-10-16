@@ -22,6 +22,7 @@ import {
   getTablesWithSchema,
 } from "./sql.js";
 
+/** @inline */
 interface PostgresSaverOptions {
   schema: string;
 }
@@ -504,6 +505,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     }
   }
 
+  /** @internal */
   async _migratePendingSends(
     pendingSends: [Uint8Array, Uint8Array][],
     mutableRow: {

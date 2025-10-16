@@ -3,11 +3,8 @@ import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
-import {
-  _AnyIdAIMessage,
-  _AnyIdAIMessageChunk,
-  FakeToolCallingChatModel,
-} from "./utils.js";
+import { _AnyIdAIMessage, _AnyIdAIMessageChunk } from "./utils.js";
+import { FakeToolCallingChatModel } from "./utils.models.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
 import { END, START, StateGraph } from "../index.js";
 import { gatherIterator } from "../utils.js";

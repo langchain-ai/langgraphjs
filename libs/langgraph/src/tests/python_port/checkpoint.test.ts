@@ -37,7 +37,7 @@ import { Channel, Pregel } from "../../pregel/index.js";
 import { MessagesAnnotation } from "../../graph/messages_annotation.js";
 import { ToolNode } from "../../prebuilt/index.js";
 import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
-import { FakeToolCallingChatModel } from "../utils.js";
+import { FakeToolCallingChatModel } from "../utils.models.js";
 
 class LongPutCheckpointer extends MemorySaver {
   logs: string[];

@@ -1,6 +1,7 @@
 import type {
   Auth,
   HTTPException as AuthHTTPException,
+  AuthEventValueMap,
 } from "@langchain/langgraph-sdk/auth";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -14,7 +15,7 @@ export const isAuthRegistered = () => CUSTOM_AUTH != null;
 export const isStudioAuthDisabled = () => DISABLE_STUDIO_AUTH;
 
 export type AuthFilters =
-  | Record<string, string | { $eq?: string; $contains?: string }>
+  | Record<string, string | { $eq?: string; $contains?: string | string[] }>
   | undefined;
 
 export interface AuthContext {
@@ -169,4 +170,59 @@ export async function registerAuth(
 
   CUSTOM_AUTH = module;
   DISABLE_STUDIO_AUTH = auth.disable_studio_auth ?? false;
+}
+
+export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
+  context: AuthContext | undefined,
+  event: T,
+  value: AuthEventValueMap[T]
+): Promise<[AuthFilters | undefined, value: AuthEventValueMap[T]]> => {
+  const [resource, action] = event.split(":");
+  const result = await authorize({
+    resource,
+    action,
+    context,
+    value,
+  });
+
+  return [result.filters, result.value] as [
+    AuthFilters | undefined,
+    value: AuthEventValueMap[T]
+  ];
+};
+
+export function isAuthMatching(
+  metadata: Record<string, unknown> | undefined,
+  filters: AuthFilters
+) {
+  if (filters == null) return true;
+  for (const [key, value] of Object.entries(filters)) {
+    if (typeof value === "object" && value != null) {
+      if (value.$eq) {
+        if (metadata?.[key] !== value.$eq) return false;
+      } else if (value.$contains) {
+        if (!Array.isArray(metadata?.[key])) {
+          return false;
+        }
+        if (Array.isArray(value.$contains)) {
+          // Match Postgres list containment semantics (at the top level).
+          if (
+            !value.$contains.every((v) =>
+              (metadata?.[key] as unknown[]).includes(v)
+            )
+          ) {
+            return false;
+          }
+        } else {
+          if (!metadata?.[key].includes(value.$contains)) {
+            return false;
+          }
+        }
+      }
+    } else {
+      if (metadata?.[key] !== value) return false;
+    }
+  }
+
+  return true;
 }

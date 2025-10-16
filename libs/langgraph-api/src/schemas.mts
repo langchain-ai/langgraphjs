@@ -44,6 +44,7 @@ export const AssistantCreate = z
       .union([z.literal("raise"), z.literal("do_nothing")])
       .optional(),
     name: z.string().optional(),
+    description: z.string().optional(),
   })
   .describe("Payload for creating an assistant.");
 
@@ -53,6 +54,7 @@ export const AssistantPatch = z
     config: AssistantConfig.optional(),
     context: z.unknown().optional(),
     name: z.string().optional(),
+    description: z.string().optional(),
     metadata: z
       .object({})
       .catchall(z.any())
@@ -294,14 +296,52 @@ export const AssistantSearchRequest = z
       .gte(0)
       .describe("Offset to start from.")
       .optional(),
+    sort_by: z
+      .enum(["assistant_id", "graph_id", "created_at", "updated_at", "name"])
+      .optional(),
+    sort_order: z.enum(["asc", "desc"]).optional(),
+    select: z.array(z.string()).optional(),
   })
   .describe("Payload for listing assistants.");
+
+export const AssistantCountRequest = z
+  .object({
+    metadata: z
+      .record(z.unknown())
+      .describe("Metadata to search for.")
+      .optional(),
+    graph_id: z.string().describe("Filter by graph ID.").optional(),
+  })
+  .describe("Payload for counting assistants.");
+
+export const ThreadCountRequest = z
+  .object({
+    metadata: z
+      .record(z.unknown())
+      .describe("Metadata to search for.")
+      .optional(),
+
+    status: z
+      .enum(["idle", "busy", "interrupted", "error"])
+      .describe("Filter by thread status.")
+      .optional(),
+
+    values: z
+      .record(z.unknown())
+      .describe("Filter by thread values.")
+      .optional(),
+  })
+  .describe("Payload for counting threads.");
 
 export const ThreadSearchRequest = z
   .object({
     metadata: z
       .record(z.unknown())
       .describe("Metadata to search for.")
+      .optional(),
+    ids: z
+      .array(z.string().uuid())
+      .describe("Filter by thread IDs.")
       .optional(),
     status: z
       .enum(["idle", "busy", "interrupted", "error"])
@@ -329,6 +369,7 @@ export const ThreadSearchRequest = z
       .describe("Sort by field.")
       .optional(),
     sort_order: z.enum(["asc", "desc"]).describe("Sort order.").optional(),
+    select: z.array(z.string()).optional(),
   })
   .describe("Payload for listing threads.");
 

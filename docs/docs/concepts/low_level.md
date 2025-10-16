@@ -251,19 +251,38 @@ const StateWithDocuments = Annotation.Root({
 });
 ```
 
-#### MessagesZodState
+#### Messages in Zod
 
-Just like `MessagesAnnotation`, there is a prebuilt Zod schema called `MessagesZodState` that provides the same functionality, but uses Zod for defining the state instead of the `Annotation` API.
+If you're using Zod for defining your graph state, you can use the `MessagesZodMeta` schema together with `registry` from `@langchain/langgraph/zod` to define the messages state.
 
 ```typescript
-import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+import type { BaseMessage } from "@langchain/core/messages";
+import { MessagesZodMeta, StateGraph } from "@langchain/langgraph";
+import { registry } from "@langchain/langgraph/zod";
+import { z } from "zod/v4";
 
-import { z } from "zod";
+const MessagesZodState = z.object({
+  messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
+});
 
 const graph = new StateGraph(MessagesZodState)
   .addNode(...)
   ...
 ```
+
+??? note "Using Zod 3?"
+
+    If you're using Zod 3, you can use prebuilt `MessagesZodState` instead.
+
+    ```typescript
+    import { MessagesZodState, StateGraph } from "@langchain/langgraph";
+
+    import { z } from "zod";
+
+    const graph = new StateGraph(MessagesZodState)
+      .addNode(...)
+      ...
+    ```
 
 For more on defining graph state using Zod, see the [defining graph state how-to](/langgraphjs/how-tos/define-state/#using-zod).
 

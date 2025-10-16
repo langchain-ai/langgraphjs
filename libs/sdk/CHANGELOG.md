@@ -1,5 +1,113 @@
 # @langchain/langgraph-sdk
 
+## 0.1.10
+
+### Patch Changes
+
+- 47cdce7: Fix stale values being received by optimistic values callback in `stream.submit(...)`
+
+## 0.1.9
+
+### Patch Changes
+
+- 02beb41: Add support for creating stateless runs
+
+## 0.1.8
+
+### Patch Changes
+
+- 90dcb8b: Add support for managing thread state manually outside of useStream hook via `experimental_thread` option
+
+## 0.1.7
+
+### Patch Changes
+
+- bbc90e6: Fix thread history state being kept stale when changing `thread_id`
+
+## 0.1.6
+
+### Patch Changes
+
+- 5603276: Fix `useStream()` keeping stale thread history when switching threads mid-stream (#1632)
+- b65c80b: Add `transport` option to useStream, allowing custom endpoints, that emit compatible Server-Sent Events to be used with `useStream`.
+- 5603276: Fix `stop()` behavior when cancelling a resumable stream via `useStream()` (#1610)
+
+## 0.1.5
+
+### Patch Changes
+
+- f21fd04: Fix mutate function in `onCustomEvent` and in `onUpdateEvent` receiving incorrect previous value
+
+## 0.1.4
+
+### Patch Changes
+
+- 599a8c5: Add support for streaming of RemoveMessage in useStream
+- 15afabe: Allow `@langchain/core@1.0.0-alpha` installed alongside SDK
+
+## 0.1.3
+
+### Patch Changes
+
+- ba7682f: Add TTL support to ThreadsClient in TypeScript to match Python SDK:
+
+  - `threads.create({ ttl })` now accepts either a number (minutes) or an object `{ ttl: number, strategy?: "delete" }`.
+  - `threads.update(threadId, { ttl })` accepts the same forms.
+
+  Numeric TTL values are normalized to `{ ttl, strategy: "delete" }` in the request payload.
+
+## 0.1.2
+
+### Patch Changes
+
+- 3b1e137: Add `description` field for assistants auth handlers
+
+## 0.1.1
+
+### Patch Changes
+
+- 7de6680: Fix `onRequest` not being called when streaming runs or threads (#1585)
+- df8b662: Fix interrupts not being exposed in `useStream["interrupt"]` when `fetchStateHistory: false`
+- 572de43: feat(threads): add `ids` filter to Threads.search
+
+  - SDK: `ThreadsClient.search` now accepts `ids?: string[]` and forwards it to `/threads/search`.
+  - API: `/threads/search` schema accepts `ids` and storage filters by provided thread IDs.
+
+  This enables fetching a specific set of threads directly via the search endpoint, while remaining backward compatible.
+
+## 0.1.0
+
+### Minor Changes
+
+- 35a0f1c: feat(sdk): set default limit of fetch history to 10
+- 35a0f1c: feat(sdk): set default of `fetchStateHistory` to `false`
+
+### Patch Changes
+
+- 35a0f1c: chore(sdk): decouple stream manager from React
+- 35a0f1c: fix(sdk): prevent partial history from hiding all values
+
+## 0.0.112
+
+### Patch Changes
+
+- a50e02e: feat(sdk): add thread streaming endpoint
+- 7e210a1: feat(sdk): add durability param to run methods
+- 5766b62: Fix `isThreadLoading: false` when initially mounting in useStream
+
+## 0.0.111
+
+### Patch Changes
+
+- b5f14d0: Add methods to connect with the /count endpoints
+
+## 0.0.109
+
+### Patch Changes
+
+- e8b4540: Add support for select statements in the search endpoints
+- 9c57526: fix(sdk): expose subgraph events in useStream callbacks
+
 ## 0.0.107
 
 ### Patch Changes

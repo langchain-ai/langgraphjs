@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-sqlite",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -33,7 +33,7 @@
     "better-sqlite3": "^11.7.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "^0.1.0"
   },
   "devDependencies": {
@@ -54,7 +54,6 @@
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-prettier": "^4.2.1",
     "prettier": "^2.8.3",
-    "release-it": "^19.0.2",
     "rollup": "^4.37.0",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",

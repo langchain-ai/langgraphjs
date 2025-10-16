@@ -21,6 +21,7 @@ interface AssistantCreate {
   context?: Maybe<unknown>;
   if_exists?: Maybe<"raise" | "do_nothing">;
   name?: Maybe<string>;
+  description?: Maybe<string>;
   graph_id: string;
 }
 
@@ -42,6 +43,7 @@ interface AssistantUpdate {
   context?: Maybe<unknown>;
   graph_id?: Maybe<string>;
   name?: Maybe<string>;
+  description?: Maybe<string>;
   version?: Maybe<number>;
 }
 
@@ -100,6 +102,7 @@ interface ThreadDelete {
  */
 interface ThreadSearch {
   thread_id?: Maybe<string>;
+  ids?: Maybe<string[]>;
   status?: Maybe<"idle" | "busy" | "interrupted" | "error" | (string & {})>; // eslint-disable-line @typescript-eslint/ban-types
   metadata?: Maybe<Record<string, unknown>>;
   values?: Maybe<Record<string, unknown>>;

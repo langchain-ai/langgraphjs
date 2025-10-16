@@ -26,11 +26,13 @@ import {
   _AnyIdAIMessage,
   _AnyIdHumanMessage,
   _AnyIdToolMessage,
-  FakeConfigurableModel,
-  FakeToolCallingChatModel,
   getReadableMermaid,
   MemorySaverAssertImmutable,
 } from "./utils.js";
+import {
+  FakeConfigurableModel,
+  FakeToolCallingChatModel,
+} from "./utils.models.js";
 import { ToolNode, createReactAgent } from "../prebuilt/index.js";
 import {
   _shouldBindTools,

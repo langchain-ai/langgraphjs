@@ -30,6 +30,13 @@ api.post(
     const host = c.req.header("host");
     const message = await c.req.valid("json");
 
+    const isHost = (needle: string) => {
+      if (!host) return false;
+      return host.startsWith(needle + ":") || host === needle;
+    };
+
+    const protocol = isHost("localhost") || isHost("127.0.0.1") ? "http:" : "";
+
     const files = GRAPH_UI[agent];
     if (!files?.length) return c.text(`UI not found for agent "${agent}"`, 404);
 
@@ -40,7 +47,7 @@ api.post(
       (i) => path.extname(i.basename) === ".css"
     )) {
       result.push(
-        `<link rel="stylesheet" href="http://${host}/ui/${agent}/${css.basename}" />`
+        `<link rel="stylesheet" href="${protocol}//${host}/ui/${agent}/${css.basename}" />`
       );
     }
 
@@ -48,7 +55,7 @@ api.post(
     const js = files.find((i) => path.extname(i.basename) === ".js");
     if (js) {
       result.push(
-        `<script src="http://${host}/ui/${agent}/${js.basename}" onload='__LGUI_${stableName}.render(${messageName}, "{{shadowRootId}}")'></script>`
+        `<script src="${protocol}//${host}/ui/${agent}/${js.basename}" onload='__LGUI_${stableName}.render(${messageName}, "{{shadowRootId}}")'></script>`
       );
     }
 

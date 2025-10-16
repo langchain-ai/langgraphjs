@@ -43,6 +43,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     super(serde);
   }
 
+  /** @internal */
   async _migratePendingSends(
     mutableCheckpoint: Checkpoint,
     threadId: string,

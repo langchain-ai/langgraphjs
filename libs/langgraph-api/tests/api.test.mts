@@ -71,14 +71,31 @@ describe("assistants", () => {
     const graphId = "agent";
     const config = { configurable: { model_name: "gpt" } };
 
-    let res = await client.assistants.create({ graphId, config });
-    expect(res).toMatchObject({ graph_id: graphId, config });
+    let res = await client.assistants.create({
+      graphId,
+      config,
+      description: "foo",
+    });
+    expect(res).toMatchObject({
+      graph_id: graphId,
+      config,
+      description: "foo",
+    });
 
     const metadata = { name: "woof" };
-    await client.assistants.update(res.assistant_id, { graphId, metadata });
+    await client.assistants.update(res.assistant_id, {
+      graphId,
+      metadata,
+      description: "bar",
+    });
 
     res = await client.assistants.get(res.assistant_id);
-    expect(res).toMatchObject({ graph_id: graphId, config, metadata });
+    expect(res).toMatchObject({
+      graph_id: graphId,
+      config,
+      metadata,
+      description: "bar",
+    });
 
     await client.assistants.delete(res.assistant_id);
     await expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
@@ -2686,12 +2703,9 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        result: expect.arrayContaining([
-          [
-            "messages",
-            [expect.objectContaining({ content: "begin", type: "ai" })],
-          ],
-        ]),
+        result: {
+          messages: [expect.objectContaining({ content: "begin", type: "ai" })],
+        },
         interrupts: [],
       },
     },
@@ -2726,18 +2740,15 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "tool",
-        result: expect.arrayContaining([
-          [
-            "messages",
-            [
-              expect.objectContaining({
-                content: "tool_call__begin",
-                tool_call_id: "tool_call_id",
-                type: "tool",
-              }),
-            ],
+        result: {
+          messages: [
+            expect.objectContaining({
+              content: "tool_call__begin",
+              tool_call_id: "tool_call_id",
+              type: "tool",
+            }),
           ],
-        ]),
+        },
         interrupts: [],
       },
     },
@@ -2782,12 +2793,9 @@ it("tasks / checkpoints stream mode", async () => {
       event: "tasks",
       data: {
         name: "agent",
-        result: expect.arrayContaining([
-          [
-            "messages",
-            [expect.objectContaining({ content: "end", type: "ai" })],
-          ],
-        ]),
+        result: {
+          messages: [expect.objectContaining({ content: "end", type: "ai" })],
+        },
         interrupts: [],
       },
     },

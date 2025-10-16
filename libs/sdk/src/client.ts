@@ -2,11 +2,13 @@ import {
   Assistant,
   AssistantGraph,
   AssistantSortBy,
+  AssistantSelectField,
   AssistantVersion,
   CancelAction,
   Checkpoint,
   Config,
   Cron,
+  CronSelectField,
   CronCreateForThreadResponse,
   CronCreateResponse,
   CronSortBy,
@@ -16,11 +18,13 @@ import {
   ListNamespaceResponse,
   Metadata,
   Run,
+  RunSelectField,
   RunStatus,
   SearchItemsResponse,
   SortOrder,
   Subgraphs,
   Thread,
+  ThreadSelectField,
   ThreadSortBy,
   ThreadState,
   ThreadStatus,
@@ -34,7 +38,11 @@ import type {
   RunsWaitPayload,
   StreamEvent,
 } from "./types.js";
-import type { StreamMode, TypedAsyncGenerator } from "./types.stream.js";
+import type {
+  StreamMode,
+  ThreadStreamMode,
+  TypedAsyncGenerator,
+} from "./types.stream.js";
 import { AsyncCaller, AsyncCallerParams } from "./utils/async_caller.js";
 import { getEnvironmentVariable } from "./utils/env.js";
 import { mergeSignals } from "./utils/signals.js";
@@ -359,6 +367,7 @@ export class CronsClient extends BaseClient {
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
     return this.fetch<CronCreateForThreadResponse>(
       `/threads/${threadId}/runs/crons`,
@@ -392,6 +401,7 @@ export class CronsClient extends BaseClient {
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
@@ -421,6 +431,7 @@ export class CronsClient extends BaseClient {
     offset?: number;
     sortBy?: CronSortBy;
     sortOrder?: SortOrder;
+    select?: CronSelectField[];
   }): Promise<Cron[]> {
     return this.fetch<Cron[]>("/runs/crons/search", {
       method: "POST",
@@ -431,6 +442,27 @@ export class CronsClient extends BaseClient {
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
+        select: query?.select ?? undefined,
+      },
+    });
+  }
+
+  /**
+   * Count cron jobs matching filters.
+   *
+   * @param query.assistantId Assistant ID to filter by.
+   * @param query.threadId Thread ID to filter by.
+   * @returns Number of cron jobs matching the criteria.
+   */
+  async count(query?: {
+    assistantId?: string;
+    threadId?: string;
+  }): Promise<number> {
+    return this.fetch<number>(`/runs/crons/count`, {
+      method: "POST",
+      json: {
+        assistant_id: query?.assistantId ?? undefined,
+        thread_id: query?.threadId ?? undefined,
       },
     });
   }
@@ -579,6 +611,7 @@ export class AssistantsClient extends BaseClient {
     offset?: number;
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
+    select?: AssistantSelectField[];
   }): Promise<Assistant[]> {
     return this.fetch<Assistant[]>("/assistants/search", {
       method: "POST",
@@ -589,6 +622,27 @@ export class AssistantsClient extends BaseClient {
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
+        select: query?.select ?? undefined,
+      },
+    });
+  }
+
+  /**
+   * Count assistants matching filters.
+   *
+   * @param query.metadata Metadata to filter by. Exact match for each key/value.
+   * @param query.graphId Optional graph id to filter by.
+   * @returns Number of assistants matching the criteria.
+   */
+  async count(query?: {
+    metadata?: Metadata;
+    graphId?: string;
+  }): Promise<number> {
+    return this.fetch<number>(`/assistants/count`, {
+      method: "POST",
+      json: {
+        metadata: query?.metadata ?? undefined,
+        graph_id: query?.graphId ?? undefined,
       },
     });
   }
@@ -686,7 +740,19 @@ export class ThreadsClient<
     supersteps?: Array<{
       updates: Array<{ values: unknown; command?: Command; asNode: string }>;
     }>;
+    /**
+     * Optional time-to-live in minutes for the thread.
+     * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+     * You may also provide an object { ttl: number, strategy?: "delete" }.
+     */
+    ttl?: number | { ttl: number; strategy?: "delete" };
   }): Promise<Thread<TStateType>> {
+    // Normalize ttl to an object if a number is provided
+    const ttlPayload =
+      typeof payload?.ttl === "number"
+        ? { ttl: payload.ttl, strategy: "delete" as const }
+        : payload?.ttl;
+
     return this.fetch<Thread<TStateType>>(`/threads`, {
       method: "POST",
       json: {
@@ -703,6 +769,7 @@ export class ThreadsClient<
             as_node: u.asNode,
           })),
         })),
+        ttl: ttlPayload,
       },
     });
   }
@@ -732,11 +799,22 @@ export class ThreadsClient<
        * Metadata for the thread.
        */
       metadata?: Metadata;
+      /**
+       * Optional time-to-live in minutes for the thread.
+       * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+       * You may also provide an object { ttl: number, strategy?: "delete" }.
+       */
+      ttl?: number | { ttl: number; strategy?: "delete" };
     }
   ): Promise<Thread> {
+    const ttlPayload =
+      typeof payload?.ttl === "number"
+        ? { ttl: payload.ttl, strategy: "delete" as const }
+        : payload?.ttl;
+
     return this.fetch<Thread>(`/threads/${threadId}`, {
       method: "PATCH",
-      json: { metadata: payload?.metadata },
+      json: { metadata: payload?.metadata, ttl: ttlPayload },
     });
   }
 
@@ -763,6 +841,10 @@ export class ThreadsClient<
      */
     metadata?: Metadata;
     /**
+     * Filter by specific thread IDs.
+     */
+    ids?: string[];
+    /**
      * Maximum number of threads to return.
      * Defaults to 10
      */
@@ -784,16 +866,42 @@ export class ThreadsClient<
      * Must be one of 'asc' or 'desc'.
      */
     sortOrder?: SortOrder;
+    select?: ThreadSelectField[];
   }): Promise<Thread<ValuesType>[]> {
     return this.fetch<Thread<ValuesType>[]>("/threads/search", {
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
+        ids: query?.ids ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
         status: query?.status,
         sort_by: query?.sortBy,
         sort_order: query?.sortOrder,
+        select: query?.select ?? undefined,
+      },
+    });
+  }
+
+  /**
+   * Count threads matching filters.
+   *
+   * @param query.metadata Thread metadata to filter on.
+   * @param query.values State values to filter on.
+   * @param query.status Thread status to filter on.
+   * @returns Number of threads matching the criteria.
+   */
+  async count<ValuesType = TStateType>(query?: {
+    metadata?: Metadata;
+    values?: ValuesType;
+    status?: ThreadStatus;
+  }): Promise<number> {
+    return this.fetch<number>(`/threads/count`, {
+      method: "POST",
+      json: {
+        metadata: query?.metadata ?? undefined,
+        values: query?.values ?? undefined,
+        status: query?.status ?? undefined,
       },
     });
   }
@@ -919,6 +1027,37 @@ export class ThreadsClient<
       }
     );
   }
+
+  async *joinStream(
+    threadId: string,
+    options?: {
+      lastEventId?: string;
+      streamMode?: ThreadStreamMode | ThreadStreamMode[];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
+    let [url, init] = this.prepareFetchOptions(`/threads/${threadId}/stream`, {
+      method: "GET",
+      headers: options?.lastEventId
+        ? { "Last-Event-ID": options.lastEventId }
+        : undefined,
+      params: options?.streamMode
+        ? { stream_mode: options.streamMode }
+        : undefined,
+    });
+
+    if (this.onRequest != null) init = await this.onRequest(url, init);
+    const response = await this.asyncCaller.fetch(url, init);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream: ReadableStream<{ event: string; data: any }> = (
+      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+    )
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    yield* IterableReadableStream.fromReadableStream(stream);
+  }
 }
 
 export class RunsClient<
@@ -1002,19 +1141,20 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
     };
 
     const endpoint =
       threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`;
 
-    const response = await this.asyncCaller.fetch(
-      ...this.prepareFetchOptions(endpoint, {
-        method: "POST",
-        json,
-        timeoutMs: null,
-        signal: payload?.signal,
-      })
-    );
+    let [url, init] = this.prepareFetchOptions(endpoint, {
+      method: "POST",
+      json,
+      timeoutMs: null,
+      signal: payload?.signal,
+    });
+    if (this.onRequest != null) init = await this.onRequest(url, init);
+    const response = await this.asyncCaller.fetch(url, init);
 
     const runMetadata = getRunMetadataFromResponse(response);
     if (runMetadata) payload?.onRunCreated?.(runMetadata);
@@ -1038,7 +1178,7 @@ export class RunsClient<
    * @returns The created run.
    */
   async create(
-    threadId: string,
+    threadId: string | null,
     assistantId: string,
     payload?: RunsCreatePayload
   ): Promise<Run> {
@@ -1061,6 +1201,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1069,7 +1210,8 @@ export class RunsClient<
         : undefined,
     };
 
-    const [run, response] = await this.fetch<Run>(`/threads/${threadId}/runs`, {
+    const endpoint = threadId === null ? "/runs" : `/threads/${threadId}/runs`;
+    const [run, response] = await this.fetch<Run>(endpoint, {
       method: "POST",
       json,
       signal: payload?.signal,
@@ -1148,6 +1290,7 @@ export class RunsClient<
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
+      durability: payload?.durability,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1209,6 +1352,7 @@ export class RunsClient<
        * Status of the run to filter by.
        */
       status?: RunStatus;
+      select?: RunSelectField[];
     }
   ): Promise<Run[]> {
     return this.fetch<Run[]>(`/threads/${threadId}/runs`, {
@@ -1216,6 +1360,7 @@ export class RunsClient<
         limit: options?.limit ?? 10,
         offset: options?.offset ?? 0,
         status: options?.status ?? undefined,
+        select: options?.select ?? undefined,
       },
     });
   }
@@ -1308,25 +1453,26 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
-    const response = await this.asyncCaller.fetch(
-      ...this.prepareFetchOptions(
-        threadId != null
-          ? `/threads/${threadId}/runs/${runId}/stream`
-          : `/runs/${runId}/stream`,
-        {
-          method: "GET",
-          timeoutMs: null,
-          signal: opts?.signal,
-          headers: opts?.lastEventId
-            ? { "Last-Event-ID": opts.lastEventId }
-            : undefined,
-          params: {
-            cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
-            stream_mode: opts?.streamMode,
-          },
-        }
-      )
+    let [url, init] = this.prepareFetchOptions(
+      threadId != null
+        ? `/threads/${threadId}/runs/${runId}/stream`
+        : `/runs/${runId}/stream`,
+      {
+        method: "GET",
+        timeoutMs: null,
+        signal: opts?.signal,
+        headers: opts?.lastEventId
+          ? { "Last-Event-ID": opts.lastEventId }
+          : undefined,
+        params: {
+          cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
+          stream_mode: opts?.streamMode,
+        },
+      }
     );
+
+    if (this.onRequest != null) init = await this.onRequest(url, init);
+    const response = await this.asyncCaller.fetch(url, init);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream: ReadableStream<{ event: string; data: any }> = (
@@ -1621,16 +1767,17 @@ class UiClient extends BaseClient {
     return UiClient.getOrCached(
       `${this.apiUrl}-${assistantId}-${agentName}`,
       async () => {
-        const response = await this.asyncCaller.fetch(
-          ...this.prepareFetchOptions(`/ui/${assistantId}`, {
-            headers: {
-              Accept: "text/html",
-              "Content-Type": "application/json",
-            },
-            method: "POST",
-            json: { name: agentName },
-          })
-        );
+        let [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
+          headers: {
+            Accept: "text/html",
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          json: { name: agentName },
+        });
+        if (this.onRequest != null) init = await this.onRequest(url, init);
+
+        const response = await this.asyncCaller.fetch(url, init);
         return response.text();
       }
     );

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "0.0.107",
+  "version": "0.1.10",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "scripts": {
@@ -48,7 +48,7 @@
     "vitest": "^3.1.2"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0",
+    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },

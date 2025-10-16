@@ -13,7 +13,8 @@ import { getRuntimeGraphSchema } from "../graph/parser/index.mjs";
 
 import { HTTPException } from "hono/http-exception";
 import * as schemas from "../schemas.mjs";
-import { Assistants } from "../storage/ops.mjs";
+import { assistants } from "../storage/context.mjs";
+import { AssistantSelectField } from "../storage/types.mjs";
 const api = new Hono();
 
 const RunnableConfigSchema = z.object({
@@ -47,7 +48,7 @@ api.post(
   async (c) => {
     // Create Assistant
     const payload = c.req.valid("json");
-    const assistant = await Assistants.put(
+    const assistant = await assistants().put(
       payload.assistant_id ?? uuid(),
       {
         config: payload.config ?? {},
@@ -56,6 +57,7 @@ api.post(
         metadata: payload.metadata ?? {},
         if_exists: payload.if_exists ?? "raise",
         name: payload.name ?? "Untitled",
+        description: payload.description,
       },
       c.var.auth
     );
@@ -73,36 +75,68 @@ api.post(
     const result: unknown[] = [];
 
     let total = 0;
-    for await (const item of Assistants.search(
+    for await (const item of assistants().search(
       {
         graph_id: payload.graph_id,
         metadata: payload.metadata,
         limit: payload.limit ?? 10,
         offset: payload.offset ?? 0,
+        sort_by: payload.sort_by,
+        sort_order: payload.sort_order,
+        select: payload.select as AssistantSelectField[],
       },
       c.var.auth
     )) {
-      result.push(item.assistant);
+      result.push(
+        Object.fromEntries(
+          Object.entries(item.assistant).filter(
+            ([k]) => !payload.select || payload.select.includes(k)
+          )
+        )
+      );
       if (total === 0) {
         total = item.total;
       }
     }
-
-    c.res.headers.set("X-Pagination-Total", total.toString());
+    if (total === payload.limit) {
+      c.res.headers.set(
+        "X-Pagination-Next",
+        ((payload.offset ?? 0) + total).toString()
+      );
+      c.res.headers.set(
+        "X-Pagination-Total",
+        ((payload.offset ?? 0) + total + 1).toString()
+      );
+    } else {
+      c.res.headers.set(
+        "X-Pagination-Total",
+        ((payload.offset ?? 0) + total).toString()
+      );
+    }
     return c.json(result);
+  }
+);
+
+api.post(
+  "/assistants/count",
+  zValidator("json", schemas.AssistantCountRequest),
+  async (c) => {
+    const payload = c.req.valid("json");
+    const total = await assistants().count(payload, c.var.auth);
+    return c.json(total);
   }
 );
 
 api.get("/assistants/:assistant_id", async (c) => {
   // Get Assistant
   const assistantId = getAssistantId(c.req.param("assistant_id"));
-  return c.json(await Assistants.get(assistantId, c.var.auth));
+  return c.json(await assistants().get(assistantId, c.var.auth));
 });
 
 api.delete("/assistants/:assistant_id", async (c) => {
   // Delete Assistant
   const assistantId = getAssistantId(c.req.param("assistant_id"));
-  return c.json(await Assistants.delete(assistantId, c.var.auth));
+  return c.json(await assistants().delete(assistantId, c.var.auth));
 });
 
 api.patch(
@@ -113,7 +147,7 @@ api.patch(
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const payload = c.req.valid("json");
 
-    return c.json(await Assistants.patch(assistantId, payload, c.var.auth));
+    return c.json(await assistants().patch(assistantId, payload, c.var.auth));
   }
 );
 
@@ -123,7 +157,7 @@ api.get(
   async (c) => {
     // Get Assistant Graph
     const assistantId = getAssistantId(c.req.param("assistant_id"));
-    const assistant = await Assistants.get(assistantId, c.var.auth);
+    const assistant = await assistants().get(assistantId, c.var.auth);
     const { xray } = c.req.valid("query");
 
     const config = getRunnableConfig(assistant.config);
@@ -143,7 +177,7 @@ api.get(
     // Get Assistant Schemas
     const json = c.req.valid("json");
     const assistantId = getAssistantId(c.req.param("assistant_id"));
-    const assistant = await Assistants.get(assistantId, c.var.auth);
+    const assistant = await assistants().get(assistantId, c.var.auth);
 
     const config = getRunnableConfig(json.config);
     const graph = await getGraph(assistant.graph_id, config);
@@ -189,7 +223,7 @@ api.get(
     const { recurse } = c.req.valid("query");
 
     const assistantId = getAssistantId(assistant_id);
-    const assistant = await Assistants.get(assistantId, c.var.auth);
+    const assistant = await assistants().get(assistantId, c.var.auth);
 
     const config = getRunnableConfig(assistant.config);
     const graph = await getGraph(assistant.graph_id, config);
@@ -239,7 +273,9 @@ api.post(
     // Set Latest Assistant Version
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { version } = c.req.valid("json");
-    return c.json(await Assistants.setLatest(assistantId, version, c.var.auth));
+    return c.json(
+      await assistants().setLatest(assistantId, version, c.var.auth)
+    );
   }
 );
 
@@ -257,7 +293,7 @@ api.post(
     // Get Assistant Versions
     const assistantId = getAssistantId(c.req.param("assistant_id"));
     const { limit, offset, metadata } = c.req.valid("json");
-    const versions = await Assistants.getVersions(
+    const versions = await assistants().getVersions(
       assistantId,
       { limit, offset, metadata },
       c.var.auth

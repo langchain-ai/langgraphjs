@@ -1,5 +1,17 @@
 # @langchain/langgraph-supervisor
 
+## 0.0.20
+
+### Patch Changes
+
+- 19b4f3d: Add support for RemoteGraph agents in supervisor (#1461)
+
+## 0.0.19
+
+### Patch Changes
+
+- 4a15efa: feat(supervisor): add passthrough support for preModelHook and postModelHook
+
 ## 0.0.18
 
 ### Patch Changes

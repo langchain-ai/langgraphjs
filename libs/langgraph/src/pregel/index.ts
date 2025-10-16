@@ -32,7 +32,7 @@ import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
-  isBaseChannel,
+  getOnlyChannels,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -147,8 +147,8 @@ export class Channel {
    * const node = Channel.subscribeTo("messages", { key: "chat" });
    * ```
    *
-   * @param channel - Single channel name to subscribe to
-   * @param options - Subscription options
+   * @param channel Single channel name to subscribe to
+   * @param options Subscription options
    * @returns A PregelNode configured to receive from the specified channels
    * @throws {Error} If a key is specified when subscribing to multiple channels
    */
@@ -173,8 +173,8 @@ export class Channel {
    * const node = Channel.subscribeTo("messages", { key: "chat" });
    * ```
    *
-   * @param channel - Single channel name to subscribe to
-   * @param options - Subscription options
+   * @param channels Single channel name to subscribe to
+   * @param options Subscription options
    * @returns A PregelNode configured to receive from the specified channels
    * @throws {Error} If a key is specified when subscribing to multiple channels
    */
@@ -568,7 +568,9 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  override withConfig(config: RunnableConfig): typeof this {
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer">
+  ): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return new (this.constructor as any)({ ...this, config: mergedConfig });
@@ -1477,6 +1479,7 @@ export class Pregel<
               });
             })
             .flat()
+            .filter(([_, v]) => v !== INTERRUPT)
             .sort(([aNumber], [bNumber]) =>
               compareChannelVersions(aNumber, bNumber)
             );
@@ -1804,8 +1807,9 @@ export class Pregel<
    * - "updates": Emits only state changes after each step
    * - "debug": Emits detailed debug information
    * - "messages": Emits messages from within nodes
-   *
-   * For more details, see the [Streaming how-to guides](../../how-tos/#streaming_1).
+   * - "custom": Emits custom events from within nodes
+   * - "checkpoints": Emits checkpoints from within nodes
+   * - "tasks": Emits tasks from within nodes
    *
    * @param input - The input to start graph execution with
    * @param options - Configuration options for streaming
@@ -2042,13 +2046,7 @@ export class Pregel<
       config?.runName ?? this.getName() // run_name
     );
 
-    const channelSpecs: Record<string, BaseChannel> = {};
-    for (const [name, spec] of Object.entries(this.channels)) {
-      if (isBaseChannel(spec)) {
-        channelSpecs[name] = spec;
-      }
-    }
-
+    const channelSpecs = getOnlyChannels(this.channels);
     let loop: PregelLoop | undefined;
     let loopError: unknown;
 

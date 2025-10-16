@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "0.0.58",
+  "version": "0.0.71",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -15,9 +15,17 @@
       "types": "./dist/cli/spawn.d.mts",
       "default": "./dist/cli/spawn.mjs"
     },
+    "./server": {
+      "types": "./dist/server.d.mts",
+      "default": "./dist/server.mjs"
+    },
     "./auth": {
       "types": "./dist/auth/index.d.mts",
       "default": "./dist/auth/index.mjs"
+    },
+    "./graph": {
+      "types": "./dist/graph/api.d.mts",
+      "default": "./dist/graph/api.mjs"
     },
     "./semver": {
       "types": "./dist/semver/index.d.mts",
@@ -26,6 +34,10 @@
     "./schema": {
       "types": "./dist/graph/parser/index.d.mts",
       "default": "./dist/graph/parser/index.mjs"
+    },
+    "./storage": {
+      "types": "./dist/storage/types.d.mts",
+      "default": "./dist/storage/types.mjs"
     },
     "./experimental/embed": {
       "types": "./dist/experimental/embed.d.mts",
@@ -71,8 +83,8 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.59",
-    "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0",
+    "@langchain/core": "^0.3.59 || ^1.0.0-alpha",
+    "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "~0.0.16 || ^0.1.0",
     "@langchain/langgraph-sdk": "~0.0.70 || ^0.1.0",
     "typescript": "^5.5.4"
