@@ -213,7 +213,6 @@ REDIRECT_MAP = {
     "agents/ui.md": "https://docs.langchain.com/oss/javascript/langgraph/ui",
     "agents/prebuilt.md": "https://docs.langchain.com/oss/javascript/langchain/agents",
     "reference/index.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph.html",
-    "reference": "https://reference.langchain.com/javascript/modules/_langchain_langgraph.html",
     "reference/modules/checkpoint.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint.html",
     "reference/modules/checkpoint_mongodb.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint-mongodb.html",
     "reference/modules/checkpoint_postgres.html": "https://reference.langchain.com/javascript/modules/_langchain_langgraph-checkpoint-postgres.html",
