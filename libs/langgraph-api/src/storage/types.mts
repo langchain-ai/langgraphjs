@@ -82,8 +82,8 @@ export interface RunnableConfig {
 }
 
 export interface Assistant {
-  name: string | undefined;
-  description: string | undefined;
+  name: string;
+  description: string | null;
   assistant_id: string;
   graph_id: string;
   created_at: Date;
@@ -102,8 +102,8 @@ export interface AssistantVersion {
   context: unknown;
   metadata: Metadata;
   created_at: Date;
-  name: string | undefined;
-  description: string | undefined;
+  name: string;
+  description: string | null;
 }
 
 export interface RunKwargs {

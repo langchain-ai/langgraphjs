@@ -367,7 +367,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         graph_id: options.graph_id,
         metadata: mutable.metadata ?? ({} as Metadata),
         name: options.name || options.graph_id,
-        description: options.description,
+        description: options.description ?? null,
       };
 
       STORE.assistant_versions.push({
@@ -379,7 +379,7 @@ export class FileSystemAssistants implements AssistantsRepo {
         metadata: mutable.metadata ?? ({} as Metadata),
         created_at: now,
         name: options.name || options.graph_id,
-        description: options.description,
+        description: options.description ?? null,
       });
 
       return STORE.assistants[assistant_id];

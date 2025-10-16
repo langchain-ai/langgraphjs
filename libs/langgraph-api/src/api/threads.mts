@@ -68,7 +68,13 @@ api.post(
         total = item.total;
       }
     }
-    c.res.headers.set("X-Pagination-Total", total.toString());
+    const nextOffset = (payload.offset ?? 0) + total;
+    if (total === payload.limit) {
+      c.res.headers.set("X-Pagination-Next", nextOffset.toString());
+      c.res.headers.set("X-Pagination-Total", (nextOffset + 1).toString());
+    } else {
+      c.res.headers.set("X-Pagination-Total", nextOffset.toString());
+    }
     return jsonExtra(c, result);
   }
 );
