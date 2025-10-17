@@ -4,7 +4,7 @@ import "./entrypoints.js";
 import "./style.css";
 import typescriptLogo from "./typescript.svg";
 import viteLogo from "/vite.svg";
-import { setupChain } from "./chain";
+import { setupChain } from "./chain.js";
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div>

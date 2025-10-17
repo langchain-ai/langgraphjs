@@ -1,5 +1,10 @@
 // Import a few things we'll use to test the exports
-import { END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph/web";
+import {
+  END,
+  START,
+  StateGraph,
+  StateGraphArgs,
+} from "@langchain/langgraph/web";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
 import { HumanMessage } from "@langchain/core/messages";
@@ -22,7 +27,7 @@ export function setupChain(element: HTMLButtonElement) {
     const compiledGraph = graph.compile();
     const graphRes = await compiledGraph.invoke({ messages: [] });
     console.log(graphRes);
-    
+
     const weatherResponse = `Not too cold, not too hot 😎`;
     const model = new FakeListChatModel({
       responses: ["test response"],
@@ -30,21 +35,21 @@ export function setupChain(element: HTMLButtonElement) {
     model.bindTools = () => model;
     class SanFranciscoWeatherTool extends Tool {
       name = "current_weather";
-    
+
       description = "Get the current weather report for San Francisco, CA";
-    
+
       constructor() {
         super();
       }
-    
+
       async _call(_: string): Promise<string> {
         return weatherResponse;
       }
     }
     const tools = [new SanFranciscoWeatherTool()];
-    
+
     const reactAgent = createReactAgent({ llm: model, tools });
-    
+
     const stream = await reactAgent.stream(
       {
         messages: [new HumanMessage("What's the weather like in SF?")],
