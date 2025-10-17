@@ -15,6 +15,7 @@ import {
 import type {
   RunnableLike,
   LangGraphRunnableConfig,
+  Runtime,
 } from "../pregel/runnable_types.js";
 import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
@@ -48,6 +49,10 @@ import {
   Send,
   START,
   TAG_HIDDEN,
+  CommandInstance,
+  isInterrupted,
+  Interrupt,
+  INTERRUPT,
 } from "../constants.js";
 import { InvalidUpdateError, ParentCommand } from "../errors.js";
 import {
@@ -66,6 +71,11 @@ import {
   InteropZodToStateDefinition,
   schemaMetaRegistry,
 } from "./zod/meta.js";
+import type {
+  InferInterruptResumeType,
+  InferInterruptInputType,
+} from "../interrupt.js";
+import type { InferWriterType } from "../writer.js";
 
 const ROOT = "__root__";
 
@@ -131,10 +141,35 @@ type ToStateDefinition<T> = T extends InteropZodObject
   ? T
   : never;
 
-type NodeAction<S, U, C extends SDZod> = RunnableLike<
+type NodeAction<
+  S,
+  U,
+  C extends SDZod,
+  InterruptType,
+  WriterType
+> = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
-  LangGraphRunnableConfig<StateType<ToStateDefinition<C>>>
+  Runtime<StateType<ToStateDefinition<C>>, InterruptType, WriterType>
+>;
+
+type StrictNodeAction<
+  S,
+  U,
+  C extends SDZod,
+  Nodes extends string,
+  InterruptType,
+  WriterType
+> = RunnableLike<
+  Prettify<S>,
+  | U
+  | Command<
+      InferInterruptResumeType<InterruptType>,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      U & Record<string, any>,
+      Nodes
+    >,
+  Runtime<StateType<ToStateDefinition<C>>, InterruptType, WriterType>
 >;
 
 const PartialStateSchema = Symbol.for("langgraph.state.partial");
@@ -219,7 +254,9 @@ export class StateGraph<
   I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
   O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
   C extends SDZod = StateDefinition,
-  NodeReturnType = unknown
+  NodeReturnType = unknown,
+  InterruptType = unknown,
+  WriterType = unknown
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
@@ -258,6 +295,42 @@ export class StateGraph<
 
   /** @internal */
   _configRuntimeSchema: InteropZodObject | undefined;
+
+  /** @internal */
+  _interrupt: InterruptType;
+
+  /** @internal */
+  _writer: WriterType;
+
+  declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
+
+  constructor(
+    state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
+    options?: {
+      context?: C | AnnotationRoot<ToStateDefinition<C>>;
+      input?: I | AnnotationRoot<ToStateDefinition<I>>;
+      output?: O | AnnotationRoot<ToStateDefinition<O>>;
+
+      interrupt?: InterruptType;
+      writer?: WriterType;
+
+      nodes?: N[];
+    }
+  );
+
+  constructor(
+    state: SD extends InteropZodObject ? SD : never,
+    options?: {
+      context?: C | AnnotationRoot<ToStateDefinition<C>>;
+      input?: I | AnnotationRoot<ToStateDefinition<I>>;
+      output?: O | AnnotationRoot<ToStateDefinition<O>>;
+
+      interrupt?: InterruptType;
+      writer?: WriterType;
+
+      nodes?: N[];
+    }
+  );
 
   constructor(
     fields: SD extends StateDefinition
@@ -309,7 +382,17 @@ export class StateGraph<
             >
           | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
       : StateGraphArgs<S>,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    contextSchema?:
+      | C
+      | AnnotationRoot<ToStateDefinition<C>>
+      | {
+          input?: I | AnnotationRoot<ToStateDefinition<I>>;
+          output?: O | AnnotationRoot<ToStateDefinition<O>>;
+          context?: C | AnnotationRoot<ToStateDefinition<C>>;
+          interrupt?: InterruptType;
+          writer?: WriterType;
+          nodes?: N[];
+        }
   ) {
     super();
 
@@ -377,7 +460,30 @@ export class StateGraph<
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
 
-    if (isInteropZodObject(contextSchema)) {
+    function isOptions(options: unknown): options is {
+      context?: C | AnnotationRoot<ToStateDefinition<C>>;
+      input?: I | AnnotationRoot<ToStateDefinition<I>>;
+      output?: O | AnnotationRoot<ToStateDefinition<O>>;
+      interrupt?: InterruptType;
+      writer?: WriterType;
+      nodes?: N[];
+    } {
+      return (
+        typeof options === "object" &&
+        options != null &&
+        !("spec" in options) &&
+        !isInteropZodObject(options)
+      );
+    }
+
+    // Handle runtime config options
+    if (isOptions(contextSchema)) {
+      if (isInteropZodObject(contextSchema.context)) {
+        this._configRuntimeSchema = contextSchema.context;
+      }
+      this._interrupt = contextSchema.interrupt as InterruptType;
+      this._writer = contextSchema.writer as WriterType;
+    } else if (isInteropZodObject(contextSchema)) {
       this._configRuntimeSchema = contextSchema;
     }
   }
@@ -420,7 +526,7 @@ export class StateGraph<
 
   override addNode<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -434,7 +540,13 @@ export class StateGraph<
     MergeReturnType<
       NodeReturnType,
       {
-        [key in keyof NodeMap]: NodeMap[key] extends NodeAction<S, infer U, C>
+        [key in keyof NodeMap]: NodeMap[key] extends NodeAction<
+          S,
+          infer U,
+          C,
+          InterruptType,
+          WriterType
+        >
           ? U
           : never;
       }
@@ -445,7 +557,13 @@ export class StateGraph<
     nodes:
       | [
           key: K,
-          action: NodeAction<NodeInput, NodeOutput, C>,
+          action: NodeAction<
+            NodeInput,
+            NodeOutput,
+            C,
+            InterruptType,
+            WriterType
+          >,
           options?: StateGraphAddNodeOptions
         ][]
   ): StateGraph<
@@ -461,7 +579,7 @@ export class StateGraph<
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     key: K,
-    action: NodeAction<NodeInput, NodeOutput, C>,
+    action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptions
   ): StateGraph<
     SD,
@@ -476,7 +594,7 @@ export class StateGraph<
 
   override addNode<K extends string, NodeInput = S>(
     key: K,
-    action: NodeAction<NodeInput, U, C>,
+    action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptions
   ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
 
@@ -484,15 +602,21 @@ export class StateGraph<
     ...args:
       | [
           key: K,
-          action: NodeAction<NodeInput, NodeOutput, C>,
+          action: NodeAction<
+            NodeInput,
+            NodeOutput,
+            C,
+            InterruptType,
+            WriterType
+          >,
           options?: StateGraphAddNodeOptions
         ]
       | [
           nodes:
-            | Record<K, NodeAction<NodeInput, U, C>>
+            | Record<K, NodeAction<NodeInput, U, C, InterruptType, WriterType>>
             | [
                 key: K,
-                action: NodeAction<NodeInput, U, C>,
+                action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
                 options?: StateGraphAddNodeOptions
               ][]
         ]
@@ -501,10 +625,10 @@ export class StateGraph<
       args: unknown[]
     ): args is [
       nodes:
-        | Record<K, NodeAction<NodeInput, U, C>>
+        | Record<K, NodeAction<NodeInput, U, C, InterruptType, WriterType>>
         | [
             key: K,
-            action: NodeAction<NodeInput, U, C>,
+            action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
             options?: AddNodeOptions
           ][]
     ] {
@@ -515,16 +639,11 @@ export class StateGraph<
       isMultipleNodes(args) // eslint-disable-line no-nested-ternary
         ? Array.isArray(args[0])
           ? args[0]
-          : Object.entries(args[0]).map(([key, action]) => [
-              key,
-              action,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
-            ])
+          : Object.entries(args[0]).map(([key, action]) => [key, action])
         : [[args[0], args[1], args[2]]]
     ) as [
       K,
-      NodeAction<NodeInput, U, C>,
+      NodeAction<NodeInput, U, C, InterruptType, WriterType>,
       StateGraphAddNodeOptions | undefined
     ][];
 
@@ -648,7 +767,7 @@ export class StateGraph<
   addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes: [
       key: K,
-      action: NodeAction<NodeInput, NodeOutput, C>,
+      action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
       options?: StateGraphAddNodeOptions
     ][]
   ): StateGraph<
@@ -662,7 +781,10 @@ export class StateGraph<
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   >;
 
-  addSequence<K extends string, NodeMap extends Record<K, NodeAction<S, U, C>>>(
+  addSequence<
+    K extends string,
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+  >(
     nodes: NodeMap
   ): StateGraph<
     SD,
@@ -675,7 +797,13 @@ export class StateGraph<
     MergeReturnType<
       NodeReturnType,
       {
-        [key in keyof NodeMap]: NodeMap[key] extends NodeAction<S, infer U, C>
+        [key in keyof NodeMap]: NodeMap[key] extends NodeAction<
+          S,
+          infer U,
+          C,
+          InterruptType,
+          WriterType
+        >
           ? U
           : never;
       }
@@ -686,10 +814,19 @@ export class StateGraph<
     nodes:
       | [
           key: K,
-          action: NodeAction<NodeInput, NodeOutput, C>,
+          action: NodeAction<
+            NodeInput,
+            NodeOutput,
+            C,
+            InterruptType,
+            WriterType
+          >,
           options?: StateGraphAddNodeOptions
         ][]
-      | Record<K, NodeAction<NodeInput, NodeOutput, C>>
+      | Record<
+          K,
+          NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>
+        >
   ): StateGraph<
     SD,
     S,
@@ -700,14 +837,7 @@ export class StateGraph<
     C,
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   > {
-    const parsedNodes = Array.isArray(nodes)
-      ? nodes
-      : (Object.entries(nodes).map(([key, action]) => [
-          key,
-          action,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (action as any)[Symbol.for("langgraph.state.node")] ?? undefined,
-        ]) as [K, NodeAction<S, U, C>, StateGraphAddNodeOptions | undefined][]);
+    const parsedNodes = Array.isArray(nodes) ? nodes : Object.entries(nodes);
 
     if (parsedNodes.length === 0) {
       throw new Error("Sequence requires at least one node.");
@@ -722,7 +852,11 @@ export class StateGraph<
       }
 
       const validKey = key as unknown as N;
-      this.addNode(validKey, action as NodeAction<S, U, C>, options);
+      this.addNode(
+        validKey,
+        action as NodeAction<S, U, C, InterruptType, WriterType>,
+        options
+      );
       if (previousNode != null) {
         this.addEdge(previousNode, validKey);
       }
@@ -765,7 +899,9 @@ export class StateGraph<
     I,
     O,
     C,
-    NodeReturnType
+    NodeReturnType,
+    InterruptType,
+    WriterType
   > {
     // validate the graph
     this.validate([
@@ -784,8 +920,19 @@ export class StateGraph<
     const streamChannels =
       streamKeys.length === 1 && streamKeys[0] === ROOT ? ROOT : streamKeys;
 
+    const userInterrupt = this._interrupt;
     // create empty compiled graph
-    const compiled = new CompiledStateGraph<S, U, N, I, O, C, NodeReturnType>({
+    const compiled = new CompiledStateGraph<
+      S,
+      U,
+      N,
+      I,
+      O,
+      C,
+      NodeReturnType,
+      InterruptType,
+      WriterType
+    >({
       builder: this,
       checkpointer,
       interruptAfter,
@@ -804,6 +951,7 @@ export class StateGraph<
       cache,
       name,
       description,
+      userInterrupt,
     });
 
     // attach nodes, edges and branches
@@ -871,7 +1019,9 @@ export class CompiledStateGraph<
   I extends SDZod = StateDefinition,
   O extends SDZod = StateDefinition,
   C extends SDZod = StateDefinition,
-  NodeReturnType = unknown
+  NodeReturnType = unknown,
+  InterruptType = unknown,
+  WriterType = unknown
 > extends CompiledGraph<
   N,
   S,
@@ -879,7 +1029,9 @@ export class CompiledStateGraph<
   StateType<ToStateDefinition<C>>,
   UpdateType<ToStateDefinition<I>>,
   StateType<ToStateDefinition<O>>,
-  NodeReturnType
+  NodeReturnType,
+  CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
+  InferWriterType<WriterType>
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
 
@@ -903,7 +1055,9 @@ export class CompiledStateGraph<
       StateType<ToStateDefinition<C>>,
       UpdateType<ToStateDefinition<I>>,
       StateType<ToStateDefinition<O>>,
-      NodeReturnType
+      NodeReturnType,
+      CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
+      InferWriterType<WriterType>
     >
   >[0]) {
     super(rest);
@@ -1162,6 +1316,12 @@ export class CompiledStateGraph<
     return input;
   }
 
+  public isInterrupted(input: unknown): input is {
+    [INTERRUPT]: Interrupt<InferInterruptInputType<InterruptType>>[];
+  } {
+    return isInterrupted(input);
+  }
+
   protected async _validateContext(
     config: Partial<Record<string, unknown>>
   ): Promise<Partial<Record<string, unknown>>> {
@@ -1299,65 +1459,4 @@ function _getControlBranch() {
   return new Branch({
     path: CONTROL_BRANCH_PATH,
   });
-}
-
-type TypedNodeAction<
-  SD extends StateDefinition,
-  Nodes extends string,
-  C extends StateDefinition = StateDefinition
-> = RunnableLike<
-  StateType<SD>,
-  UpdateType<SD> | Command<unknown, UpdateType<SD>, Nodes>,
-  LangGraphRunnableConfig<StateType<C>>
->;
-
-export function typedNode<
-  SD extends SDZod,
-  Nodes extends string,
-  C extends SDZod = StateDefinition
->(
-  _state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
-  _options?: {
-    nodes?: Nodes[];
-    config?: C extends StateDefinition ? AnnotationRoot<C> : never;
-  }
-): (
-  func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
-  options?: StateGraphAddNodeOptions<Nodes>
-) => TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>;
-
-export function typedNode<
-  SD extends SDZod,
-  Nodes extends string,
-  C extends SDZod = StateDefinition
->(
-  _state: SD extends InteropZodObject ? SD : never,
-  _options?: {
-    nodes?: Nodes[];
-    config?: C extends InteropZodObject ? C : never;
-  }
-): (
-  func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
-  options?: StateGraphAddNodeOptions<Nodes>
-) => TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>;
-
-export function typedNode<
-  SD extends SDZod,
-  Nodes extends string,
-  C extends SDZod = StateDefinition
->(
-  _state: SD extends InteropZodObject
-    ? SD
-    : SD extends StateDefinition
-    ? AnnotationRoot<SD>
-    : never,
-  _options?: { nodes?: Nodes[]; config?: AnnotationRoot<ToStateDefinition<C>> }
-) {
-  return (
-    func: TypedNodeAction<ToStateDefinition<SD>, Nodes, ToStateDefinition<C>>,
-    options?: StateGraphAddNodeOptions<Nodes>
-  ) => {
-    Object.assign(func, { [Symbol.for("langgraph.state.node")]: options });
-    return func;
-  };
 }

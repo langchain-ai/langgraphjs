@@ -9,15 +9,13 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
     properties: {
       messages: {
         type: "array",
-        items: { $ref: "#/definitions/BaseMessage" },
+        items: {
+          $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+        },
       },
     },
     definitions: {
-      BaseMessage: {
-        oneOf: expect.arrayContaining([
-          { $ref: "#/definitions/BaseMessageChunk" },
-        ]),
-      },
+      "BaseMessage<MessageStructure,MessageType>": { type: "object" },
     },
     $schema: "http://json-schema.org/draft-07/schema#",
   };
@@ -138,15 +136,13 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           },
           messages: {
             type: "array",
-            items: { $ref: "#/definitions/BaseMessage" },
+            items: {
+              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            },
           },
         },
         definitions: {
-          BaseMessage: {
-            oneOf: expect.arrayContaining([
-              { $ref: "#/definitions/BaseMessageChunk" },
-            ]),
-          },
+          "BaseMessage<MessageStructure,MessageType>": { type: "object" },
         },
         $schema: "http://json-schema.org/draft-07/schema#",
       });
@@ -160,14 +156,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           },
           messages: {
             type: "array",
-            items: { $ref: "#/definitions/BaseMessage" },
+            items: {
+              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            },
           },
         },
         definitions: {
-          BaseMessage: {
-            oneOf: expect.arrayContaining([
-              { $ref: "#/definitions/BaseMessageChunk" },
-            ]),
+          "BaseMessage<MessageStructure,MessageType>": {
+            type: "object",
           },
         },
         $schema: "http://json-schema.org/draft-07/schema#",
@@ -182,14 +178,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           },
           messages: {
             type: "array",
-            items: { $ref: "#/definitions/BaseMessage" },
+            items: {
+              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            },
           },
         },
         definitions: {
-          BaseMessage: {
-            oneOf: expect.arrayContaining([
-              { $ref: "#/definitions/BaseMessageChunk" },
-            ]),
+          "BaseMessage<MessageStructure,MessageType>": {
+            type: "object",
           },
         },
         $schema: "http://json-schema.org/draft-07/schema#",
@@ -270,14 +266,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
       properties: {
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -292,15 +288,13 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
-        },
+        "BaseMessage<MessageStructure,MessageType>": { type: "object" },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
     });
@@ -314,14 +308,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -465,14 +459,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -487,14 +481,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -509,14 +503,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -597,14 +591,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -619,14 +613,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -641,14 +635,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -719,14 +713,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -741,14 +735,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -763,14 +757,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
       },
       definitions: {
-        BaseMessage: {
-          oneOf: expect.arrayContaining([
-            { $ref: "#/definitions/BaseMessageChunk" },
-          ]),
+        "BaseMessage<MessageStructure,MessageType>": {
+          type: "object",
         },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -820,7 +814,7 @@ test.concurrent("weather", { timeout: 30_000 }, () => {
                   ],
                 });
 
-                return { city: llm.tool_calls![0].args.city };
+                return { city: llm.tool_calls![0].args.city as string };
               })
               .addNode("weather_node", async (state) => {
                 const result = \`It's sunny in $\{state.city}!\`;
@@ -1031,7 +1025,9 @@ test.concurrent("`strictFunctionTypes: false`", { timeout: 30_000 }, () => {
       properties: {
         messages: {
           type: "array",
-          items: { $ref: "#/definitions/BaseMessage" },
+          items: {
+            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          },
         },
         state: { type: "string" },
       },

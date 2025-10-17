@@ -12,7 +12,7 @@ import {
   Graph as DrawableGraph,
 } from "@langchain/core/runnables/graph";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { validate as isUuid } from "uuid";
 import type {
   RunnableLike,
@@ -571,33 +571,33 @@ export class Graph<
 
 export class CompiledGraph<
   N extends string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  State = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Update = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType extends Record<string, any> = Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  InputType = any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  OutputType = any,
-  NodeReturnType = unknown
+  State = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Update = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  InputType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  OutputType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  NodeReturnType = unknown,
+  CommandType = unknown,
+  StreamCustomType = any // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType & Record<string, any>,
+  ContextType & Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   InputType,
   OutputType,
   InputType,
   OutputType,
-  NodeReturnType
+  NodeReturnType,
+  CommandType,
+  StreamCustomType
 > {
-  declare NodeType: N;
+  declare "~NodeType": N;
 
-  declare RunInput: State;
+  declare "~NodeReturnType": NodeReturnType;
 
-  declare RunOutput: Update;
+  declare "~RunInput": Update;
+
+  declare "~RunOutput": State;
 
   builder: Graph<N, State, Update>;
 
@@ -692,12 +692,7 @@ export class CompiledGraph<
     const xray = config?.xray;
     const graph = new DrawableGraph();
     const startNodes: Record<string, DrawableGraphNode> = {
-      [START]: graph.addNode(
-        {
-          schema: z.any(),
-        },
-        START
-      ),
+      [START]: graph.addNode({ schema: z.any() }, START),
     };
     const endNodes: Record<string, DrawableGraphNode> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

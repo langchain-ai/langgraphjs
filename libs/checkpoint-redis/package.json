@@ -6,21 +6,21 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-redis",
-    "build:internal": "yarn clean && yarn lc_build --create-entrypoints --pre --tree-shaking",
+    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-checkpoint-redis",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "yarn lint:eslint && yarn lint:dpdm",
     "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepack": "yarn build",
+    "prepublish": "yarn build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
@@ -35,7 +35,7 @@
     "ulid": "^2.3.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph-checkpoint": "^0.1.0"
   },
   "devDependencies": {
@@ -65,47 +65,44 @@
   },
   "exports": {
     ".": {
-      "types": {
-        "import": "./index.d.ts",
-        "require": "./index.d.cts",
-        "default": "./index.d.ts"
+      "typedoc": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
-      "import": "./index.js",
-      "require": "./index.cjs"
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
     },
     "./shallow": {
-      "types": {
-        "import": "./shallow.d.ts",
-        "require": "./shallow.d.cts",
-        "default": "./shallow.d.ts"
+      "typedoc": "./src/shallow.ts",
+      "import": {
+        "types": "./dist/shallow.d.ts",
+        "default": "./dist/shallow.js"
       },
-      "import": "./shallow.js",
-      "require": "./shallow.cjs"
+      "require": {
+        "types": "./dist/shallow.d.cts",
+        "default": "./dist/shallow.cjs"
+      },
+      "input": "./src/shallow.ts"
     },
     "./store": {
-      "types": {
-        "import": "./store.d.ts",
-        "require": "./store.d.cts",
-        "default": "./store.d.ts"
+      "typedoc": "./src/store.ts",
+      "import": {
+        "types": "./dist/store.d.ts",
+        "default": "./dist/store.js"
       },
-      "import": "./store.js",
-      "require": "./store.cjs"
+      "require": {
+        "types": "./dist/store.d.cts",
+        "default": "./dist/store.cjs"
+      },
+      "input": "./src/store.ts"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts",
-    "index.d.cts",
-    "shallow.cjs",
-    "shallow.js",
-    "shallow.d.ts",
-    "shallow.d.cts",
-    "store.cjs",
-    "store.js",
-    "store.d.ts",
-    "store.d.cts"
+    "dist/"
   ]
 }

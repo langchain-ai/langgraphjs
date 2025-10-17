@@ -9,9 +9,10 @@ import {
   AIMessageChunk,
   AIMessageFields,
   ToolMessage,
-  ToolMessageFieldsWithToolCallId,
   FunctionMessage,
-  FunctionMessageFieldsWithName,
+  ToolMessageFields,
+  MessageStructure,
+  FunctionMessageFields,
 } from "@langchain/core/messages";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { Tool } from "@langchain/core/tools";
@@ -240,12 +241,11 @@ export class _AnyIdToolMessage extends ToolMessage {
     return ["langchain_core", "messages", "ToolMessage"];
   }
 
-  constructor(fields: ToolMessageFieldsWithToolCallId) {
-    const fieldsWithJestMatcher: Partial<ToolMessageFieldsWithToolCallId> = {
+  constructor(fields: ToolMessageFields<MessageStructure>) {
+    super({
       id: expect.any(String) as unknown as string,
       ...fields,
-    };
-    super(fieldsWithJestMatcher as ToolMessageFieldsWithToolCallId);
+    });
   }
 }
 
@@ -254,12 +254,11 @@ export class _AnyIdFunctionMessage extends FunctionMessage {
     return ["langchain_core", "messages", "FunctionMessage"];
   }
 
-  constructor(fields: FunctionMessageFieldsWithName) {
-    const fieldsWithJestMatcher: Partial<FunctionMessageFieldsWithName> = {
+  constructor(fields: FunctionMessageFields<MessageStructure>) {
+    super({
       id: expect.any(String) as unknown as string,
       ...fields,
-    };
-    super(fieldsWithJestMatcher as FunctionMessageFieldsWithName);
+    });
   }
 }
 

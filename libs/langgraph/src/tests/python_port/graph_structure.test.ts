@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { RunnablePassthrough } from "@langchain/core/runnables";
+import { RunnableEach, RunnablePassthrough } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
 import {
   Annotation,
@@ -829,10 +829,10 @@ describe("Graph Structure Tests (Python port)", () => {
 
     const one = Channel.subscribeTo("input")
       .pipe(add10Each)
-      .pipe(Channel.writeTo(["inbox_one"]).map());
+      .pipe(new RunnableEach({ bound: Channel.writeTo(["inbox_one"]) }));
 
     const two = Channel.subscribeTo("inbox_one")
-      .pipe(() => innerApp.map())
+      .pipe(() => new RunnableEach({ bound: innerApp }))
       .pipe((x: number[]) => x.sort())
       .pipe(Channel.writeTo(["outbox_one"]));
 

@@ -54,6 +54,7 @@ import {
   PREVIOUS,
   CACHE_NS_WRITES,
   CONFIG_KEY_RESUME_MAP,
+  START,
 } from "../constants.js";
 import {
   Call,
@@ -91,6 +92,19 @@ export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
 
+function triggersNextStep(
+  updatedChannels: Set<string>,
+  triggerToNodes: Record<string, string[]> | undefined
+) {
+  if (triggerToNodes == null) return false;
+
+  for (const chan of updatedChannels) {
+    if (triggerToNodes[chan]) return true;
+  }
+
+  return false;
+}
+
 // Avoids unnecessary double iteration
 function maxChannelMapVersion(
   channelVersions: Record<string, number | string>
@@ -116,15 +130,23 @@ export function shouldInterrupt<N extends PropertyKey, C extends PropertyKey>(
   const seen = checkpoint.versions_seen[INTERRUPT] ?? {};
 
   let anyChannelUpdated = false;
-  for (const chan in checkpoint.channel_versions) {
-    if (
-      !Object.prototype.hasOwnProperty.call(checkpoint.channel_versions, chan)
-    )
-      continue;
 
-    if (checkpoint.channel_versions[chan] > (seen[chan] ?? nullVersion)) {
-      anyChannelUpdated = true;
-      break;
+  if (
+    (checkpoint.channel_versions[START] ?? nullVersion) >
+    (seen[START] ?? nullVersion)
+  ) {
+    anyChannelUpdated = true;
+  } else {
+    for (const chan in checkpoint.channel_versions) {
+      if (
+        !Object.prototype.hasOwnProperty.call(checkpoint.channel_versions, chan)
+      )
+        continue;
+
+      if (checkpoint.channel_versions[chan] > (seen[chan] ?? nullVersion)) {
+        anyChannelUpdated = true;
+        break;
+      }
     }
   }
 
@@ -227,7 +249,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getNextVersion: ((version: any) => any) | undefined,
   triggerToNodes: Record<string, string[]> | undefined
-): void {
+): Set<string> {
   // Sort tasks by first 3 path elements for deterministic order
   // Later path parts (like task IDs) are ignored for sorting
   tasks.sort((a, b) => {
@@ -272,10 +294,12 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       .filter((chan) => !RESERVED.includes(chan))
   );
 
+  let usedNewVersion = false;
   for (const chan of channelsToConsume) {
     if (chan in onlyChannels && onlyChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
         checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+        usedNewVersion = true;
       }
     }
   }
@@ -294,7 +318,9 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // Find the highest version of all channels
-  maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
+  if (maxVersion != null && getNextVersion != null) {
+    maxVersion = usedNewVersion ? getNextVersion(maxVersion) : maxVersion;
+  }
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
@@ -335,6 +361,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       const channel = onlyChannels[chan];
       if (channel.isAvailable() && !updatedChannels.has(chan)) {
         const updated = channel.update([]);
+
         if (updated && getNextVersion !== undefined) {
           checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
 
@@ -346,12 +373,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   }
 
   // If this is (tentatively) the last superstep, notify all channels of finish
-  if (
-    bumpStep &&
-    !Object.keys(triggerToNodes ?? {}).some((channel) =>
-      updatedChannels.has(channel)
-    )
-  ) {
+  if (bumpStep && !triggersNextStep(updatedChannels, triggerToNodes)) {
     for (const chan in onlyChannels) {
       if (!Object.prototype.hasOwnProperty.call(onlyChannels, chan)) continue;
 
@@ -364,6 +386,50 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
       }
     }
   }
+
+  return updatedChannels;
+}
+
+function* candidateNodes(
+  checkpoint: ReadonlyCheckpoint,
+  processes: StrRecord<string, PregelNode>,
+  extra: NextTaskExtraFields
+) {
+  // This section is an optimization that allows which
+  // nodes will be active during the next step.
+  // When there's information about:
+  // 1. Which channels were updated in the previous step
+  // 2. Which nodes are triggered by which channels
+  // Then we can determine which nodes should be triggered
+  // in the next step without having to cycle through all nodes.
+  if (extra.updatedChannels != null && extra.triggerToNodes != null) {
+    const triggeredNodes = new Set<string>();
+
+    // Get all nodes that have triggers associated with an updated channel
+    for (const channel of extra.updatedChannels) {
+      const nodeIds = extra.triggerToNodes[channel];
+      for (const id of nodeIds ?? []) triggeredNodes.add(id);
+    }
+
+    // Sort the nodes to ensure deterministic order
+    yield* [...triggeredNodes].sort();
+    return;
+  }
+
+  // If there are no values in checkpoint, no need to run
+  // through all the PULL candidates
+  const isEmptyChannelVersions = (() => {
+    for (const chan in checkpoint.channel_versions) {
+      if (checkpoint.channel_versions[chan] !== null) return false;
+    }
+    return true;
+  })();
+
+  if (isEmptyChannelVersions) return;
+  for (const name in processes) {
+    if (!Object.prototype.hasOwnProperty.call(processes, name)) continue;
+    yield name;
+  }
 }
 
 export type NextTaskExtraFields = {
@@ -373,6 +439,8 @@ export type NextTaskExtraFields = {
   manager?: CallbackManagerForChainRun;
   store?: BaseStore;
   stream?: IterableReadableWritableStream;
+  triggerToNodes?: Record<string, string[]>;
+  updatedChannels?: Set<string>;
 };
 
 export type NextTaskExtraFieldsWithStore = NextTaskExtraFields & {
@@ -456,8 +524,7 @@ export function _prepareNextTasks<
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
-  for (const name in processes) {
-    if (!Object.prototype.hasOwnProperty.call(processes, name)) continue;
+  for (const name of candidateNodes(checkpoint, processes, extra)) {
     const task = _prepareSingleTask(
       [PULL, name],
       checkpoint,

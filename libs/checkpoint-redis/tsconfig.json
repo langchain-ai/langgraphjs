@@ -1,34 +1,22 @@
 {
   "extends": "@tsconfig/recommended",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
+    "outDir": "../dist",
+    "rootDir": "./src",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "module": "esnext",
-    "moduleResolution": "node",
-    "target": "ES2022",
-    "lib": [
-      "ES2022"
-    ],
-    "types": [
-      "node"
-    ],
-    "resolveJsonModule": true
+    "types": ["node"],
+    "resolveJsonModule": true,
+    "sourceMap": true,
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "dist-cjs",
-    "**/*.test.ts",
-    "**/*.int.test.ts"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.int.test.ts"]
 }

@@ -54,7 +54,7 @@
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-api",
     "build:internal": "yarn clean && node scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts --dev",
-    "prepack": "yarn run build",
+    "prepublish": "yarn build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
@@ -83,7 +83,7 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@langchain/core": "^0.3.59 || ^1.0.0-alpha",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha",
     "@langchain/langgraph-checkpoint": "~0.0.16 || ^0.1.0",
     "@langchain/langgraph-sdk": "~0.0.70 || ^0.1.0",
@@ -95,7 +95,7 @@
     }
   },
   "devDependencies": {
-    "@langchain/core": "^0.3.59",
+    "@langchain/core": "^1.0.0",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",

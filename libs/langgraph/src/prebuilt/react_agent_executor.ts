@@ -14,7 +14,6 @@ import {
 } from "@langchain/core/messages";
 import {
   Runnable,
-  RunnableConfig,
   RunnableLambda,
   RunnableToolLike,
   RunnableSequence,
@@ -46,6 +45,10 @@ import { END, Send, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
 import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
 
+/**
+ * @deprecated `AgentState` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
+ * Update your import to `import { AgentState } from "langchain";`
+ */
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseType extends Record<string, any> = Record<string, any>
@@ -474,6 +477,10 @@ type ToAnnotationRoot<A extends AnyAnnotationRoot | InteropZodObject> =
     ? AnnotationRoot<InteropZodToStateDefinition<A>>
     : never;
 
+/**
+ * @deprecated `CreateReactAgentParams` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
+ * Update your import to `import { CreateAgentParams } from "langchain";`
+ */
 export type CreateReactAgentParams<
   A extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -614,6 +621,9 @@ export type CreateReactAgentParams<
 };
 
 /**
+ * @deprecated `createReactAgent` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
+ * Update your import to `import { createAgent } from "langchain";`
+ *
  * Creates a StateGraph agent that relies on a chat model utilizing tool calling.
  *
  * @example
@@ -731,10 +741,10 @@ export function createReactAgent<
   const _getDynamicModel = async (
     llm: (
       state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-      runtime: LangGraphRunnableConfig
+      runtime: Runtime<ToAnnotationRoot<C>["State"]>
     ) => Promise<LanguageModelLike> | LanguageModelLike,
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config: LangGraphRunnableConfig
+    config: Runtime<ToAnnotationRoot<C>["State"]>
   ) => {
     const model = await llm(state, config);
 
@@ -766,7 +776,7 @@ export function createReactAgent<
 
   const generateStructuredResponse = async (
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config: RunnableConfig
+    config: Runtime<ToAnnotationRoot<C>["State"]>
   ) => {
     if (responseFormat == null) {
       throw new Error(
@@ -805,7 +815,7 @@ export function createReactAgent<
 
   const callModel = async (
     state: AgentState<StructuredResponseFormat> & PreHookAnnotation["State"],
-    config: RunnableConfig
+    config: Runtime<ToAnnotationRoot<C>["State"]>
   ) => {
     // NOTE: we're dynamically creating the model runnable here
     // to ensure that we can validate ConfigurableModel properly

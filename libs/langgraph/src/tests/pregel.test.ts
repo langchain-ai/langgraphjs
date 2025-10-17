@@ -19,6 +19,7 @@ import {
   RunnableConfig,
   RunnableLambda,
   RunnablePassthrough,
+  RunnableEach,
 } from "@langchain/core/runnables";
 import { AgentAction, AgentFinish } from "@langchain/core/agents";
 import { PromptTemplate } from "@langchain/core/prompts";
@@ -1368,8 +1369,8 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["inbox"]));
     const two = Channel.subscribeTo("inbox")
-      .pipe(new RunnableLambda({ func: addOne }).map())
-      .pipe(Channel.writeTo(["output"]).map());
+      .pipe(new RunnableEach({ bound: new RunnableLambda({ func: addOne }) }))
+      .pipe(new RunnableEach({ bound: Channel.writeTo(["output"]) }));
 
     const app = new Pregel({
       nodes: { one, two },
@@ -2287,10 +2288,10 @@ graph TD;
 
     const one = Channel.subscribeTo("input")
       .pipe(add10Each)
-      .pipe(Channel.writeTo(["inbox_one"]).map());
+      .pipe(new RunnableEach({ bound: Channel.writeTo(["inbox_one"]) }));
 
     const two = Channel.subscribeTo("inbox_one")
-      .pipe(() => innerApp.map())
+      .pipe(() => new RunnableEach({ bound: innerApp }))
       .pipe((x: number[]) => x.sort())
       .pipe(Channel.writeTo(["outbox_one"]));
 
@@ -3890,7 +3891,7 @@ graph TD;
 
       const toolsNode = async (toolCall: ToolCall) => {
         await new Promise((resolve) =>
-          setTimeout(resolve, (toolCall.args.idx ?? 0 + 1) * 100)
+          setTimeout(resolve, ((toolCall.args.idx as number) ?? 0 + 1) * 100)
         );
         const toolMessage = await toolsByName[toolCall.name].invoke(toolCall);
         return {
@@ -5080,7 +5081,7 @@ graph TD;
             id: "__start__",
             type: "schema",
             data: {
-              $schema: "http://json-schema.org/draft-07/schema#",
+              $schema: expect.any(String),
               title: undefined,
             },
           },
@@ -5104,7 +5105,7 @@ graph TD;
             id: "__end__",
             type: "schema",
             data: {
-              $schema: "http://json-schema.org/draft-07/schema#",
+              $schema: expect.any(String),
               title: undefined,
             },
           },
@@ -7261,10 +7262,10 @@ graph TD;
 
       const one = Channel.subscribeTo("input")
         .pipe(add10Each)
-        .pipe(Channel.writeTo(["inbox_one"]).map());
+        .pipe(new RunnableEach({ bound: Channel.writeTo(["inbox_one"]) }));
 
       const two = Channel.subscribeTo("inbox_one")
-        .pipe(innerApp.map())
+        .pipe(new RunnableEach({ bound: innerApp }))
         .pipe((x: number[]) => x.sort())
         .pipe(Channel.writeTo(["outbox_one"]));
 

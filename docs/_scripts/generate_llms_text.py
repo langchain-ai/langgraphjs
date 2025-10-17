@@ -26,7 +26,7 @@ def _make_llms_text(output_file: str) -> str:
     """
     # Collect all markdown and notebook files
     all_files = [
-        os.path.join(EXAMPLES_ROOT, "quickstart.ipynb"),
+        os.path.join(EXAMPLES_ROOT, "quickstart/quickstart.ipynb"),
     ]
 
     all_files.extend(

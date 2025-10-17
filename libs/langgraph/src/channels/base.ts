@@ -9,6 +9,7 @@ export function isBaseChannel(obj: unknown): obj is BaseChannel {
   return obj != null && (obj as BaseChannel).lg_is_channel === true;
 }
 
+/** @internal */
 export abstract class BaseChannel<
   ValueType = unknown,
   UpdateType = unknown,
@@ -168,19 +169,12 @@ export function createCheckpoint<ValueType>(
     }
   }
 
-  const newVersionsSeen = {} as Record<string, Record<string, number | string>>;
-  for (const k in checkpoint.versions_seen) {
-    if (!Object.prototype.hasOwnProperty.call(checkpoint.versions_seen, k))
-      continue;
-    newVersionsSeen[k] = { ...checkpoint.versions_seen[k] };
-  }
-
   return {
     v: 4,
     id: options?.id ?? uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,
-    channel_versions: { ...checkpoint.channel_versions },
-    versions_seen: newVersionsSeen,
+    channel_versions: checkpoint.channel_versions,
+    versions_seen: checkpoint.versions_seen,
   };
 }

@@ -4,6 +4,9 @@ A JavaScript library for creating swarm-style multi-agent systems using [LangGra
 
 ![Swarm](static/img/swarm.png)
 
+> [!NOTE]
+> This library has been updated to support LangChain 1.0. However, it has **not** been tested with the new agents in `langchain`. The library currently only supports the prebuilt `createReactAgent` from LangGraph. This update allows users to migrate to LangChain 1.0 without changing their existing code. For users of the swarm package, we recommend continuing to use `createReactAgent` rather than the new `createAgent` pattern from LangChain for now.
+
 ## Features
 
 - 🤖 **Multi-agent collaboration** - Enable specialized agents to work together and hand off context to each other
@@ -28,9 +31,8 @@ export OPENAI_API_KEY=<your_api_key>
 ```ts
 import { z } from "zod";
 import { ChatOpenAI } from "@langchain/openai";
-import { tool } from "@langchain/core/tools";
+import { tool, createAgent } from "langchain";
 import { MemorySaver } from "@langchain/langgraph";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSwarm, createHandoffTool } from "@langchain/langgraph-swarm";
 
 const model = new ChatOpenAI({ modelName: "gpt-4o" });
@@ -49,14 +51,14 @@ const add = tool(
 );
 
 // Create agents with handoff tools
-const alice = createReactAgent({
+const alice = createAgent({
   llm: model,
   tools: [add, createHandoffTool({ agentName: "Bob" })],
   name: "Alice",
   prompt: "You are Alice, an addition expert."
 });
 
-const bob = createReactAgent({
+const bob = createAgent({
   llm: model,
   tools: [createHandoffTool({ 
     agentName: "Alice", 

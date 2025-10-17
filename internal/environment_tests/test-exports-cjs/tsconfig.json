@@ -1,0 +1,18 @@
+{
+  "extends": "@tsconfig/recommended",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "lib": [
+      "ES2021",
+      "ES2022.Object",
+      "DOM"
+    ],
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "target": "ES2021",
+  },
+  "include": [
+    "src/**/*"
+  ]
+}

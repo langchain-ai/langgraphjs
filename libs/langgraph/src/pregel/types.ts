@@ -41,9 +41,6 @@ export type PregelOutputType = any;
 type StreamMessageOutput = [BaseMessage, Record<string, any>];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type StreamCustomOutput = any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StreamDebugOutput = Record<string, any>;
 
 type StreamCheckpointsOutput<StreamValues> = {
@@ -77,24 +74,34 @@ type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
 
 type DefaultStreamMode = "updates";
 
+export type IsEventStream<T> = [T] extends ["text/event-stream"]
+  ? ["text/event-stream"] extends [T]
+    ? true
+    : false
+  : false;
+
 export type StreamOutputMap<
   TStreamMode extends StreamMode | StreamMode[] | undefined,
   TStreamSubgraphs extends boolean,
   StreamUpdates,
   StreamValues,
   Nodes,
-  NodeReturnType
-> = (
-  undefined extends TStreamMode
-    ? []
-    : StreamMode | StreamMode[] extends TStreamMode
-    ? TStreamMode extends StreamMode[]
-      ? TStreamMode[number]
-      : TStreamMode
-    : TStreamMode extends StreamMode[]
-    ? TStreamMode[number]
-    : []
-) extends infer Multiple extends StreamMode
+  NodeReturnType,
+  StreamCustom,
+  TEncoding extends "text/event-stream" | undefined
+> = IsEventStream<TEncoding> extends true
+  ? Uint8Array
+  : (
+      undefined extends TStreamMode
+        ? []
+        : StreamMode | StreamMode[] extends TStreamMode
+        ? TStreamMode extends StreamMode[]
+          ? TStreamMode[number]
+          : TStreamMode
+        : TStreamMode extends StreamMode[]
+        ? TStreamMode[number]
+        : []
+    ) extends infer Multiple extends StreamMode
   ? [TStreamSubgraphs] extends [true]
     ? {
         values: [string[], "values", StreamValues];
@@ -106,7 +113,7 @@ export type StreamOutputMap<
             : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], "messages", StreamMessageOutput];
-        custom: [string[], "custom", StreamCustomOutput];
+        custom: [string[], "custom", StreamCustom];
         checkpoints: [
           string[],
           "checkpoints",
@@ -128,7 +135,7 @@ export type StreamOutputMap<
             : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: ["messages", StreamMessageOutput];
-        custom: ["custom", StreamCustomOutput];
+        custom: ["custom", StreamCustom];
         checkpoints: ["checkpoints", StreamCheckpointsOutput<StreamValues>];
         tasks: ["tasks", StreamTasksOutput<StreamUpdates, StreamValues, Nodes>];
         debug: ["debug", StreamDebugOutput];
@@ -146,7 +153,7 @@ export type StreamOutputMap<
             : Record<Nodes extends string ? Nodes : string, StreamUpdates>
         ];
         messages: [string[], StreamMessageOutput];
-        custom: [string[], StreamCustomOutput];
+        custom: [string[], StreamCustom];
         checkpoints: [string[], StreamCheckpointsOutput<StreamValues>];
         tasks: [
           string[],
@@ -160,7 +167,7 @@ export type StreamOutputMap<
           ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
           : Record<Nodes extends string ? Nodes : string, StreamUpdates>;
         messages: StreamMessageOutput;
-        custom: StreamCustomOutput;
+        custom: StreamCustom;
         checkpoints: StreamCheckpointsOutput<StreamValues>;
         tasks: StreamTasksOutput<StreamUpdates, StreamValues, Nodes>;
         debug: StreamDebugOutput;
@@ -184,7 +191,10 @@ export interface PregelOptions<
     | StreamMode
     | StreamMode[]
     | undefined,
-  TSubgraphs extends boolean = boolean
+  TSubgraphs extends boolean = boolean,
+  TEncoding extends "text/event-stream" | undefined =
+    | "text/event-stream"
+    | undefined
 > extends RunnableConfig<ContextType> {
   /**
    * Controls what information is streamed during graph execution.
@@ -318,6 +328,14 @@ export interface PregelOptions<
    * Static context for the graph run, like `userId`, `dbConnection` etc.
    */
   context?: ContextType;
+
+  /**
+   * The encoding to use for the stream.
+   * - `undefined`: Use the default format.
+   * - `"text/event-stream"`: Use the Server-Sent Events format.
+   * @default undefined
+   */
+  encoding?: TEncoding;
 }
 
 /**
@@ -480,6 +498,18 @@ export type PregelParams<
    * Storage used for node caching.
    */
   cache?: BaseCache;
+
+  /**
+   * The trigger to node mapping for the graph run.
+   * @internal
+   */
+  triggerToNodes?: Record<string, string[]>;
+
+  /**
+   * Interrupt helper function.
+   * @internal
+   */
+  userInterrupt?: unknown;
 };
 
 export interface PregelTaskDescription {

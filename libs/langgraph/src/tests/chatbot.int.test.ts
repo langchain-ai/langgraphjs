@@ -3,12 +3,20 @@ import { ChatOpenAI } from "@langchain/openai";
 import {
   BaseMessage,
   HumanMessage,
+  isBaseMessage,
+  isToolMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { Calculator } from "@langchain/community/tools/calculator";
-import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
+import { z } from "zod/v3";
+import { tool } from "@langchain/core/tools";
 import { END, MessageGraph, START } from "../index.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+
+const calculator = tool((args) => args.a + args.b, {
+  name: "calculator",
+  description: "A calculator",
+  schema: z.object({ a: z.number(), b: z.number() }),
+});
 
 describe("Chatbot", () => {
   beforeAll(() => {
@@ -33,10 +41,7 @@ describe("Chatbot", () => {
   it("Chat use-case with tool calling", async () => {
     const model = new ChatOpenAI({
       temperature: 0,
-    }).bind({
-      tools: [convertToOpenAITool(new Calculator())],
-      tool_choice: "auto",
-    });
+    }).withConfig({ tools: [calculator], tool_choice: "auto" });
 
     const router = (state: BaseMessage[]) => {
       const toolCalls =
@@ -51,7 +56,6 @@ describe("Chatbot", () => {
     const graph = new MessageGraph()
       .addNode("oracle", async (state: BaseMessage[]) => model.invoke(state))
       .addNode("calculator", async (state: BaseMessage[]) => {
-        const tool = new Calculator();
         const toolCalls =
           state[state.length - 1].additional_kwargs.tool_calls ?? [];
         const calculatorCall = toolCalls.find(
@@ -60,12 +64,17 @@ describe("Chatbot", () => {
         if (calculatorCall === undefined) {
           throw new Error("No calculator input found.");
         }
-        const result = await tool.invoke(
+        const result = await calculator.invoke(
           JSON.parse(calculatorCall.function.arguments)
         );
+
+        if (isBaseMessage(result) && isToolMessage(result)) {
+          return result;
+        }
+
         return new ToolMessage({
           tool_call_id: calculatorCall.id,
-          content: result,
+          content: result.toString(),
         });
       })
       .addEdge("calculator", END)

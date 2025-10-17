@@ -1,0 +1,21 @@
+{
+  "name": "@langchain/langgraph-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write src",
+    "lint": "prettier --check src",
+    "bench": "vitest bench"
+  },
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/langgraph": "workspace:*",
+    "@tsconfig/recommended": "^1.0.2",
+    "@types/node": "^18.15.11",
+    "prettier": "^2.8.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.1.2"
+  }
+}

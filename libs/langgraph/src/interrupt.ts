@@ -73,7 +73,11 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   }
 
   const checkpointer: BaseCheckpointSaver = conf[CONFIG_KEY_CHECKPOINTER];
-  if (!checkpointer) throw new GraphValueError("No checkpointer set");
+  if (!checkpointer) {
+    throw new GraphValueError("No checkpointer set", {
+      lc_error_code: "MISSING_CHECKPOINTER",
+    });
+  }
 
   // Track interrupt index
   const scratchpad: PregelScratchpad = conf[CONFIG_KEY_SCRATCHPAD];
@@ -107,3 +111,32 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   const id = ns ? XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR)) : undefined;
   throw new GraphInterrupt([{ id, value }]);
 }
+
+type FilterAny<X> = (<T>() => T extends X ? 1 : 2) extends <
+  T
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+>() => T extends any ? 1 : 2
+  ? never
+  : X;
+
+export type InferInterruptInputType<T> = T extends typeof interrupt<
+  infer I,
+  unknown
+>
+  ? I
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends { [key: string]: typeof interrupt<any, any> }
+  ? { [K in keyof T]: InferInterruptInputType<T[K]> }[keyof T]
+  : unknown;
+
+export type InferInterruptResumeType<
+  T,
+  TInner = false
+> = T extends typeof interrupt<never, infer R>
+  ? TInner extends true
+    ? FilterAny<R>
+    : R
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends { [key: string]: typeof interrupt<any, any> }
+  ? { [K in keyof T]: InferInterruptResumeType<T[K], true> }[keyof T]
+  : unknown;

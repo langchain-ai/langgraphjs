@@ -86,6 +86,7 @@ import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
+  toEventStream,
 } from "./stream.js";
 import type {
   Durability,
@@ -119,6 +120,7 @@ import { findSubgraphPregel } from "./utils/subgraph.js";
 import { validateGraph, validateKeys } from "./validate.js";
 import { ChannelWrite, ChannelWriteEntry, PASSTHROUGH } from "./write.js";
 import { Topic } from "../channels/topic.js";
+import { interrupt } from "../interrupt.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
@@ -387,16 +389,17 @@ export class Pregel<
     OutputType = PregelOutputType,
     StreamUpdatesType = InputType,
     StreamValuesType = OutputType,
-    NodeReturnType = unknown
+    NodeReturnType = unknown,
+    CommandType = CommandInstance,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    StreamCustom = any
   >
   extends PartialRunnable<
-    InputType | CommandInstance | null,
+    InputType | CommandType | null,
     OutputType,
     PregelOptions<Nodes, Channels, ContextType>
   >
-  implements
-    PregelInterface<Nodes, Channels, ContextType>,
-    PregelParams<Nodes, Channels>
+  implements PregelInterface<Nodes, Channels, ContextType>
 {
   /**
    * Name of the class when serialized
@@ -492,12 +495,22 @@ export class Pregel<
    */
   store?: BaseStore;
 
-  triggerToNodes: Record<string, string[]> = {};
-
   /**
    * Optional cache for the graph, useful for caching tasks.
    */
   cache?: BaseCache;
+
+  /**
+   * Optional interrupt helper function.
+   * @internal
+   */
+  private userInterrupt?: unknown;
+
+  /**
+   * The trigger to node mapping for the graph run.
+   * @internal
+   */
+  private triggerToNodes: Record<string, string[]> = {};
 
   /**
    * Constructor for Pregel - meant for internal use only.
@@ -543,6 +556,8 @@ export class Pregel<
     this.store = fields.store;
     this.cache = fields.cache;
     this.name = fields.name;
+    this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
+    this.userInterrupt = fields.userInterrupt;
 
     if (this.autoValidate) {
       this.validate();
@@ -569,7 +584,7 @@ export class Pregel<
    * @returns A new Pregel instance with the merged configuration
    */
   override withConfig(
-    config: Omit<LangGraphRunnableConfig, "store" | "writer">
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt">
   ): typeof this {
     const mergedConfig = mergeConfigs(this.config, config);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -927,7 +942,9 @@ export class Pregel<
     const checkpointer =
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
     }
 
     const checkpointNamespace: string =
@@ -987,7 +1004,9 @@ export class Pregel<
     const checkpointer: BaseCheckpointSaver =
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
     }
 
     const checkpointNamespace: string =
@@ -1061,7 +1080,9 @@ export class Pregel<
     const checkpointer: BaseCheckpointSaver | undefined =
       startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
     if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set");
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
     }
     if (supersteps.length === 0) {
       throw new Error("No supersteps provided");
@@ -1817,11 +1838,19 @@ export class Pregel<
    */
   override async stream<
     TStreamMode extends StreamMode | StreamMode[] | undefined,
-    TSubgraphs extends boolean
+    TSubgraphs extends boolean,
+    TEncoding extends "text/event-stream" | undefined
   >(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options?: Partial<
-      PregelOptions<Nodes, Channels, ContextType, TStreamMode, TSubgraphs>
+      PregelOptions<
+        Nodes,
+        Channels,
+        ContextType,
+        TStreamMode,
+        TSubgraphs,
+        TEncoding
+      >
     >
   ): Promise<
     IterableReadableStream<
@@ -1831,7 +1860,9 @@ export class Pregel<
         StreamUpdatesType,
         StreamValuesType,
         keyof Nodes,
-        NodeReturnType
+        NodeReturnType,
+        StreamCustom,
+        TEncoding
       >
     >
   > {
@@ -1849,17 +1880,11 @@ export class Pregel<
         .signal,
     };
 
+    const stream = await super.stream(input, config);
     return new IterableReadableStreamWithAbortSignal(
-      (await super.stream(input, config)) as IterableReadableStream<
-        StreamOutputMap<
-          TStreamMode,
-          TSubgraphs,
-          StreamUpdatesType,
-          StreamValuesType,
-          keyof Nodes,
-          NodeReturnType
-        >
-      >,
+      options?.encoding === "text/event-stream"
+        ? toEventStream(stream)
+        : stream,
       abortController
     );
   }
@@ -1868,7 +1893,7 @@ export class Pregel<
    * @inheritdoc
    */
   override streamEvents(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
@@ -1876,7 +1901,7 @@ export class Pregel<
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
       encoding: "text/event-stream";
@@ -1885,7 +1910,7 @@ export class Pregel<
   ): IterableReadableStream<Uint8Array>;
 
   override streamEvents(
-    input: InputType | CommandInstance | null,
+    input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
       version: "v1" | "v2";
     },
@@ -1946,6 +1971,9 @@ export class Pregel<
     input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nodes, Channels>>
   ): AsyncGenerator<PregelOutputType> {
+    // Skip LGP encoding option is `streamEvents` is used
+    const streamEncoding =
+      "version" in (options ?? {}) ? undefined : options?.encoding ?? undefined;
     const streamSubgraphs = options?.subgraphs;
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
@@ -2020,20 +2048,20 @@ export class Pregel<
       }
     }
 
-    // setup custom stream mode
-    if (streamMode.includes("custom")) {
-      config.writer = (chunk: unknown) => {
-        const ns = (
-          getConfig()?.configurable?.[CONFIG_KEY_CHECKPOINT_NS] as
-            | string
-            | undefined
-        )
-          ?.split(CHECKPOINT_NAMESPACE_SEPARATOR)
-          .slice(0, -1);
+    config.writer ??= (chunk: unknown) => {
+      if (!streamMode.includes("custom")) return;
+      const ns = (
+        getConfig()?.configurable?.[CONFIG_KEY_CHECKPOINT_NS] as
+          | string
+          | undefined
+      )
+        ?.split(CHECKPOINT_NAMESPACE_SEPARATOR)
+        .slice(0, -1);
 
-        stream.push([ns ?? [], "custom", chunk]);
-      };
-    }
+      stream.push([ns ?? [], "custom", chunk]);
+    };
+
+    config.interrupt ??= (this.userInterrupt as typeof interrupt) ?? interrupt;
 
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
@@ -2132,6 +2160,14 @@ export class Pregel<
         }
         const [namespace, mode, payload] = chunk;
         if (streamMode.includes(mode)) {
+          if (streamEncoding === "text/event-stream") {
+            if (streamSubgraphs) {
+              yield [namespace, mode, payload];
+            } else {
+              yield [null, mode, payload];
+            }
+            continue;
+          }
           if (streamSubgraphs && !streamModeSingle) {
             yield [namespace, mode, payload];
           } else if (!streamModeSingle) {
@@ -2164,14 +2200,17 @@ export class Pregel<
    * @param options The configuration to use for the run.
    */
   override async invoke(
-    input: InputType | CommandInstance | null,
-    options?: Partial<PregelOptions<Nodes, Channels, ContextType>>
+    input: InputType | CommandType | null,
+    options?: Partial<
+      Omit<PregelOptions<Nodes, Channels, ContextType>, "encoding">
+    >
   ): Promise<OutputType> {
     const streamMode = options?.streamMode ?? "values";
     const config = {
       ...options,
       outputKeys: options?.outputKeys ?? this.outputChannels,
       streamMode,
+      encoding: undefined,
     };
     const chunks = [];
     const stream = await this.stream(input, config);
