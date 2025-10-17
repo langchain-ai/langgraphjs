@@ -1941,7 +1941,7 @@ __metadata:
     zod: "npm:^3.23.8"
   peerDependencies:
     "@langchain/core": ^1.0.1
-    "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0
+    "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5
     "@langchain/openai": ^1.0.0
   languageName: unknown
   linkType: soft
@@ -2043,7 +2043,7 @@ __metadata:
     zod: "npm:^3.25.32"
   peerDependencies:
     "@langchain/core": ^1.0.1
-    "@langchain/langgraph": ^0.2.72 || ^0.3.0 || ^0.4.0
+    "@langchain/langgraph": ^0.2.72 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5
   languageName: unknown
   linkType: soft
 
@@ -2073,7 +2073,7 @@ __metadata:
     zod: "npm:^3.23.8"
   peerDependencies:
     "@langchain/core": ^1.0.1
-    "@langchain/langgraph": ^0.2.53 || ^0.3.0 || ^0.4.0
+    "@langchain/langgraph": ^0.2.53 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5
   languageName: unknown
   linkType: soft
 
