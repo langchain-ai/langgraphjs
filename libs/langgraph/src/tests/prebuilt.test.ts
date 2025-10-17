@@ -3542,7 +3542,6 @@ describe("ToolNode with Commands", () => {
       ],
       new Command({
         update: [
-          // @ts-expect-error: Command typing needs to be updated properly
           expect.objectContaining({
             content: "Transferred to Bob",
             tool_call_id: "2",
