@@ -41,7 +41,7 @@ describe("Chatbot", () => {
   it("Chat use-case with tool calling", async () => {
     const model = new ChatOpenAI({
       temperature: 0,
-    }).bind({ tools: [calculator], tool_choice: "auto" });
+    }).withConfig({ tools: [calculator], tool_choice: "auto" });
 
     const router = (state: BaseMessage[]) => {
       const toolCalls =

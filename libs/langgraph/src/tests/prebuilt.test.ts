@@ -151,6 +151,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           const expected = [
             new _AnyIdHumanMessage("Hello Input!"),
             new _AnyIdAIMessage({
+              name: undefined,
               content: "result1",
               tool_calls: [
                 {
@@ -161,12 +162,17 @@ describe.each([["v1" as const], ["v2" as const]])(
               ],
             }),
             new _AnyIdToolMessage({
+              metadata: {},
+              status: "success",
               name: "search_api",
               content: "result for foo",
               tool_call_id: "tool_abcd123",
               artifact: undefined,
             }),
-            new _AnyIdAIMessage("result2"),
+            new _AnyIdAIMessage({
+              name: undefined,
+              content: "result2",
+            }),
           ];
           expect(result.messages).toEqual(expected);
         }
@@ -209,6 +215,7 @@ describe.each([["v1" as const], ["v2" as const]])(
           });
           const expected = [
             new _AnyIdAIMessage({
+              name: undefined,
               content: "result1",
               tool_calls: [
                 {
@@ -219,12 +226,17 @@ describe.each([["v1" as const], ["v2" as const]])(
               ],
             }),
             new _AnyIdToolMessage({
+              status: "success",
+              metadata: {},
               name: "search_api",
               content: "result for foo",
               tool_call_id: "tool_abcd123",
               artifact: undefined,
             }),
-            new _AnyIdAIMessage("result2"),
+            new _AnyIdAIMessage({
+              name: undefined,
+              content: "result2",
+            }),
           ];
           expect(result.messages).toEqual(expected);
         }
@@ -452,6 +464,7 @@ describe.each([["v1" as const], ["v2" as const]])(
         const expected = [
           new _AnyIdHumanMessage("Hello Input!"),
           new _AnyIdAIMessage({
+            name: undefined,
             content: "result1",
             tool_calls: [
               {
@@ -462,12 +475,17 @@ describe.each([["v1" as const], ["v2" as const]])(
             ],
           }),
           new _AnyIdToolMessage({
+            metadata: {},
             name: "search_api",
             content: "some response format",
+            status: "success",
             tool_call_id: "tool_abcd123",
             artifact: Buffer.from("123"),
           }),
-          new _AnyIdAIMessage("result2"),
+          new _AnyIdAIMessage({
+            name: undefined,
+            content: "result2",
+          }),
         ];
         expect(result.messages).toEqual(expected);
       });
@@ -515,6 +533,7 @@ describe.each([["v1" as const], ["v2" as const]])(
         const expected = [
           new _AnyIdHumanMessage("Hello Input!"),
           new _AnyIdAIMessage({
+            name: undefined,
             content: "result1",
             tool_calls: [
               {
@@ -813,6 +832,7 @@ describe.each([["v1" as const], ["v2" as const]])(
         const expected = [
           new _AnyIdHumanMessage("Hello Input!"),
           new _AnyIdAIMessage({
+            name: undefined,
             content: "result1",
             tool_calls: [
               {
@@ -823,12 +843,17 @@ describe.each([["v1" as const], ["v2" as const]])(
             ],
           }),
           new _AnyIdToolMessage({
+            metadata: {},
             name: "search_api",
             content: "result for foo",
+            status: "success",
             tool_call_id: "tool_abcd123",
             artifact: undefined,
           }),
-          new _AnyIdAIMessage("result2"),
+          new _AnyIdAIMessage({
+            name: undefined,
+            content: "result2",
+          }),
         ];
         expect(result.messages).toEqual(expected);
       });
@@ -862,6 +887,7 @@ describe.each([["v1" as const], ["v2" as const]])(
         });
         const expected = [
           new _AnyIdAIMessage({
+            name: undefined,
             content: "result1",
             tool_calls: [
               {
@@ -872,12 +898,17 @@ describe.each([["v1" as const], ["v2" as const]])(
             ],
           }),
           new _AnyIdToolMessage({
+            metadata: {},
+            status: "success",
             name: "search_api",
             content: "result for foo",
             tool_call_id: "tool_abcd123",
             artifact: undefined,
           }),
-          new _AnyIdAIMessage("result2"),
+          new _AnyIdAIMessage({
+            name: undefined,
+            content: "result2",
+          }),
         ];
         expect(result.messages).toEqual(expected);
       });
@@ -967,6 +998,7 @@ describe.each([["v1" as const], ["v2" as const]])(
         const expected = [
           new _AnyIdHumanMessage("Hello Input!"),
           new _AnyIdAIMessage({
+            name: undefined,
             content: "result1",
             tool_calls: [
               {
@@ -977,12 +1009,17 @@ describe.each([["v1" as const], ["v2" as const]])(
             ],
           }),
           new _AnyIdToolMessage({
+            metadata: {},
+            status: "success",
             name: "search_api",
             content: "some response format",
             tool_call_id: "tool_abcd123",
             artifact: Buffer.from("123"),
           }),
-          new _AnyIdAIMessage("result2"),
+          new _AnyIdAIMessage({
+            name: undefined,
+            content: "result2",
+          }),
         ];
         expect(result.messages).toEqual(expected);
       });
@@ -1080,6 +1117,7 @@ describe.each([["v1" as const], ["v2" as const]])(
         const expected = [
           new _AnyIdHumanMessage("Hello Input!"),
           new _AnyIdAIMessage({
+            name: undefined,
             content: "",
             tool_calls: [
               {
@@ -1090,11 +1128,17 @@ describe.each([["v1" as const], ["v2" as const]])(
             ],
           }),
           new _AnyIdToolMessage({
+            artifact: undefined,
+            metadata: {},
+            status: "success",
             name: "search_api",
             content: "result for foo",
             tool_call_id: "tool_abcd123",
           }),
-          new _AnyIdAIMessage("result"),
+          new _AnyIdAIMessage({
+            name: undefined,
+            content: "result",
+          }),
         ];
         expect(result.messages).toEqual(expected);
       });
@@ -1499,6 +1543,7 @@ describe.each([["v1" as const], ["v2" as const]])(
             agent: {
               messages: [
                 new AIMessage({
+                  name: undefined,
                   content: "What's the weather?",
                   id: "1",
                   tool_calls: [
@@ -1518,6 +1563,9 @@ describe.each([["v1" as const], ["v2" as const]])(
             tools: {
               messages: [
                 new _AnyIdToolMessage({
+                  artifact: undefined,
+                  metadata: {},
+                  status: "success",
                   content: "The weather is sunny and 75°F.",
                   name: "get_weather",
                   tool_call_id: "1",
@@ -1529,6 +1577,7 @@ describe.each([["v1" as const], ["v2" as const]])(
             agent: {
               messages: [
                 new AIMessage({
+                  name: undefined,
                   content: "The weather is nice",
                   id: "3",
                 }),
@@ -3295,7 +3344,7 @@ describe("ToolNode with Commands", () => {
     expect(result).toMatchObject([
       {
         messages: [
-          new ToolMessage({
+          expect.objectContaining({
             content: "3",
             tool_call_id: "1",
             name: "add",
@@ -3305,7 +3354,7 @@ describe("ToolNode with Commands", () => {
       new Command({
         update: {
           messages: [
-            new ToolMessage({
+            expect.objectContaining({
               content: "Transferred to Bob",
               tool_call_id: "2",
               name: "transfer_to_bob",
@@ -3485,7 +3534,7 @@ describe("ToolNode with Commands", () => {
 
     expect(result).toMatchObject([
       [
-        new ToolMessage({
+        expect.objectContaining({
           content: "3",
           tool_call_id: "1",
           name: "add",
@@ -3494,7 +3543,7 @@ describe("ToolNode with Commands", () => {
       new Command({
         update: [
           // @ts-expect-error: Command typing needs to be updated properly
-          new ToolMessage({
+          expect.objectContaining({
             content: "Transferred to Bob",
             tool_call_id: "2",
             name: "transfer_to_bob",
