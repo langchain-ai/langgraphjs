@@ -4,6 +4,9 @@ A JavaScript library for creating swarm-style multi-agent systems using [LangGra
 
 ![Swarm](static/img/swarm.png)
 
+> [!NOTE]
+> This library has been updated to support LangChain 1.0. However, it has **not** been tested with the new agents in `langchain`. The library currently only supports the prebuilt `createReactAgent` from LangGraph. This update allows users to migrate to LangChain 1.0 without changing their existing code. For users of the swarm package, we recommend continuing to use `createReactAgent` rather than the new `createAgent` pattern from LangChain for now.
+
 ## Features
 
 - 🤖 **Multi-agent collaboration** - Enable specialized agents to work together and hand off context to each other
