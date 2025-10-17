@@ -17,4 +17,4 @@
 "@langchain/langgraph-sdk": major
 ---
 
-bump langchain deps
+This release updates the package for compatibility with LangGraph v1.0. See the [v1.0 release notes](https://docs.langchain.com/oss/javascript/releases/langgraph-v1) for details on what's new.
