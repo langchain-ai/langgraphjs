@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-sqlite",
-  "version": "0.2.1",
+  "version": "1.0.0",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -34,7 +34,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
-    "@langchain/langgraph-checkpoint": "^0.1.0"
+    "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
     "@langchain/langgraph-checkpoint": "workspace:*",

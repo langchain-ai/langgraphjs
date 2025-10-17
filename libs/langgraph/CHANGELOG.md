@@ -1,5 +1,37 @@
 # @langchain/langgraph
 
+## 1.0.0
+
+### Major Changes
+
+- 445c2ae: Make Zod a peer dependency of @langchain/langgraph
+- 66317c9: This release updates the package for compatibility with LangGraph v1.0. See the [v1.0 release notes](https://docs.langchain.com/oss/javascript/releases/langgraph-v1) for details on what's new.
+
+### Patch Changes
+
+- a5bcd74: Fix type issue with defining `interrupt` and `writer` in StateGraph constructor when using Annotation.Root
+- 5184725: Add `pushMessage` method for manually publishing to messages stream channel
+- 5f9b5a0: chore(prebuilt): deprecate createReactAgent
+- a05436d: Improve performance of scheduling tasks with large graphs
+- d35db59: Improve graph execution performance by avoiding unnecessary cloning of checkpoints after every tick
+- b6d6701: fix(@langchain/langgraph): export missing `CommandParams` symbol
+- 05619e2: Add `stream.encoding` option to emit LangGraph API events as Server-Sent Events. This allows for sending events through the wire by piping the stream to a `Response` object.
+- d5be09c: fix(@langchain/langgraph): export missing `CommandInstance` symbol
+- 7e01d08: Update troubleshooting link for common errors, add MISSING_CHECKPOINTER troubleshooting page
+- 14cb042: Fix `stateKey` property in `pushMessage` being ignored when RunnableConfig is automatically inherited
+- a527fc7: Improve tick performance by detecting interrupts faster within a tick.
+- 27934c0: Improve tick performance by calling `maxChannelMapVersion` only once
+- dcc117f: feat(langgraph): add `toLangGraphEventStream` method to stream events in LGP compatible format
+- dc2e5f2: fix(createReactAgent): update deprecation messages to contain reactAgent
+- e8f5084: `writer`, `interrupt` and `signal` is no longer an optional property of `Runtime`
+- c3f326d: Add support for defining multiple interrupts in StateGraph constructor. Interrupts from the map can be picked from the `Runtime` object, ensuring type-safety across multiple interrupts.
+- 20f1d64: Channels are now part of the public API, allowing users to customise behaviour of checkpointing per channel (#976)
+- 2311efc: Allow defining types for interrupt and custom events upfront
+- c6f75b6: Fix performance regression due to deferred nodes
+- Updated dependencies [66317c9]
+  - @langchain/langgraph-checkpoint@1.0.0
+  - @langchain/langgraph-sdk@1.0.0
+
 ## 1.0.0-alpha.5
 
 ### Patch Changes

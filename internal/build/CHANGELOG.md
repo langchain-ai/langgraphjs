@@ -1,18 +1,7 @@
-# @langchain/langgraph-checkpoint-redis
+# @langchain/build
 
 ## 1.0.0
 
 ### Major Changes
 
 - 66317c9: This release updates the package for compatibility with LangGraph v1.0. See the [v1.0 release notes](https://docs.langchain.com/oss/javascript/releases/langgraph-v1) for details on what's new.
-
-### Patch Changes
-
-- Updated dependencies [66317c9]
-  - @langchain/langgraph-checkpoint@1.0.0
-
-## 0.0.2
-
-### Patch Changes
-
-- 926db1e: Allow using @langchain/core@^1.0.0-alpha
