@@ -474,7 +474,7 @@ def on_post_build(config):
 # This is the catch-all for any unmapped pages
 
 # Catch-all: redirect any page not explicitly mapped
-/*  https://docs.langchain.com/oss/javascript/langchain/overview  301
+/*  https://docs.langchain.com/oss/javascript/langgraph/overview  301
 """
 
     redirects_path = os.path.join(site_dir, "_redirects")
