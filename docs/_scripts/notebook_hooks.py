@@ -430,20 +430,27 @@ def on_post_build(config):
         # Skip directory paths (ending with /)
         if page_old.endswith("/"):
             continue
-            
+
         page_old = page_old.replace(".ipynb", ".md")
-        page_new = page_new.replace(".ipynb", ".md")
-        page_new_before_hash, hash, suffix = page_new.partition("#")
         old_html_path = File(page_old, "", "", use_directory_urls).dest_path.replace(
             os.sep, "/"
         )
-        new_html_path = File(page_new_before_hash, "", "", True).url
-        new_html_path = (
-            posixpath.relpath(new_html_path, start=posixpath.dirname(old_html_path))
-            + hash
-            + suffix
-        )
-        _write_html(site_dir, old_html_path, new_html_path)
+
+        # Check if this is an external URL redirect
+        if isinstance(page_new, str) and page_new.startswith("http"):
+            # Handle external redirects - use the URL directly
+            _write_html(site_dir, old_html_path, page_new)
+        else:
+            # Handle internal redirects - calculate relative path
+            page_new = page_new.replace(".ipynb", ".md")
+            page_new_before_hash, hash, suffix = page_new.partition("#")
+            new_html_path = File(page_new_before_hash, "", "", True).url
+            new_html_path = (
+                posixpath.relpath(new_html_path, start=posixpath.dirname(old_html_path))
+                + hash
+                + suffix
+            )
+            _write_html(site_dir, old_html_path, new_html_path)
 
     # Create root index.html redirect
     root_redirect_html = """<!doctype html>
