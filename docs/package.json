@@ -8,6 +8,5 @@
   },
   "devDependencies": {
     "typedoc": "patch:typedoc@npm%3A0.28.11#~/.yarn/patches/typedoc-npm-0.28.11-18b71eb2e0.patch"
-  },
-  "version": null
+  }
 }
