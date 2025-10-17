@@ -11,10 +11,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { findLast, unique } from "./utils.js";
-import { StreamError } from "./errors.js";
-import { getBranchContext } from "./branching.js";
-import { EventStreamEvent, StreamManager } from "./manager.js";
+import { findLast, unique } from "../ui/utils.js";
+import { StreamError } from "../ui/errors.js";
+import { getBranchContext } from "../ui/branching.js";
+import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   BagTemplate,
   UseStreamOptions,
@@ -26,12 +26,13 @@ import type {
   RunCallbackMeta,
   SubmitOptions,
   MessageMetadata,
+  UseStreamThread,
 } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
 import type { Message } from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
-import { MessageTupleManager } from "./messages.js";
+import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
 
 function getFetchHistoryKey(
@@ -63,16 +64,19 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   threadId: string | undefined | null,
   limit: boolean | number,
   options: {
+    passthrough: boolean;
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
-) {
+): UseStreamThread<StateType> {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
+    key: string | undefined;
     data: ThreadState<StateType>[] | undefined;
     error: unknown | undefined;
     isLoading: boolean;
   }>(() => ({
+    key: undefined,
     data: undefined,
     error: undefined,
     isLoading: threadId != null,
@@ -89,27 +93,40 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       threadId: string | undefined | null,
       limit: boolean | number
     ): Promise<ThreadState<StateType>[]> => {
-      if (threadId != null) {
-        const client = clientRef.current;
+      // If only passthrough is enabled, don't fetch history
+      if (options.passthrough) return Promise.resolve([]);
 
-        setState((state) => ({ ...state, isLoading: true }));
+      const client = clientRef.current;
+      const key = getFetchHistoryKey(client, threadId, limit);
+
+      if (threadId != null) {
+        setState((state) => {
+          if (state.key === key) return { ...state, isLoading: true };
+          return { key, data: undefined, error: undefined, isLoading: true };
+        });
         return fetchHistory<StateType>(client, threadId, { limit }).then(
           (data) => {
-            setState({ data, error: undefined, isLoading: false });
+            setState((state) => {
+              if (state.key !== key) return state;
+              return { key, data, error: undefined, isLoading: false };
+            });
             return data;
           },
           (error) => {
-            setState(({ data }) => ({ data, error, isLoading: false }));
+            setState((state) => {
+              if (state.key !== key) return state;
+              return { key, data: state.data, error, isLoading: false };
+            });
             onErrorRef.current?.(error);
             return Promise.reject(error);
           }
         );
       }
 
-      setState({ data: undefined, error: undefined, isLoading: false });
+      setState({ key, data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
-    []
+    [options.passthrough]
   );
 
   useEffect(() => {
@@ -245,10 +262,17 @@ export function useStreamLGP<
       ? options.fetchStateHistory.limit ?? false
       : options.fetchStateHistory ?? false;
 
-  const history = useThreadHistory<StateType>(client, threadId, historyLimit, {
-    submittingRef: threadIdStreamingRef,
-    onError: options.onError,
-  });
+  const builtInHistory = useThreadHistory<StateType>(
+    client,
+    threadId,
+    historyLimit,
+    {
+      passthrough: options.experimental_thread != null,
+      submittingRef: threadIdStreamingRef,
+      onError: options.onError,
+    }
+  );
+  const history = options.experimental_thread ?? builtInHistory;
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -261,7 +285,7 @@ export function useStreamLGP<
   };
 
   const [branch, setBranch] = useState<string>("");
-  const branchContext = getBranchContext(branch, history.data);
+  const branchContext = getBranchContext(branch, history.data ?? undefined);
 
   const historyValues =
     branchContext.threadHead?.values ??
@@ -345,23 +369,34 @@ export function useStreamLGP<
         : ""
     );
 
-    stream.setStreamValues(() => {
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...historyValues,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(historyValues)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...historyValues };
-    });
-
     // When `fetchStateHistory` is requested, thus we assume that branching
     // is enabled. We then need to include the implicit branch.
     const includeImplicitBranch =
       historyLimit === true || typeof historyLimit === "number";
+
+    const shouldRefetch =
+      // We're expecting the whole thread state in onFinish
+      options.onFinish != null ||
+      // We're fetching history, thus we need the latest checkpoint
+      // to ensure we're not accidentally submitting to a wrong branch
+      includeImplicitBranch;
+
+    stream.setStreamValues(() => {
+      const prev = shouldRefetch
+        ? historyValues
+        : { ...historyValues, ...stream.values };
+
+      if (submitOptions?.optimisticValues != null) {
+        return {
+          ...prev,
+          ...(typeof submitOptions.optimisticValues === "function"
+            ? submitOptions.optimisticValues(prev)
+            : submitOptions.optimisticValues),
+        };
+      }
+
+      return { ...prev };
+    });
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
@@ -462,16 +497,10 @@ export function useStreamLGP<
 
         async onSuccess() {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-          const shouldRefetch =
-            // We're expecting the whole thread state in onFinish
-            options.onFinish != null ||
-            // We're fetching history, thus we need the latest checkpoint
-            // to ensure we're not accidentally submitting to a wrong branch
-            includeImplicitBranch;
 
           if (shouldRefetch) {
             const newHistory = await history.mutate(usableThreadId!);
-            const lastHead = newHistory.at(0);
+            const lastHead = newHistory?.at(0);
             if (lastHead) {
               // We now have the latest update from /history
               // Thus we can clear the local stream state
@@ -526,7 +555,7 @@ export function useStreamLGP<
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
           const newHistory = await history.mutate(threadId);
-          const lastHead = newHistory.at(0);
+          const lastHead = newHistory?.at(0);
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);
         },
         onError(error) {

@@ -7,7 +7,7 @@ import { z } from "zod";
 import * as schemas from "../schemas.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
 import { threads } from "../storage/context.mjs";
-import type { RunnableConfig } from "../storage/types.mjs";
+import type { RunnableConfig, ThreadSelectField } from "../storage/types.mjs";
 import { jsonExtra } from "../utils/hono.mjs";
 
 const api = new Hono();
@@ -52,20 +52,29 @@ api.post(
         offset: payload.offset ?? 0,
         sort_by: payload.sort_by ?? "created_at",
         sort_order: payload.sort_order ?? "desc",
+        select: payload.select as ThreadSelectField[],
       },
       c.var.auth
     )) {
-      result.push({
-        ...item.thread,
-        created_at: item.thread.created_at.toISOString(),
-        updated_at: item.thread.updated_at.toISOString(),
-      });
+      result.push(
+        Object.fromEntries(
+          Object.entries(item.thread).filter(
+            ([k]) => !payload.select || payload.select.includes(k)
+          )
+        )
+      );
       // Only set total if it's the first item
       if (total === 0) {
         total = item.total;
       }
     }
-    c.res.headers.set("X-Pagination-Total", total.toString());
+    const nextOffset = (payload.offset ?? 0) + total;
+    if (total === payload.limit) {
+      c.res.headers.set("X-Pagination-Next", nextOffset.toString());
+      c.res.headers.set("X-Pagination-Total", (nextOffset + 1).toString());
+    } else {
+      c.res.headers.set("X-Pagination-Total", nextOffset.toString());
+    }
     return jsonExtra(c, result);
   }
 );

@@ -1,5 +1,29 @@
 # @langchain/langgraph-sdk
 
+## 0.1.10
+
+### Patch Changes
+
+- 47cdce7: Fix stale values being received by optimistic values callback in `stream.submit(...)`
+
+## 0.1.9
+
+### Patch Changes
+
+- 02beb41: Add support for creating stateless runs
+
+## 0.1.8
+
+### Patch Changes
+
+- 90dcb8b: Add support for managing thread state manually outside of useStream hook via `experimental_thread` option
+
+## 0.1.7
+
+### Patch Changes
+
+- bbc90e6: Fix thread history state being kept stale when changing `thread_id`
+
 ## 0.1.6
 
 ### Patch Changes

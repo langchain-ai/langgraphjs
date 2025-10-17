@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { getBranchSequence } from "../react/branching.js";
+import { getBranchSequence } from "./branching.js";
 import { ThreadState } from "../schema.js";
 
 const history = [

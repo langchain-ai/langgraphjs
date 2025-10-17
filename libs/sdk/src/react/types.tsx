@@ -26,7 +26,7 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { Sequence } from "./branching.js";
+import type { Sequence } from "../ui/branching.js";
 
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
   /**
@@ -92,6 +92,15 @@ export type GetCustomEventType<Bag extends BagTemplate> = Bag extends {
 export interface RunCallbackMeta {
   run_id: string;
   thread_id: string;
+}
+
+export interface UseStreamThread<StateType extends Record<string, unknown>> {
+  data: ThreadState<StateType>[] | null | undefined;
+  error: unknown;
+  isLoading: boolean;
+  mutate: (
+    mutateId?: string
+  ) => Promise<ThreadState<StateType>[] | null | undefined>;
 }
 
 export interface UseStreamOptions<
@@ -272,6 +281,12 @@ export interface UseStreamOptions<
    * @default true
    */
   fetchStateHistory?: boolean | { limit: number };
+
+  /**
+   * Manage the thread state externally.
+   * @experimental
+   */
+  experimental_thread?: UseStreamThread<StateType>;
 }
 
 interface RunMetadataStorage {

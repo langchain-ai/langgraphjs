@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { EventStreamEvent, StreamManager } from "./manager.js";
+import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   BagTemplate,
   GetUpdateType,
@@ -17,7 +17,7 @@ import type {
   CustomSubmitOptions,
 } from "./types.js";
 import type { Message } from "../types.messages.js";
-import { MessageTupleManager } from "./messages.js";
+import { MessageTupleManager } from "../ui/messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
