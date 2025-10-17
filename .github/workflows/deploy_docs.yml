@@ -1,7 +1,10 @@
-name: Deploy Docs Redirects
+name: Deploy Docs
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
   workflow_dispatch:
@@ -51,7 +54,13 @@ jobs:
         run: |
           yarn install --immutable --mode=skip-build
 
-      - name: Build site (redirects only)
+      - name: Build llms-text
+        run: |
+          source .venv/bin/activate
+          cd docs
+          make llms-text
+
+      - name: Build site
         run: |
           yarn build
           source .venv/bin/activate
@@ -72,3 +81,10 @@ jobs:
         if: github.ref == 'refs/heads/main'
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Deploy Pull Request Preview
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-preview-${{ github.event.number }}
+          path: ./docs/site/
