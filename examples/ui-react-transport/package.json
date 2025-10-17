@@ -13,10 +13,10 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.12.0",
-    "@langchain/core": "^1.0.0-alpha",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^0.4.4",
+    "@langchain/openai": "^1.0.0",
     "hono": "^4.8.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

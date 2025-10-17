@@ -13,7 +13,7 @@
     "test": "tsc"
   },
   "dependencies": {
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "typescript": "^5.0.0",

@@ -3,10 +3,10 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@langchain/anthropic": "^0.3.12",
-    "@langchain/core": "^1.0.0-alpha",
+    "@langchain/anthropic": "^1.0.0",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/tavily": "^0.1.5",
+    "@langchain/tavily": "^1.0.0",
     "dotenv": "^16.4.5",
     "langchain": "^1.0.0-alpha",
     "tslab": "^1.0.22",

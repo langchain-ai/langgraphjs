@@ -37,7 +37,7 @@
     "uuid": "^10.0.0"
   },
   "peerDependencies": {
-    "@langchain/core": ">=0.3.58 < 0.4.0 || ^1.0.0-alpha",
+    "@langchain/core": "^1.0.1",
     "zod": "^3.25.32 || ^4.1.0",
     "zod-to-json-schema": "^3.x"
   },
@@ -47,15 +47,15 @@
     }
   },
   "devDependencies": {
-    "@langchain/anthropic": "^0.3.12",
-    "@langchain/core": "^1.0.0-alpha",
+    "@langchain/anthropic": "^1.0.0",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^0.4.0",
+    "@langchain/openai": "^1.0.0",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
-    "@langchain/tavily": "^0.1.5",
+    "@langchain/tavily": "^1.0.0",
     "@swc/core": "^1.3.90",
     "@testing-library/dom": "^10.4.0",
     "@tsconfig/recommended": "^1.0.3",

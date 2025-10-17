@@ -54,18 +54,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/sdk@npm:^0.32.1":
-  version: 0.32.1
-  resolution: "@anthropic-ai/sdk@npm:0.32.1"
+"@anthropic-ai/sdk@npm:^0.65.0":
+  version: 0.65.0
+  resolution: "@anthropic-ai/sdk@npm:0.65.0"
   dependencies:
-    "@types/node": "npm:^18.11.18"
-    "@types/node-fetch": "npm:^2.6.4"
-    abort-controller: "npm:^3.0.0"
-    agentkeepalive: "npm:^4.2.1"
-    form-data-encoder: "npm:1.7.2"
-    formdata-node: "npm:^4.3.2"
-    node-fetch: "npm:^2.6.7"
-  checksum: 10/cd4ad0cf897164c61eb5b01639f5f3bccacfd161be42aa93578ab54668991ed1cae5506c7234230b8d5475db7093159d1161b41c58e79de734b36af2e84f48d0
+    json-schema-to-ts: "npm:^3.1.1"
+  peerDependencies:
+    zod: ^3.25.0 || ^4.0.0
+  peerDependenciesMeta:
+    zod:
+      optional: true
+  bin:
+    anthropic-ai-sdk: bin/cli
+  checksum: 10/d0bc94e94611645c3d439c8e89aece315574e4d8ccd59e87b8ef3aa1bd219130fe3839e387e2b80d68cef8c64d45e18f4c203d0a77e87dd05253b23bf411a474
   languageName: node
   linkType: hard
 
@@ -314,6 +315,13 @@ __metadata:
   dependencies:
     regenerator-runtime: "npm:^0.14.0"
   checksum: 10/9d7ff8e96abe3791047c1138789c742411e3ef19c4d7ca18ce916f83cec92c06ec5dc64401759f6dd1e377cf8a01bbd2c62e033eb7550f435cf6579768d0d4a5
+  languageName: node
+  linkType: hard
+
+"@babel/runtime@npm:^7.18.3":
+  version: 7.28.4
+  resolution: "@babel/runtime@npm:7.28.4"
+  checksum: 10/6c9a70452322ea80b3c9b2a412bcf60771819213a67576c8cec41e88a95bb7bf01fc983754cda35dc19603eef52df22203ccbf7777b9d6316932f9fb77c25163
   languageName: node
   linkType: hard
 
@@ -965,10 +973,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/agent_executor@workspace:examples/agent_executor"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/tavily": "npm:^1.0.0"
     dotenv: "npm:^16.4.5"
     langchain: "npm:^1.0.0-alpha"
     tslab: "npm:^1.0.22"
@@ -980,10 +988,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/chat_agent_executor_with_function_calling@workspace:examples/chat_agent_executor_with_function_calling"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/tavily": "npm:^1.0.0"
     dotenv: "npm:^16.4.5"
     langchain: "npm:^1.0.0-alpha"
     tslab: "npm:^1.0.22"
@@ -995,15 +1003,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/chatbot-simulation-evaluation@workspace:examples/chatbot-simulation-evaluation"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1023,15 +1031,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/chatbots@workspace:examples/chatbots"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1051,15 +1059,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/how-tos@workspace:examples/how-tos"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1079,15 +1087,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/multi_agent@workspace:examples/multi_agent"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1107,15 +1115,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/plan-and-execute@workspace:examples/plan-and-execute"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1135,15 +1143,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/quickstart@workspace:examples/quickstart"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1163,15 +1171,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/rag@workspace:examples/rag"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1191,15 +1199,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/reflection@workspace:examples/reflection"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1219,15 +1227,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/rewoo@workspace:examples/rewoo"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
-    "@langchain/groq": "npm:^0.1.3"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
+    "@langchain/groq": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
-    "@langchain/mistralai": "npm:^0.2.0"
-    "@langchain/ollama": "npm:^0.1.0"
-    "@langchain/openai": "npm:^0.4.0"
-    "@langchain/tavily": "npm:^0.1.5"
-    "@langchain/textsplitters": "npm:^0.1.0"
+    "@langchain/mistralai": "npm:^1.0.0"
+    "@langchain/ollama": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/tavily": "npm:^1.0.0"
+    "@langchain/textsplitters": "npm:^1.0.0"
     "@xenova/transformers": "npm:2.17.2"
     cheerio: "npm:^1.0.0"
     chromadb: "npm:^1.8.1"
@@ -1248,10 +1256,10 @@ __metadata:
   resolution: "@examples/ui-react-transport@workspace:examples/ui-react-transport"
   dependencies:
     "@hono/node-server": "npm:^1.12.0"
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/core": "npm:^1.0.1"
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
-    "@langchain/openai": "npm:^0.4.4"
+    "@langchain/openai": "npm:^1.0.0"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@vitejs/plugin-react": "npm:^4.4.1"
@@ -1270,11 +1278,11 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/ui-react@workspace:examples/ui-react"
   dependencies:
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/core": "npm:^1.0.1"
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-cli": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
-    "@langchain/openai": "npm:^0.4.4"
+    "@langchain/openai": "npm:^1.0.0"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@vitejs/plugin-react": "npm:^4.4.1"
@@ -1519,17 +1527,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/anthropic@npm:^0.3.12":
-  version: 0.3.12
-  resolution: "@langchain/anthropic@npm:0.3.12"
+"@langchain/anthropic@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/anthropic@npm:1.0.0"
   dependencies:
-    "@anthropic-ai/sdk": "npm:^0.32.1"
-    fast-xml-parser: "npm:^4.4.1"
-    zod: "npm:^3.22.4"
-    zod-to-json-schema: "npm:^3.22.4"
+    "@anthropic-ai/sdk": "npm:^0.65.0"
   peerDependencies:
-    "@langchain/core": ">=0.2.21 <0.4.0"
-  checksum: 10/f60607baa44e30bdf1802217b24ed8621d0cbfa0907666d6bb81b5230d09b04750aaf4e06c73b7e77dd148426b7ad0df48865dd0d6d77638230dec3149e103b3
+    "@langchain/core": ^1.0.0
+  checksum: 10/32e4fb01ed9d514fe2855b01b0539cbe1d0a2ef9eee6fd12b3884ffa3130924137fd9f9646cf64086a89f6db632f19139d7bb9c97f7fd129ec531ae9a0ea730e
   languageName: node
   linkType: hard
 
@@ -1583,9 +1588,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/core@npm:^1.0.0-alpha":
-  version: 1.0.0-alpha.5
-  resolution: "@langchain/core@npm:1.0.0-alpha.5"
+"@langchain/core@npm:^1.0.0, @langchain/core@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "@langchain/core@npm:1.0.1"
   dependencies:
     "@cfworker/json-schema": "npm:^4.0.2"
     ansi-styles: "npm:^5.0.0"
@@ -1598,21 +1603,18 @@ __metadata:
     p-retry: "npm:4"
     uuid: "npm:^10.0.0"
     zod: "npm:^3.25.76 || ^4"
-  checksum: 10/5eae37063f69dc8d9c2a5b92d49808386712c076ce6ebe792007a11bed713bdd81fd86bab31a304564e97a2fb3d45215ab3554219e05641f0f2e8ece7bd2f23a
+  checksum: 10/0028d2fe23beeae5975110500ba10d127162c1a9def3eaca655ce139ba133f70ee0bb41ff6a6eb91bea0a4fe2b347587cf55712d9cd224293b6e909dad4717b9
   languageName: node
   linkType: hard
 
-"@langchain/groq@npm:^0.1.3":
-  version: 0.1.3
-  resolution: "@langchain/groq@npm:0.1.3"
+"@langchain/groq@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/groq@npm:1.0.0"
   dependencies:
-    "@langchain/openai": "npm:~0.3.0"
-    groq-sdk: "npm:^0.5.0"
-    zod: "npm:^3.22.4"
-    zod-to-json-schema: "npm:^3.22.5"
+    groq-sdk: "npm:^0.19.0"
   peerDependencies:
-    "@langchain/core": ">=0.2.21 <0.4.0"
-  checksum: 10/38cff6b527ee5ecaca34cf30fc2ebb4efb57879e2a8829c022ca84dbec602fd6b3cd5fb21208e68c7d977ce22fd53df441e21d85375cf3e2e4bc1ec9cef591d0
+    "@langchain/core": ^1.0.0
+  checksum: 10/441b599d8a9aa2893ec2b3a4022ac9c0e763ba615ed60b60ed57ea8c829ea9f7e7de06bbecf590eeb39188956476a82f8c351e4e11d2493dc69edfd52397c7b9
   languageName: node
   linkType: hard
 
@@ -1623,7 +1625,7 @@ __metadata:
     "@babel/code-frame": "npm:^7.26.2"
     "@hono/node-server": "npm:^1.12.0"
     "@hono/zod-validator": "npm:^0.2.2"
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/core": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-checkpoint": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
@@ -1657,7 +1659,7 @@ __metadata:
     winston-console-format: "npm:^1.0.8"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ^0.3.59 || ^1.0.0-alpha
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha
     "@langchain/langgraph-checkpoint": ~0.0.16 || ^0.1.0
     "@langchain/langgraph-sdk": ~0.0.70 || ^0.1.0
@@ -1707,7 +1709,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1738,7 +1740,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1770,7 +1772,7 @@ __metadata:
     ulid: "npm:^2.3.0"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1801,7 +1803,7 @@ __metadata:
     typescript: "npm:^4.9.5 || ^5.4.5"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph-checkpoint": ^0.1.0
   languageName: unknown
   linkType: soft
@@ -1841,7 +1843,7 @@ __metadata:
     yargs: "npm:^17.7.2"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph-checkpoint": ^0.1.0
   bin:
     validate-checkpointer: ./bin/cli.js
@@ -1872,7 +1874,7 @@ __metadata:
     uuid: "npm:^10.0.0"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
   languageName: unknown
   linkType: soft
 
@@ -1916,7 +1918,7 @@ __metadata:
   resolution: "@langchain/langgraph-cua@workspace:libs/langgraph-cua"
   dependencies:
     "@langchain/langgraph": "workspace:*"
-    "@langchain/openai": "npm:^0.5.1"
+    "@langchain/openai": "npm:^1.0.0"
     "@langchain/scripts": "npm:^0.1.3"
     "@tsconfig/recommended": "npm:^1.0.3"
     "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
@@ -1938,9 +1940,9 @@ __metadata:
     vitest: "npm:^3.1.2"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ^0.3.43 || ^1.0.0-alpha
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph": ^0.2.57 || ^0.3.0 || ^0.4.0
-    "@langchain/openai": ">=0.5.1"
+    "@langchain/openai": ^1.0.0
   languageName: unknown
   linkType: soft
 
@@ -1976,7 +1978,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-sdk@workspace:libs/sdk"
   dependencies:
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/core": "npm:^1.0.1"
     "@langchain/scripts": "npm:^0.1.4"
     "@tsconfig/recommended": "npm:^1.0.2"
     "@types/node": "npm:^18.15.11"
@@ -2001,7 +2003,7 @@ __metadata:
     uuid: "npm:^9.0.0"
     vitest: "npm:^3.1.2"
   peerDependencies:
-    "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     react: ^18 || ^19
     react-dom: ^18 || ^19
   peerDependenciesMeta:
@@ -2019,7 +2021,7 @@ __metadata:
   resolution: "@langchain/langgraph-supervisor@workspace:libs/langgraph-supervisor"
   dependencies:
     "@langchain/langgraph": "workspace:*"
-    "@langchain/openai": "npm:^0.4.4"
+    "@langchain/openai": "npm:^1.0.0"
     "@langchain/scripts": "npm:^0.1.3"
     "@tsconfig/recommended": "npm:^1.0.3"
     "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
@@ -2040,7 +2042,7 @@ __metadata:
     vitest: "npm:^3.1.2"
     zod: "npm:^3.25.32"
   peerDependencies:
-    "@langchain/core": ^0.3.58 || ^1.0.0-alpha
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph": ^0.2.72 || ^0.3.0 || ^0.4.0
   languageName: unknown
   linkType: soft
@@ -2050,7 +2052,7 @@ __metadata:
   resolution: "@langchain/langgraph-swarm@workspace:libs/langgraph-swarm"
   dependencies:
     "@langchain/langgraph": "workspace:*"
-    "@langchain/openai": "npm:^0.4.4"
+    "@langchain/openai": "npm:^1.0.0"
     "@langchain/scripts": "npm:^0.1.3"
     "@tsconfig/recommended": "npm:^1.0.3"
     "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
@@ -2070,7 +2072,7 @@ __metadata:
     vitest: "npm:^3.1.2"
     zod: "npm:^3.23.8"
   peerDependencies:
-    "@langchain/core": ^0.3.40 || ^1.0.0-alpha
+    "@langchain/core": ^1.0.1
     "@langchain/langgraph": ^0.2.53 || ^0.3.0 || ^0.4.0
   languageName: unknown
   linkType: soft
@@ -2099,15 +2101,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph@workspace:libs/langgraph"
   dependencies:
-    "@langchain/anthropic": "npm:^0.3.12"
-    "@langchain/core": "npm:^1.0.0-alpha"
+    "@langchain/anthropic": "npm:^1.0.0"
+    "@langchain/core": "npm:^1.0.1"
     "@langchain/langgraph-checkpoint": "workspace:*"
     "@langchain/langgraph-checkpoint-postgres": "workspace:*"
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
-    "@langchain/openai": "npm:^0.4.0"
+    "@langchain/openai": "npm:^1.0.0"
     "@langchain/scripts": "npm:>=0.1.3 <0.2.0"
-    "@langchain/tavily": "npm:^0.1.5"
+    "@langchain/tavily": "npm:^1.0.0"
     "@swc/core": "npm:^1.3.90"
     "@testing-library/dom": "npm:^10.4.0"
     "@tsconfig/recommended": "npm:^1.0.3"
@@ -2138,7 +2140,7 @@ __metadata:
     vitest: "npm:^3.1.2"
     zod-to-json-schema: "npm:^3.22.4"
   peerDependencies:
-    "@langchain/core": ">=0.3.58 < 0.4.0 || ^1.0.0-alpha"
+    "@langchain/core": ^1.0.1
     zod: ^3.25.32 || ^4.1.0
     zod-to-json-schema: ^3.x
   peerDependenciesMeta:
@@ -2147,85 +2149,40 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/mistralai@npm:^0.2.0":
-  version: 0.2.0
-  resolution: "@langchain/mistralai@npm:0.2.0"
+"@langchain/mistralai@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/mistralai@npm:1.0.0"
   dependencies:
     "@mistralai/mistralai": "npm:^1.3.1"
     uuid: "npm:^10.0.0"
-    zod: "npm:^3.23.8"
-    zod-to-json-schema: "npm:^3.22.4"
   peerDependencies:
-    "@langchain/core": ">=0.3.7 <0.4.0"
-  checksum: 10/4eef5208b3bfa8f37e74458fce4d5fe9ca5a8a39043c574c82d39807a7a154a4e385deeeef6dfcbbe5c937d6ac6a1d5d033fc920247a27e040c21035722fa3d3
+    "@langchain/core": ^1.0.0
+  checksum: 10/c0344f54f0e16de5a3629073ddc78e245f2dabdc28575ae7f6aec470b57d0bc28440467dc8861cbc48317b9d0765661c387187411e045c113b8621f204d88700
   languageName: node
   linkType: hard
 
-"@langchain/ollama@npm:^0.1.0":
-  version: 0.1.0
-  resolution: "@langchain/ollama@npm:0.1.0"
+"@langchain/ollama@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/ollama@npm:1.0.0"
   dependencies:
-    ollama: "npm:^0.5.6"
+    ollama: "npm:^0.5.12"
     uuid: "npm:^10.0.0"
   peerDependencies:
-    "@langchain/core": ">=0.2.21 <0.4.0"
-  checksum: 10/53d32eaea2a7b4425201a850fed58346515b3adc021fc6355b60e6a2ae7b68767e462d1f52c2b52899e2c8d39cc73d18f0989ed502e43fb817df1e1d68afba6a
+    "@langchain/core": ^1.0.0
+  checksum: 10/a610ab513f81400d1e3d193680775d73b2c6a4e93332b189ba9563a68dfea7e9ab84191c33815a76ffca88f6e9c141f1837961a47a900c9f24f9078ec064cad7
   languageName: node
   linkType: hard
 
-"@langchain/openai@npm:^0.4.0":
-  version: 0.4.2
-  resolution: "@langchain/openai@npm:0.4.2"
+"@langchain/openai@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/openai@npm:1.0.0"
   dependencies:
     js-tiktoken: "npm:^1.0.12"
-    openai: "npm:^4.77.0"
-    zod: "npm:^3.22.4"
-    zod-to-json-schema: "npm:^3.22.3"
+    openai: "npm:^6.3.0"
+    zod: "npm:^3.25.76 || ^4"
   peerDependencies:
-    "@langchain/core": ">=0.3.29 <0.4.0"
-  checksum: 10/8be655ce71e33dfd62b8b25c9dedce1e30a29593b5e213e161763eee3f51366f988987049fff29a1a6123405586767af93d34e7723ed82f264d3cd2689dc7995
-  languageName: node
-  linkType: hard
-
-"@langchain/openai@npm:^0.4.4":
-  version: 0.4.4
-  resolution: "@langchain/openai@npm:0.4.4"
-  dependencies:
-    js-tiktoken: "npm:^1.0.12"
-    openai: "npm:^4.77.0"
-    zod: "npm:^3.22.4"
-    zod-to-json-schema: "npm:^3.22.3"
-  peerDependencies:
-    "@langchain/core": ">=0.3.39 <0.4.0"
-  checksum: 10/7242c9b1b3195b928635ab9cb2808b5fb82ae9f34ad159b7540955993a1bde5b96037eff1c3f3c12600c10fe45fec817fa6f9ce4e59ec6b5f354759cb138a215
-  languageName: node
-  linkType: hard
-
-"@langchain/openai@npm:^0.5.1":
-  version: 0.5.1
-  resolution: "@langchain/openai@npm:0.5.1"
-  dependencies:
-    js-tiktoken: "npm:^1.0.12"
-    openai: "npm:^4.87.3"
-    zod: "npm:^3.22.4"
-    zod-to-json-schema: "npm:^3.22.3"
-  peerDependencies:
-    "@langchain/core": ">=0.3.39 <0.4.0"
-  checksum: 10/1c9400efe0b0ca73db2ee51b2eb3a5684df96c27eb34530adce5df38b327119506c76f2f067f1354fd6e2d7ad00bd66b737485ac759fd752fd1c7c63b1d15529
-  languageName: node
-  linkType: hard
-
-"@langchain/openai@npm:~0.3.0":
-  version: 0.3.0
-  resolution: "@langchain/openai@npm:0.3.0"
-  dependencies:
-    js-tiktoken: "npm:^1.0.12"
-    openai: "npm:^4.57.3"
-    zod: "npm:^3.22.4"
-    zod-to-json-schema: "npm:^3.22.3"
-  peerDependencies:
-    "@langchain/core": ">=0.2.26 <0.4.0"
-  checksum: 10/e84e90ec9989f4b57f5c7148262707affaea83a61fd795ff550587404c2c0baa58b83972c7057d17c2d36e0a88bc66980db410e2e55a455d9d3fb3cc1cc5827d
+    "@langchain/core": ^1.0.0
+  checksum: 10/79e6f4fc097af4cabc97765bdb1d86443321cbbab4630ff86ee3d1775b48e11cb1706417ef9b69c1193b4e6bea0ced5aebf726ffa2c642b3a988aaec33cb52aa
   languageName: node
   linkType: hard
 
@@ -2252,14 +2209,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/tavily@npm:^0.1.5":
-  version: 0.1.5
-  resolution: "@langchain/tavily@npm:0.1.5"
+"@langchain/tavily@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/tavily@npm:1.0.0"
   dependencies:
-    zod: "npm:^3.25.32"
+    zod: "npm:^3.25.76 || ^4"
   peerDependencies:
-    "@langchain/core": ">=0.3.58 <0.4.0"
-  checksum: 10/7a689dd343197ae3918228c6b94fb8617f8509520c6f1aa6ebb16f02ae59b794e496075473bfa259e47111b192644df1a867845fa47147a9d9263864eb04c12e
+    "@langchain/core": ^1.0.0
+  checksum: 10/b73126c535319ae621a9117a02016e422bbf853197443e3e07101ca862610a49240c2ea6692dc69ea3b449fda6931366b4bd2ef14647890937e8e9fd51c76c01
   languageName: node
   linkType: hard
 
@@ -2274,14 +2231,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/textsplitters@npm:^0.1.0":
-  version: 0.1.0
-  resolution: "@langchain/textsplitters@npm:0.1.0"
+"@langchain/textsplitters@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@langchain/textsplitters@npm:1.0.0"
   dependencies:
     js-tiktoken: "npm:^1.0.12"
   peerDependencies:
-    "@langchain/core": ">=0.2.21 <0.4.0"
-  checksum: 10/87121ec5ad003834ca5b5d1cb6c949c0744df3411011546dedf7bc8e04e2572a9663aadf2d70c25acdf7364845e00c30c039b610ff19b3f15429adcd059838b3
+    "@langchain/core": ^1.0.0
+  checksum: 10/09ef6ad7c36d5420438b841291ad549f92f398c552dd2c0d758a465411aa6ca605a05cb7baf2b9692ccd44d1250d107b7e6ae18cfd1444d77ecadc8c1071113d
   languageName: node
   linkType: hard
 
@@ -8034,17 +7991,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fast-xml-parser@npm:^4.4.1":
-  version: 4.4.1
-  resolution: "fast-xml-parser@npm:4.4.1"
-  dependencies:
-    strnum: "npm:^1.0.5"
-  bin:
-    fxparser: src/cli/cli.js
-  checksum: 10/0c05ab8703630d8c857fafadbd78d0020d3a8e54310c3842179cd4a0d9d97e96d209ce885e91241f4aa9dd8dfc2fd924a682741a423d65153cad34da2032ec44
-  languageName: node
-  linkType: hard
-
 "fastq@npm:^1.6.0":
   version: 1.17.1
   resolution: "fastq@npm:1.17.1"
@@ -8619,9 +8565,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"groq-sdk@npm:^0.5.0":
-  version: 0.5.0
-  resolution: "groq-sdk@npm:0.5.0"
+"groq-sdk@npm:^0.19.0":
+  version: 0.19.0
+  resolution: "groq-sdk@npm:0.19.0"
   dependencies:
     "@types/node": "npm:^18.11.18"
     "@types/node-fetch": "npm:^2.6.4"
@@ -8630,8 +8576,7 @@ __metadata:
     form-data-encoder: "npm:1.7.2"
     formdata-node: "npm:^4.3.2"
     node-fetch: "npm:^2.6.7"
-    web-streams-polyfill: "npm:^3.2.1"
-  checksum: 10/8eb6d1e9c6fa00c714fa04b24515778c402d92a4ffa8bc29dc43d4c40f4f26480920b5217b078f6f051d3e4d4f6e081ed3efd799b7d752eaad450a4128ed1b80
+  checksum: 10/6af436ce0f1e02bc15ce9eab9e526e348eca4038dca6fab6670b29ae377257b4fdf60715222a9e14c3cc2e99bc6cc1f029678867e8c14c86b1bfcd776b9315f2
   languageName: node
   linkType: hard
 
@@ -9510,6 +9455,16 @@ __metadata:
   version: 3.0.1
   resolution: "json-buffer@npm:3.0.1"
   checksum: 10/82876154521b7b68ba71c4f969b91572d1beabadd87bd3a6b236f85fbc7dc4695089191ed60bb59f9340993c51b33d479f45b6ba9f3548beb519705281c32c3c
+  languageName: node
+  linkType: hard
+
+"json-schema-to-ts@npm:^3.1.1":
+  version: 3.1.1
+  resolution: "json-schema-to-ts@npm:3.1.1"
+  dependencies:
+    "@babel/runtime": "npm:^7.18.3"
+    ts-algebra: "npm:^2.0.0"
+  checksum: 10/9fd0490279d36ff8b4604cc10632df05e4e5f5ee1d0a77841c927623fc1e636c47eb4ace488018c4e9a2e7e5dde5520d0870e06dfc84b930d9c98c6eacd0f041
   languageName: node
   linkType: hard
 
@@ -10746,12 +10701,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ollama@npm:^0.5.6":
-  version: 0.5.8
-  resolution: "ollama@npm:0.5.8"
+"ollama@npm:^0.5.12":
+  version: 0.5.18
+  resolution: "ollama@npm:0.5.18"
   dependencies:
     whatwg-fetch: "npm:^3.6.20"
-  checksum: 10/f35622aa05adb75c90142cd3136f581f75d62fed7822150292f8a7f9f34a8ce56073f4982a5ce10150aa096cc43f368f9b5521cc249229105262f4b56f3077b8
+  checksum: 10/819bf0aa9d25cc54b2a73218c254e3b616185a303b1718ea28996413fb658a0d5475bcfc1f9490b0f14e2f34c2603190c6fdd3d2f2791fcdc7567e3e6e67d866
   languageName: node
   linkType: hard
 
@@ -10833,7 +10788,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"openai@npm:^4.57.3, openai@npm:^4.77.0, openai@npm:^4.87.3":
+"openai@npm:^4.87.3":
   version: 4.104.0
   resolution: "openai@npm:4.104.0"
   dependencies:
@@ -10855,6 +10810,23 @@ __metadata:
   bin:
     openai: bin/cli
   checksum: 10/e1bdfea7b58f6d6cc0c2787254e9ae0395c7cb78b6ad4383c2777fd929ff43d2cb614c12ff7aaef04e260a6b48f3bc15f3c864abb9df35cfc7594e6aa46d4858
+  languageName: node
+  linkType: hard
+
+"openai@npm:^6.3.0":
+  version: 6.5.0
+  resolution: "openai@npm:6.5.0"
+  peerDependencies:
+    ws: ^8.18.0
+    zod: ^3.25 || ^4.0
+  peerDependenciesMeta:
+    ws:
+      optional: true
+    zod:
+      optional: true
+  bin:
+    openai: bin/cli
+  checksum: 10/a76071690d434d67cc1a44347e77db6626d2fe21e2eddc776a183fab2770b6a1d05ab6f7bfab276602478cb5dc7cf232f9ed267553f4fc3db5b155ec82349b54
   languageName: node
   linkType: hard
 
@@ -13195,13 +13167,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"strnum@npm:^1.0.5":
-  version: 1.0.5
-  resolution: "strnum@npm:1.0.5"
-  checksum: 10/d3117975db8372d4d7b2c07601ed2f65bf21cc48d741f37a8617b76370d228f2ec26336e53791ebc3638264d23ca54e6c241f57f8c69bd4941c63c79440525ca
-  languageName: node
-  linkType: hard
-
 "superjson@npm:^2.2.2":
   version: 2.2.2
   resolution: "superjson@npm:2.2.2"
@@ -13597,6 +13562,13 @@ __metadata:
   version: 1.4.1
   resolution: "triple-beam@npm:1.4.1"
   checksum: 10/2e881a3e8e076b6f2b85b9ec9dd4a900d3f5016e6d21183ed98e78f9abcc0149e7d54d79a3f432b23afde46b0885bdcdcbff789f39bc75de796316961ec07f61
+  languageName: node
+  linkType: hard
+
+"ts-algebra@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "ts-algebra@npm:2.0.0"
+  checksum: 10/b970eef64ca9594a77337e03b9c1732c1b7a0d2c4d316638b654e921a47b40c4cc42f41821445e9e54408d5dfdf4ecca27ffa59554373033b9c92dee8b52066d
   languageName: node
   linkType: hard
 
@@ -14447,13 +14419,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"web-streams-polyfill@npm:^3.2.1":
-  version: 3.3.3
-  resolution: "web-streams-polyfill@npm:3.3.3"
-  checksum: 10/8e7e13501b3834094a50abe7c0b6456155a55d7571312b89570012ef47ec2a46d766934768c50aabad10a9c30dd764a407623e8bfcc74fcb58495c29130edea9
-  languageName: node
-  linkType: hard
-
 "webidl-conversions@npm:^3.0.0":
   version: 3.0.1
   resolution: "webidl-conversions@npm:3.0.1"
@@ -14877,7 +14842,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod-to-json-schema@npm:^3.22.3, zod-to-json-schema@npm:^3.22.4, zod-to-json-schema@npm:^3.22.5, zod-to-json-schema@npm:^3.23.2, zod-to-json-schema@npm:^3.24.0":
+"zod-to-json-schema@npm:^3.22.4, zod-to-json-schema@npm:^3.23.2, zod-to-json-schema@npm:^3.24.0":
   version: 3.24.5
   resolution: "zod-to-json-schema@npm:3.24.5"
   peerDependencies:
@@ -14886,7 +14851,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.22.4, zod@npm:^3.23.8, zod@npm:^3.24.0, zod@npm:^3.25.32, zod@npm:^3.25.76 || ^4":
+"zod@npm:^3.23.8, zod@npm:^3.24.0, zod@npm:^3.25.32, zod@npm:^3.25.76 || ^4":
   version: 3.25.76
   resolution: "zod@npm:3.25.76"
   checksum: 10/f0c963ec40cd96858451d1690404d603d36507c1fc9682f2dae59ab38b578687d542708a7fdbf645f77926f78c9ed558f57c3d3aa226c285f798df0c4da16995
