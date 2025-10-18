@@ -12,7 +12,7 @@ test("prebuilt agent", async () => {
 
   const app = createReactAgent({ llm: model, tools });
 
-  const graph = app.getGraph();
+  const graph = await app.getGraphAsync();
   const mermaid = graph.drawMermaid();
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;
@@ -40,7 +40,7 @@ test("graph with multiple sinks", async () => {
     .addConditionalEdges("inner1", async () => "inner2", ["inner2", "inner3"])
     .compile();
 
-  const graph = app.getGraph();
+  const graph = await app.getGraphAsync();
   const mermaid = graph.drawMermaid();
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;
@@ -77,7 +77,7 @@ test("graph with subgraphs", async () => {
     .addConditionalEdges("starter", async () => "final", ["inner", "final"])
     .compile({ interruptBefore: ["starter"] });
 
-  const graph = app.getGraph({ xray: true });
+  const graph = await app.getGraphAsync({ xray: true });
   const mermaid = graph.drawMermaid();
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;

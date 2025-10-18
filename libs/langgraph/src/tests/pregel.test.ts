@@ -5075,7 +5075,7 @@ graph TD;
         .addEdge("action", "agent")
         .compile();
 
-      expect(app.getGraph().toJSON()).toMatchObject({
+      expect((await app.getGraphAsync()).toJSON()).toMatchObject({
         nodes: expect.arrayContaining([
           {
             id: "__start__",
@@ -5238,7 +5238,7 @@ graph TD;
         .addEdge("action", "agent")
         .compile();
 
-      expect(app.getGraph().toJSON()).toMatchObject({
+      expect((await app.getGraphAsync()).toJSON()).toMatchObject({
         nodes: expect.arrayContaining([
           expect.objectContaining({ id: "__start__", type: "schema" }),
           expect.objectContaining({ id: "__end__", type: "schema" }),
@@ -5941,7 +5941,7 @@ graph TD;
 
     const tool = toolBuilder.compile();
 
-    expect(tool.getGraph().toJSON()).toMatchObject({
+    expect((await tool.getGraphAsync()).toJSON()).toMatchObject({
       nodes: expect.arrayContaining([
         expect.objectContaining({ id: "__start__", type: "schema" }),
         {
