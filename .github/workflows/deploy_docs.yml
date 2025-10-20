@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Use Node.js 18.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 18.x
           cache: "yarn"
