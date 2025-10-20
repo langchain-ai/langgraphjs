@@ -1,29 +1,11 @@
-export {
-  type AgentExecutorState,
-  createAgentExecutor,
-} from "./agent_executor.js";
-export {
-  type FunctionCallingExecutorState,
-  createFunctionCallingExecutor,
-} from "./chat_agent_executor.js";
-export {
-  type AgentState,
-  type CreateReactAgentParams,
-  createReactAgent,
-  createReactAgentAnnotation,
-} from "./react_agent_executor.js";
-
-export {
-  type ToolExecutorArgs,
-  type ToolInvocationInterface,
-  ToolExecutor,
-} from "./tool_executor.js";
-export { ToolNode, toolsCondition, type ToolNodeOptions } from "./tool_node.js";
-export type {
-  HumanInterruptConfig,
-  ActionRequest,
-  HumanInterrupt,
-  HumanResponse,
-} from "./interrupt.js";
-export { withAgentName } from "./agentName.js";
-export type { AgentNameMode } from "./agentName.js";
+/**
+ * This package provides a canonical (non-scoped) package name for LangGraph.
+ *
+ * The `langgraph` package re-exports all functionality from `@langchain/langgraph`
+ * - `npm install langgraph` (canonical name)
+ * - `npm install @langchain/langgraph` (scoped name)
+ *
+ * Both packages provide identical exports, with this package serving as
+ * a convenience wrapper for those who prefer the simpler package name.
+ */
+export * from "@langchain/langgraph/prebuilt";
