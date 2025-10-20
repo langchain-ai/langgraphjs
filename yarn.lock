@@ -9588,6 +9588,18 @@ __metadata:
   resolution: "langgraph@workspace:libs/langgraph"
   dependencies:
     "@langchain/langgraph": "workspace:*"
+    "@tsconfig/recommended": "npm:^1.0.3"
+    "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
+    "@typescript-eslint/parser": "npm:^6.12.0"
+    eslint: "npm:^8.33.0"
+    eslint-config-airbnb-base: "npm:^15.0.0"
+    eslint-config-prettier: "npm:^8.6.0"
+    eslint-plugin-import: "npm:^2.29.1"
+    eslint-plugin-no-instanceof: "npm:^1.0.1"
+    eslint-plugin-prettier: "npm:^4.2.1"
+    prettier: "npm:^2.8.3"
+    rollup: "npm:^4.37.0"
+    typescript: "npm:^4.9.5 || ^5.4.5"
   peerDependencies:
     "@langchain/core": ^1.0.1
     zod: ^3.25.32 || ^4.1.0
