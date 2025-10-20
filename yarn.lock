@@ -9591,6 +9591,7 @@ __metadata:
     "@tsconfig/recommended": "npm:^1.0.3"
     "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
     "@typescript-eslint/parser": "npm:^6.12.0"
+    dpdm: "npm:^3.12.0"
     eslint: "npm:^8.33.0"
     eslint-config-airbnb-base: "npm:^15.0.0"
     eslint-config-prettier: "npm:^8.6.0"
