@@ -10,6 +10,7 @@ services:
       - ../../internal/environment_tests/test-exports-esbuild:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-esm:
@@ -25,6 +26,7 @@ services:
       - ../../internal/environment_tests/test-exports-esm:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-tsc:
@@ -37,6 +39,7 @@ services:
       - ../../internal/environment_tests/test-exports-tsc:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-cjs:
@@ -49,6 +52,7 @@ services:
       - ../../internal/environment_tests/test-exports-cjs:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-cf:
@@ -61,6 +65,7 @@ services:
       - ../../internal/environment_tests/test-exports-cf:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-vercel:
@@ -76,6 +81,7 @@ services:
       - ../../internal/environment_tests/test-exports-vercel:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-vite:
@@ -88,6 +94,7 @@ services:
       - ../../internal/environment_tests/test-exports-vite:/package
       - ../../internal/environment_tests/scripts:/scripts
       - ../../libs/langgraph:/langgraph
+      - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
     command: bash /scripts/docker-ci-entrypoint.sh
   success:

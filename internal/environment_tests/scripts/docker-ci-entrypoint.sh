@@ -14,9 +14,11 @@ cp -r ../package/!(node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo) .
 cp ../package/.[!.]* . 2>/dev/null || true
 
 mkdir -p ./libs/langgraph/
+mkdir -p ./libs/langgraph-core/
 mkdir -p ./libs/checkpoint/
 
 cp -r ../langgraph ./libs/
+cp -r ../langgraph-core ./libs/
 cp -r ../checkpoint ./libs/
 
 # copy cache

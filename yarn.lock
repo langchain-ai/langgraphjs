@@ -2108,9 +2108,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph@npm:^1.0.0-alpha, @langchain/langgraph@workspace:*, @langchain/langgraph@workspace:libs/langgraph":
+"@langchain/langgraph@npm:^1.0.0-alpha, @langchain/langgraph@workspace:*, @langchain/langgraph@workspace:libs/langgraph-core":
   version: 0.0.0-use.local
-  resolution: "@langchain/langgraph@workspace:libs/langgraph"
+  resolution: "@langchain/langgraph@workspace:libs/langgraph-core"
   dependencies:
     "@langchain/anthropic": "npm:^1.0.0"
     "@langchain/core": "npm:^1.0.1"
@@ -9583,23 +9583,31 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langgraph@workspace:.":
+"langgraph@workspace:libs/langgraph":
   version: 0.0.0-use.local
-  resolution: "langgraph@workspace:."
+  resolution: "langgraph@workspace:libs/langgraph"
   dependencies:
-    "@swc/core": "npm:^1.3.90"
+    "@langchain/langgraph": "workspace:*"
     "@tsconfig/recommended": "npm:^1.0.3"
-    "@types/d3": "npm:^7"
-    "@types/semver": "npm:^7"
-    cheerio: "npm:^1.0.0-rc.12"
-    cheminfo-types: "npm:^1.4.0"
-    d3: "npm:^7.9.0"
-    readline: "npm:^1.3.0"
-    semver: "npm:^7.6.3"
-    tslab: "npm:^1.0.21"
-    tsx: "npm:^4.19.3"
-    turbo: "npm:^2.5.4"
+    "@typescript-eslint/eslint-plugin": "npm:^6.12.0"
+    "@typescript-eslint/parser": "npm:^6.12.0"
+    dpdm: "npm:^3.12.0"
+    eslint: "npm:^8.33.0"
+    eslint-config-airbnb-base: "npm:^15.0.0"
+    eslint-config-prettier: "npm:^8.6.0"
+    eslint-plugin-import: "npm:^2.29.1"
+    eslint-plugin-no-instanceof: "npm:^1.0.1"
+    eslint-plugin-prettier: "npm:^4.2.1"
+    prettier: "npm:^2.8.3"
+    rollup: "npm:^4.37.0"
     typescript: "npm:^4.9.5 || ^5.4.5"
+  peerDependencies:
+    "@langchain/core": ^1.0.1
+    zod: ^3.25.32 || ^4.1.0
+    zod-to-json-schema: ^3.x
+  peerDependenciesMeta:
+    zod-to-json-schema:
+      optional: true
   languageName: unknown
   linkType: soft
 
@@ -12452,6 +12460,26 @@ __metadata:
   checksum: 10/35d5e83a69000ddd6c087015eb5f862943c53b6e20702575ef50aeb99ce99b864fa74cca630815eb97cdfe1f278f5602f782e55f227b32ac2301f2a5f1fc5373
   languageName: node
   linkType: hard
+
+"root-workspace-0b6124@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root-workspace-0b6124@workspace:."
+  dependencies:
+    "@swc/core": "npm:^1.3.90"
+    "@tsconfig/recommended": "npm:^1.0.3"
+    "@types/d3": "npm:^7"
+    "@types/semver": "npm:^7"
+    cheerio: "npm:^1.0.0-rc.12"
+    cheminfo-types: "npm:^1.4.0"
+    d3: "npm:^7.9.0"
+    readline: "npm:^1.3.0"
+    semver: "npm:^7.6.3"
+    tslab: "npm:^1.0.21"
+    tsx: "npm:^4.19.3"
+    turbo: "npm:^2.5.4"
+    typescript: "npm:^4.9.5 || ^5.4.5"
+  languageName: unknown
+  linkType: soft
 
 "rrweb-cssom@npm:^0.8.0":
   version: 0.8.0

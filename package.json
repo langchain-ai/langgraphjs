@@ -1,14 +1,9 @@
 {
-  "name": "langgraph",
   "private": true,
-  "description": "LangGraph",
-  "type": "module",
   "packageManager": "yarn@4.9.2",
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
@@ -35,8 +30,6 @@
     "format:check": "turbo run format:check",
     "release": "yarn workspaces foreach --all --no-private --topological --verbose npm publish --tolerate-republish --tag next"
   },
-  "author": "LangChain",
-  "license": "MIT",
   "devDependencies": {
     "@swc/core": "^1.3.90",
     "@tsconfig/recommended": "^1.0.3",
@@ -55,9 +48,5 @@
   "resolutions": {
     "cheerio": "^1.0.0-rc.12",
     "semver": "^7.0.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
   }
 }

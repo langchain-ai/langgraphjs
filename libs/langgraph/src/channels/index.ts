@@ -1,19 +1,11 @@
-export {
-  BaseChannel,
-  createCheckpoint,
-  emptyChannels as empty,
-} from "./base.js";
-export type { BinaryOperator } from "./binop.js";
-export { AnyValue } from "./any_value.js";
-export { LastValue, LastValueAfterFinish } from "./last_value.js";
-export {
-  type WaitForNames,
-  DynamicBarrierValue,
-} from "./dynamic_barrier_value.js";
-export { BinaryOperatorAggregate } from "./binop.js";
-export { EphemeralValue } from "./ephemeral_value.js";
-export {
-  NamedBarrierValue,
-  NamedBarrierValueAfterFinish,
-} from "./named_barrier_value.js";
-export { Topic } from "./topic.js";
+/**
+ * This package provides a canonical (non-scoped) package name for LangGraph.
+ *
+ * The `langgraph` package re-exports all functionality from `@langchain/langgraph`
+ * - `npm install langgraph` (canonical name)
+ * - `npm install @langchain/langgraph` (scoped name)
+ *
+ * Both packages provide identical exports, with this package serving as
+ * a convenience wrapper for those who prefer the simpler package name.
+ */
+export * from "@langchain/langgraph/channels";
