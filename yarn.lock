@@ -2141,7 +2141,7 @@ __metadata:
     eslint-plugin-prettier: "npm:^4.2.1"
     langchain: "npm:^1.0.0-alpha"
     pg: "npm:^8.13.0"
-    playwright: "npm:^1.51.0"
+    playwright: "npm:^1.55.1"
     prettier: "npm:^2.8.3"
     rollup: "npm:^4.37.0"
     tsx: "npm:^4.19.3"
@@ -11364,27 +11364,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"playwright-core@npm:1.51.0":
-  version: 1.51.0
-  resolution: "playwright-core@npm:1.51.0"
+"playwright-core@npm:1.56.1":
+  version: 1.56.1
+  resolution: "playwright-core@npm:1.56.1"
   bin:
     playwright-core: cli.js
-  checksum: 10/2e2bb4e9625a7a08d305078d383200d9f3457fc4c51d3fac9443b94a0b820233ebe0dc0434f77da96a8ce278bc9806463194066dec942d1ac0de001d4b325bfb
+  checksum: 10/df785eb3b3a8392b10dcde5f768e09b7fe459a7b06ed81180da69e048f2154b761f86d79572c2b62037a1f18a44e4ace72f5b6547f4f473b4ab13ab1d94007d2
   languageName: node
   linkType: hard
 
-"playwright@npm:^1.51.0":
-  version: 1.51.0
-  resolution: "playwright@npm:1.51.0"
+"playwright@npm:^1.55.1":
+  version: 1.56.1
+  resolution: "playwright@npm:1.56.1"
   dependencies:
     fsevents: "npm:2.3.2"
-    playwright-core: "npm:1.51.0"
+    playwright-core: "npm:1.56.1"
   dependenciesMeta:
     fsevents:
       optional: true
   bin:
     playwright: cli.js
-  checksum: 10/350f9e1cf8deff992f08d63aac88ed49aed1963d0b33a6f0a1354069734d028328acb3f156e25e57a78522bd3f42f687155ea3f39cb7fc4a83b15efce39b53f9
+  checksum: 10/f1743f93b26f1d497257771428d93f3c9ed2d75b00d935f0cd1556ff2dc61d47f2df8b381d752fbd2c47082b685f0ffe4cc4b7ba440d7b4ba3a08572aec58fba
   languageName: node
   linkType: hard
 
