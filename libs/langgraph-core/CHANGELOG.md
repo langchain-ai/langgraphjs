@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.0.1
+
+### Patch Changes
+
+- 4c4125c: undeprecate `ToolNode`
+
 ## 1.0.0
 
 ### Major Changes
