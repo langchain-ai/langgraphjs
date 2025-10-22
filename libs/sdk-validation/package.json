@@ -24,7 +24,7 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.4.1",
-    "hono": "^4.8.2",
+    "hono": "^4.10.2",
     "jsdom": "^26.1.0",
     "msw": "^2.8.2",
     "prettier": "^2.8.3",
