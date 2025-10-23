@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.0.1
+
+### Patch Changes
+
+- 610e1e1: Hotfix graph resolution for createAgent
+  - @langchain/langgraph-ui@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
