@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.0.2
+
+### Patch Changes
+
+- ebe5ae7: Add back support for older versions of LangChain / LangGraph
+  - @langchain/langgraph-ui@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes
