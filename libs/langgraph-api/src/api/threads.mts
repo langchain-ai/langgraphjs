@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { v4 as uuid4 } from "uuid";
 
-import { z } from "zod";
+import { z } from "zod/v3";
 import * as schemas from "../schemas.mjs";
 import { stateSnapshotToThreadState } from "../state.mjs";
 import { threads } from "../storage/context.mjs";

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -50,7 +50,7 @@
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
     "yaml": "^2.7.0",
-    "zod": "^3.23.8"
+    "zod": "^3.25.76 || ^4"
   },
   "devDependencies": {
     "@types/babel__code-frame": "^7.0.6",
