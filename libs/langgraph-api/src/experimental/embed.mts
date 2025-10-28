@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { Metadata, Run } from "../storage/types.mjs";
 import * as schemas from "../schemas.mjs";
 
-import { z } from "zod";
+import { z } from "zod/v3";
 import { streamState } from "../stream.mjs";
 import { serialiseAsDict, serializeError } from "../utils/serde.mjs";
 import { getDisconnectAbortSignal, jsonExtra } from "../utils/hono.mjs";

@@ -12,7 +12,7 @@ import meta from "./api/meta.mjs";
 
 import type { Ops, Store, StorageEnv } from "./storage/types.mjs";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { queue } from "./queue.mjs";
 import {
   logger,

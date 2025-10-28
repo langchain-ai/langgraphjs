@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 import * as uuid from "uuid";
 import type { AssistantsRepo } from "../storage/types.mjs";

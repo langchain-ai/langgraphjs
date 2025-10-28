@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { v4 as uuid4 } from "uuid";
-import { z } from "zod";
+import { z } from "zod/v3";
 import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
