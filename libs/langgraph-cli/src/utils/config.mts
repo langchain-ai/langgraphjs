@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { extname } from "node:path";
 
 const GraphPathSchema = z.string().refine((i) => i.includes(":"), {

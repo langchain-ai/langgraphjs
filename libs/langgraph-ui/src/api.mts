@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as bundler from "./bundler.mjs";

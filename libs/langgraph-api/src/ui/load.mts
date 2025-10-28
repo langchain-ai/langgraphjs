@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { Hono } from "hono";
 import { getMimeType } from "hono/utils/mime";
 import { zValidator } from "@hono/zod-validator";
