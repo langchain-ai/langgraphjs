@@ -1,5 +1,11 @@
 # @langchain/langgraph-ui
 
+## 1.0.3
+
+### Patch Changes
+
+- 6cd8ecb: Remove Zod 3.x dependency constraint to allow Zod 4.x and avoid installing duplicate Zod packages
+
 ## 1.0.2
 
 ## 1.0.1
