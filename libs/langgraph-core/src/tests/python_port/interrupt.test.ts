@@ -737,7 +737,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
             setTimeout(resolve, hangMsec);
           });
         }
-      }).rejects.toThrow("Abort");
+      }).rejects.toThrow(/aborted/i);
 
       expect(innerTaskCancelled).toBe(true);
     }
