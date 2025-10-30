@@ -28,9 +28,7 @@ import {
 } from "../../index.js";
 
 import { ToolInvocationError, ToolNode } from "../../prebuilt/tool_node.js";
-import {
-  MemorySaverAssertImmutable,
-} from "../../tests/utils.js";
+import { MemorySaverAssertImmutable } from "../../tests/utils.js";
 
 const searchSchema = z.object({
   query: z.string().describe("The query to search for."),

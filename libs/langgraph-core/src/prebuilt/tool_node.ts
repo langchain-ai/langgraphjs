@@ -1,10 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-instanceof/no-instanceof */
-import {
-  BaseMessage,
-  ToolMessage,
-  AIMessage,
-} from "@langchain/core/messages";
+import { BaseMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import {
   DynamicTool,
@@ -85,7 +81,7 @@ function mergeAbortSignals(
   if (!signal1 && !signal2) return undefined;
   if (!signal1) return signal2;
   if (!signal2) return signal1;
-  
+
   const { signal } = combineAbortSignals(signal1, signal2);
   return signal;
 }
@@ -243,11 +239,7 @@ export class ToolNode<
     super({
       name,
       tags,
-      func: (state, config) =>
-        this.run(
-          state as any,
-          config as RunnableConfig
-        ),
+      func: (state, config) => this.run(state as any, config as RunnableConfig),
     });
     this.tools = tools;
     this.handleToolErrors = handleToolErrors ?? this.handleToolErrors;
