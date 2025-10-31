@@ -76,11 +76,8 @@ describe("ToolNode", () => {
       })
     );
     await wrapper.invoke({}, { callbacks: callbackManager });
-    /**
-     * The original test was expecting `runnableStartCount` to be 2
-     * @todo(Christian): check in with @dqbd to see if this is expected behavior
-     */
-    expect(runnableStartCount).toEqual(1);
+    // RunnableLambda triggers handleChainStart and tool triggers handleToolStart
+    expect(runnableStartCount).toEqual(2);
   });
 
   it("Should work in a state graph", async () => {

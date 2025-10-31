@@ -239,6 +239,7 @@ export class ToolNode<
     super({
       name,
       tags,
+      trace: false,
       func: (state, config) => this.run(state as any, config as RunnableConfig),
     });
     this.tools = tools;
@@ -265,6 +266,9 @@ export class ToolNode<
       );
 
       if (ToolMessage.isInstance(output) || isCommand(output)) {
+        if (ToolMessage.isInstance(output) && !output.status) {
+          output.status = "success";
+        }
         return output as ToolMessage | Command;
       }
 
@@ -272,6 +276,7 @@ export class ToolNode<
         name: tool.name,
         content: typeof output === "string" ? output : JSON.stringify(output),
         tool_call_id: call.id!,
+        status: "success",
       });
     } catch (e: unknown) {
       /**
@@ -318,6 +323,7 @@ export class ToolNode<
           name: call.name,
           content: `${e}\n Please fix your mistakes.`,
           tool_call_id: call.id!,
+          status: "error",
         });
       }
 
