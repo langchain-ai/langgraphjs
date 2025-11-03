@@ -314,9 +314,9 @@ const queryToolWithInterrupt = tool(
     else if (response.type === "response") {
       const userFeedback = response.args;
       return userFeedback;
-    } else {
-      throw new Error(`Unsupported interrupt response type: ${response.type}`);
     }
+    
+    throw new Error(`Unsupported interrupt response type: ${response.type}`);
   },
   {
     name: queryTool.name,
