@@ -1,5 +1,27 @@
 # @langchain/langgraph-api
 
+## 1.0.3
+
+### Patch Changes
+
+- 6cd8ecb: Remove Zod 3.x dependency constraint to allow Zod 4.x and avoid installing duplicate Zod packages
+- Updated dependencies [6cd8ecb]
+  - @langchain/langgraph-ui@1.0.3
+
+## 1.0.2
+
+### Patch Changes
+
+- ebe5ae7: Add back support for older versions of LangChain / LangGraph
+  - @langchain/langgraph-ui@1.0.2
+
+## 1.0.1
+
+### Patch Changes
+
+- 610e1e1: Hotfix graph resolution for createAgent
+  - @langchain/langgraph-ui@1.0.1
+
 ## 1.0.0
 
 ### Major Changes

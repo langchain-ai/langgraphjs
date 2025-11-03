@@ -4,7 +4,7 @@ import type { ChildProcess } from "node:child_process";
 
 import { parse, populate } from "dotenv";
 import { watch } from "chokidar";
-import { z } from "zod";
+import { z } from "zod/v3";
 import open from "open";
 
 import { startCloudflareTunnel, type CloudflareTunnel } from "./cloudflare.mjs";

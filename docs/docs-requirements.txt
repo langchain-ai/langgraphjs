@@ -6,5 +6,6 @@ mkdocs-minify-plugin
 mkdocs-open-in-new-tab
 mkdocs-rss-plugin
 mkdocs-typedoc
+mkdocs-exclude-search
 markdown-include
 markdown-callouts

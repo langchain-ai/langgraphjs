@@ -1,6 +1,6 @@
 import { $ } from "execa";
 import * as yaml from "yaml";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { getExecaOptions } from "./shell.mjs";
 
 export const DEFAULT_POSTGRES_URI =

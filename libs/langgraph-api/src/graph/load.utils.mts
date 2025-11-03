@@ -55,6 +55,17 @@ export async function resolveGraph(
     return "compile" in graph && typeof graph.compile === "function";
   };
 
+  const isCompiledGraph = (
+    graph: GraphLike
+  ): graph is CompiledGraph<string> => {
+    if (typeof graph !== "object" || graph == null) return false;
+    return (
+      "builder" in graph &&
+      typeof graph.builder === "object" &&
+      graph.builder != null
+    );
+  };
+
   const graph: GraphUnknown = await import(
     pathToFileURL(sourceFile).toString()
   ).then((module) => module[exportSymbol || "default"]);
@@ -66,6 +77,11 @@ export async function resolveGraph(
 
       const afterResolve = (graphLike: GraphLike): CompiledGraph<string> => {
         const graph = isGraph(graphLike) ? graphLike.compile() : graphLike;
+
+        // TODO: hack, remove once LangChain 1.x createAgent is fixed
+        if (!isCompiledGraph(graph) && "graph" in graph) {
+          return (graph as { graph: CompiledGraph<string> }).graph;
+        }
         return graph;
       };
 
