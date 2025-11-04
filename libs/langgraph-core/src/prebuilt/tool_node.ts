@@ -148,12 +148,11 @@ function defaultHandleToolErrors(
   error: unknown,
   toolCall: ToolCall
 ): ToolMessage | undefined {
+  /**
+   * ToolInvocationError should not be caught by default handler and should be thrown
+   */
   if (error instanceof ToolInvocationError) {
-    return new ToolMessage({
-      content: error.message,
-      tool_call_id: toolCall.id!,
-      name: toolCall.name,
-    });
+    throw error;
   }
 
   /**
@@ -163,6 +162,7 @@ function defaultHandleToolErrors(
     content: `${error}\n Please fix your mistakes.`,
     tool_call_id: toolCall.id!,
     name: toolCall.name,
+    status: "error",
   });
 }
 
@@ -365,6 +365,13 @@ export class ToolNode<
     }
 
     /**
+     * ToolInvocationError should always be thrown, not handled
+     */
+    if (error instanceof ToolInvocationError) {
+      throw error;
+    }
+
+    /**
      * If error is from middleware and handleToolErrors is not true, bubble up
      * (default handler and false both re-raise middleware errors)
      */
@@ -397,6 +404,7 @@ export class ToolNode<
         name: call.name,
         content: `${error}\n Please fix your mistakes.`,
         tool_call_id: call.id!,
+        status: "error",
       });
     }
 
@@ -437,6 +445,9 @@ export class ToolNode<
         );
 
         if (ToolMessage.isInstance(output) || isCommand(output)) {
+          if (ToolMessage.isInstance(output) && !output.status) {
+            output.status = "success";
+          }
           return output as ToolMessage | Command;
         }
 
@@ -444,6 +455,7 @@ export class ToolNode<
           name: tool.name,
           content: typeof output === "string" ? output : JSON.stringify(output),
           tool_call_id: toolCall.id!,
+          status: "success",
         });
       } catch (e: unknown) {
         /**
@@ -475,11 +487,7 @@ export class ToolNode<
     /**
      * Find the tool instance to include in the request
      */
-    const tool = this.tools.find((t) => t.name === call.name);
-    if (!tool) {
-      throw new Error(`Tool "${call.name}" not found.`);
-    }
-
+    const tool = this.tools.find((t) => t.name === call.name)!;
     const request: ToolCallRequest = {
       toolCall: call,
       tool,
