@@ -436,12 +436,19 @@ def on_post_build(config):
         old_html_path = File(page_old, "", "", use_directory_urls).dest_path.replace(
             os.sep, "/"
         )
-        new_html_path = File(page_new_before_hash, "", "", True).url
-        new_html_path = (
-            posixpath.relpath(new_html_path, start=posixpath.dirname(old_html_path))
-            + hash
-            + suffix
-        )
+
+        # Check if page_new is an absolute URL (external redirect)
+        if page_new.startswith("http://") or page_new.startswith("https://"):
+            # Use the absolute URL as-is
+            new_html_path = page_new
+        else:
+            # Convert to relative path for internal redirects
+            new_html_path = File(page_new_before_hash, "", "", True).url
+            new_html_path = (
+                posixpath.relpath(new_html_path, start=posixpath.dirname(old_html_path))
+                + hash
+                + suffix
+            )
         _write_html(site_dir, old_html_path, new_html_path)
 
     # Create root index.html redirect
