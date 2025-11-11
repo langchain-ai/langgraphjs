@@ -416,6 +416,7 @@ export interface SubmitOptions<
   onDisconnect?: DisconnectMode;
   feedbackKeys?: string[];
   streamMode?: Array<StreamMode>;
+  runId?: string;
   optimisticValues?:
     | Partial<StateType>
     | ((prev: StateType) => Partial<StateType>);
