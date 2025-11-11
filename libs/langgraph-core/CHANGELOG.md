@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.0.2
+
+### Patch Changes
+
+- 4a6bde2: remove interrupt deprecations docs
+
 ## 1.0.1
 
 ### Patch Changes
