@@ -82,7 +82,7 @@
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
     "vite-plugin-node-polyfills": "^0.23.0",
-    "vitest": "^3.1.2",
+    "vitest": "^3.2.4",
     "zod-to-json-schema": "^3.22.4"
   },
   "publishConfig": {
