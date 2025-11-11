@@ -53,7 +53,7 @@ export async function spawnServer(
 - 🎨 Studio UI: \x1b[36m${studioUrl}\x1b[0m
 
 This in-memory server is designed for development and testing.
-For production use, please use LangGraph Cloud.
+For production use, please use LangSmith Deployment.
 
 `);
 

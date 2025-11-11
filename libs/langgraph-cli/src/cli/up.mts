@@ -83,7 +83,7 @@ builder
     logger.info("Starting LangGraph API server...");
     logger.warn(
       dedent`
-        For local dev, requires env var LANGSMITH_API_KEY with access to LangGraph Cloud closed beta.
+        For local dev, requires env var LANGSMITH_API_KEY with access to LangSmith Deployment.
         For production use, requires a license key in env var LANGGRAPH_CLOUD_LICENSE_KEY.
       `
     );
