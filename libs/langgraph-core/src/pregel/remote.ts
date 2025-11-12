@@ -124,7 +124,7 @@ const getStreamModes = (
  * APIs that implement the LangGraph Server API specification.
  *
  * For example, the `RemoteGraph` class can be used to call APIs from deployments
- * on LangGraph Cloud.
+ * on LangSmith Deployment.
  *
  * `RemoteGraph` behaves the same way as a `StateGraph` and can be used directly as
  * a node in another `StateGraph`.

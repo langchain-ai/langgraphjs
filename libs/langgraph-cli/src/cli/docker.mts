@@ -138,7 +138,7 @@ builder
           dedent`
             # Uncomment the following line to add your LangSmith API key
             # LANGSMITH_API_KEY=your-api-key
-            # Or if you have a LangGraph Cloud license key, then uncomment the following line:
+            # Or if you have a LangSmith Deployment license key, then uncomment the following line:
             # LANGGRAPH_CLOUD_LICENSE_KEY=your-license-key
             # Add any other environment variables go below...
           `

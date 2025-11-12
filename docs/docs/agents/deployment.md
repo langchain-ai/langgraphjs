@@ -94,4 +94,4 @@ LangGraph Studio Web is a specialized UI that you can connect to LangGraph API s
 
 ## Deployment
 
-Once your LangGraph app is running locally, you can deploy it using LangGraph Cloud or self-hosted options. Refer to the [deployment options guide](https://langchain-ai.github.io/langgraph/tutorials/deployment/) for detailed instructions on all supported deployment models.
+Once your LangGraph app is running locally, you can deploy it using LangSmith Deployment or self-hosted options. Refer to the [deployment options guide](https://langchain-ai.github.io/langgraph/tutorials/deployment/) for detailed instructions on all supported deployment models.
