@@ -408,6 +408,9 @@ class BaseClient {
 
       // Make the request
       const response = await this.asyncCaller.fetch(url.toString(), init);
+      if (!response.body) {
+        throw new Error("Expected response body from stream endpoint");
+      }
 
       // Call onInitialResponse callback for the first request
       if (!isReconnect && config.onInitialResponse) {
@@ -415,9 +418,7 @@ class BaseClient {
       }
 
       // Process the response body through SSE decoders
-      const stream: ReadableStream<T> = (
-        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-      )
+      const stream: ReadableStream<T> = response.body
         .pipeThrough(BytesLineDecoder())
         .pipeThrough(SSEDecoder()) as ReadableStream<T>;
 

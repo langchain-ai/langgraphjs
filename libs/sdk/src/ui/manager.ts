@@ -1,3 +1,5 @@
+import type { BaseMessage } from "@langchain/core/messages";
+
 import type {
   CheckpointsStreamEvent,
   CustomStreamEvent,
@@ -168,6 +170,14 @@ export interface StreamManagerOptions {
    * ```
    */
   filterSubagentMessages?: boolean;
+
+  /**
+   * Converts a @langchain/core BaseMessage to the desired output format.
+   *
+   * Defaults to `toMessageDict` which produces plain Message objects.
+   * Framework SDKs pass `toMessageClass` (identity) to keep class instances.
+   */
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 }
 
 export class StreamManager<
@@ -185,6 +195,8 @@ export class StreamManager<
   private throttle: number | boolean;
 
   private filterSubagentMessages: boolean;
+
+  private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
 
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -208,9 +220,11 @@ export class StreamManager<
     };
     this.throttle = options.throttle;
     this.filterSubagentMessages = options.filterSubagentMessages ?? false;
+    this.toMessage = options.toMessage ?? toMessageDict;
     this.subagentManager = new SubagentManager({
       subagentToolNames: options.subagentToolNames,
       onSubagentChange: () => this.bumpVersion(),
+      toMessage: this.toMessage,
     });
   }
 
@@ -639,7 +653,7 @@ export class StreamManager<
                 messages.splice(index, 1);
               }
             } else {
-              const msgDict = toMessageDict(chunk);
+              const msgDict = this.toMessage(chunk) as Message;
               messages[index] = msgDict;
 
               // Track subagents from AI messages with tool calls (main agent only)

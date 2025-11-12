@@ -1,6 +1,5 @@
-export { typedUi } from "./server.js";
-export {
-  uiMessageReducer,
-  type UIMessage,
-  type RemoveUIMessage,
-} from "../types.js";
+export { typedUi, uiMessageReducer } from "@langchain/react/react-ui/server";
+export type {
+  UIMessage,
+  RemoveUIMessage,
+} from "@langchain/react/react-ui/server";

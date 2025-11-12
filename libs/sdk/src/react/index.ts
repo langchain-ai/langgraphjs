@@ -1,23 +1,58 @@
-export { useStream } from "./stream.js";
-export { FetchStreamTransport } from "./stream.custom.js";
-// Legacy exports - kept for backward compatibility
+import {
+  useStream as _useStream,
+  FetchStreamTransport,
+} from "@langchain/react";
+import type { BagTemplate } from "@langchain/langgraph-sdk";
+import type {
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  UseStreamCustomOptions,
+  InferBag,
+  InferStateType,
+} from "@langchain/langgraph-sdk/ui";
+import { toMessageDict } from "../ui/messages.js";
+
+export { FetchStreamTransport };
+
+/**
+ * Re-export of useStream that forces plain Message[] output
+ * for backward compatibility with @langchain/langgraph-sdk/react users.
+ */
+export function useStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+): ResolveStreamInterface<T, InferBag<T, Bag>>;
+
+export function useStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+): ResolveStreamInterface<T, InferBag<T, Bag>>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useStream(...args: any[]): any {
+  const options = args[0];
+  return _useStream({
+    ...options,
+    toMessage: toMessageDict,
+  });
+}
+
 export type {
   UseStream,
   UseStreamCustom,
   SubagentStream,
   SubagentStreamInterface,
-} from "./types.js";
-// New stream interface types
+} from "@langchain/react";
 export type {
-  // Base stream types
   BaseStream,
-  // Agent stream types (for createAgent)
   UseAgentStream,
   UseAgentStreamOptions,
-  // DeepAgent stream types (for createDeepAgent)
   UseDeepAgentStream,
   UseDeepAgentStreamOptions,
-  // Type resolvers
   ResolveStreamInterface,
   ResolveStreamOptions,
   InferStateType,
@@ -25,7 +60,7 @@ export type {
   InferSubagentStates,
   InferNodeNames,
   InferBag,
-} from "../ui/stream/index.js";
+} from "@langchain/react";
 export type {
   MessageMetadata,
   UseStreamOptions,
@@ -33,15 +68,12 @@ export type {
   UseStreamTransport,
   UseStreamThread,
   GetToolCallsType,
-  // Agent type extraction helpers
   AgentTypeConfigLike,
   IsAgentLike,
   ExtractAgentConfig,
   InferAgentToolCalls,
-  // Subagent types
   SubagentToolCall,
   SubagentStatus,
-  // DeepAgent type helpers for subagent inference
   SubAgentLike,
   CompiledSubAgentLike,
   DeepAgentTypeConfigLike,
@@ -55,18 +87,18 @@ export type {
   SubagentStateMap,
   DefaultSubagentStates,
   BaseSubagentState,
-} from "../ui/types.js";
+} from "@langchain/react";
 export type {
   ToolCallWithResult,
   ToolCallState,
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
-} from "../types.messages.js";
+} from "@langchain/langgraph-sdk";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
   calculateDepthFromNamespace,
   extractParentIdFromNamespace,
   isSubagentNamespace,
-} from "../ui/subagents.js";
+} from "@langchain/react";

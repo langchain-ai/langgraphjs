@@ -625,4 +625,79 @@ describe("StreamManager", () => {
       expect(streamManager.values).toEqual({ messages: [], count: 42 });
     });
   });
+
+  describe("onError callback", () => {
+    it("should call onError when the stream action throws", async () => {
+      const streamError = new Error("Stream failed");
+      const action = async () => {
+        throw streamError;
+      };
+      const onSuccess = vi.fn(() => undefined);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: () => [],
+        setMessages: (current: TestState) => current,
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess,
+        onError,
+      });
+
+      expect(onError).toHaveBeenCalledWith(streamError);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("should call onError when the stream yields then throws", async () => {
+      const streamError = new Error("Mid-stream failure");
+      async function* failingStream() {
+        yield {
+          event: "values" as const,
+          data: { messages: [{ id: "1", content: "ok", type: "ai" }] },
+        };
+        throw streamError;
+      }
+
+      const action = async () => failingStream();
+      const onSuccess = vi.fn(() => undefined);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess,
+        onError,
+      });
+
+      expect(onError).toHaveBeenCalledWith(streamError);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("should not call onError for AbortError", async () => {
+      const abortError = new DOMException("Aborted", "AbortError");
+      const action = async () => {
+        throw abortError;
+      };
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: () => [],
+        setMessages: (current: TestState) => current,
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+  });
 });
