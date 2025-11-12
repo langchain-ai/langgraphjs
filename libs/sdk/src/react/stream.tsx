@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import {
-  BagTemplate,
+import type { BagTemplate, UseStreamOptions } from "../ui/types.js";
+import type {
   UseStream,
   UseStreamCustom,
   UseStreamCustomOptions,
-  UseStreamOptions,
 } from "./types.js";
 
 function isCustomOptions<

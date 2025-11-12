@@ -1,5 +1,4 @@
-/* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-import type { Client, ClientConfig } from "../client.js";
+import type { Client } from "../client.js";
 
 import type {
   ThreadState,
@@ -16,284 +15,18 @@ import type {
   Durability,
 } from "../types.js";
 import type { Message } from "../types.messages.js";
-import type {
-  UpdatesStreamEvent,
-  CustomStreamEvent,
-  MetadataStreamEvent,
-  EventsStreamEvent,
-  DebugStreamEvent,
-  CheckpointsStreamEvent,
-  TasksStreamEvent,
-  StreamMode,
-} from "../types.stream.js";
+import type { StreamMode } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
-
-export type MessageMetadata<StateType extends Record<string, unknown>> = {
-  /**
-   * The ID of the message used.
-   */
-  messageId: string;
-
-  /**
-   * The first thread state the message was seen in.
-   */
-  firstSeenState: ThreadState<StateType> | undefined;
-
-  /**
-   * The branch of the message.
-   */
-  branch: string | undefined;
-
-  /**
-   * The list of branches this message is part of.
-   * This is useful for displaying branching controls.
-   */
-  branchOptions: string[] | undefined;
-
-  /**
-   * Metadata sent alongside the message during run streaming.
-   * @remarks This metadata only exists temporarily in browser memory during streaming and is not persisted after completion.
-   */
-  streamMetadata: Record<string, unknown> | undefined;
-};
-
-export type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-};
-
-export type GetUpdateType<
-  Bag extends BagTemplate,
-  StateType extends Record<string, unknown>
-> = Bag extends { UpdateType: unknown }
-  ? Bag["UpdateType"]
-  : Partial<StateType>;
-
-export type GetConfigurableType<Bag extends BagTemplate> = Bag extends {
-  ConfigurableType: Record<string, unknown>;
-}
-  ? Bag["ConfigurableType"]
-  : Record<string, unknown>;
-
-export type GetInterruptType<Bag extends BagTemplate> = Bag extends {
-  InterruptType: unknown;
-}
-  ? Bag["InterruptType"]
-  : unknown;
-
-export type GetCustomEventType<Bag extends BagTemplate> = Bag extends {
-  CustomEventType: unknown;
-}
-  ? Bag["CustomEventType"]
-  : unknown;
-
-export interface RunCallbackMeta {
-  run_id: string;
-  thread_id: string;
-}
-
-export interface UseStreamThread<StateType extends Record<string, unknown>> {
-  data: ThreadState<StateType>[] | null | undefined;
-  error: unknown;
-  isLoading: boolean;
-  mutate: (
-    mutateId?: string
-  ) => Promise<ThreadState<StateType>[] | null | undefined>;
-}
-
-export interface UseStreamOptions<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> {
-  /**
-   * The ID of the assistant to use.
-   */
-  assistantId: string;
-
-  /**
-   * Client used to send requests.
-   */
-  client?: Client;
-
-  /**
-   * The URL of the API to use.
-   */
-  apiUrl?: ClientConfig["apiUrl"];
-
-  /**
-   * The API key to use.
-   */
-  apiKey?: ClientConfig["apiKey"];
-
-  /**
-   * Custom call options, such as custom fetch implementation.
-   */
-  callerOptions?: ClientConfig["callerOptions"];
-
-  /**
-   * Default headers to send with requests.
-   */
-  defaultHeaders?: ClientConfig["defaultHeaders"];
-
-  /**
-   * Specify the key within the state that contains messages.
-   * Defaults to "messages".
-   *
-   * @default "messages"
-   */
-  messagesKey?: string;
-
-  /**
-   * Callback that is called when an error occurs.
-   */
-  onError?: (error: unknown, run: RunCallbackMeta | undefined) => void;
-
-  /**
-   * Callback that is called when the stream is finished.
-   */
-  onFinish?: (
-    state: ThreadState<StateType>,
-    run: RunCallbackMeta | undefined
-  ) => void;
-
-  /**
-   * Callback that is called when a new stream is created.
-   */
-  onCreated?: (run: RunCallbackMeta) => void;
-
-  /**
-   * Callback that is called when an update event is received.
-   */
-  onUpdateEvent?: (
-    data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"],
-    options: {
-      namespace: string[] | undefined;
-      mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-      ) => void;
-    }
-  ) => void;
-
-  /**
-   * Callback that is called when a custom event is received.
-   */
-  onCustomEvent?: (
-    data: CustomStreamEvent<GetCustomEventType<Bag>>["data"],
-    options: {
-      namespace: string[] | undefined;
-      mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-      ) => void;
-    }
-  ) => void;
-
-  /**
-   * Callback that is called when a metadata event is received.
-   */
-  onMetadataEvent?: (data: MetadataStreamEvent["data"]) => void;
-
-  /**
-   * Callback that is called when a LangChain event is received.
-   * @see https://langchain-ai.github.io/langgraph/cloud/how-tos/stream_events/#stream-graph-in-events-mode for more details.
-   */
-  onLangChainEvent?: (data: EventsStreamEvent["data"]) => void;
-
-  /**
-   * Callback that is called when a debug event is received.
-   * @internal This API is experimental and subject to change.
-   */
-  onDebugEvent?: (
-    data: DebugStreamEvent["data"],
-    options: { namespace: string[] | undefined }
-  ) => void;
-
-  /**
-   * Callback that is called when a checkpoints event is received.
-   */
-  onCheckpointEvent?: (
-    data: CheckpointsStreamEvent<StateType>["data"],
-    options: { namespace: string[] | undefined }
-  ) => void;
-
-  /**
-   * Callback that is called when a tasks event is received.
-   */
-  onTaskEvent?: (
-    data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
-    options: { namespace: string[] | undefined }
-  ) => void;
-
-  /**
-   * Callback that is called when the stream is stopped by the user.
-   * Provides a mutate function to update the stream state immediately
-   * without requiring a server roundtrip.
-   *
-   * @example
-   * ```typescript
-   * onStop: ({ mutate }) => {
-   *   mutate((prev) => ({
-   *     ...prev,
-   *     ui: prev.ui?.map(component =>
-   *       component.props.isLoading
-   *         ? { ...component, props: { ...component.props, stopped: true, isLoading: false }}
-   *         : component
-   *     )
-   *   }));
-   * }
-   * ```
-   */
-  onStop?: (options: {
-    mutate: (
-      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-    ) => void;
-  }) => void;
-
-  /**
-   * The ID of the thread to fetch history and current values from.
-   */
-  threadId?: string | null;
-
-  /**
-   * Callback that is called when the thread ID is updated (ie when a new thread is created).
-   */
-  onThreadId?: (threadId: string) => void;
-
-  /** Will reconnect the stream on mount */
-  reconnectOnMount?: boolean | (() => RunMetadataStorage);
-
-  /**
-   * Initial values to display immediately when loading a thread.
-   * Useful for displaying cached thread data while official history loads.
-   * These values will be replaced when official thread data is fetched.
-   *
-   * Note: UI components from initialValues will render immediately if they're
-   * predefined in LoadExternalComponent's components prop, providing instant
-   * cached UI display without server fetches.
-   */
-  initialValues?: StateType | null;
-
-  /**
-   * Whether to fetch the history of the thread.
-   * If true, the history will be fetched from the server. Defaults to 10 entries.
-   * If false, only the last state will be fetched from the server.
-   * @default true
-   */
-  fetchStateHistory?: boolean | { limit: number };
-
-  /**
-   * Manage the thread state externally.
-   * @experimental
-   */
-  experimental_thread?: UseStreamThread<StateType>;
-}
-
-interface RunMetadataStorage {
-  getItem(key: `lg:stream:${string}`): string | null;
-  setItem(key: `lg:stream:${string}`, value: string): void;
-  removeItem(key: `lg:stream:${string}`): void;
-}
+import type {
+  BagTemplate,
+  GetUpdateType,
+  GetConfigurableType,
+  GetInterruptType,
+  MessageMetadata,
+  UseStreamThread,
+  UseStreamOptions,
+  UseStreamTransport,
+} from "../ui/index.js";
 
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -453,23 +186,6 @@ export interface SubmitOptions<
   threadId?: string;
 }
 
-/**
- * Transport used to stream the thread.
- * Only applicable for custom endpoints using `toLangGraphEventStream` or `toLangGraphEventStreamResponse`.
- */
-export interface UseStreamTransport<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> {
-  stream: (payload: {
-    input: GetUpdateType<Bag, StateType> | null | undefined;
-    context: GetConfigurableType<Bag> | undefined;
-    command: Command | undefined;
-    config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
-    signal: AbortSignal;
-  }) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
-}
-
 export type UseStreamCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
@@ -489,7 +205,10 @@ export type UseStreamCustomOptions<
   | "onTaskEvent"
   | "onStop"
   | "initialValues"
-> & { transport: UseStreamTransport<StateType, Bag> };
+> & {
+  transport: UseStreamTransport<StateType, Bag>;
+  thread?: UseStreamThread<StateType>;
+};
 
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,

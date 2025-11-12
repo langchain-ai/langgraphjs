@@ -11,9 +11,11 @@ import type {
   GetInterruptType,
   RunCallbackMeta,
   GetConfigurableType,
+  UseStreamTransport,
+} from "../ui/types.js";
+import type {
   UseStreamCustomOptions,
   UseStreamCustom,
-  UseStreamTransport,
   CustomSubmitOptions,
 } from "./types.js";
 import type { Message } from "../types.messages.js";
@@ -23,6 +25,7 @@ import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
+import { extractInterrupts } from "../ui/interrupts.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -225,20 +228,7 @@ export function useStreamCustom<
     submit,
 
     get interrupt(): Interrupt<InterruptType> | undefined {
-      if (
-        stream.values != null &&
-        "__interrupt__" in stream.values &&
-        Array.isArray(stream.values.__interrupt__)
-      ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
-        return valueInterrupts as Interrupt<InterruptType>;
-      }
-
-      return undefined;
+      return extractInterrupts<InterruptType>(stream.values);
     },
 
     get messages() {
