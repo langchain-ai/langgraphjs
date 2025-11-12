@@ -24,6 +24,7 @@ import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
+import { extractInterrupts } from "../ui/interrupts.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -53,9 +54,8 @@ interface FetchStreamTransportOptions {
 export class FetchStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
-> implements UseStreamTransport<StateType, Bag>
-{
-  constructor(private readonly options: FetchStreamTransportOptions) {}
+> implements UseStreamTransport<StateType, Bag> {
+  constructor(private readonly options: FetchStreamTransportOptions) { }
 
   async stream(payload: {
     input: GetUpdateType<Bag, StateType> | null | undefined;
@@ -263,12 +263,7 @@ export function useStreamCustom<
     },
 
     get interrupt(): Interrupt<InterruptType> | undefined {
-      const all = this.interrupts;
-      if (all.length === 0) return undefined;
-      if (all.length === 1) return all[0];
-
-      // Multiple interrupts: return the array for backward compat
-      return all as Interrupt<InterruptType>;
+      return extractInterrupts<InterruptType>(stream.values);
     },
 
     get messages(): Message<ToolCallType>[] {

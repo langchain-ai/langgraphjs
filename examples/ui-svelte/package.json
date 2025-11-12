@@ -1,0 +1,31 @@
+{
+  "name": "@examples/ui-svelte",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo dev:client dev:server",
+    "dev:client": "vite",
+    "dev:server": "langgraphjs dev --no-browser",
+    "build:internal": "tsc -b && vite build",
+    "format": "prettier --write src",
+    "lint": "prettier --check src",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.0.1",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-sdk": "workspace:*",
+    "@langchain/openai": "^1.0.0",
+    "@langchain/svelte": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-cli": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "prettier": "^2.8.3",
+    "svelte": "^5.43.5",
+    "tsx": "^4.19.3",
+    "typescript": "^5.4.5",
+    "vite": "^7.0.0"
+  }
+}
