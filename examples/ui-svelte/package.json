@@ -6,7 +6,7 @@
     "dev": "turbo dev:client dev:server",
     "dev:client": "vite",
     "dev:server": "langgraphjs dev --no-browser",
-    "build:internal": "tsc -b && vite build",
+    "build:internal": "vite build",
     "format": "prettier --write src",
     "lint": "prettier --check src",
     "preview": "vite preview"
