@@ -243,6 +243,8 @@ export interface Cron {
 
 export type DefaultValues = Record<string, unknown>[] | Record<string, unknown>;
 
+export type ThreadValuesFilter = Record<string, unknown>;
+
 export interface ThreadState<ValuesType = DefaultValues> {
   /** The state values */
   values: ValuesType;
