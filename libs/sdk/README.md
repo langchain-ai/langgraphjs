@@ -62,3 +62,14 @@ To generate documentation, run the following commands:
 1. Copy `js_ts_sdk_ref.md` to MkDocs directory.
 
         cp docs/js_ts_sdk_ref.md ../../docs/docs/cloud/reference/sdk/js_ts_sdk_ref.md
+
+## Reference Documentation
+
+The reference documentation is available [here](https://reference.langchain.com/javascript/modules/_langchain_langgraph-sdk.html).
+
+More usage examples can be found [here](https://docs.langchain.com/langsmith/sdk#js).
+
+
+## Change Log
+
+The change log for new versions can be found [here](https://github.com/langchain-ai/langgraphjs/blob/main/libs/sdk/CHANGELOG.md).
