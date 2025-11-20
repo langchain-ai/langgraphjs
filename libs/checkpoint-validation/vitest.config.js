@@ -6,6 +6,8 @@ export default defineConfig((env) => {
     test: {
       ...configDefaults,
       globals: true,
+      testTimeout: 120000, // 2 minutes for AWS throttling
+      hookTimeout: 120000, // 2 minutes for setup hooks
       chaiConfig: {
         truncateThreshold: 100_000,
       },
