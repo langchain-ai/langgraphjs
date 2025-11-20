@@ -43,6 +43,7 @@
     "overrides": {
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
+      "@types/node": "^18.19.130",
       "cheerio": "^1.0.0-rc.12",
       "semver": "^7.0.0",
       "zod": "^4.3.5"
