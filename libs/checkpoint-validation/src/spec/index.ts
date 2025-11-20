@@ -50,4 +50,10 @@ export function specTest<T extends BaseCheckpointSaver>(
   });
 }
 
-export { getTupleTests, listTests, putTests, putWritesTests };
+export {
+  getTupleTests,
+  listTests,
+  putTests,
+  putWritesTests,
+  deleteThreadTests,
+};
