@@ -198,8 +198,8 @@ describe("assistants", () => {
       true
     );
 
-    search = await client.assistants.search({ name: "simple_runtime" })
-    expect(search.length).toBeGreaterThanOrEqual(1);
+    search = await client.assistants.search({ name: "simple_runtime" });
+    expect(search.length).toEqual(1);
   });
 
   it("get assistant versions", async () => {

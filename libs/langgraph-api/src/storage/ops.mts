@@ -259,7 +259,9 @@ export class FileSystemAssistants implements AssistantsRepo {
 
           if (
             options.name != null &&
-            !assistant["name"].toLowerCase().includes(options.name.toLowerCase())
+            !assistant["name"]
+              .toLowerCase()
+              .includes(options.name.toLowerCase())
           ) {
             return false;
           }
