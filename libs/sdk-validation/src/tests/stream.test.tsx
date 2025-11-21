@@ -102,20 +102,19 @@ const removeMessageAgent = new StateGraph(MessagesAnnotation)
         new AIMessage({ id: randomUUID(), content: "Step 2: To Keep" }),
       ];
 
-      const messagesHandler = (
-        config.callbacks as { handlers: object[] }
-      )?.handlers?.find(
-        (
-          cb
-        ): cb is {
-          _emit: (
-            chunk: [namespace: string[], metadata: Record<string, unknown>],
-            message: BaseMessage,
-            runId: string | undefined,
-            dedupe: boolean
-          ) => void;
-        } => "name" in cb && cb.name === "StreamMessagesHandler"
-      );
+      const messagesHandler = // @ts-expect-error - Callbacks not present
+        (config.callbacks as { handlers: object[] })?.handlers?.find(
+          (
+            cb
+          ): cb is {
+            _emit: (
+              chunk: [namespace: string[], metadata: Record<string, unknown>],
+              message: BaseMessage,
+              runId: string | undefined,
+              dedupe: boolean
+            ) => void;
+          } => "name" in cb && cb.name === "StreamMessagesHandler"
+        );
 
       for (const message of messages) {
         messagesHandler?._emit([[], {}], message, undefined, false);

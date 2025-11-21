@@ -1,4 +1,6 @@
 import type { ThreadState } from "../schema.js";
+import { Message } from "../types.messages.js";
+import { findLast } from "./utils.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Node<StateType = any> {
@@ -149,6 +151,11 @@ export function getBranchSequence<StateType extends Record<string, unknown>>(
 const PATH_SEP = ">";
 const ROOT_ID = "$";
 
+type BranchByCheckpoint = Record<
+  string,
+  { branch: string | undefined; branchOptions: string[] | undefined }
+>;
+
 // Get flat view
 export function getBranchView<StateType extends Record<string, unknown>>(
   sequence: Sequence<StateType>,
@@ -165,10 +172,7 @@ export function getBranchView<StateType extends Record<string, unknown>>(
   }
 
   const history: ThreadState<StateType>[] = [];
-  const branchByCheckpoint: Record<
-    string,
-    { branch: string | undefined; branchOptions: string[] | undefined }
-  > = {};
+  const branchByCheckpoint: BranchByCheckpoint = {};
 
   const forkStack = path.slice();
   const queue: (Node<StateType> | Fork<StateType>)[] = [...sequence.items];
@@ -225,4 +229,57 @@ export function getBranchContext<StateType extends Record<string, unknown>>(
     branchByCheckpoint,
     threadHead: flatHistory.at(-1),
   };
+}
+
+export function getMessagesMetadataMap<
+  StateType extends Record<string, unknown>
+>(options: {
+  initialValues: StateType | null | undefined;
+  history: ThreadState<StateType>[] | null | undefined;
+  getMessages: (values: StateType) => Message[];
+
+  branchContext: {
+    threadHead: ThreadState<StateType> | undefined;
+    branchByCheckpoint: BranchByCheckpoint;
+  };
+}) {
+  const currentValues =
+    options.branchContext.threadHead?.values ??
+    options.initialValues ??
+    ({} as StateType);
+
+  const alreadyShown = new Set<string>();
+  return options.getMessages(currentValues).map((message, idx) => {
+    const messageId = message.id ?? idx;
+
+    // Find the first checkpoint where the message was seen
+    const firstSeenState = findLast(options.history ?? [], (state) =>
+      options
+        .getMessages(state.values)
+        .map((m, idx) => m.id ?? idx)
+        .includes(messageId)
+    );
+
+    const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;
+    let branch =
+      checkpointId != null
+        ? options.branchContext.branchByCheckpoint[checkpointId]
+        : undefined;
+    if (!branch?.branch?.length) branch = undefined;
+
+    // serialize branches
+    const optionsShown = branch?.branchOptions?.flat(2).join(",");
+    if (optionsShown) {
+      if (alreadyShown.has(optionsShown)) branch = undefined;
+      alreadyShown.add(optionsShown);
+    }
+
+    return {
+      messageId: messageId.toString(),
+      firstSeenState,
+
+      branch: branch?.branch,
+      branchOptions: branch?.branchOptions,
+    };
+  });
 }
