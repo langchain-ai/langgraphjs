@@ -199,8 +199,21 @@ describe("assistants", () => {
     );
 
     // search by name
-    search = await client.assistants.search({ name: "simple_runtime" });
+    search = await client.assistants.search({ name: "SIMPLE_runtime" });
     expect(search.length).toEqual(1);
+    expect(search[0].name.toLowerCase().includes("SIMPLE_runtime".toLowerCase()));
+
+    search = await client.assistants.search({ name: "SIMPLE_" });
+    expect(search.length).toEqual(1);
+    expect(search[0].name.toLowerCase().includes("SIMPLE_".toLowerCase()));
+
+    search = await client.assistants.search({ name: "_runtime" });
+    expect(search.length).toEqual(1);
+    expect(search[0].name.toLowerCase().includes("_runtime".toLowerCase()));
+
+    search = await client.assistants.search({ name: "PLE_run" });
+    expect(search.length).toEqual(1);
+    expect(search[0].name.toLowerCase().includes("PLE_run".toLowerCase()));
   });
 
   it("get assistant versions", async () => {

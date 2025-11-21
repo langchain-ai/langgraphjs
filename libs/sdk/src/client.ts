@@ -607,6 +607,7 @@ export class AssistantsClient extends BaseClient {
    */
   async search(query?: {
     graphId?: string;
+    name?: string;
     metadata?: Metadata;
     limit?: number;
     offset?: number;
@@ -618,6 +619,7 @@ export class AssistantsClient extends BaseClient {
       method: "POST",
       json: {
         graph_id: query?.graphId ?? undefined,
+        name: query?.name ?? undefined,
         metadata: query?.metadata ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
