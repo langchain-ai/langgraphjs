@@ -201,7 +201,9 @@ describe("assistants", () => {
     // search by name
     search = await client.assistants.search({ name: "SIMPLE_runtime" });
     expect(search.length).toEqual(1);
-    expect(search[0].name.toLowerCase().includes("SIMPLE_runtime".toLowerCase()));
+    expect(
+      search[0].name.toLowerCase().includes("SIMPLE_runtime".toLowerCase())
+    );
 
     search = await client.assistants.search({ name: "SIMPLE_" });
     expect(search.length).toEqual(1);
