@@ -411,6 +411,7 @@ export interface AssistantsRepo {
   search(
     options: {
       graph_id?: string;
+      name?: string;
       metadata?: Metadata;
       limit: number;
       offset: number;
