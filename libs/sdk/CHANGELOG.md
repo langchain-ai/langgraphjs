@@ -1,5 +1,12 @@
 # @langchain/langgraph-sdk
 
+## 1.0.1
+
+### Patch Changes
+
+- b9be526: Adding functionality to search assistants by name in the in-memory server implementation.
+- cc9dc28: Add `values` parameter to thread search
+
 ## 1.0.0
 
 ### Major Changes

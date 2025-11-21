@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.0.4
+
+### Patch Changes
+
+- b9be526: Adding functionality to search assistants by name in the in-memory server implementation.
+  - @langchain/langgraph-ui@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes
