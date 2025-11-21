@@ -197,6 +197,9 @@ describe("assistants", () => {
     expect(search.every((i) => i.assistant_id !== create.assistant_id)).toBe(
       true
     );
+
+    search = await client.assistants.search({ name: "simple_runtime" })
+    expect(search.length).toBeGreaterThanOrEqual(1);
   });
 
   it("get assistant versions", async () => {
