@@ -358,7 +358,7 @@ export class StreamManager<
     this.abortRef = new AbortController();
 
     // Set the stream state to null
-    this.setState({ error: undefined, values: null });
+    this.setState({ error: undefined, values: null, isLoading: false });
 
     // Clear any pending messages
     this.messages.clear();
