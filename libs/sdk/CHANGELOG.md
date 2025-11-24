@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.0.2
+
+### Patch Changes
+
+- 1f6efc5: Ensure `isLoading` is set to `false` when cancelling the stream due to thread ID change
+
 ## 1.0.1
 
 ### Patch Changes
