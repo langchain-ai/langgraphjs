@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Client } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
+import * as envUtils from "../utils/env.js";
 
 describe.each([["global"], ["mocked"]])(
   "Client uses %s fetch",
@@ -195,6 +196,93 @@ describe.each([["global"], ["mocked"]])(
             }),
           })
         );
+      });
+    });
+
+    describe("API key auto-load", () => {
+      it("should auto-load API key from environment when apiKey is undefined", async () => {
+        const getEnvSpy = vi
+          .spyOn(envUtils, "getEnvironmentVariable")
+          .mockImplementation((name: string) => {
+            if (name === "LANGGRAPH_API_KEY") return "env-api-key";
+            return undefined;
+          });
+
+        const client = new Client();
+        await (client.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenNthCalledWith(
+          1,
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              "x-api-key": "env-api-key",
+            }),
+          })
+        );
+
+        const client2 = new Client({ apiKey: undefined });
+        await (client2.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenNthCalledWith(
+          2,
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              "x-api-key": "env-api-key",
+            }),
+          })
+        );
+
+        getEnvSpy.mockRestore();
+      });
+
+      it("should skip API key auto-load when apiKey is null", async () => {
+        const getEnvSpy = vi
+          .spyOn(envUtils, "getEnvironmentVariable")
+          .mockImplementation((name: string) => {
+            if (name === "LANGGRAPH_API_KEY") return "env-api-key";
+            return undefined;
+          });
+
+        const client = new Client({ apiKey: null });
+        await (client.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenCalledWith(
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.not.objectContaining({
+              "x-api-key": expect.anything(),
+            }),
+          })
+        );
+
+        getEnvSpy.mockRestore();
+      });
+
+      it("should use explicit API key when provided as a string", async () => {
+        const getEnvSpy = vi
+          .spyOn(envUtils, "getEnvironmentVariable")
+          .mockImplementation((name: string) => {
+            if (name === "LANGGRAPH_API_KEY") return "env-api-key";
+            return undefined;
+          });
+
+        const client = new Client({
+          apiKey: "explicit-api-key",
+        });
+        await (client.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenCalledWith(
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              "x-api-key": "explicit-api-key",
+            }),
+          })
+        );
+
+        getEnvSpy.mockRestore();
       });
     });
   }
