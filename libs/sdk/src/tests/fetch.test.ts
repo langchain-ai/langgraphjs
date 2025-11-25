@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Client } from "../client.js";
+import { Client, getApiKey } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
 
 describe.each([["global"], ["mocked"]])(
@@ -195,6 +195,82 @@ describe.each([["global"], ["mocked"]])(
             }),
           })
         );
+      });
+    });
+
+    describe("API key auto-load", () => {
+      it("should auto-load API key from environment when apiKey is undefined", async () => {
+        const originalEnv = process.env.LANGGRAPH_API_KEY;
+        process.env.LANGGRAPH_API_KEY = "env-api-key";
+
+        const client = new Client();
+        await (client.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenCalledWith(
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              "x-api-key": "env-api-key",
+            }),
+          })
+        );
+
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.LANGGRAPH_API_KEY = originalEnv;
+        } else {
+          delete process.env.LANGGRAPH_API_KEY;
+        }
+      });
+
+      it("should skip API key auto-load when apiKey is null", async () => {
+        const originalEnv = process.env.LANGGRAPH_API_KEY;
+        process.env.LANGGRAPH_API_KEY = "env-api-key";
+
+        const client = new Client({ apiKey: null });
+        await (client.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenCalledWith(
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.not.objectContaining({
+              "x-api-key": expect.anything(),
+            }),
+          })
+        );
+
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.LANGGRAPH_API_KEY = originalEnv;
+        } else {
+          delete process.env.LANGGRAPH_API_KEY;
+        }
+      });
+
+      it("should use explicit API key when provided as a string", async () => {
+        const originalEnv = process.env.LANGGRAPH_API_KEY;
+        process.env.LANGGRAPH_API_KEY = "env-api-key";
+
+        const client = new Client({
+          apiKey: "explicit-api-key",
+        });
+        await (client.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenCalledWith(
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              "x-api-key": "explicit-api-key",
+            }),
+          })
+        );
+
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.LANGGRAPH_API_KEY = originalEnv;
+        } else {
+          delete process.env.LANGGRAPH_API_KEY;
+        }
       });
     });
   }

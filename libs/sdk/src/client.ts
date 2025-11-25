@@ -122,19 +122,26 @@ function mergeHeaders(
 /**
  * Get the API key from the environment.
  * Precedence:
- *   1. explicit argument
+ *   1. explicit argument (if string)
  *   2. LANGGRAPH_API_KEY
  *   3. LANGSMITH_API_KEY
  *   4. LANGCHAIN_API_KEY
  *
- * @param apiKey - Optional API key provided as an argument
+ * @param apiKey - API key provided as an argument. If null, skips environment lookup. If undefined, tries environment.
  * @returns The API key if found, otherwise undefined
  */
-export function getApiKey(apiKey?: string): string | undefined {
+export function getApiKey(apiKey?: string | null): string | undefined {
+  // If explicitly set to null, skip auto-loading
+  if (apiKey === null) {
+    return undefined;
+  }
+
+  // If a string value is provided, use it
   if (apiKey) {
     return apiKey;
   }
 
+  // If undefined, try to load from environment
   const prefixes = ["LANGGRAPH", "LANGSMITH", "LANGCHAIN"];
 
   for (const prefix of prefixes) {
@@ -173,7 +180,13 @@ export type RequestHook = (
 
 export interface ClientConfig {
   apiUrl?: string;
-  apiKey?: string;
+  /**
+   * API key for authentication.
+   * - If a string is provided, that key will be used
+   * - If undefined (default), the key will be auto-loaded from environment variables (LANGGRAPH_API_KEY, LANGSMITH_API_KEY, or LANGCHAIN_API_KEY)
+   * - If null, no API key will be set (skips auto-loading)
+   */
+  apiKey?: string | null;
   callerOptions?: AsyncCallerParams;
   timeoutMs?: number;
   defaultHeaders?: Record<string, HeaderValue>;
