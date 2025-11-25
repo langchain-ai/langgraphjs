@@ -211,7 +211,21 @@ describe.each([["global"], ["mocked"]])(
         const client = new Client();
         await (client.threads as any).fetch("/test");
 
-        expect(expectedFetchMock).toHaveBeenCalledWith(
+        expect(expectedFetchMock).toHaveBeenNthCalledWith(
+          1,
+          expect.any(URL),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              "x-api-key": "env-api-key",
+            }),
+          })
+        );
+
+        const client2 = new Client({ apiKey: undefined });
+        await (client2.threads as any).fetch("/test");
+
+        expect(expectedFetchMock).toHaveBeenNthCalledWith(
+          2,
           expect.any(URL),
           expect.objectContaining({
             headers: expect.objectContaining({
