@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.0.3
+
+### Patch Changes
+
+- 5ae7552: Adding support to skip auto loading api key when set to null on sdk client create
+
 ## 1.0.2
 
 ### Patch Changes
