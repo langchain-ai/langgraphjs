@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Client, getApiKey } from "../client.js";
+import { Client } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
+import * as envUtils from "../utils/env.js";
 
 describe.each([["global"], ["mocked"]])(
   "Client uses %s fetch",
@@ -200,8 +201,12 @@ describe.each([["global"], ["mocked"]])(
 
     describe("API key auto-load", () => {
       it("should auto-load API key from environment when apiKey is undefined", async () => {
-        const originalEnv = process.env.LANGGRAPH_API_KEY;
-        process.env.LANGGRAPH_API_KEY = "env-api-key";
+        const getEnvSpy = vi
+          .spyOn(envUtils, "getEnvironmentVariable")
+          .mockImplementation((name: string) => {
+            if (name === "LANGGRAPH_API_KEY") return "env-api-key";
+            return undefined;
+          });
 
         const client = new Client();
         await (client.threads as any).fetch("/test");
@@ -215,17 +220,16 @@ describe.each([["global"], ["mocked"]])(
           })
         );
 
-        // Restore original env
-        if (originalEnv !== undefined) {
-          process.env.LANGGRAPH_API_KEY = originalEnv;
-        } else {
-          delete process.env.LANGGRAPH_API_KEY;
-        }
+        getEnvSpy.mockRestore();
       });
 
       it("should skip API key auto-load when apiKey is null", async () => {
-        const originalEnv = process.env.LANGGRAPH_API_KEY;
-        process.env.LANGGRAPH_API_KEY = "env-api-key";
+        const getEnvSpy = vi
+          .spyOn(envUtils, "getEnvironmentVariable")
+          .mockImplementation((name: string) => {
+            if (name === "LANGGRAPH_API_KEY") return "env-api-key";
+            return undefined;
+          });
 
         const client = new Client({ apiKey: null });
         await (client.threads as any).fetch("/test");
@@ -239,17 +243,16 @@ describe.each([["global"], ["mocked"]])(
           })
         );
 
-        // Restore original env
-        if (originalEnv !== undefined) {
-          process.env.LANGGRAPH_API_KEY = originalEnv;
-        } else {
-          delete process.env.LANGGRAPH_API_KEY;
-        }
+        getEnvSpy.mockRestore();
       });
 
       it("should use explicit API key when provided as a string", async () => {
-        const originalEnv = process.env.LANGGRAPH_API_KEY;
-        process.env.LANGGRAPH_API_KEY = "env-api-key";
+        const getEnvSpy = vi
+          .spyOn(envUtils, "getEnvironmentVariable")
+          .mockImplementation((name: string) => {
+            if (name === "LANGGRAPH_API_KEY") return "env-api-key";
+            return undefined;
+          });
 
         const client = new Client({
           apiKey: "explicit-api-key",
@@ -265,12 +268,7 @@ describe.each([["global"], ["mocked"]])(
           })
         );
 
-        // Restore original env
-        if (originalEnv !== undefined) {
-          process.env.LANGGRAPH_API_KEY = originalEnv;
-        } else {
-          delete process.env.LANGGRAPH_API_KEY;
-        }
+        getEnvSpy.mockRestore();
       });
     });
   }
