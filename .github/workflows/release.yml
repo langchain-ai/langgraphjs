@@ -22,7 +22,7 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Setup Node.js 22.4.1
         uses: actions/setup-node@v6
