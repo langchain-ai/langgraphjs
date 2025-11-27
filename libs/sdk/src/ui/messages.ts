@@ -1,24 +1,51 @@
 import {
   type BaseMessage,
-  type BaseMessageChunk,
+  BaseMessageChunk,
   RemoveMessage,
   convertToChunk,
   coerceMessageLikeToMessage,
   isBaseMessageChunk,
+  HumanMessageChunk,
+  SystemMessageChunk,
+  AIMessageChunk,
+  ToolMessageChunk,
 } from "@langchain/core/messages";
 
 import type { Message } from "../types.messages.js";
 
-function tryConvertToChunk(message: BaseMessage): BaseMessageChunk | null {
+export function tryConvertToChunk(
+  message: BaseMessage | BaseMessageChunk
+): BaseMessageChunk | null {
   try {
+    if (isBaseMessageChunk(message)) return message;
     return convertToChunk(message);
   } catch {
     return null;
   }
 }
 
-function tryCoerceMessageLikeToMessage(message: Message): BaseMessage {
-  // TODO: this is unnecessary with https://github.com/langchain-ai/langchainjs/pull/8941
+export function tryCoerceMessageLikeToMessage(
+  message: Omit<Message, "type"> & { type: string }
+): BaseMessage | BaseMessageChunk {
+  if (message.type === "human" || message.type === "user") {
+    return new HumanMessageChunk(message);
+  }
+
+  if (message.type === "ai" || message.type === "assistant") {
+    return new AIMessageChunk(message);
+  }
+
+  if (message.type === "system") {
+    return new SystemMessageChunk(message);
+  }
+
+  if (message.type === "tool" && "tool_call_id" in message) {
+    return new ToolMessageChunk({
+      ...message,
+      tool_call_id: message.tool_call_id as string,
+    });
+  }
+
   if (message.type === "remove" && message.id != null) {
     return new RemoveMessage({ ...message, id: message.id });
   }
