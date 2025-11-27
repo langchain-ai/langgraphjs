@@ -212,11 +212,11 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       await this.applyTTL(key);
     }
 
-    // Channel values are stored inline in shallow mode
-    const checkpoint = {
-      ...jsonDoc.checkpoint,
-      channel_values: jsonDoc.checkpoint.channel_values || {},
-    };
+    // Deserialize checkpoint using serde to restore LangChain objects
+    const checkpoint: Checkpoint = await this.serde.loadsTyped(
+      "json",
+      JSON.stringify(jsonDoc.checkpoint)
+    );
 
     // Load pending writes if they exist
     let pendingWrites: Array<[string, string, any]> | undefined;
@@ -228,7 +228,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       );
     }
 
-    return this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
+    return await this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
   }
 
   async *list(
@@ -309,12 +309,12 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
           }
 
           // Channel values are inline in shallow mode
-          const checkpoint = {
-            ...jsonDoc.checkpoint,
-            channel_values: jsonDoc.checkpoint.channel_values || {},
-          };
+          const checkpoint: Checkpoint = await this.serde.loadsTyped(
+            "json",
+            JSON.stringify(jsonDoc.checkpoint)
+          );
 
-          yield this.createCheckpointTuple(jsonDoc, checkpoint);
+          yield await this.createCheckpointTuple(jsonDoc, checkpoint);
           yieldCount++;
         }
       } catch (error: any) {
@@ -359,12 +359,12 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
             }
 
             // Channel values are inline in shallow mode
-            const checkpoint = {
-              ...jsonDoc.checkpoint,
-              channel_values: jsonDoc.checkpoint.channel_values || {},
-            };
+            const checkpoint: Checkpoint = await this.serde.loadsTyped(
+              "json",
+              JSON.stringify(jsonDoc.checkpoint)
+            );
 
-            yield this.createCheckpointTuple(jsonDoc, checkpoint);
+            yield await this.createCheckpointTuple(jsonDoc, checkpoint);
             yieldCount++;
           }
           return;
@@ -507,11 +507,17 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
   }
 
   // Helper method to create checkpoint tuple from json document
-  private createCheckpointTuple(
+  private async createCheckpointTuple(
     jsonDoc: any,
     checkpoint: Checkpoint,
     pendingWrites?: Array<[string, string, any]>
-  ): CheckpointTuple {
+  ): Promise<CheckpointTuple> {
+    // Deserialize metadata using serde
+    const metadata = (await this.serde.loadsTyped(
+      "json",
+      JSON.stringify(jsonDoc.metadata)
+    )) as CheckpointMetadata;
+
     return {
       config: {
         configurable: {
@@ -521,7 +527,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
         },
       },
       checkpoint,
-      metadata: jsonDoc.metadata,
+      metadata,
       parentConfig: jsonDoc.parent_checkpoint_id
         ? {
             configurable: {
@@ -572,10 +578,15 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     for (const writeKey of writeKeys) {
       const writeDoc = await this.client.json.get(writeKey);
       if (writeDoc) {
+        // Deserialize write value using serde to restore LangChain objects
+        const deserializedValue = await this.serde.loadsTyped(
+          "json",
+          JSON.stringify(writeDoc.value)
+        );
         pendingWrites.push([
           writeDoc.task_id,
           writeDoc.channel,
-          writeDoc.value,
+          deserializedValue,
         ]);
       }
     }
