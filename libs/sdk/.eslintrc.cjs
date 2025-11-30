@@ -72,7 +72,7 @@ module.exports = {
   },
   overrides: [
     {
-      files: ["src/tests/**/*.ts"],
+      files: ["src/tests/**/*.ts", "src/**/tests/**/*.ts"],
       rules: {
         "no-instanceof/no-instanceof": 0,
         "@typescript-eslint/no-explicit-any": 0,

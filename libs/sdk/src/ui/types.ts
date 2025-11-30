@@ -18,6 +18,108 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
+import type { DefaultToolCall } from "../types.messages.js";
+
+// ============================================================================
+// Agent Type Extraction Helpers
+// ============================================================================
+// These types enable extracting type information from a ReactAgent instance
+// created with `createAgent` from @langchain/langgraph, without requiring
+// langchain as a dependency.
+
+/**
+ * Minimal interface matching the structure of AgentTypeConfig from @langchain/langgraph.
+ * This allows type inference from ReactAgent without requiring the langchain dependency.
+ */
+export interface AgentTypeConfigLike {
+  Response: unknown;
+  State: unknown;
+  Context: unknown;
+  Middleware: unknown;
+  Tools: unknown;
+}
+
+/**
+ * Check if a type is agent-like (has `__agentTypes` phantom property).
+ * This property is present on `ReactAgent` instances created with `createAgent`.
+ */
+export type IsAgentLike<T> = T extends { __agentTypes: AgentTypeConfigLike }
+  ? true
+  : false;
+
+/**
+ * Extract the AgentTypeConfig from an agent-like type.
+ *
+ * @example
+ * ```ts
+ * const agent = createAgent({ ... });
+ * type Config = ExtractAgentConfig<typeof agent>;
+ * // Config is the AgentTypeConfig with Response, State, Context, Middleware, Tools
+ * ```
+ */
+export type ExtractAgentConfig<T> = T extends { __agentTypes: infer Config }
+  ? Config extends AgentTypeConfigLike
+    ? Config
+    : never
+  : never;
+
+/**
+ * Extract a tool call type from a single tool.
+ * Works with tools created via `tool()` from `@langchain/core/tools`.
+ *
+ * This extracts the literal name type from DynamicStructuredTool's NameT parameter
+ * and the args type from the schema's _input property.
+ */
+type ToolCallFromAgentTool<T> = T extends { name: infer N; schema: infer S }
+  ? N extends string
+    ? S extends { _input: infer Args }
+      ? { name: N; args: Args; id?: string; type?: "tool_call" }
+      : never
+    : never
+  : never;
+
+/**
+ * Extract tool calls type from an agent's tools.
+ * Converts the tools array to a discriminated union of tool calls.
+ *
+ * This handles both tuple types (e.g., `readonly [Tool1, Tool2]`) and
+ * array-of-union types (e.g., `readonly (Tool1 | Tool2)[]`) which is how
+ * `createAgent` captures tool types.
+ *
+ * @example
+ * ```ts
+ * const agent = createAgent({ tools: [getWeather, search], ... });
+ * type ToolCalls = InferAgentToolCalls<typeof agent>;
+ * // ToolCalls is:
+ * // | { name: "get_weather"; args: { location: string }; id?: string }
+ * // | { name: "search"; args: { query: string }; id?: string }
+ * ```
+ */
+export type InferAgentToolCalls<T> =
+  ExtractAgentConfig<T>["Tools"] extends readonly (infer Tool)[]
+    ? ToolCallFromAgentTool<Tool> extends never
+      ? DefaultToolCall
+      : ToolCallFromAgentTool<Tool>
+    : DefaultToolCall;
+
+/**
+ * Convert an agent type to the Bag template expected by `useStream`.
+ * Maps the agent's type configuration to the useStream Bag parameters.
+ *
+ * @example
+ * ```ts
+ * const agent = createAgent({ tools: [getWeather, search], ... });
+ * type Bag = AgentToBag<typeof agent>;
+ * // Use with useStream: useStream<AgentState, Bag>({ ... })
+ * ```
+ */
+export type AgentToBag<T> = {
+  ToolCallsType: InferAgentToolCalls<T>;
+  ConfigurableType?: Record<string, unknown>;
+  InterruptType?: unknown;
+  CustomEventType?: unknown;
+  UpdateType?: unknown;
+};
 
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
   /**
@@ -53,6 +155,19 @@ export type BagTemplate = {
   InterruptType?: unknown;
   CustomEventType?: unknown;
   UpdateType?: unknown;
+  /**
+   * Type for tool calls. Provide a discriminated union for type-safe tool handling.
+   *
+   * @example
+   * ```ts
+   * type MyToolCalls =
+   *   | { name: "get_weather"; args: { location: string }; id?: string }
+   *   | { name: "search"; args: { query: string }; id?: string };
+   *
+   * useStream<MyState, { ToolCallsType: MyToolCalls }>({ ... });
+   * ```
+   */
+  ToolCallsType?: unknown;
 };
 
 export type GetUpdateType<
@@ -79,6 +194,12 @@ export type GetCustomEventType<Bag extends BagTemplate> = Bag extends {
 }
   ? Bag["CustomEventType"]
   : unknown;
+
+export type GetToolCallsType<Bag extends BagTemplate> = Bag extends {
+  ToolCallsType: unknown;
+}
+  ? Bag["ToolCallsType"]
+  : DefaultToolCall;
 
 export interface RunCallbackMeta {
   run_id: string;

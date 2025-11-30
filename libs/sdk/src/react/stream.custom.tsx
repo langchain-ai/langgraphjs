@@ -9,6 +9,7 @@ import type {
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
+  GetToolCallsType,
   RunCallbackMeta,
   GetConfigurableType,
   UseStreamTransport,
@@ -18,7 +19,7 @@ import type {
   UseStreamCustom,
   CustomSubmitOptions,
 } from "./types.js";
-import type { Message } from "../types.messages.js";
+import { type Message, getToolCallsWithResults } from "../types.messages.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
@@ -107,6 +108,7 @@ export function useStreamCustom<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
+    ToolCallsType?: unknown;
   } = BagTemplate
 >(
   options: UseStreamCustomOptions<StateType, Bag>
@@ -115,6 +117,7 @@ export function useStreamCustom<
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+  type ToolCallType = GetToolCallsType<Bag>;
 
   const [messageManager] = useState(() => new MessageTupleManager());
   const [stream] = useState(
@@ -140,7 +143,7 @@ export function useStreamCustom<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+    return Array.isArray(value[messagesKey]) ? value[messagesKey] as Message[] : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
@@ -231,9 +234,15 @@ export function useStreamCustom<
       return extractInterrupts<InterruptType>(stream.values);
     },
 
-    get messages() {
+    get messages(): Message<ToolCallType>[] {
       if (!stream.values) return [];
-      return getMessages(stream.values);
+      return getMessages(stream.values) as Message<ToolCallType>[];
+    },
+
+    get toolCalls() {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values) as Message<ToolCallType>[];
+      return getToolCallsWithResults<ToolCallType>(msgs);
     },
   };
 }

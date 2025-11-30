@@ -65,7 +65,7 @@ export function getBranchSequence<StateType extends Record<string, unknown>>(
   // with the latest checkpoint and mark it as the root.
   const maxId = (...ids: (string | null)[]) =>
     ids
-      .filter((i) => i != null)
+      .filter((i): i is string => i != null)
       .sort((a, b) => a.localeCompare(b))
       .at(-1)!;
 

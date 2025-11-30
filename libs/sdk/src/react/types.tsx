@@ -14,7 +14,7 @@ import type {
   DisconnectMode,
   Durability,
 } from "../types.js";
-import type { Message } from "../types.messages.js";
+import type { Message, ToolCallWithResult } from "../types.messages.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
 import type {
@@ -22,6 +22,7 @@ import type {
   GetUpdateType,
   GetConfigurableType,
   GetInterruptType,
+  GetToolCallsType,
   MessageMetadata,
   UseStreamThread,
   UseStreamOptions,
@@ -95,7 +96,37 @@ export interface UseStream<
    * Messages inferred from the thread.
    * Will automatically update with incoming message chunks.
    */
-  messages: Message[];
+  messages: Message<GetToolCallsType<Bag>>[];
+
+  /**
+   * Tool calls paired with their results.
+   * Useful for rendering tool invocations and their outputs together.
+   *
+   * Each item contains the tool call from an AI message paired with its
+   * corresponding ToolMessage result (if available).
+   *
+   * @example
+   * ```tsx
+   * // With type-safe tool calls
+   * type MyToolCalls =
+   *   | { name: "get_weather"; args: { location: string }; id?: string }
+   *   | { name: "search"; args: { query: string }; id?: string };
+   *
+   * const stream = useStream<MyState, { ToolCallsType: MyToolCalls }>({ ... });
+   *
+   * {stream.toolCalls.map(({ call, result }) => {
+   *   if (call.name === "get_weather") {
+   *     // call.args is { location: string }
+   *     return <WeatherCard location={call.args.location} result={result?.content} />;
+   *   }
+   *   if (call.name === "search") {
+   *     // call.args is { query: string }
+   *     return <SearchResults query={call.args.query} result={result?.content} />;
+   *   }
+   * })}
+   * ```
+   */
+  toolCalls: ToolCallWithResult<GetToolCallsType<Bag>>[];
 
   /**
    * Get the metadata for a message, such as first thread state the message
@@ -106,7 +137,7 @@ export interface UseStream<
    * @returns The metadata for the message.
    */
   getMessagesMetadata: (
-    message: Message,
+    message: Message<GetToolCallsType<Bag>>,
     index?: number
   ) => MessageMetadata<StateType> | undefined;
 
@@ -215,7 +246,13 @@ export type UseStreamCustom<
   Bag extends BagTemplate = BagTemplate
 > = Pick<
   UseStream<StateType, Bag>,
-  "values" | "error" | "isLoading" | "stop" | "interrupt" | "messages"
+  | "values"
+  | "error"
+  | "isLoading"
+  | "stop"
+  | "interrupt"
+  | "messages"
+  | "toolCalls"
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
