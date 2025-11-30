@@ -10,4 +10,17 @@ export type {
   UseStreamOptions,
   UseStreamTransport,
   UseStreamThread,
+  GetToolCallsType,
+  // Agent type extraction helpers
+  AgentTypeConfigLike,
+  AgentToBag,
+  IsAgentLike,
+  ExtractAgentConfig,
+  InferAgentToolCalls,
 } from "../ui/types.js";
+export type {
+  ToolCallWithResult,
+  DefaultToolCall,
+  ToolCallFromTool,
+  ToolCallsFromTools,
+} from "../types.messages.js";
