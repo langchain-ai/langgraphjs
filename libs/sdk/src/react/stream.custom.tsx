@@ -115,7 +115,10 @@ export function useStreamCustom<
 
   const [messageManager] = useState(() => new MessageTupleManager());
   const [stream] = useState(
-    () => new StreamManager<StateType, Bag>(messageManager)
+    () =>
+      new StreamManager<StateType, Bag>(messageManager, {
+        throttle: options.throttle ?? false,
+      })
   );
 
   useSyncExternalStore(

@@ -104,15 +104,21 @@ export class StreamManager<
 
   private listeners = new Set<() => void>();
 
+  private throttle: number | boolean;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
     error: unknown;
   };
 
-  constructor(messages: MessageTupleManager) {
+  constructor(
+    messages: MessageTupleManager,
+    options: { throttle: number | boolean }
+  ) {
     this.messages = messages;
     this.state = { isLoading: false, values: null, error: undefined };
+    this.throttle = options.throttle;
   }
 
   private setState = (newState: Partial<typeof this.state>) => {
@@ -125,8 +131,27 @@ export class StreamManager<
   };
 
   subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    if (this.throttle === false) {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+
+    const timeoutMs = this.throttle === true ? 0 : this.throttle;
+    let timeoutId: NodeJS.Timeout | number | undefined;
+
+    const throttledListener = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        clearTimeout(timeoutId);
+        listener();
+      }, timeoutMs);
+    };
+
+    this.listeners.add(throttledListener);
+    return () => {
+      clearTimeout(timeoutId);
+      this.listeners.delete(throttledListener);
+    };
   };
 
   getSnapshot = () => this.state;
