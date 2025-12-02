@@ -111,7 +111,7 @@ async function downloadAndExtract(
     const targetBinaryPath = path.join(destPath, info.binaryName);
 
     // Just copy the file directly (it's a single executable, not a directory)
-    await fs.copyFile(sourceBinaryPath, targetBinaryPath); 
+    await fs.copyFile(sourceBinaryPath, targetBinaryPath);
     await fs.chmod(targetBinaryPath, 0o755);
 
     return targetBinaryPath;
