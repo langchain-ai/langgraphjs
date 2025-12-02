@@ -166,7 +166,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       jsonDoc
     );
 
-    return this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
+    return await this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
   }
 
   async put(
@@ -388,7 +388,11 @@ export class RedisSaver extends BaseCheckpointSaver {
           // Load checkpoint with pending writes and migrate sends
           const { checkpoint, pendingWrites } =
             await this.loadCheckpointWithWrites(jsonDoc);
-          yield this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
+          yield await this.createCheckpointTuple(
+            jsonDoc,
+            checkpoint,
+            pendingWrites
+          );
           yieldedCount++;
         }
 
@@ -465,7 +469,7 @@ export class RedisSaver extends BaseCheckpointSaver {
             // Load checkpoint with pending writes and migrate sends
             const { checkpoint, pendingWrites } =
               await this.loadCheckpointWithWrites(jsonDoc);
-            yield this.createCheckpointTuple(
+            yield await this.createCheckpointTuple(
               jsonDoc,
               checkpoint,
               pendingWrites
@@ -555,7 +559,11 @@ export class RedisSaver extends BaseCheckpointSaver {
           // Load checkpoint with pending writes and migrate sends
           const { checkpoint, pendingWrites } =
             await this.loadCheckpointWithWrites(jsonDoc);
-          yield this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
+          yield await this.createCheckpointTuple(
+            jsonDoc,
+            checkpoint,
+            pendingWrites
+          );
           yieldedCount++;
         }
       }
@@ -718,7 +726,16 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     const pendingWrites: Array<[string, string, any]> = [];
     for (const writeDoc of writeDocuments) {
-      pendingWrites.push([writeDoc.task_id, writeDoc.channel, writeDoc.value]);
+      // Deserialize write value using serde to restore LangChain objects
+      const deserializedValue = await this.serde.loadsTyped(
+        "json",
+        JSON.stringify(writeDoc.value)
+      );
+      pendingWrites.push([
+        writeDoc.task_id,
+        writeDoc.channel,
+        deserializedValue,
+      ]);
     }
 
     return pendingWrites;
@@ -729,8 +746,11 @@ export class RedisSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint;
     pendingWrites?: Array<[string, string, any]>;
   }> {
-    // Load checkpoint directly from JSON
-    const checkpoint = { ...jsonDoc.checkpoint };
+    // Deserialize checkpoint using serde to restore LangChain objects
+    const checkpoint: Checkpoint = await this.serde.loadsTyped(
+      "json",
+      JSON.stringify(jsonDoc.checkpoint)
+    );
 
     // Migrate pending sends ONLY for OLD checkpoint versions (v < 4) with parents
     // Modern checkpoints (v >= 4) should NEVER have pending sends migrated
@@ -805,14 +825,20 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   // Helper method to create checkpoint tuple from json document
-  private createCheckpointTuple(
+  private async createCheckpointTuple(
     jsonDoc: any,
     checkpoint: Checkpoint,
     pendingWrites?: Array<[string, string, any]>
-  ): CheckpointTuple {
+  ): Promise<CheckpointTuple> {
     // Convert back from "__empty__" to empty string
     const checkpointNs =
       jsonDoc.checkpoint_ns === "__empty__" ? "" : jsonDoc.checkpoint_ns;
+
+    // Deserialize metadata using serde
+    const metadata = (await this.serde.loadsTyped(
+      "json",
+      JSON.stringify(jsonDoc.metadata)
+    )) as CheckpointMetadata;
 
     return {
       config: {
@@ -823,7 +849,7 @@ export class RedisSaver extends BaseCheckpointSaver {
         },
       },
       checkpoint,
-      metadata: jsonDoc.metadata,
+      metadata,
       parentConfig: jsonDoc.parent_checkpoint_id
         ? {
             configurable: {
