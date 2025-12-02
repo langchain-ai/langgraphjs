@@ -15,6 +15,7 @@ import {
   Runtime,
   interrupt,
   END,
+  pushMessage,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
@@ -92,33 +93,16 @@ const interruptAgent = new StateGraph(MessagesAnnotation)
 const removeMessageAgent = new StateGraph(MessagesAnnotation)
   .addSequence({
     step1: () => ({ messages: [new AIMessage("Step 1: To Remove")] }),
-    step2: async (state, config) => {
-      // Send message before persisting to state
-      // TODO: replace with `pushMessage` when part of 1.x
+    step2: async (state) => {
       const messages: BaseMessage[] = [
         ...state.messages
-          .filter((m) => m.getType() === "ai")
+          .filter((m) => AIMessage.isInstance(m))
           .map((m) => new RemoveMessage({ id: m.id! })),
         new AIMessage({ id: randomUUID(), content: "Step 2: To Keep" }),
       ];
 
-      const messagesHandler = (
-        config.callbacks as { handlers: object[] }
-      )?.handlers?.find(
-        (
-          cb
-        ): cb is {
-          _emit: (
-            chunk: [namespace: string[], metadata: Record<string, unknown>],
-            message: BaseMessage,
-            runId: string | undefined,
-            dedupe: boolean
-          ) => void;
-        } => "name" in cb && cb.name === "StreamMessagesHandler"
-      );
-
       for (const message of messages) {
-        messagesHandler?._emit([[], {}], message, undefined, false);
+        pushMessage(message, { stateKey: null });
       }
 
       return { messages };
@@ -1246,6 +1230,7 @@ describe("useStream", () => {
       const { submit, messages, isLoading } = useStream({
         assistantId: "removeMessageAgent",
         apiKey: "test-api-key",
+        throttle: false,
       });
 
       const rawMessages = messages.map((msg, i) => ({
