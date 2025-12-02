@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.0.1
+
+### Patch Changes
+
+- 9440d08: Fix LangChain objects not being deserialized properly from checkpointed state
+
 ## 1.0.0
 
 ### Major Changes
