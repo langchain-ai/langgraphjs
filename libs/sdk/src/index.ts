@@ -6,6 +6,7 @@ export type {
   AssistantBase,
   AssistantGraph,
   AssistantVersion,
+  AssistantsSearchResponse,
   Checkpoint,
   Config,
   Cron,

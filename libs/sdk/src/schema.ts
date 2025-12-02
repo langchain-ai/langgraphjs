@@ -134,6 +134,13 @@ export interface Assistant extends AssistantBase {
   updated_at: string;
 }
 
+export interface AssistantsSearchResponse {
+  /** The assistants returned for the current search page. */
+  assistants: Assistant[];
+  /** Pagination cursor from the X-Pagination-Next response header. */
+  next: string | null;
+}
+
 export interface AssistantGraph {
   nodes: Array<{
     id: string | number;
