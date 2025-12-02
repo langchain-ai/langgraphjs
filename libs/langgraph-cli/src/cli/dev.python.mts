@@ -14,7 +14,7 @@ import { assembleLocalDeps } from "../docker/docker.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const UV_VERSION = "0.5.20";
+const UV_VERSION = "0.9.11";
 const UV_BINARY_CACHE = path.join(__dirname, ".uv", UV_VERSION);
 
 interface UvBinaryInfo {
@@ -110,7 +110,8 @@ async function downloadAndExtract(
     // Move binary to cache directory
     const targetBinaryPath = path.join(destPath, info.binaryName);
 
-    await fs.rename(sourceBinaryPath, targetBinaryPath);
+    // Just copy the file directly (it's a single executable, not a directory)
+    await fs.copyFile(sourceBinaryPath, targetBinaryPath);
     await fs.chmod(targetBinaryPath, 0o755);
 
     return targetBinaryPath;
