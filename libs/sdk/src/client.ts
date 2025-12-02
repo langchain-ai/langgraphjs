@@ -4,6 +4,7 @@ import {
   AssistantSortBy,
   AssistantSelectField,
   AssistantVersion,
+  AssistantsSearchResponse,
   CancelAction,
   Checkpoint,
   Config,
@@ -616,8 +617,20 @@ export class AssistantsClient extends BaseClient {
   /**
    * List assistants.
    * @param query Query options.
-   * @returns List of assistants.
+   * @returns List of assistants or, when includePagination is true, a mapping with the assistants and next cursor.
    */
+  async search(query: {
+    graphId?: string;
+    name?: string;
+    metadata?: Metadata;
+    limit?: number;
+    offset?: number;
+    sortBy?: AssistantSortBy;
+    sortOrder?: SortOrder;
+    select?: AssistantSelectField[];
+    includePagination: true;
+  }): Promise<AssistantsSearchResponse>;
+
   async search(query?: {
     graphId?: string;
     name?: string;
@@ -627,20 +640,45 @@ export class AssistantsClient extends BaseClient {
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
     select?: AssistantSelectField[];
-  }): Promise<Assistant[]> {
-    return this.fetch<Assistant[]>("/assistants/search", {
-      method: "POST",
-      json: {
-        graph_id: query?.graphId ?? undefined,
-        name: query?.name ?? undefined,
-        metadata: query?.metadata ?? undefined,
-        limit: query?.limit ?? 10,
-        offset: query?.offset ?? 0,
-        sort_by: query?.sortBy ?? undefined,
-        sort_order: query?.sortOrder ?? undefined,
-        select: query?.select ?? undefined,
-      },
-    });
+    includePagination?: false;
+  }): Promise<Assistant[]>;
+
+  async search(query?: {
+    graphId?: string;
+    name?: string;
+    metadata?: Metadata;
+    limit?: number;
+    offset?: number;
+    sortBy?: AssistantSortBy;
+    sortOrder?: SortOrder;
+    select?: AssistantSelectField[];
+    includePagination?: boolean;
+  }): Promise<Assistant[] | AssistantsSearchResponse> {
+    const json = {
+      graph_id: query?.graphId ?? undefined,
+      name: query?.name ?? undefined,
+      metadata: query?.metadata ?? undefined,
+      limit: query?.limit ?? 10,
+      offset: query?.offset ?? 0,
+      sort_by: query?.sortBy ?? undefined,
+      sort_order: query?.sortOrder ?? undefined,
+      select: query?.select ?? undefined,
+    };
+    const [assistants, response] = await this.fetch<Assistant[]>(
+      "/assistants/search",
+      {
+        method: "POST",
+        json,
+        withResponse: true,
+      }
+    );
+
+    if (query?.includePagination) {
+      const next = response.headers.get("X-Pagination-Next");
+      return { assistants, next };
+    }
+
+    return assistants;
   }
 
   /**
