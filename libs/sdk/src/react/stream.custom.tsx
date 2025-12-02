@@ -117,7 +117,7 @@ export function useStreamCustom<
   const [stream] = useState(
     () =>
       new StreamManager<StateType, Bag>(messageManager, {
-        throttle: options.throttle ?? true,
+        throttle: options.throttle ?? false,
       })
   );
 
