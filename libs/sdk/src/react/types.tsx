@@ -284,9 +284,8 @@ export interface UseStreamOptions<
 
   /**
    * Manage the thread state externally.
-   * @experimental
    */
-  experimental_thread?: UseStreamThread<StateType>;
+  thread?: UseStreamThread<StateType>;
 
   /**
    * Throttle the stream.
