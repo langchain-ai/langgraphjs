@@ -609,7 +609,7 @@ export class FileSystemAssistants implements AssistantsRepo {
   }
 
   async count(
-    options: { graph_id?: string; name?: string, metadata?: Metadata },
+    options: { graph_id?: string; name?: string; metadata?: Metadata },
     auth: AuthContext | undefined
   ): Promise<number> {
     const [filters] = await handleAuthEvent(auth, "assistants:search", {
@@ -630,9 +630,7 @@ export class FileSystemAssistants implements AssistantsRepo {
 
         if (
           options.name != null &&
-          !assistant["name"]
-            .toLowerCase()
-            .includes(options.name.toLowerCase())
+          !assistant["name"].toLowerCase().includes(options.name.toLowerCase())
         ) {
           return false;
         }
