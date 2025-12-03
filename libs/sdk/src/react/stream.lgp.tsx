@@ -270,12 +270,12 @@ export function useStreamLGP<
     threadId,
     historyLimit,
     {
-      passthrough: options.experimental_thread != null,
+      passthrough: options.thread != null,
       submittingRef: threadIdStreamingRef,
       onError: options.onError,
     }
   );
-  const history = options.experimental_thread ?? builtInHistory;
+  const history = options.thread ?? builtInHistory;
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
