@@ -317,6 +317,7 @@ export const AssistantCountRequest = z
       .describe("Metadata to search for.")
       .optional(),
     graph_id: z.string().describe("Filter by graph ID.").optional(),
+    name: z.string().describe("Filter by name.").optional(),
   })
   .describe("Payload for counting assistants.");
 

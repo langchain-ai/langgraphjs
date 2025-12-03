@@ -218,6 +218,11 @@ describe("assistants", () => {
     expect(search[0].name.toLowerCase().includes("PLE_run".toLowerCase()));
   });
 
+  it("count assistants", async () => {
+    let count = await client.assistants.count();
+    expect(count).toEqual(9);
+  });
+
   it("get assistant versions", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
 
