@@ -1640,9 +1640,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^1.0.0, @langchain/core@npm:^1.0.1":
-  version: 1.0.1
-  resolution: "@langchain/core@npm:1.0.1"
+"@langchain/core@npm:^1.0.0, @langchain/core@npm:^1.0.1, @langchain/core@npm:^1.1.2":
+  version: 1.1.2
+  resolution: "@langchain/core@npm:1.1.2"
   dependencies:
     "@cfworker/json-schema": "npm:^4.0.2"
     ansi-styles: "npm:^5.0.0"
@@ -1652,10 +1652,10 @@ __metadata:
     langsmith: "npm:^0.3.64"
     mustache: "npm:^4.2.0"
     p-queue: "npm:^6.6.2"
-    p-retry: "npm:4"
+    p-retry: "npm:^7.0.0"
     uuid: "npm:^10.0.0"
     zod: "npm:^3.25.76 || ^4"
-  checksum: 10/0028d2fe23beeae5975110500ba10d127162c1a9def3eaca655ce139ba133f70ee0bb41ff6a6eb91bea0a4fe2b347587cf55712d9cd224293b6e909dad4717b9
+  checksum: 10/338a9debfbb76bdb855f234bced195b3e1cda42335b2f4be27f764d02f94e237c7c9cb1704324a9c99151543d404e3a9fd4a54e4ee74780f79baaa9b65ca9421
   languageName: node
   linkType: hard
 
@@ -2041,7 +2041,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-sdk@workspace:libs/sdk"
   dependencies:
-    "@langchain/core": "npm:^1.0.1"
+    "@langchain/core": "npm:^1.1.2"
     "@langchain/scripts": "npm:^0.1.4"
     "@tsconfig/recommended": "npm:^1.0.2"
     "@types/node": "npm:^18.15.11"
@@ -9296,6 +9296,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"is-network-error@npm:^1.1.0":
+  version: 1.3.0
+  resolution: "is-network-error@npm:1.3.0"
+  checksum: 10/56dc0b8ed9c0bb72202058f172ad0c3121cf68772e8cbba343d3775f6e2ec7877d423cbcea45f4cedcd345de8693de1b52dfe0c6fc15d652c4aa98c2abf0185a
+  languageName: node
+  linkType: hard
+
 "is-node-process@npm:^1.2.0":
   version: 1.2.0
   resolution: "is-node-process@npm:1.2.0"
@@ -11143,6 +11150,15 @@ __metadata:
     "@types/retry": "npm:0.12.0"
     retry: "npm:^0.13.1"
   checksum: 10/45c270bfddaffb4a895cea16cb760dcc72bdecb6cb45fef1971fa6ea2e91ddeafddefe01e444ac73e33b1b3d5d29fb0dd18a7effb294262437221ddc03ce0f2e
+  languageName: node
+  linkType: hard
+
+"p-retry@npm:^7.0.0":
+  version: 7.1.0
+  resolution: "p-retry@npm:7.1.0"
+  dependencies:
+    is-network-error: "npm:^1.1.0"
+  checksum: 10/25d0c47fb7d8989efa422e3cb44bcd4006323bdee89ae75995d8617eefe732e2524c40cf9b3c4ee703d0af88a1e88b44865d4548727b1c29d6b74617d5a8f571
   languageName: node
   linkType: hard
 
