@@ -1,5 +1,15 @@
 # @langchain/langgraph
 
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies [e19e76c]
+- Updated dependencies [fa6c009]
+- Updated dependencies [35e8fc7]
+- Updated dependencies [b78a738]
+  - @langchain/langgraph-sdk@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes
