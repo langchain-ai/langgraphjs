@@ -686,17 +686,20 @@ export class AssistantsClient extends BaseClient {
    *
    * @param query.metadata Metadata to filter by. Exact match for each key/value.
    * @param query.graphId Optional graph id to filter by.
+   * @param query.name Optional name to filter by.
    * @returns Number of assistants matching the criteria.
    */
   async count(query?: {
     metadata?: Metadata;
     graphId?: string;
+    name?: string;
   }): Promise<number> {
     return this.fetch<number>(`/assistants/count`, {
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
         graph_id: query?.graphId ?? undefined,
+        name: query?.name ?? undefined,
       },
     });
   }

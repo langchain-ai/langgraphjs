@@ -462,7 +462,7 @@ export interface AssistantsRepo {
   ): Promise<string[]>;
 
   count(
-    options: { graph_id?: string; metadata?: Metadata },
+    options: { graph_id?: string; name?: string; metadata?: Metadata },
     auth: AuthContext | undefined
   ): Promise<number>;
 
