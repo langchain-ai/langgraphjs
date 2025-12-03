@@ -1,5 +1,17 @@
 # @langchain/langgraph-sdk
 
+## 1.1.0
+
+### Minor Changes
+
+- e19e76c: Rename `experimental_thread` to `thread`, allowing replacing built-in history fetching hook with React Query / SWR
+- fa6c009: Add throttle option to `useStream` and batch updates in a macrotask to prevent `Maximum update depth exceeded` error
+
+### Patch Changes
+
+- 35e8fc7: Add name parameter to assistants count API.
+- b78a738: feat(sdk): add `includePagination` property when searching from assistants
+
 ## 1.0.3
 
 ### Patch Changes
