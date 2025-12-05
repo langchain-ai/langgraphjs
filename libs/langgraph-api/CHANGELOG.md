@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.1.2
+
+### Patch Changes
+
+- d08e484: Fix semver range for SDK
+  - @langchain/langgraph-ui@1.1.2
+
 ## 1.1.1
 
 ### Patch Changes
