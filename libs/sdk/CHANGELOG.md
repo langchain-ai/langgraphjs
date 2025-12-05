@@ -1,5 +1,16 @@
 # @langchain/langgraph-sdk
 
+## 1.2.0
+
+### Minor Changes
+
+- 379de5e: Fix tool calls arguments not being streamed to the client
+
+### Patch Changes
+
+- d08e484: Add support for sending `AbortSignal` to all SDK methods
+- d08e484: Fix `useStream().stop()` not cancelling creation of thread.
+
 ## 1.1.0
 
 ### Minor Changes
