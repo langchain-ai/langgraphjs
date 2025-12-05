@@ -411,6 +411,7 @@ export function useStreamLGP<
           const thread = await client.threads.create({
             threadId: submitOptions?.threadId,
             metadata: submitOptions?.metadata,
+            signal,
           });
 
           usableThreadId = thread.thread_id;
