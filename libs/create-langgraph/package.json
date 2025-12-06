@@ -10,7 +10,8 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/create-langgraph"
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",
