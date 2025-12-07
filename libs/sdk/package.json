@@ -3,6 +3,11 @@
   "version": "1.2.0",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/sdk"
+  },
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-sdk",

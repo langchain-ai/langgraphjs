@@ -47,7 +47,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/langgraph-api"
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/",
