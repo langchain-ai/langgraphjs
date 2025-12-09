@@ -1,5 +1,11 @@
 # @langchain/langgraph-supervisor
 
+## 1.0.1
+
+### Patch Changes
+
+- b1ed761: bump zod dependency
+
 ## 1.0.0
 
 ### Major Changes
