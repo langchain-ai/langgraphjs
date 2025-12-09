@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-swarm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An implementation of a multi-agent swarm using LangGraph",
   "type": "module",
   "engines": {
