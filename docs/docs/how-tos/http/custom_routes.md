@@ -1,6 +1,6 @@
 # How to add custom routes
 
-When deploying agents on the LangGraph platform, your server automatically exposes routes for creating runs and threads, interacting with the long-term memory store, managing configurable assistants, and other core functionality ([see all default API endpoints](../../cloud/reference/api/api_ref.md)).
+When deploying agents on the LangGraph platform, your server automatically exposes routes for creating runs and threads, interacting with the long-term memory store, managing configurable assistants, and other core functionality ([see all default API endpoints](https://langchain-ai.github.io/langgraph/cloud/reference/api/api_ref.html)).
 
 You can add custom routes by providing your own [`Hono`](https://hono.dev/) app. You make LangGraph Platform aware of this by providing a path to the app in your `langgraph.json` configuration file. (`"http": {"app": "path/to/app.ts:app"}`).
 
