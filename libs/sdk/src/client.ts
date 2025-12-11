@@ -49,7 +49,7 @@ import { AsyncCaller, AsyncCallerParams } from "./utils/async_caller.js";
 import { getEnvironmentVariable } from "./utils/env.js";
 import { mergeSignals } from "./utils/signals.js";
 import { BytesLineDecoder, SSEDecoder } from "./utils/sse.js";
-import { IterableReadableStream } from "./utils/stream.js";
+import { streamWithRetry } from "./utils/stream.js";
 
 type HeaderValue = string | undefined | null;
 
@@ -1185,28 +1185,69 @@ export class ThreadsClient<
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
-    let [url, init] = this.prepareFetchOptions(`/threads/${threadId}/stream`, {
-      method: "GET",
-      headers: options?.lastEventId
-        ? { "Last-Event-ID": options.lastEventId }
-        : undefined,
-      params: options?.streamMode
-        ? { stream_mode: options.streamMode }
-        : undefined,
+    const endpoint = `/threads/${threadId}/stream`;
+
+    // Initial request (GET, optionally with Last-Event-ID if resuming)
+    const initialRequest = async () => {
+      let [url, init] = this.prepareFetchOptions(endpoint, {
+        method: "GET",
+        timeoutMs: null,
+        signal: options?.signal,
+        headers: options?.lastEventId
+          ? { "Last-Event-ID": options.lastEventId }
+          : undefined,
+        params: options?.streamMode
+          ? { stream_mode: options.streamMode }
+          : undefined,
+      });
+
+      if (this.onRequest != null) init = await this.onRequest(url, init);
+      const response = await this.asyncCaller.fetch(url, init);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
+        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
+          .pipeThrough(BytesLineDecoder())
+          .pipeThrough(SSEDecoder());
+
+      return { response, stream };
+    };
+
+    // Reconnect request (uses reconnectPath from Location header if provided)
+    const reconnectRequest = async (
+      lastEventId: string,
+      reconnectPath?: string
+    ) => {
+      const reconnectEndpoint = reconnectPath || endpoint;
+
+      let [url, init] = this.prepareFetchOptions(reconnectEndpoint, {
+        method: "GET",
+        timeoutMs: null,
+        signal: options?.signal,
+        headers: {
+          "Last-Event-ID": lastEventId,
+        },
+        params: options?.streamMode
+          ? { stream_mode: options.streamMode }
+          : undefined,
+      });
+
+      if (this.onRequest != null) init = await this.onRequest(url, init);
+      const response = await this.asyncCaller.fetch(url, init);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
+        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
+          .pipeThrough(BytesLineDecoder())
+          .pipeThrough(SSEDecoder());
+
+      return { response, stream };
+    };
+
+    yield* streamWithRetry(initialRequest, reconnectRequest, {
+      maxRetries: 5,
       signal: options?.signal,
     });
-
-    if (this.onRequest != null) init = await this.onRequest(url, init);
-    const response = await this.asyncCaller.fetch(url, init);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream: ReadableStream<{ event: string; data: any }> = (
-      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-    )
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
-
-    yield* IterableReadableStream.fromReadableStream(stream);
   }
 }
 
@@ -1297,26 +1338,64 @@ export class RunsClient<
     const endpoint =
       threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`;
 
-    let [url, init] = this.prepareFetchOptions(endpoint, {
-      method: "POST",
-      json,
-      timeoutMs: null,
+    // Initial POST request with full payload
+    const initialRequest = async () => {
+      let [url, init] = this.prepareFetchOptions(endpoint, {
+        method: "POST",
+        json,
+        timeoutMs: null,
+        signal: payload?.signal,
+      });
+      if (this.onRequest != null) init = await this.onRequest(url, init);
+      const response = await this.asyncCaller.fetch(url, init);
+
+      const runMetadata = getRunMetadataFromResponse(response);
+      if (runMetadata) payload?.onRunCreated?.(runMetadata);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream: ReadableStream<{ event: any; data: any; id?: string }> = (
+        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+      )
+        .pipeThrough(BytesLineDecoder())
+        .pipeThrough(SSEDecoder());
+
+      return { response, stream };
+    };
+
+    // Reconnect with GET request and Last-Event-ID header
+    // Uses reconnectPath (from Location header) if provided, otherwise original endpoint
+    const reconnectRequest = async (
+      lastEventId: string,
+      reconnectPath?: string
+    ) => {
+      const reconnectEndpoint = reconnectPath || endpoint;
+
+      // For reconnection, use GET (no body/content-type headers)
+      let [url, init] = this.prepareFetchOptions(reconnectEndpoint, {
+        method: "GET",
+        headers: {
+          "Last-Event-ID": lastEventId,
+        },
+        timeoutMs: null,
+        signal: payload?.signal,
+      });
+      if (this.onRequest != null) init = await this.onRequest(url, init);
+      const response = await this.asyncCaller.fetch(url, init);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream: ReadableStream<{ event: any; data: any; id?: string }> = (
+        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+      )
+        .pipeThrough(BytesLineDecoder())
+        .pipeThrough(SSEDecoder());
+
+      return { response, stream };
+    };
+
+    yield* streamWithRetry(initialRequest, reconnectRequest, {
+      maxRetries: 5,
       signal: payload?.signal,
     });
-    if (this.onRequest != null) init = await this.onRequest(url, init);
-    const response = await this.asyncCaller.fetch(url, init);
-
-    const runMetadata = getRunMetadataFromResponse(response);
-    if (runMetadata) payload?.onRunCreated?.(runMetadata);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream: ReadableStream<{ event: any; data: any }> = (
-      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-    )
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
-
-    yield* IterableReadableStream.fromReadableStream(stream);
   }
 
   /**
@@ -1616,11 +1695,14 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
-    let [url, init] = this.prepareFetchOptions(
+    const endpoint =
       threadId != null
         ? `/threads/${threadId}/runs/${runId}/stream`
-        : `/runs/${runId}/stream`,
-      {
+        : `/runs/${runId}/stream`;
+
+    // Initial request (GET, optionally with Last-Event-ID if resuming)
+    const initialRequest = async () => {
+      let [url, init] = this.prepareFetchOptions(endpoint, {
         method: "GET",
         timeoutMs: null,
         signal: opts?.signal,
@@ -1631,20 +1713,56 @@ export class RunsClient<
           cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
           stream_mode: opts?.streamMode,
         },
-      }
-    );
+      });
 
-    if (this.onRequest != null) init = await this.onRequest(url, init);
-    const response = await this.asyncCaller.fetch(url, init);
+      if (this.onRequest != null) init = await this.onRequest(url, init);
+      const response = await this.asyncCaller.fetch(url, init);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream: ReadableStream<{ event: string; data: any }> = (
-      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-    )
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
+        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
+          .pipeThrough(BytesLineDecoder())
+          .pipeThrough(SSEDecoder());
 
-    yield* IterableReadableStream.fromReadableStream(stream);
+      return { response, stream };
+    };
+
+    // Reconnect request (uses reconnectPath from Location header if provided)
+    const reconnectRequest = async (
+      lastEventId: string,
+      reconnectPath?: string
+    ) => {
+      const reconnectEndpoint = reconnectPath || endpoint;
+
+      let [url, init] = this.prepareFetchOptions(reconnectEndpoint, {
+        method: "GET",
+        timeoutMs: null,
+        signal: opts?.signal,
+        headers: {
+          "Last-Event-ID": lastEventId,
+        },
+        params: {
+          cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
+          stream_mode: opts?.streamMode,
+        },
+      });
+
+      if (this.onRequest != null) init = await this.onRequest(url, init);
+      const response = await this.asyncCaller.fetch(url, init);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
+        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
+          .pipeThrough(BytesLineDecoder())
+          .pipeThrough(SSEDecoder());
+
+      return { response, stream };
+    };
+
+    yield* streamWithRetry(initialRequest, reconnectRequest, {
+      maxRetries: 5,
+      signal: opts?.signal,
+    });
   }
 
   /**
