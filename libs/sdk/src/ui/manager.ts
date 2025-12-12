@@ -106,6 +106,8 @@ export class StreamManager<
 
   private throttle: number | boolean;
 
+  private queue: Promise<unknown> = Promise.resolve();
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
@@ -223,7 +225,7 @@ export class StreamManager<
     return expected === actual || actual.startsWith(`${expected}|`);
   };
 
-  start = async (
+  protected enqueue = async (
     action: (
       signal: AbortSignal
     ) => Promise<
@@ -255,9 +257,7 @@ export class StreamManager<
 
       onFinish?: () => void;
     }
-  ): Promise<void> => {
-    if (this.state.isLoading) return;
-
+  ) => {
     try {
       this.setState({ isLoading: true, error: undefined });
       this.abortRef = new AbortController();
@@ -359,6 +359,42 @@ export class StreamManager<
       this.abortRef = new AbortController();
       options.onFinish?.();
     }
+  };
+
+  start = async (
+    action: (
+      signal: AbortSignal
+    ) => Promise<
+      AsyncGenerator<
+        EventStreamEvent<
+          StateType,
+          GetUpdateType<Bag, StateType>,
+          GetCustomEventType<Bag>
+        >
+      >
+    >,
+    options: {
+      getMessages: (values: StateType) => Message[];
+
+      setMessages: (current: StateType, messages: Message[]) => StateType;
+
+      initialValues: StateType;
+
+      callbacks: StreamManagerEventCallbacks<StateType, Bag>;
+
+      onSuccess: () =>
+        | StateType
+        | null
+        | undefined
+        | void
+        | Promise<StateType | null | undefined | void>;
+
+      onError: (error: unknown) => void | Promise<void>;
+
+      onFinish?: () => void;
+    }
+  ): Promise<void> => {
+    this.queue = this.queue.then(() => this.enqueue(action, options));
   };
 
   stop = async (
