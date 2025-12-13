@@ -10,6 +10,7 @@ import {
   getStateTypeSchema,
 } from "../graph/zod/schema.js";
 import { MessagesZodState } from "../graph/messages_annotation.js";
+import { withLangGraph, schemaMetaRegistry } from "../graph/zod/meta.js";
 
 describe("StateGraph with Zod schemas", () => {
   it("should accept Zod schema as input in addNode", async () => {
@@ -143,5 +144,107 @@ describe("StateGraph with Zod schemas", () => {
         count: { type: "number" },
       },
     });
+  });
+
+  it("should cache channel instances for the same field schema", () => {
+    // This test verifies the fix for "Channel already exists with a different type" error
+    // that occurs when multiple schemas share the same field definitions.
+    // The fix caches channel instances per field schema to ensure identity equality.
+
+    // Create a custom reducer for testing
+    const fileDataReducer = (
+      left: Record<string, string> | undefined,
+      right: Record<string, string | null>
+    ): Record<string, string> => {
+      if (left === undefined) {
+        const result: Record<string, string> = {};
+        for (const [key, value] of Object.entries(right)) {
+          if (value !== null) result[key] = value;
+        }
+        return result;
+      }
+      const result = { ...left };
+      for (const [key, value] of Object.entries(right)) {
+        if (value === null) delete result[key];
+        else result[key] = value;
+      }
+      return result;
+    };
+
+    // Create a shared field schema with a reducer
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filesFieldSchema = withLangGraph(z.record(z.string()) as any, {
+      reducer: {
+        fn: fileDataReducer,
+        schema: z.record(z.string().nullable()),
+      },
+      default: () => ({}),
+    });
+
+    // Create two different object schemas that share the same field schema
+    const schema1 = z.object({ files: filesFieldSchema, count: z.number() });
+    const schema2 = z.object({ files: filesFieldSchema, name: z.string() });
+
+    // Get channels for both schemas
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const channels1 = schemaMetaRegistry.getChannelsForSchema(schema1 as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const channels2 = schemaMetaRegistry.getChannelsForSchema(schema2 as any);
+
+    // The 'files' channel should be the same instance for both schemas
+    // This is the key assertion - without the cache fix, this would fail
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((channels1 as any).files).toBe((channels2 as any).files);
+  });
+
+  it("should not throw when creating StateGraph with different input/output schemas sharing fields", () => {
+    // This test ensures that StateGraph can be created when state/input/output
+    // schemas are different objects but share the same field schema definitions.
+    // This is a common pattern when using middleware that adds state fields.
+
+    const fileDataReducer = (
+      left: Record<string, string> | undefined,
+      right: Record<string, string | null>
+    ): Record<string, string> => {
+      const result = left ? { ...left } : {};
+      for (const [key, value] of Object.entries(right)) {
+        if (value === null) delete result[key];
+        else result[key] = value;
+      }
+      return result;
+    };
+
+    // Shared field schema
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filesFieldSchema = withLangGraph(z.record(z.string()) as any, {
+      reducer: {
+        fn: fileDataReducer,
+        schema: z.record(z.string().nullable()),
+      },
+      default: () => ({}),
+    });
+
+    // Create separate state, input, output schemas (simulating middleware behavior)
+    const stateSchema = MessagesZodState.extend({ files: filesFieldSchema });
+    const inputSchema = z.object({
+      messages: MessagesZodState.shape.messages,
+      files: filesFieldSchema,
+    });
+    const outputSchema = z.object({
+      messages: MessagesZodState.shape.messages,
+      files: filesFieldSchema,
+    });
+
+    // This should not throw "Channel already exists with a different type"
+    expect(() => {
+      new StateGraph({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        state: stateSchema as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        input: inputSchema as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        output: outputSchema as any,
+      });
+    }).not.toThrow();
   });
 });

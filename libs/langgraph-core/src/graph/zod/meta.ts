@@ -93,6 +93,15 @@ export class SchemaMetaRegistry {
   _extensionCache = new Map<string, WeakMap<InteropZodType, InteropZodType>>();
 
   /**
+   * Cache for channel instances per field schema.
+   * This ensures the same field schema always returns the same channel instance,
+   * preventing "Channel already exists with a different type" errors when
+   * the same schema field is used across multiple object schemas.
+   * @internal
+   */
+  _channelCache = new WeakMap<InteropZodType, BaseChannel>();
+
+  /**
    * Retrieves the metadata associated with a given schema.
    * @template TValue The value type of the schema.
    * @template TUpdate The update type of the schema (defaults to TValue).
@@ -147,6 +156,11 @@ export class SchemaMetaRegistry {
    *
    * This is used to create the `channels` object that's passed to the `Graph` constructor.
    *
+   * Channel instances are cached per field schema to ensure that the same schema field
+   * always returns the same channel instance. This prevents "Channel already exists with
+   * a different type" errors when multiple StateGraphs use schemas that share the same
+   * field definitions (e.g., when main agent and subagents both use filesystem middleware).
+   *
    * @template T The shape of the schema.
    * @param schema The schema to extract channels from.
    * @returns A mapping from property names to channel instances.
@@ -157,14 +171,26 @@ export class SchemaMetaRegistry {
     const channels = {} as Record<string, BaseChannel>;
     const shape = getInteropZodObjectShape(schema);
     for (const [key, channelSchema] of Object.entries(shape)) {
+      // Check if we already have a cached channel for this field schema
+      const cachedChannel = this._channelCache.get(channelSchema);
+      if (cachedChannel) {
+        channels[key] = cachedChannel;
+        continue;
+      }
+
+      // Create a new channel and cache it
       const meta = this.get(channelSchema);
+      let channel: BaseChannel;
       if (meta?.reducer) {
-        channels[key] = new BinaryOperatorAggregate<
+        channel = new BinaryOperatorAggregate<
           InferInteropZodOutput<typeof channelSchema>
         >(meta.reducer.fn, meta.default);
       } else {
-        channels[key] = new LastValue();
+        channel = new LastValue();
       }
+
+      this._channelCache.set(channelSchema, channel);
+      channels[key] = channel;
     }
     return channels as InteropZodToStateDefinition<T>;
   }
