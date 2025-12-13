@@ -108,6 +108,8 @@ export class StreamManager<
 
   private queue: Promise<unknown> = Promise.resolve();
 
+  private queueSize: number = 0;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
@@ -259,6 +261,7 @@ export class StreamManager<
     }
   ) => {
     try {
+      this.queueSize = Math.max(0, this.queueSize - 1);
       this.setState({ isLoading: true, error: undefined });
       this.abortRef = new AbortController();
 
@@ -342,7 +345,9 @@ export class StreamManager<
       if (streamError != null) throw streamError;
 
       const values = await options.onSuccess?.();
-      if (typeof values !== "undefined") this.setStreamValues(values);
+      if (typeof values !== "undefined" && this.queueSize === 0) {
+        this.setStreamValues(values);
+      }
     } catch (error) {
       if (
         !(
@@ -394,6 +399,7 @@ export class StreamManager<
       onFinish?: () => void;
     }
   ): Promise<void> => {
+    this.queueSize += 1;
     this.queue = this.queue.then(() => this.enqueue(action, options));
   };
 
