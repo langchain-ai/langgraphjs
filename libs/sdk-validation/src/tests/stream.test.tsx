@@ -56,6 +56,7 @@ const model = new FakeStreamingChatModel({
   responses: [new AIMessage("Hey")],
   sleep: 100,
 });
+
 const agent = new StateGraph(MessagesAnnotation)
   .addNode(
     "agent",
@@ -1450,5 +1451,77 @@ it(
         ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
       ].map((msg) => msg.join("\n"))
     );
+  })
+);
+
+it(
+  "enqueue multiple .submit() calls",
+  server.boundary(async () => {
+    server.use(getHttpHandler({ agent }));
+
+    const user = userEvent.setup();
+    const messagesValues = new Set<string>();
+
+    function TestComponent() {
+      const { submit, messages, isLoading } = useStream({
+        assistantId: "agent",
+        apiKey: "test-api-key",
+      });
+
+      const rawMessages = messages.map((msg, i) => ({
+        id: msg.id ?? i,
+        content: `${msg.type}: ${
+          typeof msg.content === "string"
+            ? msg.content
+            : JSON.stringify(msg.content)
+        }`,
+      }));
+
+      messagesValues.add(rawMessages.map((msg) => msg.content).join("\n"));
+
+      return (
+        <div>
+          <div data-testid="loading">
+            {isLoading ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="messages">
+            {rawMessages.map((msg, i) => (
+              <div key={msg.id} data-testid={`message-${i}`}>
+                <span>{msg.content}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit-first"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello (1)", type: "human" }] })
+            }
+          >
+            Send First
+          </button>
+
+          <button
+            data-testid="submit-second"
+            onClick={() =>
+              submit({ messages: [{ content: "Hello (2)", type: "human" }] })
+            }
+          >
+            Send Second
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    await user.click(screen.getByTestId("submit-first"));
+    await user.click(screen.getByTestId("submit-second"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("message-0")).toHaveTextContent("Hello (1)");
+      expect(screen.getByTestId("message-1")).toHaveTextContent("Hey");
+      expect(screen.getByTestId("message-2")).toHaveTextContent("Hello (2)");
+      expect(screen.getByTestId("message-3")).toHaveTextContent("Hey");
+    });
   })
 );
