@@ -1,5 +1,4 @@
 ---
-"@langchain/langgraph-sdk-validation": patch
 "@langchain/langgraph-sdk": patch
 ---
 
