@@ -237,7 +237,7 @@ describe("StateGraph with Zod schemas", () => {
 
     // This should not throw "Channel already exists with a different type"
     expect(() => {
-      new StateGraph({
+      const graph = new StateGraph({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         state: stateSchema as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -245,6 +245,8 @@ describe("StateGraph with Zod schemas", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         output: outputSchema as any,
       });
+      // Verify graph was created successfully
+      expect(graph).toBeDefined();
     }).not.toThrow();
   });
 });
