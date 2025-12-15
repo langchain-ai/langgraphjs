@@ -1,3 +1,5 @@
+import { isNetworkError } from "./error.js";
+
 // in this case don't quite match.
 type IterableReadableStreamInterface<T> = ReadableStream<T> & AsyncIterable<T>;
 
@@ -18,18 +20,21 @@ export interface StreamWithRetryOptions {
   /**
    * Callback invoked when a reconnection attempt is made.
    */
-  onReconnect?: (attempt: number, lastEventId?: string) => void;
+  onReconnect?: (options: {
+    attempt: number;
+    lastEventId?: string;
+    cause: unknown;
+  }) => void;
 }
 
 /**
  * Error thrown when maximum reconnection attempts are exceeded.
  */
 export class MaxReconnectAttemptsError extends Error {
-  constructor(maxAttempts: number) {
-    super(
-      `Exceeded maximum SSE reconnection attempts (${maxAttempts})`
-    );
+  constructor(maxAttempts: number, cause: unknown) {
+    super(`Exceeded maximum SSE reconnection attempts (${maxAttempts})`);
     this.name = "MaxReconnectAttemptsError";
+    this.cause = cause;
   }
 }
 
@@ -57,20 +62,19 @@ export async function* streamWithRetry<T extends { id?: string }>(
   options: StreamWithRetryOptions = {}
 ): AsyncGenerator<T> {
   const maxRetries = options.maxRetries ?? 5;
-  let reconnectAttempts = 0;
+  let attempt = 0;
   let lastEventId: string | undefined;
   let reconnectPath: string | undefined;
   let isInitialRequest = true;
 
   while (true) {
     let shouldRetry = false;
+    let lastError: unknown;
     let reader: ReadableStreamDefaultReader<T> | undefined;
 
     try {
       // Check if aborted before making request
-      if (options.signal?.aborted) {
-        return;
-      }
+      if (options.signal?.aborted) return;
 
       // Use initial request first, then reconnect requests
       const { response, stream } = isInitialRequest
@@ -137,20 +141,10 @@ export async function* streamWithRetry<T extends { id?: string }>(
         }
       }
     } catch (error) {
-      // Check if this is a network error that we should retry
-      const isNetworkError =
-        error instanceof TypeError ||
-        (error instanceof Error &&
-          (error.message.includes("fetch") ||
-            error.message.includes("network") ||
-            error.message.includes("connection")));
+      lastError = error;
 
       // Only retry if we have reconnection capability and it's a network error
-      if (
-        lastEventId &&
-        isNetworkError &&
-        !options.signal?.aborted
-      ) {
+      if (isNetworkError(error) && lastEventId && !options.signal?.aborted) {
         shouldRetry = true;
       } else {
         throw error;
@@ -158,20 +152,23 @@ export async function* streamWithRetry<T extends { id?: string }>(
     }
 
     if (shouldRetry) {
-      reconnectAttempts++;
-      if (reconnectAttempts > maxRetries) {
-        throw new MaxReconnectAttemptsError(maxRetries);
+      attempt += 1;
+      if (attempt > maxRetries) {
+        throw new MaxReconnectAttemptsError(maxRetries, lastError);
       }
 
       // Notify about reconnection attempt
-      options.onReconnect?.(reconnectAttempts, lastEventId);
+      options.onReconnect?.({ attempt, lastEventId, cause: lastError });
 
       // Exponential backoff with jitter: min(1000 * 2^attempt, 5000) + random jitter
-      const baseDelay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 5000);
+      const baseDelay = Math.min(1000 * 2 ** (attempt - 1), 5000);
       const jitter = Math.random() * 1000;
       const delay = baseDelay + jitter;
 
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await new Promise((resolve) => {
+        setTimeout(resolve, delay);
+      });
+
       continue;
     }
 
