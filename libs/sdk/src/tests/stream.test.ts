@@ -6,6 +6,8 @@ const textEncoder = new TextEncoder();
 
 /**
  * Helper to create an SSE-formatted response body
+ * This creates a stream that properly handles cancellation to avoid
+ * "Controller is already closed" errors in tests
  */
 const createSSEResponseBody = (
   chunks: Array<{ id?: string; event: string; data: unknown }>
@@ -20,9 +22,19 @@ const createSSEResponseBody = (
   });
 
   const uint8Arrays = sseLines.map((line) => textEncoder.encode(line));
-  return Readable.toWeb(
-    Readable.from(uint8Arrays)
-  ) as ReadableStream<Uint8Array>;
+
+  // Create a more controlled stream to avoid Node.js Readable issues
+  let index = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index < uint8Arrays.length) {
+        controller.enqueue(uint8Arrays[index]);
+        index++;
+      } else {
+        controller.close();
+      }
+    },
+  });
 };
 
 /**

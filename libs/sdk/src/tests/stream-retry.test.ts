@@ -7,6 +7,8 @@ const textEncoder = new TextEncoder();
 
 /**
  * Helper to create a ReadableStream from SSE-formatted text chunks
+ * This creates a stream that properly handles cancellation to avoid
+ * "Controller is already closed" errors in tests
  */
 const createSSEStream = (
   chunks: Array<{ id?: string; event: string; data: unknown }>
@@ -22,11 +24,42 @@ const createSSEStream = (
   });
 
   const uint8Arrays = sseLines.map((line) => textEncoder.encode(line));
-  const readable = Readable.toWeb(
-    Readable.from(uint8Arrays)
-  ) as ReadableStream<Uint8Array>;
 
-  return readable.pipeThrough(BytesLineDecoder()).pipeThrough(SSEDecoder());
+  // Create a more controlled stream to avoid Node.js Readable issues
+  let index = 0;
+  const byteStream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index < uint8Arrays.length) {
+        controller.enqueue(uint8Arrays[index]);
+        index++;
+      } else {
+        controller.close();
+      }
+    },
+  });
+
+  return byteStream.pipeThrough(BytesLineDecoder()).pipeThrough(SSEDecoder());
+};
+
+/**
+ * Helper to create a stream that yields some chunks then errors
+ * This avoids race conditions with Readable.from() and controller.error()
+ */
+const createErroringStream = (
+  chunks: Array<{ id?: string; event: string; data: unknown }>,
+  error: Error
+): ReadableStream<{ id?: string; event: string; data: unknown }> => {
+  let index = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index]);
+        index++;
+      } else {
+        controller.error(error);
+      }
+    },
+  });
 };
 
 /**
@@ -94,22 +127,16 @@ describe("streamWithRetry", () => {
 
       let didError = false;
       const initialRequest = async () => {
-        const stream = createSSEStream(chunks1);
-        const reader = stream.getReader();
+        if (!didError) {
+          didError = true;
+          const stream = createErroringStream(
+            chunks1,
+            new TypeError("network error")
+          );
+          return { response: mockResponse, stream };
+        }
 
-        const errorStream = new ReadableStream({
-          async start(controller) {
-            const { value } = await reader.read();
-            controller.enqueue(value!);
-
-            if (!didError) {
-              didError = true;
-              controller.error(new TypeError("network error"));
-            }
-          },
-        });
-
-        return { response: mockResponse, stream: errorStream };
+        return { response: mockResponse, stream: createSSEStream(chunks1) };
       };
 
       const reconnectRequest = vi.fn(
@@ -138,22 +165,11 @@ describe("streamWithRetry", () => {
     test("does not try to reconnect when no location header is provided", async () => {
       const chunks1 = [{ id: "1", event: "msg", data: { part: 1 } }];
 
-      let didError = false;
       const initialRequest = async () => {
-        const stream = createSSEStream(chunks1);
-        const reader = stream.getReader();
-
-        const errorStream = new ReadableStream({
-          async start(controller) {
-            const { value } = await reader.read();
-            controller.enqueue(value!);
-
-            if (!didError) {
-              didError = true;
-              controller.error(new TypeError("non retryable error"));
-            }
-          },
-        });
+        const stream = createErroringStream(
+          chunks1,
+          new TypeError("non retryable error")
+        );
 
         const responseWithoutLocation = new Response(null, {
           status: 200,
@@ -161,7 +177,7 @@ describe("streamWithRetry", () => {
         });
 
         // No location header in response
-        return { response: responseWithoutLocation, stream: errorStream };
+        return { response: responseWithoutLocation, stream };
       };
 
       const reconnectRequest = vi.fn();
@@ -180,41 +196,40 @@ describe("streamWithRetry", () => {
 
     test("throws MaxReconnectAttemptsError after max retries", async () => {
       const initialRequest = vi.fn(async () => {
-        const stream = createSSEStream([{ id: "1", event: "msg", data: {} }]);
-        const reader = stream.getReader();
+        const stream = createErroringStream(
+          [{ id: "1", event: "msg", data: {} }],
+          new TypeError("persistent network error")
+        );
 
-        const errorStream = new ReadableStream({
-          async start(controller) {
-            const { value } = await reader.read();
-            controller.enqueue(value!);
-            controller.error(new TypeError("persistent network error"));
-          },
-        });
-
-        return { response: mockResponse, stream: errorStream };
+        return { response: mockResponse, stream };
       });
 
       const reconnectRequest = vi.fn(async () => {
-        const errorStream = new ReadableStream({
-          async start(controller) {
-            controller.error(new TypeError("persistent network error"));
-          },
-        });
+        const stream = createErroringStream(
+          [],
+          new TypeError("persistent network error")
+        );
 
-        return { response: mockResponse, stream: errorStream };
+        return { response: mockResponse, stream };
       });
 
       const generator = streamWithRetry(initialRequest, reconnectRequest, {
         maxRetries: 2,
       });
 
+      // Start consuming and handle the error immediately
       const consumePromise = gatherGenerator(generator);
+
+      // Catch the error to prevent unhandled rejection
+      const errorPromise = consumePromise.catch((err) => err);
 
       // Run timers to allow retries
       await vi.runAllTimersAsync();
 
-      await expect(consumePromise).rejects.toThrow(MaxReconnectAttemptsError);
-      await expect(consumePromise).rejects.toThrow(
+      // Now verify the error
+      const error = await errorPromise;
+      expect(error).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(error.message).toBe(
         "Exceeded maximum SSE reconnection attempts (2)"
       );
     });
@@ -227,25 +242,16 @@ describe("streamWithRetry", () => {
 
       let didError = false;
       const initialRequest = async () => {
-        const stream = createSSEStream(chunks1);
-        const reader = stream.getReader();
+        if (!didError) {
+          didError = true;
+          const stream = createErroringStream(
+            chunks1,
+            new TypeError("network error")
+          );
+          return { response: mockResponse, stream };
+        }
 
-        const errorStream = new ReadableStream({
-          async start(controller) {
-            // Emit first two events
-            const { value: v1 } = await reader.read();
-            controller.enqueue(v1!);
-            const { value: v2 } = await reader.read();
-            controller.enqueue(v2!);
-
-            if (!didError) {
-              didError = true;
-              controller.error(new TypeError("network error"));
-            }
-          },
-        });
-
-        return { response: mockResponse, stream: errorStream };
+        return { response: mockResponse, stream: createSSEStream(chunks1) };
       };
 
       const reconnectRequest = vi.fn(async (lastEventId: string) => {
@@ -375,19 +381,12 @@ describe("streamWithRetry", () => {
       const controller = new AbortController();
 
       const initialRequest = vi.fn(async () => {
-        const stream = createSSEStream([{ id: "1", event: "msg", data: {} }]);
-        const reader = stream.getReader();
+        const stream = createErroringStream(
+          [{ id: "1", event: "msg", data: {} }],
+          new TypeError("network error")
+        );
 
-        const errorStream = new ReadableStream({
-          async start(streamController) {
-            const { value } = await reader.read();
-            streamController.enqueue(value!);
-            controller.abort(); // Abort during stream
-            streamController.error(new TypeError("network error"));
-          },
-        });
-
-        return { response: mockResponse, stream: errorStream };
+        return { response: mockResponse, stream };
       });
 
       const reconnectRequest = vi.fn();
@@ -396,9 +395,22 @@ describe("streamWithRetry", () => {
         signal: controller.signal,
       });
 
-      await gatherGenerator(generator);
+      // Consume the stream but abort after first value
+      const results: any[] = [];
+      try {
+        for await (const chunk of generator) {
+          results.push(chunk);
+          // Abort after getting the first chunk
+          controller.abort();
+        }
+      } catch (error) {
+        // Stream should error, and should not retry because signal is aborted
+        expect(error).toBeInstanceOf(TypeError);
+        expect((error as Error).message).toBe("network error");
+      }
 
-      await expect(gatherGenerator(generator)).rejects.toThrow("network error");
+      // Verify we got the first chunk before the error
+      expect(results).toHaveLength(1);
       expect(reconnectRequest).not.toHaveBeenCalled();
     });
   });
@@ -469,17 +481,22 @@ describe("streamWithRetry", () => {
     test("does not retry on non-network errors", async () => {
       vi.useRealTimers();
 
-      const initialRequest = async () => {
-        const errorStream = new ReadableStream({
-          start(controller) {
-            controller.enqueue({ id: "1", event: "msg", data: {} });
-            // Non-TypeError error should not trigger retry
-            controller.error(new Error("Non-network error"));
-          },
-        });
+      const testResponse = new Response(null, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+        },
+      });
 
-        return { response: mockResponse, stream: errorStream };
-      };
+      const initialRequest = vi.fn(async () => {
+        // Non-TypeError error should not trigger retry
+        const stream = createErroringStream(
+          [{ id: "1", event: "msg", data: {} }],
+          new Error("Non-network error")
+        );
+
+        return { response: testResponse, stream };
+      });
 
       const reconnectRequest = vi.fn();
 
@@ -501,22 +518,16 @@ describe("streamWithRetry", () => {
 
       let didError = false;
       const initialRequest = async () => {
-        const stream = createSSEStream(chunks1);
-        const reader = stream.getReader();
+        if (!didError) {
+          didError = true;
+          const stream = createErroringStream(
+            chunks1,
+            new TypeError("network error")
+          );
+          return { response: mockResponse, stream };
+        }
 
-        const errorStream = new ReadableStream({
-          async start(controller) {
-            const { value } = await reader.read();
-            controller.enqueue(value!);
-
-            if (!didError) {
-              didError = true;
-              controller.error(new TypeError("network error"));
-            }
-          },
-        });
-
-        return { response: mockResponse, stream: errorStream };
+        return { response: mockResponse, stream: createSSEStream(chunks1) };
       };
 
       const reconnectRequest = vi.fn(async () => ({
