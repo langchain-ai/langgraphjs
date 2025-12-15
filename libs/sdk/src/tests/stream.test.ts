@@ -1,8 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Readable } from "node:stream";
 import { Client } from "../client.js";
-import { MaxReconnectAttemptsError } from "../utils/stream.js";
-import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 
 const textEncoder = new TextEncoder();
 
@@ -22,7 +20,9 @@ const createSSEResponseBody = (
   });
 
   const uint8Arrays = sseLines.map((line) => textEncoder.encode(line));
-  return Readable.toWeb(Readable.from(uint8Arrays)) as ReadableStream<Uint8Array>;
+  return Readable.toWeb(
+    Readable.from(uint8Arrays)
+  ) as ReadableStream<Uint8Array>;
 };
 
 /**
@@ -111,10 +111,10 @@ describe("Client streaming with retry", () => {
       await gatherStream(stream);
 
       const [url, init] = mockFetch.mock.calls[0];
-      
+
       // Verify it's a POST request
       expect(init.method).toBe("POST");
-      
+
       // Verify body contains the input
       const body = JSON.parse(init.body as string);
       expect(body.input).toEqual({ message: "test input" });
@@ -168,14 +168,14 @@ describe("Client streaming with retry", () => {
       await gatherStream(stream);
 
       const [url, init] = mockFetch.mock.calls[0];
-      
+
       // Verify POST method
       expect(init.method).toBe("POST");
-      
+
       // Verify headers include content-type for JSON
       const headers = init.headers as Record<string, string>;
       expect(headers["content-type"]).toBe("application/json");
-      
+
       // Verify body has input
       const body = JSON.parse(init.body as string);
       expect(body).toMatchObject({
@@ -210,7 +210,7 @@ describe("Client streaming with retry", () => {
       const [url, init] = mockFetch.mock.calls[0];
       expect(init.method).toBe("GET");
       expect(url.toString()).toContain("/threads/thread-1/runs/run-1/stream");
-      
+
       // Verify no body (GET requests shouldn't have body)
       expect(init.body).toBeUndefined();
     });
@@ -234,7 +234,7 @@ describe("Client streaming with retry", () => {
       // Verify Last-Event-ID header was sent
       const init = mockFetch.mock.calls[0][1];
       const headers = init.headers as Record<string, string>;
-      
+
       expect(headers["Last-Event-ID"]).toBe("4");
     });
 
@@ -282,7 +282,7 @@ describe("Client streaming with retry", () => {
       const [url, init] = mockFetch.mock.calls[0];
       expect(init.method).toBe("GET");
       expect(url.toString()).toContain("/threads/thread-1/stream");
-      
+
       // Verify no body for GET request
       expect(init.body).toBeUndefined();
     });
@@ -383,4 +383,3 @@ describe("Client streaming with retry", () => {
     });
   });
 });
-
