@@ -110,7 +110,7 @@ describe("Client streaming with retry", () => {
 
       await gatherStream(stream);
 
-      const [url, init] = mockFetch.mock.calls[0];
+      const [, init] = mockFetch.mock.calls[0];
 
       // Verify it's a POST request
       expect(init.method).toBe("POST");
@@ -167,7 +167,7 @@ describe("Client streaming with retry", () => {
 
       await gatherStream(stream);
 
-      const [url, init] = mockFetch.mock.calls[0];
+      const [, init] = mockFetch.mock.calls[0];
 
       // Verify POST method
       expect(init.method).toBe("POST");
@@ -298,7 +298,7 @@ describe("Client streaming with retry", () => {
       );
 
       const stream = client.threads.joinStream("thread-1", {
-        streamMode: ["messages", "updates"],
+        streamMode: ["lifecycle", "state_update"],
       });
 
       await gatherStream(stream);
@@ -336,9 +336,7 @@ describe("Client streaming with retry", () => {
       const consumePromise = (async () => {
         for await (const chunk of stream) {
           results.push(chunk);
-          if (chunk.id === "1") {
-            controller.abort();
-          }
+          if ("id" in chunk && chunk.id === "1") controller.abort();
         }
       })();
 

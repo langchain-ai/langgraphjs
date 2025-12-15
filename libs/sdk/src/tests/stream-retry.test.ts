@@ -1,10 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Readable } from "node:stream";
-import {
-  streamWithRetry,
-  MaxReconnectAttemptsError,
-  type StreamWithRetryOptions,
-} from "../utils/stream.js";
+import { streamWithRetry, MaxReconnectAttemptsError } from "../utils/stream.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 
 const textEncoder = new TextEncoder();
@@ -36,7 +32,9 @@ const createSSEStream = (
 /**
  * Helper to gather all chunks from an async generator
  */
-const gatherGenerator = async <T>(generator: AsyncGenerator<T>): Promise<T[]> => {
+const gatherGenerator = async <T>(
+  generator: AsyncGenerator<T>
+): Promise<T[]> => {
   const results: T[] = [];
   for await (const chunk of generator) {
     results.push(chunk);
@@ -146,14 +144,16 @@ describe("streamWithRetry", () => {
         return { response: responseWithLocation, stream: errorStream };
       };
 
-      const reconnectRequest = vi.fn(async (lastEventId: string, reconnectPath?: string) => {
-        // Verify we received the reconnect path
-        expect(reconnectPath).toBe("/reconnect/special-path");
-        return {
-          response: mockResponse,
-          stream: createSSEStream(chunks2),
-        };
-      });
+      const reconnectRequest = vi.fn(
+        async (_: string, reconnectPath?: string) => {
+          // Verify we received the reconnect path
+          expect(reconnectPath).toBe("/reconnect/special-path");
+          return {
+            response: mockResponse,
+            stream: createSSEStream(chunks2),
+          };
+        }
+      );
 
       const generator = streamWithRetry(initialRequest, reconnectRequest);
       const consumePromise = gatherGenerator(generator);
@@ -164,7 +164,10 @@ describe("streamWithRetry", () => {
       expect(results).toHaveLength(2);
       expect(reconnectRequest).toHaveBeenCalledTimes(1);
       // Verify it was called with both lastEventId and reconnectPath
-      expect(reconnectRequest).toHaveBeenCalledWith("1", "/reconnect/special-path");
+      expect(reconnectRequest).toHaveBeenCalledWith(
+        "1",
+        "/reconnect/special-path"
+      );
     });
 
     test("falls back to original path when no location header", async () => {
@@ -192,14 +195,16 @@ describe("streamWithRetry", () => {
         return { response: mockResponse, stream: errorStream };
       };
 
-      const reconnectRequest = vi.fn(async (lastEventId: string, reconnectPath?: string) => {
-        // Verify reconnectPath is undefined when no location header
-        expect(reconnectPath).toBeUndefined();
-        return {
-          response: mockResponse,
-          stream: createSSEStream(chunks2),
-        };
-      });
+      const reconnectRequest = vi.fn(
+        async (_: string, reconnectPath?: string) => {
+          // Verify reconnectPath is undefined when no location header
+          expect(reconnectPath).toBeUndefined();
+          return {
+            response: mockResponse,
+            stream: createSSEStream(chunks2),
+          };
+        }
+      );
 
       const generator = streamWithRetry(initialRequest, reconnectRequest);
       const consumePromise = gatherGenerator(generator);
@@ -229,9 +234,6 @@ describe("streamWithRetry", () => {
       });
 
       const reconnectRequest = vi.fn(async () => {
-        const stream = createSSEStream([{ id: "1", event: "msg", data: {} }]);
-        const reader = stream.getReader();
-
         const errorStream = new ReadableStream({
           async start(controller) {
             controller.error(new TypeError("persistent network error"));
@@ -289,7 +291,9 @@ describe("streamWithRetry", () => {
         expect(lastEventId).toBe("event-2");
         return {
           response: mockResponse,
-          stream: createSSEStream([{ id: "event-3", event: "msg", data: { text: "third" } }]),
+          stream: createSSEStream([
+            { id: "event-3", event: "msg", data: { text: "third" } },
+          ]),
         };
       });
 
@@ -448,7 +452,9 @@ describe("streamWithRetry", () => {
 
       const initialRequest = async () => ({
         response: mockResponse,
-        stream: createSSEStream([{ id: "1", event: "msg", data: { test: true } }]),
+        stream: createSSEStream([
+          { id: "1", event: "msg", data: { test: true } },
+        ]),
       });
 
       const reconnectRequest = vi.fn();
@@ -523,7 +529,9 @@ describe("streamWithRetry", () => {
         maxRetries: 5,
       });
 
-      await expect(gatherGenerator(generator)).rejects.toThrow("Non-network error");
+      await expect(gatherGenerator(generator)).rejects.toThrow(
+        "Non-network error"
+      );
       expect(reconnectRequest).not.toHaveBeenCalled();
 
       vi.useFakeTimers();
@@ -569,4 +577,3 @@ describe("streamWithRetry", () => {
     });
   });
 });
-
