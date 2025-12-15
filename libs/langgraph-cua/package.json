@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cua",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An implementation of a computer use agent (CUA) using LangGraph",
   "type": "module",
   "engines": {
