@@ -1,5 +1,4 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Readable } from "node:stream";
 import { streamWithRetry, MaxReconnectAttemptsError } from "../utils/stream.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 
@@ -31,7 +30,7 @@ const createSSEStream = (
     pull(controller) {
       if (index < uint8Arrays.length) {
         controller.enqueue(uint8Arrays[index]);
-        index++;
+        index += 1;
       } else {
         controller.close();
       }
@@ -54,7 +53,7 @@ const createErroringStream = (
     pull(controller) {
       if (index < chunks.length) {
         controller.enqueue(chunks[index]);
-        index++;
+        index += 1;
       } else {
         controller.error(error);
       }

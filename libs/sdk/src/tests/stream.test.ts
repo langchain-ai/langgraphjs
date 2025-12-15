@@ -1,5 +1,4 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Readable } from "node:stream";
 import { Client } from "../client.js";
 
 const textEncoder = new TextEncoder();
@@ -29,7 +28,7 @@ const createSSEResponseBody = (
     pull(controller) {
       if (index < uint8Arrays.length) {
         controller.enqueue(uint8Arrays[index]);
-        index++;
+        index += 1;
       } else {
         controller.close();
       }
