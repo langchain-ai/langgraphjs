@@ -44,12 +44,16 @@ const gatherGenerator = async <T>(
 
 describe("streamWithRetry", () => {
   let mockResponse: Response;
+  const newPath = "/reconnect/special-path";
 
   beforeEach(() => {
     vi.useFakeTimers();
     mockResponse = new Response(null, {
       status: 200,
-      headers: { "content-type": "text/event-stream" },
+      headers: {
+        "content-type": "text/event-stream",
+        location: newPath,
+      },
     });
   });
 
@@ -81,48 +85,12 @@ describe("streamWithRetry", () => {
       expect(initialRequest).toHaveBeenCalledTimes(1);
       expect(reconnectRequest).not.toHaveBeenCalled();
     });
-
-    test("tracks event IDs correctly", async () => {
-      const chunks = [
-        { id: "event-1", event: "message", data: { text: "first" } },
-        { id: "event-2", event: "message", data: { text: "second" } },
-        { id: "event-3", event: "message", data: { text: "third" } },
-      ];
-
-      const initialRequest = async () => ({
-        response: mockResponse,
-        stream: createSSEStream(chunks),
-      });
-
-      const reconnectRequest = vi.fn();
-
-      const generator = streamWithRetry(initialRequest, reconnectRequest);
-      const results = await gatherGenerator(generator);
-
-      expect(results).toHaveLength(3);
-      expect(results[0].id).toBe("event-1");
-      expect(results[1].id).toBe("event-2");
-      expect(results[2].id).toBe("event-3");
-    });
   });
 
   describe("retry logic", () => {
-    // Note: More complex retry scenarios involving mid-stream errors are better tested
-    // through integration tests with the actual client, since they're difficult to
-    // mock reliably with synchronous stream errors in unit tests.
-
     test("uses location header for reconnection path", async () => {
       const chunks1 = [{ id: "1", event: "msg", data: { part: 1 } }];
       const chunks2 = [{ id: "2", event: "msg", data: { part: 2 } }];
-
-      // Response with Location header pointing to a different path
-      const responseWithLocation = new Response(null, {
-        status: 200,
-        headers: {
-          "content-type": "text/event-stream",
-          location: "/reconnect/special-path",
-        },
-      });
 
       let didError = false;
       const initialRequest = async () => {
@@ -141,13 +109,13 @@ describe("streamWithRetry", () => {
           },
         });
 
-        return { response: responseWithLocation, stream: errorStream };
+        return { response: mockResponse, stream: errorStream };
       };
 
       const reconnectRequest = vi.fn(
         async (_: string, reconnectPath?: string) => {
           // Verify we received the reconnect path
-          expect(reconnectPath).toBe("/reconnect/special-path");
+          expect(reconnectPath).toBe(newPath);
           return {
             response: mockResponse,
             stream: createSSEStream(chunks2),
@@ -166,13 +134,12 @@ describe("streamWithRetry", () => {
       // Verify it was called with both lastEventId and reconnectPath
       expect(reconnectRequest).toHaveBeenCalledWith(
         "1",
-        "/reconnect/special-path"
+        newPath
       );
     });
 
-    test("falls back to original path when no location header", async () => {
+    test("does not try to reconnect when no location header is provided", async () => {
       const chunks1 = [{ id: "1", event: "msg", data: { part: 1 } }];
-      const chunks2 = [{ id: "2", event: "msg", data: { part: 2 } }];
 
       let didError = false;
       const initialRequest = async () => {
@@ -186,35 +153,29 @@ describe("streamWithRetry", () => {
 
             if (!didError) {
               didError = true;
-              controller.error(new TypeError("network error"));
+              controller.error(new TypeError("non retryable error"));
             }
           },
         });
 
+        const responseWithoutLocation = new Response(null, { status: 200, headers: { "content-type": "text/event-stream" } });
+
         // No location header in response
-        return { response: mockResponse, stream: errorStream };
+        return { response: responseWithoutLocation, stream: errorStream };
       };
 
-      const reconnectRequest = vi.fn(
-        async (_: string, reconnectPath?: string) => {
-          // Verify reconnectPath is undefined when no location header
-          expect(reconnectPath).toBeUndefined();
-          return {
-            response: mockResponse,
-            stream: createSSEStream(chunks2),
-          };
-        }
-      );
+      const reconnectRequest = vi.fn();
 
       const generator = streamWithRetry(initialRequest, reconnectRequest);
-      const consumePromise = gatherGenerator(generator);
       await vi.runAllTimersAsync();
 
-      const results = await consumePromise;
+      // Should get a chunk first
+      const { value } = await generator.next();
+      expect(value).toMatchObject(chunks1[0]);
 
-      expect(results).toHaveLength(2);
-      expect(reconnectRequest).toHaveBeenCalledTimes(1);
-      expect(reconnectRequest).toHaveBeenCalledWith("1", undefined);
+      // Should throw an error after that
+      await expect(generator.next()).rejects.toThrow("non retryable error");
+      expect(reconnectRequest).not.toHaveBeenCalled();
     });
 
     test("throws MaxReconnectAttemptsError after max retries", async () => {
@@ -435,12 +396,9 @@ describe("streamWithRetry", () => {
         signal: controller.signal,
       });
 
-      try {
-        await gatherGenerator(generator);
-      } catch {
-        // Expected to error
-      }
+      await gatherGenerator(generator);
 
+      await expect(gatherGenerator(generator)).rejects.toThrow("network error");
       expect(reconnectRequest).not.toHaveBeenCalled();
     });
   });

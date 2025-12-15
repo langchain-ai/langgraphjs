@@ -125,8 +125,8 @@ export async function* streamWithRetry<T extends { id?: string }>(
         // Stream completed successfully, exit retry loop
         break;
       } catch (error) {
-        // Error during streaming - attempt reconnect if we have lastEventId
-        if (lastEventId && !options.signal?.aborted) {
+        // Error during streaming - attempt reconnect if we have lastEventId and a location header
+        if (lastEventId && reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;
         } else {
           throw error;
@@ -144,7 +144,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
       lastError = error;
 
       // Only retry if we have reconnection capability and it's a network error
-      if (isNetworkError(error) && lastEventId && !options.signal?.aborted) {
+      if (isNetworkError(error) && lastEventId && reconnectPath && !options.signal?.aborted) {
         shouldRetry = true;
       } else {
         throw error;

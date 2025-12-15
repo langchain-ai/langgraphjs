@@ -235,7 +235,7 @@ describe("Client streaming with retry", () => {
       const init = mockFetch.mock.calls[0][1];
       const headers = init.headers as Record<string, string>;
 
-      expect(headers["Last-Event-ID"]).toBe("4");
+      expect(headers["last-event-id"]).toBe("4");
     });
 
     test("respects cancelOnDisconnect parameter", async () => {

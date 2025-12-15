@@ -110,9 +110,6 @@ export function SSEDecoder() {
       if (!chunk.length) {
         if (!event && !data.length && !lastEventId && retry == null) return;
 
-        // Handle the edge case where a control event sneaks through
-        if (event === "control") return;
-
         const sse = {
           id: lastEventId || undefined,
           event,
