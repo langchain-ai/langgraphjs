@@ -245,9 +245,6 @@ export function useStreamLGP<
     hasTaskListener,
   ]);
 
-  const clearCallbackRef = useRef<() => void>(null!);
-  clearCallbackRef.current = stream.clear;
-
   const threadIdRef = useRef<string | null>(threadId);
   const threadIdStreamingRef = useRef<string | null>(null);
 
@@ -384,29 +381,26 @@ export function useStreamLGP<
       // to ensure we're not accidentally submitting to a wrong branch
       includeImplicitBranch;
 
-    stream.setStreamValues(() => {
-      const prev = shouldRefetch
-        ? historyValues
-        : { ...historyValues, ...stream.values };
-
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...prev,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(prev)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...prev };
-    });
-
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId = threadId;
 
     await stream.start(
       async (signal: AbortSignal) => {
+        stream.setStreamValues((values) => {
+          const prev = { ...historyValues, ...(values ?? {}) };
+          if (submitOptions?.optimisticValues != null) {
+            return {
+              ...prev,
+              ...(typeof submitOptions.optimisticValues === "function"
+                ? submitOptions.optimisticValues(prev)
+                : submitOptions.optimisticValues),
+            };
+          }
+
+          return { ...prev };
+        });
+
         if (!usableThreadId) {
           const thread = await client.threads.create({
             threadId: submitOptions?.threadId,
