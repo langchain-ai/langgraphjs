@@ -144,7 +144,12 @@ export async function* streamWithRetry<T extends { id?: string }>(
       lastError = error;
 
       // Only retry if we have reconnection capability and it's a network error
-      if (isNetworkError(error) && lastEventId && reconnectPath && !options.signal?.aborted) {
+      if (
+        isNetworkError(error) &&
+        lastEventId &&
+        reconnectPath &&
+        !options.signal?.aborted
+      ) {
         shouldRetry = true;
       } else {
         throw error;

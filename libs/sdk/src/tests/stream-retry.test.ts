@@ -132,10 +132,7 @@ describe("streamWithRetry", () => {
       expect(results).toHaveLength(2);
       expect(reconnectRequest).toHaveBeenCalledTimes(1);
       // Verify it was called with both lastEventId and reconnectPath
-      expect(reconnectRequest).toHaveBeenCalledWith(
-        "1",
-        newPath
-      );
+      expect(reconnectRequest).toHaveBeenCalledWith("1", newPath);
     });
 
     test("does not try to reconnect when no location header is provided", async () => {
@@ -158,7 +155,10 @@ describe("streamWithRetry", () => {
           },
         });
 
-        const responseWithoutLocation = new Response(null, { status: 200, headers: { "content-type": "text/event-stream" } });
+        const responseWithoutLocation = new Response(null, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
 
         // No location header in response
         return { response: responseWithoutLocation, stream: errorStream };
