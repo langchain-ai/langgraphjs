@@ -28,6 +28,21 @@ export interface StreamWithRetryOptions {
 }
 
 /**
+ * Parameters for making a stream request
+ */
+export interface StreamRequestParams {
+  /**
+   * If provided, this is a reconnection request with the last event ID
+   */
+  lastEventId?: string;
+
+  /**
+   * Optional reconnection path from the Location header
+   */
+  reconnectPath?: string;
+}
+
+/**
  * Error thrown when maximum reconnection attempts are exceeded.
  */
 export class MaxReconnectAttemptsError extends Error {
@@ -42,20 +57,13 @@ export class MaxReconnectAttemptsError extends Error {
  * Stream with automatic retry logic for SSE connections.
  * Implements reconnection behavior similar to the Python SDK.
  *
- * @param initialRequest Function to make the initial request (usually POST with payload)
- * @param reconnectRequest Function to make reconnect requests (usually GET with Last-Event-ID, optionally with reconnect path)
+ * @param makeRequest Function to make requests. When `params` is undefined/empty, it's the initial request.
+ *                    When `params.lastEventId` is provided, it's a reconnection request.
  * @param options Configuration options
  * @returns AsyncGenerator yielding stream events
  */
 export async function* streamWithRetry<T extends { id?: string }>(
-  initialRequest: () => Promise<{
-    response: Response;
-    stream: ReadableStream<T>;
-  }>,
-  reconnectRequest: (
-    lastEventId: string,
-    reconnectPath?: string
-  ) => Promise<{
+  makeRequest: (params?: StreamRequestParams) => Promise<{
     response: Response;
     stream: ReadableStream<T>;
   }>,
@@ -65,7 +73,6 @@ export async function* streamWithRetry<T extends { id?: string }>(
   let attempt = 0;
   let lastEventId: string | undefined;
   let reconnectPath: string | undefined;
-  let isInitialRequest = true;
 
   while (true) {
     let shouldRetry = false;
@@ -76,12 +83,10 @@ export async function* streamWithRetry<T extends { id?: string }>(
       // Check if aborted before making request
       if (options.signal?.aborted) return;
 
-      // Use initial request first, then reconnect requests
-      const { response, stream } = isInitialRequest
-        ? await initialRequest()
-        : await reconnectRequest(lastEventId!, reconnectPath);
-
-      isInitialRequest = false;
+      // Make request - initial if no lastEventId, reconnect otherwise
+      const { response, stream } = await makeRequest(
+        lastEventId ? { lastEventId, reconnectPath } : undefined
+      );
 
       // Check for Location header (server-provided reconnection path)
       const locationHeader = response.headers.get("location");

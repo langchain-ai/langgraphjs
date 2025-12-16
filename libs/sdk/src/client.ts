@@ -49,7 +49,7 @@ import { AsyncCaller, AsyncCallerParams } from "./utils/async_caller.js";
 import { getEnvironmentVariable } from "./utils/env.js";
 import { mergeSignals } from "./utils/signals.js";
 import { BytesLineDecoder, SSEDecoder } from "./utils/sse.js";
-import { streamWithRetry } from "./utils/stream.js";
+import { streamWithRetry, StreamRequestParams } from "./utils/stream.js";
 
 type HeaderValue = string | undefined | null;
 
@@ -353,6 +353,75 @@ class BaseClient {
     }
 
     return body;
+  }
+
+  /**
+   * Protected helper for streaming with automatic retry logic.
+   * Handles both initial requests and reconnections with SSE.
+   */
+  protected async *streamWithRetry<T extends { id?: string; event: string; data: unknown }>(config: {
+    endpoint: string;
+    method?: string;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+    params?: Record<string, unknown>;
+    json?: unknown;
+    maxRetries?: number;
+    onReconnect?: (options: { attempt: number; lastEventId?: string; cause: unknown }) => void;
+    onInitialResponse?: (response: Response) => void | Promise<void>;
+  }): AsyncGenerator<T> {
+    const makeRequest = async (reconnectParams?: StreamRequestParams) => {
+      // Determine endpoint - use reconnectPath if provided, otherwise original endpoint
+      const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
+
+      // Determine method and options based on whether this is a reconnection
+      const isReconnect = !!reconnectParams?.lastEventId;
+      const method = isReconnect ? "GET" : (config.method || "GET");
+
+      // Build headers - add Last-Event-ID for reconnections
+      const requestHeaders = isReconnect && reconnectParams?.lastEventId
+        ? { ...config.headers, "Last-Event-ID": reconnectParams.lastEventId }
+        : config.headers;
+
+      // Prepare fetch options
+      let [url, init] = this.prepareFetchOptions(requestEndpoint, {
+        method,
+        timeoutMs: null,
+        signal: config.signal,
+        headers: requestHeaders,
+        params: config.params,
+        json: isReconnect ? undefined : config.json, // Only send body on initial request
+      });
+
+      // Apply onRequest hook if present
+      if (this.onRequest != null) {
+        init = await this.onRequest(url, init);
+      }
+
+      // Make the request
+      const response = await this.asyncCaller.fetch(url, init);
+
+      // Call onInitialResponse callback for the first request
+      if (!isReconnect && config.onInitialResponse) {
+        await config.onInitialResponse(response);
+      }
+
+      // Process the response body through SSE decoders
+      const stream: ReadableStream<T> = (
+        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+      )
+        .pipeThrough(BytesLineDecoder())
+        .pipeThrough(SSEDecoder()) as ReadableStream<T>;
+
+      return { response, stream };
+    };
+
+    // Use the utility function with our request maker
+    yield* streamWithRetry(makeRequest, {
+      maxRetries: config.maxRetries ?? 5,
+      signal: config.signal,
+      onReconnect: config.onReconnect,
+    });
   }
 }
 
@@ -1185,68 +1254,16 @@ export class ThreadsClient<
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
-    const endpoint = `/threads/${threadId}/stream`;
-
-    // Initial request (GET, optionally with Last-Event-ID if resuming)
-    const initialRequest = async () => {
-      let [url, init] = this.prepareFetchOptions(endpoint, {
-        method: "GET",
-        timeoutMs: null,
-        signal: options?.signal,
-        headers: options?.lastEventId
-          ? { "Last-Event-ID": options.lastEventId }
-          : undefined,
-        params: options?.streamMode
-          ? { stream_mode: options.streamMode }
-          : undefined,
-      });
-
-      if (this.onRequest != null) init = await this.onRequest(url, init);
-      const response = await this.asyncCaller.fetch(url, init);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
-        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
-          .pipeThrough(BytesLineDecoder())
-          .pipeThrough(SSEDecoder());
-
-      return { response, stream };
-    };
-
-    // Reconnect request (uses reconnectPath from Location header if provided)
-    const reconnectRequest = async (
-      lastEventId: string,
-      reconnectPath?: string
-    ) => {
-      const reconnectEndpoint = reconnectPath || endpoint;
-
-      let [url, init] = this.prepareFetchOptions(reconnectEndpoint, {
-        method: "GET",
-        timeoutMs: null,
-        signal: options?.signal,
-        headers: {
-          "Last-Event-ID": lastEventId,
-        },
-        params: options?.streamMode
-          ? { stream_mode: options.streamMode }
-          : undefined,
-      });
-
-      if (this.onRequest != null) init = await this.onRequest(url, init);
-      const response = await this.asyncCaller.fetch(url, init);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
-        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
-          .pipeThrough(BytesLineDecoder())
-          .pipeThrough(SSEDecoder());
-
-      return { response, stream };
-    };
-
-    yield* streamWithRetry(initialRequest, reconnectRequest, {
-      maxRetries: 5,
+    yield* this.streamWithRetry({
+      endpoint: `/threads/${threadId}/stream`,
+      method: "GET",
       signal: options?.signal,
+      headers: options?.lastEventId
+        ? { "Last-Event-ID": options.lastEventId }
+        : undefined,
+      params: options?.streamMode
+        ? { stream_mode: options.streamMode }
+        : undefined,
     });
   }
 }
@@ -1335,67 +1352,16 @@ export class RunsClient<
       durability: payload?.durability,
     };
 
-    const endpoint =
-      threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`;
-
-    // Initial POST request with full payload
-    const initialRequest = async () => {
-      let [url, init] = this.prepareFetchOptions(endpoint, {
-        method: "POST",
-        json,
-        timeoutMs: null,
-        signal: payload?.signal,
-      });
-      if (this.onRequest != null) init = await this.onRequest(url, init);
-      const response = await this.asyncCaller.fetch(url, init);
-
-      const runMetadata = getRunMetadataFromResponse(response);
-      if (runMetadata) payload?.onRunCreated?.(runMetadata);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream: ReadableStream<{ event: any; data: any; id?: string }> = (
-        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-      )
-        .pipeThrough(BytesLineDecoder())
-        .pipeThrough(SSEDecoder());
-
-      return { response, stream };
-    };
-
-    // Reconnect with GET request and Last-Event-ID header
-    // Uses reconnectPath (from Location header) if provided, otherwise original endpoint
-    const reconnectRequest = async (
-      lastEventId: string,
-      reconnectPath?: string
-    ) => {
-      const reconnectEndpoint = reconnectPath || endpoint;
-
-      // For reconnection, use GET (no body/content-type headers)
-      let [url, init] = this.prepareFetchOptions(reconnectEndpoint, {
-        method: "GET",
-        headers: {
-          "Last-Event-ID": lastEventId,
-        },
-        timeoutMs: null,
-        signal: payload?.signal,
-      });
-      if (this.onRequest != null) init = await this.onRequest(url, init);
-      const response = await this.asyncCaller.fetch(url, init);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream: ReadableStream<{ event: any; data: any; id?: string }> = (
-        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-      )
-        .pipeThrough(BytesLineDecoder())
-        .pipeThrough(SSEDecoder());
-
-      return { response, stream };
-    };
-
-    yield* streamWithRetry(initialRequest, reconnectRequest, {
-      maxRetries: 5,
+    yield* this.streamWithRetry({
+      endpoint: threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`,
+      method: "POST",
+      json,
       signal: payload?.signal,
-    });
+      onInitialResponse: (response) => {
+        const runMetadata = getRunMetadataFromResponse(response);
+        if (runMetadata) payload?.onRunCreated?.(runMetadata);
+      },
+    }) as TypedAsyncGenerator<TStreamMode, TSubgraphs, TStateType, TUpdateType, TCustomEventType>;
   }
 
   /**
@@ -1695,73 +1661,19 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
-    const endpoint =
-      threadId != null
+    yield* this.streamWithRetry({
+      endpoint: threadId != null
         ? `/threads/${threadId}/runs/${runId}/stream`
-        : `/runs/${runId}/stream`;
-
-    // Initial request (GET, optionally with Last-Event-ID if resuming)
-    const initialRequest = async () => {
-      let [url, init] = this.prepareFetchOptions(endpoint, {
-        method: "GET",
-        timeoutMs: null,
-        signal: opts?.signal,
-        headers: opts?.lastEventId
-          ? { "Last-Event-ID": opts.lastEventId }
-          : undefined,
-        params: {
-          cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
-          stream_mode: opts?.streamMode,
-        },
-      });
-
-      if (this.onRequest != null) init = await this.onRequest(url, init);
-      const response = await this.asyncCaller.fetch(url, init);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
-        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
-          .pipeThrough(BytesLineDecoder())
-          .pipeThrough(SSEDecoder());
-
-      return { response, stream };
-    };
-
-    // Reconnect request (uses reconnectPath from Location header if provided)
-    const reconnectRequest = async (
-      lastEventId: string,
-      reconnectPath?: string
-    ) => {
-      const reconnectEndpoint = reconnectPath || endpoint;
-
-      let [url, init] = this.prepareFetchOptions(reconnectEndpoint, {
-        method: "GET",
-        timeoutMs: null,
-        signal: opts?.signal,
-        headers: {
-          "Last-Event-ID": lastEventId,
-        },
-        params: {
-          cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
-          stream_mode: opts?.streamMode,
-        },
-      });
-
-      if (this.onRequest != null) init = await this.onRequest(url, init);
-      const response = await this.asyncCaller.fetch(url, init);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stream: ReadableStream<{ event: string; data: any; id?: string }> =
-        (response.body || new ReadableStream({ start: (ctrl) => ctrl.close() }))
-          .pipeThrough(BytesLineDecoder())
-          .pipeThrough(SSEDecoder());
-
-      return { response, stream };
-    };
-
-    yield* streamWithRetry(initialRequest, reconnectRequest, {
-      maxRetries: 5,
+        : `/runs/${runId}/stream`,
+      method: "GET",
       signal: opts?.signal,
+      headers: opts?.lastEventId
+        ? { "Last-Event-ID": opts.lastEventId }
+        : undefined,
+      params: {
+        cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
+        stream_mode: opts?.streamMode,
+      },
     });
   }
 
