@@ -123,29 +123,31 @@ describe("streamWithRetry", () => {
       const chunks2 = [{ id: "2", event: "msg", data: { part: 2 } }];
 
       let didError = false;
-      const makeRequest = vi.fn(async (params?: { lastEventId?: string; reconnectPath?: string }) => {
-        if (!params?.lastEventId) {
-          // Initial request - errors after first chunk
-          if (!didError) {
-            didError = true;
-            const stream = createErroringStream(
-              chunks1,
-              new TypeError("network error")
-            );
-            return { response: mockResponse, stream };
+      const makeRequest = vi.fn(
+        async (params?: { lastEventId?: string; reconnectPath?: string }) => {
+          if (!params?.lastEventId) {
+            // Initial request - errors after first chunk
+            if (!didError) {
+              didError = true;
+              const stream = createErroringStream(
+                chunks1,
+                new TypeError("network error")
+              );
+              return { response: mockResponse, stream };
+            }
+          } else {
+            // Reconnect request
+            expect(params.lastEventId).toBe("1");
+            expect(params.reconnectPath).toBe(newPath);
+            return {
+              response: mockResponse,
+              stream: createSSEStream(chunks2),
+            };
           }
-        } else {
-          // Reconnect request
-          expect(params.lastEventId).toBe("1");
-          expect(params.reconnectPath).toBe(newPath);
-          return {
-            response: mockResponse,
-            stream: createSSEStream(chunks2),
-          };
-        }
 
-        return { response: mockResponse, stream: createSSEStream(chunks1) };
-      });
+          return { response: mockResponse, stream: createSSEStream(chunks1) };
+        }
+      );
 
       const generator = streamWithRetry(makeRequest);
       const consumePromise = gatherGenerator(generator);
@@ -157,7 +159,10 @@ describe("streamWithRetry", () => {
       expect(makeRequest).toHaveBeenCalledTimes(2);
       expect(makeRequest).toHaveBeenNthCalledWith(1, undefined);
       // Verify it was called with reconnect params
-      expect(makeRequest).toHaveBeenNthCalledWith(2, { lastEventId: "1", reconnectPath: newPath });
+      expect(makeRequest).toHaveBeenNthCalledWith(2, {
+        lastEventId: "1",
+        reconnectPath: newPath,
+      });
     });
 
     test("does not try to reconnect when no location header is provided", async () => {
@@ -192,15 +197,19 @@ describe("streamWithRetry", () => {
     });
 
     test("throws MaxReconnectAttemptsError after max retries", async () => {
-      const makeRequest = vi.fn(async (params?: { lastEventId?: string; reconnectPath?: string }) => {
-        const chunks = params?.lastEventId ? [] : [{ id: "1", event: "msg", data: {} }];
-        const stream = createErroringStream(
-          chunks,
-          new TypeError("persistent network error")
-        );
+      const makeRequest = vi.fn(
+        async (params?: { lastEventId?: string; reconnectPath?: string }) => {
+          const chunks = params?.lastEventId
+            ? []
+            : [{ id: "1", event: "msg", data: {} }];
+          const stream = createErroringStream(
+            chunks,
+            new TypeError("persistent network error")
+          );
 
-        return { response: mockResponse, stream };
-      });
+          return { response: mockResponse, stream };
+        }
+      );
 
       const generator = streamWithRetry(makeRequest, {
         maxRetries: 2,
@@ -230,30 +239,32 @@ describe("streamWithRetry", () => {
       ];
 
       let didError = false;
-      const makeRequest = vi.fn(async (params?: { lastEventId?: string; reconnectPath?: string }) => {
-        if (!params?.lastEventId) {
-          // Initial request - errors after two chunks
-          if (!didError) {
-            didError = true;
-            const stream = createErroringStream(
-              chunks1,
-              new TypeError("network error")
-            );
-            return { response: mockResponse, stream };
+      const makeRequest = vi.fn(
+        async (params?: { lastEventId?: string; reconnectPath?: string }) => {
+          if (!params?.lastEventId) {
+            // Initial request - errors after two chunks
+            if (!didError) {
+              didError = true;
+              const stream = createErroringStream(
+                chunks1,
+                new TypeError("network error")
+              );
+              return { response: mockResponse, stream };
+            }
+          } else {
+            // Reconnect request
+            expect(params.lastEventId).toBe("event-2");
+            return {
+              response: mockResponse,
+              stream: createSSEStream([
+                { id: "event-3", event: "msg", data: { text: "third" } },
+              ]),
+            };
           }
-        } else {
-          // Reconnect request
-          expect(params.lastEventId).toBe("event-2");
-          return {
-            response: mockResponse,
-            stream: createSSEStream([
-              { id: "event-3", event: "msg", data: { text: "third" } },
-            ]),
-          };
-        }
 
-        return { response: mockResponse, stream: createSSEStream(chunks1) };
-      });
+          return { response: mockResponse, stream: createSSEStream(chunks1) };
+        }
+      );
 
       const generator = streamWithRetry(makeRequest);
       const consumePromise = gatherGenerator(generator);
@@ -264,7 +275,10 @@ describe("streamWithRetry", () => {
       expect(results).toHaveLength(3);
       expect(makeRequest).toHaveBeenCalledTimes(2);
       // Verify the reconnect params
-      expect(makeRequest.mock.calls[1][0]).toEqual({ lastEventId: "event-2", reconnectPath: newPath });
+      expect(makeRequest.mock.calls[1][0]).toEqual({
+        lastEventId: "event-2",
+        reconnectPath: newPath,
+      });
     });
   });
 

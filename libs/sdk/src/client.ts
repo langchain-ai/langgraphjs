@@ -359,7 +359,9 @@ class BaseClient {
    * Protected helper for streaming with automatic retry logic.
    * Handles both initial requests and reconnections with SSE.
    */
-  protected async *streamWithRetry<T extends { id?: string; event: string; data: unknown }>(config: {
+  protected async *streamWithRetry<
+    T extends { id?: string; event: string; data: unknown }
+  >(config: {
     endpoint: string;
     method?: string;
     signal?: AbortSignal;
@@ -367,7 +369,11 @@ class BaseClient {
     params?: Record<string, unknown>;
     json?: unknown;
     maxRetries?: number;
-    onReconnect?: (options: { attempt: number; lastEventId?: string; cause: unknown }) => void;
+    onReconnect?: (options: {
+      attempt: number;
+      lastEventId?: string;
+      cause: unknown;
+    }) => void;
     onInitialResponse?: (response: Response) => void | Promise<void>;
   }): AsyncGenerator<T> {
     const makeRequest = async (reconnectParams?: StreamRequestParams) => {
@@ -376,12 +382,13 @@ class BaseClient {
 
       // Determine method and options based on whether this is a reconnection
       const isReconnect = !!reconnectParams?.lastEventId;
-      const method = isReconnect ? "GET" : (config.method || "GET");
+      const method = isReconnect ? "GET" : config.method || "GET";
 
       // Build headers - add Last-Event-ID for reconnections
-      const requestHeaders = isReconnect && reconnectParams?.lastEventId
-        ? { ...config.headers, "Last-Event-ID": reconnectParams.lastEventId }
-        : config.headers;
+      const requestHeaders =
+        isReconnect && reconnectParams?.lastEventId
+          ? { ...config.headers, "Last-Event-ID": reconnectParams.lastEventId }
+          : config.headers;
 
       // Prepare fetch options
       let [url, init] = this.prepareFetchOptions(requestEndpoint, {
@@ -1353,7 +1360,8 @@ export class RunsClient<
     };
 
     yield* this.streamWithRetry({
-      endpoint: threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`,
+      endpoint:
+        threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`,
       method: "POST",
       json,
       signal: payload?.signal,
@@ -1361,7 +1369,13 @@ export class RunsClient<
         const runMetadata = getRunMetadataFromResponse(response);
         if (runMetadata) payload?.onRunCreated?.(runMetadata);
       },
-    }) as TypedAsyncGenerator<TStreamMode, TSubgraphs, TStateType, TUpdateType, TCustomEventType>;
+    }) as TypedAsyncGenerator<
+      TStreamMode,
+      TSubgraphs,
+      TStateType,
+      TUpdateType,
+      TCustomEventType
+    >;
   }
 
   /**
@@ -1662,9 +1676,10 @@ export class RunsClient<
         : options;
 
     yield* this.streamWithRetry({
-      endpoint: threadId != null
-        ? `/threads/${threadId}/runs/${runId}/stream`
-        : `/runs/${runId}/stream`,
+      endpoint:
+        threadId != null
+          ? `/threads/${threadId}/runs/${runId}/stream`
+          : `/runs/${runId}/stream`,
       method: "GET",
       signal: opts?.signal,
       headers: opts?.lastEventId
