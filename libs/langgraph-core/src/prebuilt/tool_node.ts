@@ -302,8 +302,43 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
   }
 }
 
+
 /**
- * @deprecated Use new `ToolNode` from {@link https://www.npmjs.com/package/langchain langchain} package instead.
+ * A conditional edge function that determines whether to route to a tools node or end the graph.
+ * 
+ * This function is designed to be used as a conditional edge in a LangGraph state graph to implement
+ * the common pattern of checking if an AI message contains tool calls that need to be executed.
+ * 
+ * @param state - The current state of the graph, which can be either:
+ *   - An array of `BaseMessage` objects, where the last message is checked for tool calls
+ *   - A state object conforming to `MessagesAnnotation.State`, which contains a `messages` array
+ * 
+ * @returns A string indicating the next node to route to:
+ *   - `"tools"` - If the last message contains tool calls that need to be executed
+ *   - `END` - If there are no tool calls, indicating the graph should terminate
+ * 
+ * @example
+ * ```typescript
+ * import { StateGraph, MessagesAnnotation, END, START } from "@langchain/langgraph";
+ * import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
+ * 
+ * const graph = new StateGraph(MessagesAnnotation)
+ *   .addNode("agent", agentNode)
+ *   .addNode("tools", new ToolNode([searchTool, calculatorTool]))
+ *   .addEdge(START, "agent")
+ *   .addConditionalEdges("agent", toolsCondition, ["tools", END])
+ *   .addEdge("tools", "agent")
+ *   .compile();
+ * ```
+ * 
+ * @remarks
+ * The function checks the last message in the state for the presence of `tool_calls`.
+ * If the message is an `AIMessage` with one or more tool calls, it returns `"tools"`,
+ * indicating that the graph should route to a tools node (typically a `ToolNode`) to
+ * execute those tool calls. Otherwise, it returns `END` to terminate the graph execution.
+ * 
+ * This is a common pattern in agentic workflows where an AI model decides whether to
+ * use tools or provide a final response.
  */
 export function toolsCondition(
   state: BaseMessage[] | typeof MessagesAnnotation.State
