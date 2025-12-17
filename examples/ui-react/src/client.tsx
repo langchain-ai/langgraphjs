@@ -4,10 +4,12 @@ import { createRoot } from "react-dom/client";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import type { Message } from "@langchain/langgraph-sdk";
 
+import type { agent } from "./agent.mts";
+
 import { LoadingIndicator } from "./components/Loading";
 import { EmptyState } from "./components/States";
 import { MessageBubble } from "./components/MessageBubble";
-import { ToolCallCard, type AgentToolCalls } from "./components/ToolCallCard";
+import { ToolCallCard } from "./components/ToolCallCard";
 
 /**
  * Helper to check if a message has actual text content.
@@ -26,11 +28,7 @@ function hasContent(message: Message): boolean {
 }
 
 export function App() {
-  // Using ToolCallsType to get typed tool calls
-  const stream = useStream<
-    Record<string, unknown>,
-    { ToolCallsType: AgentToolCalls }
-  >({
+  const stream = useStream<typeof agent>({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
