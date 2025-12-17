@@ -4,11 +4,7 @@ import type { Message } from "@langchain/langgraph-sdk";
  * MessageBubble component that renders human and AI text messages.
  * Tool calls are handled separately by ToolCallCard.
  */
-export function MessageBubble({
-  message,
-}: {
-  message: Message;
-}) {
+export function MessageBubble({ message }: { message: Message }) {
   const isHuman = message.type === "human";
   const isSystem = message.type === "system";
 
@@ -38,7 +34,7 @@ export function MessageBubble({
           {isSystem ? "System" : "Assistant"}
         </div>
       )}
-      
+
       <div
         className={`${
           isHuman
@@ -55,4 +51,3 @@ export function MessageBubble({
     </div>
   );
 }
-

@@ -29,10 +29,7 @@ import type {
 } from "../ui/types.js";
 import type { UseStream, SubmitOptions } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
-import {
-  type Message,
-  getToolCallsWithResults,
-} from "../types.messages.js";
+import { type Message, getToolCallsWithResults } from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
@@ -281,7 +278,9 @@ export function useStreamLGP<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] as Message[] : [];
+    return Array.isArray(value[messagesKey])
+      ? (value[messagesKey] as Message[])
+      : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {

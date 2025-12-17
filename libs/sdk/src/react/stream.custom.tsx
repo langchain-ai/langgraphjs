@@ -143,7 +143,9 @@ export function useStreamCustom<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] as Message[] : [];
+    return Array.isArray(value[messagesKey])
+      ? (value[messagesKey] as Message[])
+      : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {

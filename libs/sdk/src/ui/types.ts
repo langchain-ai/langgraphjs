@@ -1,11 +1,6 @@
 import type { Client, ClientConfig } from "../client.js";
 
-import type {
-  ThreadState,
-  Config,
-  Checkpoint,
-  Metadata,
-} from "../schema.js";
+import type { ThreadState, Config, Checkpoint, Metadata } from "../schema.js";
 import type {
   Command,
   MultitaskStrategy,
@@ -522,4 +517,3 @@ export type CustomSubmitOptions<
   SubmitOptions<StateType, ConfigurableType>,
   "optimisticValues" | "context" | "command" | "config"
 >;
-

@@ -1,11 +1,19 @@
 import type { ToolMessage } from "@langchain/langgraph-sdk";
-import type { ToolCallWithResult, ToolCallFromTool } from "@langchain/langgraph-sdk/react";
+import type {
+  ToolCallWithResult,
+  ToolCallFromTool,
+} from "@langchain/langgraph-sdk/react";
 import type { getWeather } from "../agent.mjs";
 
 // Define the tool calls type for our agent
 export type AgentToolCalls =
   | ToolCallFromTool<typeof getWeather>
-  | { name: "search"; args: { query: string }; id?: string; type?: "tool_call" };
+  | {
+      name: "search";
+      args: { query: string };
+      id?: string;
+      type?: "tool_call";
+    };
 
 /**
  * Component that renders a tool call with its result.
@@ -70,12 +78,14 @@ export function ToolCallCard({
 function WeatherToolCallCard({
   call,
   result,
-  }: {
+}: {
   call: ToolCallFromTool<typeof getWeather>;
   result?: ToolMessage;
 }) {
   const isLoading = result === undefined;
-  const { status, content } = result ? JSON.parse(result.content as string) : { status: "success", content: "" };
+  const { status, content } = result
+    ? JSON.parse(result.content as string)
+    : { status: "success", content: "" };
   const isError = status === "error";
 
   return (
@@ -98,7 +108,9 @@ function WeatherToolCallCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-white">Weather</div>
-          <div className="text-xs text-neutral-500 truncate">{call.args.location}</div>
+          <div className="text-xs text-neutral-500 truncate">
+            {call.args.location}
+          </div>
         </div>
         {isLoading && (
           <div className="w-4 h-4 border border-neutral-600 border-t-white rounded-full animate-spin" />
@@ -119,4 +131,3 @@ function WeatherToolCallCard({
     </div>
   );
 }
-
