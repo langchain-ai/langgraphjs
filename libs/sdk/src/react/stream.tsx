@@ -31,10 +31,10 @@ function isCustomOptions<
 
 /**
  * Helper type that infers StateType based on whether T is an agent-like type or a state type.
- * - If T has `__agentTypes`, returns `Record<string, unknown>` (agent case)
+ * - If T has `~agentTypes`, returns `Record<string, unknown>` (agent case)
  * - Otherwise, returns T (direct state type)
  */
-type InferStateType<T> = T extends { __agentTypes: unknown }
+type InferStateType<T> = T extends { "~agentTypes": unknown }
   ? Record<string, unknown>
   : T extends Record<string, unknown>
     ? T
@@ -42,11 +42,11 @@ type InferStateType<T> = T extends { __agentTypes: unknown }
 
 /**
  * Helper type that infers Bag based on whether T is an agent-like type.
- * - If T has `__agentTypes`, extracts bag from the agent's tools
+ * - If T has `~agentTypes`, extracts bag from the agent's tools
  * - Otherwise, returns the default BagTemplate
  */
 type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
-  __agentTypes: unknown;
+  "~agentTypes": unknown;
 }
   ? AgentToBag<T>
   : B;
@@ -146,7 +146,7 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  * }
  * ```
  *
- * @template T Either a ReactAgent type (with `__agentTypes`) or a state type (`Record<string, unknown>`)
+ * @template T Either a ReactAgent type (with `~agentTypes`) or a state type (`Record<string, unknown>`)
  * @template Bag Type configuration bag containing:
  *   - `ConfigurableType`: Type for the `config.configurable` property
  *   - `InterruptType`: Type for interrupt values
@@ -177,7 +177,7 @@ export function useStream<
  * letting you focus on building great chat experiences. It provides automatic state management for
  * messages, interrupts, loading states, and errors.
  *
- * @template T Either a ReactAgent type (with `__agentTypes`) or a state type (`Record<string, unknown>`)
+ * @template T Either a ReactAgent type (with `~agentTypes`) or a state type (`Record<string, unknown>`)
  * @template Bag Type configuration bag containing:
  *   - `ConfigurableType`: Type for the `config.configurable` property
  *   - `InterruptType`: Type for interrupt values
