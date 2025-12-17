@@ -38,7 +38,7 @@ export function MessageBubble({ message }: { message: Message }) {
       <div
         className={`${
           isHuman
-            ? "bg-neutral-800 text-white rounded-2xl px-4 py-2.5 ml-auto max-w-[85%] md:max-w-[70%] w-fit"
+            ? "bg-brand-dark text-brand-light rounded-2xl px-4 py-2.5 ml-auto max-w-[85%] md:max-w-[70%] w-fit"
             : isSystem
             ? "bg-amber-500/10 border border-amber-500/20 text-amber-200 rounded-lg px-4 py-3"
             : "text-neutral-100"
