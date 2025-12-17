@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.0.7
+
+### Patch Changes
+
+- f602df6: Adding support for resumableStreams on remote graphs.
+
 ## 1.0.6
 
 ### Patch Changes

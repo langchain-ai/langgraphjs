@@ -1,5 +1,12 @@
 # langgraph
 
+## 1.0.7
+
+### Patch Changes
+
+- Updated dependencies [f602df6]
+  - @langchain/langgraph@1.0.7
+
 ## 1.0.6
 
 ### Patch Changes
