@@ -1478,14 +1478,16 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/ui-react@workspace:examples/ui-react"
   dependencies:
-    "@langchain/core": "npm:^1.0.1"
+    "@langchain/core": "npm:1.2.0-dev-1765937705265"
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-cli": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
-    "@langchain/openai": "npm:^1.0.0"
+    "@langchain/openai": "npm:^1.2.0"
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@vitejs/plugin-react": "npm:^4.4.1"
+    langchain: "npm:2.0.0-dev-1765937705265"
+    npm-run-all2: "npm:^8.0.4"
     prettier: "npm:^2.8.3"
     react: "npm:^19.0.0"
     react-dom: "npm:^19.0.0"
@@ -1829,6 +1831,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@langchain/core@npm:1.2.0-dev-1765937705265":
+  version: 1.2.0-dev-1765937705265
+  resolution: "@langchain/core@npm:1.2.0-dev-1765937705265"
+  dependencies:
+    "@cfworker/json-schema": "npm:^4.0.2"
+    ansi-styles: "npm:^5.0.0"
+    camelcase: "npm:6"
+    decamelize: "npm:1.2.0"
+    js-tiktoken: "npm:^1.0.12"
+    langsmith: "npm:>=0.4.0 <1.0.0"
+    mustache: "npm:^4.2.0"
+    p-queue: "npm:^6.6.2"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.25.76 || ^4"
+  checksum: 10/e5ff11e6b6455ae7745ab9db4bbcbd6514a71de40573d10be8b0fbfb917434603ee13a1746adbbb9be85175b79511ca6e34393a71b7127d288da49607cbb2c0e
+  languageName: node
+  linkType: hard
+
 "@langchain/core@npm:^1.0.0, @langchain/core@npm:^1.0.1, @langchain/core@npm:^1.1.2":
   version: 1.1.2
   resolution: "@langchain/core@npm:1.1.2"
@@ -2102,7 +2122,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint":
+"@langchain/langgraph-checkpoint@npm:^1.0.0, @langchain/langgraph-checkpoint@workspace:*, @langchain/langgraph-checkpoint@workspace:libs/checkpoint":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph-checkpoint@workspace:libs/checkpoint"
   dependencies:
@@ -2349,7 +2369,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@langchain/langgraph@npm:^1.0.0-alpha, @langchain/langgraph@workspace:*, @langchain/langgraph@workspace:libs/langgraph-core":
+"@langchain/langgraph@npm:^1.0.0, @langchain/langgraph@npm:^1.0.0-alpha, @langchain/langgraph@workspace:*, @langchain/langgraph@workspace:libs/langgraph-core":
   version: 0.0.0-use.local
   resolution: "@langchain/langgraph@workspace:libs/langgraph-core"
   dependencies:
@@ -2448,6 +2468,19 @@ __metadata:
   peerDependencies:
     "@langchain/core": ^1.0.0
   checksum: 10/79e6f4fc097af4cabc97765bdb1d86443321cbbab4630ff86ee3d1775b48e11cb1706417ef9b69c1193b4e6bea0ced5aebf726ffa2c642b3a988aaec33cb52aa
+  languageName: node
+  linkType: hard
+
+"@langchain/openai@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "@langchain/openai@npm:1.2.0"
+  dependencies:
+    js-tiktoken: "npm:^1.0.12"
+    openai: "npm:^6.10.0"
+    zod: "npm:^3.25.76 || ^4"
+  peerDependencies:
+    "@langchain/core": ^1.0.0
+  checksum: 10/e2fae34df64411f47815c4c2fca7068532355e9278ca906845517aba8289a80a42e0248a1b6755b2725c3bc66c051a7a042f9c2644a343c2200d3b9df13ffedf
   languageName: node
   linkType: hard
 
@@ -5389,6 +5422,13 @@ __metadata:
   version: 6.2.1
   resolution: "ansi-styles@npm:6.2.1"
   checksum: 10/70fdf883b704d17a5dfc9cde206e698c16bcd74e7f196ab821511651aee4f9f76c9514bdfa6ca3a27b5e49138b89cb222a28caf3afe4567570139577f991df32
+  languageName: node
+  linkType: hard
+
+"ansi-styles@npm:^6.2.1":
+  version: 6.2.3
+  resolution: "ansi-styles@npm:6.2.3"
+  checksum: 10/c49dad7639f3e48859bd51824c93b9eb0db628afc243c51c3dd2410c4a15ede1a83881c6c7341aa2b159c4f90c11befb38f2ba848c07c66c9f9de4bcd7cb9f30
   languageName: node
   linkType: hard
 
@@ -10041,6 +10081,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"json-parse-even-better-errors@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "json-parse-even-better-errors@npm:4.0.0"
+  checksum: 10/da1ae7ef0cc9db02972a06a71322f26bdcda5d7f648c23b28ce7f158ba35707461bcbd91945d8aace10d8d79c383b896725c65ffa410242352692328aa9b5edf
+  languageName: node
+  linkType: hard
+
 "json-schema-to-ts@npm:^3.1.1":
   version: 3.1.1
   resolution: "json-schema-to-ts@npm:3.1.1"
@@ -10121,6 +10168,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"langchain@npm:2.0.0-dev-1765937705265":
+  version: 2.0.0-dev-1765937705265
+  resolution: "langchain@npm:2.0.0-dev-1765937705265"
+  dependencies:
+    "@langchain/langgraph": "npm:^1.0.0"
+    "@langchain/langgraph-checkpoint": "npm:^1.0.0"
+    langsmith: "npm:>=0.4.0 <1.0.0"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.25.76 || ^4"
+  peerDependencies:
+    "@langchain/core": 1.2.0-dev-1765937705265
+  checksum: 10/9d3d202d0ae528a39f2522d22a597c5d151fc9130a61256dbdd71ce1b32de381ac3cee37e02574ffac14f6d8526ae476c2acf7d30c9c05797fb7b32eb4b04768
+  languageName: node
+  linkType: hard
+
 "langchain@npm:^1.0.0-alpha":
   version: 1.0.0-alpha.6
   resolution: "langchain@npm:1.0.0-alpha.6"
@@ -10182,6 +10244,34 @@ __metadata:
       optional: true
   languageName: unknown
   linkType: soft
+
+"langsmith@npm:>=0.4.0 <1.0.0":
+  version: 0.4.0
+  resolution: "langsmith@npm:0.4.0"
+  dependencies:
+    "@types/uuid": "npm:^10.0.0"
+    chalk: "npm:^4.1.2"
+    console-table-printer: "npm:^2.12.1"
+    p-queue: "npm:^6.6.2"
+    semver: "npm:^7.6.3"
+    uuid: "npm:^10.0.0"
+  peerDependencies:
+    "@opentelemetry/api": "*"
+    "@opentelemetry/exporter-trace-otlp-proto": "*"
+    "@opentelemetry/sdk-trace-base": "*"
+    openai: "*"
+  peerDependenciesMeta:
+    "@opentelemetry/api":
+      optional: true
+    "@opentelemetry/exporter-trace-otlp-proto":
+      optional: true
+    "@opentelemetry/sdk-trace-base":
+      optional: true
+    openai:
+      optional: true
+  checksum: 10/82ac7285ce1a937850f5c0e58b634bf89da2ec0b83c3d0ecd75ca108b80e6930b84e2fe7bbf78f519b039465a2aca6bbc07cff7bbc28b65d43dd3c8f252e5162
+  languageName: node
+  linkType: hard
 
 "langsmith@npm:^0.3.33, langsmith@npm:^0.3.64":
   version: 0.3.64
@@ -10576,6 +10666,13 @@ __metadata:
   version: 1.5.0
   resolution: "memory-pager@npm:1.5.0"
   checksum: 10/ffe3461b6aa4e400138d1d9c59890b1cbeae3256592a0dfae49577f4bec93952de65f31f682f0b15451d2a7cf018be775ed1e1411705e45514b14fb70883a66b
+  languageName: node
+  linkType: hard
+
+"memorystream@npm:^0.3.1":
+  version: 0.3.1
+  resolution: "memorystream@npm:0.3.1"
+  checksum: 10/2e34a1e35e6eb2e342f788f75f96c16f115b81ff6dd39e6c2f48c78b464dbf5b1a4c6ebfae4c573bd0f8dbe8c57d72bb357c60523be184655260d25855c03902
   languageName: node
   linkType: hard
 
@@ -11171,6 +11268,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"npm-normalize-package-bin@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "npm-normalize-package-bin@npm:4.0.0"
+  checksum: 10/e1a0971e5640bc116c5197f9707d86dc404b6d8e13da2c7ea82baa5583b8da279a3c8607234aa1d733c2baac3b3eba87b156f021f20ae183dc4806530e61675d
+  languageName: node
+  linkType: hard
+
+"npm-run-all2@npm:^8.0.4":
+  version: 8.0.4
+  resolution: "npm-run-all2@npm:8.0.4"
+  dependencies:
+    ansi-styles: "npm:^6.2.1"
+    cross-spawn: "npm:^7.0.6"
+    memorystream: "npm:^0.3.1"
+    picomatch: "npm:^4.0.2"
+    pidtree: "npm:^0.6.0"
+    read-package-json-fast: "npm:^4.0.0"
+    shell-quote: "npm:^1.7.3"
+    which: "npm:^5.0.0"
+  bin:
+    npm-run-all: bin/npm-run-all/index.js
+    npm-run-all2: bin/npm-run-all/index.js
+    run-p: bin/run-p/index.js
+    run-s: bin/run-s/index.js
+  checksum: 10/6e485f0d71fdfcf5bd872e5bbb8440ea5816ebeed88e6e39ff6e758d76adefa516b3101ed7ddc8de117d61b499f176417c87b0c595394e15733738834ad6ef0a
+  languageName: node
+  linkType: hard
+
 "npm-run-path@npm:^6.0.0":
   version: 6.0.0
   resolution: "npm-run-path@npm:6.0.0"
@@ -11422,6 +11547,23 @@ __metadata:
   bin:
     openai: bin/cli
   checksum: 10/e1bdfea7b58f6d6cc0c2787254e9ae0395c7cb78b6ad4383c2777fd929ff43d2cb614c12ff7aaef04e260a6b48f3bc15f3c864abb9df35cfc7594e6aa46d4858
+  languageName: node
+  linkType: hard
+
+"openai@npm:^6.10.0":
+  version: 6.14.0
+  resolution: "openai@npm:6.14.0"
+  peerDependencies:
+    ws: ^8.18.0
+    zod: ^3.25 || ^4.0
+  peerDependenciesMeta:
+    ws:
+      optional: true
+    zod:
+      optional: true
+  bin:
+    openai: bin/cli
+  checksum: 10/206f6bad6163219646ae15e66f48a3c0111fc1676e160c6bc6058ecdb65aa0eb14dbd1063d214920e052bcca3f29c6cf9fa2698ca84ff2867b38cf08376e139d
   languageName: node
   linkType: hard
 
@@ -11936,6 +12078,15 @@ __metadata:
   version: 4.0.3
   resolution: "picomatch@npm:4.0.3"
   checksum: 10/57b99055f40b16798f2802916d9c17e9744e620a0db136554af01d19598b96e45e2f00014c91d1b8b13874b80caa8c295b3d589a3f72373ec4aaf54baa5962d5
+  languageName: node
+  linkType: hard
+
+"pidtree@npm:^0.6.0":
+  version: 0.6.0
+  resolution: "pidtree@npm:0.6.0"
+  bin:
+    pidtree: bin/pidtree.js
+  checksum: 10/ea67fb3159e170fd069020e0108ba7712df9f0fd13c8db9b2286762856ddce414fb33932e08df4bfe36e91fe860b51852aee49a6f56eb4714b69634343add5df
   languageName: node
   linkType: hard
 
@@ -12513,6 +12664,16 @@ __metadata:
   version: 19.1.0
   resolution: "react@npm:19.1.0"
   checksum: 10/d0180689826fd9de87e839c365f6f361c561daea397d61d724687cae88f432a307d1c0f53a0ee95ddbe3352c10dac41d7ff1ad85530fb24951b27a39e5398db4
+  languageName: node
+  linkType: hard
+
+"read-package-json-fast@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "read-package-json-fast@npm:4.0.0"
+  dependencies:
+    json-parse-even-better-errors: "npm:^4.0.0"
+    npm-normalize-package-bin: "npm:^4.0.0"
+  checksum: 10/bf0becd7d0b652dcc5874b466d1dbd98313180e89505c072f35ff48a1ad6bdaf2427143301e1924d64e4af5064cda8be5df16f14de882f03130e29051bbaab87
   languageName: node
   linkType: hard
 
@@ -13303,6 +13464,13 @@ __metadata:
   version: 3.0.0
   resolution: "shebang-regex@npm:3.0.0"
   checksum: 10/1a2bcae50de99034fcd92ad4212d8e01eedf52c7ec7830eedcf886622804fe36884278f2be8be0ea5fde3fd1c23911643a4e0f726c8685b61871c8908af01222
+  languageName: node
+  linkType: hard
+
+"shell-quote@npm:^1.7.3":
+  version: 1.8.3
+  resolution: "shell-quote@npm:1.8.3"
+  checksum: 10/5473e354637c2bd698911224129c9a8961697486cff1fb221f234d71c153fc377674029b0223d1d3c953a68d451d79366abfe53d1a0b46ee1f28eb9ade928f4c
   languageName: node
   linkType: hard
 
@@ -15441,6 +15609,17 @@ __metadata:
   bin:
     node-which: bin/which.js
   checksum: 10/f17e84c042592c21e23c8195108cff18c64050b9efb8459589116999ea9da6dd1509e6a1bac3aeebefd137be00fabbb61b5c2bc0aa0f8526f32b58ee2f545651
+  languageName: node
+  linkType: hard
+
+"which@npm:^5.0.0":
+  version: 5.0.0
+  resolution: "which@npm:5.0.0"
+  dependencies:
+    isexe: "npm:^3.1.1"
+  bin:
+    node-which: bin/which.js
+  checksum: 10/6ec99e89ba32c7e748b8a3144e64bfc74aa63e2b2eacbb61a0060ad0b961eb1a632b08fb1de067ed59b002cec3e21de18299216ebf2325ef0f78e0f121e14e90
   languageName: node
   linkType: hard
 

@@ -1,20 +1,12 @@
 {
-  "extends": [
-    "//"
-  ],
+  "extends": ["//"],
   "tasks": {
     "build": {
-      "outputs": [
-        "**/dist/**"
-      ]
+      "outputs": ["**/dist/**"]
     },
     "build:internal": {
-      "dependsOn": [
-        "^build:internal"
-      ],
-      "outputs": [
-        "**/dist/**"
-      ]
+      "dependsOn": ["^build:internal"],
+      "outputs": ["**/dist/**"]
     },
     "dev:client": {
       "cache": false,
