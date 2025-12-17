@@ -18,18 +18,21 @@ import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   BagTemplate,
   UseStreamOptions,
-  UseStream,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
   GetConfigurableType,
+  GetToolCallsType,
   RunCallbackMeta,
-  SubmitOptions,
   MessageMetadata,
   UseStreamThread,
-} from "./types.js";
+} from "../ui/types.js";
+import type { UseStream, SubmitOptions } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
-import type { Message } from "../types.messages.js";
+import {
+  type Message,
+  getToolCallsWithResults,
+} from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
@@ -159,12 +162,14 @@ export function useStreamLGP<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
+    ToolCallsType?: unknown;
   } = BagTemplate
 >(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+  type ToolCallType = GetToolCallsType<Bag>;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
@@ -276,7 +281,7 @@ export function useStreamLGP<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+    return Array.isArray(value[messagesKey]) ? value[messagesKey] as Message[] : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
@@ -668,13 +673,19 @@ export function useStreamLGP<
       return interrupts.at(-1) as Interrupt<InterruptType> | undefined;
     },
 
-    get messages() {
+    get messages(): Message<ToolCallType>[] {
       trackStreamMode("messages-tuple", "values");
-      return getMessages(values);
+      return getMessages(values) as Message<ToolCallType>[];
+    },
+
+    get toolCalls() {
+      trackStreamMode("messages-tuple", "values");
+      const msgs = getMessages(values) as Message<ToolCallType>[];
+      return getToolCallsWithResults<ToolCallType>(msgs);
     },
 
     getMessagesMetadata(
-      message: Message,
+      message: Message<ToolCallType>,
       index?: number
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("values");
