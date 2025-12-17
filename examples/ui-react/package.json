@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "run-p dev:client dev:server",
+    "dev": "yarn turbo:command dev:client dev:server --filter=@examples/ui-react",
     "dev:client": "vite",
     "dev:server": "langgraphjs dev --no-browser",
     "build:internal": "tsc -b && vite build",
@@ -26,7 +26,6 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.4.1",
-    "npm-run-all2": "^8.0.4",
     "prettier": "^2.8.3",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
