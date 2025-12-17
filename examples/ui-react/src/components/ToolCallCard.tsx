@@ -3,7 +3,7 @@ import type {
   ToolCallWithResult,
   ToolCallFromTool,
 } from "@langchain/langgraph-sdk/react";
-import type { getWeather } from "../agent.mjs";
+import type { getWeather } from "../agent.js";
 
 // Define the tool calls type for our agent
 export type AgentToolCalls =
@@ -24,14 +24,13 @@ export function ToolCallCard({
 }: {
   toolCall: ToolCallWithResult<AgentToolCalls>;
 }) {
-  const { call, result } = toolCall;
-  const isLoading = result === undefined;
+  const { call, result, state } = toolCall;
+  const isLoading = state === "pending";
 
   // Type-safe rendering based on tool name
   // TypeScript narrows call.args based on call.name
   if (call.name === "get_weather") {
-    // Here, call.args is typed as { location: string }
-    return <WeatherToolCallCard call={call} result={result} />;
+    return <WeatherToolCallCard call={call} result={result} state={state} />;
   }
 
   // Fallback for unknown tools (shouldn't happen with proper typing)
@@ -78,11 +77,13 @@ export function ToolCallCard({
 function WeatherToolCallCard({
   call,
   result,
+  state,
 }: {
   call: ToolCallFromTool<typeof getWeather>;
   result?: ToolMessage;
+  state: "pending" | "completed" | "error";
 }) {
-  const isLoading = result === undefined;
+  const isLoading = state === "pending";
   const { status, content } = result
     ? JSON.parse(result.content as string)
     : { status: "success", content: "" };
