@@ -443,7 +443,6 @@ export class RemoteGraph<
         streamResumable: this.streamResumable,
       }
     )) {
-      console.log("chunk", chunk);
       let mode;
       let namespace: string[];
       if (chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
