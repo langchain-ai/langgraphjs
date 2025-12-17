@@ -24,9 +24,7 @@ describe("getToolCallsWithResults", () => {
   });
 
   test("returns empty array for AI message with empty tool_calls array", () => {
-    const messages: Message[] = [
-      { type: "ai", content: "", tool_calls: [] },
-    ];
+    const messages: Message[] = [{ type: "ai", content: "", tool_calls: [] }];
     const result = getToolCallsWithResults(messages);
     expect(result).toEqual([]);
   });
@@ -35,7 +33,9 @@ describe("getToolCallsWithResults", () => {
     const aiMessage: AIMessage = {
       type: "ai",
       content: "",
-      tool_calls: [{ name: "get_weather", args: { location: "NYC" }, id: "tc1" }],
+      tool_calls: [
+        { name: "get_weather", args: { location: "NYC" }, id: "tc1" },
+      ],
     };
     const toolMessage: ToolMessage = {
       type: "tool",
@@ -59,7 +59,9 @@ describe("getToolCallsWithResults", () => {
     const aiMessage: AIMessage = {
       type: "ai",
       content: "",
-      tool_calls: [{ name: "get_weather", args: { location: "NYC" }, id: "tc1" }],
+      tool_calls: [
+        { name: "get_weather", args: { location: "NYC" }, id: "tc1" },
+      ],
     };
     const messages: Message[] = [aiMessage];
 
@@ -141,7 +143,9 @@ describe("getToolCallsWithResults", () => {
     const aiMessage2: AIMessage = {
       type: "ai",
       content: "",
-      tool_calls: [{ name: "get_weather", args: { location: "NYC" }, id: "tc2" }],
+      tool_calls: [
+        { name: "get_weather", args: { location: "NYC" }, id: "tc2" },
+      ],
     };
     const toolMessage2: ToolMessage = {
       type: "tool",
@@ -194,7 +198,9 @@ describe("getToolCallsWithResults", () => {
     const aiMessage: AIMessage<MyToolCall> = {
       type: "ai",
       content: "",
-      tool_calls: [{ name: "get_weather", args: { location: "NYC" }, id: "tc1" }],
+      tool_calls: [
+        { name: "get_weather", args: { location: "NYC" }, id: "tc1" },
+      ],
     };
     const toolMessage: ToolMessage = {
       type: "tool",
@@ -272,4 +278,3 @@ describe("getToolCallsWithResults", () => {
     expect(result[2].result).toBe(toolMessage3);
   });
 });
-

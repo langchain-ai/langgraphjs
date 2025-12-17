@@ -97,13 +97,18 @@ export function App() {
                   return null;
                 }
 
-                return <MessageBubble key={message.id ?? idx} message={message} />;
+                return (
+                  <MessageBubble key={message.id ?? idx} message={message} />
+                );
               })}
 
               {/* Show loading indicator when streaming and no final AI content yet */}
               {stream.isLoading &&
                 !stream.messages.some(
-                  (m) => m.type === "ai" && hasContent(m) && !toolCallAIMessageIds.has(m.id)
+                  (m) =>
+                    m.type === "ai" &&
+                    hasContent(m) &&
+                    !toolCallAIMessageIds.has(m.id)
                 ) &&
                 stream.toolCalls.length === 0 && <LoadingIndicator />}
               <div ref={messagesEndRef} />

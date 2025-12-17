@@ -8,12 +8,17 @@ export const getWeather = tool(
   async ({ location }) => {
     // Use Open-Meteo geocoding API to get coordinates
     const geoResponse = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        location
+      )}&count=1`
     );
     const geoData = await geoResponse.json();
 
     if (!geoData.results?.length) {
-      return JSON.stringify({ status: "error", content: `Could not find location: ${location}` });
+      return JSON.stringify({
+        status: "error",
+        content: `Could not find location: ${location}`,
+      });
     }
 
     const { latitude, longitude, name, country } = geoData.results[0];
@@ -24,8 +29,12 @@ export const getWeather = tool(
     );
     const weatherData = await weatherResponse.json();
 
-    const { temperature_2m, weather_code, wind_speed_10m, relative_humidity_2m } =
-      weatherData.current;
+    const {
+      temperature_2m,
+      weather_code,
+      wind_speed_10m,
+      relative_humidity_2m,
+    } = weatherData.current;
 
     // Map weather codes to descriptions
     const weatherDescriptions: Record<number, string> = {
@@ -50,9 +59,13 @@ export const getWeather = tool(
       95: "Thunderstorm",
     };
 
-    const description = weatherDescriptions[weather_code] || "Unknown conditions";
+    const description =
+      weatherDescriptions[weather_code] || "Unknown conditions";
 
-    return JSON.stringify({ status: "success", content: `Weather in ${name}, ${country}: ${description}, ${temperature_2m}°C, Wind: ${wind_speed_10m} km/h, Humidity: ${relative_humidity_2m}%` });
+    return JSON.stringify({
+      status: "success",
+      content: `Weather in ${name}, ${country}: ${description}, ${temperature_2m}°C, Wind: ${wind_speed_10m} km/h, Humidity: ${relative_humidity_2m}%`,
+    });
   },
   {
     name: "get_weather",
@@ -65,7 +78,10 @@ export const getWeather = tool(
 
 export const search = tool(
   async ({ query }) => {
-    return JSON.stringify({ status: "success", content: `Search results for "${query}": This is a demo search result.` });
+    return JSON.stringify({
+      status: "success",
+      content: `Search results for "${query}": This is a demo search result.`,
+    });
   },
   {
     name: "search",
@@ -79,5 +95,6 @@ export const search = tool(
 export const agent = createAgent({
   model,
   tools: [getWeather, search],
-  systemPrompt: "You are a helpful assistant that can answer questions and help with tasks.",
+  systemPrompt:
+    "You are a helpful assistant that can answer questions and help with tasks.",
 });

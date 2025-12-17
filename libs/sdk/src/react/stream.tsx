@@ -1,11 +1,7 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type {
-  BagTemplate,
-  UseStreamOptions,
-  AgentToBag,
-} from "../ui/types.js";
+import type { BagTemplate, UseStreamOptions, AgentToBag } from "../ui/types.js";
 import type {
   UseStream,
   UseStreamCustom,
@@ -37,8 +33,8 @@ function isCustomOptions<
 type InferStateType<T> = T extends { "~agentTypes": unknown }
   ? Record<string, unknown>
   : T extends Record<string, unknown>
-    ? T
-    : Record<string, unknown>;
+  ? T
+  : Record<string, unknown>;
 
 /**
  * Helper type that infers Bag based on whether T is an agent-like type.
