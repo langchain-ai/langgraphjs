@@ -426,7 +426,6 @@ export class RemoteGraph<
       serializedInput = _serializeInputs(input);
     }
 
-    console.log("streamResumable - streamIterator", this.streamResumable);
     for await (const chunk of this.client.runs.stream(
       sanitizedConfig.configurable.thread_id as string,
       this.graphId,
