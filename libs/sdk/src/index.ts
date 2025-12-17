@@ -38,6 +38,7 @@ export type {
   FunctionMessage,
   HumanMessage,
   Message,
+  UIMessage,
   RemoveMessage,
   SystemMessage,
   ToolMessage,

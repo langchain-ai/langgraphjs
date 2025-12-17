@@ -29,7 +29,11 @@ import type {
 } from "../ui/types.js";
 import type { UseStream, SubmitOptions } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
-import { type Message, getToolCallsWithResults } from "../types.messages.js";
+import {
+  type Message,
+  type ToolMessage,
+  getToolCallsWithResults,
+} from "../types.messages.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
@@ -677,10 +681,26 @@ export function useStreamLGP<
       return getMessages(values) as Message<ToolCallType>[];
     },
 
+    get uiMessages() {
+      trackStreamMode("messages-tuple", "values");
+      const msgs = getMessages(values) as Message<ToolCallType>[];
+      return msgs.filter(
+        (m): m is Exclude<Message<ToolCallType>, ToolMessage> =>
+          m.type !== "tool"
+      );
+    },
+
     get toolCalls() {
       trackStreamMode("messages-tuple", "values");
       const msgs = getMessages(values) as Message<ToolCallType>[];
       return getToolCallsWithResults<ToolCallType>(msgs);
+    },
+
+    getToolCalls(message) {
+      trackStreamMode("messages-tuple", "values");
+      const msgs = getMessages(values) as Message<ToolCallType>[];
+      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
     },
 
     getMessagesMetadata(

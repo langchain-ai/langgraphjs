@@ -16,6 +16,7 @@ export type {
 } from "../ui/types.js";
 export type {
   ToolCallWithResult,
+  ToolCallState,
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
