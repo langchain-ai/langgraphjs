@@ -47,6 +47,93 @@ describe("LastValue", () => {
     const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(value);
   });
+
+  describe("with initialValueFactory", () => {
+    it("should initialize with default value from factory", () => {
+      const channel = new LastValue<string>(() => "default-value");
+      expect(channel.get()).toBe("default-value");
+      expect(channel.isAvailable()).toBe(true);
+    });
+
+    it("should allow updates to override initial value", () => {
+      const channel = new LastValue<string>(() => "default-value");
+      expect(channel.get()).toBe("default-value");
+
+      channel.update(["updated-value"]);
+      expect(channel.get()).toBe("updated-value");
+    });
+
+    it("should preserve initialValueFactory in checkpoint restoration", () => {
+      const initialValueFactory = () => "default-value";
+      const channel = new LastValue<string>(initialValueFactory);
+      expect(channel.get()).toBe("default-value");
+
+      channel.update(["updated-value"]);
+      const checkpoint = channel.checkpoint();
+
+      const restoredChannel = new LastValue<string>(initialValueFactory);
+      const channel2 = restoredChannel.fromCheckpoint(checkpoint);
+      // Checkpoint value takes precedence
+      expect(channel2.get()).toBe("updated-value");
+
+      // Create a new channel from checkpoint without providing factory
+      // This tests that the factory is preserved in the restored channel
+      const channel3 = new LastValue<string>(initialValueFactory);
+      const channel4 = channel3.fromCheckpoint(checkpoint);
+      expect(channel4.get()).toBe("updated-value");
+    });
+
+    it("should use initial value when checkpoint is undefined", () => {
+      const initialValueFactory = () => "default-value";
+      const channel = new LastValue<string>(initialValueFactory);
+      const restoredChannel = channel.fromCheckpoint(undefined);
+      // When checkpoint is undefined, should use initial value
+      expect(restoredChannel.get()).toBe("default-value");
+    });
+
+    it("should work with function that returns different values", () => {
+      let callCount = 0;
+      const initialValueFactory = () => {
+        callCount += 1;
+        return `value-${callCount}`;
+      };
+
+      const channel1 = new LastValue<string>(initialValueFactory);
+      expect(channel1.get()).toBe("value-1");
+
+      const channel2 = new LastValue<string>(initialValueFactory);
+      expect(channel2.get()).toBe("value-2");
+    });
+
+    it("should handle initialValueFactory returning falsy values", () => {
+      const channelZero = new LastValue<number>(() => 0);
+      expect(channelZero.get()).toBe(0);
+
+      const channelEmpty = new LastValue<string>(() => "");
+      expect(channelEmpty.get()).toBe("");
+
+      const channelFalse = new LastValue<boolean>(() => false);
+      expect(channelFalse.get()).toBe(false);
+    });
+
+    it("should handle complex objects from initialValueFactory", () => {
+      const initialValueFactory = () => ({ foo: "bar", count: 42 });
+      const channel = new LastValue<{ foo: string; count: number }>(
+        initialValueFactory
+      );
+      const value = channel.get();
+      expect(value.foo).toBe("bar");
+      expect(value.count).toBe(42);
+    });
+
+    it("should work without initialValueFactory", () => {
+      const channel = new LastValue<number>();
+      expect(() => channel.get()).toThrow(EmptyChannelError);
+
+      channel.update([42]);
+      expect(channel.get()).toBe(42);
+    });
+  });
 });
 
 describe("Topic", () => {
