@@ -45,10 +45,10 @@ export interface AgentTypeConfigLike {
 }
 
 /**
- * Check if a type is agent-like (has `__agentTypes` phantom property).
+ * Check if a type is agent-like (has `~agentTypes` phantom property).
  * This property is present on `ReactAgent` instances created with `createAgent`.
  */
-export type IsAgentLike<T> = T extends { __agentTypes: AgentTypeConfigLike }
+export type IsAgentLike<T> = T extends { "~agentTypes": AgentTypeConfigLike }
   ? true
   : false;
 
@@ -62,7 +62,7 @@ export type IsAgentLike<T> = T extends { __agentTypes: AgentTypeConfigLike }
  * // Config is the AgentTypeConfig with Response, State, Context, Middleware, Tools
  * ```
  */
-export type ExtractAgentConfig<T> = T extends { __agentTypes: infer Config }
+export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
   ? Config extends AgentTypeConfigLike
     ? Config
     : never
