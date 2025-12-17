@@ -2,6 +2,8 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "../pregel/remote.js";
+import { StreamMode } from "../pregel/types.js";
+import { gatherIterator } from "../utils.js";
 
 const textEncoder = new TextEncoder();
 
@@ -89,9 +91,13 @@ describe("RemoteGraph with streamResumable", () => {
     vi.useRealTimers();
   });
 
-  test("passes streamResumable parameter to client", async () => {
+  test("works with normal stream", async () => {
     const chunks = [
-      { id: "1", event: "metadata", data: { run_id: "run-1", thread_id: "test_thread" } },
+      {
+        id: "1",
+        event: "metadata",
+        data: { run_id: "run-1", thread_id: "test_thread" },
+      },
       { id: "2", event: "values", data: { messages: ["hello"] } },
       { id: "3", event: "values", data: { messages: ["hello", "world"] } },
     ];
@@ -109,22 +115,23 @@ describe("RemoteGraph with streamResumable", () => {
     const remoteGraph = new RemoteGraph({
       graphId: "test_graph",
       client,
-      streamMode: "values",
       streamResumable: true,
     });
 
-    const config = { configurable: { thread_id: "test_thread" } };
+    const config = {
+      configurable: { thread_id: "test_thread" },
+      streamMode: ["values", "metadata"] as StreamMode[],
+    };
 
     // Consume the stream
     const results = [];
     const stream = await remoteGraph.stream({ input: "test" }, config);
     for await (const chunk of stream) {
-      console.log("chunk", chunk);
       results.push(chunk);
     }
 
-    // Verify we got results
-    expect(results.length).toBeGreaterThan(0);
+    // Verify we got all the value
+    expect(results.length).toBe(3);
 
     // Verify streamResumable was passed in the request body
     const [, init] = mockFetch.mock.calls[0];
@@ -132,7 +139,7 @@ describe("RemoteGraph with streamResumable", () => {
     expect(body.stream_resumable).toBe(true);
   });
 
-  test.skip("handles network failures during stream and retries with Location header", async () => {
+  test("handles network failures during stream and retries with Location header", async () => {
     let callCount = 0;
     const locationPath = "/threads/test_thread/runs/run-1/stream";
 
@@ -140,15 +147,23 @@ describe("RemoteGraph with streamResumable", () => {
       callCount += 1;
 
       if (callCount === 1) {
+        console.log("first call");
         // First call: return partial stream that errors mid-stream
         const partialChunks = [
-          { id: "1", event: "metadata", data: { run_id: "run-1", thread_id: "test_thread" } },
+          {
+            id: "1",
+            event: "metadata",
+            data: { run_id: "run-1", thread_id: "test_thread" },
+          },
           { id: "2", event: "values", data: { messages: ["hello"] } },
         ];
 
         return Promise.resolve(
           new Response(
-            createErroringSSEResponseBody(partialChunks, new TypeError("Network connection lost")),
+            createErroringSSEResponseBody(
+              partialChunks,
+              new TypeError("Network connection lost")
+            ),
             {
               status: 200,
               headers: {
@@ -159,10 +174,10 @@ describe("RemoteGraph with streamResumable", () => {
           )
         );
       } else {
+        console.log("retry");
         // Retry: return remaining events after reconnection
         const remainingChunks = [
           { id: "3", event: "values", data: { messages: ["hello", "world"] } },
-          { id: "4", event: "end", data: {} },
         ];
 
         return Promise.resolve(
@@ -183,36 +198,42 @@ describe("RemoteGraph with streamResumable", () => {
       streamResumable: true,
     });
 
-    const config = { configurable: { thread_id: "test_thread" } };
+    const config = {
+      configurable: { thread_id: "test_thread" },
+      streamMode: ["values", "metadata"] as StreamMode[],
+    };
 
     // This should handle the network failure and retry
-    const results: any[] = [];
     const stream = await remoteGraph.stream({ input: "test" }, config);
-    for await (const chunk of stream) {
-      results.push(chunk);
-    }
+    const generator = gatherIterator(stream);
 
-    // With streamResumable and Location header, the client's retry logic should kick in
-    // In this test, we verify the mock was called and we got the initial chunks before error
+    await vi.runAllTimersAsync();
+
+    const results = await generator;
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(results.length).toBe(4);
+    expect(results.length).toBe(3);
 
-    // Verify the Location header was present for retry capability
     const [, init] = mockFetch.mock.calls[0];
     const body = JSON.parse(init.body as string);
     expect(body.stream_resumable).toBe(true);
   });
 
-  test("streamResumable=false does not enable special handling", async () => {
+  test("fails normally when streamResumable is false", async () => {
     const chunks = [
-      { event: "metadata", data: { run_id: "run-1", thread_id: "test_thread" } },
+      {
+        event: "metadata",
+        data: { run_id: "run-1", thread_id: "test_thread" },
+      },
     ];
 
     mockFetch.mockResolvedValueOnce(
-      new Response(createErroringSSEResponseBody(chunks, new Error("network error")), {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      })
+      new Response(
+        createErroringSSEResponseBody(chunks, new TypeError("network error")),
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }
+      )
     );
 
     const remoteGraph = new RemoteGraph({
@@ -221,16 +242,24 @@ describe("RemoteGraph with streamResumable", () => {
       streamResumable: false, // Explicitly disabled
     });
 
-    const config = { configurable: { thread_id: "test_thread" } };
+    const config = {
+      configurable: { thread_id: "test_thread" },
+      streamMode: ["values", "metadata"] as StreamMode[],
+    };
 
     const stream = await remoteGraph.stream({ input: "test" }, config);
 
     // Should get a chunk first
     const value = await stream.next();
-    expect(value).toEqual(chunks[0]);
+    expect(value.done).toBe(false);
+    expect(value.value[0]).toEqual("metadata");
+    expect(value.value[1]).toEqual({
+      run_id: "run-1",
+      thread_id: "test_thread",
+    });
 
+    // Then we should fail
     await expect(stream.next()).rejects.toThrow("network error");
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
-
