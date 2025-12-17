@@ -1,10 +1,10 @@
-import { StrictMode, useRef, useEffect, useMemo } from "react";
+import { StrictMode, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { Message } from "@langchain/langgraph-sdk";
+import type { UIMessage } from "@langchain/langgraph-sdk";
 
-import type { agent } from "./agent.mts";
+import type { agent } from "./agent";
 
 import { LoadingIndicator } from "./components/Loading";
 import { EmptyState } from "./components/States";
@@ -13,9 +13,8 @@ import { ToolCallCard } from "./components/ToolCallCard";
 
 /**
  * Helper to check if a message has actual text content.
- * Uses a generic Message type since we only inspect the content property.
  */
-function hasContent(message: Message): boolean {
+function hasContent(message: UIMessage): boolean {
   if (typeof message.content === "string") {
     return message.content.trim().length > 0;
   }
@@ -36,15 +35,10 @@ export function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Build a map of AI message IDs that have tool calls (used for rendering tool cards)
-  const toolCallAIMessageIds = useMemo(() => {
-    return new Set(stream.toolCalls.map((tc) => tc.aiMessage.id));
-  }, [stream.toolCalls]);
-
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.messages, stream.isLoading]);
+  }, [stream.uiMessages, stream.isLoading]);
 
   // Auto-resize textarea
   const handleTextareaInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
@@ -53,7 +47,7 @@ export function App() {
     target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
   };
 
-  const hasMessages = stream.messages.length > 0;
+  const hasMessages = stream.uiMessages.length > 0;
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -63,38 +57,26 @@ export function App() {
             <EmptyState />
           ) : (
             <div className="flex flex-col gap-6">
-              {stream.messages.map((message, idx) => {
-                // Skip tool messages - they're rendered as part of ToolCallCard
-                if (message.type === "tool") {
-                  return null;
-                }
+              {stream.uiMessages.map((message, idx) => {
+                // For AI messages, check if they have tool calls
+                if (message.type === "ai") {
+                  const toolCalls = stream.getToolCalls(message);
 
-                // For AI messages that initiated tool calls, render ToolCallCard instead
-                if (
-                  message.type === "ai" &&
-                  toolCallAIMessageIds.has(message.id)
-                ) {
-                  // Get tool calls for this AI message
-                  const toolCallsForMessage = stream.toolCalls.filter(
-                    (tc) => tc.aiMessage.id === message.id
-                  );
+                  // Render tool calls if present
+                  if (toolCalls.length > 0) {
+                    return (
+                      <div key={message.id} className="flex flex-col gap-3">
+                        {toolCalls.map((toolCall) => (
+                          <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+                        ))}
+                      </div>
+                    );
+                  }
 
-                  return (
-                    <div key={message.id} className="flex flex-col gap-3">
-                      {toolCallsForMessage.map((toolCall, tcIdx) => (
-                        <ToolCallCard
-                          key={toolCall.call.id ?? tcIdx}
-                          toolCall={toolCall}
-                        />
-                      ))}
-                    </div>
-                  );
-                }
-
-                // For AI messages with content but no tool calls, or human/system messages
-                // Only render if the message has actual content
-                if (message.type === "ai" && !hasContent(message)) {
-                  return null;
+                  // Skip AI messages without content
+                  if (!hasContent(message)) {
+                    return null;
+                  }
                 }
 
                 return (
@@ -102,13 +84,10 @@ export function App() {
                 );
               })}
 
-              {/* Show loading indicator when streaming and no final AI content yet */}
+              {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
-                !stream.messages.some(
-                  (m) =>
-                    m.type === "ai" &&
-                    hasContent(m) &&
-                    !toolCallAIMessageIds.has(m.id)
+                !stream.uiMessages.some(
+                  (m) => m.type === "ai" && hasContent(m)
                 ) &&
                 stream.toolCalls.length === 0 && <LoadingIndicator />}
               <div ref={messagesEndRef} />
