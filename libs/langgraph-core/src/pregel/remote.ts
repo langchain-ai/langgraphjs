@@ -53,6 +53,7 @@ export type RemoteGraphParams = Omit<
   url?: string;
   apiKey?: string;
   headers?: Record<string, string>;
+  streamResumable?: boolean;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -187,6 +188,8 @@ export class RemoteGraph<
 
   protected interruptAfter?: Array<keyof Nn> | All;
 
+  protected streamResumable?: boolean;
+
   constructor(params: RemoteGraphParams) {
     super(params);
 
@@ -201,6 +204,7 @@ export class RemoteGraph<
     this.config = params.config;
     this.interruptBefore = params.interruptBefore;
     this.interruptAfter = params.interruptAfter;
+    this.streamResumable = params.streamResumable;
   }
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -422,6 +426,7 @@ export class RemoteGraph<
       serializedInput = _serializeInputs(input);
     }
 
+    console.log("streamResumable - streamIterator", this.streamResumable);
     for await (const chunk of this.client.runs.stream(
       sanitizedConfig.configurable.thread_id as string,
       this.graphId,
@@ -435,8 +440,10 @@ export class RemoteGraph<
         streamSubgraphs,
         ifNotExists: "create",
         signal: mergedConfig.signal,
+        streamResumable: this.streamResumable,
       }
     )) {
+      console.log("chunk", chunk);
       let mode;
       let namespace: string[];
       if (chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
