@@ -1,5 +1,5 @@
-import { useRef, useEffect } from "react";
-import { AlertCircle } from "lucide-react";
+import { useRef, useEffect, useCallback } from "react";
+import { AlertCircle, Wrench } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import type { UIMessage } from "@langchain/langgraph-sdk";
 
@@ -11,6 +11,12 @@ import { MessageInput } from "../../components/MessageInput";
 import { ToolCallCard } from "../../components/ToolCallCard";
 
 import type { agent } from "./agent";
+
+const TOOL_AGENT_SUGGESTIONS = [
+  "What's the weather in San Francisco?",
+  "Search for the latest AI news",
+  "What's the weather in Tokyo?",
+];
 
 /**
  * Helper to check if a message has actual text content.
@@ -42,12 +48,25 @@ export function ToolCallingAgent() {
 
   const hasMessages = stream.uiMessages.length > 0;
 
+  const handleSubmit = useCallback(
+    (content: string) => {
+      stream.submit({ messages: [{ content, type: "human" }] });
+    },
+    [stream]
+  );
+
   return (
     <div className="h-full flex flex-col">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-8">
           {!hasMessages ? (
-            <EmptyState />
+            <EmptyState
+              icon={Wrench}
+              title="Tool Calling Agent"
+              description="A smart agent with weather and search tools. Ask about the weather anywhere or search for information."
+              suggestions={TOOL_AGENT_SUGGESTIONS}
+              onSuggestionClick={handleSubmit}
+            />
           ) : (
             <div className="flex flex-col gap-6">
               {stream.uiMessages.map((message, idx) => {
@@ -106,9 +125,8 @@ export function ToolCallingAgent() {
 
       <MessageInput
         disabled={stream.isLoading}
-        onSubmit={(content) => {
-          stream.submit({ messages: [{ content, type: "human" }] });
-        }}
+        placeholder="Ask me about weather or search for info..."
+        onSubmit={handleSubmit}
       />
     </div>
   );

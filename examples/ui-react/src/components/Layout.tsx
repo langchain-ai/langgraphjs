@@ -5,6 +5,8 @@ import { EXAMPLES, getExample } from "../examples/registry";
 
 // Import all examples to register them
 import "../examples/tool-calling-agent";
+import "../examples/human-in-the-loop";
+import "../examples/multi-step-graph";
 import "../examples/placeholder-examples";
 
 function WelcomeScreen() {
@@ -58,6 +60,7 @@ export function Layout() {
 
   const currentExample = selectedExample ? getExample(selectedExample) : null;
   const ExampleComponent = currentExample?.component;
+  console.log(11, ExampleComponent);
 
   return (
     <div className="h-screen flex bg-black">
