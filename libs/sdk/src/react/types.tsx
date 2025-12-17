@@ -1,21 +1,13 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-import type { Client, ClientConfig } from "../client.js";
+import type { Client } from "../client.js";
 
+import type { ThreadState, Interrupt } from "../schema.js";
 import type {
-  ThreadState,
-  Interrupt,
-  Config,
-  Checkpoint,
-  Metadata,
-} from "../schema.js";
-import type {
-  Command,
-  MultitaskStrategy,
-  OnCompletionBehavior,
-  DisconnectMode,
-  Durability,
-} from "../types.js";
-import type { Message, ToolCallWithResult } from "../types.messages.js";
+  Message,
+  UIMessage,
+  AIMessage,
+  ToolCallWithResult,
+} from "../types.messages.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
 import type {
@@ -117,15 +109,36 @@ export interface UseStream<
   /**
    * Messages inferred from the thread.
    * Will automatically update with incoming message chunks.
+   * Includes all message types including ToolMessage.
    */
   messages: Message<GetToolCallsType<Bag>>[];
+
+  /**
+   * Messages optimized for UI rendering.
+   * Excludes ToolMessage since tool results are rendered via `toolCalls`.
+   * Use this instead of `messages` to avoid filtering out ToolMessages manually.
+   *
+   * @example
+   * ```tsx
+   * {stream.uiMessages.map((message) => {
+   *   if (message.type === "ai") {
+   *     const toolCalls = stream.getToolCalls(message);
+   *     if (toolCalls.length > 0) {
+   *       return toolCalls.map(tc => <ToolCard key={tc.id} toolCall={tc} />);
+   *     }
+   *   }
+   *   return <MessageBubble key={message.id} message={message} />;
+   * })}
+   * ```
+   */
+  uiMessages: UIMessage<GetToolCallsType<Bag>>[];
 
   /**
    * Tool calls paired with their results.
    * Useful for rendering tool invocations and their outputs together.
    *
    * Each item contains the tool call from an AI message paired with its
-   * corresponding ToolMessage result (if available).
+   * corresponding ToolMessage result (if available), along with lifecycle state.
    *
    * @example
    * ```tsx
@@ -136,19 +149,50 @@ export interface UseStream<
    *
    * const stream = useStream<MyState, { ToolCallsType: MyToolCalls }>({ ... });
    *
-   * {stream.toolCalls.map(({ call, result }) => {
+   * {stream.toolCalls.map(({ id, call, result, state }) => {
    *   if (call.name === "get_weather") {
    *     // call.args is { location: string }
-   *     return <WeatherCard location={call.args.location} result={result?.content} />;
-   *   }
-   *   if (call.name === "search") {
-   *     // call.args is { query: string }
-   *     return <SearchResults query={call.args.query} result={result?.content} />;
+   *     return (
+   *       <WeatherCard
+   *         key={id}
+   *         location={call.args.location}
+   *         result={result?.content}
+   *         isLoading={state === "pending"}
+   *       />
+   *     );
    *   }
    * })}
    * ```
    */
   toolCalls: ToolCallWithResult<GetToolCallsType<Bag>>[];
+
+  /**
+   * Get tool calls for a specific AI message.
+   * Useful when rendering messages and their associated tool calls together.
+   *
+   * @param message - The AI message to get tool calls for.
+   * @returns Array of tool calls initiated by the message.
+   *
+   * @example
+   * ```tsx
+   * {stream.uiMessages.map((message) => {
+   *   if (message.type === "ai") {
+   *     const toolCalls = stream.getToolCalls(message);
+   *     if (toolCalls.length > 0) {
+   *       return (
+   *         <div key={message.id}>
+   *           {toolCalls.map(tc => <ToolCard key={tc.id} toolCall={tc} />)}
+   *         </div>
+   *       );
+   *     }
+   *   }
+   *   return <MessageBubble key={message.id} message={message} />;
+   * })}
+   * ```
+   */
+  getToolCalls: (
+    message: AIMessage<GetToolCallsType<Bag>>
+  ) => ToolCallWithResult<GetToolCallsType<Bag>>[];
 
   /**
    * Get the metadata for a message, such as first thread state the message
@@ -194,7 +238,9 @@ export type UseStreamCustom<
   | "stop"
   | "interrupt"
   | "messages"
+  | "uiMessages"
   | "toolCalls"
+  | "getToolCalls"
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,

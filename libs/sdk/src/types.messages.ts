@@ -143,6 +143,17 @@ export type Message<ToolCall = DefaultToolCall> =
   | RemoveMessage;
 
 /**
+ * Messages suitable for UI rendering (excludes ToolMessage).
+ * ToolMessages are typically rendered via {@link ToolCallWithResult} instead of directly.
+ *
+ * @template ToolCall The type of tool calls for AIMessage, defaults to DefaultToolCall.
+ */
+export type UIMessage<ToolCall = DefaultToolCall> = Exclude<
+  Message<ToolCall>,
+  ToolMessage
+>;
+
+/**
  * Infer a tool call type from a single tool.
  * Works with tools created via `tool()` from `@langchain/core/tools`.
  *
@@ -204,12 +215,27 @@ export type ToolCallsFromTools<T extends readonly unknown[]> =
     : never;
 
 /**
+ * The lifecycle state of a tool call.
+ *
+ * - `pending`: Tool call received, awaiting result
+ * - `completed`: Tool execution finished successfully
+ * - `error`: Tool execution failed (result.status === "error")
+ */
+export type ToolCallState = "pending" | "completed" | "error";
+
+/**
  * Represents a tool call paired with its result.
  * Useful for rendering tool invocations and their outputs together.
  *
  * @template ToolCall The type of the tool call.
  */
 export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
+  /**
+   * Unique identifier for this tool call.
+   * Uses the tool call's id if available, otherwise generates one from aiMessage.id and index.
+   */
+  id: string;
+
   /**
    * The tool call from the AI message.
    */
@@ -230,6 +256,15 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
    * Index of this tool call within the AI message's tool_calls array.
    */
   index: number;
+
+  /**
+   * The current lifecycle state of the tool call.
+   *
+   * - `pending`: No result yet
+   * - `completed`: Has result with success status
+   * - `error`: Has result with error status
+   */
+  state: ToolCallState;
 };
 
 /**
@@ -249,6 +284,14 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
  * }
  * ```
  */
+/**
+ * Computes the lifecycle state of a tool call based on its result.
+ */
+function computeToolCallState(result: ToolMessage | undefined): ToolCallState {
+  if (!result) return "pending";
+  return result.status === "error" ? "error" : "completed";
+}
+
 export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
   messages: Message<ToolCall>[]
 ): ToolCallWithResult<ToolCall>[] {
@@ -267,16 +310,17 @@ export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
     if (msg.type === "ai" && msg.tool_calls && msg.tool_calls.length > 0) {
       const aiMessage = msg as AIMessage<ToolCall>;
       for (let i = 0; i < aiMessage.tool_calls!.length; i += 1) {
-        const call = aiMessage.tool_calls![i];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const callId = (call as any).id;
+        const call = aiMessage.tool_calls![i] as ToolCall & { id?: string };
+        const callId = call.id as string | undefined;
         const result = callId ? toolResultsById.get(callId) : undefined;
 
         results.push({
+          id: callId ?? `${aiMessage.id ?? "unknown"}-${i}`,
           call,
           result,
           aiMessage,
           index: i,
+          state: computeToolCallState(result),
         });
       }
     }
