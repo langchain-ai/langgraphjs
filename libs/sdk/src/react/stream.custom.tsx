@@ -17,7 +17,11 @@ import type {
   CustomSubmitOptions,
 } from "../ui/types.js";
 import type { UseStreamCustom } from "./types.js";
-import { type Message, getToolCallsWithResults } from "../types.messages.js";
+import {
+  type Message,
+  type ToolMessage,
+  getToolCallsWithResults,
+} from "../types.messages.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
@@ -254,10 +258,26 @@ export function useStreamCustom<
       return getMessages(stream.values) as Message<ToolCallType>[];
     },
 
+    get uiMessages() {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values) as Message<ToolCallType>[];
+      return msgs.filter(
+        (m): m is Exclude<Message<ToolCallType>, ToolMessage> =>
+          m.type !== "tool"
+      );
+    },
+
     get toolCalls() {
       if (!stream.values) return [];
       const msgs = getMessages(stream.values) as Message<ToolCallType>[];
       return getToolCallsWithResults<ToolCallType>(msgs);
+    },
+
+    getToolCalls(message) {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values) as Message<ToolCallType>[];
+      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
     },
   };
 }

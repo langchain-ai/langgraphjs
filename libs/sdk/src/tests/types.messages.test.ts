@@ -48,10 +48,12 @@ describe("getToolCallsWithResults", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
+      id: "tc1",
       call: { name: "get_weather", args: { location: "NYC" }, id: "tc1" },
       result: toolMessage,
       aiMessage,
       index: 0,
+      state: "completed",
     });
   });
 
