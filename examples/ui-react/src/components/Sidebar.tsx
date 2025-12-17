@@ -92,13 +92,13 @@ export function Sidebar({ selectedExample, onSelectExample, isOpen, onToggle }: 
                         disabled={!example.ready}
                         className={`
                           w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left
-                          transition-all duration-150
+                          transition-all duration-150 border
                           ${
                             isSelected
-                              ? "bg-brand-dark/30 text-white border border-brand-dark/50"
+                              ? "bg-brand-dark/30 text-white border-brand-dark/50"
                               : example.ready
-                              ? "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200"
-                              : "text-neutral-600 cursor-not-allowed"
+                              ? "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200 border-transparent"
+                              : "text-neutral-600 cursor-not-allowed border-transparent"
                           }
                         `}
                       >

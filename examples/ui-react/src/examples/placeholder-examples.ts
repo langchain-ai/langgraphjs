@@ -11,28 +11,6 @@ import { registerExample } from "./registry";
  * 4. Import and use `registerExample` with your component
  */
 
-// Multi-step Graph Example
-registerExample({
-  id: "multi-step-graph",
-  title: "Multi-Step Graph",
-  description: "A graph with multiple nodes showing state transitions and branching logic",
-  category: "langgraph",
-  icon: "graph",
-  ready: false,
-  component: () => null,
-});
-
-// Streaming with Interrupts Example
-registerExample({
-  id: "human-in-the-loop",
-  title: "Human in the Loop",
-  description: "Pause execution and wait for human approval before continuing",
-  category: "langgraph",
-  icon: "chat",
-  ready: false,
-  component: () => null,
-});
-
 // Custom Middleware Example
 registerExample({
   id: "custom-middleware",
