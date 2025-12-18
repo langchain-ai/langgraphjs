@@ -1,6 +1,7 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { tool, type ToolRuntime } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
+import type { BaseMessageLike } from "@langchain/core/messages";
 import {
   StateGraph,
   MessagesAnnotation,
@@ -140,15 +141,21 @@ const processFileTool = tool(
   }
 );
 
+/**
+ * Type cast needed due to package version compatibility between langchain and @langchain/langgraph
+ * @todo(@christian-bromann): fix this
+ */
 const tools = [analyzeDataTool, processFileTool];
-const toolNode = new ToolNode(tools);
+const toolNode = new ToolNode(tools as any);
 
 /**
  * Call the model with tools bound
  */
 async function callModel(state: typeof MessagesAnnotation.State) {
   const modelWithTools = model.bindTools(tools);
-  const response = await modelWithTools.invoke(state.messages);
+  const response = await modelWithTools.invoke(
+    state.messages as unknown as BaseMessageLike[]
+  );
   return { messages: [response] };
 }
 

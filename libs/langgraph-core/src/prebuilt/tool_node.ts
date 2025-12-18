@@ -156,12 +156,7 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ToolNode<T = any> extends RunnableCallable<T, T> {
-  tools: (
-    | StructuredToolInterface
-    | DynamicStructuredTool
-    | DynamicTool
-    | RunnableToolLike
-  )[];
+  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
 
   handleToolErrors = true;
 
