@@ -104,10 +104,10 @@ ${state.research ? `Previous research: ${state.research}` : ""}`
   return {
     research: state.research ? `${state.research}\n\n--- Additional Research ---\n${researchContent}` : researchContent,
     researchIterations: iteration,
-    currentNode: "research",
+    currentNode: "research_node",
     messages: [new AIMessage({ 
       content: `🔍 **Research (Iteration ${iteration}):**\n${researchContent}`,
-      name: "research"
+      name: "research_node"
     })]
   };
 }
@@ -139,14 +139,14 @@ async function analyzeNode(state: State): Promise<Partial<State>> {
 /**
  * Decide if we need more research or can proceed to drafting
  */
-function shouldContinueResearch(state: State): "research" | "draft" {
+function shouldContinueResearch(state: State): "research_node" | "draft_node" {
   // If we've done less than 2 iterations and the analysis suggests gaps, do more research
   if (state.researchIterations < 2 && state.analysis.toLowerCase().includes("need more") ||
       state.analysis.toLowerCase().includes("insufficient") ||
       state.analysis.toLowerCase().includes("gaps")) {
-    return "research";
+    return "research_node";
   }
-  return "draft";
+  return "draft_node";
 }
 
 /**
@@ -173,10 +173,10 @@ Write in an engaging, professional tone. Include:
 
   return {
     draft: draftContent,
-    currentNode: "draft",
+    currentNode: "draft_node",
     messages: [new AIMessage({ 
       content: `✍️ **Draft:**\n${draftContent}`,
-      name: "draft"
+      name: "draft_node"
     })]
   };
 }
@@ -216,27 +216,27 @@ Return the final polished content.`
 const workflow = new StateGraph(StateAnnotation)
   // Add all nodes
   .addNode("extract_topic", extractTopicNode)
-  .addNode("research", researchNode)
+  .addNode("research_node", researchNode)
   .addNode("analyze", analyzeNode)
-  .addNode("draft", draftNode)
+  .addNode("draft_node", draftNode)
   .addNode("review", reviewNode)
   
   // Define the flow
   .addEdge(START, "extract_topic")
-  .addEdge("extract_topic", "research")
-  .addEdge("research", "analyze")
+  .addEdge("extract_topic", "research_node")
+  .addEdge("research_node", "analyze")
   
   // Conditional edge: decide if we need more research
   .addConditionalEdges(
     "analyze",
     shouldContinueResearch,
     {
-      research: "research",
-      draft: "draft"
+      research_node: "research_node",
+      draft_node: "draft_node"
     }
   )
   
-  .addEdge("draft", "review")
+  .addEdge("draft_node", "review")
   .addEdge("review", END);
 
 // Compile and export

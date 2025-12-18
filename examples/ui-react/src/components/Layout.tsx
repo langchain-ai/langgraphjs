@@ -44,9 +44,30 @@ function WelcomeScreen() {
   );
 }
 
+function getExampleFromHash(): string | null {
+  const hash = window.location.hash.slice(1); // Remove the '#'
+  if (hash && EXAMPLES.some((e) => e.id === hash && e.ready)) {
+    return hash;
+  }
+  return null;
+}
+
 export function Layout() {
-  const [selectedExample, setSelectedExample] = useState<string | null>(null);
+  const [selectedExample, setSelectedExample] = useState<string | null>(() => getExampleFromHash());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Sync selected example with URL hash
+  useEffect(() => {
+    const handleHashChange = () => {
+      const exampleFromHash = getExampleFromHash();
+      if (exampleFromHash) {
+        setSelectedExample(exampleFromHash);
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   // Auto-select first example if none selected
   useEffect(() => {
@@ -54,6 +75,7 @@ export function Layout() {
       const firstReady = EXAMPLES.find((e) => e.ready);
       if (firstReady) {
         setSelectedExample(firstReady.id);
+        window.location.hash = firstReady.id;
       }
     }
   }, [selectedExample]);
@@ -68,6 +90,7 @@ export function Layout() {
         selectedExample={selectedExample}
         onSelectExample={(id) => {
           setSelectedExample(id);
+          window.location.hash = id;
           setSidebarOpen(false);
         }}
         isOpen={sidebarOpen}
