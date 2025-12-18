@@ -158,8 +158,37 @@ export type UIMessage<ToolCall = DefaultToolCall> =
   | ReasoningMessage;
 
 /**
+ * Helper type to infer schema input type, supporting both Zod v3 and v4.
+ * - Zod v4 uses `_zod.input` property
+ * - Zod v3 uses `_input` property
+ *
+ * Note: Zod v4 is checked first as it's the more specific structure.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
+  ? Args
+  : S extends { _input: infer Args }
+    ? Args
+    : never;
+
+/**
+ * Helper type to extract the input type from a DynamicStructuredTool's _call method.
+ * This is more reliable than trying to infer from the schema directly because
+ * DynamicStructuredTool has the input type baked into its _call signature.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolInput<T> = T extends { _call: (arg: infer Args, ...rest: any[]) => any }
+  ? Args
+  : T extends { schema: infer S }
+    ? InferSchemaInput<S>
+    : never;
+
+/**
  * Infer a tool call type from a single tool.
  * Works with tools created via `tool()` from `@langchain/core/tools`.
+ *
+ * For DynamicStructuredTool, this extracts the input type from the _call method,
+ * which is the most reliable source as it's the pre-computed input type.
  *
  * @template T The tool type (e.g., DynamicStructuredTool)
  *
@@ -178,9 +207,14 @@ export type UIMessage<ToolCall = DefaultToolCall> =
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ToolCallFromTool<T> = T extends { name: infer N; schema: any }
-  ? T["schema"] extends { _input: infer Args }
-    ? { name: N; args: Args; id?: string; type?: "tool_call" }
+export type ToolCallFromTool<T> = T extends { name: infer N }
+  ? InferToolInput<T> extends infer Args
+    ? Args extends never
+      ? never
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      : Args extends Record<string, any>
+        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+        : never
     : never
   : never;
 

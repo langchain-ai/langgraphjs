@@ -205,7 +205,8 @@ export function useStream<
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): UseStreamCustom<InferStateType<T>, InferBag<T, Bag>>;
 
-export function useStream(options: unknown): unknown {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useStream(options: any): any {
   // Store this in useState to make sure we're not changing the implementation in re-renders
   const [isCustom] = useState(isCustomOptions(options));
 
