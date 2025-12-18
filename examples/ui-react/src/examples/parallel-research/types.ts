@@ -1,17 +1,4 @@
 /**
- * State type from the agent - includes the streaming research fields
- */
-export type AgentState = {
-  messages: unknown[];
-  topic: string;
-  analyticalResearch: string;
-  creativeResearch: string;
-  practicalResearch: string;
-  selectedResearch: string;
-  currentNode: string;
-};
-
-/**
  * Research content record type
  */
 export type ResearchContents = {
