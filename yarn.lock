@@ -1150,7 +1150,7 @@ __metadata:
     tsx: "npm:^4.19.3"
     typescript: "npm:^5.4.5"
     vite: "npm:^7.0.0"
-    zod: "npm:^3.23.8"
+    zod: "npm:^3.25.76 || ^4"
   languageName: unknown
   linkType: soft
 
