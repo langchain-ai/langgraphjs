@@ -26,12 +26,22 @@ function isCustomOptions<
 }
 
 /**
- * Helper type that infers StateType based on whether T is an agent-like type or a state type.
- * - If T has `~agentTypes`, returns `Record<string, unknown>` (agent case)
+ * Helper type that infers StateType based on whether T is an agent-like type, a CompiledGraph/Pregel instance, or a state type.
+ * - If T has `~agentTypes`, returns `Record<string, unknown>` (agent case - state handled separately)
+ * - If T has `~RunOutput` (CompiledGraph/CompiledStateGraph), returns the state type
+ * - If T has `~OutputType` (Pregel), returns the output type as state
  * - Otherwise, returns T (direct state type)
  */
 type InferStateType<T> = T extends { "~agentTypes": unknown }
   ? Record<string, unknown>
+  : T extends { "~RunOutput": infer S }
+  ? S extends Record<string, unknown>
+    ? S
+    : Record<string, unknown>
+  : T extends { "~OutputType": infer O }
+  ? O extends Record<string, unknown>
+    ? O
+    : Record<string, unknown>
   : T extends Record<string, unknown>
   ? T
   : Record<string, unknown>;

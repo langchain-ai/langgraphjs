@@ -200,7 +200,10 @@ export function MultiStepGraph() {
 
   const handleSubmit = useCallback(
     (content: string) => {
-      stream.submit({ messages: [{ content, type: "human" }] });
+      /**
+       * @todo(@christian-bromann): Fix this type error.
+       */
+      stream.submit({ messages: [{ content, type: "human" } as any] });
     },
     [stream]
   );

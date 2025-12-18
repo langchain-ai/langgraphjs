@@ -17,7 +17,8 @@ import { MessageInput } from "../../components/MessageInput";
 import { ResearchCard } from "./components/ResearchCard";
 import { TopicBar } from "./components/TopicBar";
 import { SelectedResearchDisplay } from "./components/SelectedResearchDisplay";
-import type { AgentState, ResearchContents, ResearchId, ResearchConfig } from "./types";
+import type { ResearchContents, ResearchId, ResearchConfig } from "./types";
+import type { agent } from "./agent"
 
 const RESEARCH_CONFIGS: ResearchConfig[] = [
   {
@@ -66,7 +67,7 @@ const PARALLEL_RESEARCH_SUGGESTIONS = [
 ];
 
 export function ParallelResearch() {
-  const stream = useStream<AgentState>({
+  const stream = useStream<typeof agent>({
     assistantId: "parallel-research",
     apiUrl: "http://localhost:2024",
   });
@@ -170,7 +171,10 @@ export function ParallelResearch() {
   const handleSubmit = useCallback(
     (content: string) => {
       setSelectedResearch(null);
-      stream.submit({ messages: [{ content, type: "human" }] });
+      /**
+       * @todo(@christian-bromann): Fix this type error.
+       */
+      stream.submit({ messages: [{ content, type: "human" } as any] });
     },
     [stream]
   );

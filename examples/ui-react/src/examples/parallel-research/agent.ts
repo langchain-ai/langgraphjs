@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { StateGraph, Annotation, START, END, Send } from "@langchain/langgraph";
-import { BaseMessage, AIMessage, HumanMessage } from "langchain";
+import { BaseMessage, AIMessage } from "@langchain/core/messages";
 
 /**
  * Parallel Research Pipeline - A LangGraph that demonstrates
@@ -191,7 +191,7 @@ Use markdown formatting with clear action items and recommendations.`
 /**
  * Collector node - Gathers all research and presents options
  */
-async function collectorNode(state: State): Promise<Partial<State>> {
+async function collectorNode(): Promise<Partial<State>> {
   return {
     currentNode: "collector",
     messages: [new AIMessage({ 
