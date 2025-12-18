@@ -1,6 +1,5 @@
 import { StateGraph, MessagesZodState, START } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { z } from "zod/v3";
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -21,7 +20,8 @@ export type GraphType = typeof graph;
 const app = new Hono();
 
 app.post("/api/stream", async (c) => {
-  const { input } = z.object({ input: schema }).parse(await c.req.json());
+  const body = await c.req.json();
+  const input = schema.parse(body.input);
 
   const stream = await graph.stream(input, {
     encoding: "text/event-stream",
