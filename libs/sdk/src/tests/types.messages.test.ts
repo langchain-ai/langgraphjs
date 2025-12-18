@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { getToolCallsWithResults } from "../types.messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 import type {
   Message,
   AIMessage,

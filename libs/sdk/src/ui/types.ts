@@ -71,8 +71,8 @@ export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
 type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
   ? Args
   : S extends { _input: infer Args }
-    ? Args
-    : never;
+  ? Args
+  : never;
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
@@ -80,11 +80,13 @@ type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
  * DynamicStructuredTool has the input type baked into its _call signature.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type InferToolInput<T> = T extends { _call: (arg: infer Args, ...rest: any[]) => any }
+type InferToolInput<T> = T extends {
+  _call: (arg: infer Args, ...rest: any[]) => any;
+}
   ? Args
   : T extends { schema: infer S }
-    ? InferSchemaInput<S>
-    : never;
+  ? InferSchemaInput<S>
+  : never;
 
 /**
  * Extract a tool call type from a single tool.
@@ -98,10 +100,10 @@ type ToolCallFromAgentTool<T> = T extends { name: infer N }
     ? InferToolInput<T> extends infer Args
       ? Args extends never
         ? never
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        : Args extends Record<string, any>
-          ? { name: N; args: Args; id?: string; type?: "tool_call" }
-          : never
+        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Args extends Record<string, any>
+        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+        : never
       : never
     : never
   : never;
