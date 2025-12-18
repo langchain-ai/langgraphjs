@@ -17,17 +17,15 @@ import type {
   CustomSubmitOptions,
 } from "../ui/types.js";
 import type { UseStreamCustom } from "./types.js";
-import {
-  type Message,
-  type ToolMessage,
-  getToolCallsWithResults,
-} from "../types.messages.js";
+import { type Message } from "../types.messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
+import { getUIMessagesWithReasoning } from "./utils.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -261,10 +259,7 @@ export function useStreamCustom<
     get uiMessages() {
       if (!stream.values) return [];
       const msgs = getMessages(stream.values) as Message<ToolCallType>[];
-      return msgs.filter(
-        (m): m is Exclude<Message<ToolCallType>, ToolMessage> =>
-          m.type !== "tool"
-      );
+      return getUIMessagesWithReasoning<ToolCallType>(msgs);
     },
 
     get toolCalls() {

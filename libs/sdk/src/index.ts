@@ -39,6 +39,7 @@ export type {
   HumanMessage,
   Message,
   UIMessage,
+  ReasoningMessage,
   RemoveMessage,
   SystemMessage,
   ToolMessage,

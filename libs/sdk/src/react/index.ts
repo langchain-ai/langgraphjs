@@ -20,4 +20,5 @@ export type {
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
+  ReasoningMessage,
 } from "../types.messages.js";
