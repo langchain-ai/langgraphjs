@@ -1,5 +1,10 @@
-import type { Message, AIMessage, DefaultToolCall, UIMessage } from "../types.messages.js";
-import { getReasoningMessage } from "../utils/reasoning.js"
+import type {
+  Message,
+  AIMessage,
+  DefaultToolCall,
+  UIMessage,
+} from "../types.messages.js";
+import { getReasoningMessage } from "../utils/reasoning.js";
 
 /**
  * Checks if an AI message has non-reasoning text content.
@@ -19,7 +24,11 @@ function hasNonReasoningContent(message: AIMessage): boolean {
       if (typeof block === "object" && block !== null && "type" in block) {
         const typed = block as { type: string; text?: string };
         // Text block with actual content
-        if (typed.type === "text" && typeof typed.text === "string" && typed.text.trim().length > 0) {
+        if (
+          typed.type === "text" &&
+          typeof typed.text === "string" &&
+          typed.text.trim().length > 0
+        ) {
           return true;
         }
       }

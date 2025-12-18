@@ -182,7 +182,9 @@ export function CustomStreaming() {
 
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
-                !stream.uiMessages.some((m) => m.type === "ai" && hasContent(m)) &&
+                !stream.uiMessages.some(
+                  (m) => m.type === "ai" && hasContent(m)
+                ) &&
                 !hasCustomData && <LoadingIndicator />}
 
               {/* Show streaming indicator when we have active progress */}

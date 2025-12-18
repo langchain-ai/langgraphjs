@@ -99,8 +99,8 @@ export function FileOperationCard({ data }: FileOperationCardProps) {
               isCompleted
                 ? "bg-emerald-500/20 text-emerald-300"
                 : isError
-                  ? "bg-red-500/20 text-red-300"
-                  : "bg-white/10 text-neutral-300"
+                ? "bg-red-500/20 text-red-300"
+                : "bg-white/10 text-neutral-300"
             }`}
           >
             {data.status}
@@ -110,4 +110,3 @@ export function FileOperationCard({ data }: FileOperationCardProps) {
     </div>
   );
 }
-

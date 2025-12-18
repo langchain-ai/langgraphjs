@@ -73,4 +73,3 @@ export function isFileStatusData(data: unknown): data is FileStatusData {
     (data as FileStatusData).type === "file-status"
   );
 }
-

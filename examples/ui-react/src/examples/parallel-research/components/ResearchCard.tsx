@@ -1,8 +1,5 @@
 import { useRef, useEffect } from "react";
-import { 
-  Check,
-  Loader2
-} from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 
 import type { ResearchConfig } from "../types";
 
