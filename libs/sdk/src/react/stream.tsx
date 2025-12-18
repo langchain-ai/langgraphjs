@@ -163,7 +163,6 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  * @see {@link https://docs.langchain.com/langgraph-platform/use-stream-react | LangGraph React Integration Guide}
  */
 export function useStream<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T = Record<string, unknown>,
   Bag extends {
     ConfigurableType?: Record<string, unknown>;
@@ -194,7 +193,6 @@ export function useStream<
  * @see {@link https://docs.langchain.com/langgraph-platform/use-stream-react | LangGraph React Integration Guide}
  */
 export function useStream<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T = Record<string, unknown>,
   Bag extends {
     ConfigurableType?: Record<string, unknown>;
@@ -207,8 +205,7 @@ export function useStream<
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): UseStreamCustom<InferStateType<T>, InferBag<T, Bag>>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function useStream(options: any): any {
+export function useStream(options: unknown): unknown {
   // Store this in useState to make sure we're not changing the implementation in re-renders
   const [isCustom] = useState(isCustomOptions(options));
 
