@@ -3,7 +3,8 @@
   "graphs": {
     "agent": "./src/examples/tool-calling-agent/agent.ts:agent",
     "human-in-the-loop": "./src/examples/human-in-the-loop/agent.ts:agent",
-    "multi-step-graph": "./src/examples/multi-step-graph/agent.ts:agent"
+    "multi-step-graph": "./src/examples/multi-step-graph/agent.ts:agent",
+    "summarization-agent": "./src/examples/summarization-agent/agent.ts:agent"
   },
   "env": ".env"
 }
