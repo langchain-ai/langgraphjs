@@ -27,9 +27,7 @@ export function ProgressCard({ data, isComplete = false }: ProgressCardProps) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium text-white">
-                Data Analysis
-              </h4>
+              <h4 className="text-sm font-medium text-white">Data Analysis</h4>
               {!isComplete && (
                 <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
               )}
@@ -76,4 +74,3 @@ export function ProgressCard({ data, isComplete = false }: ProgressCardProps) {
     </div>
   );
 }
-

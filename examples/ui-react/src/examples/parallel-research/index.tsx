@@ -1,11 +1,11 @@
 import { useRef, useCallback, useState, useMemo } from "react";
-import { 
-  AlertCircle, 
-  BarChart3, 
-  Sparkles, 
-  Wrench, 
+import {
+  AlertCircle,
+  BarChart3,
+  Sparkles,
+  Wrench,
   GitFork,
-  Loader2
+  Loader2,
 } from "lucide-react";
 
 import { useStream } from "@langchain/langgraph-sdk/react";
@@ -18,7 +18,7 @@ import { ResearchCard } from "./components/ResearchCard";
 import { TopicBar } from "./components/TopicBar";
 import { SelectedResearchDisplay } from "./components/SelectedResearchDisplay";
 import type { ResearchContents, ResearchId, ResearchConfig } from "./types";
-import type { agent } from "./agent"
+import type { agent } from "./agent";
 
 const RESEARCH_CONFIGS: ResearchConfig[] = [
   {
@@ -26,7 +26,8 @@ const RESEARCH_CONFIGS: ResearchConfig[] = [
     name: "Analytical",
     nodeName: "researcher_analytical",
     icon: <BarChart3 className="w-5 h-5" />,
-    description: "Data-driven, structured analysis with evidence-based insights",
+    description:
+      "Data-driven, structured analysis with evidence-based insights",
     gradient: "from-cyan-500/20 to-blue-600/20",
     borderColor: "border-cyan-500/40",
     bgColor: "bg-cyan-950/30",
@@ -72,7 +73,9 @@ export function ParallelResearch() {
     apiUrl: "http://localhost:2024",
   });
 
-  const [selectedResearch, setSelectedResearch] = useState<ResearchId | null>(null);
+  const [selectedResearch, setSelectedResearch] = useState<ResearchId | null>(
+    null
+  );
   const containerRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -91,23 +94,26 @@ export function ParallelResearch() {
      */
     for (const message of stream.messages) {
       if (message.type !== "ai") continue;
-      
+
       /**
        * Get the stream metadata for this message
        */
       const metadata = stream.getMessagesMetadata?.(message);
-      const nodeFromMetadata = metadata?.streamMetadata?.langgraph_node as string | undefined;
-      
+      const nodeFromMetadata = metadata?.streamMetadata?.langgraph_node as
+        | string
+        | undefined;
+
       /**
        * Also check the message name (set after node completion)
        */
       const nodeName = (message as { name?: string }).name;
       const node = nodeFromMetadata || nodeName;
-      
+
       if (!node) continue;
-      
-      const content = typeof message.content === "string" ? message.content : "";
-      
+
+      const content =
+        typeof message.content === "string" ? message.content : "";
+
       if (node === "researcher_analytical" && content) {
         contents.analytical = content;
       } else if (node === "researcher_creative" && content) {
@@ -125,11 +131,19 @@ export function ParallelResearch() {
    */
   const researchContents = useMemo((): ResearchContents => {
     return {
-      analytical: streamingContents.analytical || stream.values?.analyticalResearch || "",
-      creative: streamingContents.creative || stream.values?.creativeResearch || "",
-      practical: streamingContents.practical || stream.values?.practicalResearch || "",
+      analytical:
+        streamingContents.analytical || stream.values?.analyticalResearch || "",
+      creative:
+        streamingContents.creative || stream.values?.creativeResearch || "",
+      practical:
+        streamingContents.practical || stream.values?.practicalResearch || "",
     };
-  }, [streamingContents, stream.values?.analyticalResearch, stream.values?.creativeResearch, stream.values?.practicalResearch]);
+  }, [
+    streamingContents,
+    stream.values?.analyticalResearch,
+    stream.values?.creativeResearch,
+    stream.values?.practicalResearch,
+  ]);
 
   /**
    * Get the current topic directly from state
@@ -143,14 +157,14 @@ export function ParallelResearch() {
   const loadingStates = useMemo(() => {
     const activeNodes = new Set<ResearchId>();
     const currentNode = stream.values?.currentNode || "";
-    
+
     // If we're loading and the collector hasn't finished, all researchers are considered active
     if (stream.isLoading && currentTopic && currentNode !== "collector") {
       activeNodes.add("analytical");
       activeNodes.add("creative");
       activeNodes.add("practical");
     }
-    
+
     return activeNodes;
   }, [stream.isLoading, currentTopic, stream.values?.currentNode]);
 
@@ -159,11 +173,13 @@ export function ParallelResearch() {
    */
   const isResearchComplete = useMemo(() => {
     const currentNode = stream.values?.currentNode || "";
-    return !stream.isLoading && 
-           currentNode === "collector" &&
-           Boolean(researchContents.analytical) && 
-           Boolean(researchContents.creative) && 
-           Boolean(researchContents.practical);
+    return (
+      !stream.isLoading &&
+      currentNode === "collector" &&
+      Boolean(researchContents.analytical) &&
+      Boolean(researchContents.creative) &&
+      Boolean(researchContents.practical)
+    );
   }, [stream.isLoading, stream.values?.currentNode, researchContents]);
 
   const hasStarted = Boolean(stream.values?.topic);
@@ -199,7 +215,7 @@ export function ParallelResearch() {
             <>
               {/* Topic Bar */}
               {currentTopic && <TopicBar topic={currentTopic} />}
-              
+
               {/* Three Column Research Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
                 {RESEARCH_CONFIGS.map((config) => (
@@ -219,7 +235,9 @@ export function ParallelResearch() {
               {/* Selected Research Display */}
               {selectedResearch && (
                 <SelectedResearchDisplay
-                  config={RESEARCH_CONFIGS.find((c) => c.id === selectedResearch)!}
+                  config={
+                    RESEARCH_CONFIGS.find((c) => c.id === selectedResearch)!
+                  }
                   content={researchContents[selectedResearch] || ""}
                 />
               )}
@@ -277,4 +295,3 @@ registerExample({
 });
 
 export default ParallelResearch;
-

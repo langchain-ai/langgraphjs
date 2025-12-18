@@ -1,5 +1,11 @@
 import type { Message, AIMessage, DefaultToolCall } from "../types.messages.js";
-import type { OpenAIReasoning, ReasoningContent, ReasoningMessage, ThinkingContentBlock, ReasoningSummaryItem } from "../types.reasoning.js";
+import type {
+  OpenAIReasoning,
+  ReasoningContent,
+  ReasoningMessage,
+  ThinkingContentBlock,
+  ReasoningSummaryItem,
+} from "../types.reasoning.js";
 
 /**
  * Extracts reasoning/thinking content from an AI message.

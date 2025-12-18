@@ -169,7 +169,10 @@ function SummarizationBanner() {
 
         <div className="flex items-center gap-2 text-xs text-violet-300/60">
           <Zap className="w-3 h-3" />
-          <span>The summarization middleware automatically compressed the conversation history</span>
+          <span>
+            The summarization middleware automatically compressed the
+            conversation history
+          </span>
         </div>
       </div>
     </div>
@@ -537,4 +540,3 @@ registerExample({
 });
 
 export default SummarizationAgent;
-

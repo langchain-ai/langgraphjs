@@ -9,7 +9,11 @@ import {
   BookOpen,
   ExternalLink,
 } from "lucide-react";
-import { CATEGORIES, getExamplesByCategory, type ExampleMeta } from "../examples/registry";
+import {
+  CATEGORIES,
+  getExamplesByCategory,
+  type ExampleMeta,
+} from "../examples/registry";
 
 interface SidebarProps {
   selectedExample: string | null;
@@ -26,7 +30,12 @@ const ICONS: Record<ExampleMeta["icon"], React.ReactNode> = {
   chat: <MessageCircle className="w-4 h-4" strokeWidth={1.5} />,
 };
 
-export function Sidebar({ selectedExample, onSelectExample, isOpen, onToggle }: SidebarProps) {
+export function Sidebar({
+  selectedExample,
+  onSelectExample,
+  isOpen,
+  onToggle,
+}: SidebarProps) {
   const examplesByCategory = getExamplesByCategory();
 
   return (
@@ -68,29 +77,32 @@ export function Sidebar({ selectedExample, onSelectExample, isOpen, onToggle }: 
 
         {/* Examples list */}
         <nav className="flex-1 overflow-y-auto py-4 px-3">
-          {Array.from(examplesByCategory.entries()).map(([category, examples]) => {
-            if (examples.length === 0) return null;
+          {Array.from(examplesByCategory.entries()).map(
+            ([category, examples]) => {
+              if (examples.length === 0) return null;
 
-            const categoryMeta = CATEGORIES[category];
+              const categoryMeta = CATEGORIES[category];
 
-            return (
-              <div key={category} className="mb-6">
-                <div className="px-2 mb-2">
-                  <h2 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
-                    {categoryMeta.label}
-                  </h2>
-                </div>
+              return (
+                <div key={category} className="mb-6">
+                  <div className="px-2 mb-2">
+                    <h2 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
+                      {categoryMeta.label}
+                    </h2>
+                  </div>
 
-                <div className="space-y-1">
-                  {examples.map((example) => {
-                    const isSelected = selectedExample === example.id;
+                  <div className="space-y-1">
+                    {examples.map((example) => {
+                      const isSelected = selectedExample === example.id;
 
-                    return (
-                      <button
-                        key={example.id}
-                        onClick={() => example.ready && onSelectExample(example.id)}
-                        disabled={!example.ready}
-                        className={`
+                      return (
+                        <button
+                          key={example.id}
+                          onClick={() =>
+                            example.ready && onSelectExample(example.id)
+                          }
+                          disabled={!example.ready}
+                          className={`
                           w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left
                           transition-all duration-150 border cursor-pointer
                           ${
@@ -101,35 +113,44 @@ export function Sidebar({ selectedExample, onSelectExample, isOpen, onToggle }: 
                               : "text-neutral-600 cursor-not-allowed border-transparent"
                           }
                         `}
-                      >
-                        <span
-                          className={`
-                            mt-0.5 flex-shrink-0
-                            ${isSelected ? "text-brand-accent" : example.ready ? "text-neutral-500" : "text-neutral-700"}
-                          `}
                         >
-                          {ICONS[example.icon]}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium truncate">{example.title}</span>
-                            {!example.ready && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500 font-medium">
-                                Soon
+                          <span
+                            className={`
+                            mt-0.5 flex-shrink-0
+                            ${
+                              isSelected
+                                ? "text-brand-accent"
+                                : example.ready
+                                ? "text-neutral-500"
+                                : "text-neutral-700"
+                            }
+                          `}
+                          >
+                            {ICONS[example.icon]}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium truncate">
+                                {example.title}
                               </span>
-                            )}
+                              {!example.ready && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500 font-medium">
+                                  Soon
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">
+                              {example.description}
+                            </p>
                           </div>
-                          <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">
-                            {example.description}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            }
+          )}
         </nav>
 
         {/* Footer */}

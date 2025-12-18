@@ -95,4 +95,3 @@ export function getExamplesByCategory(): Map<
 
   return grouped;
 }
-

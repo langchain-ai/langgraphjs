@@ -84,7 +84,9 @@ function WeatherToolCallCard({
             {call.args.location}
           </div>
         </div>
-        {isLoading && <Loader2 className="w-4 h-4 animate-spin text-brand-accent" />}
+        {isLoading && (
+          <Loader2 className="w-4 h-4 animate-spin text-brand-accent" />
+        )}
       </div>
 
       {result && (

@@ -1,11 +1,4 @@
-import {
-  Check,
-  X,
-  Mail,
-  Trash2,
-  FileText,
-  ShieldAlert,
-} from "lucide-react";
+import { Check, X, Mail, Trash2, FileText, ShieldAlert } from "lucide-react";
 import type { ToolCallWithResult } from "@langchain/langgraph-sdk/react";
 
 import type { AgentToolCalls } from "../types";

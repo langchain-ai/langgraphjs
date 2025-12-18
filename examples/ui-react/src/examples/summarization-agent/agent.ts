@@ -16,7 +16,8 @@ export const calculate = tool(
       if (!/^[\d\s+\-*/().]+$/.test(expression)) {
         return JSON.stringify({
           status: "error",
-          content: "Invalid expression. Only numbers and basic operators (+, -, *, /, parentheses) are allowed.",
+          content:
+            "Invalid expression. Only numbers and basic operators (+, -, *, /, parentheses) are allowed.",
         });
       }
       const result = new Function(`return ${expression}`)();
@@ -35,7 +36,11 @@ export const calculate = tool(
     name: "calculate",
     description: "Perform a mathematical calculation",
     schema: z.object({
-      expression: z.string().describe("The mathematical expression to evaluate, e.g., '2 + 2' or '(10 * 5) / 2'"),
+      expression: z
+        .string()
+        .describe(
+          "The mathematical expression to evaluate, e.g., '2 + 2' or '(10 * 5) / 2'"
+        ),
     }),
   }
 );
@@ -62,7 +67,7 @@ export const takeNote = tool(
 
 /**
  * Create a ReAct agent with summarization middleware.
- * 
+ *
  * The summarization middleware will automatically condense the conversation
  * history when it exceeds the trigger threshold, preserving the most recent
  * messages while summarizing older ones.
@@ -93,4 +98,3 @@ You have access to these tools:
 
 Be friendly, informative, and proactive in offering helpful suggestions.`,
 });
-
