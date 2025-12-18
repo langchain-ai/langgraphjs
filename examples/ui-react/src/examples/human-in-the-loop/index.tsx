@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import type { UIMessage } from "@langchain/langgraph-sdk";
-import type { HumanInterrupt } from "@langchain/langgraph/prebuilt";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -36,6 +35,34 @@ type AgentToolCalls =
   | ToolCallFromTool<typeof readFile>;
 
 /**
+ * Types for humanInTheLoopMiddleware from langchain package
+ */
+interface ActionRequest {
+  name: string;
+  args: Record<string, unknown>;
+  description?: string;
+}
+
+interface ReviewConfig {
+  actionName: string;
+  allowedDecisions: ("approve" | "edit" | "reject")[];
+  argsSchema?: Record<string, unknown>;
+}
+
+interface HITLRequest {
+  actionRequests: ActionRequest[];
+  reviewConfigs: ReviewConfig[];
+}
+
+interface HITLResponse {
+  decisions: Array<
+    | { type: "approve" }
+    | { type: "edit"; editedAction: { name: string; args: Record<string, unknown> } }
+    | { type: "reject"; message?: string }
+  >;
+}
+
+/**
  * Helper to check if a message has actual text content.
  */
 function hasContent(message: UIMessage): boolean {
@@ -54,26 +81,27 @@ function hasContent(message: UIMessage): boolean {
  * Component for displaying a pending tool call that requires approval
  */
 function PendingApprovalCard({
-  interrupt,
+  actionRequest,
+  reviewConfig,
   onApprove,
   onReject,
   onEdit,
   isProcessing,
 }: {
-  interrupt: HumanInterrupt;
+  actionRequest: ActionRequest;
+  reviewConfig: ReviewConfig;
   onApprove: () => void;
   onReject: (reason: string) => void;
   onEdit: (editedArgs: Record<string, unknown>) => void;
   isProcessing: boolean;
 }) {
-  const { action_request, config, description } = interrupt;
   const [isEditing, setIsEditing] = useState(false);
-  const [editedArgs, setEditedArgs] = useState<Record<string, unknown>>(action_request.args);
+  const [editedArgs, setEditedArgs] = useState<Record<string, unknown>>(actionRequest.args);
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
 
   const getIcon = () => {
-    switch (action_request.action) {
+    switch (actionRequest.name) {
       case "send_email":
         return <Mail className="w-5 h-5" />;
       case "delete_file":
@@ -84,18 +112,18 @@ function PendingApprovalCard({
   };
 
   const getTitle = () => {
-    switch (action_request.action) {
+    switch (actionRequest.name) {
       case "send_email":
         return "Send Email";
       case "delete_file":
         return "Delete File";
       default:
-        return action_request.action;
+        return actionRequest.name;
     }
   };
 
   // Derive capabilities from config
-  const canEdit = config.allow_edit;
+  const canEdit = reviewConfig.allowedDecisions.includes("edit");
 
   return (
     <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-5 animate-fade-in">
@@ -114,7 +142,7 @@ function PendingApprovalCard({
             </span>
           </div>
           <p className="text-xs text-amber-300/70 mt-0.5">
-            {description || "This action requires your approval"}
+            {actionRequest.description || "This action requires your approval"}
           </p>
         </div>
       </div>
@@ -152,7 +180,7 @@ function PendingApprovalCard({
           </div>
         ) : (
           <div className="space-y-2">
-            {Object.entries(action_request.args).map(([key, value]) => (
+            {Object.entries(actionRequest.args).map(([key, value]) => (
               <div key={key} className="flex gap-2">
                 <span className="text-xs font-mono text-amber-300/60 min-w-[80px]">
                   {key}:
@@ -199,7 +227,7 @@ function PendingApprovalCard({
             </button>
             <button
               onClick={() => {
-                setEditedArgs(action_request.args);
+                setEditedArgs(actionRequest.args);
                 setIsEditing(false);
               }}
               disabled={isProcessing}
@@ -332,23 +360,27 @@ function ToolCallCard({
 }
 
 export function HumanInTheLoop() {
-  const stream = useStream<typeof agent, { InterruptType: HumanInterrupt[] }>({
-    assistantId: "agent",
+  const stream = useStream<typeof agent, { InterruptType: HITLRequest }>({
+    assistantId: "human-in-the-loop",
     apiUrl: "http://localhost:2024",
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Auto-scroll to bottom when new messages arrive
+  /**
+   * Auto-scroll to bottom when new messages arrive
+   */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [stream.uiMessages, stream.isLoading, stream.interrupt]);
 
   const hasMessages = stream.uiMessages.length > 0;
   const interrupt = stream.interrupt;
-  // Type assertion needed because the generic inference doesn't properly propagate
-  const interruptValue = interrupt?.value as HumanInterrupt[] | undefined;
+  /**
+   * Type assertion needed because the generic inference doesn't properly propagate
+   */
+  const hitlRequest = interrupt?.value as HITLRequest | undefined;
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -357,18 +389,26 @@ export function HumanInTheLoop() {
     [stream]
   );
 
-  // Handle approval
-  const handleApprove = async () => {
-    if (!interruptValue?.length) return;
+  /**
+   * Handle approval for a specific action
+   */
+  const handleApprove = async (index: number) => {
+    if (!hitlRequest) return;
     setIsProcessing(true);
     try {
+      const decisions: HITLResponse["decisions"] = hitlRequest.actionRequests.map((_, i) => {
+        if (i === index) {
+          return { type: "approve" as const };
+        }
+        /**
+         * For other actions, also approve them
+         */
+        return { type: "approve" as const };
+      });
+
       await stream.submit(null, {
         command: {
-          resume: {
-            decisions: interruptValue.map(() => ({
-              type: "approve",
-            })),
-          },
+          resume: { decisions } as HITLResponse,
         },
       });
     } finally {
@@ -376,19 +416,26 @@ export function HumanInTheLoop() {
     }
   };
 
-  // Handle rejection
-  const handleReject = async (reason: string) => {
-    if (!interruptValue?.length) return;
+  /**
+   * Handle rejection for a specific action
+   */
+  const handleReject = async (index: number, reason: string) => {
+    if (!hitlRequest) return;
     setIsProcessing(true);
     try {
+      const decisions: HITLResponse["decisions"] = hitlRequest.actionRequests.map((_, i) => {
+        if (i === index) {
+          return { type: "reject" as const, message: reason || "User rejected the action" };
+        }
+        /**
+         * For other actions, also reject them to be safe
+         */
+        return { type: "reject" as const, message: "Rejected along with other actions" };
+      });
+
       await stream.submit(null, {
         command: {
-          resume: {
-            decisions: interruptValue.map(() => ({
-              type: "reject",
-              reason: reason || "User rejected the action",
-            })),
-          },
+          resume: { decisions } as HITLResponse,
         },
       });
     } finally {
@@ -396,25 +443,33 @@ export function HumanInTheLoop() {
     }
   };
 
-  // Handle edit
-  const handleEdit = async (editedArgs: Record<string, unknown>) => {
-    if (!interruptValue?.length) return;
+  /**
+   * Handle edit for a specific action
+   */
+  const handleEdit = async (index: number, editedArgs: Record<string, unknown>) => {
+    if (!hitlRequest) return;
     setIsProcessing(true);
     try {
-      const originalRequest = interruptValue[0];
+      const originalAction = hitlRequest.actionRequests[index];
+      const decisions: HITLResponse["decisions"] = hitlRequest.actionRequests.map((_, i) => {
+        if (i === index) {
+          return {
+            type: "edit" as const,
+            editedAction: {
+              name: originalAction.name,
+              args: editedArgs,
+            },
+          };
+        }
+        /**
+         * For other actions, approve them
+         */
+        return { type: "approve" as const };
+      });
+
       await stream.submit(null, {
         command: {
-          resume: {
-            decisions: [
-              {
-                type: "edit",
-                edited_action: {
-                  action: originalRequest.action_request.action,
-                  args: editedArgs,
-                },
-              },
-            ],
-          },
+          resume: { decisions } as HITLResponse,
         },
       });
     } finally {
@@ -437,11 +492,15 @@ export function HumanInTheLoop() {
           ) : (
             <div className="flex flex-col gap-6">
               {stream.uiMessages.map((message, idx) => {
-                // For AI messages, check if they have tool calls
+                /**
+                 * For AI messages, check if they have tool calls
+                 */
                 if (message.type === "ai") {
                   const toolCalls = stream.getToolCalls(message);
 
-                  // Render tool calls if present
+                  /**
+                   * Render tool calls if present
+                   */
                   if (toolCalls.length > 0) {
                     return (
                       <div key={message.id} className="flex flex-col gap-3">
@@ -455,7 +514,9 @@ export function HumanInTheLoop() {
                     );
                   }
 
-                  // Skip AI messages without content
+                  /**
+                   * Skip AI messages without content
+                   */
                   if (!hasContent(message)) {
                     return null;
                   }
@@ -467,15 +528,16 @@ export function HumanInTheLoop() {
               })}
 
               {/* Show interrupt UI when awaiting approval */}
-              {interruptValue && interruptValue.length > 0 && (
+              {hitlRequest && hitlRequest.actionRequests.length > 0 && (
                 <div className="flex flex-col gap-4">
-                  {interruptValue.map((humanInterrupt, idx) => (
+                  {hitlRequest.actionRequests.map((actionRequest, idx) => (
                     <PendingApprovalCard
                       key={idx}
-                      interrupt={humanInterrupt}
-                      onApprove={handleApprove}
-                      onReject={handleReject}
-                      onEdit={handleEdit}
+                      actionRequest={actionRequest}
+                      reviewConfig={hitlRequest.reviewConfigs[idx]}
+                      onApprove={() => handleApprove(idx)}
+                      onReject={(reason) => handleReject(idx, reason)}
+                      onEdit={(editedArgs) => handleEdit(idx, editedArgs)}
                       isProcessing={isProcessing}
                     />
                   ))}
@@ -523,7 +585,9 @@ export function HumanInTheLoop() {
   );
 }
 
-// Register this example
+/**
+ * Register this example
+ */
 registerExample({
   id: "human-in-the-loop",
   title: "Human in the Loop",
@@ -536,4 +600,3 @@ registerExample({
 });
 
 export default HumanInTheLoop;
-

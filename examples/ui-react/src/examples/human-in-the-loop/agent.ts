@@ -9,12 +9,14 @@ const model = new ChatOpenAI({ model: "gpt-4o-mini" });
  * A tool that simulates sending an email - requires human approval
  */
 export const sendEmail = tool(
-  async ({ to, subject, body }) => {
-    // Simulate sending email
-    return JSON.stringify({
+  async ({ to, subject, body: _body }) => {
+    /**
+     * Simulate sending email
+     */
+    return {
       status: "success",
       content: `Email sent successfully to ${to} with subject "${subject}"`,
-    });
+    };
   },
   {
     name: "send_email",
@@ -32,11 +34,13 @@ export const sendEmail = tool(
  */
 export const deleteFile = tool(
   async ({ path }) => {
-    // Simulate file deletion
-    return JSON.stringify({
+    /**
+     * Simulate file deletion
+     */
+    return {
       status: "success",
       content: `File "${path}" has been deleted successfully`,
-    });
+    };
   },
   {
     name: "delete_file",
@@ -52,12 +56,14 @@ export const deleteFile = tool(
  */
 export const readFile = tool(
   async ({ path }) => {
-    // Simulate reading file content
+    /**
+     * Simulate reading file content
+     */
     const content = `Contents of ${path}:\n---\nThis is example file content for demonstration purposes.`;
-    return JSON.stringify({
+    return {
       status: "success",
       content,
-    });
+    };
   },
   {
     name: "read_file",
@@ -70,7 +76,7 @@ export const readFile = tool(
 
 /**
  * Create a ReAct agent with Human-in-the-Loop middleware.
- * 
+ *
  * The middleware intercepts tool calls for sensitive operations and
  * pauses execution until human approval is given.
  */
@@ -80,17 +86,23 @@ export const agent = createAgent({
   middleware: [
     humanInTheLoopMiddleware({
       interruptOn: {
-        // Email sending requires approval with all options
+        /**
+         * Email sending requires approval with all options
+         */
         send_email: {
           allowedDecisions: ["approve", "edit", "reject"],
           description: "📧 Review email before sending",
         },
-        // File deletion requires approval but no editing
+        /**
+         * File deletion requires approval but no editing
+         */
         delete_file: {
           allowedDecisions: ["approve", "reject"],
           description: "🗑️ Confirm file deletion",
         },
-        // Reading files is safe, no approval needed
+        /**
+         * Reading files is safe, no approval needed (false = auto-approve)
+         */
         read_file: false,
       },
       descriptionPrefix: "Action requires approval",
@@ -103,4 +115,3 @@ When asked to send an email, propose one with appropriate subject and body.
 When asked to delete files, first try to read them to show the user what will be deleted.
 Always be helpful and explain what actions you're about to take.`,
 });
-

@@ -92,7 +92,7 @@ export function Sidebar({ selectedExample, onSelectExample, isOpen, onToggle }: 
                         disabled={!example.ready}
                         className={`
                           w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left
-                          transition-all duration-150 border
+                          transition-all duration-150 border cursor-pointer
                           ${
                             isSelected
                               ? "bg-brand-dark/30 text-white border-brand-dark/50"

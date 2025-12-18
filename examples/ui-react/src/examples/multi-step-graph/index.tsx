@@ -3,7 +3,7 @@ import { AlertCircle, Search, Brain, FileEdit, CheckCircle, Target } from "lucid
 
 import type { ContentBlock } from "langchain";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { UIMessage } from "@langchain/langgraph-sdk";
+import type { UIMessage, AIMessage } from "@langchain/langgraph-sdk";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -12,7 +12,9 @@ import { MessageInput } from "../../components/MessageInput";
 
 import type { agent } from "./agent";
 
-// Node configuration for visual display
+/**
+ * Node configuration for visual display
+ */
 const NODE_CONFIG: Record<string, { 
   icon: React.ReactNode; 
   label: string; 
@@ -27,7 +29,7 @@ const NODE_CONFIG: Record<string, {
     bgColor: "bg-violet-500/10",
     borderColor: "border-violet-500/30",
   },
-  research: {
+  research_node: {
     icon: <Search className="w-4 h-4" />,
     label: "Research",
     color: "text-blue-400",
@@ -41,7 +43,7 @@ const NODE_CONFIG: Record<string, {
     bgColor: "bg-amber-500/10",
     borderColor: "border-amber-500/30",
   },
-  draft: {
+  draft_node: {
     icon: <FileEdit className="w-4 h-4" />,
     label: "Drafting",
     color: "text-emerald-400",
@@ -57,31 +59,32 @@ const NODE_CONFIG: Record<string, {
   },
 };
 
-// Pipeline visualization showing the workflow
+/**
+ * Pipeline visualization showing the workflow
+ */
 function PipelineVisualization({ currentNode }: { currentNode?: string }) {
-  const nodes = ["extract_topic", "research", "analyze", "draft", "review"];
+  const nodes = ["extract_topic", "research_node", "analyze", "draft_node", "review"];
   const currentIndex = currentNode ? nodes.indexOf(currentNode) : -1;
 
   return (
-    <div className="bg-neutral-900/50 rounded-xl p-4 mb-6 border border-neutral-800">
-      <div className="text-xs text-neutral-500 uppercase tracking-wider mb-3 font-medium">
-        Pipeline Progress
+    <div className="fixed right-6 top-1/2 -translate-y-1/2 z-50 bg-neutral-900/90 backdrop-blur-sm rounded-xl p-4 border border-neutral-800 shadow-xl">
+      <div className="text-xs text-neutral-500 uppercase tracking-wider mb-4 font-medium text-center">
+        Pipeline
       </div>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col items-center gap-1">
         {nodes.map((node, idx) => {
           const config = NODE_CONFIG[node];
           const isActive = idx === currentIndex;
           const isComplete = idx < currentIndex;
           
           return (
-            <div key={node} className="flex items-center flex-1">
-              <div className={`
-                flex flex-col items-center gap-1.5 flex-1
-                ${isActive ? "opacity-100" : isComplete ? "opacity-80" : "opacity-40"}
-              `}>
+            <div key={node} className="flex flex-row items-start gap-3">
+              {/* Icon column with connector */}
+              <div className="flex flex-col items-center">
                 <div className={`
                   w-10 h-10 rounded-lg flex items-center justify-center
                   transition-all duration-300
+                  ${isActive ? "opacity-100" : isComplete ? "opacity-80" : "opacity-40"}
                   ${isActive 
                     ? `${config.bgColor} ${config.borderColor} border-2 ring-2 ring-offset-2 ring-offset-neutral-900 ${config.borderColor.replace("border", "ring")}` 
                     : isComplete 
@@ -93,19 +96,21 @@ function PipelineVisualization({ currentNode }: { currentNode?: string }) {
                     {config.icon}
                   </span>
                 </div>
-                <span className={`
-                  text-[10px] font-medium whitespace-nowrap
-                  ${isActive ? config.color : isComplete ? "text-neutral-400" : "text-neutral-600"}
-                `}>
-                  {config.label}
-                </span>
+                {idx < nodes.length - 1 && (
+                  <div className={`
+                    w-0.5 h-6 my-1
+                    ${idx < currentIndex ? "bg-gradient-to-b from-emerald-500/50 to-emerald-500/20" : "bg-neutral-700"}
+                  `} />
+                )}
               </div>
-              {idx < nodes.length - 1 && (
-                <div className={`
-                  h-0.5 w-full max-w-[40px] mx-1
-                  ${idx < currentIndex ? "bg-gradient-to-r from-emerald-500/50 to-emerald-500/20" : "bg-neutral-700"}
-                `} />
-              )}
+              {/* Label */}
+              <span className={`
+                text-xs font-medium w-24 pt-2.5
+                ${isActive ? "opacity-100" : isComplete ? "opacity-80" : "opacity-40"}
+                ${isActive ? config.color : isComplete ? "text-neutral-400" : "text-neutral-600"}
+              `}>
+                {config.label}
+              </span>
             </div>
           );
         })}
@@ -114,13 +119,19 @@ function PipelineVisualization({ currentNode }: { currentNode?: string }) {
   );
 }
 
-// Node output card
+/**
+ * Node output card
+ */
 function NodeOutputCard({ message }: { message: UIMessage }) {
-  // Extract node name from message
+  /**
+   * Extract node name from message
+   */
   const nodeName = typeof message.name === "string" ? message.name : undefined;
   const config = nodeName ? NODE_CONFIG[nodeName] : null;
   
-  // Extract content
+  /**
+   * Extract content
+   */
   const content = typeof message.content === "string" 
     ? message.content 
     : Array.isArray(message.content) 
@@ -128,7 +139,9 @@ function NodeOutputCard({ message }: { message: UIMessage }) {
       : "";
 
   if (!config) {
-    // Render as regular message if no node config
+    /**
+     * Render as regular message if no node config
+     */
     return (
       <div className="bg-neutral-800/50 rounded-xl p-4 border border-neutral-700">
         <div className="text-sm text-neutral-200 whitespace-pre-wrap leading-relaxed">
@@ -163,23 +176,27 @@ const CONTENT_WRITER_SUGGESTIONS = [
 
 export function MultiStepGraph() {
   const stream = useStream<typeof agent>({
-    assistantId: "agent",
+    assistantId: "multi-step-graph",
     apiUrl: "http://localhost:2024",
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
+  /**
+   * Auto-scroll to bottom when new messages arrive
+   */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [stream.uiMessages, stream.isLoading]);
 
   const hasMessages = stream.uiMessages.length > 0;
   
-  // Get current node from the latest AI message
+  /**
+   * Get current node from the latest AI message
+   */
   const currentNode = stream.uiMessages
-    .filter(m => m.type === "ai" && m.name)
-    .pop()?.name as string | undefined;
+    .filter((m): m is AIMessage => Boolean(m.type === "ai" && m.name))
+    .pop()?.name;
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -192,6 +209,9 @@ export function MultiStepGraph() {
     <div className="h-full flex flex-col">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-8">
+          {/* Fixed pipeline visualization on the right side */}
+          {hasMessages && <PipelineVisualization currentNode={currentNode} />}
+          
           {!hasMessages ? (
             <EmptyState
               icon={FileEdit}
@@ -202,11 +222,12 @@ export function MultiStepGraph() {
             />
           ) : (
             <>
-              <PipelineVisualization currentNode={currentNode} />
               
               <div className="flex flex-col gap-4">
                 {stream.uiMessages.map((message, idx) => {
-                  // User messages
+                  /**
+                   * User messages
+                   */
                   if (message.type === "human") {
                     return (
                       <div key={message.id ?? idx} className="flex justify-end">
@@ -219,7 +240,9 @@ export function MultiStepGraph() {
                     );
                   }
 
-                  // AI messages - render as node output cards
+                  /**
+                   * AI messages - render as node output cards
+                   */
                   if (message.type === "ai") {
                     const content = typeof message.content === "string" 
                       ? message.content 
@@ -280,7 +303,9 @@ export function MultiStepGraph() {
   );
 }
 
-// Register this example
+/**
+ * Register this example
+ */
 registerExample({
   id: "multi-step-graph",
   title: "Multi-Step Graph",

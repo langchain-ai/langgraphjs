@@ -1,7 +1,9 @@
 {
   "node_version": "22",
   "graphs": {
-    "agent": "./src/examples/tool-calling-agent/agent.ts:agent"
+    "agent": "./src/examples/tool-calling-agent/agent.ts:agent",
+    "human-in-the-loop": "./src/examples/human-in-the-loop/agent.ts:agent",
+    "multi-step-graph": "./src/examples/multi-step-graph/agent.ts:agent"
   },
   "env": ".env"
 }
