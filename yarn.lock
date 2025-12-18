@@ -1150,7 +1150,7 @@ __metadata:
     tsx: "npm:^4.19.3"
     typescript: "npm:^5.4.5"
     vite: "npm:^7.0.0"
-    zod: "npm:^3.25.76 || ^4"
+    zod: "npm:^3.25.76"
   languageName: unknown
   linkType: soft
 
@@ -1247,13 +1247,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hono/zod-validator@npm:^0.2.2":
-  version: 0.2.2
-  resolution: "@hono/zod-validator@npm:0.2.2"
+"@hono/zod-validator@npm:^0.7.6":
+  version: 0.7.6
+  resolution: "@hono/zod-validator@npm:0.7.6"
   peerDependencies:
     hono: ">=3.9.0"
-    zod: ^3.19.1
-  checksum: 10/8228c1d8ef8b7bee4013dc1b73304d8fefd6c8309fcb7cd1be3842ce5a1a3471a1dd74fd01c237c7da394d15f1c05745f815cf06ba5aaaf352c5deca414660fa
+    zod: ^3.25.0 || ^4.0.0
+  checksum: 10/4610dfe671e2c559c64e13f77be9314f75902f1122a43773b5328cab26ef786af6055f38515ff08f216420936c76f9290a0db3aa88044afc13423d299bd77d78
   languageName: node
   linkType: hard
 
@@ -1589,7 +1589,7 @@ __metadata:
   dependencies:
     "@babel/code-frame": "npm:^7.26.2"
     "@hono/node-server": "npm:^1.12.0"
-    "@hono/zod-validator": "npm:^0.2.2"
+    "@hono/zod-validator": "npm:^0.7.6"
     "@langchain/core": "npm:^1.0.0"
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-checkpoint": "workspace:*"
@@ -14326,7 +14326,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.20.0, zod@npm:^3.23.8, zod@npm:^3.24.0":
+"zod@npm:^3.20.0, zod@npm:^3.23.8, zod@npm:^3.24.0, zod@npm:^3.25.76":
   version: 3.25.76
   resolution: "zod@npm:3.25.76"
   checksum: 10/f0c963ec40cd96858451d1690404d603d36507c1fc9682f2dae59ab38b578687d542708a7fdbf645f77926f78c9ed558f57c3d3aa226c285f798df0c4da16995

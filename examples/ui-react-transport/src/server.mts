@@ -1,17 +1,13 @@
-import type { BaseMessage } from "@langchain/core/messages";
-import { StateGraph, MessagesZodMeta, START } from "@langchain/langgraph";
-import { registry } from "@langchain/langgraph/zod";
+import { StateGraph, MessagesZodState, START } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { z } from "zod/v4";
+import { z } from "zod/v3";
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
 const llm = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-const schema = z.object({
-  messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
-});
+const schema = MessagesZodState;
 
 const graph = new StateGraph(schema)
   .addNode("agent", async ({ messages }) => ({
