@@ -3,12 +3,15 @@ import { Zap } from "lucide-react";
 import { Sidebar, SidebarToggle } from "./Sidebar";
 import { EXAMPLES, getExample } from "../examples/registry";
 
-// Import all examples to register them
+/**
+ * Import all examples to register them
+ */
 import "../examples/tool-calling-agent";
 import "../examples/human-in-the-loop";
 import "../examples/multi-step-graph";
 import "../examples/summarization-agent";
-import "../examples/placeholder-examples";
+import "../examples/parallel-research";
+import "../examples/reasoning-agent";
 
 function WelcomeScreen() {
   return (

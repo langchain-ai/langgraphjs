@@ -115,12 +115,15 @@ export interface UseStream<
 
   /**
    * Messages optimized for UI rendering.
-   * Excludes ToolMessage since tool results are rendered via `toolCalls`.
-   * Use this instead of `messages` to avoid filtering out ToolMessages manually.
+   * Excludes ToolMessage (tool results are rendered via `toolCalls`).
+   * Includes ReasoningMessage for rendering AI thinking/reasoning content.
    *
    * @example
    * ```tsx
    * {stream.uiMessages.map((message) => {
+   *   if (message.type === "reasoning") {
+   *     return <ReasoningBubble key={message.id} content={message.content} />;
+   *   }
    *   if (message.type === "ai") {
    *     const toolCalls = stream.getToolCalls(message);
    *     if (toolCalls.length > 0) {
