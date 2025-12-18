@@ -64,16 +64,44 @@ export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
   : never;
 
 /**
+ * Helper type to infer schema input type, supporting both Zod v3 and v4.
+ * - Zod v4 uses `_zod.input` property
+ * - Zod v3 uses `_input` property
+ */
+type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
+  ? Args
+  : S extends { _input: infer Args }
+    ? Args
+    : never;
+
+/**
+ * Helper type to extract the input type from a DynamicStructuredTool's _call method.
+ * This is more reliable than trying to infer from the schema directly because
+ * DynamicStructuredTool has the input type baked into its _call signature.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolInput<T> = T extends { _call: (arg: infer Args, ...rest: any[]) => any }
+  ? Args
+  : T extends { schema: infer S }
+    ? InferSchemaInput<S>
+    : never;
+
+/**
  * Extract a tool call type from a single tool.
  * Works with tools created via `tool()` from `@langchain/core/tools`.
  *
  * This extracts the literal name type from DynamicStructuredTool's NameT parameter
- * and the args type from the schema's _input property.
+ * and the args type from the _call method or schema's input property.
  */
-type ToolCallFromAgentTool<T> = T extends { name: infer N; schema: infer S }
+type ToolCallFromAgentTool<T> = T extends { name: infer N }
   ? N extends string
-    ? S extends { _input: infer Args }
-      ? { name: N; args: Args; id?: string; type?: "tool_call" }
+    ? InferToolInput<T> extends infer Args
+      ? Args extends never
+        ? never
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : Args extends Record<string, any>
+          ? { name: N; args: Args; id?: string; type?: "tool_call" }
+          : never
       : never
     : never
   : never;

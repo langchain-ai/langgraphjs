@@ -20,7 +20,7 @@
     "lucide-react": "^0.561.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zod": "^3.23.8"
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
