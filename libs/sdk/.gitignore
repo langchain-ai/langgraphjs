@@ -1,31 +1,23 @@
+# Build outputs - JS/CJS files
 index.cjs
 index.js
-index.d.ts
-index.d.cts
 client.cjs
 client.js
-client.d.ts
-client.d.cts
 auth.cjs
 auth.js
-auth.d.ts
-auth.d.cts
 react.cjs
 react.js
-react.d.ts
-react.d.cts
 logging.cjs
 logging.js
-logging.d.ts
-logging.d.cts
 react-ui.cjs
 react-ui.js
-react-ui.d.ts
-react-ui.d.cts
 react-ui/server.cjs
 react-ui/server.js
-react-ui/server.d.ts
-react-ui/server.d.cts
+
+# Generated TypeScript declarations
+*.d.ts
+*.d.cts
+*.d.mts
 node_modules
 dist
 .yarn

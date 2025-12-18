@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import * as z4 from "zod/v4";
 import { StateGraph } from "../graph/state.js";
 import { END, START } from "../constants.js";
 import { _AnyIdAIMessage, _AnyIdHumanMessage } from "./utils.js";
@@ -10,6 +11,7 @@ import {
   getStateTypeSchema,
 } from "../graph/zod/schema.js";
 import { MessagesZodState } from "../graph/messages_annotation.js";
+import { registry } from "../graph/zod/zod-registry.js";
 
 describe("StateGraph with Zod schemas", () => {
   it("should accept Zod schema as input in addNode", async () => {
@@ -142,6 +144,117 @@ describe("StateGraph with Zod schemas", () => {
         messages: { langgraph_type: "messages" },
         count: { type: "number" },
       },
+    });
+  });
+
+  describe("registry default values", () => {
+    it("should apply registry default when field is missing from input", async () => {
+      const stateSchema = z4.object({
+        foo: z4.string().default("zod-default"),
+        bar: z4.string().register(registry, {
+          default: () => "registry-default",
+        }),
+        baz: z4.string(),
+      });
+
+      const graph = new StateGraph(stateSchema)
+        .addNode("process", (state) => {
+          // Verify defaults are applied when node receives state
+          expect(state.foo).toBe("zod-default");
+          expect(state.bar).toBe("registry-default");
+          expect(state.baz).toBe("provided");
+          return {};
+        })
+        .addEdge(START, "process")
+        .addEdge("process", END)
+        .compile();
+
+      // Only provide baz, foo and bar should get defaults
+      const result = await graph.invoke({ baz: "provided" });
+      // Verify defaults are in final output
+      expect(result.foo).toBe("zod-default");
+      expect(result.bar).toBe("registry-default");
+      expect(result.baz).toBe("provided");
+    });
+
+    it("should prioritize provided input over registry default", async () => {
+      const stateSchema = z4.object({
+        bar: z4.string().register(registry, {
+          default: () => "registry-default",
+        }),
+      });
+
+      const graph = new StateGraph(stateSchema)
+        .addNode("process", (state) => {
+          // Verify provided value takes precedence over default
+          expect(state.bar).toBe("provided-value");
+          return {};
+        })
+        .addEdge(START, "process")
+        .addEdge("process", END)
+        .compile();
+
+      const result = await graph.invoke({ bar: "provided-value" });
+      expect(result.bar).toBe("provided-value");
+    });
+
+    it("should work with registry default alongside reducer", async () => {
+      const stateSchema = z4.object({
+        items: z4.array(z4.string()).register(registry, {
+          default: () => ["initial"],
+          reducer: {
+            fn: (a, b) => a.concat(Array.isArray(b) ? b : [b]),
+          },
+        }),
+      });
+
+      const graph = new StateGraph(stateSchema)
+        .addNode("add", (state) => {
+          // Verify default is applied before reducer processes update
+          expect(state.items).toEqual(["initial"]);
+          return { items: ["new"] };
+        })
+        .addEdge(START, "add")
+        .addEdge("add", END)
+        .compile();
+
+      const result = await graph.invoke({});
+      // Verify reducer combined default with update
+      expect(result.items).toEqual(["initial", "new"]);
+    });
+
+    it("should work when all combinations of defaults are present", async () => {
+      const stateSchema = z4.object({
+        withZod: z4.string().default("zod-default"),
+        withRegistry: z4.string().register(registry, {
+          default: () => "registry-default",
+        }),
+        withBoth: z4
+          .string()
+          .default("zod-default")
+          .register(registry, {
+            default: () => "registry-default",
+          }),
+        withNeither: z4.string(),
+      });
+
+      const graph = new StateGraph(stateSchema)
+        .addNode("process", (state) => {
+          // Verify defaults are applied correctly
+          expect(state.withZod).toBe("zod-default");
+          expect(state.withRegistry).toBe("registry-default");
+          // Zod default takes precedence during parsing, so registry default isn't used
+          expect(state.withBoth).toBe("zod-default");
+          return {};
+        })
+        .addEdge(START, "process")
+        .addEdge("process", END)
+        .compile();
+
+      const result = await graph.invoke({});
+      expect(result.withZod).toBe("zod-default");
+      expect(result.withRegistry).toBe("registry-default");
+      expect(result.withBoth).toBe("zod-default"); // Zod default takes precedence during parsing
     });
   });
 });
