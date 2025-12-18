@@ -1697,7 +1697,25 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:^1.0.0, @langchain/core@npm:^1.0.1, @langchain/core@npm:^1.1.2":
+"@langchain/core@npm:^1.0.0, @langchain/core@npm:^1.1.2":
+  version: 1.1.6
+  resolution: "@langchain/core@npm:1.1.6"
+  dependencies:
+    "@cfworker/json-schema": "npm:^4.0.2"
+    ansi-styles: "npm:^5.0.0"
+    camelcase: "npm:6"
+    decamelize: "npm:1.2.0"
+    js-tiktoken: "npm:^1.0.12"
+    langsmith: "npm:^0.3.82"
+    mustache: "npm:^4.2.0"
+    p-queue: "npm:^6.6.2"
+    uuid: "npm:^10.0.0"
+    zod: "npm:^3.25.76 || ^4"
+  checksum: 10/e9dbffda815258a0a8690438b00d3be2d1a2c46c96e5e3b394c0ef4ccc0aef662133391f7086aecd876b1f6ab8ba679c9039e2addc5160519b2e352e5f151b45
+  languageName: node
+  linkType: hard
+
+"@langchain/core@npm:^1.0.1":
   version: 1.1.2
   resolution: "@langchain/core@npm:1.1.2"
   dependencies:
@@ -10153,6 +10171,34 @@ __metadata:
     openai:
       optional: true
   checksum: 10/66f4cd6e9bea15d760a1a649a0db48a08c12e097b711542a2c7a3eada0dd9e30c1455aa24b705091a08f70d9ee02d052adb8309c8237ad6de744a9a6310e2b4c
+  languageName: node
+  linkType: hard
+
+"langsmith@npm:^0.3.82":
+  version: 0.3.87
+  resolution: "langsmith@npm:0.3.87"
+  dependencies:
+    "@types/uuid": "npm:^10.0.0"
+    chalk: "npm:^4.1.2"
+    console-table-printer: "npm:^2.12.1"
+    p-queue: "npm:^6.6.2"
+    semver: "npm:^7.6.3"
+    uuid: "npm:^10.0.0"
+  peerDependencies:
+    "@opentelemetry/api": "*"
+    "@opentelemetry/exporter-trace-otlp-proto": "*"
+    "@opentelemetry/sdk-trace-base": "*"
+    openai: "*"
+  peerDependenciesMeta:
+    "@opentelemetry/api":
+      optional: true
+    "@opentelemetry/exporter-trace-otlp-proto":
+      optional: true
+    "@opentelemetry/sdk-trace-base":
+      optional: true
+    openai:
+      optional: true
+  checksum: 10/5c479d43c7bf8f9959ea8ece591f4c20a99ed401bf5889c30564982a0e88b0a5ff0208d03ee767d1d71ded832a4aea5b8c273cc5f23c0b6ef1d3343034a3a1f0
   languageName: node
   linkType: hard
 
