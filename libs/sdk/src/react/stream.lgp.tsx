@@ -29,15 +29,13 @@ import type {
 } from "../ui/types.js";
 import type { UseStream, SubmitOptions } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
-import {
-  type Message,
-  type ToolMessage,
-  getToolCallsWithResults,
-} from "../types.messages.js";
+import { type Message } from "../types.messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
+import { getUIMessagesWithReasoning } from "./utils.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -684,10 +682,7 @@ export function useStreamLGP<
     get uiMessages() {
       trackStreamMode("messages-tuple", "values");
       const msgs = getMessages(values) as Message<ToolCallType>[];
-      return msgs.filter(
-        (m): m is Exclude<Message<ToolCallType>, ToolMessage> =>
-          m.type !== "tool"
-      );
+      return getUIMessagesWithReasoning<ToolCallType>(msgs);
     },
 
     get toolCalls() {

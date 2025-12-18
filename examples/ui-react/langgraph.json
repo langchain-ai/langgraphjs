@@ -4,7 +4,9 @@
     "agent": "./src/examples/tool-calling-agent/agent.ts:agent",
     "human-in-the-loop": "./src/examples/human-in-the-loop/agent.ts:agent",
     "multi-step-graph": "./src/examples/multi-step-graph/agent.ts:agent",
-    "summarization-agent": "./src/examples/summarization-agent/agent.ts:agent"
+    "summarization-agent": "./src/examples/summarization-agent/agent.ts:agent",
+    "parallel-research": "./src/examples/parallel-research/agent.ts:agent",
+    "reasoning-agent": "./src/examples/reasoning-agent/agent.ts:agent"
   },
   "env": ".env"
 }
