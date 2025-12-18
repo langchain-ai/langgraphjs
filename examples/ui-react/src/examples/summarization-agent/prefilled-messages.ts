@@ -17,7 +17,8 @@ export function getPrefilledMessages(): PrefilledMessage[] {
   return [
     {
       type: "human",
-      content: "Hi! I'm planning a trip to Japan and need help organizing everything.",
+      content:
+        "Hi! I'm planning a trip to Japan and need help organizing everything.",
     },
     {
       type: "ai",
@@ -31,7 +32,8 @@ export function getPrefilledMessages(): PrefilledMessage[] {
     },
     {
       type: "human",
-      content: "I'm going in April for 2 weeks. I'll be traveling with my partner. We love food and culture, and we'd like to see both cities and countryside. Budget is around $5000 total for both of us.",
+      content:
+        "I'm going in April for 2 weeks. I'll be traveling with my partner. We love food and culture, and we'd like to see both cities and countryside. Budget is around $5000 total for both of us.",
     },
     {
       type: "ai",
@@ -57,7 +59,8 @@ Would you like me to dive deeper into any specific part of this plan?`,
     },
     {
       type: "human",
-      content: "That sounds amazing! Can you tell me more about the JR Pass? Is it worth it?",
+      content:
+        "That sounds amazing! Can you tell me more about the JR Pass? Is it worth it?",
     },
     {
       type: "ai",
@@ -88,7 +91,8 @@ Would you like me to help optimize your route to maximize the JR Pass value?`,
     },
     {
       type: "human",
-      content: "Yes, let's add Hiroshima! Also, what about accommodation recommendations?",
+      content:
+        "Yes, let's add Hiroshima! Also, what about accommodation recommendations?",
     },
     {
       type: "ai",
@@ -252,7 +256,8 @@ Would you like me to help with anything else for your trip planning?`,
     },
     {
       type: "human",
-      content: "This is so helpful! Can you summarize everything we've discussed so I can save it?",
+      content:
+        "This is so helpful! Can you summarize everything we've discussed so I can save it?",
     },
     {
       type: "ai",
@@ -312,4 +317,3 @@ Is there anything you'd like me to add or clarify?`,
     },
   ];
 }
-

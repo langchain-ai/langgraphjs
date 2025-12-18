@@ -67,7 +67,8 @@ export const readFile = tool(
   },
   {
     name: "read_file",
-    description: "Read the contents of a file. Safe operation, no approval needed.",
+    description:
+      "Read the contents of a file. Safe operation, no approval needed.",
     schema: z.object({
       path: z.string().describe("The file path to read"),
     }),

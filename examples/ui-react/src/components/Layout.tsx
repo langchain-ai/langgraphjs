@@ -21,29 +21,45 @@ function WelcomeScreen() {
         <span className="text-2xl">🦜🔗</span>
       </div>
 
-      <h1 className="text-2xl font-semibold text-white mb-3 animate-fade-in" style={{ animationDelay: "100ms" }}>
+      <h1
+        className="text-2xl font-semibold text-white mb-3 animate-fade-in"
+        style={{ animationDelay: "100ms" }}
+      >
         LangGraph Streaming Examples
       </h1>
 
-      <p className="text-neutral-400 max-w-md mb-8 animate-fade-in" style={{ animationDelay: "200ms" }}>
-        Explore different streaming patterns with LangGraph. Select an example from the sidebar to get started.
+      <p
+        className="text-neutral-400 max-w-md mb-8 animate-fade-in"
+        style={{ animationDelay: "200ms" }}
+      >
+        Explore different streaming patterns with LangGraph. Select an example
+        from the sidebar to get started.
       </p>
 
-      <div className="grid gap-4 w-full max-w-md animate-fade-in" style={{ animationDelay: "300ms" }}>
-        {EXAMPLES.filter((e) => e.ready).slice(0, 3).map((example) => (
-          <div
-            key={example.id}
-            className="flex items-center gap-4 p-4 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-brand-dark/50 transition-colors text-left"
-          >
-            <div className="w-10 h-10 rounded-lg bg-brand-dark/20 border border-brand-dark/30 flex items-center justify-center text-brand-accent">
-              <Zap className="w-5 h-5" />
+      <div
+        className="grid gap-4 w-full max-w-md animate-fade-in"
+        style={{ animationDelay: "300ms" }}
+      >
+        {EXAMPLES.filter((e) => e.ready)
+          .slice(0, 3)
+          .map((example) => (
+            <div
+              key={example.id}
+              className="flex items-center gap-4 p-4 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-brand-dark/50 transition-colors text-left"
+            >
+              <div className="w-10 h-10 rounded-lg bg-brand-dark/20 border border-brand-dark/30 flex items-center justify-center text-brand-accent">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-medium text-white">
+                  {example.title}
+                </h3>
+                <p className="text-xs text-neutral-500 truncate">
+                  {example.description}
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-medium text-white">{example.title}</h3>
-              <p className="text-xs text-neutral-500 truncate">{example.description}</p>
-            </div>
-          </div>
-        ))}
+          ))}
       </div>
     </div>
   );
@@ -58,7 +74,9 @@ function getExampleFromHash(): string | null {
 }
 
 export function Layout() {
-  const [selectedExample, setSelectedExample] = useState<string | null>(() => getExampleFromHash());
+  const [selectedExample, setSelectedExample] = useState<string | null>(() =>
+    getExampleFromHash()
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Sync selected example with URL hash
@@ -106,10 +124,15 @@ export function Layout() {
         {/* Example header */}
         {currentExample && (
           <header className="border-b border-neutral-800 px-6 py-4 flex items-center gap-4 lg:px-8">
-            <div className="lg:hidden w-8" /> {/* Spacer for mobile menu button */}
+            <div className="lg:hidden w-8" />{" "}
+            {/* Spacer for mobile menu button */}
             <div>
-              <h1 className="text-lg font-semibold text-white">{currentExample.title}</h1>
-              <p className="text-sm text-neutral-500">{currentExample.description}</p>
+              <h1 className="text-lg font-semibold text-white">
+                {currentExample.title}
+              </h1>
+              <p className="text-sm text-neutral-500">
+                {currentExample.description}
+              </p>
             </div>
           </header>
         )}

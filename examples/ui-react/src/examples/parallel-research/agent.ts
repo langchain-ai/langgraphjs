@@ -6,19 +6,28 @@ import { BaseMessage, AIMessage } from "@langchain/core/messages";
  * Parallel Research Pipeline - A LangGraph that demonstrates
  * parallel node execution where 3 different "research models" analyze
  * a topic simultaneously and stream their results.
- * 
+ *
  * Workflow:
  * 1. dispatcher - Receives the topic and fans out to 3 parallel researchers
  * 2. researcher_analytical - Analytical/data-driven research style
- * 3. researcher_creative - Creative/storytelling research style  
+ * 3. researcher_creative - Creative/storytelling research style
  * 4. researcher_practical - Practical/actionable research style
  * 5. All stream in parallel, user picks their preferred result
  */
 
 // Use different model instances to get variety in responses
-const analyticalModel = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0.3 });
-const creativeModel = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0.9 });
-const practicalModel = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0.5 });
+const analyticalModel = new ChatOpenAI({
+  model: "gpt-4o-mini",
+  temperature: 0.3,
+});
+const creativeModel = new ChatOpenAI({
+  model: "gpt-4o-mini",
+  temperature: 0.9,
+});
+const practicalModel = new ChatOpenAI({
+  model: "gpt-4o-mini",
+  temperature: 0.5,
+});
 
 // Define the state annotation with reducer for messages
 const StateAnnotation = Annotation.Root({
@@ -61,17 +70,18 @@ type State = typeof StateAnnotation.State;
  */
 async function dispatcherNode(state: State): Promise<Partial<State>> {
   const lastMessage = state.messages[state.messages.length - 1];
-  const userInput = typeof lastMessage.content === "string" 
-    ? lastMessage.content 
-    : "";
+  const userInput =
+    typeof lastMessage.content === "string" ? lastMessage.content : "";
 
   return {
     topic: userInput,
     currentNode: "dispatcher",
-    messages: [new AIMessage({ 
-      content: `🎯 **Research Topic:** ${userInput}\n\nDispatching to 3 parallel research models...`,
-      name: "dispatcher"
-    })]
+    messages: [
+      new AIMessage({
+        content: `🎯 **Research Topic:** ${userInput}\n\nDispatching to 3 parallel research models...`,
+        name: "dispatcher",
+      }),
+    ],
   };
 }
 
@@ -103,9 +113,12 @@ When researching a topic, you focus on:
 - Pros/cons and trade-offs
 
 Write a comprehensive but concise research summary (about 200-300 words).
-Use markdown formatting with headers, bullet points, and emphasis where appropriate.`
+Use markdown formatting with headers, bullet points, and emphasis where appropriate.`,
     },
-    { role: "user", content: `Research this topic with your analytical approach: ${state.topic}` }
+    {
+      role: "user",
+      content: `Research this topic with your analytical approach: ${state.topic}`,
+    },
   ]);
 
   const content = typeof response.content === "string" ? response.content : "";
@@ -113,10 +126,12 @@ Use markdown formatting with headers, bullet points, and emphasis where appropri
   return {
     analyticalResearch: content,
     currentNode: "researcher_analytical",
-    messages: [new AIMessage({ 
-      content: content,
-      name: "researcher_analytical"
-    })]
+    messages: [
+      new AIMessage({
+        content: content,
+        name: "researcher_analytical",
+      }),
+    ],
   };
 }
 
@@ -137,9 +152,12 @@ When researching a topic, you focus on:
 - Future possibilities and "what ifs"
 
 Write a compelling research narrative (about 200-300 words).
-Use markdown formatting with creative headers and engaging prose.`
+Use markdown formatting with creative headers and engaging prose.`,
     },
-    { role: "user", content: `Research this topic with your creative storytelling approach: ${state.topic}` }
+    {
+      role: "user",
+      content: `Research this topic with your creative storytelling approach: ${state.topic}`,
+    },
   ]);
 
   const content = typeof response.content === "string" ? response.content : "";
@@ -147,10 +165,12 @@ Use markdown formatting with creative headers and engaging prose.`
   return {
     creativeResearch: content,
     currentNode: "researcher_creative",
-    messages: [new AIMessage({ 
-      content: content,
-      name: "researcher_creative"
-    })]
+    messages: [
+      new AIMessage({
+        content: content,
+        name: "researcher_creative",
+      }),
+    ],
   };
 }
 
@@ -171,9 +191,12 @@ When researching a topic, you focus on:
 - Tools, resources, and recommendations
 
 Write a practical research guide (about 200-300 words).
-Use markdown formatting with clear action items and recommendations.`
+Use markdown formatting with clear action items and recommendations.`,
     },
-    { role: "user", content: `Research this topic with your practical, actionable approach: ${state.topic}` }
+    {
+      role: "user",
+      content: `Research this topic with your practical, actionable approach: ${state.topic}`,
+    },
   ]);
 
   const content = typeof response.content === "string" ? response.content : "";
@@ -181,10 +204,12 @@ Use markdown formatting with clear action items and recommendations.`
   return {
     practicalResearch: content,
     currentNode: "researcher_practical",
-    messages: [new AIMessage({ 
-      content: content,
-      name: "researcher_practical"
-    })]
+    messages: [
+      new AIMessage({
+        content: content,
+        name: "researcher_practical",
+      }),
+    ],
   };
 }
 
@@ -194,10 +219,12 @@ Use markdown formatting with clear action items and recommendations.`
 async function collectorNode(): Promise<Partial<State>> {
   return {
     currentNode: "collector",
-    messages: [new AIMessage({ 
-      content: `✅ **All research complete!**\n\nThree different perspectives are now available. Review each approach and select the one that best fits your needs.`,
-      name: "collector"
-    })]
+    messages: [
+      new AIMessage({
+        content: `✅ **All research complete!**\n\nThree different perspectives are now available. Review each approach and select the one that best fits your needs.`,
+        name: "collector",
+      }),
+    ],
   };
 }
 
@@ -209,24 +236,20 @@ const workflow = new StateGraph(StateAnnotation)
   .addNode("researcher_creative", creativeResearcherNode)
   .addNode("researcher_practical", practicalResearcherNode)
   .addNode("collector", collectorNode)
-  
+
   // Start with dispatcher
   .addEdge(START, "dispatcher")
-  
+
   // Fan out to parallel researchers
-  .addConditionalEdges(
-    "dispatcher",
-    fanOutToResearchers
-  )
-  
+  .addConditionalEdges("dispatcher", fanOutToResearchers)
+
   // All researchers lead to collector
   .addEdge("researcher_analytical", "collector")
   .addEdge("researcher_creative", "collector")
   .addEdge("researcher_practical", "collector")
-  
+
   // Collector ends the flow
   .addEdge("collector", END);
 
 // Compile and export
 export const agent = workflow.compile();
-

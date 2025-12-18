@@ -7,7 +7,7 @@ const model = new ChatOpenAI({ model: "gpt-4o-mini" });
 /**
  * Content Writer Pipeline - A multi-node LangGraph that demonstrates
  * state transitions and branching logic.
- * 
+ *
  * Workflow:
  * 1. research_node - Gathers information about the topic
  * 2. analyze_node - Analyzes the research for key insights
@@ -61,25 +61,27 @@ type State = typeof StateAnnotation.State;
  */
 async function extractTopicNode(state: State): Promise<Partial<State>> {
   const lastMessage = state.messages[state.messages.length - 1];
-  const userInput = typeof lastMessage.content === "string" 
-    ? lastMessage.content 
-    : "";
+  const userInput =
+    typeof lastMessage.content === "string" ? lastMessage.content : "";
 
   const response = await model.invoke([
     {
       role: "system",
-      content: "Extract the main topic or subject the user wants to write about. Return only the topic, nothing else."
+      content:
+        "Extract the main topic or subject the user wants to write about. Return only the topic, nothing else.",
     },
-    { role: "user", content: userInput }
+    { role: "user", content: userInput },
   ]);
 
   return {
     topic: typeof response.content === "string" ? response.content : "",
     currentNode: "extract_topic",
-    messages: [new AIMessage({ 
-      content: `📌 **Topic Identified:** ${response.content}`,
-      name: "extract_topic"
-    })]
+    messages: [
+      new AIMessage({
+        content: `📌 **Topic Identified:** ${response.content}`,
+        name: "extract_topic",
+      }),
+    ],
   };
 }
 
@@ -88,27 +90,32 @@ async function extractTopicNode(state: State): Promise<Partial<State>> {
  */
 async function researchNode(state: State): Promise<Partial<State>> {
   const iteration = state.researchIterations + 1;
-  
+
   const response = await model.invoke([
     {
       role: "system",
       content: `You are a research assistant. Gather key facts, statistics, and interesting points about the topic. 
 Be thorough but concise. This is research iteration ${iteration}.
-${state.research ? `Previous research: ${state.research}` : ""}`
+${state.research ? `Previous research: ${state.research}` : ""}`,
     },
-    { role: "user", content: `Research the topic: ${state.topic}` }
+    { role: "user", content: `Research the topic: ${state.topic}` },
   ]);
 
-  const researchContent = typeof response.content === "string" ? response.content : "";
+  const researchContent =
+    typeof response.content === "string" ? response.content : "";
 
   return {
-    research: state.research ? `${state.research}\n\n--- Additional Research ---\n${researchContent}` : researchContent,
+    research: state.research
+      ? `${state.research}\n\n--- Additional Research ---\n${researchContent}`
+      : researchContent,
     researchIterations: iteration,
     currentNode: "research_node",
-    messages: [new AIMessage({ 
-      content: `🔍 **Research (Iteration ${iteration}):**\n${researchContent}`,
-      name: "research_node"
-    })]
+    messages: [
+      new AIMessage({
+        content: `🔍 **Research (Iteration ${iteration}):**\n${researchContent}`,
+        name: "research_node",
+      }),
+    ],
   };
 }
 
@@ -119,20 +126,27 @@ async function analyzeNode(state: State): Promise<Partial<State>> {
   const response = await model.invoke([
     {
       role: "system",
-      content: "You are an analyst. Review the research and identify the most important insights, themes, and angles for content creation. Be structured and insightful."
+      content:
+        "You are an analyst. Review the research and identify the most important insights, themes, and angles for content creation. Be structured and insightful.",
     },
-    { role: "user", content: `Analyze this research about "${state.topic}":\n\n${state.research}` }
+    {
+      role: "user",
+      content: `Analyze this research about "${state.topic}":\n\n${state.research}`,
+    },
   ]);
 
-  const analysisContent = typeof response.content === "string" ? response.content : "";
+  const analysisContent =
+    typeof response.content === "string" ? response.content : "";
 
   return {
     analysis: analysisContent,
     currentNode: "analyze",
-    messages: [new AIMessage({ 
-      content: `🧠 **Analysis:**\n${analysisContent}`,
-      name: "analyze"
-    })]
+    messages: [
+      new AIMessage({
+        content: `🧠 **Analysis:**\n${analysisContent}`,
+        name: "analyze",
+      }),
+    ],
   };
 }
 
@@ -141,9 +155,12 @@ async function analyzeNode(state: State): Promise<Partial<State>> {
  */
 function shouldContinueResearch(state: State): "research_node" | "draft_node" {
   // If we've done less than 2 iterations and the analysis suggests gaps, do more research
-  if (state.researchIterations < 2 && state.analysis.toLowerCase().includes("need more") ||
-      state.analysis.toLowerCase().includes("insufficient") ||
-      state.analysis.toLowerCase().includes("gaps")) {
+  if (
+    (state.researchIterations < 2 &&
+      state.analysis.toLowerCase().includes("need more")) ||
+    state.analysis.toLowerCase().includes("insufficient") ||
+    state.analysis.toLowerCase().includes("gaps")
+  ) {
     return "research_node";
   }
   return "draft_node";
@@ -161,23 +178,26 @@ Write in an engaging, professional tone. Include:
 - A catchy opening
 - Clear main points
 - Supporting details
-- A strong conclusion`
+- A strong conclusion`,
     },
-    { 
-      role: "user", 
-      content: `Create a draft about "${state.topic}"\n\nResearch:\n${state.research}\n\nAnalysis:\n${state.analysis}` 
-    }
+    {
+      role: "user",
+      content: `Create a draft about "${state.topic}"\n\nResearch:\n${state.research}\n\nAnalysis:\n${state.analysis}`,
+    },
   ]);
 
-  const draftContent = typeof response.content === "string" ? response.content : "";
+  const draftContent =
+    typeof response.content === "string" ? response.content : "";
 
   return {
     draft: draftContent,
     currentNode: "draft_node",
-    messages: [new AIMessage({ 
-      content: `✍️ **Draft:**\n${draftContent}`,
-      name: "draft_node"
-    })]
+    messages: [
+      new AIMessage({
+        content: `✍️ **Draft:**\n${draftContent}`,
+        name: "draft_node",
+      }),
+    ],
   };
 }
 
@@ -195,20 +215,26 @@ Focus on:
 - Impact and engagement
 - Overall coherence
 
-Return the final polished content.`
+Return the final polished content.`,
     },
-    { role: "user", content: `Review and improve this draft:\n\n${state.draft}` }
+    {
+      role: "user",
+      content: `Review and improve this draft:\n\n${state.draft}`,
+    },
   ]);
 
-  const finalContent = typeof response.content === "string" ? response.content : "";
+  const finalContent =
+    typeof response.content === "string" ? response.content : "";
 
   return {
     finalContent,
     currentNode: "review",
-    messages: [new AIMessage({ 
-      content: `✅ **Final Content:**\n${finalContent}`,
-      name: "review"
-    })]
+    messages: [
+      new AIMessage({
+        content: `✅ **Final Content:**\n${finalContent}`,
+        name: "review",
+      }),
+    ],
   };
 }
 
@@ -220,25 +246,20 @@ const workflow = new StateGraph(StateAnnotation)
   .addNode("analyze", analyzeNode)
   .addNode("draft_node", draftNode)
   .addNode("review", reviewNode)
-  
+
   // Define the flow
   .addEdge(START, "extract_topic")
   .addEdge("extract_topic", "research_node")
   .addEdge("research_node", "analyze")
-  
+
   // Conditional edge: decide if we need more research
-  .addConditionalEdges(
-    "analyze",
-    shouldContinueResearch,
-    {
-      research_node: "research_node",
-      draft_node: "draft_node"
-    }
-  )
-  
+  .addConditionalEdges("analyze", shouldContinueResearch, {
+    research_node: "research_node",
+    draft_node: "draft_node",
+  })
+
   .addEdge("draft_node", "review")
   .addEdge("review", END);
 
 // Compile and export
 export const agent = workflow.compile();
-

@@ -48,4 +48,3 @@ export function StatusBadge({ data }: StatusBadgeProps) {
     </div>
   );
 }
-

@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  Check,
-  X,
-  Pencil,
-  Mail,
-  Trash2,
-  ShieldAlert,
-} from "lucide-react";
+import { Check, X, Pencil, Mail, Trash2, ShieldAlert } from "lucide-react";
 
 import type { ActionRequest, ReviewConfig } from "langchain";
 
