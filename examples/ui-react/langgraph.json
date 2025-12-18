@@ -6,7 +6,8 @@
     "multi-step-graph": "./src/examples/multi-step-graph/agent.ts:agent",
     "summarization-agent": "./src/examples/summarization-agent/agent.ts:agent",
     "parallel-research": "./src/examples/parallel-research/agent.ts:agent",
-    "reasoning-agent": "./src/examples/reasoning-agent/agent.ts:agent"
+    "reasoning-agent": "./src/examples/reasoning-agent/agent.ts:agent",
+    "custom-streaming": "./src/examples/custom-streaming/agent.ts:agent"
   },
   "env": ".env"
 }

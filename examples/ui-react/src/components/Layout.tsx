@@ -12,6 +12,7 @@ import "../examples/multi-step-graph";
 import "../examples/summarization-agent";
 import "../examples/parallel-research";
 import "../examples/reasoning-agent";
+import "../examples/custom-streaming";
 
 function WelcomeScreen() {
   return (
