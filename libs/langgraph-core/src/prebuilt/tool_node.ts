@@ -6,7 +6,11 @@ import {
   isAIMessage,
 } from "@langchain/core/messages";
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
-import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
+import {
+  DynamicTool,
+  DynamicStructuredTool,
+  StructuredToolInterface,
+} from "@langchain/core/tools";
 import type { ToolCall } from "@langchain/core/messages/tool";
 import { RunnableCallable } from "../utils.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -152,7 +156,12 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ToolNode<T = any> extends RunnableCallable<T, T> {
-  tools: (StructuredToolInterface | DynamicTool | RunnableToolLike)[];
+  tools: (
+    | StructuredToolInterface
+    | DynamicStructuredTool
+    | DynamicTool
+    | RunnableToolLike
+  )[];
 
   handleToolErrors = true;
 
