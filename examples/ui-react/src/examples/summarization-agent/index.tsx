@@ -143,7 +143,7 @@ function isSummaryMessage(message: UIMessage): boolean {
  */
 function SummarizationBanner() {
   return (
-    <div className="bg-gradient-to-r from-violet-950/50 via-fuchsia-950/50 to-violet-950/50 border border-violet-500/30 rounded-2xl p-5 animate-fade-in relative overflow-hidden">
+    <div className="bg-linear-to-r from-violet-950/50 via-fuchsia-950/50 to-violet-950/50 border border-violet-500/30 rounded-2xl p-5 animate-fade-in relative overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-0 left-0 w-32 h-32 bg-violet-500 rounded-full filter blur-3xl animate-pulse" />
@@ -186,9 +186,9 @@ function SummaryMessageCard({ message }: { message: UIMessage }) {
   const content = getContent(message);
 
   return (
-    <div className="bg-gradient-to-br from-violet-950/40 to-fuchsia-950/30 border border-violet-500/20 rounded-xl p-5 animate-fade-in">
+    <div className="bg-linear-to-br from-violet-950/40 to-fuchsia-950/30 border border-violet-500/20 rounded-xl p-5 animate-fade-in">
       <div className="flex items-start gap-3 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
           <Layers className="w-4 h-4 text-violet-400" />
         </div>
         <div className="flex-1 min-w-0">
@@ -322,7 +322,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full py-12">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center mb-6">
+      <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-violet-500/20 to-fuchsia-500/20 border border-violet-500/30 flex items-center justify-center mb-6">
         <Layers className="w-8 h-8 text-violet-400" />
       </div>
 
@@ -340,7 +340,7 @@ function EmptyState({
         <button
           onClick={onPrefill}
           disabled={isPrefilling}
-          className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-linear-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isPrefilling ? (
             <>
@@ -505,7 +505,7 @@ export function SummarizationAgent() {
         <div className="max-w-2xl mx-auto px-4 pb-3">
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>
                 {stream.error instanceof Error
                   ? stream.error.message

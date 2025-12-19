@@ -116,7 +116,7 @@ export function Sidebar({
                         >
                           <span
                             className={`
-                            mt-0.5 flex-shrink-0
+                            mt-0.5 shrink-0
                             ${
                               isSelected
                                 ? "text-brand-accent"

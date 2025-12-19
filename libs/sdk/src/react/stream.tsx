@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type { BagTemplate, UseStreamOptions, AgentToBag } from "../ui/types.js";
+import type {
+  BagTemplate,
+  UseStreamOptions,
+  AgentToBag,
+  InferAgentToolCalls,
+} from "../ui/types.js";
+import type { Message } from "../types.messages.js";
 import type {
   UseStream,
   UseStreamCustom,
@@ -15,7 +21,6 @@ function isCustomOptions<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-    ToolCallsType?: unknown;
   } = BagTemplate
 >(
   options:
@@ -27,24 +32,24 @@ function isCustomOptions<
 
 /**
  * Helper type that infers StateType based on whether T is an agent-like type, a CompiledGraph/Pregel instance, or a state type.
- * - If T has `~agentTypes`, returns `Record<string, unknown>` (agent case - state handled separately)
+ * - If T has `~agentTypes`, returns a state with typed messages based on the agent's tools
  * - If T has `~RunOutput` (CompiledGraph/CompiledStateGraph), returns the state type
  * - If T has `~OutputType` (Pregel), returns the output type as state
  * - Otherwise, returns T (direct state type)
  */
 type InferStateType<T> = T extends { "~agentTypes": unknown }
-  ? Record<string, unknown>
+  ? { messages: Message<InferAgentToolCalls<T>>[] }
   : T extends { "~RunOutput": infer S }
-  ? S extends Record<string, unknown>
-    ? S
-    : Record<string, unknown>
-  : T extends { "~OutputType": infer O }
-  ? O extends Record<string, unknown>
-    ? O
-    : Record<string, unknown>
-  : T extends Record<string, unknown>
-  ? T
-  : Record<string, unknown>;
+    ? S extends Record<string, unknown>
+      ? S
+      : Record<string, unknown>
+    : T extends { "~OutputType": infer O }
+      ? O extends Record<string, unknown>
+        ? O
+        : Record<string, unknown>
+      : T extends Record<string, unknown>
+        ? T
+        : Record<string, unknown>;
 
 /**
  * Helper type that infers Bag based on whether T is an agent-like type.
@@ -54,7 +59,7 @@ type InferStateType<T> = T extends { "~agentTypes": unknown }
 type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
   "~agentTypes": unknown;
 }
-  ? AgentToBag<T>
+  ? AgentToBag
   : B;
 
 /**
@@ -102,18 +107,24 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  *
  * ## Usage with StateGraph (for custom LangGraph applications)
  *
- * When building custom graphs with `StateGraph`, you can pass your state type directly
- * and optionally provide tool call types via the second type parameter:
+ * When building custom graphs with `StateGraph`, embed your tool call types directly
+ * in your state's messages property using `Message<MyToolCalls>`:
  *
  * @example
  * ```typescript
- * // Define your graph's state type
+ * import { Message } from "@langchain/langgraph-sdk";
+ *
+ * // Define your tool call types as a discriminated union
+ * type MyToolCalls =
+ *   | { name: "search"; args: { query: string }; id?: string }
+ *   | { name: "calculate"; args: { expression: string }; id?: string };
+ *
+ * // Embed tool call types in your state's messages
  * interface MyGraphState {
- *   messages: Message[];
+ *   messages: Message<MyToolCalls>[];
  *   context?: string;
  * }
  *
- * // Basic usage - just pass your state type
  * function Chat() {
  *   const stream = useStream<MyGraphState>({
  *     assistantId: "my-graph",
@@ -121,25 +132,19 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  *   });
  *
  *   // stream.values is typed as MyGraphState
- *   // stream.messages is typed as Message[]
+ *   // stream.toolCalls[0].call.name is typed as "search" | "calculate"
  * }
  * ```
  *
  * @example
  * ```typescript
- * // Advanced usage - with typed tool calls and interrupts
+ * // With additional type configuration (interrupts, configurable)
  * interface MyGraphState {
- *   messages: Message[];
+ *   messages: Message<MyToolCalls>[];
  * }
- *
- * // Define your tool call types as a discriminated union
- * type MyToolCalls =
- *   | { name: "search"; args: { query: string } }
- *   | { name: "calculate"; args: { expression: string } };
  *
  * function Chat() {
  *   const stream = useStream<MyGraphState, {
- *     ToolCallsType: MyToolCalls;
  *     InterruptType: { question: string };
  *     ConfigurableType: { userId: string };
  *   }>({
@@ -147,7 +152,6 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  *     apiUrl: "http://localhost:2024",
  *   });
  *
- *   // stream.toolCalls[0].call.name is typed as "search" | "calculate"
  *   // stream.interrupt is typed as { question: string } | undefined
  * }
  * ```
@@ -158,7 +162,6 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  *   - `InterruptType`: Type for interrupt values
  *   - `CustomEventType`: Type for custom events
  *   - `UpdateType`: Type for the submit function updates
- *   - `ToolCallsType`: Type for tool calls (discriminated union for type-safe tool handling)
  *
  * @see {@link https://docs.langchain.com/langgraph-platform/use-stream-react | LangGraph React Integration Guide}
  */
@@ -169,7 +172,6 @@ export function useStream<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-    ToolCallsType?: unknown;
   } = BagTemplate
 >(
   options: UseStreamOptions<InferStateType<T>, InferBag<T, Bag>>
@@ -188,7 +190,6 @@ export function useStream<
  *   - `InterruptType`: Type for interrupt values
  *   - `CustomEventType`: Type for custom events
  *   - `UpdateType`: Type for the submit function updates
- *   - `ToolCallsType`: Type for tool calls (discriminated union for type-safe tool handling)
  *
  * @see {@link https://docs.langchain.com/langgraph-platform/use-stream-react | LangGraph React Integration Guide}
  */
@@ -199,7 +200,6 @@ export function useStream<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-    ToolCallsType?: unknown;
   } = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>

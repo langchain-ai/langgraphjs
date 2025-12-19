@@ -12,7 +12,7 @@ export function SelectedResearchDisplay({
 }) {
   return (
     <div className="mt-6 animate-fade-in">
-      <div className="p-1 rounded-2xl bg-gradient-to-r from-brand-accent/20 via-transparent to-brand-dark/20">
+      <div className="p-1 rounded-2xl bg-linear-to-r from-brand-accent/20 via-transparent to-brand-dark/20">
         <div className="p-6 rounded-xl bg-neutral-900 border border-neutral-800">
           <div className="flex items-center gap-3 mb-4">
             <div

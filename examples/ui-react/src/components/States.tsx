@@ -17,7 +17,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-24">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-accent/20 to-brand-dark/30 border border-brand-accent/30 flex items-center justify-center mb-6">
+      <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-brand-accent/20 to-brand-dark/30 border border-brand-accent/30 flex items-center justify-center mb-6">
         <Icon className="w-8 h-8 text-brand-accent" strokeWidth={1.5} />
       </div>
       <h2 className="text-xl font-semibold text-white mb-2">{title}</h2>

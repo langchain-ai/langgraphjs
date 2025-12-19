@@ -51,7 +51,7 @@ export function ResearchCard({
       <div
         className={`
           flex items-center gap-3 px-4 py-3 border-b border-neutral-800/50
-          bg-gradient-to-r ${config.gradient} rounded-t-xl
+          bg-linear-to-r ${config.gradient} rounded-t-xl
         `}
       >
         <div
