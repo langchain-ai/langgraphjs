@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  BagTemplate,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
@@ -26,6 +25,7 @@ import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 import { getUIMessagesWithReasoning } from "./utils.js";
+import type { BagTemplate } from "../types.template.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -102,12 +102,7 @@ export class FetchStreamTransport<
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {

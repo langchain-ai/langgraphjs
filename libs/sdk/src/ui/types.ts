@@ -19,6 +19,7 @@ import type {
   StreamMode,
 } from "../types.stream.js";
 import type { DefaultToolCall, AIMessage } from "../types.messages.js";
+import type { BagTemplate } from "../types.template.js";
 
 // ============================================================================
 // Agent Type Extraction Helpers
@@ -185,17 +186,6 @@ export type ExtractToolCallsFromState<
     : never
   : never;
 
-/**
- * Convert an agent type to the Bag template expected by `useStream`.
- * Maps the agent's type configuration to the useStream Bag parameters.
- */
-export type AgentToBag = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-};
-
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
   /**
    * The ID of the message used.
@@ -223,13 +213,6 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
    * @remarks This metadata only exists temporarily in browser memory during streaming and is not persisted after completion.
    */
   streamMetadata: Record<string, unknown> | undefined;
-};
-
-export type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
 };
 
 export type GetUpdateType<

@@ -57,3 +57,5 @@ export type {
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "./types.stream.js";
+
+export type { BagTemplate } from "./types.template.js";

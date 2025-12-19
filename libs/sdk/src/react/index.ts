@@ -9,7 +9,6 @@ export type {
   GetToolCallsType,
   // Agent type extraction helpers
   AgentTypeConfigLike,
-  AgentToBag,
   IsAgentLike,
   ExtractAgentConfig,
   InferAgentToolCalls,
