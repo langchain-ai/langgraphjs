@@ -2,12 +2,11 @@ import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
 import type {
-  BagTemplate,
   UseStreamOptions,
-  AgentToBag,
   InferAgentToolCalls,
 } from "../ui/types.js";
 import type { Message } from "../types.messages.js";
+import type { BagTemplate } from "../types.template.js";
 import type {
   UseStream,
   UseStreamCustom,
@@ -16,12 +15,7 @@ import type {
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(
   options:
     | UseStreamOptions<StateType, Bag>
@@ -59,7 +53,7 @@ type InferStateType<T> = T extends { "~agentTypes": unknown }
 type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
   "~agentTypes": unknown;
 }
-  ? AgentToBag
+  ? BagTemplate
   : B;
 
 /**
@@ -167,12 +161,7 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  */
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamOptions<InferStateType<T>, InferBag<T, Bag>>
 ): UseStream<InferStateType<T>, InferBag<T, Bag>>;
@@ -195,12 +184,7 @@ export function useStream<
  */
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): UseStreamCustom<InferStateType<T>, InferBag<T, Bag>>;

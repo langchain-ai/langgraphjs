@@ -14,19 +14,13 @@ import type {
 import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
+import type { BagTemplate } from "../types.template.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
  * that all messages should be removed from the state.
  */
 export const REMOVE_ALL_MESSAGES = "__remove_all__";
-
-type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-};
 
 type GetUpdateType<
   Bag extends BagTemplate,

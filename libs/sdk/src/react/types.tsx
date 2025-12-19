@@ -11,7 +11,6 @@ import type {
 import type { StreamMode } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
 import type {
-  BagTemplate,
   GetUpdateType,
   GetConfigurableType,
   GetInterruptType,
@@ -25,10 +24,10 @@ import type {
   CustomSubmitOptions,
   RunCallbackMeta,
 } from "../ui/types.js";
+import type { BagTemplate } from "../types.template.js";
 
 // Re-export types from ui/types.ts
 export type {
-  BagTemplate,
   GetUpdateType,
   GetConfigurableType,
   GetInterruptType,
