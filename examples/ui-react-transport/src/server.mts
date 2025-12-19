@@ -1,14 +1,30 @@
-import { StateGraph, MessagesZodState, START } from "@langchain/langgraph";
+import type { BaseMessage } from "@langchain/core/messages";
+import {
+  Annotation,
+  StateGraph,
+  messagesStateReducer,
+  START,
+} from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { z } from "zod/v4";
 
 const llm = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-const schema = MessagesZodState;
+const StateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+});
 
-const graph = new StateGraph(schema)
+const schema = z.object({
+  messages: z.custom<BaseMessage[]>(),
+});
+
+const graph = new StateGraph(StateAnnotation)
   .addNode("agent", async ({ messages }) => ({
     messages: await llm.invoke(messages),
   }))

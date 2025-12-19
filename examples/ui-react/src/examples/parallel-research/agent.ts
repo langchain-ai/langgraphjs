@@ -1,6 +1,8 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { StateGraph, Annotation, START, END, Send } from "@langchain/langgraph";
+import { StateGraph, START, END, Send } from "@langchain/langgraph";
+import { withLangGraph } from "@langchain/langgraph/zod";
 import { BaseMessage, AIMessage } from "@langchain/core/messages";
+import { z } from "zod";
 
 /**
  * Parallel Research Pipeline - A LangGraph that demonstrates
@@ -29,41 +31,25 @@ const practicalModel = new ChatOpenAI({
   temperature: 0.5,
 });
 
-// Define the state annotation with reducer for messages
-const StateAnnotation = Annotation.Root({
-  messages: Annotation<BaseMessage[]>({
-    reducer: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) => {
-      return Array.isArray(right) ? left.concat(right) : left.concat([right]);
+// Define the state schema with Zod
+const StateAnnotation = z.object({
+  messages: withLangGraph(z.custom<BaseMessage[]>(), {
+    reducer: {
+      fn: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) => {
+        return Array.isArray(right) ? left.concat(right) : left.concat([right]);
+      },
     },
     default: () => [],
   }),
-  topic: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  analyticalResearch: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  creativeResearch: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  practicalResearch: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  selectedResearch: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  currentNode: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
+  topic: z.string().default(""),
+  analyticalResearch: z.string().default(""),
+  creativeResearch: z.string().default(""),
+  practicalResearch: z.string().default(""),
+  selectedResearch: z.string().default(""),
+  currentNode: z.string().default(""),
 });
 
-type State = typeof StateAnnotation.State;
+type State = z.infer<typeof StateAnnotation>;
 
 /**
  * Dispatcher node - Extracts topic and triggers parallel research

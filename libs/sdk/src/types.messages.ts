@@ -176,8 +176,8 @@ type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
  * This is more reliable than trying to infer from the schema directly because
  * DynamicStructuredTool has the input type baked into its _call signature.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferToolInput<T> = T extends {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _call: (arg: infer Args, ...rest: any[]) => any;
 }
   ? Args
@@ -286,11 +286,6 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
    * `undefined` if the tool is still being executed or no result was received.
    */
   result: ToolMessage | undefined;
-
-  /**
-   * The AI message that initiated this tool call.
-   */
-  aiMessage: AIMessage<ToolCall>;
 
   /**
    * Index of this tool call within the AI message's tool_calls array.
