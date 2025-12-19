@@ -56,7 +56,7 @@ export function FileOperationCard({ data }: FileOperationCardProps) {
   return (
     <div className="animate-fade-in">
       <div
-        className={`bg-gradient-to-br ${config.gradient} border ${config.border} rounded-xl p-4 backdrop-blur-sm`}
+        className={`bg-linear-to-br ${config.gradient} border ${config.border} rounded-xl p-4 backdrop-blur-sm`}
       >
         <div className="flex items-center gap-3">
           {/* Icon */}
@@ -77,7 +77,7 @@ export function FileOperationCard({ data }: FileOperationCardProps) {
                 {data.filename}
               </span>
               {!isCompleted && !isError && (
-                <Loader2 className="w-3.5 h-3.5 text-neutral-400 animate-spin flex-shrink-0" />
+                <Loader2 className="w-3.5 h-3.5 text-neutral-400 animate-spin shrink-0" />
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">

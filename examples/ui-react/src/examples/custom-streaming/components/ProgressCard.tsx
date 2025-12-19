@@ -15,7 +15,7 @@ export function ProgressCard({ data, isComplete = false }: ProgressCardProps) {
 
   return (
     <div className="animate-fade-in">
-      <div className="bg-gradient-to-br from-indigo-950/60 to-violet-950/40 border border-indigo-500/30 rounded-xl p-4 backdrop-blur-sm">
+      <div className="bg-linear-to-br from-indigo-950/60 to-violet-950/40 border border-indigo-500/30 rounded-xl p-4 backdrop-blur-sm">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           <div className="w-9 h-9 rounded-lg bg-indigo-500/20 flex items-center justify-center">
@@ -46,12 +46,12 @@ export function ProgressCard({ data, isComplete = false }: ProgressCardProps) {
         {/* Progress bar */}
         <div className="relative h-2 bg-indigo-950/80 rounded-full overflow-hidden mb-3">
           <div
-            className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500 ease-out"
+            className="absolute inset-y-0 left-0 bg-linear-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${progressPercent}%` }}
           />
           {!isComplete && (
             <div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-transparent via-white/20 to-transparent rounded-full animate-shimmer"
+              className="absolute inset-y-0 left-0 bg-linear-to-r from-transparent via-white/20 to-transparent rounded-full animate-shimmer"
               style={{ width: `${progressPercent}%` }}
             />
           )}

@@ -82,7 +82,7 @@ function ReasoningBubble({
       </div>
 
       {/* Bubble */}
-      <div className="bg-gradient-to-br from-amber-950/50 to-orange-950/40 border border-amber-500/20 rounded-2xl px-4 py-3 max-w-[95%]">
+      <div className="bg-linear-to-br from-amber-950/50 to-orange-950/40 border border-amber-500/20 rounded-2xl px-4 py-3 max-w-[95%]">
         <div className="text-sm text-amber-100/90 whitespace-pre-wrap leading-relaxed">
           {message.content}
           {isStreaming && (

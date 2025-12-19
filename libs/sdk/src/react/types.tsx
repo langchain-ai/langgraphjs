@@ -111,7 +111,7 @@ export interface UseStream<
    * Will automatically update with incoming message chunks.
    * Includes all message types including ToolMessage.
    */
-  messages: Message<GetToolCallsType<Bag>>[];
+  messages: Message<GetToolCallsType<StateType>>[];
 
   /**
    * Messages optimized for UI rendering.
@@ -134,7 +134,7 @@ export interface UseStream<
    * })}
    * ```
    */
-  uiMessages: UIMessage<GetToolCallsType<Bag>>[];
+  uiMessages: UIMessage<GetToolCallsType<StateType>>[];
 
   /**
    * Tool calls paired with their results.
@@ -145,12 +145,16 @@ export interface UseStream<
    *
    * @example
    * ```tsx
-   * // With type-safe tool calls
+   * // With type-safe tool calls - embed the type in your messages
    * type MyToolCalls =
    *   | { name: "get_weather"; args: { location: string }; id?: string }
    *   | { name: "search"; args: { query: string }; id?: string };
    *
-   * const stream = useStream<MyState, { ToolCallsType: MyToolCalls }>({ ... });
+   * interface MyState {
+   *   messages: Message<MyToolCalls>[];
+   * }
+   *
+   * const stream = useStream<MyState>({ ... });
    *
    * {stream.toolCalls.map(({ id, call, result, state }) => {
    *   if (call.name === "get_weather") {
@@ -167,7 +171,7 @@ export interface UseStream<
    * })}
    * ```
    */
-  toolCalls: ToolCallWithResult<GetToolCallsType<Bag>>[];
+  toolCalls: ToolCallWithResult<GetToolCallsType<StateType>>[];
 
   /**
    * Get tool calls for a specific AI message.
@@ -194,8 +198,8 @@ export interface UseStream<
    * ```
    */
   getToolCalls: (
-    message: AIMessage<GetToolCallsType<Bag>>
-  ) => ToolCallWithResult<GetToolCallsType<Bag>>[];
+    message: AIMessage<GetToolCallsType<StateType>>
+  ) => ToolCallWithResult<GetToolCallsType<StateType>>[];
 
   /**
    * Get the metadata for a message, such as first thread state the message
@@ -206,7 +210,7 @@ export interface UseStream<
    * @returns The metadata for the message.
    */
   getMessagesMetadata: (
-    message: Message<GetToolCallsType<Bag>>,
+    message: Message<GetToolCallsType<StateType>>,
     index?: number
   ) => MessageMetadata<StateType> | undefined;
 
