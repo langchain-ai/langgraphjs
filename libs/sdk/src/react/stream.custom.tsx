@@ -252,24 +252,24 @@ export function useStreamCustom<
 
     get messages(): Message<ToolCallType>[] {
       if (!stream.values) return [];
-      return getMessages(stream.values) as Message<ToolCallType>[];
+      return getMessages(stream.values);
     },
 
     get uiMessages() {
       if (!stream.values) return [];
-      const msgs = getMessages(stream.values) as Message<ToolCallType>[];
+      const msgs = getMessages(stream.values);
       return getUIMessagesWithReasoning<ToolCallType>(msgs);
     },
 
     get toolCalls() {
       if (!stream.values) return [];
-      const msgs = getMessages(stream.values) as Message<ToolCallType>[];
+      const msgs = getMessages(stream.values);
       return getToolCallsWithResults<ToolCallType>(msgs);
     },
 
     getToolCalls(message) {
       if (!stream.values) return [];
-      const msgs = getMessages(stream.values) as Message<ToolCallType>[];
+      const msgs = getMessages(stream.values);
       const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
       return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
     },
