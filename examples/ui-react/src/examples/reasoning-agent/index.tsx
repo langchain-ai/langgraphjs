@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { AlertCircle, Brain } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 
@@ -21,12 +22,7 @@ export function ReasoningAgent() {
     apiUrl: "http://localhost:2024",
   });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.uiMessages, stream.isLoading]);
+  const { scrollRef, contentRef } = useStickToBottom();
 
   const hasMessages = stream.uiMessages.length > 0;
 
@@ -39,8 +35,8 @@ export function ReasoningAgent() {
 
   return (
     <div className="h-full flex flex-col">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {!hasMessages ? (
             <EmptyState
               icon={Brain}
@@ -62,7 +58,6 @@ export function ReasoningAgent() {
                   <span className="text-sm">Thinking...</span>
                 </div>
               )}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>

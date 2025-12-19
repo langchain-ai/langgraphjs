@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { AlertCircle, Radio } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import type { UIMessage } from "@langchain/langgraph-sdk";
@@ -87,12 +88,7 @@ export function CustomStreaming() {
     onCustomEvent: handleCustomEvent,
   });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.uiMessages, stream.isLoading, customEvents]);
+  const { scrollRef, contentRef } = useStickToBottom();
 
   /**
    * Reset custom events when starting a new conversation
@@ -136,8 +132,8 @@ export function CustomStreaming() {
 
   return (
     <div className="h-full flex flex-col">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {!hasMessages ? (
             <EmptyState
               icon={Radio}
@@ -198,7 +194,6 @@ export function CustomStreaming() {
                   <span className="text-sm">Streaming custom events...</span>
                 </div>
               )}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>

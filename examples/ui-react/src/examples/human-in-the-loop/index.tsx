@@ -1,4 +1,5 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { AlertCircle, UserCheck } from "lucide-react";
 import {
   useStream,
@@ -48,15 +49,8 @@ export function HumanInTheLoop() {
     apiUrl: "http://localhost:2024",
   });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, contentRef } = useStickToBottom();
   const [isProcessing, setIsProcessing] = useState(false);
-
-  /**
-   * Auto-scroll to bottom when new messages arrive
-   */
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.uiMessages, stream.isLoading, stream.interrupt]);
 
   /**
    * Type assertion needed because the generic inference doesn't properly propagate
@@ -173,8 +167,8 @@ export function HumanInTheLoop() {
   const hasMessages = stream.uiMessages.length > 0;
   return (
     <div className="h-full flex flex-col">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {!hasMessages && !stream.interrupt ? (
             <EmptyState
               icon={UserCheck}
@@ -245,7 +239,6 @@ export function HumanInTheLoop() {
                 !stream.interrupt &&
                 !stream.uiMessages.some(hasContent) &&
                 stream.toolCalls.length === 0 && <LoadingIndicator />}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>

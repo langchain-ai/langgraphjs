@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertCircle,
   Sparkles,
@@ -387,14 +388,9 @@ export function SummarizationAgent() {
     apiUrl: "http://localhost:2024",
   });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { scrollRef, contentRef } = useStickToBottom();
   const [isPrefilling, setIsPrefilling] = useState(false);
   const [showSummarizationBanner, setShowSummarizationBanner] = useState(false);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.uiMessages, stream.isLoading]);
 
   // Check for summary messages
   const hasSummary = stream.uiMessages.some((m) => isSummaryMessage(m));
@@ -442,8 +438,8 @@ export function SummarizationAgent() {
 
   return (
     <div className="h-full flex flex-col">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {/* Stats panel */}
           {hasMessages && (
             <ConversationStats
@@ -495,7 +491,6 @@ export function SummarizationAgent() {
 
               {/* Loading indicator */}
               {stream.isLoading && <LoadingIndicator />}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>

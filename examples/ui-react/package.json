@@ -20,6 +20,7 @@
     "lucide-react": "^0.561.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "use-stick-to-bottom": "^1.0.44",
     "zod": "^4.2.1"
   },
   "devDependencies": {
