@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { ArrowUp } from "lucide-react";
 
 interface MessageInputProps {
@@ -12,14 +11,6 @@ export function MessageInput({
   disabled = false,
   placeholder = "Send a message...",
 }: MessageInputProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleTextareaInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
-    const target = e.target as HTMLTextAreaElement;
-    target.style.height = "auto";
-    target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-  };
-
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -30,9 +21,6 @@ export function MessageInput({
     if (!content.trim()) return;
 
     form.reset();
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
     onSubmit(content);
   };
 
@@ -42,13 +30,11 @@ export function MessageInput({
         <form className="relative" onSubmit={handleSubmit}>
           <div className="relative bg-neutral-900 rounded-xl border border-neutral-800 focus-within:border-brand-dark transition-colors">
             <textarea
-              ref={textareaRef}
               name="content"
               placeholder={placeholder}
               rows={1}
               disabled={disabled}
-              className="w-full bg-transparent text-white placeholder-neutral-500 px-4 py-3 pr-12 resize-none focus:outline-none text-sm leading-relaxed max-h-[200px] disabled:opacity-50"
-              onInput={handleTextareaInput}
+              className="w-full bg-transparent text-white placeholder-neutral-500 px-4 py-3 pr-12 resize-none focus:outline-none text-sm leading-relaxed max-h-[200px] disabled:opacity-50 field-sizing-content"
               onKeyDown={(e) => {
                 const target = e.target as HTMLTextAreaElement;
 
