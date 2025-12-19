@@ -81,6 +81,7 @@ type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferToolInput<T> = T extends {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _call: (arg: infer Args, ...rest: any[]) => any;
 }
   ? Args
