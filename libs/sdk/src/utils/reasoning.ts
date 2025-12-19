@@ -1,4 +1,4 @@
-import type { Message, AIMessage, DefaultToolCall } from "../types.messages.js";
+import type { AIMessage } from "../types.messages.js";
 import type {
   OpenAIReasoning,
   ReasoningContent,
@@ -104,45 +104,6 @@ export function getReasoningFromMessage(
   }
 
   return undefined;
-}
-
-/**
- * Extracts all reasoning/thinking content from a list of messages.
- *
- * @param messages - The list of messages to extract reasoning from.
- * @param isLastMessageStreaming - Whether the last message is still being streamed.
- * @returns An array of ReasoningContent objects.
- *
- * @example
- * ```ts
- * const allReasoning = getReasoningFromMessages(messages, stream.isLoading);
- * for (const reasoning of allReasoning) {
- *   console.log(`Reasoning from ${reasoning.source}:`, reasoning.content);
- * }
- * ```
- */
-export function getReasoningFromMessages<ToolCall = DefaultToolCall>(
-  messages: Message<ToolCall>[],
-  isLastMessageStreaming = false
-): ReasoningContent[] {
-  const results: ReasoningContent[] = [];
-
-  for (let i = 0; i < messages.length; i += 1) {
-    const msg = messages[i];
-    if (msg.type === "ai") {
-      const isStreaming = isLastMessageStreaming && i === messages.length - 1;
-      // Cast to AIMessage since we're only passing AI messages
-      const reasoning = getReasoningFromMessage(
-        msg as unknown as AIMessage,
-        isStreaming
-      );
-      if (reasoning) {
-        results.push(reasoning);
-      }
-    }
-  }
-
-  return results;
 }
 
 /**
