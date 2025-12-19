@@ -288,6 +288,11 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
   result: ToolMessage | undefined;
 
   /**
+   * The AI message that initiated this tool call.
+   */
+  aiMessage: AIMessage<ToolCall>;
+
+  /**
    * Index of this tool call within the AI message's tool_calls array.
    */
   index: number;

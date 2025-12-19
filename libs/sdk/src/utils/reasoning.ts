@@ -161,7 +161,7 @@ export function getReasoningMessage(
     type: "reasoning",
     content: reasoning.content,
     id: reasoning.id,
-    parentMessageId: message.id,
+    aiMessage: message,
     source: reasoning.source,
   };
 }

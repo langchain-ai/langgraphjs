@@ -18,7 +18,7 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { DefaultToolCall } from "../types.messages.js";
+import type { DefaultToolCall, AIMessage } from "../types.messages.js";
 
 // ============================================================================
 // Agent Type Extraction Helpers
@@ -133,19 +133,63 @@ export type InferAgentToolCalls<T> =
       : ToolCallFromAgentTool<Tool>
     : DefaultToolCall;
 
+// ============================================================================
+// StateType Tool Call Extraction Helpers
+// ============================================================================
+// These types enable extracting tool call types from the messages property
+// of a StateType, providing a single canonical way to specify tool call types.
+
 /**
- * Convert an agent type to the Bag template expected by `useStream`.
- * Maps the agent's type configuration to the useStream Bag parameters.
+ * Extract the tool call type parameter from an AIMessage in a message union.
+ * Returns `never` if the message is not an AIMessage or uses DefaultToolCall.
+ *
+ * The key distinction: custom tool calls have literal `name` types (e.g., "get_weather"),
+ * while DefaultToolCall has `name: string`. We check if `string extends TC["name"]` -
+ * if true, it's DefaultToolCall; if false, it's a custom type with literal names.
+ */
+type ExtractToolCallFromMessageUnion<M> = M extends AIMessage<infer TC>
+  ? TC extends { name: infer N }
+    ? // If string extends N, then N is just `string` (DefaultToolCall)
+      // If not, N is a literal type like "get_weather" (custom type)
+      string extends N
+      ? never
+      : TC
+    : never
+  : never;
+
+/**
+ * Extract the tool call type from a StateType's messages property.
+ * This is the primary way to specify tool call types when using useStream.
  *
  * @example
  * ```ts
- * const agent = createAgent({ tools: [getWeather, search], ... });
- * type Bag = AgentToBag<typeof agent>;
- * // Use with useStream: useStream<AgentState, Bag>({ ... })
+ * // Define state with typed messages
+ * type MyToolCalls =
+ *   | { name: "get_weather"; args: { location: string }; id?: string }
+ *   | { name: "search"; args: { query: string }; id?: string };
+ *
+ * interface MyState {
+ *   messages: Message<MyToolCalls>[];
+ * }
+ *
+ * // ExtractToolCallsFromState<MyState> = MyToolCalls
  * ```
  */
-export type AgentToBag<T> = {
-  ToolCallsType: InferAgentToolCalls<T>;
+export type ExtractToolCallsFromState<
+  StateType extends Record<string, unknown>
+> = StateType extends { messages: infer Messages }
+  ? Messages extends readonly (infer M)[]
+    ? ExtractToolCallFromMessageUnion<M>
+    : Messages extends (infer M)[]
+      ? ExtractToolCallFromMessageUnion<M>
+      : never
+  : never;
+
+/**
+ * Convert an agent type to the Bag template expected by `useStream`.
+ * Maps the agent's type configuration to the useStream Bag parameters.
+ */
+export type AgentToBag = {
   ConfigurableType?: Record<string, unknown>;
   InterruptType?: unknown;
   CustomEventType?: unknown;
@@ -186,19 +230,6 @@ export type BagTemplate = {
   InterruptType?: unknown;
   CustomEventType?: unknown;
   UpdateType?: unknown;
-  /**
-   * Type for tool calls. Provide a discriminated union for type-safe tool handling.
-   *
-   * @example
-   * ```ts
-   * type MyToolCalls =
-   *   | { name: "get_weather"; args: { location: string }; id?: string }
-   *   | { name: "search"; args: { query: string }; id?: string };
-   *
-   * useStream<MyState, { ToolCallsType: MyToolCalls }>({ ... });
-   * ```
-   */
-  ToolCallsType?: unknown;
 };
 
 export type GetUpdateType<
@@ -226,11 +257,31 @@ export type GetCustomEventType<Bag extends BagTemplate> = Bag extends {
   ? Bag["CustomEventType"]
   : unknown;
 
-export type GetToolCallsType<Bag extends BagTemplate> = Bag extends {
-  ToolCallsType: unknown;
-}
-  ? Bag["ToolCallsType"]
-  : DefaultToolCall;
+/**
+ * Extract the tool call type from a StateType's messages property.
+ * This is the canonical way to get typed tool calls in useStream.
+ *
+ * Tool call types are now extracted from the messages property of StateType,
+ * rather than being specified separately in the Bag.
+ *
+ * @example
+ * ```ts
+ * // Define state with typed messages
+ * type MyToolCalls =
+ *   | { name: "get_weather"; args: { location: string }; id?: string }
+ *   | { name: "search"; args: { query: string }; id?: string };
+ *
+ * interface MyState {
+ *   messages: Message<MyToolCalls>[];
+ * }
+ *
+ * // GetToolCallsType<MyState> = MyToolCalls
+ * ```
+ */
+export type GetToolCallsType<StateType extends Record<string, unknown>> =
+  ExtractToolCallsFromState<StateType> extends never
+    ? DefaultToolCall
+    : ExtractToolCallsFromState<StateType>;
 
 export interface RunCallbackMeta {
   run_id: string;

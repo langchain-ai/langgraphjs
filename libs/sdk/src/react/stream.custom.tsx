@@ -107,7 +107,6 @@ export function useStreamCustom<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-    ToolCallsType?: unknown;
   } = BagTemplate
 >(
   options: UseStreamCustomOptions<StateType, Bag>
@@ -116,7 +115,7 @@ export function useStreamCustom<
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
-  type ToolCallType = GetToolCallsType<Bag>;
+  type ToolCallType = GetToolCallsType<StateType>;
 
   const [messageManager] = useState(() => new MessageTupleManager());
   const [stream] = useState(

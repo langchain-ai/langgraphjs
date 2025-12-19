@@ -1,3 +1,5 @@
+import type { AIMessage, DefaultToolCall } from "./types.messages.js";
+
 /**
  * OpenAI reasoning summary item structure.
  * Used when streaming reasoning tokens from OpenAI models.
@@ -62,7 +64,7 @@ export type ReasoningContent = {
  * This synthetic message type is inserted into uiMessages to display
  * reasoning content as a separate bubble.
  */
-export type ReasoningMessage = {
+export type ReasoningMessage<ToolCall = DefaultToolCall> = {
   type: "reasoning";
   /**
    * The name of the agent that is reasoning.
@@ -77,9 +79,9 @@ export type ReasoningMessage = {
    */
   id: string;
   /**
-   * The ID of the AI message this reasoning belongs to.
+   * The AI message that initiated this tool call.
    */
-  parentMessageId?: string;
+  aiMessage: AIMessage<ToolCall>;
   /**
    * The source format of the reasoning.
    * - `openai`: From additional_kwargs.reasoning.summary

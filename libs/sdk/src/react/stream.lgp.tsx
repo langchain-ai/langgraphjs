@@ -161,14 +161,13 @@ export function useStreamLGP<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-    ToolCallsType?: unknown;
   } = BagTemplate
 >(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
-  type ToolCallType = GetToolCallsType<Bag>;
+  type ToolCallType = GetToolCallsType<StateType>;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
