@@ -181,8 +181,8 @@ export type ExtractToolCallsFromState<
   ? Messages extends readonly (infer M)[]
     ? ExtractToolCallFromMessageUnion<M>
     : Messages extends (infer M)[]
-      ? ExtractToolCallFromMessageUnion<M>
-      : never
+    ? ExtractToolCallFromMessageUnion<M>
+    : never
   : never;
 
 /**
