@@ -16,7 +16,6 @@ import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  BagTemplate,
   UseStreamOptions,
   GetUpdateType,
   GetCustomEventType,
@@ -36,6 +35,7 @@ import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
 import { getUIMessagesWithReasoning } from "./utils.js";
+import type { BagTemplate } from "../types.template.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -156,12 +156,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
