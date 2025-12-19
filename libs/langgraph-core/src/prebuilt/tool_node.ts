@@ -8,7 +8,6 @@ import {
 import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
 import {
   DynamicTool,
-  DynamicStructuredTool,
   StructuredToolInterface,
 } from "@langchain/core/tools";
 import type { ToolCall } from "@langchain/core/messages/tool";

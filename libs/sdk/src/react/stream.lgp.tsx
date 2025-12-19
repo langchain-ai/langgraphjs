@@ -675,7 +675,7 @@ export function useStreamLGP<
 
     get messages(): Message<ToolCallType>[] {
       trackStreamMode("messages-tuple", "values");
-      return getMessages(values) as Message<ToolCallType>[];
+      return getMessages(values);
     },
 
     get uiMessages() {
