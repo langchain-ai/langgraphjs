@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type {
-  UseStreamOptions,
-  InferAgentToolCalls,
-} from "../ui/types.js";
+import type { UseStreamOptions, InferAgentToolCalls } from "../ui/types.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
