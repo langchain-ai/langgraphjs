@@ -210,7 +210,9 @@ describe("AsyncCaller", () => {
       const order: number[] = [];
       const callable = vi.fn(async (id: number) => {
         order.push(id);
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10);
+        });
         return id;
       });
 
