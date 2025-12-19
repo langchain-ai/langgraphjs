@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertCircle,
   Search,
@@ -241,14 +242,7 @@ export function MultiStepGraph() {
     apiUrl: "http://localhost:2024",
   });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  /**
-   * Auto-scroll to bottom when new messages arrive
-   */
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.uiMessages, stream.isLoading]);
+  const { scrollRef, contentRef } = useStickToBottom();
 
   const hasMessages = stream.uiMessages.length > 0;
 
@@ -271,8 +265,8 @@ export function MultiStepGraph() {
 
   return (
     <div className="h-full flex flex-col">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {/* Fixed pipeline visualization on the right side */}
           {hasMessages && <PipelineVisualization currentNode={currentNode} />}
 
@@ -343,8 +337,6 @@ export function MultiStepGraph() {
                     )}
                   </div>
                 )}
-
-                <div ref={messagesEndRef} />
               </div>
             </>
           )}

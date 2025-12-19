@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { AlertCircle, Wrench } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import type { UIMessage } from "@langchain/langgraph-sdk";
@@ -39,12 +40,7 @@ export function ToolCallingAgent() {
     apiUrl: "http://localhost:2024",
   });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.uiMessages, stream.isLoading]);
+  const { scrollRef, contentRef } = useStickToBottom();
 
   const hasMessages = stream.uiMessages.length > 0;
 
@@ -57,8 +53,8 @@ export function ToolCallingAgent() {
 
   return (
     <div className="h-full flex flex-col">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {!hasMessages ? (
             <EmptyState
               icon={Wrench}
@@ -102,7 +98,6 @@ export function ToolCallingAgent() {
                   (m) => m.type === "ai" && hasContent(m)
                 ) &&
                 stream.toolCalls.length === 0 && <LoadingIndicator />}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
