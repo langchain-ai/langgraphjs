@@ -11,7 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { findLast, unique } from "../ui/utils.js";
+import { filterStream, findLast, unique } from "../ui/utils.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
@@ -34,6 +34,7 @@ import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
+import { StreamEvent } from "../types.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -522,7 +523,14 @@ export function useStreamLGP<
   const joinStream = async (
     runId: string,
     lastEventId?: string,
-    joinOptions?: { streamMode?: StreamMode | StreamMode[] }
+    joinOptions?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    }
   ) => {
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
@@ -536,13 +544,17 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
-        return client.runs.joinStream(threadId, runId, {
+        const stream = client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
+
+        return joinOptions?.filter != null
+          ? filterStream(stream, joinOptions.filter)
+          : stream;
       },
       {
         getMessages,
