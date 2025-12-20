@@ -155,16 +155,31 @@ export class AsyncCaller {
             }),
           {
             async onFailedAttempt({ error }) {
+              const errorMessage = error.message ?? "";
               if (
-                error.message.startsWith("Cancel") ||
-                error.message.startsWith("TimeoutError") ||
-                error.message.startsWith("AbortError")
+                errorMessage.startsWith("Cancel") ||
+                errorMessage.startsWith("TimeoutError") ||
+                errorMessage.startsWith("AbortError")
               ) {
                 throw error;
               }
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               if ((error as any)?.code === "ECONNABORTED") {
                 throw error;
+              }
+
+              // Check for connection refused errors (server not running)
+              if (
+                errorMessage.includes("ECONNREFUSED") ||
+                errorMessage.includes("fetch failed") ||
+                errorMessage.includes("Failed to fetch") ||
+                errorMessage.includes("NetworkError")
+              ) {
+                const connectionError = new Error(
+                  `Unable to connect to LangGraph server. Please ensure the server is running and accessible. Original error: ${errorMessage}`
+                );
+                connectionError.name = "ConnectionError";
+                throw connectionError;
               }
 
               // eslint-disable-next-line no-instanceof/no-instanceof
