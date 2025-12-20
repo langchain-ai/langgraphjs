@@ -25,3 +25,4 @@ dist-ssr
 
 # LangGraph API
 .langgraph_api
+*.tsbuildinfo

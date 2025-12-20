@@ -14,13 +14,13 @@ import type {
 import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
+import type { BagTemplate } from "../types.template.js";
 
-type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-};
+/**
+ * Special ID used by LangGraph's messagesStateReducer to signal
+ * that all messages should be removed from the state.
+ */
+export const REMOVE_ALL_MESSAGES = "__remove_all__";
 
 type GetUpdateType<
   Bag extends BagTemplate,
@@ -326,13 +326,19 @@ export class StreamManager<
             const values = { ...options.initialValues, ...streamValues };
 
             // Assumption: we're concatenating the message
-            const messages = options.getMessages(values).slice();
+            let messages = options.getMessages(values).slice();
             const { chunk, index } =
               this.messages.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
             if (chunk.getType() === "remove") {
-              messages.splice(index, 1);
+              // Check for special REMOVE_ALL_MESSAGES sentinel
+              if (chunk.id === REMOVE_ALL_MESSAGES) {
+                // Clear all messages when __remove_all__ is received
+                messages = [];
+              } else {
+                messages.splice(index, 1);
+              }
             } else {
               messages[index] = toMessageDict(chunk);
             }

@@ -10236,9 +10236,9 @@ graph TD;
         })
         .addNode("subgraph", subgraph)
         .addNode("two", (state) => {
-          if (state.items.length < 2) {
+          if (state.items!.length < 2) {
             throw new Error(
-              `Expected at least 2 items, got ${state.items.length}`
+              `Expected at least 2 items, got ${state.items!.length}`
             );
           }
           return { foo: "done", items: ["two"] };

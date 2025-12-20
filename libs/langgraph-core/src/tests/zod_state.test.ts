@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { z } from "zod";
+import { z } from "zod/v3";
 import * as z4 from "zod/v4";
 import { StateGraph } from "../graph/state.js";
 import { END, START } from "../constants.js";

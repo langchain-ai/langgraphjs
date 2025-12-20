@@ -20,4 +20,4 @@ export {
   REMOVE_ALL_MESSAGES,
   type Messages,
 } from "./message.js";
-export { CommandInstance, CommandParams } from "../constants.js";
+export { CommandInstance, type CommandParams } from "../constants.js";

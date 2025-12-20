@@ -6,19 +6,12 @@ import * as JsxRuntime from "react/jsx-runtime";
 import type { UIMessage } from "./types.js";
 import { useStream } from "../react/index.js";
 import type { UseStream } from "../react/types.js";
+import type { BagTemplate } from "../types.template.js";
 
 const UseStreamContext = React.createContext<{
   stream: ReturnType<typeof useStream>;
   meta: unknown;
 }>(null!);
-
-type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-  MetaType?: unknown;
-};
 
 type GetMetaType<Bag extends BagTemplate> = Bag extends { MetaType: unknown }
   ? Bag["MetaType"]
@@ -33,13 +26,7 @@ interface UseStreamContext<
 
 export function useStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-    MetaType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(): UseStreamContext<StateType, Bag> {
   const ctx = React.useContext(UseStreamContext);
   if (!ctx) {
