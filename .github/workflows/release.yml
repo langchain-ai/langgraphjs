@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: ["main", "v1"]
+    branches: ["main"]
   workflow_dispatch: # Allows triggering the workflow manually in GitHub UI
 
 concurrency:
@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  id-token: write
   contents: write
   pull-requests: write
 
@@ -41,4 +42,3 @@ jobs:
           version: yarn changeset version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
