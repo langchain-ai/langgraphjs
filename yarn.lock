@@ -1158,7 +1158,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@examples/ui-react@workspace:examples/ui-react"
   dependencies:
-    "@langchain/core": "npm:1.2.0-dev-1765937705265"
+    "@langchain/core": "npm:1.1.8-dev-1766775128110"
     "@langchain/langgraph": "workspace:*"
     "@langchain/langgraph-cli": "workspace:*"
     "@langchain/langgraph-sdk": "workspace:*"
@@ -1167,7 +1167,7 @@ __metadata:
     "@types/react": "npm:^19.0.8"
     "@types/react-dom": "npm:^19.0.3"
     "@vitejs/plugin-react": "npm:^4.4.1"
-    langchain: "npm:2.0.0-dev-1765937705265"
+    langchain: "npm:1.2.3-dev-1766775128110"
     lucide-react: "npm:^0.561.0"
     prettier: "npm:^2.8.3"
     react: "npm:^19.0.0"
@@ -1537,9 +1537,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@langchain/core@npm:1.2.0-dev-1765937705265":
-  version: 1.2.0-dev-1765937705265
-  resolution: "@langchain/core@npm:1.2.0-dev-1765937705265"
+"@langchain/core@npm:1.1.8-dev-1766775128110":
+  version: 1.1.8-dev-1766775128110
+  resolution: "@langchain/core@npm:1.1.8-dev-1766775128110"
   dependencies:
     "@cfworker/json-schema": "npm:^4.0.2"
     ansi-styles: "npm:^5.0.0"
@@ -1551,7 +1551,7 @@ __metadata:
     p-queue: "npm:^6.6.2"
     uuid: "npm:^10.0.0"
     zod: "npm:^3.25.76 || ^4"
-  checksum: 10/e5ff11e6b6455ae7745ab9db4bbcbd6514a71de40573d10be8b0fbfb917434603ee13a1746adbbb9be85175b79511ca6e34393a71b7127d288da49607cbb2c0e
+  checksum: 10/d2c021e21315637385d5b62fe936c79ab1c68138e05c6f5384a8c844af321cbbbe7611a4016f61e733d97ca93ee33b30100d30332683b1a48cdec3486c1c2913
   languageName: node
   linkType: hard
 
@@ -9118,9 +9118,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langchain@npm:2.0.0-dev-1765937705265":
-  version: 2.0.0-dev-1765937705265
-  resolution: "langchain@npm:2.0.0-dev-1765937705265"
+"langchain@npm:1.2.3-dev-1766775128110":
+  version: 1.2.3-dev-1766775128110
+  resolution: "langchain@npm:1.2.3-dev-1766775128110"
   dependencies:
     "@langchain/langgraph": "npm:^1.0.0"
     "@langchain/langgraph-checkpoint": "npm:^1.0.0"
@@ -9128,8 +9128,8 @@ __metadata:
     uuid: "npm:^10.0.0"
     zod: "npm:^3.25.76 || ^4"
   peerDependencies:
-    "@langchain/core": 1.2.0-dev-1765937705265
-  checksum: 10/9d3d202d0ae528a39f2522d22a597c5d151fc9130a61256dbdd71ce1b32de381ac3cee37e02574ffac14f6d8526ae476c2acf7d30c9c05797fb7b32eb4b04768
+    "@langchain/core": 1.1.8-dev-1766775128110
+  checksum: 10/88f46c27b16bac3a7eeba3e5a46cf15e1839c35d5681241580e00e27edddb34f2cdad7f1ed0d0e12145a455e3433701ea3316b9429bb9ed7ca9926fcadb6fdf3
   languageName: node
   linkType: hard
 

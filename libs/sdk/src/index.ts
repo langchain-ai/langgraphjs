@@ -59,3 +59,18 @@ export type {
 } from "./types.stream.js";
 
 export type { BagTemplate } from "./types.template.js";
+
+// Browser tools
+export type {
+  BrowserTool,
+  AnyBrowserTool,
+  BrowserToolEvent,
+  BrowserToolInterrupt,
+  OnBrowserToolCallback,
+} from "./browser-tools.js";
+export {
+  isBrowserToolInterrupt,
+  findBrowserTool,
+  executeBrowserTool,
+  handleBrowserToolInterrupt,
+} from "./browser-tools.js";

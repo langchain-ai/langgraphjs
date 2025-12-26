@@ -2,7 +2,14 @@
 
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   GetUpdateType,
@@ -26,6 +33,10 @@ import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 import { getUIMessagesWithReasoning } from "./utils.js";
 import type { BagTemplate } from "../types.template.js";
+import {
+  isBrowserToolInterrupt,
+  handleBrowserToolInterrupt,
+} from "../browser-tools.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -137,85 +148,157 @@ export function useStreamCustom<
     }
   }, [threadId, stream]);
 
-  const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey])
-      ? (value[messagesKey] as Message[])
-      : [];
-  };
+  const getMessages = useCallback(
+    (value: StateType): Message[] => {
+      const messagesKey = options.messagesKey ?? "messages";
+      return Array.isArray(value[messagesKey])
+        ? (value[messagesKey] as Message[])
+        : [];
+    },
+    [options.messagesKey]
+  );
 
-  const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return { ...current, [messagesKey]: messages };
-  };
+  const setMessages = useCallback(
+    (current: StateType, messages: Message[]): StateType => {
+      const messagesKey = options.messagesKey ?? "messages";
+      return { ...current, [messagesKey]: messages };
+    },
+    [options.messagesKey]
+  );
 
-  const historyValues = options.initialValues ?? ({} as StateType);
+  const historyValues = useMemo(() => {
+    return options.initialValues ?? ({} as StateType);
+  }, [options.initialValues]);
 
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
-  const submit = async (
-    values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
-  ) => {
-    let callbackMeta: RunCallbackMeta | undefined;
-    let usableThreadId = threadId;
+  const submit = useCallback(
+    async (
+      values: UpdateType | null | undefined,
+      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    ) => {
+      let callbackMeta: RunCallbackMeta | undefined;
+      let usableThreadId = threadId;
 
-    stream.setStreamValues(() => {
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...historyValues,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(historyValues)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...historyValues };
-    });
-
-    await stream.start(
-      async (signal: AbortSignal) => {
-        if (!usableThreadId) {
-          // generate random thread id
-          usableThreadId = crypto.randomUUID();
-          threadIdRef.current = usableThreadId;
-          onThreadId(usableThreadId);
+      stream.setStreamValues(() => {
+        if (submitOptions?.optimisticValues != null) {
+          return {
+            ...historyValues,
+            ...(typeof submitOptions.optimisticValues === "function"
+              ? submitOptions.optimisticValues(historyValues)
+              : submitOptions.optimisticValues),
+          };
         }
 
-        if (!usableThreadId) {
-          throw new Error("Failed to obtain valid thread ID.");
-        }
+        return { ...historyValues };
+      });
 
-        return options.transport.stream({
-          input: values,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
-          signal,
-          config: {
-            ...submitOptions?.config,
-            configurable: {
-              thread_id: usableThreadId,
-              ...submitOptions?.config?.configurable,
-            } as unknown as GetConfigurableType<Bag>,
-          },
-        }) as Promise<
-          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
-        >;
-      },
-      {
-        getMessages,
-        setMessages,
+      await stream.start(
+        async (signal: AbortSignal) => {
+          if (!usableThreadId) {
+            // generate random thread id
+            usableThreadId = crypto.randomUUID();
+            threadIdRef.current = usableThreadId;
+            onThreadId(usableThreadId);
+          }
 
-        initialValues: {} as StateType,
-        callbacks: options,
+          if (!usableThreadId) {
+            throw new Error("Failed to obtain valid thread ID.");
+          }
 
-        onSuccess: () => undefined,
-        onError(error) {
-          options.onError?.(error, callbackMeta);
+          return options.transport.stream({
+            input: values,
+            context: submitOptions?.context,
+            command: submitOptions?.command,
+            signal,
+            config: {
+              ...submitOptions?.config,
+              configurable: {
+                thread_id: usableThreadId,
+                ...submitOptions?.config?.configurable,
+              } as unknown as GetConfigurableType<Bag>,
+            },
+          }) as Promise<
+            AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
+          >;
         },
-      }
-    );
-  };
+        {
+          getMessages,
+          setMessages,
+
+          initialValues: {} as StateType,
+          callbacks: options,
+
+          onSuccess: () => undefined,
+          onError(error) {
+            options.onError?.(error, callbackMeta);
+          },
+        }
+      );
+    },
+    [
+      threadId,
+      stream,
+      getMessages,
+      setMessages,
+      options,
+      historyValues,
+      onThreadId,
+    ]
+  );
+
+  // Browser tools handling
+  const browserToolsRef = useRef(options.browserTools);
+  browserToolsRef.current = options.browserTools;
+
+  const onBrowserToolRef = useRef(options.onBrowserTool);
+  onBrowserToolRef.current = options.onBrowserTool;
+
+  // Track which browser tool interrupts have been handled to prevent duplicates
+  const handledBrowserToolsRef = useRef<Set<string>>(new Set());
+
+  // Reset handled browser tools when thread changes
+  useEffect(() => {
+    handledBrowserToolsRef.current.clear();
+  }, [threadId]);
+
+  // Handle browser tool interrupts
+  useEffect(() => {
+    const browserTools = browserToolsRef.current;
+    if (!browserTools?.length) return;
+    if (!stream.values) return;
+
+    // Check for browser tool interrupt in values
+    const interrupts = stream.values.__interrupt__;
+    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
+
+    // Find browser tool interrupts that haven't been handled
+    for (const interrupt of interrupts) {
+      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+
+      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+      if (handledBrowserToolsRef.current.has(interruptId)) continue;
+
+      // Mark as handled before async operation
+      handledBrowserToolsRef.current.add(interruptId);
+
+      // Handle the browser tool interrupt
+      void handleBrowserToolInterrupt(
+        interrupt.value,
+        browserTools,
+        onBrowserToolRef.current
+      ).then((result) => {
+        // Resume with the tool result
+        void submit(null, {
+          command: {
+            resume: result.toolCallId
+              ? { [result.toolCallId]: result.value }
+              : result.value,
+          },
+        });
+      });
+    }
+  }, [stream.values, submit]);
 
   return {
     get values() {

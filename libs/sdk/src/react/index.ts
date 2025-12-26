@@ -21,3 +21,18 @@ export type {
   ToolCallsFromTools,
   ReasoningMessage,
 } from "../types.messages.js";
+
+// Browser tools
+export type {
+  BrowserTool,
+  AnyBrowserTool,
+  BrowserToolEvent,
+  BrowserToolInterrupt,
+  OnBrowserToolCallback,
+} from "../browser-tools.js";
+export {
+  isBrowserToolInterrupt,
+  findBrowserTool,
+  executeBrowserTool,
+  handleBrowserToolInterrupt,
+} from "../browser-tools.js";
