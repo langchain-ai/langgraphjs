@@ -1,5 +1,5 @@
-import * as fs from "node:fs/promises";
-import * as url from "node:url";
+import fs from "node:fs/promises";
+import url from "node:url";
 
 async function getVersion() {
   try {
