@@ -1,7 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { intro, outro, spinner, confirm, isCancel, cancel } from "@clack/prompts";
+import {
+  intro,
+  outro,
+  spinner,
+  confirm,
+  isCancel,
+  cancel,
+} from "@clack/prompts";
 import color from "picocolors";
 import dedent from "dedent";
 
@@ -40,7 +47,10 @@ export const CJS_EXPORT_PATTERN = /^(?:module\.)?exports\./;
  * Scan content string for LangGraph agent definitions
  * Exported for testing purposes
  */
-export function scanContentForAgents(content: string, filePath: string = "test.ts"): AgentInfo[] {
+export function scanContentForAgents(
+  content: string,
+  filePath: string = "test.ts"
+): AgentInfo[] {
   const agents: AgentInfo[] = [];
   const lines = content.split("\n");
 
@@ -65,7 +75,8 @@ export function scanContentForAgents(content: string, filePath: string = "test.t
       }
 
       // Check if it's exported (ESM or CJS)
-      const isExported = ESM_EXPORT_PATTERN.test(match[0]) || CJS_EXPORT_PATTERN.test(match[0]);
+      const isExported =
+        ESM_EXPORT_PATTERN.test(match[0]) || CJS_EXPORT_PATTERN.test(match[0]);
 
       // Avoid duplicates
       if (!agents.find((a) => a.name === name && a.lineNumber === lineNumber)) {
@@ -142,7 +153,9 @@ export async function generateConfig(targetPath?: string) {
   try {
     await fs.access(configPath);
     const overwrite = await confirm({
-      message: `${color.yellow("langgraph.json")} already exists. Do you want to overwrite it?`,
+      message: `${color.yellow(
+        "langgraph.json"
+      )} already exists. Do you want to overwrite it?`,
       initialValue: false,
     });
 
@@ -218,13 +231,17 @@ export async function generateConfig(targetPath?: string) {
       const relativePath = path.relative(cwd, agent.filePath);
       console.log(
         color.dim(
-          `   • ${color.white(agent.name)} at ${relativePath}:${agent.lineNumber}`
+          `   • ${color.white(agent.name)} at ${relativePath}:${
+            agent.lineNumber
+          }`
         )
       );
     }
     console.log(
       color.dim(
-        `   Add ${color.cyan("export")} keyword to include them in the configuration.`
+        `   Add ${color.cyan(
+          "export"
+        )} keyword to include them in the configuration.`
       )
     );
     console.log();
@@ -266,7 +283,9 @@ export async function generateConfig(targetPath?: string) {
         key = dirName;
       } else {
         // Use filename without extension as fallback
-        const fileName = path.basename(agent.filePath).replace(/\.(ts|tsx|mts|js|jsx|mjs)$/, "");
+        const fileName = path
+          .basename(agent.filePath)
+          .replace(/\.(ts|tsx|mts|js|jsx|mjs)$/, "");
         key = `${fileName}-${agent.name}`;
 
         // If still a collision, add a numeric suffix
@@ -323,8 +342,9 @@ export async function generateConfig(targetPath?: string) {
       
       ${color.cyan("Next steps:")}
       - Review the generated ${color.yellow("langgraph.json")}
-      - Run ${color.cyan("npx @langchain/langgraph-cli@latest dev")} to start the development server
+      - Run ${color.cyan(
+        "npx @langchain/langgraph-cli@latest dev"
+      )} to start the development server
     `
   );
 }
-

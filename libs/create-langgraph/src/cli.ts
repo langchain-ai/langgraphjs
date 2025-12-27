@@ -29,7 +29,10 @@ program
   .description(
     "Generate a langgraph.json configuration file by scanning for agents"
   )
-  .argument("[path]", "Path to the project to scan (defaults to current directory)")
+  .argument(
+    "[path]",
+    "Path to the project to scan (defaults to current directory)"
+  )
   .hook("preAction", withAnalytics())
   .action((path) => {
     generateConfig(path).catch((error) => {

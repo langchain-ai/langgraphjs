@@ -11,5 +11,5 @@
     "noUnusedLocals": true,
     "declaration": true
   },
-  "exclude": ["scripts/*", "dist/*"]
+  "exclude": ["scripts/*", "dist/*", "src/tests/*"]
 }

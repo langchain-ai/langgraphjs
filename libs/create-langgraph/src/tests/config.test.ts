@@ -438,8 +438,12 @@ module.exports.weatherAgent = createAgent({
       `;
       const agents = scanContentForAgents(content);
       // Should find the unexported 'agent' and the exported 'weatherAgent'
-      expect(agents.find((a) => a.name === "agent" && !a.isExported)).toBeDefined();
-      expect(agents.find((a) => a.name === "weatherAgent" && a.isExported)).toBeDefined();
+      expect(
+        agents.find((a) => a.name === "agent" && !a.isExported)
+      ).toBeDefined();
+      expect(
+        agents.find((a) => a.name === "weatherAgent" && a.isExported)
+      ).toBeDefined();
     });
   });
 
