@@ -512,10 +512,13 @@ export class StateGraph<
       }
       if (this.channels[key] !== undefined) {
         if (this.channels[key] !== channel) {
-          if (channel.lc_graph_name !== "LastValue") {
-            throw new Error(
-              `Channel "${key}" already exists with a different type.`
-            );
+          // Use equals method for semantic comparison (e.g., same reducer function)
+          if (!this.channels[key].equals(channel)) {
+            if (channel.lc_graph_name !== "LastValue") {
+              throw new Error(
+                `Channel "${key}" already exists with a different type.`
+              );
+            }
           }
         }
       } else {
