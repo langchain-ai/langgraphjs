@@ -24,7 +24,6 @@ import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
-import { getUIMessagesWithReasoning } from "./utils.js";
 import type { BagTemplate } from "../types.template.js";
 
 interface FetchStreamTransportOptions {
@@ -248,12 +247,6 @@ export function useStreamCustom<
     get messages(): Message<ToolCallType>[] {
       if (!stream.values) return [];
       return getMessages(stream.values);
-    },
-
-    get uiMessages() {
-      if (!stream.values) return [];
-      const msgs = getMessages(stream.values);
-      return getUIMessagesWithReasoning<ToolCallType>(msgs);
     },
 
     get toolCalls() {

@@ -5,7 +5,7 @@ import {
   useStream,
   type ToolCallWithResult,
 } from "@langchain/langgraph-sdk/react";
-import type { UIMessage } from "@langchain/langgraph-sdk";
+import type { Message } from "@langchain/langgraph-sdk";
 import type { HITLRequest, HITLResponse } from "langchain";
 
 import { registerExample } from "../registry";
@@ -31,7 +31,7 @@ const HITL_SUGGESTIONS = [
 /**
  * Helper to check if a message has actual text content.
  */
-function hasContent(message: UIMessage): boolean {
+function hasContent(message: Message): boolean {
   if (typeof message.content === "string") {
     return message.content.trim().length > 0;
   }
@@ -164,7 +164,7 @@ export function HumanInTheLoop() {
     }
   };
 
-  const hasMessages = stream.uiMessages.length > 0;
+  const hasMessages = stream.messages.length > 0;
   return (
     <div className="h-full flex flex-col">
       <main ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -179,7 +179,7 @@ export function HumanInTheLoop() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {stream.uiMessages.map((message, idx) => {
+              {stream.messages.map((message, idx) => {
                 /**
                  * For AI messages, check if they have tool calls
                  */
@@ -237,7 +237,7 @@ export function HumanInTheLoop() {
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
                 !stream.interrupt &&
-                !stream.uiMessages.some(hasContent) &&
+                !stream.messages.some(hasContent) &&
                 stream.toolCalls.length === 0 && <LoadingIndicator />}
             </div>
           )}

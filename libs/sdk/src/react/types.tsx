@@ -4,7 +4,6 @@ import type { Client } from "../client.js";
 import type { ThreadState, Interrupt } from "../schema.js";
 import type {
   Message,
-  UIMessage,
   AIMessage,
   ToolCallWithResult,
 } from "../types.messages.js";
@@ -111,29 +110,6 @@ export interface UseStream<
    * Includes all message types including ToolMessage.
    */
   messages: Message<GetToolCallsType<StateType>>[];
-
-  /**
-   * Messages optimized for UI rendering.
-   * Excludes ToolMessage (tool results are rendered via `toolCalls`).
-   * Includes ReasoningMessage for rendering AI thinking/reasoning content.
-   *
-   * @example
-   * ```tsx
-   * {stream.uiMessages.map((message) => {
-   *   if (message.type === "reasoning") {
-   *     return <ReasoningBubble key={message.id} content={message.content} />;
-   *   }
-   *   if (message.type === "ai") {
-   *     const toolCalls = stream.getToolCalls(message);
-   *     if (toolCalls.length > 0) {
-   *       return toolCalls.map(tc => <ToolCard key={tc.id} toolCall={tc} />);
-   *     }
-   *   }
-   *   return <MessageBubble key={message.id} message={message} />;
-   * })}
-   * ```
-   */
-  uiMessages: UIMessage<GetToolCallsType<StateType>>[];
 
   /**
    * Tool calls paired with their results.
@@ -244,7 +220,6 @@ export type UseStreamCustom<
   | "stop"
   | "interrupt"
   | "messages"
-  | "uiMessages"
   | "toolCalls"
   | "getToolCalls"
 > & {

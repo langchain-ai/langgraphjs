@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { AlertCircle, Radio } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { UIMessage } from "@langchain/langgraph-sdk";
+import type { Message } from "@langchain/langgraph-sdk";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -33,7 +33,7 @@ const CUSTOM_STREAMING_SUGGESTIONS = [
 /**
  * Helper to check if a message has actual text content.
  */
-function hasContent(message: UIMessage): boolean {
+function hasContent(message: Message): boolean {
   if (typeof message.content === "string") {
     return message.content.trim().length > 0;
   }
@@ -106,7 +106,7 @@ export function CustomStreaming() {
     [stream]
   );
 
-  const hasMessages = stream.uiMessages.length > 0;
+  const hasMessages = stream.messages.length > 0;
 
   /**
    * Convert maps to arrays for rendering
@@ -144,7 +144,7 @@ export function CustomStreaming() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {stream.uiMessages.map((message, idx) => (
+              {stream.messages.map((message, idx) => (
                 <MessageBubble key={message.id ?? idx} message={message} />
               ))}
 
@@ -178,7 +178,7 @@ export function CustomStreaming() {
 
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
-                !stream.uiMessages.some(
+                !stream.messages.some(
                   (m) => m.type === "ai" && hasContent(m)
                 ) &&
                 !hasCustomData && <LoadingIndicator />}

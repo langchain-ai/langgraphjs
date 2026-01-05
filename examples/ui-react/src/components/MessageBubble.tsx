@@ -1,5 +1,5 @@
 import { Brain } from "lucide-react";
-import type { UIMessage } from "@langchain/langgraph-sdk";
+import type { Message, AIMessage } from "@langchain/langgraph-sdk";
 
 // Styles for each message type - kept separate for readability
 const BUBBLE_STYLES = {
@@ -13,7 +13,7 @@ const BUBBLE_STYLES = {
 /**
  * Extract text content from a message
  */
-function getTextContent(message: UIMessage): string {
+function getTextContent(message: Message): string {
   if (typeof message.content === "string") {
     return message.content;
   }
@@ -30,14 +30,14 @@ function getTextContent(message: UIMessage): string {
  * MessageBubble component that renders human and AI text messages.
  * Tool calls are handled separately by ToolCallCard.
  */
-export function MessageBubble({ message }: { message: UIMessage }) {
+export function MessageBubble({ message }: { message: Message }) {
   const content = getTextContent(message);
 
-  // Don't render if there's no content
-  if (!content) return null;
-
-  if (message.type === "reasoning") {
-    return <ReasoningBubble content={content} />;
+  /**
+   * Don't render tool messages as render them separately
+   */
+  if (message.type === "tool") {
+    return null;
   }
 
   if (message.type === "human") {
@@ -48,7 +48,7 @@ export function MessageBubble({ message }: { message: UIMessage }) {
     return <SystemBubble content={content} />;
   }
 
-  return <AssistantBubble content={content} />;
+  return <AssistantBubble message={message} />;
 }
 
 /**
@@ -83,19 +83,28 @@ function SystemBubble({ content }: { content: string }) {
 }
 
 /**
- * Assistant message bubble - minimal styling with label
+ * Assistant message bubble with reasoning bubble if it exists
  */
-function AssistantBubble({ content }: { content: string }) {
-  return (
-    <div className="animate-fade-in">
-      <div className="text-xs font-medium text-neutral-500 mb-2">Assistant</div>
-      <div className={BUBBLE_STYLES.ai}>
-        <div className="whitespace-pre-wrap leading-relaxed text-[15px]">
-          {content}
+function AssistantBubble({ message }: { message: Message }) {
+  const content = getTextContent(message);
+  const reasoning = getReasoningFromMessage(message);
+
+  return (<>
+    {/* Render reasoning bubble if it exists */}
+    {reasoning && (
+      <ReasoningBubble content={reasoning} />
+    )}
+    {content && (
+      <div className="animate-fade-in">
+        <div className="text-xs font-medium text-neutral-500 mb-2">Assistant</div>
+        <div className={BUBBLE_STYLES.ai}>
+          <div className="whitespace-pre-wrap leading-relaxed text-[15px]">
+            {content}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    )}
+  </>);
 }
 
 /**
@@ -119,3 +128,108 @@ function ReasoningBubble({ content }: { content: string }) {
     </div>
   );
 }
+
+/**
+ * Extracts reasoning/thinking content from an AI message.
+ * Supports both OpenAI reasoning (additional_kwargs.reasoning.summary)
+ * and Anthropic extended thinking (contentBlocks with type "thinking").
+ *
+ * @param message - The AI message to extract reasoning from.
+ * @returns a string of the reasoning/thinking content if found, undefined otherwise.
+ *
+ * @example
+ * ```ts
+ * const reasoning = getReasoningFromMessage(aiMessage, stream.isLoading);
+ * if (reasoning) {
+ *   console.log("Model is thinking:", reasoning.content);
+ * }
+ * ```
+ */
+export function getReasoningFromMessage(message: Message): string | undefined {
+  // Type for accessing additional properties
+  type MessageWithExtras = AIMessage & {
+    additional_kwargs?: { reasoning?: OpenAIReasoning };
+    contentBlocks?: Array<{ type: string; thinking?: string; text?: string }>;
+  };
+
+  const msg = message as MessageWithExtras;
+
+  // Check for OpenAI reasoning in additional_kwargs
+  if (msg.additional_kwargs?.reasoning?.summary) {
+    const { summary } = msg.additional_kwargs.reasoning;
+    const content = summary
+      .filter(
+        (item): item is ReasoningSummaryItem =>
+          item.type === "summary_text" && typeof item.text === "string"
+      )
+      .map((item) => item.text)
+      .join("");
+
+    if (content.trim()) {
+      return content;
+    }
+  }
+
+  // Check for Anthropic thinking in contentBlocks
+  if (msg.contentBlocks && Array.isArray(msg.contentBlocks)) {
+    const thinkingBlocks = msg.contentBlocks.filter(
+      (block): block is ThinkingContentBlock =>
+        block.type === "thinking" && typeof block.thinking === "string"
+    );
+
+    if (thinkingBlocks.length > 0) {
+      return thinkingBlocks.map((b) => b.thinking).join("\n");
+    }
+  }
+
+  // Check for thinking in message.content array
+  if (Array.isArray(msg.content)) {
+    const thinkingContent: string[] = [];
+    for (const block of msg.content) {
+      if (
+        typeof block === "object" &&
+        block !== null &&
+        "type" in block &&
+        (block as { type: string }).type === "thinking" &&
+        "thinking" in block &&
+        typeof (block as { thinking: unknown }).thinking === "string"
+      ) {
+        thinkingContent.push((block as { thinking: string }).thinking);
+      }
+    }
+
+    if (thinkingContent.length > 0) {
+      return thinkingContent.join("\n");
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Anthropic thinking content block structure.
+ * Used when streaming extended thinking from Claude models.
+ */
+export type ThinkingContentBlock = {
+  type: "thinking";
+  thinking: string;
+};
+
+/**
+ * OpenAI reasoning summary item structure.
+ * Used when streaming reasoning tokens from OpenAI models.
+ */
+export type ReasoningSummaryItem = {
+  type: "summary_text";
+  text: string;
+  index?: number;
+};
+
+/**
+ * OpenAI reasoning structure in additional_kwargs.
+ */
+export type OpenAIReasoning = {
+  id?: string;
+  type: "reasoning";
+  summary?: ReasoningSummaryItem[];
+};

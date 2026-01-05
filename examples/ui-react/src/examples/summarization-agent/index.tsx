@@ -7,14 +7,10 @@ import {
   Layers,
   Zap,
   RefreshCw,
-  Calculator,
-  FileText,
-  Check,
-  Loader2,
 } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { UIMessage } from "@langchain/langgraph-sdk";
-import type { ToolCallWithResult } from "@langchain/langgraph-sdk/react";
+import type { Message } from "@langchain/langgraph-sdk";
+import { ToolCallCard } from "../../components/ToolCallCard";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -24,97 +20,9 @@ import type { agent } from "./agent";
 import { getPrefilledMessages } from "./prefilled-messages";
 
 /**
- * Simple tool call card for the summarization agent tools
- */
-function SimpleToolCallCard({
-  toolCall,
-}: {
-  toolCall: ToolCallWithResult<{ name: string; args: Record<string, unknown> }>;
-}) {
-  const { call, result, state } = toolCall;
-  const isLoading = state === "pending";
-
-  const getIcon = () => {
-    switch (call.name) {
-      case "calculate":
-        return <Calculator className="w-4 h-4 text-blue-400" />;
-      case "take_note":
-        return <FileText className="w-4 h-4 text-emerald-400" />;
-      default:
-        return <Zap className="w-4 h-4 text-neutral-400" />;
-    }
-  };
-
-  const getTitle = () => {
-    switch (call.name) {
-      case "calculate":
-        return "Calculator";
-      case "take_note":
-        return "Note";
-      default:
-        return call.name;
-    }
-  };
-
-  const parsedResult = result
-    ? (() => {
-        try {
-          return JSON.parse(result.content as string);
-        } catch {
-          return { status: "success", content: result.content };
-        }
-      })()
-    : { status: "pending", content: "" };
-
-  return (
-    <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-800 animate-fade-in">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center">
-          {getIcon()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-white">{getTitle()}</div>
-          <div className="text-xs text-neutral-500">
-            {isLoading ? "Processing..." : "Completed"}
-          </div>
-        </div>
-        {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin text-brand-accent" />
-        ) : (
-          parsedResult.status === "success" && (
-            <Check className="w-4 h-4 text-green-400" />
-          )
-        )}
-      </div>
-
-      {result && (
-        <div className="text-sm rounded-lg p-3 bg-black border border-neutral-800 text-neutral-300">
-          {parsedResult.content}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Helper to check if a message has actual text content.
- */
-function hasContent(message: UIMessage): boolean {
-  if (typeof message.content === "string") {
-    return message.content.trim().length > 0;
-  }
-  if (Array.isArray(message.content)) {
-    return message.content.some(
-      (c) => c.type === "text" && c.text.trim().length > 0
-    );
-  }
-  return false;
-}
-
-/**
  * Extract text content from a message
  */
-function getContent(message: UIMessage): string {
+function getContent(message: Message): string {
   if (typeof message.content === "string") {
     return message.content;
   }
@@ -130,7 +38,7 @@ function getContent(message: UIMessage): string {
 /**
  * Check if a message is a summary message
  */
-function isSummaryMessage(message: UIMessage): boolean {
+function isSummaryMessage(message: Message): boolean {
   const content = getContent(message);
   return (
     content.includes("📋 **Conversation Summary:**") ||
@@ -183,7 +91,7 @@ function SummarizationBanner() {
 /**
  * Summary message card with special styling
  */
-function SummaryMessageCard({ message }: { message: UIMessage }) {
+function SummaryMessageCard({ message }: { message: Message }) {
   const content = getContent(message);
 
   return (
@@ -209,7 +117,7 @@ function SummaryMessageCard({ message }: { message: UIMessage }) {
 /**
  * Regular message bubble with type-aware styling
  */
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({ message }: { message: Message }) {
   const isHuman = message.type === "human";
   const content = getContent(message);
 
@@ -393,7 +301,7 @@ export function SummarizationAgent() {
   const [showSummarizationBanner, setShowSummarizationBanner] = useState(false);
 
   // Check for summary messages
-  const hasSummary = stream.uiMessages.some((m) => isSummaryMessage(m));
+  const hasSummary = stream.messages.some((m) => isSummaryMessage(m));
 
   // Show banner when summary first appears
   useEffect(() => {
@@ -405,7 +313,7 @@ export function SummarizationAgent() {
     }
   }, [hasSummary, showSummarizationBanner]);
 
-  const hasMessages = stream.uiMessages.length > 0;
+  const hasMessages = stream.messages.length > 0;
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -443,7 +351,7 @@ export function SummarizationAgent() {
           {/* Stats panel */}
           {hasMessages && (
             <ConversationStats
-              messageCount={stream.uiMessages.length}
+              messageCount={stream.messages.filter((m) => m.type !== "tool").length}
               hasSummary={hasSummary}
             />
           )}
@@ -459,7 +367,7 @@ export function SummarizationAgent() {
               {/* Summarization banner */}
               {showSummarizationBanner && <SummarizationBanner />}
 
-              {stream.uiMessages.map((message, idx) => {
+              {stream.messages.map((message, idx) => {
                 // For AI messages, check if they have tool calls
                 if (message.type === "ai") {
                   const toolCalls = stream.getToolCalls(message);
@@ -469,7 +377,7 @@ export function SummarizationAgent() {
                     return (
                       <div key={message.id} className="flex flex-col gap-3">
                         {toolCalls.map((toolCall) => (
-                          <SimpleToolCallCard
+                          <ToolCallCard
                             key={toolCall.id}
                             toolCall={toolCall}
                           />
@@ -479,7 +387,7 @@ export function SummarizationAgent() {
                   }
 
                   // Skip AI messages without content
-                  if (!hasContent(message)) {
+                  if (getContent(message).trim().length > 0) {
                     return null;
                   }
                 }

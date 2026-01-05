@@ -34,7 +34,6 @@ import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
-import { getUIMessagesWithReasoning } from "./utils.js";
 import type { BagTemplate } from "../types.template.js";
 
 function getFetchHistoryKey(
@@ -671,12 +670,6 @@ export function useStreamLGP<
     get messages(): Message<ToolCallType>[] {
       trackStreamMode("messages-tuple", "values");
       return getMessages(values);
-    },
-
-    get uiMessages() {
-      trackStreamMode("messages-tuple", "values");
-      const msgs = getMessages(values) as Message<ToolCallType>[];
-      return getUIMessagesWithReasoning<ToolCallType>(msgs);
     },
 
     get toolCalls() {
