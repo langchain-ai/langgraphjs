@@ -24,7 +24,7 @@ export function ReasoningAgent() {
 
   const { scrollRef, contentRef } = useStickToBottom();
 
-  const hasMessages = stream.uiMessages.length > 0;
+  const hasMessages = stream.messages.length > 0;
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -47,12 +47,12 @@ export function ReasoningAgent() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {stream.uiMessages.map((message, idx) => (
+              {stream.messages.map((message, idx) => (
                 <MessageBubble key={message.id ?? idx} message={message} />
               ))}
 
               {/* Show loading indicator when streaming and no content yet, e.g. we don't have a stream of the AI response yet */}
-              {stream.isLoading && stream.uiMessages.length <= 2 && (
+              {stream.isLoading && stream.messages.length <= 2 && (
                 <div className="flex items-center gap-3 text-amber-400/70">
                   <LoadingIndicator />
                   <span className="text-sm">Thinking...</span>

@@ -1,7 +1,3 @@
-import type { ReasoningMessage } from "./types.reasoning.js";
-
-export type { ReasoningMessage } from "./types.reasoning.js";
-
 type ImageDetail = "auto" | "low" | "high";
 type MessageContentImageUrl = {
   type: "image_url";
@@ -145,17 +141,6 @@ export type Message<ToolCall = DefaultToolCall> =
   | SystemMessage
   | FunctionMessage
   | RemoveMessage;
-
-/**
- * Messages suitable for UI rendering (excludes ToolMessage).
- * ToolMessages are typically rendered via {@link ToolCallWithResult} instead of directly.
- * Includes ReasoningMessage for rendering thinking/reasoning content.
- *
- * @template ToolCall The type of tool calls for AIMessage, defaults to DefaultToolCall.
- */
-export type UIMessage<ToolCall = DefaultToolCall> =
-  | Exclude<Message<ToolCall>, ToolMessage>
-  | ReasoningMessage;
 
 /**
  * Helper type to infer schema input type, supporting both Zod v3 and v4.

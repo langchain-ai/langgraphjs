@@ -38,8 +38,6 @@ export type {
   FunctionMessage,
   HumanMessage,
   Message,
-  UIMessage,
-  ReasoningMessage,
   RemoveMessage,
   SystemMessage,
   ToolMessage,

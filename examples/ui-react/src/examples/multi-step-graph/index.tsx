@@ -11,7 +11,7 @@ import {
 
 import type { ContentBlock } from "langchain";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { UIMessage, AIMessage } from "@langchain/langgraph-sdk";
+import type { AIMessage, Message } from "@langchain/langgraph-sdk";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -177,7 +177,7 @@ function PipelineVisualization({ currentNode }: { currentNode?: string }) {
 /**
  * Node output card
  */
-function NodeOutputCard({ message }: { message: UIMessage }) {
+function NodeOutputCard({ message }: { message: Message }) {
   /**
    * Extract node name from message
    */
@@ -244,12 +244,12 @@ export function MultiStepGraph() {
 
   const { scrollRef, contentRef } = useStickToBottom();
 
-  const hasMessages = stream.uiMessages.length > 0;
+  const hasMessages = stream.messages.length > 0;
 
   /**
    * Get current node from the latest AI message
    */
-  const currentNode = stream.uiMessages
+  const currentNode = stream.messages
     .filter((m): m is AIMessage => Boolean(m.type === "ai" && m.name))
     .pop()?.name;
 
@@ -281,7 +281,7 @@ export function MultiStepGraph() {
           ) : (
             <>
               <div className="flex flex-col gap-4">
-                {stream.uiMessages.map((message, idx) => {
+                {stream.messages.map((message, idx) => {
                   /**
                    * User messages
                    */

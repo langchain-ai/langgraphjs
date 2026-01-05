@@ -1,9 +1,12 @@
 import { createAgent, tool } from "langchain";
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, tools } from "@langchain/openai";
 import { z } from "zod/v4";
 
 const model = new ChatOpenAI({ model: "gpt-4o-mini" });
 
+/**
+ * Custom weather tool
+ */
 export const getWeather = tool(
   async ({ location }) => {
     // Use Open-Meteo geocoding API to get coordinates
@@ -76,25 +79,9 @@ export const getWeather = tool(
   }
 );
 
-export const search = tool(
-  async ({ query }) => {
-    return JSON.stringify({
-      status: "success",
-      content: `Search results for "${query}": This is a demo search result.`,
-    });
-  },
-  {
-    name: "search",
-    description: "Search the web for information",
-    schema: z.object({
-      query: z.string().describe("The query to search for"),
-    }),
-  }
-);
-
 export const agent = createAgent({
   model,
-  tools: [getWeather, search],
+  tools: [getWeather, tools.webSearch()],
   systemPrompt:
     "You are a helpful assistant that can answer questions and help with tasks.",
 });
