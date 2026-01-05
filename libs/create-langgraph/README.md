@@ -29,13 +29,13 @@ Follow the interactive prompts to select a template and configure your project.
 
 Choose from a variety of production-ready templates:
 
-| Template | Description |
-| -------- | ----------- |
-| [**New LangGraph Project**](https://github.com/langchain-ai/new-langgraphjs-project) | A simple, minimal chatbot with memory |
-| [**ReAct Agent**](https://github.com/langchain-ai/react-agent-js) | A flexible agent that can be extended with many tools |
-| [**Memory Agent**](https://github.com/langchain-ai/memory-agent-js) | A ReAct-style agent with persistent memory across conversations |
-| [**Retrieval Agent**](https://github.com/langchain-ai/retrieval-agent-template-js) | An agent with retrieval-based question-answering |
-| [**Data-enrichment Agent**](https://github.com/langchain-ai/data-enrichment-js) | An agent that performs web searches and organizes findings |
+| Template                                                                             | Description                                                     |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| [**New LangGraph Project**](https://github.com/langchain-ai/new-langgraphjs-project) | A simple, minimal chatbot with memory                           |
+| [**ReAct Agent**](https://github.com/langchain-ai/react-agent-js)                    | A flexible agent that can be extended with many tools           |
+| [**Memory Agent**](https://github.com/langchain-ai/memory-agent-js)                  | A ReAct-style agent with persistent memory across conversations |
+| [**Retrieval Agent**](https://github.com/langchain-ai/retrieval-agent-template-js)   | An agent with retrieval-based question-answering                |
+| [**Data-enrichment Agent**](https://github.com/langchain-ai/data-enrichment-js)      | An agent that performs web searches and organizes findings      |
 
 ### Using a Specific Template
 
@@ -125,7 +125,7 @@ exports.myAgent = createAgent({ model, tools });
 The scanner looks for:
 
 - `createAgent()` function calls
-- `new StateGraph(...).compile()` patterns  
+- `new StateGraph(...).compile()` patterns
 - `workflow.compile()` or `builder.compile()` patterns
 
 **Important:** Only **exported** agents are included in the generated configuration. Unexported agents will be listed as warnings so you can add the `export` keyword if needed.
