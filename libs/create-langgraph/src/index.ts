@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import cp from "node:child_process";
+
 import {
   intro,
   outro,
@@ -7,12 +11,9 @@ import {
   cancel,
   confirm,
 } from "@clack/prompts";
-import * as fs from "fs/promises";
-import * as path from "path";
 import zipExtract from "extract-zip";
 import color from "picocolors";
 import dedent from "dedent";
-import { spawn } from "child_process";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -221,7 +222,7 @@ export async function createNew(projectPath?: string, templateId?: string) {
 
   if (shouldInitGit) {
     await new Promise((resolve, reject) => {
-      const proc = spawn("git", ["init"], { cwd: absolutePath });
+      const proc = cp.spawn("git", ["init"], { cwd: absolutePath });
       proc.on("close", (code) => {
         if (code === 0) resolve(undefined);
         else reject(new Error(`git init failed with code ${code}`));
