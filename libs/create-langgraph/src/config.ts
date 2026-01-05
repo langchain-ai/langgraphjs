@@ -144,12 +144,12 @@ async function findTsJsFiles(
  * Generate the langgraph.json configuration
  */
 export async function generateConfig(targetPath?: string) {
-  const cwd = targetPath ? path.resolve(targetPath) : process.cwd();
+  const targetRootPath = targetPath ? path.resolve(targetPath) : process.cwd();
 
   intro(`${color.bgCyan(color.black(" 🦜 create-langgraph config "))}`);
 
   // Check if langgraph.json already exists
-  const configPath = path.join(cwd, "langgraph.json");
+  const configPath = path.join(targetRootPath, "langgraph.json");
   try {
     await fs.access(configPath);
     const overwrite = await confirm({
@@ -168,12 +168,12 @@ export async function generateConfig(targetPath?: string) {
   }
 
   const s = spinner();
-  s.start("Scanning for LangGraph agents...");
+  s.start(`Scanning for LangGraph agents in ${targetRootPath}...`);
 
   // Find all TS/JS files
   let files: string[];
   try {
-    files = await findTsJsFiles(cwd);
+    files = await findTsJsFiles(targetRootPath);
   } catch (error) {
     s.stop("Error scanning directory");
     throw new Error(`Failed to scan directory: ${(error as Error).message}`);
@@ -228,7 +228,7 @@ export async function generateConfig(targetPath?: string) {
       )
     );
     for (const agent of unexportedAgents) {
-      const relativePath = path.relative(cwd, agent.filePath);
+      const relativePath = path.relative(targetRootPath, agent.filePath);
       console.log(
         color.dim(
           `   • ${color.white(agent.name)} at ${relativePath}:${
@@ -266,7 +266,7 @@ export async function generateConfig(targetPath?: string) {
   const usedKeys = new Set<string>();
 
   for (const agent of exportedAgents) {
-    const relativePath = path.relative(cwd, agent.filePath);
+    const relativePath = path.relative(targetRootPath, agent.filePath);
     // Use ./ prefix for relative paths
     const normalizedPath = relativePath.startsWith(".")
       ? relativePath
@@ -309,7 +309,7 @@ export async function generateConfig(targetPath?: string) {
   // Check if .env file exists
   let envPath: string | undefined;
   try {
-    await fs.access(path.join(cwd, ".env"));
+    await fs.access(path.join(targetRootPath, ".env"));
     envPath = ".env";
   } catch {
     // .env doesn't exist
