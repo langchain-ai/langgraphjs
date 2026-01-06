@@ -284,9 +284,17 @@ export interface UseStreamOptions<
 
   /**
    * Manage the thread state externally.
-   * @experimental
    */
-  experimental_thread?: UseStreamThread<StateType>;
+  thread?: UseStreamThread<StateType>;
+
+  /**
+   * Throttle the stream.
+   * If a number is provided, the stream will be throttled to the given number of milliseconds.
+   * If `true`, updates are batched in a single macrotask.
+   * If `false`, updates are not throttled or batched.
+   * @default true
+   */
+  throttle?: number | boolean;
 }
 
 interface RunMetadataStorage {
@@ -489,6 +497,7 @@ export type UseStreamCustomOptions<
   | "onTaskEvent"
   | "onStop"
   | "initialValues"
+  | "throttle"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 export type UseStreamCustom<

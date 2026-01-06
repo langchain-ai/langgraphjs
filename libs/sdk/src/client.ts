@@ -4,6 +4,7 @@ import {
   AssistantSortBy,
   AssistantSelectField,
   AssistantVersion,
+  AssistantsSearchResponse,
   CancelAction,
   Checkpoint,
   Config,
@@ -28,6 +29,7 @@ import {
   ThreadSortBy,
   ThreadState,
   ThreadStatus,
+  ThreadValuesFilter,
 } from "./schema.js";
 import type {
   Command,
@@ -47,7 +49,7 @@ import { AsyncCaller, AsyncCallerParams } from "./utils/async_caller.js";
 import { getEnvironmentVariable } from "./utils/env.js";
 import { mergeSignals } from "./utils/signals.js";
 import { BytesLineDecoder, SSEDecoder } from "./utils/sse.js";
-import { IterableReadableStream } from "./utils/stream.js";
+import { streamWithRetry, StreamRequestParams } from "./utils/stream.js";
 
 type HeaderValue = string | undefined | null;
 
@@ -121,19 +123,26 @@ function mergeHeaders(
 /**
  * Get the API key from the environment.
  * Precedence:
- *   1. explicit argument
+ *   1. explicit argument (if string)
  *   2. LANGGRAPH_API_KEY
  *   3. LANGSMITH_API_KEY
  *   4. LANGCHAIN_API_KEY
  *
- * @param apiKey - Optional API key provided as an argument
+ * @param apiKey - API key provided as an argument. If null, skips environment lookup. If undefined, tries environment.
  * @returns The API key if found, otherwise undefined
  */
-export function getApiKey(apiKey?: string): string | undefined {
+export function getApiKey(apiKey?: string | null): string | undefined {
+  // If explicitly set to null, skip auto-loading
+  if (apiKey === null) {
+    return undefined;
+  }
+
+  // If a string value is provided, use it
   if (apiKey) {
     return apiKey;
   }
 
+  // If undefined, try to load from environment
   const prefixes = ["LANGGRAPH", "LANGSMITH", "LANGCHAIN"];
 
   for (const prefix of prefixes) {
@@ -172,7 +181,13 @@ export type RequestHook = (
 
 export interface ClientConfig {
   apiUrl?: string;
-  apiKey?: string;
+  /**
+   * API key for authentication.
+   * - If a string is provided, that key will be used
+   * - If undefined (default), the key will be auto-loaded from environment variables (LANGGRAPH_API_KEY, LANGSMITH_API_KEY, or LANGCHAIN_API_KEY)
+   * - If null, no API key will be set (skips auto-loading)
+   */
+  apiKey?: string | null;
   callerOptions?: AsyncCallerParams;
   timeoutMs?: number;
   defaultHeaders?: Record<string, HeaderValue>;
@@ -291,7 +306,7 @@ class BaseClient {
       json?: unknown;
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
-      signal?: AbortSignal;
+      signal: AbortSignal | undefined;
       withResponse: true;
     }
   ): Promise<[T, Response]>;
@@ -302,7 +317,7 @@ class BaseClient {
       json?: unknown;
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
-      signal?: AbortSignal;
+      signal: AbortSignal | undefined;
       withResponse?: false;
     }
   ): Promise<T>;
@@ -313,7 +328,7 @@ class BaseClient {
       json?: unknown;
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
-      signal?: AbortSignal;
+      signal: AbortSignal | undefined;
       withResponse?: boolean;
     }
   ): Promise<T | [T, Response]> {
@@ -338,6 +353,82 @@ class BaseClient {
     }
 
     return body;
+  }
+
+  /**
+   * Protected helper for streaming with automatic retry logic.
+   * Handles both initial requests and reconnections with SSE.
+   */
+  protected async *streamWithRetry<
+    T extends { id?: string; event: string; data: unknown }
+  >(config: {
+    endpoint: string;
+    method?: string;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+    params?: Record<string, unknown>;
+    json?: unknown;
+    maxRetries?: number;
+    onReconnect?: (options: {
+      attempt: number;
+      lastEventId?: string;
+      cause: unknown;
+    }) => void;
+    onInitialResponse?: (response: Response) => void | Promise<void>;
+  }): AsyncGenerator<T> {
+    const makeRequest = async (reconnectParams?: StreamRequestParams) => {
+      // Determine endpoint - use reconnectPath if provided, otherwise original endpoint
+      const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
+
+      // Determine method and options based on whether this is a reconnection
+      const isReconnect = !!reconnectParams?.lastEventId;
+      const method = isReconnect ? "GET" : config.method || "GET";
+
+      // Build headers - add Last-Event-ID for reconnections
+      const requestHeaders =
+        isReconnect && reconnectParams?.lastEventId
+          ? { ...config.headers, "Last-Event-ID": reconnectParams.lastEventId }
+          : config.headers;
+
+      // Prepare fetch options
+      let [url, init] = this.prepareFetchOptions(requestEndpoint, {
+        method,
+        timeoutMs: null,
+        signal: config.signal,
+        headers: requestHeaders,
+        params: config.params,
+        json: isReconnect ? undefined : config.json, // Only send body on initial request
+      });
+
+      // Apply onRequest hook if present
+      if (this.onRequest != null) {
+        init = await this.onRequest(url, init);
+      }
+
+      // Make the request
+      const response = await this.asyncCaller.fetch(url, init);
+
+      // Call onInitialResponse callback for the first request
+      if (!isReconnect && config.onInitialResponse) {
+        await config.onInitialResponse(response);
+      }
+
+      // Process the response body through SSE decoders
+      const stream: ReadableStream<T> = (
+        response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
+      )
+        .pipeThrough(BytesLineDecoder())
+        .pipeThrough(SSEDecoder()) as ReadableStream<T>;
+
+      return { response, stream };
+    };
+
+    // Use the utility function with our request maker
+    yield* streamWithRetry(makeRequest, {
+      maxRetries: config.maxRetries ?? 5,
+      signal: config.signal,
+      onReconnect: config.onReconnect,
+    });
   }
 }
 
@@ -374,6 +465,7 @@ export class CronsClient extends BaseClient {
       {
         method: "POST",
         json,
+        signal: payload?.signal,
       }
     );
   }
@@ -406,6 +498,7 @@ export class CronsClient extends BaseClient {
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
       json,
+      signal: payload?.signal,
     });
   }
 
@@ -413,9 +506,13 @@ export class CronsClient extends BaseClient {
    *
    * @param cronId Cron ID of Cron job to delete.
    */
-  async delete(cronId: string): Promise<void> {
+  async delete(
+    cronId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<void> {
     await this.fetch<void>(`/runs/crons/${cronId}`, {
       method: "DELETE",
+      signal: options?.signal,
     });
   }
 
@@ -432,6 +529,7 @@ export class CronsClient extends BaseClient {
     sortBy?: CronSortBy;
     sortOrder?: SortOrder;
     select?: CronSelectField[];
+    signal?: AbortSignal;
   }): Promise<Cron[]> {
     return this.fetch<Cron[]>("/runs/crons/search", {
       method: "POST",
@@ -444,6 +542,7 @@ export class CronsClient extends BaseClient {
         sort_order: query?.sortOrder ?? undefined,
         select: query?.select ?? undefined,
       },
+      signal: query?.signal,
     });
   }
 
@@ -457,6 +556,7 @@ export class CronsClient extends BaseClient {
   async count(query?: {
     assistantId?: string;
     threadId?: string;
+    signal?: AbortSignal;
   }): Promise<number> {
     return this.fetch<number>(`/runs/crons/count`, {
       method: "POST",
@@ -464,6 +564,7 @@ export class CronsClient extends BaseClient {
         assistant_id: query?.assistantId ?? undefined,
         thread_id: query?.threadId ?? undefined,
       },
+      signal: query?.signal,
     });
   }
 }
@@ -475,8 +576,13 @@ export class AssistantsClient extends BaseClient {
    * @param assistantId The ID of the assistant.
    * @returns Assistant
    */
-  async get(assistantId: string): Promise<Assistant> {
-    return this.fetch<Assistant>(`/assistants/${assistantId}`);
+  async get(
+    assistantId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Assistant> {
+    return this.fetch<Assistant>(`/assistants/${assistantId}`, {
+      signal: options?.signal,
+    });
   }
 
   /**
@@ -487,10 +593,11 @@ export class AssistantsClient extends BaseClient {
    */
   async getGraph(
     assistantId: string,
-    options?: { xray?: boolean | number }
+    options?: { xray?: boolean | number; signal?: AbortSignal }
   ): Promise<AssistantGraph> {
     return this.fetch<AssistantGraph>(`/assistants/${assistantId}/graph`, {
       params: { xray: options?.xray },
+      signal: options?.signal,
     });
   }
 
@@ -499,8 +606,13 @@ export class AssistantsClient extends BaseClient {
    * @param assistantId The ID of the assistant.
    * @returns Graph schema
    */
-  async getSchemas(assistantId: string): Promise<GraphSchema> {
-    return this.fetch<GraphSchema>(`/assistants/${assistantId}/schemas`);
+  async getSchemas(
+    assistantId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<GraphSchema> {
+    return this.fetch<GraphSchema>(`/assistants/${assistantId}/schemas`, {
+      signal: options?.signal,
+    });
   }
 
   /**
@@ -515,16 +627,18 @@ export class AssistantsClient extends BaseClient {
     options?: {
       namespace?: string;
       recurse?: boolean;
+      signal?: AbortSignal;
     }
   ): Promise<Subgraphs> {
     if (options?.namespace) {
       return this.fetch<Subgraphs>(
         `/assistants/${assistantId}/subgraphs/${options.namespace}`,
-        { params: { recurse: options?.recurse } }
+        { params: { recurse: options?.recurse }, signal: options?.signal }
       );
     }
     return this.fetch<Subgraphs>(`/assistants/${assistantId}/subgraphs`, {
       params: { recurse: options?.recurse },
+      signal: options?.signal,
     });
   }
 
@@ -542,6 +656,7 @@ export class AssistantsClient extends BaseClient {
     ifExists?: OnConflictBehavior;
     name?: string;
     description?: string;
+    signal?: AbortSignal;
   }): Promise<Assistant> {
     return this.fetch<Assistant>("/assistants", {
       method: "POST",
@@ -555,6 +670,7 @@ export class AssistantsClient extends BaseClient {
         name: payload.name,
         description: payload.description,
       },
+      signal: payload.signal,
     });
   }
 
@@ -573,6 +689,7 @@ export class AssistantsClient extends BaseClient {
       metadata?: Metadata;
       name?: string;
       description?: string;
+      signal?: AbortSignal;
     }
   ): Promise<Assistant> {
     return this.fetch<Assistant>(`/assistants/${assistantId}`, {
@@ -585,6 +702,7 @@ export class AssistantsClient extends BaseClient {
         name: payload.name,
         description: payload.description,
       },
+      signal: payload.signal,
     });
   }
 
@@ -593,38 +711,85 @@ export class AssistantsClient extends BaseClient {
    *
    * @param assistantId ID of the assistant.
    */
-  async delete(assistantId: string): Promise<void> {
+  async delete(
+    assistantId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<void> {
     return this.fetch<void>(`/assistants/${assistantId}`, {
       method: "DELETE",
+      signal: options?.signal,
     });
   }
 
   /**
    * List assistants.
    * @param query Query options.
-   * @returns List of assistants.
+   * @returns List of assistants or, when includePagination is true, a mapping with the assistants and next cursor.
    */
-  async search(query?: {
+  async search(query: {
     graphId?: string;
+    name?: string;
     metadata?: Metadata;
     limit?: number;
     offset?: number;
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
     select?: AssistantSelectField[];
-  }): Promise<Assistant[]> {
-    return this.fetch<Assistant[]>("/assistants/search", {
-      method: "POST",
-      json: {
-        graph_id: query?.graphId ?? undefined,
-        metadata: query?.metadata ?? undefined,
-        limit: query?.limit ?? 10,
-        offset: query?.offset ?? 0,
-        sort_by: query?.sortBy ?? undefined,
-        sort_order: query?.sortOrder ?? undefined,
-        select: query?.select ?? undefined,
-      },
-    });
+    includePagination: true;
+    signal?: AbortSignal;
+  }): Promise<AssistantsSearchResponse>;
+
+  async search(query?: {
+    graphId?: string;
+    name?: string;
+    metadata?: Metadata;
+    limit?: number;
+    offset?: number;
+    sortBy?: AssistantSortBy;
+    sortOrder?: SortOrder;
+    select?: AssistantSelectField[];
+    includePagination?: false;
+    signal?: AbortSignal;
+  }): Promise<Assistant[]>;
+
+  async search(query?: {
+    graphId?: string;
+    name?: string;
+    metadata?: Metadata;
+    limit?: number;
+    offset?: number;
+    sortBy?: AssistantSortBy;
+    sortOrder?: SortOrder;
+    select?: AssistantSelectField[];
+    includePagination?: boolean;
+    signal?: AbortSignal;
+  }): Promise<Assistant[] | AssistantsSearchResponse> {
+    const json = {
+      graph_id: query?.graphId ?? undefined,
+      name: query?.name ?? undefined,
+      metadata: query?.metadata ?? undefined,
+      limit: query?.limit ?? 10,
+      offset: query?.offset ?? 0,
+      sort_by: query?.sortBy ?? undefined,
+      sort_order: query?.sortOrder ?? undefined,
+      select: query?.select ?? undefined,
+    };
+    const [assistants, response] = await this.fetch<Assistant[]>(
+      "/assistants/search",
+      {
+        method: "POST",
+        json,
+        withResponse: true,
+        signal: query?.signal,
+      }
+    );
+
+    if (query?.includePagination) {
+      const next = response.headers.get("X-Pagination-Next");
+      return { assistants, next };
+    }
+
+    return assistants;
   }
 
   /**
@@ -632,18 +797,23 @@ export class AssistantsClient extends BaseClient {
    *
    * @param query.metadata Metadata to filter by. Exact match for each key/value.
    * @param query.graphId Optional graph id to filter by.
+   * @param query.name Optional name to filter by.
    * @returns Number of assistants matching the criteria.
    */
   async count(query?: {
     metadata?: Metadata;
     graphId?: string;
+    name?: string;
+    signal?: AbortSignal;
   }): Promise<number> {
     return this.fetch<number>(`/assistants/count`, {
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
         graph_id: query?.graphId ?? undefined,
+        name: query?.name ?? undefined,
       },
+      signal: query?.signal,
     });
   }
 
@@ -659,6 +829,7 @@ export class AssistantsClient extends BaseClient {
       metadata?: Metadata;
       limit?: number;
       offset?: number;
+      signal?: AbortSignal;
     }
   ): Promise<AssistantVersion[]> {
     return this.fetch<AssistantVersion[]>(
@@ -670,6 +841,7 @@ export class AssistantsClient extends BaseClient {
           limit: payload?.limit ?? 10,
           offset: payload?.offset ?? 0,
         },
+        signal: payload?.signal,
       }
     );
   }
@@ -681,10 +853,15 @@ export class AssistantsClient extends BaseClient {
    * @param version The version to change to.
    * @returns The updated assistant.
    */
-  async setLatest(assistantId: string, version: number): Promise<Assistant> {
+  async setLatest(
+    assistantId: string,
+    version: number,
+    options?: { signal?: AbortSignal }
+  ): Promise<Assistant> {
     return this.fetch<Assistant>(`/assistants/${assistantId}/latest`, {
       method: "POST",
       json: { version },
+      signal: options?.signal,
     });
   }
 }
@@ -700,9 +877,12 @@ export class ThreadsClient<
    * @returns The thread.
    */
   async get<ValuesType = TStateType>(
-    threadId: string
+    threadId: string,
+    options?: { signal?: AbortSignal }
   ): Promise<Thread<ValuesType>> {
-    return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`);
+    return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`, {
+      signal: options?.signal,
+    });
   }
 
   /**
@@ -746,6 +926,11 @@ export class ThreadsClient<
      * You may also provide an object { ttl: number, strategy?: "delete" }.
      */
     ttl?: number | { ttl: number; strategy?: "delete" };
+
+    /**
+     * Signal to abort the request.
+     */
+    signal?: AbortSignal;
   }): Promise<Thread<TStateType>> {
     // Normalize ttl to an object if a number is provided
     const ttlPayload =
@@ -771,6 +956,7 @@ export class ThreadsClient<
         })),
         ttl: ttlPayload,
       },
+      signal: payload?.signal,
     });
   }
 
@@ -779,9 +965,13 @@ export class ThreadsClient<
    * @param threadId ID of the thread to be copied
    * @returns Newly copied thread
    */
-  async copy(threadId: string): Promise<Thread<TStateType>> {
+  async copy(
+    threadId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Thread<TStateType>> {
     return this.fetch<Thread<TStateType>>(`/threads/${threadId}/copy`, {
       method: "POST",
+      signal: options?.signal,
     });
   }
 
@@ -805,6 +995,10 @@ export class ThreadsClient<
        * You may also provide an object { ttl: number, strategy?: "delete" }.
        */
       ttl?: number | { ttl: number; strategy?: "delete" };
+      /**
+       * Signal to abort the request.
+       */
+      signal?: AbortSignal;
     }
   ): Promise<Thread> {
     const ttlPayload =
@@ -815,6 +1009,7 @@ export class ThreadsClient<
     return this.fetch<Thread>(`/threads/${threadId}`, {
       method: "PATCH",
       json: { metadata: payload?.metadata, ttl: ttlPayload },
+      signal: payload?.signal,
     });
   }
 
@@ -823,9 +1018,13 @@ export class ThreadsClient<
    *
    * @param threadId ID of the thread.
    */
-  async delete(threadId: string): Promise<void> {
+  async delete(
+    threadId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}`, {
       method: "DELETE",
+      signal: options?.signal,
     });
   }
 
@@ -866,7 +1065,20 @@ export class ThreadsClient<
      * Must be one of 'asc' or 'desc'.
      */
     sortOrder?: SortOrder;
+    /**
+     * Array of fields to select.
+     * Elements or array must be one of 'thread_id, 'created_at', 'updated_at', 'metadata', 'config', 'context', 'status', 'values', or 'interrupts'.
+     */
     select?: ThreadSelectField[];
+    /**
+     * Values to filter threads by.
+     */
+    values?: ThreadValuesFilter;
+
+    /**
+     * Signal to abort the request.
+     */
+    signal?: AbortSignal;
   }): Promise<Thread<ValuesType>[]> {
     return this.fetch<Thread<ValuesType>[]>("/threads/search", {
       method: "POST",
@@ -879,7 +1091,9 @@ export class ThreadsClient<
         sort_by: query?.sortBy,
         sort_order: query?.sortOrder,
         select: query?.select ?? undefined,
+        values: query?.values ?? undefined,
       },
+      signal: query?.signal,
     });
   }
 
@@ -895,6 +1109,7 @@ export class ThreadsClient<
     metadata?: Metadata;
     values?: ValuesType;
     status?: ThreadStatus;
+    signal?: AbortSignal;
   }): Promise<number> {
     return this.fetch<number>(`/threads/count`, {
       method: "POST",
@@ -903,6 +1118,7 @@ export class ThreadsClient<
         values: query?.values ?? undefined,
         status: query?.status ?? undefined,
       },
+      signal: query?.signal,
     });
   }
 
@@ -915,7 +1131,7 @@ export class ThreadsClient<
   async getState<ValuesType = TStateType>(
     threadId: string,
     checkpoint?: Checkpoint | string,
-    options?: { subgraphs?: boolean }
+    options?: { subgraphs?: boolean; signal?: AbortSignal }
   ): Promise<ThreadState<ValuesType>> {
     if (checkpoint != null) {
       if (typeof checkpoint !== "string") {
@@ -924,6 +1140,7 @@ export class ThreadsClient<
           {
             method: "POST",
             json: { checkpoint, subgraphs: options?.subgraphs },
+            signal: options?.signal,
           }
         );
       }
@@ -931,12 +1148,13 @@ export class ThreadsClient<
       // deprecated
       return this.fetch<ThreadState<ValuesType>>(
         `/threads/${threadId}/state/${checkpoint}`,
-        { params: { subgraphs: options?.subgraphs } }
+        { params: { subgraphs: options?.subgraphs }, signal: options?.signal }
       );
     }
 
     return this.fetch<ThreadState<ValuesType>>(`/threads/${threadId}/state`, {
       params: { subgraphs: options?.subgraphs },
+      signal: options?.signal,
     });
   }
 
@@ -953,6 +1171,7 @@ export class ThreadsClient<
       checkpoint?: Checkpoint;
       checkpointId?: string;
       asNode?: string;
+      signal?: AbortSignal;
     }
   ): Promise<Pick<Config, "configurable">> {
     return this.fetch<Pick<Config, "configurable">>(
@@ -965,6 +1184,7 @@ export class ThreadsClient<
           checkpoint: options.checkpoint,
           as_node: options?.asNode,
         },
+        signal: options?.signal,
       }
     );
   }
@@ -977,7 +1197,8 @@ export class ThreadsClient<
    */
   async patchState(
     threadIdOrConfig: string | Config,
-    metadata: Metadata
+    metadata: Metadata,
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     let threadId: string;
 
@@ -995,6 +1216,7 @@ export class ThreadsClient<
     return this.fetch<void>(`/threads/${threadId}/state`, {
       method: "PATCH",
       json: { metadata },
+      signal: options?.signal,
     });
   }
 
@@ -1012,6 +1234,7 @@ export class ThreadsClient<
       before?: Config;
       checkpoint?: Partial<Omit<Checkpoint, "thread_id">>;
       metadata?: Metadata;
+      signal?: AbortSignal;
     }
   ): Promise<ThreadState<ValuesType>[]> {
     return this.fetch<ThreadState<ValuesType>[]>(
@@ -1024,6 +1247,7 @@ export class ThreadsClient<
           metadata: options?.metadata,
           checkpoint: options?.checkpoint,
         },
+        signal: options?.signal,
       }
     );
   }
@@ -1033,11 +1257,14 @@ export class ThreadsClient<
     options?: {
       lastEventId?: string;
       streamMode?: ThreadStreamMode | ThreadStreamMode[];
+      signal?: AbortSignal;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
-    let [url, init] = this.prepareFetchOptions(`/threads/${threadId}/stream`, {
+    yield* this.streamWithRetry({
+      endpoint: `/threads/${threadId}/stream`,
       method: "GET",
+      signal: options?.signal,
       headers: options?.lastEventId
         ? { "Last-Event-ID": options.lastEventId }
         : undefined,
@@ -1045,18 +1272,6 @@ export class ThreadsClient<
         ? { stream_mode: options.streamMode }
         : undefined,
     });
-
-    if (this.onRequest != null) init = await this.onRequest(url, init);
-    const response = await this.asyncCaller.fetch(url, init);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream: ReadableStream<{ event: string; data: any }> = (
-      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-    )
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
-
-    yield* IterableReadableStream.fromReadableStream(stream);
   }
 }
 
@@ -1144,29 +1359,23 @@ export class RunsClient<
       durability: payload?.durability,
     };
 
-    const endpoint =
-      threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`;
-
-    let [url, init] = this.prepareFetchOptions(endpoint, {
+    yield* this.streamWithRetry({
+      endpoint:
+        threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`,
       method: "POST",
       json,
-      timeoutMs: null,
       signal: payload?.signal,
-    });
-    if (this.onRequest != null) init = await this.onRequest(url, init);
-    const response = await this.asyncCaller.fetch(url, init);
-
-    const runMetadata = getRunMetadataFromResponse(response);
-    if (runMetadata) payload?.onRunCreated?.(runMetadata);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream: ReadableStream<{ event: any; data: any }> = (
-      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-    )
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
-
-    yield* IterableReadableStream.fromReadableStream(stream);
+      onInitialResponse: (response) => {
+        const runMetadata = getRunMetadataFromResponse(response);
+        if (runMetadata) payload?.onRunCreated?.(runMetadata);
+      },
+    }) as TypedAsyncGenerator<
+      TStreamMode,
+      TSubgraphs,
+      TStateType,
+      TUpdateType,
+      TCustomEventType
+    >;
   }
 
   /**
@@ -1231,7 +1440,8 @@ export class RunsClient<
    * @returns An array of created runs.
    */
   async createBatch(
-    payloads: (RunsCreatePayload & { assistantId: string })[]
+    payloads: (Omit<RunsCreatePayload, "signal"> & { assistantId: string })[],
+    options?: { signal?: AbortSignal }
   ): Promise<Run[]> {
     const filteredPayloads = payloads
       .map((payload) => ({ ...payload, assistant_id: payload.assistantId }))
@@ -1244,6 +1454,7 @@ export class RunsClient<
     return this.fetch<Run[]>("/runs/batch", {
       method: "POST",
       json: filteredPayloads,
+      signal: options?.signal,
     });
   }
 
@@ -1353,6 +1564,11 @@ export class RunsClient<
        */
       status?: RunStatus;
       select?: RunSelectField[];
+
+      /**
+       * Signal to abort the request.
+       */
+      signal?: AbortSignal;
     }
   ): Promise<Run[]> {
     return this.fetch<Run[]>(`/threads/${threadId}/runs`, {
@@ -1362,6 +1578,7 @@ export class RunsClient<
         status: options?.status ?? undefined,
         select: options?.select ?? undefined,
       },
+      signal: options?.signal,
     });
   }
 
@@ -1372,8 +1589,14 @@ export class RunsClient<
    * @param runId The ID of the run.
    * @returns The run.
    */
-  async get(threadId: string, runId: string): Promise<Run> {
-    return this.fetch<Run>(`/threads/${threadId}/runs/${runId}`);
+  async get(
+    threadId: string,
+    runId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Run> {
+    return this.fetch<Run>(`/threads/${threadId}/runs/${runId}`, {
+      signal: options?.signal,
+    });
   }
 
   /**
@@ -1389,14 +1612,13 @@ export class RunsClient<
     threadId: string,
     runId: string,
     wait: boolean = false,
-    action: CancelAction = "interrupt"
+    action: CancelAction = "interrupt",
+    options: { signal?: AbortSignal } = {}
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}/runs/${runId}/cancel`, {
       method: "POST",
-      params: {
-        wait: wait ? "1" : "0",
-        action,
-      },
+      params: { wait: wait ? "1" : "0", action },
+      signal: options?.signal,
     });
   }
 
@@ -1453,35 +1675,21 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
-    let [url, init] = this.prepareFetchOptions(
-      threadId != null
-        ? `/threads/${threadId}/runs/${runId}/stream`
-        : `/runs/${runId}/stream`,
-      {
-        method: "GET",
-        timeoutMs: null,
-        signal: opts?.signal,
-        headers: opts?.lastEventId
-          ? { "Last-Event-ID": opts.lastEventId }
-          : undefined,
-        params: {
-          cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
-          stream_mode: opts?.streamMode,
-        },
-      }
-    );
-
-    if (this.onRequest != null) init = await this.onRequest(url, init);
-    const response = await this.asyncCaller.fetch(url, init);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream: ReadableStream<{ event: string; data: any }> = (
-      response.body || new ReadableStream({ start: (ctrl) => ctrl.close() })
-    )
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
-
-    yield* IterableReadableStream.fromReadableStream(stream);
+    yield* this.streamWithRetry({
+      endpoint:
+        threadId != null
+          ? `/threads/${threadId}/runs/${runId}/stream`
+          : `/runs/${runId}/stream`,
+      method: "GET",
+      signal: opts?.signal,
+      headers: opts?.lastEventId
+        ? { "Last-Event-ID": opts.lastEventId }
+        : undefined,
+      params: {
+        cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
+        stream_mode: opts?.streamMode,
+      },
+    });
   }
 
   /**
@@ -1491,9 +1699,14 @@ export class RunsClient<
    * @param runId The ID of the run.
    * @returns
    */
-  async delete(threadId: string, runId: string): Promise<void> {
+  async delete(
+    threadId: string,
+    runId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}/runs/${runId}`, {
       method: "DELETE",
+      signal: options?.signal,
     });
   }
 }
@@ -1538,6 +1751,7 @@ export class StoreClient extends BaseClient {
     options?: {
       index?: false | string[] | null;
       ttl?: number | null;
+      signal?: AbortSignal;
     }
   ): Promise<void> {
     namespace.forEach((label) => {
@@ -1559,6 +1773,7 @@ export class StoreClient extends BaseClient {
     return this.fetch<void>("/store/items", {
       method: "PUT",
       json: payload,
+      signal: options?.signal,
     });
   }
 
@@ -1592,6 +1807,7 @@ export class StoreClient extends BaseClient {
     key: string,
     options?: {
       refreshTtl?: boolean | null;
+      signal?: AbortSignal;
     }
   ): Promise<Item | null> {
     namespace.forEach((label) => {
@@ -1613,6 +1829,7 @@ export class StoreClient extends BaseClient {
 
     const response = await this.fetch<APIItem>("/store/items", {
       params,
+      signal: options?.signal,
     });
 
     return response
@@ -1631,7 +1848,11 @@ export class StoreClient extends BaseClient {
    * @param key The unique identifier for the item.
    * @returns Promise<void>
    */
-  async deleteItem(namespace: string[], key: string): Promise<void> {
+  async deleteItem(
+    namespace: string[],
+    key: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<void> {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
@@ -1643,6 +1864,7 @@ export class StoreClient extends BaseClient {
     return this.fetch<void>("/store/items", {
       method: "DELETE",
       json: { namespace, key },
+      signal: options?.signal,
     });
   }
 
@@ -1690,6 +1912,7 @@ export class StoreClient extends BaseClient {
       offset?: number;
       query?: string;
       refreshTtl?: boolean | null;
+      signal?: AbortSignal;
     }
   ): Promise<SearchItemsResponse> {
     const payload = {
@@ -1706,6 +1929,7 @@ export class StoreClient extends BaseClient {
       {
         method: "POST",
         json: payload,
+        signal: options?.signal,
       }
     );
     return {
@@ -1733,6 +1957,7 @@ export class StoreClient extends BaseClient {
     maxDepth?: number;
     limit?: number;
     offset?: number;
+    signal?: AbortSignal;
   }): Promise<ListNamespaceResponse> {
     const payload = {
       prefix: options?.prefix,
@@ -1745,6 +1970,7 @@ export class StoreClient extends BaseClient {
     return this.fetch<ListNamespaceResponse>("/store/namespaces", {
       method: "POST",
       json: payload,
+      signal: options?.signal,
     });
   }
 }

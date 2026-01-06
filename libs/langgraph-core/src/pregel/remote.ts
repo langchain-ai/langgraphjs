@@ -53,6 +53,7 @@ export type RemoteGraphParams = Omit<
   url?: string;
   apiKey?: string;
   headers?: Record<string, string>;
+  streamResumable?: boolean;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,7 +125,7 @@ const getStreamModes = (
  * APIs that implement the LangGraph Server API specification.
  *
  * For example, the `RemoteGraph` class can be used to call APIs from deployments
- * on LangGraph Cloud.
+ * on LangSmith Deployment.
  *
  * `RemoteGraph` behaves the same way as a `StateGraph` and can be used directly as
  * a node in another `StateGraph`.
@@ -187,6 +188,8 @@ export class RemoteGraph<
 
   protected interruptAfter?: Array<keyof Nn> | All;
 
+  protected streamResumable?: boolean;
+
   constructor(params: RemoteGraphParams) {
     super(params);
 
@@ -201,6 +204,7 @@ export class RemoteGraph<
     this.config = params.config;
     this.interruptBefore = params.interruptBefore;
     this.interruptAfter = params.interruptAfter;
+    this.streamResumable = params.streamResumable;
   }
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -435,6 +439,7 @@ export class RemoteGraph<
         streamSubgraphs,
         ifNotExists: "create",
         signal: mergedConfig.signal,
+        streamResumable: this.streamResumable,
       }
     )) {
       let mode;

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-ui",
-  "version": "1.0.3",
+  "version": "1.1.2",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -15,7 +15,8 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/langgraph-ui"
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",

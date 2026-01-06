@@ -1,5 +1,59 @@
 # @langchain/langgraph-sdk
 
+## 1.3.1
+
+### Patch Changes
+
+- 58aa2cf: Adding retry support for stream methods on network issues
+
+## 1.3.0
+
+### Minor Changes
+
+- 1497df9: feat(sdk): add support for enqueuing `useStream().submit(...)` calls while the agent is still running
+
+## 1.2.0
+
+### Minor Changes
+
+- 379de5e: Fix tool calls arguments not being streamed to the client
+
+### Patch Changes
+
+- d08e484: Add support for sending `AbortSignal` to all SDK methods
+- d08e484: Fix `useStream().stop()` not cancelling creation of thread.
+
+## 1.1.0
+
+### Minor Changes
+
+- e19e76c: Rename `experimental_thread` to `thread`, allowing replacing built-in history fetching hook with React Query / SWR
+- fa6c009: Add throttle option to `useStream` and batch updates in a macrotask to prevent `Maximum update depth exceeded` error
+
+### Patch Changes
+
+- 35e8fc7: Add name parameter to assistants count API.
+- b78a738: feat(sdk): add `includePagination` property when searching from assistants
+
+## 1.0.3
+
+### Patch Changes
+
+- 5ae7552: Adding support to skip auto loading api key when set to null on sdk client create
+
+## 1.0.2
+
+### Patch Changes
+
+- 1f6efc5: Ensure `isLoading` is set to `false` when cancelling the stream due to thread ID change
+
+## 1.0.1
+
+### Patch Changes
+
+- b9be526: Adding functionality to search assistants by name in the in-memory server implementation.
+- cc9dc28: Add `values` parameter to thread search
+
 ## 1.0.0
 
 ### Major Changes

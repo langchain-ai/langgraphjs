@@ -1,5 +1,37 @@
 # @langchain/langgraph-api
 
+## 1.1.2
+
+### Patch Changes
+
+- d08e484: Fix semver range for SDK
+  - @langchain/langgraph-ui@1.1.2
+
+## 1.1.1
+
+### Patch Changes
+
+- 35e8fc7: Add name parameter to assistants count API.
+- Updated dependencies [e19e76c]
+- Updated dependencies [fa6c009]
+- Updated dependencies [35e8fc7]
+- Updated dependencies [b78a738]
+  - @langchain/langgraph-sdk@1.1.0
+  - @langchain/langgraph-ui@1.1.1
+
+## 1.1.0
+
+### Patch Changes
+
+- @langchain/langgraph-ui@1.1.0
+
+## 1.0.4
+
+### Patch Changes
+
+- b9be526: Adding functionality to search assistants by name in the in-memory server implementation.
+  - @langchain/langgraph-ui@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes

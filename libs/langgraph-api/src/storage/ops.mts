@@ -233,6 +233,7 @@ export class FileSystemAssistants implements AssistantsRepo {
   async *search(
     options: {
       graph_id?: string;
+      name?: string;
       metadata?: Metadata;
       limit: number;
       offset: number;
@@ -252,6 +253,15 @@ export class FileSystemAssistants implements AssistantsRepo {
           if (
             options.graph_id != null &&
             assistant["graph_id"] !== options.graph_id
+          ) {
+            return false;
+          }
+
+          if (
+            options.name != null &&
+            !assistant["name"]
+              .toLowerCase()
+              .includes(options.name.toLowerCase())
           ) {
             return false;
           }
@@ -599,7 +609,7 @@ export class FileSystemAssistants implements AssistantsRepo {
   }
 
   async count(
-    options: { graph_id?: string; metadata?: Metadata },
+    options: { graph_id?: string; name?: string; metadata?: Metadata },
     auth: AuthContext | undefined
   ): Promise<number> {
     const [filters] = await handleAuthEvent(auth, "assistants:search", {
@@ -614,6 +624,13 @@ export class FileSystemAssistants implements AssistantsRepo {
         if (
           options.graph_id != null &&
           assistant["graph_id"] !== options.graph_id
+        ) {
+          return false;
+        }
+
+        if (
+          options.name != null &&
+          !assistant["name"].toLowerCase().includes(options.name.toLowerCase())
         ) {
           return false;
         }

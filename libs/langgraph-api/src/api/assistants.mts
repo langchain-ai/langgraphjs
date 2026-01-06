@@ -78,6 +78,7 @@ api.post(
     for await (const item of assistants().search(
       {
         graph_id: payload.graph_id,
+        name: payload.name,
         metadata: payload.metadata,
         limit: payload.limit ?? 10,
         offset: payload.offset ?? 0,

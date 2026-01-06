@@ -104,15 +104,25 @@ export class StreamManager<
 
   private listeners = new Set<() => void>();
 
+  private throttle: number | boolean;
+
+  private queue: Promise<unknown> = Promise.resolve();
+
+  private queueSize: number = 0;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
     error: unknown;
   };
 
-  constructor(messages: MessageTupleManager) {
+  constructor(
+    messages: MessageTupleManager,
+    options: { throttle: number | boolean }
+  ) {
     this.messages = messages;
     this.state = { isLoading: false, values: null, error: undefined };
+    this.throttle = options.throttle;
   }
 
   private setState = (newState: Partial<typeof this.state>) => {
@@ -125,8 +135,27 @@ export class StreamManager<
   };
 
   subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    if (this.throttle === false) {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+
+    const timeoutMs = this.throttle === true ? 0 : this.throttle;
+    let timeoutId: NodeJS.Timeout | number | undefined;
+
+    const throttledListener = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        clearTimeout(timeoutId);
+        listener();
+      }, timeoutMs);
+    };
+
+    this.listeners.add(throttledListener);
+    return () => {
+      clearTimeout(timeoutId);
+      this.listeners.delete(throttledListener);
+    };
   };
 
   getSnapshot = () => this.state;
@@ -198,7 +227,7 @@ export class StreamManager<
     return expected === actual || actual.startsWith(`${expected}|`);
   };
 
-  start = async (
+  protected enqueue = async (
     action: (
       signal: AbortSignal
     ) => Promise<
@@ -230,10 +259,9 @@ export class StreamManager<
 
       onFinish?: () => void;
     }
-  ): Promise<void> => {
-    if (this.state.isLoading) return;
-
+  ) => {
     try {
+      this.queueSize = Math.max(0, this.queueSize - 1);
       this.setState({ isLoading: true, error: undefined });
       this.abortRef = new AbortController();
 
@@ -317,7 +345,9 @@ export class StreamManager<
       if (streamError != null) throw streamError;
 
       const values = await options.onSuccess?.();
-      if (typeof values !== "undefined") this.setStreamValues(values);
+      if (typeof values !== "undefined" && this.queueSize === 0) {
+        this.setStreamValues(values);
+      }
     } catch (error) {
       if (
         !(
@@ -334,6 +364,43 @@ export class StreamManager<
       this.abortRef = new AbortController();
       options.onFinish?.();
     }
+  };
+
+  start = async (
+    action: (
+      signal: AbortSignal
+    ) => Promise<
+      AsyncGenerator<
+        EventStreamEvent<
+          StateType,
+          GetUpdateType<Bag, StateType>,
+          GetCustomEventType<Bag>
+        >
+      >
+    >,
+    options: {
+      getMessages: (values: StateType) => Message[];
+
+      setMessages: (current: StateType, messages: Message[]) => StateType;
+
+      initialValues: StateType;
+
+      callbacks: StreamManagerEventCallbacks<StateType, Bag>;
+
+      onSuccess: () =>
+        | StateType
+        | null
+        | undefined
+        | void
+        | Promise<StateType | null | undefined | void>;
+
+      onError: (error: unknown) => void | Promise<void>;
+
+      onFinish?: () => void;
+    }
+  ): Promise<void> => {
+    this.queueSize += 1;
+    this.queue = this.queue.then(() => this.enqueue(action, options));
   };
 
   stop = async (
@@ -358,7 +425,7 @@ export class StreamManager<
     this.abortRef = new AbortController();
 
     // Set the stream state to null
-    this.setState({ error: undefined, values: null });
+    this.setState({ error: undefined, values: null, isLoading: false });
 
     // Clear any pending messages
     this.messages.clear();

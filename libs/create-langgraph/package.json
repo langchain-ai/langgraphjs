@@ -3,14 +3,16 @@
   "version": "1.0.0",
   "description": "Create a new LangGraph project",
   "license": "MIT",
-  "main": "dist/index.mjs",
-  "bin": "dist/cli.mjs",
+  "main": "dist/index.js",
+  "bin": "dist/cli.js",
+  "type": "module",
   "files": [
     "dist"
   ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs-api.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/create-langgraph"
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",
@@ -19,6 +21,8 @@
     "build": "yarn turbo:command build:internal --filter=create-langgraph",
     "build:internal": "yarn clean && yarn tsc --outDir dist",
     "prepublish": "yarn build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -35,12 +39,12 @@
     "prettier": "^2.8.3",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.16"
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "keywords": []

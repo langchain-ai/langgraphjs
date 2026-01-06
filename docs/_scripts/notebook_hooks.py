@@ -425,17 +425,35 @@ def on_post_build(config):
     use_directory_urls = config.get("use_directory_urls")
     site_dir = config["site_dir"]
 
+    # Track which paths have explicit redirects
+    redirected_paths = set()
+
+    # Collect all existing HTML files in the site
+    all_html_files = set()
+    for root, dirs, files in os.walk(site_dir):
+        for file in files:
+            if file.endswith(".html"):
+                # Get relative path from site_dir
+                html_path = os.path.relpath(os.path.join(root, file), site_dir)
+                # Normalize path separators to forward slashes
+                html_path = html_path.replace(os.sep, "/")
+                all_html_files.add(html_path)
+
+    # Process explicit redirects from REDIRECT_MAP
     for page_old, page_new in REDIRECT_MAP.items():
         # Skip directory paths (ending with /)
         if page_old.endswith("/"):
             continue
-            
+
         page_old = page_old.replace(".ipynb", ".md")
         page_new = page_new.replace(".ipynb", ".md")
         page_new_before_hash, hash, suffix = page_new.partition("#")
         old_html_path = File(page_old, "", "", use_directory_urls).dest_path.replace(
             os.sep, "/"
         )
+
+        # Track this path as redirected
+        redirected_paths.add(old_html_path)
 
         # Check if page_new is an absolute URL (external redirect)
         if page_new.startswith("http://") or page_new.startswith("https://"):
@@ -450,6 +468,24 @@ def on_post_build(config):
                 + suffix
             )
         _write_html(site_dir, old_html_path, new_html_path)
+
+    # Create catch-all redirects for any HTML files not explicitly redirected
+    catchall_url = "https://docs.langchain.com/oss/javascript/langgraph/overview"
+    for html_file in all_html_files:
+        # Skip if this file is already explicitly redirected
+        if html_file in redirected_paths:
+            continue
+
+        # Skip the root index.html (we handle that separately)
+        if html_file == "index.html":
+            continue
+
+        # Skip reference documentation (keep those accessible)
+        if html_file.startswith("reference/"):
+            continue
+
+        # Create redirect for this unmapped file
+        _write_html(site_dir, html_file, catchall_url)
 
     # Create root index.html redirect
     root_redirect_html = """<!doctype html>

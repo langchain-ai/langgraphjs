@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-swarm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An implementation of a multi-agent swarm using LangGraph",
   "type": "module",
   "engines": {
@@ -10,7 +10,8 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/langgraph-swarm"
   },
   "scripts": {
     "build": "yarn turbo build:internal",
@@ -30,7 +31,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "zod": "^3.23.8"
+    "zod": "^3.25.76 || ^4"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",

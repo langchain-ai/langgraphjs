@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-validation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Library for validating LangGraph checkpoint saver implementations.",
   "type": "module",
   "engines": {
@@ -10,7 +10,8 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/checkpoint-validation"
   },
   "scripts": {
     "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-validation",
@@ -32,7 +33,7 @@
   "dependencies": {
     "vitest": "^3.2.4",
     "yargs": "^17.7.2",
-    "zod": "^3.23.8"
+    "zod": "^3.25.76 || ^4"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",

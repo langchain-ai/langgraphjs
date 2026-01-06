@@ -1,5 +1,44 @@
 # @langchain/langgraph
 
+## 1.0.7
+
+### Patch Changes
+
+- f602df6: Adding support for resumableStreams on remote graphs.
+
+## 1.0.6
+
+### Patch Changes
+
+- de1454a: undeprecate toolsCondition
+- 2340a54: respect meta defaults in `LastValue`
+
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [1497df9]
+  - @langchain/langgraph-sdk@1.3.0
+
+## 1.0.4
+
+### Patch Changes
+
+- Updated dependencies [379de5e]
+- Updated dependencies [d08e484]
+- Updated dependencies [d08e484]
+  - @langchain/langgraph-sdk@1.2.0
+
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies [e19e76c]
+- Updated dependencies [fa6c009]
+- Updated dependencies [35e8fc7]
+- Updated dependencies [b78a738]
+  - @langchain/langgraph-sdk@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes

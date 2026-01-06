@@ -1,5 +1,36 @@
 # @langchain/langgraph-cli
 
+## 1.1.2
+
+### Patch Changes
+
+- Updated dependencies [d08e484]
+  - @langchain/langgraph-api@1.1.2
+
+## 1.1.1
+
+### Patch Changes
+
+- Updated dependencies [35e8fc7]
+  - @langchain/langgraph-api@1.1.1
+
+## 1.1.0
+
+### Minor Changes
+
+- c71b92b: Updated the uv version to latest 0.9.11. Fixed error fixed EXDEV: cross-device link when using Python adapter
+
+### Patch Changes
+
+- @langchain/langgraph-api@1.1.0
+
+## 1.0.4
+
+### Patch Changes
+
+- Updated dependencies [b9be526]
+  - @langchain/langgraph-api@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes

@@ -15,8 +15,15 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
   // value is an array so we don't misinterpret an update to undefined as no write
   value: [Value] | [] = [];
 
+  constructor(protected initialValueFactory?: () => Value) {
+    super();
+    if (initialValueFactory) {
+      this.value = [initialValueFactory()];
+    }
+  }
+
   fromCheckpoint(checkpoint?: Value) {
-    const empty = new LastValue<Value>();
+    const empty = new LastValue<Value>(this.initialValueFactory);
     if (typeof checkpoint !== "undefined") {
       empty.value = [checkpoint];
     }

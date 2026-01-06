@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cua",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An implementation of a computer use agent (CUA) using LangGraph",
   "type": "module",
   "engines": {
@@ -11,7 +11,8 @@
   "homepage": "https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-cua/README.md",
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/langgraph-cua"
   },
   "scripts": {
     "build": "yarn turbo build:internal",
@@ -32,7 +33,7 @@
   "license": "MIT",
   "dependencies": {
     "scrapybara": "^2.4.4",
-    "zod": "^3.23.8"
+    "zod": "^3.25.76 || ^4"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
