@@ -48,41 +48,32 @@ function isSummaryMessage(message: Message): boolean {
 }
 
 /**
- * Animated summary indicator
+ * Toast notification for summarization events
  */
-function SummarizationBanner() {
+function SummarizationToast({ onClose }: { onClose: () => void }) {
   return (
-    <div className="bg-linear-to-r from-violet-950/50 via-fuchsia-950/50 to-violet-950/50 border border-violet-500/30 rounded-2xl p-5 animate-fade-in relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-0 left-0 w-32 h-32 bg-violet-500 rounded-full filter blur-3xl animate-pulse" />
-        <div className="absolute bottom-0 right-0 w-32 h-32 bg-fuchsia-500 rounded-full filter blur-3xl animate-pulse delay-1000" />
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
-            <Layers className="w-5 h-5 text-violet-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-violet-200 flex items-center gap-2">
-              Context Summarization
-              <Sparkles className="w-4 h-4 text-fuchsia-400" />
-            </h3>
-            <p className="text-xs text-violet-300/70">
-              Older messages condensed to maintain context efficiency
-            </p>
-          </div>
+    <div className="fixed top-24 right-4 z-100 animate-fade-in">
+      <div className="bg-neutral-900/95 backdrop-blur-md border border-violet-500/40 rounded-xl px-4 py-3 shadow-2xl shadow-violet-500/10 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
+          <Layers className="w-4 h-4 text-violet-400" />
         </div>
-
-        <div className="flex items-center gap-2 text-xs text-violet-300/60">
-          <Zap className="w-3 h-3" />
-          <span>
-            The summarization middleware automatically compressed the
-            conversation history
-          </span>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-violet-200 flex items-center gap-1.5">
+            Conversation Summarized
+            <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
+          </div>
+          <p className="text-xs text-neutral-400">
+            Older messages condensed to maintain context
+          </p>
         </div>
+        <button
+          onClick={onClose}
+          className="text-neutral-500 hover:text-neutral-300 transition-colors p-1"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -346,6 +337,11 @@ export function SummarizationAgent() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Toast notification for summarization */}
+      {showSummarizationBanner && (
+        <SummarizationToast onClose={() => setShowSummarizationBanner(false)} />
+      )}
+
       <main ref={scrollRef} className="flex-1 overflow-y-auto">
         <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {/* Stats panel */}
@@ -364,8 +360,6 @@ export function SummarizationAgent() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {/* Summarization banner */}
-              {showSummarizationBanner && <SummarizationBanner />}
 
               {stream.messages.map((message, idx) => {
                 // For AI messages, check if they have tool calls
@@ -387,7 +381,7 @@ export function SummarizationAgent() {
                   }
 
                   // Skip AI messages without content
-                  if (getContent(message).trim().length > 0) {
+                  if (getContent(message).trim().length === 0) {
                     return null;
                   }
                 }
