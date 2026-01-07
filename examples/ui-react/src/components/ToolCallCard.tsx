@@ -12,16 +12,29 @@ import {
   CloudRain,
   Snowflake,
   CloudLightning,
+  Lightbulb,
+  FlaskConical,
+  Landmark,
+  TreePine,
 } from "lucide-react";
 import type { ToolMessage } from "@langchain/langgraph-sdk";
 import type {
   ToolCallWithResult,
   ToolCallFromTool,
+  ToolCallState,
   InferAgentToolCalls,
 } from "@langchain/langgraph-sdk/react";
-import type { getWeather } from "../examples/tool-calling-agent/agent.js";
-import type { agent as ToolCallingAgent } from "../examples/tool-calling-agent/agent.js";
+import type { 
+  agent as ToolCallingAgent,
+  getWeather
+} from "../examples/tool-calling-agent/agent.js";
 import type { agent as SummarizationAgent } from "../examples/summarization-agent/agent.js";
+import type {
+  agent as BranchingAgent,
+  getFact,
+  calculate,
+} from "../examples/branching-chat/agent.js";
+import type { takeNote } from "../examples/summarization-agent/agent.js";
 
 // Define the tool calls type for our agent
 export type AgentToolCalls =
@@ -33,7 +46,8 @@ export type AgentToolCalls =
    * Infer tool call from an agent instance
    */
   | InferAgentToolCalls<typeof ToolCallingAgent>
-  | InferAgentToolCalls<typeof SummarizationAgent>;
+  | InferAgentToolCalls<typeof SummarizationAgent>
+  | InferAgentToolCalls<typeof BranchingAgent>;
 
 /**
  * Helper to parse tool result safely
@@ -75,6 +89,10 @@ export function ToolCallCard({
     return <NoteToolCallCard call={call} result={result} state={state} />;
   }
 
+  if (call.name === "get_fact") {
+    return <FactToolCallCard call={call} result={result} state={state} />;
+  }
+
   // Fallback for unknown tools
   return <GenericToolCallCard {...toolCall} />;
 }
@@ -89,7 +107,7 @@ function GenericToolCallCard({
 }: {
   call: { name: string; args: Record<string, unknown> };
   result?: ToolMessage;
-  state: "pending" | "completed" | "error";
+  state: ToolCallState;
 }) {
   const isLoading = state === "pending";
   const parsedResult = parseToolResult(result);
@@ -179,7 +197,7 @@ function WeatherToolCallCard({
 }: {
   call: ToolCallFromTool<typeof getWeather>;
   result?: ToolMessage;
-  state: "pending" | "completed" | "error";
+  state: ToolCallState;
 }) {
   const isLoading = state === "pending";
   const parsedResult = parseToolResult(result);
@@ -189,7 +207,7 @@ function WeatherToolCallCard({
   return (
     <div className="relative overflow-hidden rounded-xl animate-fade-in">
       {/* Sky gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-sky-600 via-sky-500 to-indigo-600" />
+      <div className="absolute inset-0 bg-linear-to-br from-sky-600 via-sky-500 to-indigo-600" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.15),transparent_50%)]" />
 
       <div className="relative p-4">
@@ -250,10 +268,26 @@ function WeatherToolCallCard({
 /**
  * Parse calculator result to get expression and answer
  */
-function parseCalculatorResult(content: string): {
+function parseCalculatorResult(content: string | undefined): {
   expression: string;
   result: string;
 } | null {
+  if (!content) return null;
+  
+  // Try to parse as JSON first (from the branching-chat agent)
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.expression && parsed.result !== undefined) {
+      return { 
+        expression: parsed.expression, 
+        result: String(parsed.result) 
+      };
+    }
+  } catch {
+    // Not JSON, try regex pattern
+  }
+  
+  // Try "expression = result" pattern
   const match = content.match(/(.+)\s*=\s*(.+)/);
   if (!match) return null;
   return { expression: match[1].trim(), result: match[2].trim() };
@@ -267,21 +301,18 @@ function CalculatorToolCallCard({
   result,
   state,
 }: {
-  call: { name: string; args: { expression?: string } };
+  call: ToolCallFromTool<typeof calculate>;
   result?: ToolMessage;
-  state: "pending" | "completed" | "error";
+  state: ToolCallState;
 }) {
   const isLoading = state === "pending";
-  const parsedResult = parseToolResult(result);
-  const isError = parsedResult.status === "error";
-  const calcResult = !isError
-    ? parseCalculatorResult(parsedResult.content)
-    : null;
+  const calcResult = parseCalculatorResult(result?.content as string | undefined);
+  const isError = calcResult === null && result != null;
 
   return (
-    <div className="rounded-xl bg-gradient-to-b from-neutral-700 to-neutral-800 p-1 animate-fade-in shadow-lg">
+    <div className="rounded-xl bg-linear-to-b from-neutral-700 to-neutral-800 p-1 animate-fade-in shadow-lg">
       {/* Calculator body */}
-      <div className="rounded-lg bg-gradient-to-b from-neutral-800 to-neutral-900 p-3">
+      <div className="rounded-lg bg-linear-to-b from-neutral-800 to-neutral-900 p-3">
         {/* Brand label */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
@@ -299,7 +330,7 @@ function CalculatorToolCallCard({
         <div className="bg-[#1a2f1a] rounded-md p-3 border border-[#0f1f0f] shadow-inner">
           {isError ? (
             <div className="font-mono text-red-400 text-sm">
-              ERR: {parsedResult.content}
+              ERR: Could not calculate
             </div>
           ) : (
             <>
@@ -350,9 +381,9 @@ function NoteToolCallCard({
   result,
   state,
 }: {
-  call: { name: string; args: { note?: string; title?: string; content?: string } };
+  call: ToolCallFromTool<typeof takeNote>;
   result?: ToolMessage;
-  state: "pending" | "completed" | "error";
+  state: ToolCallState;
 }) {
   const isLoading = state === "pending";
   const parsedResult = parseToolResult(result);
@@ -362,7 +393,7 @@ function NoteToolCallCard({
     <div className="relative animate-fade-in">
       {/* Push pin */}
       <div className="absolute -top-1 left-1/2 -translate-x-1/2 z-10">
-        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-red-400 to-red-600 shadow-md border border-red-700/50 flex items-center justify-center">
+        <div className="w-4 h-4 rounded-full bg-linear-to-br from-red-400 to-red-600 shadow-md border border-red-700/50 flex items-center justify-center">
           <div className="w-1.5 h-1.5 rounded-full bg-red-300/50" />
         </div>
         <div className="w-0.5 h-2 bg-neutral-600 mx-auto -mt-0.5" />
@@ -408,9 +439,7 @@ function NoteToolCallCard({
               className="text-amber-800 text-sm leading-6"
               style={{ fontFamily: "Georgia, serif" }}
             >
-              {call.args.content ??
-                call.args.note ??
-                (result ? parsedResult.content : "Writing...")}
+              {call.args.content ?? (result ? parsedResult.content : "Writing...")}
             </p>
           )}
 
@@ -433,6 +462,93 @@ function NoteToolCallCard({
             "radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, transparent 70%)",
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Parse fact result to get topic and fact
+ */
+function parseFactResult(content: string): {
+  topic: string;
+  fact: string;
+} | null {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.topic && parsed.fact) {
+      return { topic: parsed.topic, fact: parsed.fact };
+    }
+  } catch {
+    // Try to extract from plain text
+    const match = content.match(/Topic:\s*(.+?)\s*Fact:\s*(.+)/i);
+    if (match) {
+      return { topic: match[1], fact: match[2] };
+    }
+  }
+  return null;
+}
+
+/**
+ * Fact tool call card - Minimal trivia card
+ */
+function FactToolCallCard({
+  call,
+  result,
+  state,
+}: {
+  call: ToolCallFromTool<typeof getFact>;
+  result?: ToolMessage;
+  state: ToolCallState;
+}) {
+  const isLoading = state === "pending";
+  const parsedResult = parseToolResult(result);
+  const isError = parsedResult.status === "error";
+
+  let factData: { topic: string; fact: string } | null = null;
+  if (!isError && result) {
+    factData = parseFactResult(result.content as string);
+  }
+
+  const topic = factData?.topic ?? call.args.topic ?? "trivia";
+  const topicIcon = topic.toLowerCase().includes("science")
+    ? <FlaskConical className="w-4 h-4" />
+    : topic.toLowerCase().includes("history")
+      ? <Landmark className="w-4 h-4" />
+      : topic.toLowerCase().includes("nature")
+        ? <TreePine className="w-4 h-4" />
+        : <Lightbulb className="w-4 h-4" />;
+
+  return (
+    <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-800 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+          {topicIcon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-white">Did you know?</div>
+          <div className="text-xs text-neutral-500 capitalize">{topic}</div>
+        </div>
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+        ) : !isError ? (
+          <Check className="w-4 h-4 text-green-400" />
+        ) : null}
+      </div>
+
+      {/* Content */}
+      {isError ? (
+        <div className="text-sm text-red-400">{parsedResult.content}</div>
+      ) : factData ? (
+        <p className="text-sm text-neutral-300 leading-relaxed">
+          {factData.fact}
+        </p>
+      ) : (
+        <div className="flex items-center gap-2 text-neutral-500 text-sm">
+          <Lightbulb className="w-4 h-4 animate-pulse" />
+          <span>Finding a fact...</span>
+        </div>
+      )}
     </div>
   );
 }
