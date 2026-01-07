@@ -1,5 +1,11 @@
 # create-langgraph
 
+## 1.1.0
+
+### Minor Changes
+
+- 074da7f: feat(create-langgraph): allow user to generate a langgraph config file
+
 ## 1.0.0
 
 ### Major Changes
