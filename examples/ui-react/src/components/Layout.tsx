@@ -14,6 +14,7 @@ import "../examples/parallel-research";
 import "../examples/reasoning-agent";
 import "../examples/custom-streaming";
 import "../examples/branching-chat";
+import "../examples/session-persistence";
 
 function WelcomeScreen() {
   return (
