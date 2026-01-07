@@ -36,10 +36,23 @@ import type {
 } from "../examples/branching-chat/agent.js";
 import type { takeNote } from "../examples/summarization-agent/agent.js";
 
-// Define the tool calls type for our agent
-export type AgentToolCalls =
+/**
+ * Helper type to filter out tool calls with generic `name: string`.
+ * Keeps only tool calls where the name is a literal type (e.g., "get_weather").
+ * This ensures discriminated union narrowing works correctly.
+ */
+type WithLiteralName<T> = T extends { name: infer N }
+  ? string extends N
+    ? never // Exclude if name is generic `string`
+    : T
+  : never;
+
+/**
+ * Define the possible tool call types this component can handle.
+ */
+export type AgentToolCalls = WithLiteralName<
   /**
-   * Infer tool call type from the tool
+   * Infer tool call from the getWeather tool
    */
   | ToolCallFromTool<typeof getWeather>
   /**
@@ -47,7 +60,8 @@ export type AgentToolCalls =
    */
   | InferAgentToolCalls<typeof ToolCallingAgent>
   | InferAgentToolCalls<typeof SummarizationAgent>
-  | InferAgentToolCalls<typeof BranchingAgent>;
+  | InferAgentToolCalls<typeof BranchingAgent>
+>;
 
 /**
  * Helper to parse tool result safely
@@ -93,7 +107,9 @@ export function ToolCallCard({
     return <FactToolCallCard call={call} result={result} state={state} />;
   }
 
-  // Fallback for unknown tools
+  /**
+   * Fallback for unknown tools
+   */
   return <GenericToolCallCard {...toolCall} />;
 }
 
