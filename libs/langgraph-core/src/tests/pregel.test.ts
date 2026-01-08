@@ -3831,7 +3831,9 @@ graph TD;
         description: "Searches the API for the query",
       });
 
-      const toolsByName = { [searchApi.name]: searchApi };
+      const toolsByName: Record<string, typeof searchApi> = {
+        [searchApi.name]: searchApi,
+      };
       const model = new FakeChatModel({
         responses: [
           new AIMessage({
