@@ -14,6 +14,7 @@ import type {
   OnCompletionBehavior,
   DisconnectMode,
   Durability,
+  StreamEvent,
 } from "../types.js";
 import type { Message } from "../types.messages.js";
 import type {
@@ -401,7 +402,14 @@ export interface UseStream<
   joinStream: (
     runId: string,
     lastEventId?: string,
-    options?: { streamMode?: StreamMode | StreamMode[] }
+    options?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    }
   ) => Promise<void>;
 }
 
