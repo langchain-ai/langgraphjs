@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.1.4
+
+### Patch Changes
+
+- 730dc7c: fix(api): bump @hono/zod-validator
+  - @langchain/langgraph-ui@1.1.4
+
 ## 1.1.3
 
 ### Patch Changes

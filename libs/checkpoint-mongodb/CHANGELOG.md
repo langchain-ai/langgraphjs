@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.1.0
+
+### Minor Changes
+
+- 4b7832e: Updates the checkpoint-mongodb to append client metadata
+
 ## 1.0.0
 
 ### Major Changes

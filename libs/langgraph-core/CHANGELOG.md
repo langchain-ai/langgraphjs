@@ -1,5 +1,15 @@
 # @langchain/langgraph
 
+## 1.0.8
+
+### Patch Changes
+
+- 730dc7c: fix(core): improved Zod interop
+- Updated dependencies [730dc7c]
+- Updated dependencies [4ffdde9]
+- Updated dependencies [730dc7c]
+  - @langchain/langgraph-sdk@1.4.0
+
 ## 1.0.7
 
 ### Patch Changes
