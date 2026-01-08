@@ -1,19 +1,30 @@
 import type { BaseMessage } from "@langchain/core/messages";
-import { StateGraph, MessagesZodMeta, START } from "@langchain/langgraph";
-import { registry } from "@langchain/langgraph/zod";
+import {
+  Annotation,
+  StateGraph,
+  messagesStateReducer,
+  START,
+} from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { z } from "zod/v4";
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { z } from "zod/v4";
 
 const llm = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-const schema = z.object({
-  messages: z.custom<BaseMessage[]>().register(registry, MessagesZodMeta),
+const StateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
 });
 
-const graph = new StateGraph(schema)
+const schema = z.object({
+  messages: z.custom<BaseMessage[]>(),
+});
+
+const graph = new StateGraph(StateAnnotation)
   .addNode("agent", async ({ messages }) => ({
     messages: await llm.invoke(messages),
   }))
@@ -25,7 +36,8 @@ export type GraphType = typeof graph;
 const app = new Hono();
 
 app.post("/api/stream", async (c) => {
-  const { input } = z.object({ input: schema }).parse(await c.req.json());
+  const body = await c.req.json();
+  const input = schema.parse(body.input);
 
   const stream = await graph.stream(input, {
     encoding: "text/event-stream",

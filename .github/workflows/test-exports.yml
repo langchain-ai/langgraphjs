@@ -29,8 +29,6 @@ env:
 jobs:
   exports-esbuild:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
@@ -50,8 +48,6 @@ jobs:
 
   exports-esm:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
@@ -71,8 +67,6 @@ jobs:
 
   exports-cjs:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
@@ -92,8 +86,6 @@ jobs:
 
   exports-cf:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
@@ -113,8 +105,6 @@ jobs:
 
   exports-vercel:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
@@ -134,8 +124,6 @@ jobs:
 
   exports-vite:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
@@ -155,8 +143,6 @@ jobs:
 
   exports-tsc:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ env.NODE_VERSION }}
