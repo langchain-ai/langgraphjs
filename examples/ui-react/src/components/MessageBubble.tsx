@@ -1,5 +1,5 @@
 import { Brain } from "lucide-react";
-import type { Message, AIMessage } from "@langchain/langgraph-sdk";
+import type { Message } from "@langchain/langgraph-sdk";
 
 // Styles for each message type - kept separate for readability
 const BUBBLE_STYLES = {
@@ -149,7 +149,7 @@ function ReasoningBubble({ content }: { content: string }) {
  */
 export function getReasoningFromMessage(message: Message): string | undefined {
   // Type for accessing additional properties
-  type MessageWithExtras = AIMessage & {
+  type MessageWithExtras = Message & {
     additional_kwargs?: { reasoning?: OpenAIReasoning };
     contentBlocks?: Array<{ type: string; thinking?: string; text?: string }>;
   };
