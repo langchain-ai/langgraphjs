@@ -156,12 +156,12 @@ describe("assistants", () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
