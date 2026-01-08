@@ -25,17 +25,12 @@ class SanFranciscoWeatherTool extends Tool {
 }
 
 // Zod schema test
-interface Weather {
-  temperature: number;
-  condition: string;
-  location: string;
-}
-
 const WeatherSchema = z.object({
   temperature: z.number(),
   condition: z.string(),
   location: z.string(),
 });
+type Weather = z.infer<typeof WeatherSchema>;
 
 const WeatherGraphState = z.object({
   messages: z.array(z.any()),
