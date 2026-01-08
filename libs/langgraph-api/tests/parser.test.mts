@@ -15,7 +15,9 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
       },
     },
     definitions: {
-      "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": { type: "object" },
+      "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
+        type: "object",
+      },
     },
     $schema: "http://json-schema.org/draft-07/schema#",
   };
@@ -142,7 +144,9 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": { type: "object" },
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
+            type: "object",
+          },
         },
         $schema: "http://json-schema.org/draft-07/schema#",
       });
@@ -294,7 +298,9 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": { type: "object" },
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
+          type: "object",
+        },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
     });
