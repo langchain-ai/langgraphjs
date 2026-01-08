@@ -211,6 +211,12 @@ export interface Thread<ValuesType = DefaultValues> {
 
   /** Interrupts which were thrown in this thread */
   interrupts: Record<string, Array<Interrupt>>;
+
+  /** The config for the thread */
+  config?: Config;
+
+  /** The error for the thread (if status == "error") */
+  error?: Optional<string | Record<string, unknown>>;
 }
 
 export interface Cron {
