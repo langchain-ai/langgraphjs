@@ -89,22 +89,24 @@ function AssistantBubble({ message }: { message: Message }) {
   const content = getTextContent(message);
   const reasoning = getReasoningFromMessage(message);
 
-  return (<>
-    {/* Render reasoning bubble if it exists */}
-    {reasoning && (
-      <ReasoningBubble content={reasoning} />
-    )}
-    {content && (
-      <div className="animate-fade-in">
-        <div className="text-xs font-medium text-neutral-500 mb-2">Assistant</div>
-        <div className={BUBBLE_STYLES.ai}>
-          <div className="whitespace-pre-wrap leading-relaxed text-[15px]">
-            {content}
+  return (
+    <>
+      {/* Render reasoning bubble if it exists */}
+      {reasoning && <ReasoningBubble content={reasoning} />}
+      {content && (
+        <div className="animate-fade-in">
+          <div className="text-xs font-medium text-neutral-500 mb-2">
+            Assistant
+          </div>
+          <div className={BUBBLE_STYLES.ai}>
+            <div className="whitespace-pre-wrap leading-relaxed text-[15px]">
+              {content}
+            </div>
           </div>
         </div>
-      </div>
-    )}
-  </>);
+      )}
+    </>
+  );
 }
 
 /**

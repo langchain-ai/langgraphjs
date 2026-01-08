@@ -24,9 +24,9 @@ import type {
   ToolCallState,
   InferAgentToolCalls,
 } from "@langchain/langgraph-sdk/react";
-import type { 
+import type {
   agent as ToolCallingAgent,
-  getWeather
+  getWeather,
 } from "../examples/tool-calling-agent/agent.js";
 import type { agent as SummarizationAgent } from "../examples/summarization-agent/agent.js";
 import type {
@@ -231,9 +231,7 @@ function WeatherToolCallCard({
         <div className="flex items-center gap-2 text-white/80 text-xs mb-3">
           <MapPin className="w-3 h-3" />
           <span className="font-medium">{call.args.location}</span>
-          {isLoading && (
-            <Loader2 className="w-3 h-3 animate-spin ml-auto" />
-          )}
+          {isLoading && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
         </div>
 
         {isError ? (
@@ -289,20 +287,20 @@ function parseCalculatorResult(content: string | undefined): {
   result: string;
 } | null {
   if (!content) return null;
-  
+
   // Try to parse as JSON first (from the branching-chat agent)
   try {
     const parsed = JSON.parse(content);
     if (parsed.expression && parsed.result !== undefined) {
-      return { 
-        expression: parsed.expression, 
-        result: String(parsed.result) 
+      return {
+        expression: parsed.expression,
+        result: String(parsed.result),
       };
     }
   } catch {
     // Not JSON, try regex pattern
   }
-  
+
   // Try "expression = result" pattern
   const match = content.match(/(.+)\s*=\s*(.+)/);
   if (!match) return null;
@@ -322,7 +320,9 @@ function CalculatorToolCallCard({
   state: ToolCallState;
 }) {
   const isLoading = state === "pending";
-  const calcResult = parseCalculatorResult(result?.content as string | undefined);
+  const calcResult = parseCalculatorResult(
+    result?.content as string | undefined
+  );
   const isError = calcResult === null && result != null;
 
   return (
@@ -356,9 +356,7 @@ function CalculatorToolCallCard({
               </div>
               {/* Result row */}
               <div className="flex items-center justify-end gap-2">
-                {calcResult && (
-                  <Equal className="w-3 h-3 text-[#4a7f4a]" />
-                )}
+                {calcResult && <Equal className="w-3 h-3 text-[#4a7f4a]" />}
                 <span
                   className="font-mono text-2xl font-bold tracking-wider"
                   style={{
@@ -455,7 +453,8 @@ function NoteToolCallCard({
               className="text-amber-800 text-sm leading-6"
               style={{ fontFamily: "Georgia, serif" }}
             >
-              {call.args.content ?? (result ? parsedResult.content : "Writing...")}
+              {call.args.content ??
+                (result ? parsedResult.content : "Writing...")}
             </p>
           )}
 
@@ -526,13 +525,15 @@ function FactToolCallCard({
   }
 
   const topic = factData?.topic ?? call.args.topic ?? "trivia";
-  const topicIcon = topic.toLowerCase().includes("science")
-    ? <FlaskConical className="w-4 h-4" />
-    : topic.toLowerCase().includes("history")
-      ? <Landmark className="w-4 h-4" />
-      : topic.toLowerCase().includes("nature")
-        ? <TreePine className="w-4 h-4" />
-        : <Lightbulb className="w-4 h-4" />;
+  const topicIcon = topic.toLowerCase().includes("science") ? (
+    <FlaskConical className="w-4 h-4" />
+  ) : topic.toLowerCase().includes("history") ? (
+    <Landmark className="w-4 h-4" />
+  ) : topic.toLowerCase().includes("nature") ? (
+    <TreePine className="w-4 h-4" />
+  ) : (
+    <Lightbulb className="w-4 h-4" />
+  );
 
   return (
     <div className="bg-neutral-900 rounded-lg p-4 border border-neutral-800 animate-fade-in">

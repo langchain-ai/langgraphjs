@@ -127,7 +127,10 @@ export function BranchingChat() {
    * Edit a human message - creates a new branch from the parent checkpoint
    */
   const handleEditMessage = useCallback(
-    (message: Message<InferAgentToolCalls<typeof agent>>, newContent: string) => {
+    (
+      message: Message<InferAgentToolCalls<typeof agent>>,
+      newContent: string
+    ) => {
       const meta = stream.getMessagesMetadata(message);
       const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
 
@@ -364,4 +367,3 @@ registerExample({
 });
 
 export default BranchingChat;
-

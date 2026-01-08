@@ -62,7 +62,8 @@ export const getFact = tool(
     };
 
     const topicFacts = facts[topic.toLowerCase()] || facts.science;
-    const randomFact = topicFacts[Math.floor(Math.random() * topicFacts.length)];
+    const randomFact =
+      topicFacts[Math.floor(Math.random() * topicFacts.length)];
 
     return JSON.stringify({
       status: "success",
@@ -76,7 +77,9 @@ export const getFact = tool(
     schema: z.object({
       topic: z
         .string()
-        .describe("The topic to get a fact about (science, history, or nature)"),
+        .describe(
+          "The topic to get a fact about (science, history, or nature)"
+        ),
     }),
   }
 );
@@ -103,4 +106,3 @@ When answering questions:
 Since users can branch conversations and try different questions,
 feel free to be playful and offer alternative angles they might explore.`,
 });
-
