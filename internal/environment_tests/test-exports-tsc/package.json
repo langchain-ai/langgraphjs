@@ -23,8 +23,5 @@
     "@types/node": "^18.15.11",
     "typescript": "5.5.4",
     "zod": "^3.25.76"
-  },
-  "overrides": {
-    "zod": "$zod"
   }
 }
