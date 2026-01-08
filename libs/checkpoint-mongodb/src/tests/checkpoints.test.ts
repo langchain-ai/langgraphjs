@@ -11,6 +11,8 @@ describe("MongoDBSaver", () => {
   it("should set client metadata", async () => {
     // eslint-disable-next-line no-new
     new MongoDBSaver({ client: client as unknown as MongoClient });
-    expect(client.appendMetadata).toHaveBeenCalledWith({ name: "langgraphjs_checkpoint_saver" });
+    expect(client.appendMetadata).toHaveBeenCalledWith({
+      name: "langgraphjs_checkpoint_saver",
+    });
   });
 });
