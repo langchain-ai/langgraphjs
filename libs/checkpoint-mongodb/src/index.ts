@@ -41,6 +41,9 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   ) {
     super(serde);
     this.client = client;
+    this.client.appendMetadata({
+      name: "langgraphjs_checkpoint_saver",
+    });
     this.db = this.client.db(dbName);
     this.checkpointCollectionName =
       checkpointCollectionName ?? this.checkpointCollectionName;
