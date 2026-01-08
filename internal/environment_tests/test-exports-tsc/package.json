@@ -22,6 +22,6 @@
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@types/node": "^18.15.11",
     "typescript": "5.5.4",
-    "zod": "^3.25.32"
+    "zod": "^3.25.76"
   }
 }
