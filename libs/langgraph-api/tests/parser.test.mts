@@ -10,12 +10,12 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
       messages: {
         type: "array",
         items: {
-          $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
         },
       },
     },
     definitions: {
-      "BaseMessage<MessageStructure,MessageType>": { type: "object" },
+      "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": { type: "object" },
     },
     $schema: "http://json-schema.org/draft-07/schema#",
   };
@@ -137,12 +137,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
             },
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure,MessageType>": { type: "object" },
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": { type: "object" },
         },
         $schema: "http://json-schema.org/draft-07/schema#",
       });
@@ -157,12 +157,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
             },
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure,MessageType>": {
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
             type: "object",
           },
         },
@@ -179,12 +179,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
             },
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure,MessageType>": {
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
             type: "object",
           },
         },
@@ -267,12 +267,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -289,12 +289,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": { type: "object" },
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": { type: "object" },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
     });
@@ -309,12 +309,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -460,12 +460,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -482,12 +482,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -504,12 +504,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -592,12 +592,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -614,12 +614,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -636,12 +636,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -714,12 +714,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -736,12 +736,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -758,12 +758,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -1026,7 +1026,7 @@ test.concurrent("`strictFunctionTypes: false`", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
         state: { type: "string" },
