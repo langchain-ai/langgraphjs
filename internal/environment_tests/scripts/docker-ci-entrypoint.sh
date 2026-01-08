@@ -20,10 +20,12 @@ cp ../package/.[!.]* . 2>/dev/null || true
 mkdir -p ./libs/langgraph/
 mkdir -p ./libs/langgraph-core/
 mkdir -p ./libs/checkpoint/
+mkdir -p ./libs/sdk/
 
 cp -r ../langgraph ./libs/
 cp -r ../langgraph-core ./libs/
 cp -r ../checkpoint ./libs/
+cp -r ../sdk ./libs/
 
 # copy cache
 mkdir -p ./.yarn
