@@ -9,7 +9,7 @@
   "description": "TSC Tests for the things exported by the langchain package",
   "main": "./index.mjs",
   "scripts": {
-    "build": "tsc -m nodenext src/*.ts --outDir dist",
+    "build": "tsc -p tsconfig.json",
     "test": "npm run test:tsc && npm run test:zod",
     "test:tsc": "node dist/main.js",
     "test:zod": "node dist/zod.js"

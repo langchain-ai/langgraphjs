@@ -4,6 +4,10 @@ set -euxo pipefail
 
 export CI=true
 
+# TypeScript in these export tests can use a lot of memory in CI; raise the heap limit
+# to avoid sporadic OOM failures on GitHub runners.
+export NODE_OPTIONS="--max-old-space-size=6144 ${NODE_OPTIONS:-}"
+
 # enable extended globbing for omitting build artifacts
 shopt -s extglob
 
