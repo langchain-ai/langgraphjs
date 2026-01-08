@@ -37,7 +37,7 @@ function hasContent(message: Message): boolean {
 export function ToolCallingAgent() {
   const { scrollRef, contentRef } = useStickToBottom();
   const stream = useStream<typeof agent>({
-    assistantId: "agent",
+    assistantId: "tool-calling-agent",
     apiUrl: "http://localhost:2024",
   });
 

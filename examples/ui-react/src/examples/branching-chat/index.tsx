@@ -105,7 +105,7 @@ function EditableMessage({
 
 export function BranchingChat() {
   const stream = useStream<typeof agent>({
-    assistantId: "branching-chat",
+    assistantId: "agent",
     apiUrl: "http://localhost:2024",
     // Enable state history fetching for branching support
     fetchStateHistory: true,
