@@ -16,6 +16,7 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+  ttl?: { expireAfterSeconds: number };
 };
 
 /**
@@ -26,9 +27,40 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   protected db: MongoDatabase;
 
+  protected ttl: { expireAfterSeconds: number } | undefined;
+
+  protected isSetup: boolean;
+
   checkpointCollectionName = "checkpoints";
 
   checkpointWritesCollectionName = "checkpoint_writes";
+
+  async setup(): Promise<void> {
+    if (this.ttl != null) {
+      const { expireAfterSeconds } = this.ttl;
+      await Promise.all([
+        this.db
+          .collection(this.checkpointCollectionName)
+          .createIndex({ _createdAtForTTL: 1 }, { expireAfterSeconds }),
+        this.db
+          .collection(this.checkpointWritesCollectionName)
+          .createIndex({ _createdAtForTTL: 1 }, { expireAfterSeconds }),
+      ]);
+    }
+
+    this.isSetup = true;
+  }
+
+  protected assertSetup() {
+    // Skip setup check if TTL is not enabled
+    if (this.ttl == null) return;
+
+    if (!this.isSetup) {
+      throw new Error(
+        "MongoDBSaver is not initialized. Please call `MongoDBSaver.setup()` first before using the checkpointer."
+      );
+    }
+  }
 
   constructor(
     {
@@ -36,12 +68,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      ttl,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
     super(serde);
     this.client = client;
+    this.ttl = ttl;
     this.db = this.client.db(dbName);
+    this.isSetup = false;
+
     this.checkpointCollectionName =
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
@@ -55,6 +91,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
    * for the given thread ID is retrieved.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    this.assertSetup();
+
     const {
       thread_id,
       checkpoint_ns = "",
@@ -135,6 +173,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    this.assertSetup();
+
     const { limit, before, filter } = options ?? {};
     const query: Record<string, unknown> = {};
 
@@ -210,6 +250,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
+    this.assertSetup();
+
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     const checkpoint_id = checkpoint.id;
@@ -234,6 +276,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      ...(this.ttl ? { _createdAtForTTL: new Date() } : {}),
     };
     const upsertQuery = {
       thread_id,
@@ -261,6 +304,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void> {
+    this.assertSetup();
+
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
     const checkpoint_id = config.configurable?.checkpoint_id;
@@ -289,7 +334,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         return {
           updateOne: {
             filter: upsertQuery,
-            update: { $set: { channel, type, value: serializedValue } },
+            update: {
+              $set: {
+                channel,
+                type,
+                value: serializedValue,
+                ...(this.ttl ? { _createdAtForTTL: new Date() } : {}),
+              },
+            },
             upsert: true,
           },
         };
