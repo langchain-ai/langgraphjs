@@ -48,7 +48,7 @@ function useThreadIdParam() {
 
   const updateThreadId = useCallback((newThreadId: string | null) => {
     setThreadId(newThreadId);
-    
+
     const url = new URL(window.location.href);
     if (newThreadId == null) {
       url.searchParams.delete("threadId");
@@ -180,10 +180,10 @@ export function SessionPersistence() {
 
   /**
    * useStream with reconnectOnMount enabled.
-   * 
+   *
    * This automatically resumes an ongoing stream after page refresh.
    * The run ID is stored in sessionStorage and used to rejoin the stream.
-   * 
+   *
    * See: https://docs.langchain.com/langsmith/use-stream-react#resume-a-stream-after-page-refresh
    */
   const stream = useStream<typeof agent>({
@@ -207,7 +207,9 @@ export function SessionPersistence() {
   useEffect(() => {
     if (stream.isLoading && threadId) {
       // Check if there's a stored run ID for this thread (indicates reconnection)
-      const storedRunId = window.sessionStorage.getItem(`lg:stream:${threadId}`);
+      const storedRunId = window.sessionStorage.getItem(
+        `lg:stream:${threadId}`
+      );
       if (storedRunId) {
         setHasReconnected(true);
       }
@@ -241,7 +243,7 @@ export function SessionPersistence() {
           isReconnecting={hasReconnected && stream.isLoading}
           threadId={threadId}
         />
-        
+
         {/* Refresh button - only show during streaming */}
         {stream.isLoading && (
           <button
@@ -283,8 +285,12 @@ export function SessionPersistence() {
                       Try refreshing during the response!
                     </div>
                     <div className="text-xs text-blue-400/70">
-                      The <code className="px-1 py-0.5 rounded bg-blue-900/50">reconnectOnMount: true</code> option
-                      automatically resumes the stream. The run ID is stored in sessionStorage.
+                      The{" "}
+                      <code className="px-1 py-0.5 rounded bg-blue-900/50">
+                        reconnectOnMount: true
+                      </code>{" "}
+                      option automatically resumes the stream. The run ID is
+                      stored in sessionStorage.
                     </div>
                   </div>
                 </div>
