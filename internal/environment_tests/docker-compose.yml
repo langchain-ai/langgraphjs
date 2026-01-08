@@ -12,6 +12,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-esm:
     image: node:22
@@ -28,6 +29,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-tsc:
     image: node:22
@@ -41,6 +43,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-cjs:
     image: node:22
@@ -54,6 +57,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-cf:
     image: node:22
@@ -67,6 +71,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-vercel:
     image: node:22
@@ -83,6 +88,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   test-exports-vite:
     image: node:22
@@ -96,6 +102,7 @@ services:
       - ../../libs/langgraph:/langgraph
       - ../../libs/langgraph-core:/langgraph-core
       - ../../libs/checkpoint:/checkpoint
+      - ../../libs/sdk:/sdk
     command: bash /scripts/docker-ci-entrypoint.sh
   success:
     image: alpine:3.14
