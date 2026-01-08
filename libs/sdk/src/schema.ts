@@ -229,6 +229,9 @@ export interface Cron {
   /** The ID of the thread */
   thread_id: Optional<string>;
 
+  /** What to do with the thread after the run completes. Only applicable for stateless crons. */
+  on_run_completed?: "delete" | "keep";
+
   /** The end date to stop running the cron. */
   end_time: Optional<string>;
 

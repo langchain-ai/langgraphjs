@@ -490,6 +490,7 @@ export class CronsClient extends BaseClient {
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       webhook: payload?.webhook,
+      on_run_completed: payload?.onRunCompleted,
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
