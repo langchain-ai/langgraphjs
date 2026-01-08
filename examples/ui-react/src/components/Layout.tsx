@@ -125,7 +125,7 @@ export function Layout() {
 
         {/* Example header */}
         {currentExample && (
-          <header className="border-b border-neutral-800 px-6 py-4 flex items-center gap-4 lg:px-8">
+          <header className="border-b border-neutral-800 px-6 py-3.5 flex items-center gap-4 lg:px-8">
             <div className="lg:hidden w-8" />{" "}
             {/* Spacer for mobile menu button */}
             <div>
