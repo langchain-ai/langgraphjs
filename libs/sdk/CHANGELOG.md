@@ -1,5 +1,16 @@
 # @langchain/langgraph-sdk
 
+## 1.4.0
+
+### Minor Changes
+
+- 730dc7c: feat(sdk): add type-safe tool call streaming with agent type inference
+
+### Patch Changes
+
+- 730dc7c: fix(sdk): provide proper error message when failing to connect to a server
+- 4ffdde9: Expose `Thread["config"]` and `Thread["error"]`
+
 ## 1.3.1
 
 ### Patch Changes
