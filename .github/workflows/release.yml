@@ -25,11 +25,12 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v6
 
-      - name: Setup Node.js 22.4.1
+      - name: Setup Node.js 24
         uses: actions/setup-node@v6
         with:
-          node-version: "22.4.1"
+          node-version: 24.x
           cache: "yarn"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install Dependencies
         run: yarn install --immutable
@@ -40,5 +41,8 @@ jobs:
         with:
           publish: yarn release
           version: yarn changeset version
+          commit: "chore: version packages"
+          title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true

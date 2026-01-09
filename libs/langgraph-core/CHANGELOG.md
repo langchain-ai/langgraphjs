@@ -1,5 +1,49 @@
 # @langchain/langgraph
 
+## 1.0.12
+
+### Patch Changes
+
+- [#1853](https://github.com/langchain-ai/langgraphjs/pull/1853) [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: improved Zod interop
+
+- Updated dependencies [[`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e)]:
+  - @langchain/langgraph-sdk@1.4.4
+
+## 1.0.11
+
+### Patch Changes
+
+- [#1850](https://github.com/langchain-ai/langgraphjs/pull/1850) [`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: improved Zod interop
+
+- Updated dependencies [[`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd)]:
+  - @langchain/langgraph-sdk@1.4.3
+
+## 1.0.10
+
+### Patch Changes
+
+- 3ec85a4: retry release: improved Zod interop
+- Updated dependencies [3ec85a4]
+  - @langchain/langgraph-sdk@1.4.2
+
+## 1.0.9
+
+### Patch Changes
+
+- 3613386: retry release: improved Zod interop
+- Updated dependencies [3613386]
+  - @langchain/langgraph-sdk@1.4.1
+
+## 1.0.8
+
+### Patch Changes
+
+- 730dc7c: fix(core): improved Zod interop
+- Updated dependencies [730dc7c]
+- Updated dependencies [4ffdde9]
+- Updated dependencies [730dc7c]
+  - @langchain/langgraph-sdk@1.4.0
+
 ## 1.0.7
 
 ### Patch Changes
