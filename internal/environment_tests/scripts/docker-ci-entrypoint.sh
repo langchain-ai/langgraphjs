@@ -8,6 +8,10 @@ export CI=true
 # to avoid sporadic OOM failures on GitHub runners.
 export NODE_OPTIONS="--max-old-space-size=6144 ${NODE_OPTIONS:-}"
 
+# Enable corepack to use pnpm
+corepack enable
+corepack prepare pnpm@10.27.0 --activate
+
 # enable extended globbing for omitting build artifacts
 shopt -s extglob
 
@@ -27,12 +31,8 @@ cp -r ../langgraph-core ./libs/
 cp -r ../checkpoint ./libs/
 cp -r ../sdk ./libs/
 
-# copy cache
-mkdir -p ./.pnpm-store
-cp -r ../root/.pnpm-store/* ./.pnpm-store 2>/dev/null || true
-cp ../root/pnpm-lock.yaml .
-
-pnpm install --frozen-lockfile --prod
+# Install dependencies (without frozen-lockfile since each test env has its own deps)
+pnpm install
 
 # Check the build command completes successfully
 pnpm build
