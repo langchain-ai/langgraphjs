@@ -44,6 +44,17 @@
     "overrides": {
       "cheerio": "^1.0.0-rc.12",
       "semver": "^7.0.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "better-sqlite3",
+      "cpu-features",
+      "esbuild",
+      "msw",
+      "protobufjs",
+      "sharp",
+      "ssh2",
+      "zeromq"
+    ]
   }
 }
