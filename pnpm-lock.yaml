@@ -2136,6 +2136,9 @@ importers:
       '@langchain/langgraph-api':
         specifier: workspace:*
         version: link:../langgraph-api
+      '@langchain/langgraph-checkpoint':
+        specifier: workspace:*
+        version: link:../checkpoint
       '@langchain/langgraph-sdk':
         specifier: workspace:*
         version: link:../sdk
