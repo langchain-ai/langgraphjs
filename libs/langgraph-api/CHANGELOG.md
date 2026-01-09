@@ -1,5 +1,14 @@
 # @langchain/langgraph-api
 
+## 1.1.9
+
+### Patch Changes
+
+- [#1856](https://github.com/langchain-ai/langgraphjs/pull/1856) [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: bump @hono/zod-validator
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes
