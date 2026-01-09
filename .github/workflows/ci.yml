@@ -165,7 +165,7 @@ jobs:
         shell: bash
       - name: Test
         # Run tests directly with pnpm, bypassing turbo's build dependency
-        # since build artifacts are already extracted
+        # since build artifacts are already extracted.
         run: pnpm -r --if-present run test
 
   # ============================================
