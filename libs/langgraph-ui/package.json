@@ -20,7 +20,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",
-    "build": "pnpm turbo:command build:internal --filter=@langchain/langgraph-ui",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-ui",
     "build:internal": "pnpm clean && node scripts/build.mjs",
     "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",

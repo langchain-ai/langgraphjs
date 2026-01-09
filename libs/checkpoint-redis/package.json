@@ -14,7 +14,7 @@
     "directory": "libs/checkpoint-redis"
   },
   "scripts": {
-    "build": "pnpm turbo:command build:internal --filter=@langchain/langgraph-checkpoint-redis",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-redis",
     "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-redis",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",

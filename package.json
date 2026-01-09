@@ -11,7 +11,6 @@
   "scripts": {
     "build": "turbo run build:internal",
     "changeset": "npx @changesets/cli@^2.29.5",
-    "turbo:command": "turbo",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "clean": "turbo run clean",
