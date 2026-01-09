@@ -28,14 +28,14 @@ cp -r ../checkpoint ./libs/
 cp -r ../sdk ./libs/
 
 # copy cache
-mkdir -p ./.yarn
-cp -r ../root/.yarn/!(berry|cache) ./.yarn
-cp ../root/yarn.lock ../root/.yarnrc.yml .
+mkdir -p ./.pnpm-store
+cp -r ../root/.pnpm-store/* ./.pnpm-store 2>/dev/null || true
+cp ../root/pnpm-lock.yaml .
 
-yarn workspaces focus --production
+pnpm install --frozen-lockfile --prod
 
 # Check the build command completes successfully
-yarn build
+pnpm build
 
 # Check the test command completes successfully
-yarn test
+pnpm test

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "yarn turbo:command dev:client dev:server --filter=@examples/ui-react",
+    "dev": "pnpm turbo:command dev:client dev:server --filter=@examples/ui-react",
     "dev:client": "vite",
     "dev:server": "langgraphjs dev --no-browser",
     "build:internal": "tsc -b && vite build",

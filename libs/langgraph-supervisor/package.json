@@ -14,14 +14,14 @@
     "directory": "libs/langgraph-supervisor"
   },
   "scripts": {
-    "build": "yarn turbo build:internal",
-    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-supervisor",
+    "build": "pnpm turbo build:internal",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-supervisor",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
-    "lint": "yarn lint:eslint && yarn lint:dpdm",
-    "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepublish": "yarn build",
+    "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+    "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+    "prepublish": "pnpm build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
@@ -81,7 +81,9 @@
   "files": [
     "dist/"
   ],
-  "resolutions": {
-    "typescript": "4.9.5"
+  "pnpm": {
+    "overrides": {
+      "typescript": "4.9.5"
+    }
   }
 }

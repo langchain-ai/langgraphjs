@@ -1,6 +1,6 @@
 {
   "private": true,
-  "packageManager": "yarn@4.9.2",
+  "packageManager": "pnpm@10.27.0",
   "engines": {
     "node": ">=18"
   },
@@ -8,12 +8,6 @@
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
-  "workspaces": [
-    "docs",
-    "examples/*",
-    "libs/*",
-    "internal/*"
-  ],
   "scripts": {
     "build": "turbo run build:internal",
     "changeset": "npx @changesets/cli@^2.29.5",
@@ -22,13 +16,13 @@
     "lint:fix": "turbo run lint:fix",
     "clean": "turbo run clean",
     "test": "turbo run test",
-    "test:int": "yarn test:int:deps && turbo run test:int ; yarn test:int:deps:down",
+    "test:int": "pnpm test:int:deps && turbo run test:int ; pnpm test:int:deps:down",
     "test:int:deps": "docker compose -f int-test-deps-docker-compose.yml up -d",
     "test:int:deps:down": "docker compose -f int-test-deps-docker-compose.yml down",
     "test:exports:docker": "docker compose -f internal/environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
-    "release": "yarn changeset publish"
+    "release": "pnpm changeset publish"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",
@@ -46,8 +40,10 @@
     "turbo": "^2.5.4",
     "typescript": "^4.9.5 || ^5.4.5"
   },
-  "resolutions": {
-    "cheerio": "^1.0.0-rc.12",
-    "semver": "^7.0.0"
+  "pnpm": {
+    "overrides": {
+      "cheerio": "^1.0.0-rc.12",
+      "semver": "^7.0.0"
+    }
   }
 }

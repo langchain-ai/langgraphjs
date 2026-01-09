@@ -32,7 +32,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -49,7 +49,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -66,7 +66,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -96,7 +96,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
         run: yarn install --immutable
       - name: Test

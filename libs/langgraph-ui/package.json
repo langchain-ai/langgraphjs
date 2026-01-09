@@ -20,9 +20,9 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-ui",
-    "build:internal": "yarn clean && node scripts/build.mjs",
-    "prepublish": "yarn build",
+    "build": "pnpm turbo:command build:internal --filter=@langchain/langgraph-ui",
+    "build:internal": "pnpm clean && node scripts/build.mjs",
+    "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
