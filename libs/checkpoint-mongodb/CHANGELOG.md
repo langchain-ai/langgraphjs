@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.1.2
+
+### Patch Changes
+
+- 3ec85a4: retry release: Updates the checkpoint-mongodb to append client metadata
+
 ## 1.1.1
 
 ### Patch Changes
