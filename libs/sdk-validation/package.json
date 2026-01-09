@@ -11,6 +11,7 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
+    "@langchain/core": "^1.0.0",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-api": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
