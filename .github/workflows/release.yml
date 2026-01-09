@@ -30,6 +30,7 @@ jobs:
         with:
           node-version: "22.4.1"
           cache: "yarn"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install Dependencies
         run: yarn install --immutable
