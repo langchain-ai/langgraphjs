@@ -41,6 +41,7 @@ export {
   type Topic,
 } from "./channels/index.js";
 export type { EphemeralValue } from "./channels/ephemeral_value.js";
+export { UntrackedValueChannel } from "./channels/untracked_value.js";
 export { type AnnotationRoot } from "./graph/index.js";
 export { type RetryPolicy } from "./pregel/utils/index.js";
 export {
@@ -93,3 +94,5 @@ export {
   type LangGraphRunnableConfig,
   type Runtime,
 } from "./pregel/runnable_types.js";
+
+export * from "./state/index.js";

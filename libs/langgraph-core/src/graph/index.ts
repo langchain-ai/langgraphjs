@@ -13,11 +13,10 @@ export {
   StateGraph,
   CompiledStateGraph,
 } from "./state.js";
+export { MessageGraph, pushMessage } from "./message.js";
 export {
-  MessageGraph,
   messagesStateReducer,
-  pushMessage,
   REMOVE_ALL_MESSAGES,
   type Messages,
-} from "./message.js";
+} from "./messages_reducer.js";
 export { CommandInstance, type CommandParams } from "../constants.js";
