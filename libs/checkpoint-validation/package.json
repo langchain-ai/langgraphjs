@@ -47,7 +47,7 @@
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
     "testcontainers": "^11.0.3",
-    "redis": "^5.0.0",
+    "redis": "^4.7.0",
     "@testcontainers/mongodb": "^11.0.3",
     "@testcontainers/postgresql": "^11.0.3",
     "@tsconfig/recommended": "^1.0.3",
