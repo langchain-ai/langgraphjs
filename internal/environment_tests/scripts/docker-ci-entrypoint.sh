@@ -42,7 +42,17 @@ for pkg in libs/*/; do
   fi
 done
 
-# Install production dependencies only (skip dev deps that need additional workspace packages)
+# Remove workspace devDependencies that aren't available in this limited workspace
+# This is needed because pnpm validates all workspace references even with --prod
+for pkg in libs/*/; do
+  if [ -f "$pkg/package.json" ]; then
+    # Remove devDependencies that reference workspace packages not in our limited set
+    sed -i 's/"@langchain\/langgraph-checkpoint-postgres": "workspace:\*",*//g' "$pkg/package.json"
+    sed -i 's/"@langchain\/langgraph-checkpoint-sqlite": "workspace:\*",*//g' "$pkg/package.json"
+  fi
+done
+
+# Install production dependencies only
 pnpm install --prod
 
 # Check the build command completes successfully
