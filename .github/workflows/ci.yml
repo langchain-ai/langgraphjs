@@ -27,7 +27,7 @@ env:
 
 jobs:
   # ============================================
-  # Stage 1: Static checks (run in parallel)
+  # Stage 1: Static checks + Build (all run in parallel)
   # ============================================
   lint:
     name: Check linting
@@ -70,7 +70,7 @@ jobs:
         run: pnpm format:check
 
   check-readmes-synced:
-    # This checks that the repo README.md is identical to the libs/langgraph/README.md
+    name: Check READMEs synced
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -91,12 +91,8 @@ jobs:
           exit 1
           fi
 
-  # ============================================
-  # Stage 2: Build (after static checks pass)
-  # ============================================
   build:
     name: Build
-    needs: [lint, format, check-readmes-synced]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
@@ -126,11 +122,11 @@ jobs:
           retention-days: 1
 
   # ============================================
-  # Stage 3: Tests (using build artifacts)
+  # Stage 2: Tests (require build + all static checks to pass)
   # ============================================
   test:
     name: Unit Tests
-    needs: build
+    needs: [lint, format, check-readmes-synced, build]
     strategy:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
@@ -169,11 +165,11 @@ jobs:
         run: pnpm -r --if-present run test
 
   # ============================================
-  # Stage 4: Environment/Export Tests (separate workflow)
+  # Stage 2: Environment/Export Tests (separate workflow)
   # ============================================
   environment-tests:
     name: Environment Tests
-    needs: build
+    needs: [lint, format, check-readmes-synced, build]
     uses: ./.github/workflows/test-exports.yml
     with:
       artifact-name: build-artifacts
