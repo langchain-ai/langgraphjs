@@ -1,25 +1,30 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.1.0",
+  "version": "1.4.6",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/sdk"
+  },
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-sdk",
-    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-sdk",
-    "prepublish": "yarn build",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-sdk",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-sdk",
+    "prepublish": "pnpm build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
-    "lint": "yarn lint:eslint",
-    "lint:fix": "yarn lint:eslint --fix",
+    "lint": "pnpm lint:eslint",
+    "lint:fix": "pnpm lint:eslint --fix",
     "test": "vitest run"
   },
   "license": "MIT",
   "dependencies": {
-    "p-queue": "^6.6.2",
-    "p-retry": "4",
-    "uuid": "^9.0.0"
+    "p-queue": "^9.0.1",
+    "p-retry": "^7.1.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@langchain/core": "^1.1.2",

@@ -3831,7 +3831,9 @@ graph TD;
         description: "Searches the API for the query",
       });
 
-      const toolsByName = { [searchApi.name]: searchApi };
+      const toolsByName: Record<string, typeof searchApi> = {
+        [searchApi.name]: searchApi,
+      };
       const model = new FakeChatModel({
         responses: [
           new AIMessage({
@@ -10236,9 +10238,9 @@ graph TD;
         })
         .addNode("subgraph", subgraph)
         .addNode("two", (state) => {
-          if (state.items.length < 2) {
+          if (state.items!.length < 2) {
             throw new Error(
-              `Expected at least 2 items, got ${state.items.length}`
+              `Expected at least 2 items, got ${state.items!.length}`
             );
           }
           return { foo: "done", items: ["two"] };

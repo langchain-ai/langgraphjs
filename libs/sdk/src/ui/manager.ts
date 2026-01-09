@@ -14,13 +14,13 @@ import type {
 import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
+import type { BagTemplate } from "../types.template.js";
 
-type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-};
+/**
+ * Special ID used by LangGraph's messagesStateReducer to signal
+ * that all messages should be removed from the state.
+ */
+export const REMOVE_ALL_MESSAGES = "__remove_all__";
 
 type GetUpdateType<
   Bag extends BagTemplate,
@@ -105,6 +105,10 @@ export class StreamManager<
   private listeners = new Set<() => void>();
 
   private throttle: number | boolean;
+
+  private queue: Promise<unknown> = Promise.resolve();
+
+  private queueSize: number = 0;
 
   private state: {
     isLoading: boolean;
@@ -223,7 +227,7 @@ export class StreamManager<
     return expected === actual || actual.startsWith(`${expected}|`);
   };
 
-  start = async (
+  protected enqueue = async (
     action: (
       signal: AbortSignal
     ) => Promise<
@@ -255,10 +259,9 @@ export class StreamManager<
 
       onFinish?: () => void;
     }
-  ): Promise<void> => {
-    if (this.state.isLoading) return;
-
+  ) => {
     try {
+      this.queueSize = Math.max(0, this.queueSize - 1);
       this.setState({ isLoading: true, error: undefined });
       this.abortRef = new AbortController();
 
@@ -323,13 +326,19 @@ export class StreamManager<
             const values = { ...options.initialValues, ...streamValues };
 
             // Assumption: we're concatenating the message
-            const messages = options.getMessages(values).slice();
+            let messages = options.getMessages(values).slice();
             const { chunk, index } =
               this.messages.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
             if (chunk.getType() === "remove") {
-              messages.splice(index, 1);
+              // Check for special REMOVE_ALL_MESSAGES sentinel
+              if (chunk.id === REMOVE_ALL_MESSAGES) {
+                // Clear all messages when __remove_all__ is received
+                messages = [];
+              } else {
+                messages.splice(index, 1);
+              }
             } else {
               messages[index] = toMessageDict(chunk);
             }
@@ -342,7 +351,9 @@ export class StreamManager<
       if (streamError != null) throw streamError;
 
       const values = await options.onSuccess?.();
-      if (typeof values !== "undefined") this.setStreamValues(values);
+      if (typeof values !== "undefined" && this.queueSize === 0) {
+        this.setStreamValues(values);
+      }
     } catch (error) {
       if (
         !(
@@ -359,6 +370,43 @@ export class StreamManager<
       this.abortRef = new AbortController();
       options.onFinish?.();
     }
+  };
+
+  start = async (
+    action: (
+      signal: AbortSignal
+    ) => Promise<
+      AsyncGenerator<
+        EventStreamEvent<
+          StateType,
+          GetUpdateType<Bag, StateType>,
+          GetCustomEventType<Bag>
+        >
+      >
+    >,
+    options: {
+      getMessages: (values: StateType) => Message[];
+
+      setMessages: (current: StateType, messages: Message[]) => StateType;
+
+      initialValues: StateType;
+
+      callbacks: StreamManagerEventCallbacks<StateType, Bag>;
+
+      onSuccess: () =>
+        | StateType
+        | null
+        | undefined
+        | void
+        | Promise<StateType | null | undefined | void>;
+
+      onError: (error: unknown) => void | Promise<void>;
+
+      onFinish?: () => void;
+    }
+  ): Promise<void> => {
+    this.queueSize += 1;
+    this.queue = this.queue.then(() => this.enqueue(action, options));
   };
 
   stop = async (

@@ -1,6 +1,6 @@
 {
   "name": "langgraph",
-  "version": "1.0.3",
+  "version": "1.0.14",
   "private": true,
   "description": "Build stateful, multi-actor applications with LLMs",
   "type": "module",
@@ -11,17 +11,18 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/langgraph"
   },
   "scripts": {
-    "build": "yarn turbo:command build:internal --filter=langgraph",
-    "build:internal": "yarn workspace @langchain/build compile langgraph",
+    "build": "pnpm turbo build:internal --filter=langgraph",
+    "build:internal": "pnpm --filter @langchain/build compile langgraph",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
-    "lint": "yarn lint:eslint && yarn lint:dpdm",
-    "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepublish": "yarn build",
+    "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+    "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+    "prepublish": "pnpm build",
     "format": "prettier --config .prettierrc --write \"src\"",
     "format:check": "prettier --config .prettierrc --check \"src\""
   },

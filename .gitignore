@@ -1,6 +1,10 @@
+# Build outputs
 index.cjs
 index.js
 index.d.ts
+*.d.ts
+*.d.cts
+*.d.mts
 node_modules
 dist
 coverage/
@@ -23,3 +27,4 @@ tmp/
 __pycache__
 .DS_Store
 tsconfig.vitest-temp.json
+.pnpm-store
