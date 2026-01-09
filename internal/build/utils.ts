@@ -10,9 +10,11 @@ import type { CompilePackageOptions } from "./types.js";
 
 const execAsync = promisify(exec);
 
-interface PNPMWorkspace {
+interface PnpmWorkspace {
   name: string;
-  location: string;
+  path: string;
+  version: string;
+  private?: boolean;
 }
 
 export interface WorkspacePackage {
@@ -21,7 +23,7 @@ export interface WorkspacePackage {
 }
 
 /**
- * Find all packages in the yarn workspace that match the package query and are not excluded.
+ * Find all packages in the pnpm workspace that match the package query and are not excluded.
  *
  * @param rootDir - The root directory of the workspace
  * @param opts - Options for filtering packages including packageQuery and exclude patterns
@@ -31,37 +33,19 @@ export async function findWorkspacePackages(
   rootDir: string,
   opts: CompilePackageOptions
 ) {
-  // Use pnpm to list workspaces in JSON format
-  const result = await execAsync("pnpm m ls --json");
-  // pnpm outputs a JSON array as one line
-  let workspacesArray: PNPMWorkspace[];
-
-  try {
-    // pnpm's output is a single JSON blob or a single line array
-    const parsed = JSON.parse(result.stdout);
-    // pnpm may output { name, path, private, ... } for each workspace
-    // Normalize to YarnWorkspace-like objects { name, location }
-    workspacesArray = (Array.isArray(parsed) ? parsed : parsed.projects)
-      .filter((entry: any) => entry.name && entry.path)
-      .map((entry: any) => ({
-        name: entry.name,
-        location: entry.path, // pnpm gives absolute path OR relative path; resolve anyway below
-      }));
-  } catch (err) {
-    console.error("Failed to parse pnpm workspaces list output:", err);
-    return [];
-  }
-
+  const result = await execAsync("pnpm list --recursive --json --depth -1");
+  // pnpm outputs a JSON array directly
+  const workspacesArray: PnpmWorkspace[] = JSON.parse(result.stdout);
   const workspaces = (
     await Promise.all(
-      workspacesArray.map(async (workspace: PNPMWorkspace) => {
+      workspacesArray.map(async (workspace: PnpmWorkspace) => {
         try {
-          // PNPM's path may be absolute or relative; always resolve from rootDir
-          // We skip the monorepo root if location is ".", similar to Yarn
-          if (workspace.location === ".") {
+          // Skip the root workspace (pnpm lists it with the root path)
+          if (workspace.path === rootDir) {
             return null;
           }
-          const workspacePath = resolve(rootDir, workspace.location);
+          // pnpm provides absolute paths directly
+          const workspacePath = workspace.path;
           const pkgPath = resolve(workspacePath, "package.json");
           const pkg = JSON.parse(
             await readFile(pkgPath, "utf-8")
