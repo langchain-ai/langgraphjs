@@ -1,6 +1,7 @@
 import type { JSONSchema } from "@langchain/core/utils/json_schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
+import type { RunnableLike } from "../pregel/runnable_types.js";
 import {
   BaseChannel,
   LastValue,
@@ -122,6 +123,26 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
    * Use: `typeof myState.Update`
    */
   declare Update: InferStateSchemaUpdate<TInit>;
+
+  /**
+   * Type declaration for node functions.
+   * Use: `typeof myState.Node` to type node functions outside the graph builder.
+   *
+   * @example
+   * ```typescript
+   * const AgentState = new StateSchema({
+   *   count: z.number().default(0),
+   * });
+   *
+   * const myNode: typeof AgentState.Node = (state) => {
+   *   return { count: state.count + 1 };
+   * };
+   * ```
+   */
+  declare Node: RunnableLike<
+    InferStateSchemaValue<TInit>,
+    InferStateSchemaUpdate<TInit>
+  >;
 
   constructor(readonly init: TInit) {
     this.init = init;

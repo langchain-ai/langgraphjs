@@ -65,7 +65,6 @@ import {
   SingleReducer,
   StateDefinition,
   StateType,
-  UpdateType,
 } from "./annotation.js";
 import { StateSchema } from "../state/index.js";
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
@@ -81,6 +80,7 @@ import type {
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
+import { ExtractStateType, ExtractUpdateType } from "./types.js";
 
 const ROOT = "__root__";
 
@@ -147,31 +147,6 @@ type ToStateDefinition<T> = T extends StateSchema
   : T extends StateDefinition
   ? T
   : never;
-
-/**
- * Extract State type from StateGraph-compatible schema types.
- *
- * For StateSchema: uses the declared State type directly
- * For StateDefinition/InteropZodObject: uses existing StateType mapping
- */
-type ExtractStateType<T> = T extends StateSchema
-  ? T["State"]
-  : T extends StateDefinition
-  ? StateType<T>
-  : T extends InteropZodObject
-  ? StateType<InteropZodToStateDefinition<T>>
-  : T;
-
-/**
- * Extract Update type from StateGraph-compatible schema types.
- */
-type ExtractUpdateType<T, S> = T extends StateSchema
-  ? T["Update"]
-  : T extends StateDefinition
-  ? UpdateType<T>
-  : T extends InteropZodObject
-  ? UpdateType<InteropZodToStateDefinition<T>>
-  : Partial<S>;
 
 type ExtractStateDefinition<T> = T extends StateSchema
   ? T // Keep StateSchema as-is to preserve type information
@@ -287,7 +262,7 @@ type Prettify<T> = {
 export class StateGraph<
   SD extends StateDefinitionInit | unknown,
   S = ExtractStateType<SD>,
-  U = ExtractUpdateType<SD, S>,
+  U = ExtractUpdateType<SD, Partial<S>>,
   N extends string = typeof START,
   I extends StateDefinitionInit = ExtractStateDefinition<SD>,
   O extends StateDefinitionInit = ExtractStateDefinition<SD>,
