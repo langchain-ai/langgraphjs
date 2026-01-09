@@ -10,7 +10,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
-    "build": "pnpm turbo:command build:internal --filter=@langchain/langgraph-sdk",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-sdk",
     "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-sdk",
     "prepublish": "pnpm build",
     "format:check": "prettier --check src",

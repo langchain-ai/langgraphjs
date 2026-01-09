@@ -18,7 +18,7 @@
     "clean": "rm -rf dist/ .turbo/",
     "cli": "tsx src/cli.mts",
     "cli:watch": "tsx watch src/cli.mts",
-    "build": "pnpm turbo:command build:internal --filter=create-langgraph",
+    "build": "pnpm turbo build:internal --filter=create-langgraph",
     "build:internal": "pnpm clean && pnpm tsc --outDir dist",
     "prepublish": "pnpm build",
     "test": "vitest run",

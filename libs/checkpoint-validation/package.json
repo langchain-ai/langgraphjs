@@ -14,7 +14,7 @@
     "directory": "libs/checkpoint-validation"
   },
   "scripts": {
-    "build": "pnpm turbo:command build:internal --filter=@langchain/langgraph-checkpoint-validation",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-validation",
     "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-validation && cp src/runner.ts dist/runner.ts",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",

@@ -14,7 +14,7 @@
     "directory": "libs/checkpoint"
   },
   "scripts": {
-    "build": "pnpm turbo:command build:internal --filter=@langchain/langgraph-checkpoint",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint",
     "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
