@@ -1,6 +1,6 @@
 {
   "name": "langgraph",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "Build stateful, multi-actor applications with LLMs",
   "type": "module",

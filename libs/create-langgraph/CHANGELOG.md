@@ -1,5 +1,11 @@
 # create-langgraph
 
+## 1.1.1
+
+### Patch Changes
+
+- 3ec85a4: retry release: allow user to generate a langgraph config file
+
 ## 1.1.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.0.10
+
+### Patch Changes
+
+- 3ec85a4: retry release: improved Zod interop
+- Updated dependencies [3ec85a4]
+  - @langchain/langgraph-sdk@1.4.2
+
 ## 1.0.9
 
 ### Patch Changes
