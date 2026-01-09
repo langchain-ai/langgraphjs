@@ -10,7 +10,7 @@ import type { CompilePackageOptions } from "./types.js";
 
 const execAsync = promisify(exec);
 
-interface YarnWorkspace {
+interface PNPMWorkspace {
   name: string;
   location: string;
 }
@@ -31,22 +31,36 @@ export async function findWorkspacePackages(
   rootDir: string,
   opts: CompilePackageOptions
 ) {
-  const result = await execAsync("yarn workspaces list --json");
-  // Yarn outputs newline-delimited JSON, so we need to parse each line separately
-  const workspacesArray: YarnWorkspace[] = result.stdout
-    .trim()
-    .split('\n')
-    .filter(line => line)
-    .map(line => JSON.parse(line));
+  // Use pnpm to list workspaces in JSON format
+  const result = await execAsync("pnpm m ls --json");
+  // pnpm outputs a JSON array as one line
+  let workspacesArray: PNPMWorkspace[];
+
+  try {
+    // pnpm's output is a single JSON blob or a single line array
+    const parsed = JSON.parse(result.stdout);
+    // pnpm may output { name, path, private, ... } for each workspace
+    // Normalize to YarnWorkspace-like objects { name, location }
+    workspacesArray = (Array.isArray(parsed) ? parsed : parsed.projects)
+      .filter((entry: any) => entry.name && entry.path)
+      .map((entry: any) => ({
+        name: entry.name,
+        location: entry.path, // pnpm gives absolute path OR relative path; resolve anyway below
+      }));
+  } catch (err) {
+    console.error("Failed to parse pnpm workspaces list output:", err);
+    return [];
+  }
+
   const workspaces = (
     await Promise.all(
-      workspacesArray.map(async (workspace: YarnWorkspace) => {
+      workspacesArray.map(async (workspace: PNPMWorkspace) => {
         try {
-          // Skip the root workspace (yarn lists it as ".")
+          // PNPM's path may be absolute or relative; always resolve from rootDir
+          // We skip the monorepo root if location is ".", similar to Yarn
           if (workspace.location === ".") {
             return null;
           }
-          // Yarn provides relative paths, so we need to resolve them
           const workspacePath = resolve(rootDir, workspace.location);
           const pkgPath = resolve(workspacePath, "package.json");
           const pkg = JSON.parse(
