@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "LangGraph",
   "type": "module",
   "engines": {
