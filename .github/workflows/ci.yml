@@ -164,7 +164,9 @@ jobs:
         run: tar -xzf build-artifacts.tar.gz
         shell: bash
       - name: Test
-        run: pnpm test
+        # Run tests directly with pnpm, bypassing turbo's build dependency
+        # since build artifacts are already extracted
+        run: pnpm -r --if-present run test
 
   # ============================================
   # Stage 4: Environment/Export Tests (separate workflow)
