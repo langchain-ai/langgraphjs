@@ -1679,11 +1679,11 @@ importers:
   libs/langgraph-core:
     dependencies:
       '@langchain/langgraph-checkpoint':
-        specifier: ^1.0.0
-        version: 1.0.0(@langchain/core@1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))
+        specifier: workspace:^
+        version: link:../checkpoint
       '@langchain/langgraph-sdk':
-        specifier: ~1.4.5
-        version: 1.4.5(@langchain/core@1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        specifier: workspace:~
+        version: link:../sdk
       uuid:
         specifier: ^10.0.0
         version: 10.0.0
