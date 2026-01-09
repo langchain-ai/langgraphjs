@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-validation
 
+## 1.0.8
+
+### Patch Changes
+
+- [#1862](https://github.com/langchain-ai/langgraphjs/pull/1862) [`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c) Thanks [@dqbd](https://github.com/dqbd)! - retry release: export primitive as type, use Zod v3 for better compatibility
+
 ## 1.0.7
 
 ### Patch Changes

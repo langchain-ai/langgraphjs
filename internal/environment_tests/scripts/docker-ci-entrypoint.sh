@@ -8,15 +8,32 @@ export CI=true
 # to avoid sporadic OOM failures on GitHub runners.
 export NODE_OPTIONS="--max-old-space-size=6144 ${NODE_OPTIONS:-}"
 
-# enable extended globbing for omitting build artifacts
-shopt -s extglob
+# Enable corepack to use pnpm
+corepack enable
+corepack prepare pnpm@10.27.0 --activate
 
-# avoid copying build artifacts from the host
-cp -r ../package/!(node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo) .
+# Copy all package files except node_modules and build artifacts
+# Use rsync-like approach with find and cp
+cd ../package
+for item in *; do
+  case "$item" in
+    node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo)
+      # Skip these directories
+      ;;
+    *)
+      cp -r "$item" /app/
+      ;;
+  esac
+done
+# Copy hidden files
+for item in .[!.]*; do
+  if [ -e "$item" ]; then
+    cp -r "$item" /app/
+  fi
+done
+cd /app
 
-# Copy hidden files, suppressing errors if no matches are found
-cp ../package/.[!.]* . 2>/dev/null || true
-
+# Copy workspace packages
 mkdir -p ./libs/langgraph/
 mkdir -p ./libs/langgraph-core/
 mkdir -p ./libs/checkpoint/
@@ -27,15 +44,30 @@ cp -r ../langgraph-core ./libs/
 cp -r ../checkpoint ./libs/
 cp -r ../sdk ./libs/
 
-# copy cache
-mkdir -p ./.yarn
-cp -r ../root/.yarn/!(berry|cache) ./.yarn
-cp ../root/yarn.lock ../root/.yarnrc.yml .
+# Debug: show workspace structure
+echo "=== Workspace packages ==="
+ls -la libs/
+for pkg in libs/*/; do
+  if [ -f "$pkg/package.json" ]; then
+    echo "$pkg: $(grep -o '"name": "[^"]*"' "$pkg/package.json" | head -1)"
+  fi
+done
 
-yarn workspaces focus --production
+# Remove workspace devDependencies that aren't available in this limited workspace
+# This is needed because pnpm validates all workspace references even with --prod
+for pkg in libs/*/; do
+  if [ -f "$pkg/package.json" ]; then
+    # Remove devDependencies that reference workspace packages not in our limited set
+    sed -i 's/"@langchain\/langgraph-checkpoint-postgres": "workspace:\*",*//g' "$pkg/package.json"
+    sed -i 's/"@langchain\/langgraph-checkpoint-sqlite": "workspace:\*",*//g' "$pkg/package.json"
+  fi
+done
+
+# Install production dependencies only
+pnpm install --prod
 
 # Check the build command completes successfully
-yarn build
+pnpm build
 
 # Check the test command completes successfully
-yarn test
+pnpm test

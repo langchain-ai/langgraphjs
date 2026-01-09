@@ -19,6 +19,9 @@ yarn create langgraph
 # Using pnpm
 pnpm create langgraph
 
+# Using pnpm
+pnpm create langgraph
+
 # Using bun
 bunx create-langgraph
 ```

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-ui",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -20,9 +20,9 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-ui",
-    "build:internal": "yarn clean && node scripts/build.mjs",
-    "prepublish": "yarn build",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-ui",
+    "build:internal": "pnpm clean && node scripts/build.mjs",
+    "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
