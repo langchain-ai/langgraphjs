@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.4.5
+
+### Patch Changes
+
+- [#1856](https://github.com/langchain-ai/langgraphjs/pull/1856) [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: add type-safe tool call streaming with agent type inference, provide proper error message when failing to connect to a server, expose Thread["config"] and Thread["error"]
+
 ## 1.4.4
 
 ### Patch Changes
