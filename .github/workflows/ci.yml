@@ -23,26 +23,9 @@ env:
   NODE_VERSION: "22.14.0"
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
+  # ============================================
+  # Stage 1: Static checks (run in parallel)
+  # ============================================
   lint:
     name: Check linting
     runs-on: ubuntu-latest
@@ -83,8 +66,65 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+  check-readmes-synced:
+    # This checks that the repo README.md is identical to the libs/langgraph/README.md
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Check README.md is in sync
+        run: |
+          if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
+          echo "README.md is out of sync with langgraph/README.md"
+          diff -C 3 README.md libs/langgraph/README.md
+          exit 1
+          fi
+          if ! diff -q README.md libs/langgraph-core/README.md >/dev/null; then
+          echo "README.md is out of sync with langgraph-core/README.md"
+          diff -C 3 README.md libs/langgraph-core/README.md
+          exit 1
+          fi
+
+  # ============================================
+  # Stage 2: Build (after static checks pass)
+  # ============================================
+  build:
+    name: Build
+    needs: [lint, format, check-readmes-synced]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-dist
+          path: libs/*/dist
+          retention-days: 1
+
+  # ============================================
+  # Stage 3: Tests (using build artifacts)
+  # ============================================
   test:
     name: Unit Tests
+    needs: build
     strategy:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
@@ -110,27 +150,10 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-dist
+          path: libs
       - name: Test
         run: pnpm test
-
-  check-readmes-synced:
-    # This checks that the repo README.md is identical to the libs/langgraph/README.md
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-
-      - name: Check README.md is in sync
-        run: |
-          if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph/README.md"
-          diff -C 3 README.md libs/langgraph/README.md
-          exit 1
-          fi
-          if ! diff -q README.md libs/langgraph-core/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph-core/README.md"
-          diff -C 3 README.md libs/langgraph-core/README.md
-          exit 1
-          fi
