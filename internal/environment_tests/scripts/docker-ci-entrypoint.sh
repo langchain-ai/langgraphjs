@@ -42,8 +42,8 @@ for pkg in libs/*/; do
   fi
 done
 
-# Install dependencies (without frozen-lockfile since each test env has its own deps)
-pnpm install
+# Install production dependencies only (skip dev deps that need additional workspace packages)
+pnpm install --prod
 
 # Check the build command completes successfully
 pnpm build
