@@ -28,7 +28,7 @@
     "test:exports:docker": "docker compose -f internal/environment_tests/docker-compose.yml up --force-recreate",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
-    "release": "yarn changeset publish"
+    "release": "yarn workspaces foreach --all --no-private --topological yarn npm publish --tolerate-republish"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",
