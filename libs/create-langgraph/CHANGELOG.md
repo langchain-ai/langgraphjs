@@ -1,5 +1,11 @@
 # create-langgraph
 
+## 1.1.2
+
+### Patch Changes
+
+- [#1850](https://github.com/langchain-ai/langgraphjs/pull/1850) [`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: allow user to generate a langgraph config file
+
 ## 1.1.1
 
 ### Patch Changes
