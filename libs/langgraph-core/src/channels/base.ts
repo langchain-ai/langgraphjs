@@ -106,6 +106,18 @@ export abstract class BaseChannel<
       throw error;
     }
   }
+
+  /**
+   * Compare this channel with another channel for equality.
+   * Used to determine if two channels with the same key are semantically equivalent.
+   * Subclasses should override this method to provide a meaningful comparison.
+   *
+   * @param {BaseChannel} other - The other channel to compare with.
+   * @returns {boolean} True if the channels are equal, false otherwise.
+   */
+  equals(other: BaseChannel): boolean {
+    return this === other;
+  }
 }
 
 const IS_ONLY_BASE_CHANNEL = Symbol.for("LG_IS_ONLY_BASE_CHANNEL");

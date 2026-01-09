@@ -77,4 +77,18 @@ export class BinaryOperatorAggregate<
   isAvailable(): boolean {
     return this.value !== undefined;
   }
+
+  /**
+   * Compare this channel with another channel for equality.
+   * Two BinaryOperatorAggregate channels are equal if they have the same operator function.
+   * This follows the Python implementation which compares operator references.
+   */
+  equals(other: BaseChannel): boolean {
+    // eslint-disable-next-line no-instanceof/no-instanceof
+    if (!(other instanceof BinaryOperatorAggregate)) {
+      return false;
+    }
+    // Compare operator function references, similar to Python's implementation
+    return this.operator === other.operator;
+  }
 }

@@ -55,6 +55,7 @@ describe("_readChannels", () => {
       consume: vi.fn<() => boolean>().mockReturnValue(false),
       finish: vi.fn<() => boolean>().mockReturnValue(false),
       isAvailable: vi.fn<() => boolean>().mockReturnValue(false),
+      equals: vi.fn<(other: BaseChannel) => boolean>().mockReturnValue(false),
     };
 
     const channels = {
@@ -89,6 +90,7 @@ describe("_readChannels", () => {
       isAvailable: vi.fn<() => boolean>().mockImplementation(() => {
         throw new Error("Other error");
       }),
+      equals: vi.fn<(other: BaseChannel) => boolean>().mockReturnValue(false),
     };
 
     const channels = {

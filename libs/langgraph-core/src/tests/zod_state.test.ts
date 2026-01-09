@@ -257,4 +257,114 @@ describe("StateGraph with Zod schemas", () => {
       expect(result.withBoth).toBe("zod-default"); // Zod default takes precedence during parsing
     });
   });
+
+  describe("reducer with separate state/input/output schemas", () => {
+    it("should allow same reducer field in state, input, and output schemas", async () => {
+      // Define a reducer function at module level (similar to DeepAgents pattern)
+      const itemsReducer = (
+        left: Record<string, { value: string }>,
+        right: Record<string, { value: string } | null>
+      ): Record<string, { value: string }> => {
+        const result = { ...left };
+        for (const [key, val] of Object.entries(right)) {
+          if (val === null) {
+            delete result[key];
+          } else {
+            result[key] = val;
+          }
+        }
+        return result;
+      };
+
+      // Create a schema field with reducer (shared across state/input/output)
+      const itemsField = z4
+        .record(z4.string(), z4.object({ value: z4.string() }))
+        .default({})
+        .register(registry, {
+          reducer: {
+            fn: itemsReducer,
+            schema: z4.record(
+              z4.string(),
+              z4.object({ value: z4.string() }).nullable()
+            ),
+          },
+        });
+
+      // Create separate state, input, and output schemas that all include the reducer field
+      const stateSchema = z4.object({
+        items: itemsField,
+        count: z4.number().default(0),
+      });
+
+      const inputSchema = z4.object({
+        items: itemsField,
+      });
+
+      const outputSchema = z4.object({
+        items: itemsField,
+        count: z4.number(),
+      });
+
+      // This should NOT throw "Channel already exists with a different type"
+      // because BinaryOperatorAggregate.equals() compares reducer function references
+      const graph = new StateGraph({
+        state: stateSchema,
+        input: inputSchema,
+        output: outputSchema,
+      })
+        .addNode("process", (state) => {
+          return {
+            items: { newKey: { value: "added" } },
+            count: Object.keys(state.items as unknown as Record<string, unknown>).length + 1,
+          };
+        })
+        .addEdge(START, "process")
+        .addEdge("process", END)
+        .compile();
+
+      const result = await graph.invoke({
+        items: { existingKey: { value: "existing" } },
+      });
+
+      // Verify reducer worked correctly
+      expect(result.items).toEqual({
+        existingKey: { value: "existing" },
+        newKey: { value: "added" },
+      });
+      expect(result.count).toBe(2);
+    });
+
+    it("should detect different reducer functions as different channels", () => {
+      // Two different reducer functions
+      const reducer1 = (a: number[], b: number[]) => [...a, ...b];
+      const reducer2 = (a: number[], b: number[]) => [...b, ...a]; // Different implementation
+
+      const field1 = z4
+        .array(z4.number())
+        .default([])
+        .register(registry, { reducer: { fn: reducer1 } });
+
+      const field2 = z4
+        .array(z4.number())
+        .default([])
+        .register(registry, { reducer: { fn: reducer2 } });
+
+      const stateSchema = z4.object({
+        numbers: field1,
+      });
+
+      const inputSchema = z4.object({
+        numbers: field2, // Different reducer!
+      });
+
+      // This SHOULD throw because the reducer functions are different
+      expect(() => {
+        new StateGraph({ state: stateSchema, input: inputSchema })
+          .addNode("process", () => ({}))
+          .addEdge(START, "process")
+          .addEdge("process", END)
+          .compile();
+      }).toThrow('Channel "numbers" already exists with a different type');
+    });
+  });
 });
