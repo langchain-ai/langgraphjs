@@ -116,7 +116,7 @@ jobs:
         run: pnpm build
 
       - name: Create build archive
-        run: tar -czf build-artifacts.tar.gz libs/*/dist .turbo 2>/dev/null || tar -czf build-artifacts.tar.gz libs/*/dist
+        run: tar -czf build-artifacts.tar.gz libs/*/dist libs/*/.turbo .turbo 2>/dev/null || tar -czf build-artifacts.tar.gz libs/*/dist
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
