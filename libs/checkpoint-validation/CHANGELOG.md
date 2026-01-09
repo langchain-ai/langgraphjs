@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-validation
 
+## 1.0.3
+
+### Patch Changes
+
+- 3613386: retry release: export primitive as type, use Zod v3 for better compatibility
+
 ## 1.0.2
 
 ### Patch Changes

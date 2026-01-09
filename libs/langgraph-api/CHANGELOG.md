@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.1.5
+
+### Patch Changes
+
+- 3613386: retry release: bump @hono/zod-validator
+  - @langchain/langgraph-ui@1.1.5
+
 ## 1.1.4
 
 ### Patch Changes
