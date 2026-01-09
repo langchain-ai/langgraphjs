@@ -12,15 +12,26 @@ export NODE_OPTIONS="--max-old-space-size=6144 ${NODE_OPTIONS:-}"
 corepack enable
 corepack prepare pnpm@10.27.0 --activate
 
-# Copy package files (explicitly to avoid glob issues)
-cp ../package/package.json .
-cp ../package/pnpm-workspace.yaml . 2>/dev/null || true
-cp ../package/tsconfig.json . 2>/dev/null || true
-cp -r ../package/src . 2>/dev/null || true
-cp -r ../package/public . 2>/dev/null || true
-
-# Copy hidden files, suppressing errors if no matches are found
-cp ../package/.[!.]* . 2>/dev/null || true
+# Copy all package files except node_modules and build artifacts
+# Use rsync-like approach with find and cp
+cd ../package
+for item in *; do
+  case "$item" in
+    node_modules|dist|dist-cjs|dist-esm|build|.next|.turbo)
+      # Skip these directories
+      ;;
+    *)
+      cp -r "$item" /app/
+      ;;
+  esac
+done
+# Copy hidden files
+for item in .[!.]*; do
+  if [ -e "$item" ]; then
+    cp -r "$item" /app/
+  fi
+done
+cd /app
 
 # Copy workspace packages
 mkdir -p ./libs/langgraph/
