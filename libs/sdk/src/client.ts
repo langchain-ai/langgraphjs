@@ -718,10 +718,13 @@ export class AssistantsClient extends BaseClient {
     deleteThreads?: boolean,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    return this.fetch<void>(`/assistants/${assistantId}?delete_threads=${deleteThreads}`, {
-      method: "DELETE",
-      signal: options?.signal,
-    });
+    return this.fetch<void>(
+      `/assistants/${assistantId}?delete_threads=${deleteThreads}`,
+      {
+        method: "DELETE",
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
