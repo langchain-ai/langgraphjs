@@ -6,10 +6,10 @@ import type {
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import type {
   StateSchema,
+  StateSchemaInit,
   InferStateSchemaValue,
   InferStateSchemaUpdate,
-  StateSchemaInit,
-} from "../state/schema.js";
+} from "../state/index.js";
 import type {
   AnnotationRoot,
   StateDefinition,
@@ -33,10 +33,11 @@ export { END };
  * - InteropZodObject (Zod v3/v4 object schemas)
  *
  * @template Schema - The schema type to extract state from
+ * @template Fallback - Type to return if schema doesn't match (default: never)
  */
 export type ExtractStateType<
   Schema,
-  Fallback = never
+  Fallback = Schema
 > = Schema extends StateSchema<infer TInit extends StateSchemaInit>
   ? InferStateSchemaValue<TInit>
   : Schema extends AnnotationRoot<infer SD extends StateDefinition>
@@ -60,6 +61,7 @@ export type ExtractStateType<
  * - InteropZodObject (Zod v3/v4 object schemas)
  *
  * @template Schema - The schema type to extract update type from
+ * @template Fallback - Type to return if schema doesn't match (default: never)
  */
 export type ExtractUpdateType<
   Schema,
