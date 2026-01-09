@@ -607,9 +607,10 @@ export class AssistantsClient extends BaseClient {
    * Delete an assistant.
    *
    * @param assistantId ID of the assistant.
+   * @param deleteThreads If true, delete all threads with `metadata.assistant_id` equal to `assistantId`. Defaults to false.
    */
-  async delete(assistantId: string): Promise<void> {
-    return this.fetch<void>(`/assistants/${assistantId}`, {
+  async delete(assistantId: string, deleteThreads: boolean = false): Promise<void> {
+    return this.fetch<void>(`/assistants/${assistantId}?delete_threads=${deleteThreads}`, {
       method: "DELETE",
     });
   }

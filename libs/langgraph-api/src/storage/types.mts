@@ -458,7 +458,8 @@ export interface AssistantsRepo {
 
   delete(
     assistant_id: string,
-    auth: AuthContext | undefined
+    auth: AuthContext | undefined,
+    delete_threads?: boolean
   ): Promise<string[]>;
 
   count(

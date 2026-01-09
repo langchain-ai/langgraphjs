@@ -495,7 +495,8 @@ export class FileSystemAssistants implements AssistantsRepo {
 
   async delete(
     assistant_id: string,
-    auth: AuthContext | undefined
+    auth: AuthContext | undefined,
+    delete_threads?: boolean,
   ): Promise<string[]> {
     const [filters] = await handleAuthEvent(auth, "assistants:delete", {
       assistant_id,
@@ -513,7 +514,7 @@ export class FileSystemAssistants implements AssistantsRepo {
 
       delete STORE.assistants[assistant_id];
 
-      // Cascade delete for assistant versions and crons
+      // Cascade delete for assistant versions and crons and threads
       STORE.assistant_versions = STORE.assistant_versions.filter(
         (v) => v["assistant_id"] !== assistant_id
       );
@@ -521,6 +522,14 @@ export class FileSystemAssistants implements AssistantsRepo {
       for (const run of Object.values(STORE.runs)) {
         if (run["assistant_id"] === assistant_id) {
           delete STORE.runs[run["run_id"]];
+        }
+      }
+
+      if (delete_threads === true) {
+        for (const thread of Object.values(STORE.threads)) {
+          if (thread["metadata"]?.["assistant_id"] === assistant_id) {
+            delete STORE.threads[thread["thread_id"]];
+          }
         }
       }
 
