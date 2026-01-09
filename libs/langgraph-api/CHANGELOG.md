@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.1.10
+
+### Patch Changes
+
+- 60a5bbc: Fix invalid version tag for API dependencies
+  - @langchain/langgraph-ui@1.1.10
+
 ## 1.1.9
 
 ### Patch Changes
