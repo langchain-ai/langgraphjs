@@ -112,11 +112,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Create build archive
+        run: tar -czf build-artifacts.tar.gz libs/*/dist .turbo 2>/dev/null || tar -czf build-artifacts.tar.gz libs/*/dist
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-dist
-          path: libs/*/dist
+          name: build-artifacts
+          path: build-artifacts.tar.gz
           retention-days: 1
 
   # ============================================
@@ -153,7 +156,9 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-dist
-          path: libs
+          name: build-artifacts
+      - name: Extract build artifacts
+        run: tar -xzf build-artifacts.tar.gz
+        shell: bash
       - name: Test
         run: pnpm test
