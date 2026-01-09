@@ -41,6 +41,11 @@ jobs:
             uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
           fi
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+
       - name: Use Node.js 22.x
         uses: actions/setup-node@v6
         with:
@@ -49,11 +54,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          yarn install --immutable --mode=skip-build
+          pnpm install --frozen-lockfile
 
       - name: Build site (redirects only)
         run: |
-          yarn build
+          pnpm build
           source .venv/bin/activate
           cd docs
           make build-docs

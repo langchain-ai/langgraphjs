@@ -25,6 +25,11 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v6
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v6
         with:
@@ -33,17 +38,17 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Install Dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: yarn build
+        run: pnpm build
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: yarn release
-          version: yarn changeset version
+          publish: pnpm release
+          version: pnpm changeset version
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
