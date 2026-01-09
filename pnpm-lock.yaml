@@ -2130,12 +2130,18 @@ importers:
 
   libs/sdk-validation:
     dependencies:
+      '@langchain/core':
+        specifier: ^1.0.0
+        version: 1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
       '@langchain/langgraph-api':
         specifier: workspace:*
         version: link:../langgraph-api
+      '@langchain/langgraph-checkpoint':
+        specifier: workspace:*
+        version: link:../checkpoint
       '@langchain/langgraph-sdk':
         specifier: workspace:*
         version: link:../sdk

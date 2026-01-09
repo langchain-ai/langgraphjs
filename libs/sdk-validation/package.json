@@ -11,8 +11,10 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
+    "@langchain/core": "^1.0.0",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-api": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
