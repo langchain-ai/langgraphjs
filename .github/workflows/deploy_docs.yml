@@ -41,10 +41,10 @@ jobs:
             uv pip install "git+https://${GITHUB_TOKEN}@github.com/langchain-ai/mkdocs-material-insiders.git"
           fi
 
-      - name: Use Node.js 18.x
+      - name: Use Node.js 22.x
         uses: actions/setup-node@v6
         with:
-          node-version: 18.x
+          node-version: 22.x
           cache: "yarn"
 
       - name: Install dependencies
