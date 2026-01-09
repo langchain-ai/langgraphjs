@@ -7,6 +7,6 @@
     "build": "typedoc --options typedoc.jsonc"
   },
   "devDependencies": {
-    "typedoc": "patch:typedoc@npm%3A0.28.11#~/.yarn/patches/typedoc-npm-0.28.11-18b71eb2e0.patch"
+    "typedoc": "patch:typedoc@npm:3.0.28.11#./patches/typedoc@3.0.28.11.patch"
   }
 }
