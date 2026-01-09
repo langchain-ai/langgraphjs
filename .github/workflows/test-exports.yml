@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22.4.1"
+  NODE_VERSION: "22.14.0"
 
 # Run a separate job for each check in the docker-compose file,
 # so that they run in parallel instead of overwhelming the default 2 CPU runner.
@@ -31,16 +31,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test esbuild exports
@@ -50,16 +52,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test esm exports
@@ -69,16 +73,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test cjs exports
@@ -88,16 +94,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test cf exports
@@ -107,16 +115,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
     
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test vercel exports
@@ -126,16 +136,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
       
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test vite exports
@@ -145,16 +157,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
+          cache: "pnpm"
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build dependencies
-        run: yarn build
+        run: pnpm build
         shell: bash
 
       - name: Test compiling exports with tsc
