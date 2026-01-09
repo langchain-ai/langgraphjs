@@ -5,6 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@langchain/langgraph-sdk': workspace:*
+  '@langchain/langgraph-checkpoint': workspace:*
   cheerio: ^1.0.0-rc.12
   semver: ^7.0.0
 
@@ -1685,10 +1687,10 @@ importers:
   libs/langgraph-core:
     dependencies:
       '@langchain/langgraph-checkpoint':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../checkpoint
       '@langchain/langgraph-sdk':
-        specifier: workspace:~
+        specifier: workspace:*
         version: link:../sdk
       uuid:
         specifier: ^10.0.0
