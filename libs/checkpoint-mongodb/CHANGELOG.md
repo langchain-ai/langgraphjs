@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.1.4
+
+### Patch Changes
+
+- [#1853](https://github.com/langchain-ai/langgraphjs/pull/1853) [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: Updates the checkpoint-mongodb to append client metadata
+
 ## 1.1.3
 
 ### Patch Changes

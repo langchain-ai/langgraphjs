@@ -1,5 +1,13 @@
 # @langchain/langgraph-cli
 
+## 1.1.8
+
+### Patch Changes
+
+- Updated dependencies [[`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e), [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e)]:
+  - @langchain/langgraph-api@1.1.8
+  - create-langgraph@1.1.3
+
 ## 1.1.7
 
 ### Patch Changes

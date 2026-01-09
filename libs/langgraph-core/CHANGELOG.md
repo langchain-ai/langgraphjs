@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.0.12
+
+### Patch Changes
+
+- [#1853](https://github.com/langchain-ai/langgraphjs/pull/1853) [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: improved Zod interop
+
+- Updated dependencies [[`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e)]:
+  - @langchain/langgraph-sdk@1.4.4
+
 ## 1.0.11
 
 ### Patch Changes
