@@ -40,7 +40,7 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig, Runtime } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
-import { Messages, messagesStateReducer } from "../graph/message.js";
+import { Messages, messagesStateReducer } from "../graph/messages_reducer.js";
 import { END, Send, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
 import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";

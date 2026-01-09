@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";
+import { UntrackedValueChannel } from "../channels/untracked_value.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { Topic } from "../channels/topic.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
@@ -366,4 +367,144 @@ it.each(
   expect(channel.get()).toBe(3);
   channel.update([undefined]);
   expect(channel.get()).toBe(undefined);
+});
+
+describe("UntrackedValueChannel", () => {
+  describe("basic operations", () => {
+    it("should store and retrieve the last value", () => {
+      const channel = new UntrackedValueChannel<number>();
+
+      expect(() => channel.get()).toThrow(EmptyChannelError);
+      expect(channel.isAvailable()).toBe(false);
+
+      channel.update([42]);
+      expect(channel.get()).toBe(42);
+      expect(channel.isAvailable()).toBe(true);
+
+      channel.update([100]);
+      expect(channel.get()).toBe(100);
+    });
+
+    it("should handle falsy values correctly", () => {
+      const channel = new UntrackedValueChannel<
+        number | string | boolean | null
+      >();
+
+      channel.update([0]);
+      expect(channel.get()).toBe(0);
+
+      channel.update([""]);
+      expect(channel.get()).toBe("");
+
+      channel.update([false]);
+      expect(channel.get()).toBe(false);
+
+      channel.update([null]);
+      expect(channel.get()).toBe(null);
+    });
+
+    it("should handle undefined values", () => {
+      const channel = new UntrackedValueChannel<number | undefined>();
+
+      channel.update([undefined]);
+      expect(channel.get()).toBe(undefined);
+      expect(channel.isAvailable()).toBe(true);
+    });
+  });
+
+  describe("checkpoint behavior", () => {
+    it("should return undefined when checkpointing", () => {
+      const channel = new UntrackedValueChannel<number>();
+      channel.update([42]);
+
+      // Checkpoint should return undefined since untracked values aren't persisted
+      const checkpoint = channel.checkpoint();
+      expect(checkpoint).toBe(undefined);
+    });
+
+    it("should reset to empty when restored from checkpoint", () => {
+      const channel = new UntrackedValueChannel<number>();
+      channel.update([42]);
+
+      const checkpoint = channel.checkpoint();
+      const restored = channel.fromCheckpoint(checkpoint);
+
+      // Restored channel should be empty
+      expect(() => restored.get()).toThrow(EmptyChannelError);
+      expect(restored.isAvailable()).toBe(false);
+    });
+
+    it("should use initialValueFactory when restored from checkpoint", () => {
+      const channel = new UntrackedValueChannel<number>({
+        initialValueFactory: () => 999,
+      });
+      channel.update([42]);
+
+      const checkpoint = channel.checkpoint();
+      const restored = channel.fromCheckpoint(checkpoint);
+
+      // Restored channel should use initial value factory
+      expect(restored.get()).toBe(999);
+      expect(restored.isAvailable()).toBe(true);
+    });
+  });
+
+  describe("guard behavior", () => {
+    it("should throw when multiple updates are provided with guard: true (default)", () => {
+      const channel = new UntrackedValueChannel<number>();
+
+      expect(() => channel.update([1, 2])).toThrow(InvalidUpdateError);
+    });
+
+    it("should allow multiple updates with guard: false, keeping last value", () => {
+      const channel = new UntrackedValueChannel<number>({ guard: false });
+
+      channel.update([1, 2, 3]);
+      expect(channel.get()).toBe(3);
+    });
+
+    it("should throw on multiple updates even with guard: true", () => {
+      const channel = new UntrackedValueChannel<number>({ guard: true });
+
+      expect(() => channel.update([1, 2])).toThrow(InvalidUpdateError);
+    });
+  });
+
+  describe("initialValueFactory", () => {
+    it("should use initial value when no updates have been made", () => {
+      const channel = new UntrackedValueChannel<string>({
+        initialValueFactory: () => "default",
+      });
+
+      expect(channel.get()).toBe("default");
+      expect(channel.isAvailable()).toBe(true);
+    });
+
+    it("should override initial value with updates", () => {
+      const channel = new UntrackedValueChannel<string>({
+        initialValueFactory: () => "default",
+      });
+
+      channel.update(["updated"]);
+      expect(channel.get()).toBe("updated");
+    });
+
+    it("should handle complex objects from initialValueFactory", () => {
+      const channel = new UntrackedValueChannel<{ count: number }>({
+        initialValueFactory: () => ({ count: 0 }),
+      });
+
+      expect(channel.get()).toEqual({ count: 0 });
+
+      channel.update([{ count: 5 }]);
+      expect(channel.get()).toEqual({ count: 5 });
+    });
+  });
+
+  describe("lc_graph_name", () => {
+    it("should have lc_graph_name set to 'UntrackedValue'", () => {
+      const channel = new UntrackedValueChannel<number>();
+      expect(channel.lc_graph_name).toBe("UntrackedValue");
+    });
+  });
 });

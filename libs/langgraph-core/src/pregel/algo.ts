@@ -1121,6 +1121,37 @@ function _procInput(
   return val;
 }
 
+/**
+ * Remove any values belonging to UntrackedValue channels from a Send packet
+ * before checkpointing.
+ *
+ * Send is often called with state to be passed to the destination node,
+ * which may contain UntrackedValues at the top level.
+ *
+ * @internal
+ */
+export function sanitizeUntrackedValuesInSend(
+  packet: Send,
+  channels: StrRecord<string, BaseChannel>
+): Send {
+  if (typeof packet.args !== "object" || packet.args === null) {
+    // Not a dict-like arg
+    return packet;
+  }
+
+  // Top-level keys should be channel names
+  const sanitizedArg: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(packet.args)) {
+    const channel = channels[key];
+    // Check if channel is an UntrackedValue by its lc_graph_name
+    if (!channel || channel.lc_graph_name !== "UntrackedValue") {
+      sanitizedArg[key] = value;
+    }
+  }
+
+  return new Send(packet.node, sanitizedArg);
+}
+
 function _scratchpad({
   pendingWrites,
   taskId,
