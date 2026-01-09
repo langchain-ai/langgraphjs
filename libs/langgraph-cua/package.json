@@ -95,10 +95,5 @@
   },
   "files": [
     "dist/"
-  ],
-  "pnpm": {
-    "overrides": {
-      "typescript": "4.9.5"
-    }
-  }
+  ]
 }
