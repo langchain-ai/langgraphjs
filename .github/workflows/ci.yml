@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22.4.1"
+  NODE_VERSION: "22.14.0"
 
 jobs:
   build:
@@ -89,12 +89,12 @@ jobs:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
         os: [ubuntu-latest]
-        node-version: [20.x, "22.4.1"]
+        node-version: [20.x, "22.14.0"]
         include:
           - os: windows-latest
-            node-version: "22.4.1"
+            node-version: "22.14.0"
           - os: macos-latest
-            node-version: "22.4.1"
+            node-version: "22.14.0"
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
