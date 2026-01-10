@@ -1,5 +1,14 @@
 # @langchain/langgraph-api
 
+## 1.1.11
+
+### Patch Changes
+
+- [#1873](https://github.com/langchain-ai/langgraphjs/pull/1873) [`2b9f3ee`](https://github.com/langchain-ai/langgraphjs/commit/2b9f3ee83d0b8ba023e7a52b938260af3f6433d4) Thanks [@andrewnguonly](https://github.com/andrewnguonly)! - Add delete_threads query parameter to delete assistants API.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.11
+
 ## 1.1.10
 
 ### Patch Changes
