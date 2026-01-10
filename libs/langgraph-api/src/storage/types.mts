@@ -458,6 +458,7 @@ export interface AssistantsRepo {
 
   delete(
     assistant_id: string,
+    delete_threads: boolean,
     auth: AuthContext | undefined
   ): Promise<string[]>;
 
