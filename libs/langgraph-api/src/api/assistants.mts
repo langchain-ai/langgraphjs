@@ -139,7 +139,7 @@ api.delete("/assistants/:assistant_id", async (c) => {
   const assistantId = getAssistantId(c.req.param("assistant_id"));
   const deleteThreads = c.req.query("delete_threads") === "true";
   return c.json(
-    await assistants().delete(assistantId, c.var.auth, deleteThreads)
+    await assistants().delete(assistantId, deleteThreads, c.var.auth)
   );
 });
 
