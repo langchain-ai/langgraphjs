@@ -496,7 +496,7 @@ export class FileSystemAssistants implements AssistantsRepo {
   async delete(
     assistant_id: string,
     delete_threads: boolean,
-    auth: AuthContext | undefined,
+    auth: AuthContext | undefined
   ): Promise<string[]> {
     const [filters] = await handleAuthEvent(auth, "assistants:delete", {
       assistant_id,
