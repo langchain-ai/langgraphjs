@@ -1,6 +1,6 @@
 export { useStream } from "./stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
-export { UseStream, UseStreamCustom } from "./types.js";
+export type { UseStream, UseStreamCustom } from "./types.js";
 export type {
   MessageMetadata,
   UseStreamOptions,
