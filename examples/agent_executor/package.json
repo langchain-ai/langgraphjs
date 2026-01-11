@@ -7,9 +7,9 @@
     "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "workspace:*",
     "@langchain/tavily": "^1.0.0",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.2.3",
     "langchain": "^1.0.0-alpha",
     "tslab": "^1.0.22",
-    "zod": "^3.23.8"
+    "zod": "^4.3.5"
   }
 }
