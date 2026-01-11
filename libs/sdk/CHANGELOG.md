@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.5.1
+
+### Patch Changes
+
+- [#1880](https://github.com/langchain-ai/langgraphjs/pull/1880) [`7ec00d8`](https://github.com/langchain-ai/langgraphjs/commit/7ec00d8012ea4fb7132f009ba57992eecdce1ae5) Thanks [@hntrl](https://github.com/hntrl)! - readd UseStream instance exports
+
 ## 1.5.0
 
 ### Minor Changes
