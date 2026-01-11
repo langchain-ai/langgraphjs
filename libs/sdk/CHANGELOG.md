@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.5.2
+
+### Patch Changes
+
+- [#1882](https://github.com/langchain-ai/langgraphjs/pull/1882) [`f2e24a0`](https://github.com/langchain-ai/langgraphjs/commit/f2e24a038721a378d11275cd3201948defb7f36a) Thanks [@andrewnguonly](https://github.com/andrewnguonly)! - Fix bug in UseStream export.
+
 ## 1.5.1
 
 ### Patch Changes
