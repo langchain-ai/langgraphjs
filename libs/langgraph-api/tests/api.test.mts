@@ -44,7 +44,7 @@ interface AgentState {
 const IS_MEMORY = true;
 
 beforeAll(async () => {
-  if (process.env.TURBO_HASH) {
+  if (process.env.CI) {
     server = spawn(
       "tsx",
       ["./tests/utils.server.mts", "-c", "./graphs/langgraph.json"],
