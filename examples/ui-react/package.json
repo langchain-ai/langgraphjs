@@ -17,7 +17,7 @@
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/openai": "^1.2.0",
     "langchain": "^1.2.7",
-    "lucide-react": "^0.561.0",
+    "lucide-react": "^0.562.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "use-stick-to-bottom": "^1.0.44",

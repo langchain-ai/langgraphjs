@@ -30,7 +30,7 @@
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
     "commander": "^13.0.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.27.2",
     "esbuild-plugin-tailwindcss": "^2.0.1",
     "zod": "^3.25.76 || ^4"
   },
