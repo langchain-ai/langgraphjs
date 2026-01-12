@@ -381,7 +381,7 @@ class BaseClient {
       const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
 
       // Determine method and options based on whether this is a reconnection
-      const isReconnect = !!reconnectParams?.lastEventId;
+      const isReconnect = !!reconnectParams?.reconnectPath;
       const method = isReconnect ? "GET" : config.method || "GET";
 
       // Build headers - add Last-Event-ID for reconnections
