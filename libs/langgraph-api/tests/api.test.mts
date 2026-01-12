@@ -44,7 +44,7 @@ interface AgentState {
 const IS_MEMORY = true;
 
 beforeAll(async () => {
-  if (process.env.TURBO_HASH) {
+  if (process.env.CI) {
     server = spawn(
       "tsx",
       ["./tests/utils.server.mts", "-c", "./graphs/langgraph.json"],
@@ -100,6 +100,30 @@ describe("assistants", () => {
     await client.assistants.delete(res.assistant_id);
     await expect(() => client.assistants.get(res.assistant_id)).rejects.toThrow(
       "HTTP 404: Assistant not found"
+    );
+  });
+
+  it("delete assistant and threads", async () => {
+    const graphId = "agent";
+    const config = { configurable: { model_name: "gpt" } };
+
+    const assistant = await client.assistants.create({
+      graphId,
+      config,
+      description: "foo",
+    });
+    const assistantId = assistant.assistant_id;
+
+    const metadata = { name: "test_thread", assistant_id: assistantId };
+    const thread = await client.threads.create({ metadata });
+    const threadId = thread.thread_id;
+
+    await client.assistants.delete(assistantId, { deleteThreads: true });
+    await expect(() => client.assistants.get(assistantId)).rejects.toThrow(
+      "HTTP 404: Assistant not found"
+    );
+    await expect(() => client.threads.get(threadId)).rejects.toThrow(
+      `HTTP 404: Thread with ID ${threadId} not found`
     );
   });
 

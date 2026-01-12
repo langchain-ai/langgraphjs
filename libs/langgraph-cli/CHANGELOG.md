@@ -1,5 +1,28 @@
 # @langchain/langgraph-cli
 
+## 1.1.11
+
+### Patch Changes
+
+- Updated dependencies [[`2b9f3ee`](https://github.com/langchain-ai/langgraphjs/commit/2b9f3ee83d0b8ba023e7a52b938260af3f6433d4)]:
+  - @langchain/langgraph-api@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- Updated dependencies [[`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c), [`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c)]:
+  - @langchain/langgraph-api@1.1.10
+  - create-langgraph@1.1.5
+
+## 1.1.9
+
+### Patch Changes
+
+- Updated dependencies [[`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217), [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217)]:
+  - @langchain/langgraph-api@1.1.9
+  - create-langgraph@1.1.4
+
 ## 1.1.8
 
 ### Patch Changes

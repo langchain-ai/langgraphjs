@@ -5,7 +5,36 @@
 
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
+  - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: weekly
+      time: "11:00"
+    open-pull-requests-limit: 10
+    versioning-strategy: increase-if-necessary
+    groups:
+      patch-deps-updates-main:
+        update-types:
+          - "patch"
+      minor-deps-updates-main:
+        update-types:
+          - "minor"
+      major-deps-updates-main:
+        update-types:
+          - "major"
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      time: "11:00"
+    open-pull-requests-limit: 10
+    groups:
+      patch-deps-updates:
+        update-types:
+          - "patch"
+      minor-deps-updates:
+        update-types:
+          - "minor"
+      major-deps-updates:
+        update-types:
+          - "major"

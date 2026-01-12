@@ -7,7 +7,7 @@ This repository contains the JS/TS SDK for interacting with the LangGraph REST A
 To get started with the JS/TS SDK, [install the package](https://www.npmjs.com/package/@langchain/langgraph-sdk)
 
 ```bash
-yarn add @langchain/langgraph-sdk
+pnpm add @langchain/langgraph-sdk
 ```
 
 You will need a running LangGraph API server. If you're running a server locally using `langgraph-cli`, SDK will automatically point at `http://localhost:8123`, otherwise
@@ -53,7 +53,7 @@ To generate documentation, run the following commands:
 
 1. Generate docs.
 
-        yarn typedoc
+        pnpm typedoc
 
 1. Consolidate doc files into one markdown file.
 

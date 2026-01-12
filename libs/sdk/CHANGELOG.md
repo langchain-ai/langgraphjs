@@ -1,5 +1,41 @@
 # @langchain/langgraph-sdk
 
+## 1.5.2
+
+### Patch Changes
+
+- [#1882](https://github.com/langchain-ai/langgraphjs/pull/1882) [`f2e24a0`](https://github.com/langchain-ai/langgraphjs/commit/f2e24a038721a378d11275cd3201948defb7f36a) Thanks [@andrewnguonly](https://github.com/andrewnguonly)! - Fix bug in UseStream export.
+
+## 1.5.1
+
+### Patch Changes
+
+- [#1880](https://github.com/langchain-ai/langgraphjs/pull/1880) [`7ec00d8`](https://github.com/langchain-ai/langgraphjs/commit/7ec00d8012ea4fb7132f009ba57992eecdce1ae5) Thanks [@hntrl](https://github.com/hntrl)! - readd UseStream instance exports
+
+## 1.5.0
+
+### Minor Changes
+
+- [#1845](https://github.com/langchain-ai/langgraphjs/pull/1845) [`344b2d2`](https://github.com/langchain-ai/langgraphjs/commit/344b2d2c1a6dca43e9b01e436b00bca393bc9538) Thanks [@cwlbraa](https://github.com/cwlbraa)! - Add `onRunCompleted` parameter to `CronsClient.create()` for controlling thread cleanup behavior in stateless crons. Options are `"delete"` (default) to automatically clean up threads, or `"keep"` to preserve threads for later retrieval.
+
+### Patch Changes
+
+- [#1874](https://github.com/langchain-ai/langgraphjs/pull/1874) [`84a636e`](https://github.com/langchain-ai/langgraphjs/commit/84a636e52f7d3a4b97ae69d050efd9ca0224c6ca) Thanks [@bracesproul](https://github.com/bracesproul)! - Expose and pass down interrupt generic type
+
+- [#1873](https://github.com/langchain-ai/langgraphjs/pull/1873) [`2b9f3ee`](https://github.com/langchain-ai/langgraphjs/commit/2b9f3ee83d0b8ba023e7a52b938260af3f6433d4) Thanks [@andrewnguonly](https://github.com/andrewnguonly)! - Add delete_threads query parameter to delete assistants API.
+
+## 1.4.6
+
+### Patch Changes
+
+- [#1862](https://github.com/langchain-ai/langgraphjs/pull/1862) [`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c) Thanks [@dqbd](https://github.com/dqbd)! - retry release: add type-safe tool call streaming with agent type inference, provide proper error message when failing to connect to a server, expose Thread["config"] and Thread["error"]
+
+## 1.4.5
+
+### Patch Changes
+
+- [#1856](https://github.com/langchain-ai/langgraphjs/pull/1856) [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: add type-safe tool call streaming with agent type inference, provide proper error message when failing to connect to a server, expose Thread["config"] and Thread["error"]
+
 ## 1.4.4
 
 ### Patch Changes
