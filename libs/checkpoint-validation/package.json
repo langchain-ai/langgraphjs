@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-validation",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Library for validating LangGraph checkpoint saver implementations.",
   "type": "module",
   "engines": {

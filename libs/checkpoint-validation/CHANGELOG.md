@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-validation
 
+## 1.0.9
+
+### Patch Changes
+
+- [#1884](https://github.com/langchain-ai/langgraphjs/pull/1884) [`3c8c305`](https://github.com/langchain-ai/langgraphjs/commit/3c8c305cd0faec1d9fc54d7e9e358241c90e9485) Thanks [@SkrOYC](https://github.com/SkrOYC)! - fix(checkpoint-validation): include cli.ts in exports to generate dist/cli.js
+
 ## 1.0.8
 
 ### Patch Changes
