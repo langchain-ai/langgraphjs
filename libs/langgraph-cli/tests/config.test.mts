@@ -858,7 +858,7 @@ it("node config and python config", () => {
 
   // default node
   expect(getConfig({ graphs: { agent: "./agent.js:graph" } })).toEqual({
-    node_version: "20",
+    node_version: "24",
     dockerfile_lines: [],
     graphs: { agent: "./agent.js:graph" },
     env: {},
@@ -872,7 +872,7 @@ it("node config and python config", () => {
     })
   ).toEqual({
     python_version: "3.12",
-    node_version: "20",
+    node_version: "24",
     dependencies: ["."],
     graphs: { js: "./agent.js:graph", py: "./agent.py:graph" },
     dockerfile_lines: [],
@@ -924,14 +924,123 @@ it("node config and python config", () => {
     )
     .toThrow();
 
-  // Invalid Node version
+  // Invalid Node version (below minimum)
   expect
     .soft(() =>
       getConfig({
-        // @ts-expect-error
-        node_version: "18", // Unsupported version
+        node_version: "18", // Below minimum version
         graphs: { agent: "./agent.js:graph" },
       })
     )
-    .toThrow();
+    .toThrow("Node.js version must be >= 20");
+
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "19",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    )
+    .toThrow("Node.js version must be >= 20");
+
+  // Invalid Node version (not a number)
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "invalid",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    )
+    .toThrow("Node.js version must be >= 20");
+});
+
+describe("node version validation", () => {
+  it("accepts valid major versions >= 20", () => {
+    // Version 20
+    expect(
+      getConfig({
+        node_version: "20",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toMatchObject({ node_version: "20" });
+
+    // Version 22
+    expect(
+      getConfig({
+        node_version: "22",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toMatchObject({ node_version: "22" });
+
+    // Version 24
+    expect(
+      getConfig({
+        node_version: "24",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toMatchObject({ node_version: "24" });
+
+    // Future version
+    expect(
+      getConfig({
+        node_version: "26",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toMatchObject({ node_version: "26" });
+  });
+
+  it("accepts semver-style versions >= 20", () => {
+    expect(
+      getConfig({
+        node_version: "20.10.0",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toMatchObject({ node_version: "20.10.0" });
+
+    expect(
+      getConfig({
+        node_version: "22.1.5",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toMatchObject({ node_version: "22.1.5" });
+  });
+
+  it("rejects versions below minimum (20)", () => {
+    expect(() =>
+      getConfig({
+        node_version: "18",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toThrow("Node.js version must be >= 20");
+
+    expect(() =>
+      getConfig({
+        node_version: "16",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toThrow("Node.js version must be >= 20");
+
+    expect(() =>
+      getConfig({
+        node_version: "19.9.0",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toThrow("Node.js version must be >= 20");
+  });
+
+  it("rejects invalid version strings", () => {
+    expect(() =>
+      getConfig({
+        node_version: "invalid",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toThrow("Node.js version must be >= 20");
+
+    expect(() =>
+      getConfig({
+        node_version: "abc.def.ghi",
+        graphs: { agent: "./agent.js:graph" },
+      })
+    ).toThrow("Node.js version must be >= 20");
+  });
 });
