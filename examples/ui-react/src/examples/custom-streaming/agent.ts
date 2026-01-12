@@ -1,15 +1,7 @@
-import { z } from "zod/v3";
-import { tool, type ToolRuntime } from "langchain";
+import { z } from "zod/v4";
+import { tool, type ToolRuntime, createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
-import type { BaseMessageLike } from "@langchain/core/messages";
-import {
-  StateGraph,
-  MessagesAnnotation,
-  START,
-  END,
-} from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
 
 import type { ProgressData, StatusData, FileStatusData } from "./types";
 
@@ -36,14 +28,16 @@ const analyzeDataTool = tool(
       { step: "generating", message: "Generating insights..." },
     ];
 
-    // Use a unique ID for this analysis to make progress parts persistent
-    // Parts with an 'id' field are added to message.parts (not transient)
+    /**
+     * Use a unique ID for this analysis to make progress parts persistent
+     * Parts with an 'id' field are added to message.parts (not transient)
+     */
     const analysisId = `analysis-${Date.now()}`;
 
     for (let i = 0; i < steps.length; i++) {
-      // Emit progress events with typed custom data
-      // The adapter will convert { type: 'progress', ... } to data-progress
-      // The 'id' field makes this part persistent (added to message.parts)
+      /**
+       * Emit progress events with typed custom data
+       */
       config.writer?.({
         type: "progress",
         id: analysisId, // Same ID to update the progress in place
@@ -52,23 +46,31 @@ const analyzeDataTool = tool(
         progress: Math.round(((i + 1) / steps.length) * 100),
         totalSteps: steps.length,
         currentStep: i + 1,
+        toolCall: config.toolCall
       } satisfies ProgressData);
 
-      // Simulate processing time
+      /**
+       * Simulate processing time
+       */
       await new Promise((resolve) =>
         setTimeout(resolve, 500 + Math.random() * 500)
       );
     }
 
-    // Emit completion event with unique ID
+    /**
+     * Emit completion event with unique ID
+     */
     config.writer?.({
       type: "status",
       id: `${analysisId}-status`,
       status: "complete",
       message: "Analysis finished successfully",
+      toolCall: config.toolCall
     } satisfies StatusData);
 
-    // Return the result to the LLM
+    /**
+     * Return the result to the LLM
+     */
     const results = {
       dataSource,
       analysisType,
@@ -103,21 +105,28 @@ const analyzeDataTool = tool(
  */
 const processFileTool = tool(
   async ({ filename, operation }, config: ToolRuntime) => {
-    // Use a unique ID for this file operation to make it persistent
+    /**
+     * Use a unique ID for this file operation to make it persistent
+     */
     const fileOpId = `file-${filename}-${Date.now()}`;
 
-    // Emit file operation status with ID for persistence
+    /**
+     * Emit file operation status with ID for persistence
+     */
     config.writer?.({
       type: "file-status",
       id: fileOpId,
       filename,
       operation,
       status: "started",
+      toolCall: config.toolCall
     } satisfies FileStatusData);
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Update the same part with completed status
+    /**
+     * Update the same part with completed status
+     */
     config.writer?.({
       type: "file-status",
       id: fileOpId,
@@ -125,6 +134,7 @@ const processFileTool = tool(
       operation,
       status: "completed",
       size: `${Math.floor(Math.random() * 1000) + 100}KB`,
+      toolCall: config.toolCall
     } satisfies FileStatusData);
 
     return `Successfully ${operation}ed file: ${filename}`;
@@ -142,52 +152,11 @@ const processFileTool = tool(
 );
 
 /**
- * Type cast needed due to package version compatibility between langchain and @langchain/langgraph
- * @todo(@christian-bromann): fix this
- */
-const tools = [analyzeDataTool, processFileTool];
-const toolNode = new ToolNode(tools as any);
-
-/**
- * Call the model with tools bound
- */
-async function callModel(state: typeof MessagesAnnotation.State) {
-  const modelWithTools = model.bindTools(tools);
-  const response = await modelWithTools.invoke(
-    state.messages as unknown as BaseMessageLike[]
-  );
-  return { messages: [response] };
-}
-
-/**
- * Determine if we should continue to tools or end
- */
-function shouldContinue(state: typeof MessagesAnnotation.State) {
-  const lastMessage = state.messages[state.messages.length - 1];
-  if (
-    lastMessage &&
-    "tool_calls" in lastMessage &&
-    Array.isArray(lastMessage.tool_calls) &&
-    lastMessage.tool_calls.length > 0
-  ) {
-    return "tools";
-  }
-  return END;
-}
-
-/**
- * Create the LangGraph workflow
- */
-const workflow = new StateGraph(MessagesAnnotation)
-  .addNode("agent", callModel)
-  .addNode("tools", toolNode)
-  .addEdge(START, "agent")
-  .addConditionalEdges("agent", shouldContinue)
-  .addEdge("tools", "agent");
-
-/**
  * Compile the graph with a memory checkpointer
  */
-export const agent = workflow.compile({
+export const agent = createAgent({
+  model,
+  tools: [analyzeDataTool, processFileTool],
   checkpointer: new MemorySaver(),
+  systemPrompt: `You are a helpful assistant that can analyze data and process files.`,
 });
