@@ -2,4 +2,4 @@
 "@langchain/langgraph-sdk": patch
 ---
 
-Made JS SSE reconnect logic match Python by retrying based on Location (even before a first event) and
+Made JS SSE reconnect logic match Python by retrying based on Location (even before a first event) and retry on Undici connection errors.
