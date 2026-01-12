@@ -9,7 +9,7 @@
     "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "scripts": {
-    "build": "turbo run build:internal",
+    "build": "turbo run build:compile",
     "changeset": "npx @changesets/cli@^2.29.5",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",

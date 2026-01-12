@@ -6,17 +6,18 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
     "directory": "libs/checkpoint-mongodb"
   },
   "scripts": {
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-mongodb",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-mongodb",
-    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "build": "pnpm turbo build:compile --filter=@langchain/langgraph-checkpoint-mongodb",
+    "build:compile": "tsdown",
+    "clean": "rm -rf dist/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "pnpm lint:eslint && pnpm lint:dpdm",
@@ -38,7 +39,9 @@
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
+    "@langchain/build": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
+    "tsdown": "^0.15.12",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/better-sqlite3": "^7.6.12",
@@ -66,19 +69,21 @@
   "exports": {
     ".": {
       "input": "./src/index.ts",
-      "typedoc": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       }
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
   ]
 }

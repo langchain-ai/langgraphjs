@@ -4,9 +4,13 @@
     "outDir": "../dist",
     "rootDir": "./src",
     "target": "ES2022",
-    "lib": ["ES2022", "ES2022.Object", "DOM"],
-    "module": "ES2022",
-    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "ES2022.Object",
+      "DOM"
+    ],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "declaration": true,
     "noImplicitReturns": true,
@@ -17,8 +21,14 @@
     "strictPropertyInitialization": false,
     "allowJs": true,
     "strict": true,
-    "sourceMap": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "docs"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

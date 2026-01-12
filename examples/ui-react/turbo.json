@@ -8,9 +8,9 @@
         "**/dist/**"
       ]
     },
-    "build:internal": {
+    "build:compile": {
       "dependsOn": [
-        "^build:internal"
+        "^build:compile"
       ],
       "outputs": [
         "**/dist/**"

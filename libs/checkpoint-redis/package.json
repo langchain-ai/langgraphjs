@@ -1,4 +1,116 @@
 {
+  "default": {
+    "name": "@langchain/langgraph-checkpoint-redis",
+    "version": "1.0.1",
+    "description": "Redis checkpoint and store implementation for LangGraph",
+    "type": "module",
+    "engines": {
+      "node": ">=18"
+    },
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.cts",
+    "repository": {
+      "type": "git",
+      "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+      "directory": "libs/checkpoint-redis"
+    },
+    "scripts": {
+      "build": "pnpm turbo build:compile --filter=@langchain/langgraph-checkpoint-redis",
+      "build:compile": "tsdown",
+      "clean": "rm -rf dist/ .turbo/",
+      "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+      "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+      "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+      "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+      "prepublish": "pnpm build",
+      "test": "vitest run",
+      "test:watch": "vitest watch",
+      "test:int": "vitest run --mode int",
+      "format": "prettier --config .prettierrc --write \"src\"",
+      "format:check": "prettier --config .prettierrc --check \"src\""
+    },
+    "author": "Brian Sam-Bodden <bsb@redis.com>",
+    "license": "MIT",
+    "dependencies": {
+      "redis": "^4.7.0",
+      "uuid": "13.0.0"
+    },
+    "peerDependencies": {
+      "@langchain/core": "^1.0.1",
+      "@langchain/langgraph-checkpoint": "^1.0.0"
+    },
+    "devDependencies": {
+      "@langchain/build": "workspace:*",
+      "@langchain/langgraph-checkpoint": "workspace:*",
+      "tsdown": "^0.15.12",
+      "@langchain/scripts": ">=0.1.2 <0.2.0",
+      "@tsconfig/recommended": "^1.0.3",
+      "@types/node": "^20",
+      "testcontainers": "^10.0.0",
+      "@typescript-eslint/eslint-plugin": "^6.12.0",
+      "@typescript-eslint/parser": "^6.12.0",
+      "dotenv": "^16.3.1",
+      "dpdm": "^3.12.0",
+      "eslint": "^8.33.0",
+      "eslint-config-airbnb-base": "^15.0.0",
+      "eslint-config-prettier": "^8.6.0",
+      "eslint-plugin-import": "^2.29.1",
+      "eslint-plugin-no-instanceof": "^1.0.1",
+      "eslint-plugin-prettier": "^4.2.1",
+      "prettier": "^2.8.3",
+      "rollup": "^4.37.0",
+      "tsx": "^4.19.3",
+      "typescript": "^4.9.5 || ^5.4.5",
+      "vitest": "^3.2.4"
+    },
+    "publishConfig": {
+      "access": "public",
+      "registry": "https://registry.npmjs.org/"
+    },
+    "exports": {
+      ".": {
+        "input": "./src/index.ts",
+        "typedoc": "./src/index.ts",
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        },
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "./shallow": {
+        "input": "./src/shallow.ts",
+        "typedoc": "./src/shallow.ts",
+        "require": {
+          "types": "./dist/shallow.d.cts",
+          "default": "./dist/shallow.cjs"
+        },
+        "import": {
+          "types": "./dist/shallow.d.ts",
+          "default": "./dist/shallow.js"
+        }
+      },
+      "./store": {
+        "input": "./src/store.ts",
+        "typedoc": "./src/store.ts",
+        "require": {
+          "types": "./dist/store.d.cts",
+          "default": "./dist/store.cjs"
+        },
+        "import": {
+          "types": "./dist/store.d.ts",
+          "default": "./dist/store.js"
+        }
+      },
+      "./package.json": "./package.json"
+    },
+    "files": [
+      "dist/"
+    ]
+  },
   "name": "@langchain/langgraph-checkpoint-redis",
   "version": "1.0.1",
   "description": "Redis checkpoint and store implementation for LangGraph",
@@ -6,17 +118,18 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
     "directory": "libs/checkpoint-redis"
   },
   "scripts": {
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-redis",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-redis",
-    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "build": "pnpm turbo build:compile --filter=@langchain/langgraph-checkpoint-redis",
+    "build:compile": "tsdown",
+    "clean": "rm -rf dist/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "pnpm lint:eslint && pnpm lint:dpdm",
@@ -31,15 +144,16 @@
   "author": "Brian Sam-Bodden <bsb@redis.com>",
   "license": "MIT",
   "dependencies": {
-    "redis": "^4.7.0",
-    "ulid": "^2.3.0"
+    "redis": "^4.7.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
+    "@langchain/build": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
+    "tsdown": "^0.15.12",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/node": "^20",
@@ -66,44 +180,49 @@
   },
   "exports": {
     ".": {
-      "typedoc": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
+      "input": "./src/index.ts",
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       },
-      "input": "./src/index.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
     "./shallow": {
-      "typedoc": "./src/shallow.ts",
-      "import": {
-        "types": "./dist/shallow.d.ts",
-        "default": "./dist/shallow.js"
-      },
+      "input": "./src/shallow.ts",
       "require": {
         "types": "./dist/shallow.d.cts",
         "default": "./dist/shallow.cjs"
       },
-      "input": "./src/shallow.ts"
+      "import": {
+        "types": "./dist/shallow.d.ts",
+        "default": "./dist/shallow.js"
+      }
     },
     "./store": {
-      "typedoc": "./src/store.ts",
-      "import": {
-        "types": "./dist/store.d.ts",
-        "default": "./dist/store.js"
-      },
+      "input": "./src/store.ts",
       "require": {
         "types": "./dist/store.d.cts",
         "default": "./dist/store.cjs"
       },
-      "input": "./src/store.ts"
+      "import": {
+        "types": "./dist/store.d.ts",
+        "default": "./dist/store.js"
+      }
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "shallow.d.cts",
+    "shallow.cjs",
+    "shallow.d.ts",
+    "shallow.js",
+    "store.d.cts",
+    "store.cjs",
+    "store.d.ts",
+    "store.js"
   ]
 }

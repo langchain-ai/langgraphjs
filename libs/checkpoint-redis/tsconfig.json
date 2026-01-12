@@ -13,7 +13,6 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"],
     "resolveJsonModule": true,
     "sourceMap": true,
   },

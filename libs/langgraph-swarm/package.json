@@ -1,4 +1,271 @@
 {
+  "default": {
+    "default": {
+      "default": {
+        "name": "@langchain/langgraph-swarm",
+        "version": "1.0.1",
+        "description": "An implementation of a multi-agent swarm using LangGraph",
+        "type": "module",
+        "engines": {
+          "node": ">=18"
+        },
+        "main": "./dist/index.cjs",
+        "module": "./dist/index.js",
+        "types": "./dist/index.d.cts",
+        "repository": {
+          "type": "git",
+          "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+          "directory": "libs/langgraph-swarm"
+        },
+        "scripts": {
+          "build": "pnpm turbo build:compile",
+          "build:compile": "tsdown",
+          "clean": "rm -rf dist/ .turbo/",
+          "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+          "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+          "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+          "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+          "prepublish": "pnpm build",
+          "test": "vitest run",
+          "test:watch": "vitest watch",
+          "test:int": "vitest run --mode int",
+          "format": "prettier --config .prettierrc --write \"src\"",
+          "format:check": "prettier --config .prettierrc --check \"src\""
+        },
+        "author": "LangChain",
+        "license": "MIT",
+        "dependencies": {
+          "zod": "^3.25.76 || ^4"
+        },
+        "peerDependencies": {
+          "@langchain/core": "^1.0.1",
+          "@langchain/langgraph": "^0.2.53 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5"
+        },
+        "devDependencies": {
+          "@langchain/build": "workspace:*",
+          "@langchain/langgraph": "workspace:*",
+          "tsdown": "^0.15.12",
+          "@langchain/openai": "^1.0.0",
+          "@langchain/scripts": "^0.1.3",
+          "@tsconfig/recommended": "^1.0.3",
+          "@typescript-eslint/eslint-plugin": "^6.12.0",
+          "@typescript-eslint/parser": "^6.12.0",
+          "dotenv": "^16.3.1",
+          "dpdm": "^3.12.0",
+          "eslint": "^8.33.0",
+          "eslint-config-airbnb-base": "^15.0.0",
+          "eslint-config-prettier": "^8.6.0",
+          "eslint-plugin-import": "^2.29.1",
+          "eslint-plugin-no-instanceof": "^1.0.1",
+          "eslint-plugin-prettier": "^4.2.1",
+          "prettier": "^2.8.3",
+          "tsx": "^4.19.3",
+          "turbo": "^2.5.4",
+          "typescript": "^4.9.5 || ^5.4.5",
+          "vitest": "^3.2.4"
+        },
+        "publishConfig": {
+          "access": "public",
+          "registry": "https://registry.npmjs.org/"
+        },
+        "exports": {
+          ".": {
+            "input": "./src/index.ts",
+            "typedoc": "./src/index.ts",
+            "require": {
+              "types": "./dist/index.d.cts",
+              "default": "./dist/index.cjs"
+            },
+            "import": {
+              "types": "./dist/index.d.ts",
+              "default": "./dist/index.js"
+            }
+          },
+          "./package.json": "./package.json"
+        },
+        "files": [
+          "dist/",
+          "CHANGELOG.md",
+          "README.md",
+          "LICENSE"
+        ]
+      },
+      "name": "@langchain/langgraph-swarm",
+      "version": "1.0.1",
+      "description": "An implementation of a multi-agent swarm using LangGraph",
+      "type": "module",
+      "engines": {
+        "node": ">=18"
+      },
+      "main": "./dist/index.cjs",
+      "module": "./dist/index.js",
+      "types": "./dist/index.d.cts",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+        "directory": "libs/langgraph-swarm"
+      },
+      "scripts": {
+        "build": "pnpm turbo build:compile",
+        "build:compile": "tsdown",
+        "clean": "rm -rf dist/ .turbo/",
+        "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+        "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+        "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+        "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+        "prepublish": "pnpm build",
+        "test": "vitest run",
+        "test:watch": "vitest watch",
+        "test:int": "vitest run --mode int",
+        "format": "prettier --config .prettierrc --write \"src\"",
+        "format:check": "prettier --config .prettierrc --check \"src\""
+      },
+      "author": "LangChain",
+      "license": "MIT",
+      "dependencies": {
+        "zod": "^3.25.76 || ^4"
+      },
+      "peerDependencies": {
+        "@langchain/core": "^1.0.1",
+        "@langchain/langgraph": "^0.2.53 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5"
+      },
+      "devDependencies": {
+        "@langchain/build": "workspace:*",
+        "@langchain/langgraph": "workspace:*",
+        "tsdown": "^0.15.12",
+        "@langchain/openai": "^1.0.0",
+        "@langchain/scripts": "^0.1.3",
+        "@tsconfig/recommended": "^1.0.3",
+        "@typescript-eslint/eslint-plugin": "^6.12.0",
+        "@typescript-eslint/parser": "^6.12.0",
+        "dotenv": "^16.3.1",
+        "dpdm": "^3.12.0",
+        "eslint": "^8.33.0",
+        "eslint-config-airbnb-base": "^15.0.0",
+        "eslint-config-prettier": "^8.6.0",
+        "eslint-plugin-import": "^2.29.1",
+        "eslint-plugin-no-instanceof": "^1.0.1",
+        "eslint-plugin-prettier": "^4.2.1",
+        "prettier": "^2.8.3",
+        "tsx": "^4.19.3",
+        "turbo": "^2.5.4",
+        "typescript": "^4.9.5 || ^5.4.5",
+        "vitest": "^3.2.4"
+      },
+      "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
+      },
+      "exports": {
+        ".": {
+          "input": "./src/index.ts",
+          "typedoc": "./src/index.ts",
+          "require": {
+            "types": "./dist/index.d.cts",
+            "default": "./dist/index.cjs"
+          },
+          "import": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "files": [
+        "dist/",
+        "CHANGELOG.md",
+        "README.md",
+        "LICENSE"
+      ]
+    },
+    "name": "@langchain/langgraph-swarm",
+    "version": "1.0.1",
+    "description": "An implementation of a multi-agent swarm using LangGraph",
+    "type": "module",
+    "engines": {
+      "node": ">=18"
+    },
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.cts",
+    "repository": {
+      "type": "git",
+      "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+      "directory": "libs/langgraph-swarm"
+    },
+    "scripts": {
+      "build": "pnpm turbo build:compile",
+      "build:compile": "tsdown",
+      "clean": "rm -rf dist/ .turbo/",
+      "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+      "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+      "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+      "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+      "prepublish": "pnpm build",
+      "test": "vitest run",
+      "test:watch": "vitest watch",
+      "test:int": "vitest run --mode int",
+      "format": "prettier --config .prettierrc --write \"src\"",
+      "format:check": "prettier --config .prettierrc --check \"src\""
+    },
+    "author": "LangChain",
+    "license": "MIT",
+    "dependencies": {
+      "zod": "^3.25.76 || ^4"
+    },
+    "peerDependencies": {
+      "@langchain/core": "^1.0.1",
+      "@langchain/langgraph": "^0.2.53 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5"
+    },
+    "devDependencies": {
+      "@langchain/build": "workspace:*",
+      "@langchain/langgraph": "workspace:*",
+      "tsdown": "^0.15.12",
+      "@langchain/openai": "^1.0.0",
+      "@langchain/scripts": "^0.1.3",
+      "@tsconfig/recommended": "^1.0.3",
+      "@typescript-eslint/eslint-plugin": "^6.12.0",
+      "@typescript-eslint/parser": "^6.12.0",
+      "dotenv": "^16.3.1",
+      "dpdm": "^3.12.0",
+      "eslint": "^8.33.0",
+      "eslint-config-airbnb-base": "^15.0.0",
+      "eslint-config-prettier": "^8.6.0",
+      "eslint-plugin-import": "^2.29.1",
+      "eslint-plugin-no-instanceof": "^1.0.1",
+      "eslint-plugin-prettier": "^4.2.1",
+      "prettier": "^2.8.3",
+      "tsx": "^4.19.3",
+      "turbo": "^2.5.4",
+      "typescript": "^4.9.5 || ^5.4.5",
+      "vitest": "^3.2.4"
+    },
+    "publishConfig": {
+      "access": "public",
+      "registry": "https://registry.npmjs.org/"
+    },
+    "exports": {
+      ".": {
+        "input": "./src/index.ts",
+        "typedoc": "./src/index.ts",
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        },
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "./package.json": "./package.json"
+    },
+    "files": [
+      "dist/",
+      "CHANGELOG.md",
+      "README.md",
+      "LICENSE"
+    ]
+  },
   "name": "@langchain/langgraph-swarm",
   "version": "1.0.1",
   "description": "An implementation of a multi-agent swarm using LangGraph",
@@ -6,17 +273,18 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
     "directory": "libs/langgraph-swarm"
   },
   "scripts": {
-    "build": "pnpm turbo build:internal",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-swarm",
-    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "build": "pnpm turbo build:compile",
+    "build:compile": "tsdown",
+    "clean": "rm -rf dist/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "pnpm lint:eslint && pnpm lint:dpdm",
@@ -38,7 +306,9 @@
     "@langchain/langgraph": "^0.2.53 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5"
   },
   "devDependencies": {
+    "@langchain/build": "workspace:*",
     "@langchain/langgraph": "workspace:*",
+    "tsdown": "^0.15.12",
     "@langchain/openai": "^1.0.0",
     "@langchain/scripts": "^0.1.3",
     "@tsconfig/recommended": "^1.0.3",
@@ -65,19 +335,21 @@
   "exports": {
     ".": {
       "input": "./src/index.ts",
-      "typedoc": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       }
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
   ]
 }

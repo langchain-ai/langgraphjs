@@ -6,17 +6,18 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
     "directory": "libs/checkpoint-postgres"
   },
   "scripts": {
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-postgres",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-postgres",
-    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "build": "pnpm turbo build:compile --filter=@langchain/langgraph-checkpoint-postgres",
+    "build:compile": "tsdown",
+    "clean": "rm -rf dist/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "lint": "pnpm lint:eslint && pnpm lint:dpdm",
@@ -38,7 +39,9 @@
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
+    "@langchain/build": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
+    "tsdown": "^0.15.12",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/pg": "^8.11.8",
@@ -65,32 +68,33 @@
   },
   "exports": {
     ".": {
-      "typedoc": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
+      "input": "./src/index.ts",
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       },
-      "input": "./src/index.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
     "./store": {
       "input": "./src/store/index.ts",
-      "typedoc": "./src/store/index.ts",
-      "import": {
-        "types": "./dist/store/index.d.ts",
-        "default": "./dist/store/index.js"
-      },
       "require": {
         "types": "./dist/store/index.d.cts",
         "default": "./dist/store/index.cjs"
+      },
+      "import": {
+        "types": "./dist/store/index.d.ts",
+        "default": "./dist/store/index.js"
       }
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
   ]
 }

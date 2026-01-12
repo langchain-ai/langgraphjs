@@ -28,3 +28,13 @@ __pycache__
 .DS_Store
 tsconfig.vitest-temp.json
 .pnpm-store
+
+# CJS compat barrel files
+**/*.cjs
+**/*.js
+**/*.d.ts
+**/*.d.cts
+!**/src/**/*.cjs
+!**/src/**/*.js
+!**/src/**/*.d.ts
+!**/src/**/*.d.cts

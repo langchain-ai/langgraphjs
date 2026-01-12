@@ -52,8 +52,8 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/",
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-api",
-    "build:internal": "pnpm clean && node scripts/build.mjs",
+    "build": "pnpm turbo build:compile --filter=@langchain/langgraph-api",
+    "build:compile": "pnpm clean && node scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts --dev",
     "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",

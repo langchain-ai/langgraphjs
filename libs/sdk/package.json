@@ -9,9 +9,9 @@
     "directory": "libs/sdk"
   },
   "scripts": {
-    "clean": "rm -rf dist/ dist-cjs/",
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-sdk",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-sdk",
+    "clean": "rm -rf dist/",
+    "build": "pnpm turbo build:compile --filter=@langchain/langgraph-sdk",
+    "build:compile": "tsdown",
     "prepublish": "pnpm build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",
@@ -27,7 +27,9 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@langchain/build": "workspace:*",
     "@langchain/core": "^1.1.2",
+    "tsdown": "^0.15.12",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
@@ -65,91 +67,85 @@
       "optional": true
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
   "exports": {
     ".": {
       "input": "./src/index.ts",
-      "typedoc": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
-      }
-    },
-    "./client": {
-      "input": "./src/client.ts",
-      "typedoc": "./src/client.ts",
-      "import": {
-        "types": "./dist/client.d.ts",
-        "default": "./dist/client.js"
       },
-      "require": {
-        "types": "./dist/client.d.cts",
-        "default": "./dist/client.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       }
     },
     "./auth": {
       "input": "./src/auth/index.ts",
-      "typedoc": "./src/auth/index.ts",
-      "import": {
-        "types": "./dist/auth/index.d.ts",
-        "default": "./dist/auth/index.js"
-      },
       "require": {
         "types": "./dist/auth/index.d.cts",
         "default": "./dist/auth/index.cjs"
+      },
+      "import": {
+        "types": "./dist/auth/index.d.ts",
+        "default": "./dist/auth/index.js"
       }
     },
-    "./react": {
-      "input": "./src/react/index.ts",
-      "typedoc": "./src/react/index.ts",
-      "import": {
-        "types": "./dist/react/index.d.ts",
-        "default": "./dist/react/index.js"
-      },
+    "./client": {
+      "input": "./src/client.ts",
       "require": {
-        "types": "./dist/react/index.d.cts",
-        "default": "./dist/react/index.cjs"
+        "types": "./dist/client.d.cts",
+        "default": "./dist/client.cjs"
+      },
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
       }
     },
     "./logging": {
       "input": "./src/logging/index.ts",
-      "typedoc": "./src/logging/index.ts",
-      "import": {
-        "types": "./dist/logging/index.d.ts",
-        "default": "./dist/logging/index.js"
-      },
       "require": {
         "types": "./dist/logging/index.d.cts",
         "default": "./dist/logging/index.cjs"
+      },
+      "import": {
+        "types": "./dist/logging/index.d.ts",
+        "default": "./dist/logging/index.js"
+      }
+    },
+    "./react": {
+      "input": "./src/react/index.ts",
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      },
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
       }
     },
     "./react-ui": {
       "input": "./src/react-ui/index.ts",
-      "typedoc": "./src/react-ui/index.ts",
-      "import": {
-        "types": "./dist/react-ui/index.d.ts",
-        "default": "./dist/react-ui/index.js"
-      },
       "require": {
         "types": "./dist/react-ui/index.d.cts",
         "default": "./dist/react-ui/index.cjs"
+      },
+      "import": {
+        "types": "./dist/react-ui/index.d.ts",
+        "default": "./dist/react-ui/index.js"
       }
     },
     "./react-ui/server": {
       "input": "./src/react-ui/server/index.ts",
-      "typedoc": "./src/react-ui/server/index.ts",
-      "import": {
-        "types": "./dist/react-ui/server/index.d.ts",
-        "default": "./dist/react-ui/server/index.js"
-      },
       "require": {
         "types": "./dist/react-ui/server/index.d.cts",
         "default": "./dist/react-ui/server/index.cjs"
+      },
+      "import": {
+        "types": "./dist/react-ui/server/index.d.ts",
+        "default": "./dist/react-ui/server/index.js"
       }
     },
     "./package.json": "./package.json"

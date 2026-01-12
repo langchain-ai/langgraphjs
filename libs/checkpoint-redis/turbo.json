@@ -12,10 +12,10 @@
         "*.d.cts"
       ],
       "dependsOn": [
-        "^build:internal"
+        "^build:compile"
       ]
     },
-    "build:internal": {
+    "build:compile": {
       "outputs": [
         "dist/**",
         "*.js",
@@ -24,7 +24,7 @@
         "*.d.cts"
       ],
       "dependsOn": [
-        "^build:internal"
+        "^build:compile"
       ]
     }
   }

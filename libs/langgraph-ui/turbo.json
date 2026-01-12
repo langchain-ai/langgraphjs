@@ -4,8 +4,8 @@
     "build": {
       "outputs": ["**/dist/**"]
     },
-    "build:internal": {
-      "dependsOn": ["^build:internal"],
+    "build:compile": {
+      "dependsOn": ["^build:compile"],
       "outputs": ["**/dist/**"]
     }
   }

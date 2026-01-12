@@ -1,41 +1,75 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env"],
+  "globalDependencies": [
+    "**/.env"
+  ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
-    "build:internal": {
-      "dependsOn": ["^build:internal"]
+    "build:compile": {
+      "dependsOn": [
+        "^build:compile"
+      ],
+      "env": [
+        "BUILD_MODE"
+      ]
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": [
+        "^lint"
+      ]
     },
     "lint:fix": {
-      "dependsOn": ["^lint:fix"]
+      "dependsOn": [
+        "^lint:fix"
+      ]
     },
     "format": {
-      "dependsOn": ["^format"]
+      "dependsOn": [
+        "^format"
+      ]
     },
     "format:check": {
-      "dependsOn": ["^format:check"]
+      "dependsOn": [
+        "^format:check"
+      ]
     },
     "test": {
       "cache": false,
-      "dependsOn": ["^build:internal", "build:internal"]
+      "dependsOn": [
+        "^build",
+        "build"
+      ]
     },
     "test:single": {
-      "dependsOn": ["^build:internal", "build:internal"]
+      "dependsOn": [
+        "^build",
+        "build"
+      ]
     },
     "test:int": {
-      "dependsOn": ["^build:internal", "build:internal"]
+      "dependsOn": [
+        "^build",
+        "build"
+      ]
     },
     "test:integration": {
-      "dependsOn": ["^build:internal", "build:internal", "test:int"]
+      "dependsOn": [
+        "^build",
+        "build",
+        "test:int"
+      ]
     },
     "clean": {
-      "dependsOn": ["^clean"]
+      "dependsOn": [
+        "^clean"
+      ]
     },
     "precommit": {},
     "start": {
