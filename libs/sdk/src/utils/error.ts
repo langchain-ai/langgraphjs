@@ -20,11 +20,10 @@ export const isNetworkError = (error: unknown): error is Error => {
     return false;
   }
   const msg = error.message.toLowerCase();
-  const cause = (error as { cause?: unknown }).cause;
-  const causeMessage =
-    typeof (cause as { message?: string })?.message === "string"
-      ? (cause as { message: string }).message.toLowerCase()
-      : "";
+  const { cause } = error as { cause?: unknown };
+  const { message: causeMessage } = (cause ?? {}) as { message?: string };
+  const normalizedCauseMessage =
+    typeof causeMessage === "string" ? causeMessage.toLowerCase() : "";
   return (
     msg.includes("fetch") ||
     msg.includes("network") ||
@@ -32,7 +31,7 @@ export const isNetworkError = (error: unknown): error is Error => {
     msg.includes("error sending request") ||
     msg.includes("load failed") ||
     msg.includes("terminated") ||
-    causeMessage.includes("other side closed") ||
-    causeMessage.includes("socket")
+    normalizedCauseMessage.includes("other side closed") ||
+    normalizedCauseMessage.includes("socket")
   );
 };
