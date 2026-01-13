@@ -54,9 +54,6 @@ a developer and published to [npm](https://www.npmjs.com/package/@angchain/langg
 LangChain follows the [semver](https://semver.org/) versioning standard. However, as pre-1.0 software,
 even patch releases may contain [non-backwards-compatible changes](https://semver.org/#spec-item-4).
 
-If your contribution has made its way into a release, we will want to give you credit on Twitter (only if you want though)!
-If you have a Twitter account you would like us to mention, please let us know in the PR or in another manner.
-
 #### Integration releases
 
 You can invoke the release flow by calling `pnpm release` from the package root.
@@ -366,6 +363,6 @@ Some concepts about channels:
 - It implements a way to `checkpoint` or "snapshot" the current state of the channel. This enables persistence across a graph.
 - It implements a way to `empty` or "restore" a channel from a checkpoint/snapshot. This enables us to create a new channel from a checkpoint variable stored in a database.
 
-3. `channels/base.ts` is the base class for a channel and it can be extended to create any kind of channel. For example, `last_value.ts`, `binop.ts` are all types of channels.
-4. In Pregel, there is no limitation on the number of channels a node can subscribe to or write to. In LangGraph, however, currently every node maps to two channels. (1) A channel's value that it is subscribes to, i.e - is dependent on. (2) The channel that it writes to.
-5. `src/pregel/index.ts` holds all the business logic that uses channels and nodes in a pregel graph. `async *_transform` holds some of the most important logic because it is responsible for updating the channel's value and updating the checkpoint accordingly.
+1. `channels/base.ts` is the base class for a channel and it can be extended to create any kind of channel. For example, `last_value.ts`, `binop.ts` are all types of channels.
+2. In Pregel, there is no limitation on the number of channels a node can subscribe to or write to. In LangGraph, however, currently every node maps to two channels. (1) A channel's value that it is subscribes to, i.e - is dependent on. (2) The channel that it writes to.
+3. `src/pregel/index.ts` holds all the business logic that uses channels and nodes in a pregel graph. `async *_transform` holds some of the most important logic because it is responsible for updating the channel's value and updating the checkpoint accordingly.

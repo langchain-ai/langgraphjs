@@ -360,7 +360,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/langchain-ai/langgraphjs
     - icon: fontawesome/brands/twitter
-      link: https://twitter.com/LangChainAI
+      link: https://x.com/langchain
 
 validation:
   # https://www.mkdocs.org/user-guide/configuration/
