@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type { UseStreamOptions, InferAgentToolCalls } from "../ui/types.js";
+import type {
+  UseStreamOptions,
+  InferAgentToolCalls,
+  InferAgentState,
+} from "../ui/types.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
@@ -23,24 +27,25 @@ function isCustomOptions<
 
 /**
  * Helper type that infers StateType based on whether T is an agent-like type, a CompiledGraph/Pregel instance, or a state type.
- * - If T has `~agentTypes`, returns a state with typed messages based on the agent's tools
+ * - If T has `~agentTypes`, returns a state with typed messages based on the agent's tools,
+ *   plus the agent's custom state schema and all middleware states
  * - If T has `~RunOutput` (CompiledGraph/CompiledStateGraph), returns the state type
  * - If T has `~OutputType` (Pregel), returns the output type as state
  * - Otherwise, returns T (direct state type)
  */
 type InferStateType<T> = T extends { "~agentTypes": unknown }
-  ? { messages: Message<InferAgentToolCalls<T>>[] }
+  ? { messages: Message<InferAgentToolCalls<T>>[] } & InferAgentState<T>
   : T extends { "~RunOutput": infer S }
-  ? S extends Record<string, unknown>
-    ? S
-    : Record<string, unknown>
-  : T extends { "~OutputType": infer O }
-  ? O extends Record<string, unknown>
-    ? O
-    : Record<string, unknown>
-  : T extends Record<string, unknown>
-  ? T
-  : Record<string, unknown>;
+    ? S extends Record<string, unknown>
+      ? S
+      : Record<string, unknown>
+    : T extends { "~OutputType": infer O }
+      ? O extends Record<string, unknown>
+        ? O
+        : Record<string, unknown>
+      : T extends Record<string, unknown>
+        ? T
+        : Record<string, unknown>;
 
 /**
  * Helper type that infers Bag based on whether T is an agent-like type.

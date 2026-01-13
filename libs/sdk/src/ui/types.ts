@@ -1,5 +1,6 @@
-import type { Client, ClientConfig } from "../client.js";
+import type { InferInteropZodInput } from "@langchain/core/utils/types";
 
+import type { Client, ClientConfig } from "../client.js";
 import type { ThreadState, Config, Checkpoint, Metadata } from "../schema.js";
 import type {
   Command,
@@ -64,16 +65,67 @@ export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
     : never
   : never;
 
+// ============================================================================
+// Middleware State Extraction Helpers
+// ============================================================================
+// These types enable extracting state types from middleware arrays without
+// requiring the full langchain dependency.
+
 /**
- * Helper type to infer schema input type, supporting both Zod v3 and v4.
- * - Zod v4 uses `_zod.input` property
- * - Zod v3 uses `_input` property
+ * Helper type to extract state from a single middleware instance.
+ * Middleware instances have a `stateSchema` property that defines their state.
  */
-type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
-  ? Args
-  : S extends { _input: infer Args }
-  ? Args
-  : never;
+type InferMiddlewareState<T> = T extends { stateSchema: infer S }
+  ? InferInteropZodInput<S>
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  : {};
+
+/**
+ * Helper type to extract and merge states from an array of middleware.
+ * Recursively processes each middleware and intersects their state types.
+ *
+ * @example
+ * ```ts
+ * type States = InferMiddlewareStatesFromArray<typeof middlewareArray>;
+ * // Returns intersection of all middleware state types
+ * ```
+ */
+export type InferMiddlewareStatesFromArray<T> = T extends readonly []
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  ? {}
+  : T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
+    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+    : T extends readonly (infer U)[]
+      ? InferMiddlewareState<U>
+      // eslint-disable-next-line @typescript-eslint/ban-types
+      : {};
+
+/**
+ * Infer the complete merged state from an agent, including:
+ * - The agent's own state schema (via State)
+ * - All middleware states (via Middleware)
+ *
+ * This is the SDK equivalent of langchain's `InferAgentState` type.
+ *
+ * @example
+ * ```ts
+ * const agent = createAgent({
+ *   middleware: [todoListMiddleware()],
+ *   // ...
+ * });
+ *
+ * type State = InferAgentState<typeof agent>;
+ * // State includes { todos: Todo[], ... }
+ * ```
+ */
+export type InferAgentState<T> = T extends { "~agentTypes": infer Config }
+  ? Config extends AgentTypeConfigLike
+    ? InferInteropZodInput<Config["State"]> &
+        InferMiddlewareStatesFromArray<Config["Middleware"]>
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    : {}
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  : {};
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
@@ -87,7 +139,7 @@ type InferToolInput<T> = T extends {
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferSchemaInput<S>
+  ? InferInteropZodInput<S>
   : never;
 
 /**
