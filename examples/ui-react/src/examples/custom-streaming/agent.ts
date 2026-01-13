@@ -46,7 +46,7 @@ const analyzeDataTool = tool(
         progress: Math.round(((i + 1) / steps.length) * 100),
         totalSteps: steps.length,
         currentStep: i + 1,
-        toolCall: config.toolCall
+        toolCall: config.toolCall,
       } satisfies ProgressData);
 
       /**
@@ -65,7 +65,7 @@ const analyzeDataTool = tool(
       id: `${analysisId}-status`,
       status: "complete",
       message: "Analysis finished successfully",
-      toolCall: config.toolCall
+      toolCall: config.toolCall,
     } satisfies StatusData);
 
     /**
@@ -119,7 +119,7 @@ const processFileTool = tool(
       filename,
       operation,
       status: "started",
-      toolCall: config.toolCall
+      toolCall: config.toolCall,
     } satisfies FileStatusData);
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -134,7 +134,7 @@ const processFileTool = tool(
       operation,
       status: "completed",
       size: `${Math.floor(Math.random() * 1000) + 100}KB`,
-      toolCall: config.toolCall
+      toolCall: config.toolCall,
     } satisfies FileStatusData);
 
     return `Successfully ${operation}ed file: ${filename}`;
