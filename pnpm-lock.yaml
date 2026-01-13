@@ -2070,7 +2070,7 @@ importers:
     devDependencies:
       '@langchain/core':
         specifier: ^1.1.2
-        version: 1.1.12(openai@6.15.0(ws@8.19.0)(zod@3.25.76))
+        version: 1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
       '@langchain/scripts':
         specifier: ^0.1.4
         version: 0.1.4
@@ -2132,8 +2132,8 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@18.19.130)(@vitest/browser@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.2)
       zod:
-        specifier: ^3.25.76 || ^4
-        version: 3.25.76
+        specifier: ^4.3.5
+        version: 4.3.5
 
   libs/sdk-validation:
     dependencies:

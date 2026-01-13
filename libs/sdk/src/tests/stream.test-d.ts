@@ -9,14 +9,6 @@ import type {
   ExtractAgentConfig,
 } from "../ui/types.js";
 
-// ============================================================================
-// Zod schemas for testing type inference
-// ============================================================================
-
-// Zod v3/v4 compatible schemas for InferSchemaInput tests
-const personSchemaV4 = z.object({ name: z.string(), age: z.number() });
-const titleSchema = z.object({ title: z.string() });
-
 // Todo schema for middleware tests
 const todoSchema = z.object({
   id: z.string(),
@@ -42,10 +34,6 @@ const customStateSchema = z.object({
 });
 const agentStateSchema = z.object({ customField: z.string() });
 const configStateSchema = z.object({ userId: z.string() });
-
-// ============================================================================
-// Type aliases from Zod schemas
-// ============================================================================
 
 type Todo = z.infer<typeof todoSchema>;
 type TodosState = z.infer<typeof todosStateSchema>;
@@ -119,7 +107,7 @@ describe("InferAgentState", () => {
     type Agent = MockReactAgent<AgentConfig>;
     type Result = InferAgentState<Agent>;
 
-    expectTypeOf<Result>().toMatchTypeOf<TodosState>();
+    expectTypeOf<Result>().toExtend<TodosState>();
   });
 
   test("combines agent state schema with middleware states", () => {

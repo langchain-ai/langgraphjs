@@ -36,16 +36,16 @@ function isCustomOptions<
 type InferStateType<T> = T extends { "~agentTypes": unknown }
   ? { messages: Message<InferAgentToolCalls<T>>[] } & InferAgentState<T>
   : T extends { "~RunOutput": infer S }
-    ? S extends Record<string, unknown>
-      ? S
-      : Record<string, unknown>
-    : T extends { "~OutputType": infer O }
-      ? O extends Record<string, unknown>
-        ? O
-        : Record<string, unknown>
-      : T extends Record<string, unknown>
-        ? T
-        : Record<string, unknown>;
+  ? S extends Record<string, unknown>
+    ? S
+    : Record<string, unknown>
+  : T extends { "~OutputType": infer O }
+  ? O extends Record<string, unknown>
+    ? O
+    : Record<string, unknown>
+  : T extends Record<string, unknown>
+  ? T
+  : Record<string, unknown>;
 
 /**
  * Helper type that infers Bag based on whether T is an agent-like type.

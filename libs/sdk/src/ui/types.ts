@@ -19,7 +19,7 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { DefaultToolCall, AIMessage } from "../types.messages.js";
+import type { DefaultToolCall, AIMessage, Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 
 // ============================================================================
@@ -77,8 +77,8 @@ export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
  */
 type InferMiddlewareState<T> = T extends { stateSchema: infer S }
   ? InferInteropZodInput<S>
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  : {};
+  : // eslint-disable-next-line @typescript-eslint/ban-types
+    {};
 
 /**
  * Helper type to extract and merge states from an array of middleware.
@@ -91,14 +91,14 @@ type InferMiddlewareState<T> = T extends { stateSchema: infer S }
  * ```
  */
 export type InferMiddlewareStatesFromArray<T> = T extends readonly []
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  ? {}
+  ? // eslint-disable-next-line @typescript-eslint/ban-types
+    {}
   : T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
-    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
-    : T extends readonly (infer U)[]
-      ? InferMiddlewareState<U>
-      // eslint-disable-next-line @typescript-eslint/ban-types
-      : {};
+  ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+  : T extends readonly (infer U)[]
+  ? InferMiddlewareState<U>
+  : // eslint-disable-next-line @typescript-eslint/ban-types
+    {};
 
 /**
  * Infer the complete merged state from an agent, including:
@@ -118,14 +118,28 @@ export type InferMiddlewareStatesFromArray<T> = T extends readonly []
  * // State includes { todos: Todo[], ... }
  * ```
  */
+/**
+ * Base agent state that all agents have by default.
+ * This includes the messages array which is fundamental to agent operation.
+ */
+type BaseAgentState = { messages: Message[] };
+
 export type InferAgentState<T> = T extends { "~agentTypes": infer Config }
   ? Config extends AgentTypeConfigLike
-    ? InferInteropZodInput<Config["State"]> &
+    ? BaseAgentState &
+        (Config["State"] extends undefined
+          ? // eslint-disable-next-line @typescript-eslint/ban-types
+            {}
+          : InferInteropZodInput<Config["State"]>) &
         InferMiddlewareStatesFromArray<Config["Middleware"]>
-    // eslint-disable-next-line @typescript-eslint/ban-types
-    : {}
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  : {};
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+  : T extends { "~RunOutput": infer RunOutput }
+  ? RunOutput
+  : T extends { messages: unknown }
+  ? T
+  : // eslint-disable-next-line @typescript-eslint/ban-types
+    {};
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
