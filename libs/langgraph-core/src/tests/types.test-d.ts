@@ -14,254 +14,430 @@ import type {
   ExtractUpdateType,
 } from "../graph/types.js";
 
-describe("ExtractStateType with StateSchema", () => {
-  const AgentState = new StateSchema({
-    count: z.number().default(0),
-    name: z.string(),
-    items: new ReducedValue(
-      z.array(z.string()).default(() => []),
-      {
-        inputSchema: z.string(),
-        reducer: (current: string[], next: string) => [...current, next],
-      }
-    ),
+describe("ExtractStateType", () => {
+  describe("with StateSchema", () => {
+    const AgentState = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+      items: new ReducedValue(
+        z.array(z.string()).default(() => []),
+        {
+          inputSchema: z.string(),
+          reducer: (current: string[], next: string) => [...current, next],
+        }
+      ),
+    });
+
+    it("infers correct state type", () => {
+      type State = ExtractStateType<typeof AgentState>;
+
+      expectTypeOf<State>().toEqualTypeOf<{
+        count: number;
+        name: string;
+        items: string[];
+      }>();
+    });
   });
 
-  it("should infer correct state type", () => {
-    type State = ExtractStateType<typeof AgentState>;
+  describe("with Annotation", () => {
+    const AgentAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (a, b) => a + b,
+        default: () => 0,
+      }),
+      name: Annotation<string>,
+    });
 
-    expectTypeOf<State>().toEqualTypeOf<{
-      count: number;
-      name: string;
-      items: string[];
-    }>();
+    it("infers correct state type", () => {
+      type State = ExtractStateType<typeof AgentAnnotation>;
+
+      expectTypeOf<State>().toEqualTypeOf<{
+        count: number;
+        name: string;
+      }>();
+    });
   });
 
-  it("should infer correct update type", () => {
-    type Update = ExtractUpdateType<typeof AgentState>;
+  describe("with Zod object", () => {
+    const ZodState = z.object({
+      count: z.number().default(0),
+      name: z.string(),
+    });
 
-    expectTypeOf<Update>().toEqualTypeOf<{
-      count?: number | undefined;
-      name?: string | undefined;
-      items?: string | undefined;
-    }>();
-  });
-});
+    it("infers correct state type", () => {
+      type State = ExtractStateType<typeof ZodState>;
 
-describe("GraphNode with StateSchema", () => {
-  const AgentState = new StateSchema({
-    count: z.number().default(0),
-    name: z.string(),
-  });
-
-  it("should type node functions correctly", () => {
-    const myNode: GraphNode<typeof AgentState> = (state, _config) => {
-      // State should have correct types
-      expectTypeOf(state.count).toEqualTypeOf<number>();
-      expectTypeOf(state.name).toEqualTypeOf<string>();
-
-      return { count: state.count + 1 };
-    };
-
-    // Verify the function type
-    expectTypeOf(myNode).toBeFunction();
-    expectTypeOf(myNode)
-      .parameter(0)
-      .toEqualTypeOf<{ count: number; name: string }>();
+      expectTypeOf<State>().toEqualTypeOf<{
+        count: number;
+        name: string;
+      }>();
+    });
   });
 
-  it("should allow async node functions", () => {
-    const asyncNode: GraphNode<typeof AgentState> = async (state) => {
-      await Promise.resolve();
-      return { count: state.count + 1 };
-    };
+  describe("fallback behavior", () => {
+    it("returns schema itself for unknown types", () => {
+      type Result = ExtractStateType<{ custom: true }>;
+      expectTypeOf<Result>().toEqualTypeOf<{ custom: true }>();
+    });
 
-    expectTypeOf(asyncNode).toBeFunction();
-  });
-
-  it("StateSchema.Node should work as a type", () => {
-    const myNode: typeof AgentState.Node = (state) => {
-      expectTypeOf(state.count).toEqualTypeOf<number>();
-      return { count: state.count + 1 };
-    };
-
-    expectTypeOf(myNode).toBeFunction();
+    it("uses explicit Fallback type when provided", () => {
+      type Result = ExtractStateType<unknown, { fallback: true }>;
+      expectTypeOf<Result>().toEqualTypeOf<{ fallback: true }>();
+    });
   });
 });
 
-describe("GraphNode with Annotation", () => {
-  const AgentAnnotation = Annotation.Root({
-    count: Annotation<number>({
-      reducer: (a, b) => a + b,
-      default: () => 0,
-    }),
-    name: Annotation<string>,
+describe("ExtractUpdateType", () => {
+  describe("with StateSchema", () => {
+    const AgentState = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+      items: new ReducedValue(
+        z.array(z.string()).default(() => []),
+        {
+          inputSchema: z.string(),
+          reducer: (current: string[], next: string) => [...current, next],
+        }
+      ),
+    });
+
+    it("infers correct update type with reducer input schema", () => {
+      type Update = ExtractUpdateType<typeof AgentState>;
+
+      expectTypeOf<Update>().toEqualTypeOf<{
+        count?: number | undefined;
+        name?: string | undefined;
+        items?: string | undefined;
+      }>();
+    });
   });
 
-  it("should infer correct state type", () => {
-    type State = ExtractStateType<typeof AgentAnnotation>;
+  describe("with Annotation", () => {
+    const AgentAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+      name: Annotation<string>,
+    });
 
-    expectTypeOf<State>().toEqualTypeOf<{
-      count: number;
-      name: string;
-    }>();
+    it("infers correct update type", () => {
+      type Update = ExtractUpdateType<typeof AgentAnnotation>;
+
+      expectTypeOf<Update>().toEqualTypeOf<{
+        count?: number | undefined;
+        name?: string | undefined;
+      }>();
+    });
   });
 
-  it("should type node functions correctly", () => {
-    const myNode: GraphNode<typeof AgentAnnotation> = (state, _config) => {
-      expectTypeOf(state.count).toEqualTypeOf<number>();
-      expectTypeOf(state.name).toEqualTypeOf<string>();
+  describe("fallback behavior", () => {
+    it("returns never for unknown types by default", () => {
+      type Result = ExtractUpdateType<{ custom: true }>;
+      expectTypeOf<Result>().toEqualTypeOf<never>();
+    });
 
-      return { count: 1 };
-    };
-
-    expectTypeOf(myNode).toBeFunction();
-  });
-
-  it("Annotation.Node should also work", () => {
-    const myNode: typeof AgentAnnotation.Node = (state) => {
-      expectTypeOf(state.count).toEqualTypeOf<number>();
-      return { count: 1 };
-    };
-
-    expectTypeOf(myNode).toBeFunction();
-  });
-
-  it("should work with StateGraph.addNode", () => {
-    const myNode: GraphNode<typeof AgentAnnotation> = (state) => {
-      return { count: state.count + 1 };
-    };
-
-    // This should compile
-    const graph = new StateGraph(AgentAnnotation)
-      .addNode("myNode", myNode)
-      .addEdge(START, "myNode")
-      .addEdge("myNode", END)
-      .compile();
-
-    expectTypeOf(graph).not.toBeNever();
-  });
-});
-
-describe("GraphNode with Zod object schema", () => {
-  const ZodState = z.object({
-    count: z.number().default(0),
-    name: z.string(),
-  });
-
-  it("should infer correct state type", () => {
-    type State = ExtractStateType<typeof ZodState>;
-
-    expectTypeOf<State>().toEqualTypeOf<{
-      count: number;
-      name: string;
-    }>();
-  });
-
-  it("should type node functions correctly", () => {
-    const myNode: GraphNode<typeof ZodState> = (state, _config) => {
-      expectTypeOf(state.count).toEqualTypeOf<number>();
-      expectTypeOf(state.name).toEqualTypeOf<string>();
-
-      return { count: state.count + 1 };
-    };
-
-    expectTypeOf(myNode).toBeFunction();
-  });
-
-  it("should work with StateGraph.addNode", () => {
-    const myNode: GraphNode<typeof ZodState> = (state) => {
-      return { count: state.count + 1 };
-    };
-
-    const graph = new StateGraph(ZodState)
-      .addNode("myNode", myNode)
-      .addEdge(START, "myNode")
-      .addEdge("myNode", END)
-      .compile();
-
-    expectTypeOf(graph).not.toBeNever();
+    it("uses explicit Fallback type when provided", () => {
+      type Result = ExtractUpdateType<unknown, { fallback: true }>;
+      expectTypeOf<Result>().toEqualTypeOf<{ fallback: true }>();
+    });
   });
 });
 
-describe("GraphNode with Command routing", () => {
-  const AgentAnnotation = Annotation.Root({
-    step: Annotation<number>({
-      reducer: (_, b) => b,
-      default: () => 0,
-    }),
+describe("GraphNode", () => {
+  describe("with StateSchema", () => {
+    const AgentState = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    it("types node functions correctly", () => {
+      const myNode: GraphNode<typeof AgentState> = (state, _config) => {
+        expectTypeOf(state.count).toEqualTypeOf<number>();
+        expectTypeOf(state.name).toEqualTypeOf<string>();
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(myNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+      expectTypeOf(myNode).parameter(1).toExtend<LangGraphRunnableConfig>();
+    });
+
+    it("allows async node functions", () => {
+      const asyncNode: GraphNode<typeof AgentState> = async (state) => {
+        await Promise.resolve();
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(asyncNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+    });
+
+    it("works with StateSchema.Node type helper", () => {
+      const myNode: typeof AgentState.Node = (state) => {
+        expectTypeOf(state.count).toEqualTypeOf<number>();
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(myNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+    });
   });
 
-  it("should allow returning Command objects with typed nodes", () => {
-    // Using second type param for typed Command.goto
-    const routerNode: GraphNode<typeof AgentAnnotation, "process" | "end"> = (
-      state
-    ) => {
-      if (state.step > 5) {
-        return new Command({ goto: "end" });
-      }
-      return new Command({
-        goto: "process",
-        update: { step: state.step + 1 },
+  describe("with Annotation", () => {
+    const AgentAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (a, b) => a + b,
+        default: () => 0,
+      }),
+      name: Annotation<string>,
+    });
+
+    it("types node functions correctly", () => {
+      const myNode: GraphNode<typeof AgentAnnotation> = (state, _config) => {
+        expectTypeOf(state.count).toEqualTypeOf<number>();
+        expectTypeOf(state.name).toEqualTypeOf<string>();
+        return { count: 1 };
+      };
+
+      expectTypeOf(myNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+      expectTypeOf(myNode).parameter(1).toExtend<LangGraphRunnableConfig>();
+    });
+
+    it("works with Annotation.Node type helper", () => {
+      const myNode: typeof AgentAnnotation.Node = (state) => {
+        expectTypeOf(state.count).toEqualTypeOf<number>();
+        return { count: 1 };
+      };
+
+      expectTypeOf(myNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+    });
+
+    it("integrates with StateGraph.addNode", async () => {
+      const myNode: GraphNode<typeof AgentAnnotation> = (state) => {
+        return { count: state.count + 1 };
+      };
+
+      const graph = new StateGraph(AgentAnnotation)
+        .addNode("myNode", myNode)
+        .addEdge(START, "myNode")
+        .addEdge("myNode", END)
+        .compile();
+
+      const result = await graph.invoke({ count: 0, name: "test" });
+      expectTypeOf(result).toExtend<{ count: number; name: string }>();
+    });
+  });
+
+  describe("with Zod object", () => {
+    const ZodState = z.object({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    it("types node functions correctly", () => {
+      const myNode: GraphNode<typeof ZodState> = (state, _config) => {
+        expectTypeOf(state.count).toEqualTypeOf<number>();
+        expectTypeOf(state.name).toEqualTypeOf<string>();
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(myNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+      expectTypeOf(myNode).parameter(1).toExtend<LangGraphRunnableConfig>();
+    });
+
+    it("integrates with StateGraph.addNode", async () => {
+      const myNode: GraphNode<typeof ZodState> = (state) => {
+        return { count: state.count + 1 };
+      };
+
+      const graph = new StateGraph(ZodState)
+        .addNode("myNode", myNode)
+        .addEdge(START, "myNode")
+        .addEdge("myNode", END)
+        .compile();
+
+      const result = await graph.invoke({ count: 0, name: "test" });
+      expectTypeOf(result).toExtend<{ count: number; name: string }>();
+    });
+  });
+
+  describe("return types", () => {
+    const AgentAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+    });
+
+    it("allows empty object for no-op nodes", () => {
+      const noOpNode: GraphNode<typeof AgentAnnotation> = (_state) => {
+        return {};
+      };
+
+      expectTypeOf(noOpNode).parameter(0).toEqualTypeOf<{ count: number }>();
+    });
+
+    it("allows plain update objects", () => {
+      const updateNode: GraphNode<typeof AgentAnnotation> = (state) => {
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(updateNode).parameter(0).toEqualTypeOf<{ count: number }>();
+    });
+
+    it("allows Command objects", () => {
+      const commandNode: GraphNode<typeof AgentAnnotation> = (state) => {
+        return new Command({
+          goto: "next",
+          update: { count: state.count + 1 },
+        });
+      };
+
+      expectTypeOf(commandNode).parameter(0).toEqualTypeOf<{ count: number }>();
+    });
+
+    it("allows Command with Send array for fan-out", () => {
+      const fanOutNode: GraphNode<typeof AgentAnnotation, "worker"> = (
+        state
+      ) => {
+        return new Command({
+          goto: [
+            new Send("worker", { count: state.count }),
+            new Send("worker", { count: state.count + 1 }),
+          ],
+        });
+      };
+
+      expectTypeOf(fanOutNode).parameter(0).toEqualTypeOf<{ count: number }>();
+    });
+  });
+
+  describe("with typed nodes", () => {
+    const AgentAnnotation = Annotation.Root({
+      step: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+    });
+
+    it("constrains Command.goto to valid node names", () => {
+      const routerNode: GraphNode<typeof AgentAnnotation, "process" | "end"> = (
+        state
+      ) => {
+        if (state.step > 5) {
+          return new Command({ goto: "end" });
+        }
+        return new Command({
+          goto: "process",
+          update: { step: state.step + 1 },
+        });
+      };
+
+      expectTypeOf(routerNode).parameter(0).toEqualTypeOf<{ step: number }>();
+
+      expectTypeOf(routerNode).returns.toExtend<
+        | { step?: number }
+        | Command<unknown, { step?: number }, "process" | "end">
+        | Promise<
+            | { step?: number }
+            | Command<unknown, { step?: number }, "process" | "end">
+          >
+      >();
+    });
+
+    it("allows any string for goto when nodes not specified", () => {
+      const flexibleNode: GraphNode<typeof AgentAnnotation> = (state) => {
+        return new Command({
+          goto: "anywhere",
+          update: { step: state.step + 1 },
+        });
+      };
+
+      expectTypeOf(flexibleNode).parameter(0).toEqualTypeOf<{ step: number }>();
+      expectTypeOf(flexibleNode)
+        .parameter(1)
+        .toExtend<LangGraphRunnableConfig>();
+    });
+  });
+
+  describe("with custom config", () => {
+    const AgentAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+    });
+
+    interface MyConfig extends LangGraphRunnableConfig {
+      configurable?: {
+        customSetting: string;
+      };
+    }
+
+    it("accepts custom config as third type parameter", () => {
+      const myNode: GraphNode<typeof AgentAnnotation, string, MyConfig> = (
+        state,
+        config
+      ) => {
+        expectTypeOf(config.configurable?.customSetting).toEqualTypeOf<
+          string | undefined
+        >();
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(myNode).parameter(0).toEqualTypeOf<{ count: number }>();
+      expectTypeOf(myNode).parameter(1).toEqualTypeOf<MyConfig>();
+    });
+  });
+
+  describe("type safety", () => {
+    const AgentAnnotation = Annotation.Root({
+      count: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+      name: Annotation<string>,
+    });
+
+    it("rejects invalid state keys in return", () => {
+      // @ts-expect-error - 'invalid' is not a valid state key
+      const _invalidNode: GraphNode<typeof AgentAnnotation> = () => ({
+        count: 1,
+        invalid: "bad",
       });
-    };
+    });
 
-    expectTypeOf(routerNode).toBeFunction();
-  });
-
-  it("should allow returning plain update objects", () => {
-    const mixedNode: GraphNode<typeof AgentAnnotation, "next"> = (state) => {
-      // Can return plain update
-      return { step: state.step + 1 };
-    };
-
-    expectTypeOf(mixedNode).not.toBeNever();
-  });
-
-  it("should allow Command without typed nodes", () => {
-    // Without Nodes param, any string works for goto
-    const flexibleNode: GraphNode<typeof AgentAnnotation> = (state) => {
-      return new Command({
-        goto: "anywhere",
-        update: { step: state.step + 1 },
+    it("rejects wrong types in return", () => {
+      const _invalidNode: GraphNode<typeof AgentAnnotation> = () => ({
+        // @ts-expect-error - count should be number, not string
+        count: "not a number",
       });
-    };
+    });
 
-    expectTypeOf(flexibleNode).toBeFunction();
+    it("rejects invalid goto with typed nodes", () => {
+      const _invalidRouter: GraphNode<
+        typeof AgentAnnotation,
+        "agent" | "tool"
+      > =
+        // @ts-expect-error - 'invalid' is not in "agent" | "tool"
+        () => new Command({ goto: "invalid" });
+    });
   });
 });
 
-describe("Send with ExtractUpdateType", () => {
-  const AgentAnnotation = Annotation.Root({
-    count: Annotation<number>({
-      reducer: (_, b) => b,
-      default: () => 0,
-    }),
-    name: Annotation<string>,
-  });
-
-  it("should extract correct update type for Send", () => {
-    type Args = ExtractUpdateType<typeof AgentAnnotation>;
-
-    expectTypeOf<Args>().toEqualTypeOf<{
-      count?: number | undefined;
-      name?: string | undefined;
-    }>();
-  });
-
-  it("should work with Send class", () => {
-    // Typed Send packet using ExtractUpdateType
-    const packet: Send<
-      "process",
-      ExtractUpdateType<typeof AgentAnnotation>
-    > = new Send("process", { count: 5 });
-
-    expectTypeOf(packet.args).toEqualTypeOf<{
-      count?: number | undefined;
-      name?: string | undefined;
-    }>();
-  });
-});
+// =============================================================================
+// ConditionalEdgeRouter
+// =============================================================================
 
 describe("ConditionalEdgeRouter", () => {
   const AgentAnnotation = Annotation.Root({
@@ -275,75 +451,196 @@ describe("ConditionalEdgeRouter", () => {
     }),
   });
 
-  it("should type conditional edge functions correctly", () => {
-    const router: ConditionalEdgeRouter<
-      typeof AgentAnnotation,
-      "process" | "finalize"
-    > = (state) => {
-      expectTypeOf(state.step).toEqualTypeOf<number>();
-      expectTypeOf(state.done).toEqualTypeOf<boolean>();
+  describe("return types", () => {
+    it("allows returning node names", () => {
+      const router: ConditionalEdgeRouter<
+        typeof AgentAnnotation,
+        "process" | "finalize"
+      > = (state) => {
+        return state.step > 5 ? "finalize" : "process";
+      };
 
-      if (state.done) return END;
-      return state.step > 5 ? "finalize" : "process";
-    };
+      expectTypeOf(router)
+        .parameter(0)
+        .toEqualTypeOf<{ step: number; done: boolean }>();
+    });
 
-    expectTypeOf(router).not.toBeNever();
+    it("allows returning END", () => {
+      const router: ConditionalEdgeRouter<
+        typeof AgentAnnotation,
+        "continue"
+      > = (state) => {
+        if (state.done) return END;
+        return "continue";
+      };
+
+      expectTypeOf(router)
+        .parameter(0)
+        .toEqualTypeOf<{ step: number; done: boolean }>();
+
+      expectTypeOf(router).returns.toExtend<
+        | "continue"
+        | typeof END
+        | Send<"continue", { step: number; done: boolean }>
+        | Array<"continue" | Send<"continue", { step: number; done: boolean }>>
+      >();
+    });
+
+    it("allows returning Send packets", () => {
+      const fanOutRouter: ConditionalEdgeRouter<
+        typeof AgentAnnotation,
+        "worker"
+      > = (state) => {
+        return new Send("worker", { step: state.step, done: state.done });
+      };
+
+      expectTypeOf(fanOutRouter)
+        .parameter(0)
+        .toEqualTypeOf<{ step: number; done: boolean }>();
+    });
+
+    it("allows returning arrays of nodes and Send packets", () => {
+      const fanOutRouter: ConditionalEdgeRouter<
+        typeof AgentAnnotation,
+        "worker"
+      > = (state) => {
+        return [
+          new Send("worker", { step: state.step, done: state.done }),
+          new Send("worker", { step: state.step + 1, done: false }),
+        ];
+      };
+
+      const result = fanOutRouter({ step: 0, done: false });
+      expectTypeOf(result).toExtend<
+        | "worker"
+        | typeof END
+        | Send<"worker", { step: number; done: boolean }>
+        | Array<"worker" | Send<"worker", { step: number; done: boolean }>>
+      >();
+    });
   });
 
-  it("should allow returning Send packets", () => {
-    const fanOutRouter: ConditionalEdgeRouter<
-      typeof AgentAnnotation,
-      "worker"
-    > = (state) => {
-      // Send requires full state type (ExtractStateType)
-      return [
-        new Send("worker", { step: state.step, done: state.done }),
-        new Send("worker", { step: state.step + 1, done: false }),
-      ];
-    };
-
-    expectTypeOf(fanOutRouter).not.toBeNever();
-  });
-
-  it("should allow returning END", () => {
-    const maybeEnd: ConditionalEdgeRouter<
-      typeof AgentAnnotation,
-      "continue"
-    > = (state) => {
-      if (state.done) return END;
-      return "continue";
-    };
-
-    expectTypeOf(maybeEnd).not.toBeNever();
+  describe("type safety", () => {
+    it("rejects invalid Send node names", () => {
+      const _invalidRouter: ConditionalEdgeRouter<
+        typeof AgentAnnotation,
+        "worker"
+        // @ts-expect-error - "invalid" is not in "worker"
+      > = (state) => new Send("invalid", { step: state.step, done: false });
+    });
   });
 });
 
-describe("Custom config types", () => {
+// =============================================================================
+// Send
+// =============================================================================
+
+describe("Send", () => {
   const AgentAnnotation = Annotation.Root({
     count: Annotation<number>({
       reducer: (_, b) => b,
       default: () => 0,
     }),
+    name: Annotation<string>,
   });
 
-  interface MyConfig extends LangGraphRunnableConfig {
-    configurable?: {
-      customSetting: string;
-    };
-  }
+  it("types node and args correctly", () => {
+    const packet: Send<
+      "process",
+      ExtractUpdateType<typeof AgentAnnotation>
+    > = new Send("process", { count: 5 });
 
-  it("should allow custom config types", () => {
-    // Config is the 3rd type param: GraphNode<Schema, Nodes, Config>
-    const myNode: GraphNode<typeof AgentAnnotation, string, MyConfig> = (
-      state,
-      config
-    ) => {
-      expectTypeOf(config.configurable?.customSetting).toEqualTypeOf<
-        string | undefined
-      >();
-      return { count: state.count + 1 };
-    };
+    expectTypeOf(packet.node).toEqualTypeOf<"process">();
+    expectTypeOf(packet.args).toEqualTypeOf<{
+      count?: number | undefined;
+      name?: string | undefined;
+    }>();
+  });
+});
 
-    expectTypeOf(myNode).not.toBeNever();
+// =============================================================================
+// Schema type helpers
+// =============================================================================
+
+describe("Schema type helpers", () => {
+  describe("Annotation.Root", () => {
+    const schema = Annotation.Root({
+      messages: Annotation<string[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+
+    it("provides .State type helper", () => {
+      type SchemaState = typeof schema.State;
+      expectTypeOf<SchemaState>().toEqualTypeOf<{ messages: string[] }>();
+    });
+
+    it("provides .Update type helper", () => {
+      type SchemaUpdate = typeof schema.Update;
+      expectTypeOf<SchemaUpdate>().toEqualTypeOf<{
+        messages?: string[] | undefined;
+      }>();
+    });
+
+    it("provides .Node type helper", () => {
+      const myNode: typeof schema.Node = (state) => {
+        return { messages: [...state.messages, "new"] };
+      };
+
+      expectTypeOf(myNode).parameter(0).toEqualTypeOf<{ messages: string[] }>();
+    });
+  });
+
+  describe("StateSchema", () => {
+    const schema = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    it("provides .State type helper", () => {
+      type SchemaState = typeof schema.State;
+      expectTypeOf<SchemaState>().toEqualTypeOf<{
+        count: number;
+        name: string;
+      }>();
+    });
+
+    it("provides .Update type helper", () => {
+      type SchemaUpdate = typeof schema.Update;
+      expectTypeOf<SchemaUpdate>().toEqualTypeOf<{
+        count?: number | undefined;
+        name?: string | undefined;
+      }>();
+    });
+
+    it("provides .Node type helper", () => {
+      const myNode: typeof schema.Node = (state) => {
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(myNode)
+        .parameter(0)
+        .toEqualTypeOf<{ count: number; name: string }>();
+    });
+  });
+
+  describe("StateGraph", () => {
+    it("provides .Node type helper", () => {
+      const builder = new StateGraph(
+        Annotation.Root({
+          count: Annotation<number>({
+            reducer: (_, b) => b,
+            default: () => 0,
+          }),
+        })
+      );
+
+      const myNode: typeof builder.Node = (state) => {
+        return { count: state.count + 1 };
+      };
+
+      expectTypeOf(myNode).parameter(0).toEqualTypeOf<{ count: number }>();
+    });
   });
 });
