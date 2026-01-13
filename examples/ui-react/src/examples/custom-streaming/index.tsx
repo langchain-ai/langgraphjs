@@ -130,6 +130,30 @@ export function CustomStreaming() {
     progressDataArray.length > 0 &&
     progressDataArray.every((p) => p.progress === 100);
 
+  /**
+   * Get custom events associated with a specific tool call ID
+   */
+  const getEventsForToolCall = useCallback(
+    (toolCallId: string) => {
+      const status = statusDataArray.filter(
+        (d) => d.toolCall?.id === toolCallId
+      );
+      const progress = progressDataArray.filter(
+        (d) =>
+          d.toolCall?.id === toolCallId &&
+          /**
+           * don't show progress if status is complete
+           */
+          (status.length === 0 || status.some((s) => s.status !== "complete"))
+      );
+      const fileStatus = fileStatusDataArray.filter(
+        (d) => d.toolCall?.id === toolCallId
+      );
+      return { progress, status, fileStatus };
+    },
+    [progressDataArray, statusDataArray, fileStatusDataArray]
+  );
+
   return (
     <div className="h-full flex flex-col">
       <main ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -144,37 +168,33 @@ export function CustomStreaming() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {stream.messages.map((message, idx) => (
-                <MessageBubble key={message.id ?? idx} message={message} />
-              ))}
+              {stream.messages.map((message, idx) => {
+                const customCards =
+                  message.type === "ai"
+                    ? message.tool_calls?.map((toolCall) => {
+                        const { progress, status, fileStatus } =
+                          getEventsForToolCall(toolCall.id!);
+                        return (
+                          <div key={toolCall.id}>
+                            {progress.map((data) => (
+                              <ProgressCard key={data.id} data={data} />
+                            ))}
+                            {status.map((data) => (
+                              <StatusBadge key={data.id} data={data} />
+                            ))}
+                            {fileStatus.map((data) => (
+                              <FileOperationCard key={data.id} data={data} />
+                            ))}
+                          </div>
+                        );
+                      }) ?? []
+                    : [];
 
-              {/* Render custom streaming data */}
-              {hasCustomData && (
-                <div className="flex flex-col gap-4">
-                  {/* Progress cards */}
-                  {progressDataArray.map((data) => (
-                    <ProgressCard
-                      key={data.id}
-                      data={data}
-                      isComplete={data.progress === 100}
-                    />
-                  ))}
-
-                  {/* File operation cards */}
-                  {fileStatusDataArray.map((data) => (
-                    <FileOperationCard key={data.id} data={data} />
-                  ))}
-
-                  {/* Status badges */}
-                  {statusDataArray.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {statusDataArray.map((data) => (
-                        <StatusBadge key={data.id} data={data} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                return [
+                  <MessageBubble key={message.id ?? idx} message={message} />,
+                  ...customCards,
+                ];
+              })}
 
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&

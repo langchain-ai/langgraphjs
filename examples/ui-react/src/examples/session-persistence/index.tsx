@@ -11,30 +11,14 @@ import {
   Radio,
 } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { Message } from "@langchain/langgraph-sdk";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
 import { EmptyState } from "../../components/States";
 import { MessageInput } from "../../components/MessageInput";
+import { MessageBubble } from "../../components/MessageBubble";
 
 import type { agent } from "./agent";
-
-/**
- * Extract text content from a message
- */
-function getTextContent(message: Message): string {
-  if (typeof message.content === "string") {
-    return message.content;
-  }
-  if (Array.isArray(message.content)) {
-    return message.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map((c) => c.text)
-      .join("");
-  }
-  return "";
-}
 
 /**
  * Custom hook to manage thread ID in URL search params
@@ -129,38 +113,6 @@ function ReconnectedBanner({ onDismiss }: { onDismiss: () => void }) {
         </div>
         <div className="text-xs text-green-400/70">
           Successfully resumed the in-flight stream after page refresh
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Message bubble component
- */
-function MessageBubble({ message }: { message: Message }) {
-  const isHuman = message.type === "human";
-  const content = getTextContent(message);
-
-  if (!content) return null;
-
-  return (
-    <div className="animate-fade-in">
-      {!isHuman && (
-        <div className="text-xs font-medium text-neutral-500 mb-2">
-          Assistant
-        </div>
-      )}
-
-      <div
-        className={`${
-          isHuman
-            ? "bg-brand-dark text-brand-light rounded-2xl px-4 py-2.5 ml-auto max-w-[85%] md:max-w-[70%] w-fit"
-            : "text-neutral-100"
-        }`}
-      >
-        <div className="whitespace-pre-wrap leading-relaxed text-[15px]">
-          {content}
         </div>
       </div>
     </div>

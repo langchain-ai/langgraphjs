@@ -1,3 +1,5 @@
+import type { ToolCall } from "@langchain/core/messages";
+
 /**
  * Progress data emitted during data analysis
  */
@@ -9,6 +11,7 @@ export interface ProgressData {
   progress: number;
   totalSteps: number;
   currentStep: number;
+  toolCall?: ToolCall | undefined;
 }
 
 /**
@@ -19,6 +22,7 @@ export interface StatusData {
   id: string;
   status: "complete" | "error";
   message: string;
+  toolCall?: ToolCall | undefined;
 }
 
 /**
@@ -31,6 +35,7 @@ export interface FileStatusData {
   operation: "read" | "compress" | "validate" | "transform";
   status: "started" | "completed" | "error";
   size?: string;
+  toolCall?: ToolCall | undefined;
 }
 
 /**
