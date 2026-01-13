@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.5.3
+
+### Patch Changes
+
+- [#1887](https://github.com/langchain-ai/langgraphjs/pull/1887) [`2eef6ed`](https://github.com/langchain-ai/langgraphjs/commit/2eef6ed3a584694c0d1c567ff6db8a70616de776) Thanks [@hinthornw](https://github.com/hinthornw)! - Made JS SSE reconnect logic match Python by retrying based on Location (even before a first event) and retry on Undici connection errors.
+
 ## 1.5.2
 
 ### Patch Changes
