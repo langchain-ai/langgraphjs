@@ -93,7 +93,11 @@ importers:
         specifier: ^1.0.22
         version: 1.0.22
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
         specifier: ^4.3.5
         version: 4.3.5
@@ -126,7 +130,11 @@ importers:
         specifier: ^1.0.22
         version: 1.0.22
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
         specifier: ^4.3.5
         version: 4.3.5
@@ -201,9 +209,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -280,9 +292,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -359,9 +375,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -438,9 +458,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -517,9 +541,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -596,9 +624,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -675,9 +707,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -754,9 +790,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -833,9 +873,13 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         version: 4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.23.2
@@ -879,7 +923,11 @@ importers:
         specifier: ^0.3.0
         version: 0.3.28(better-sqlite3@11.10.0)(mongodb@6.21.0)(pg@8.16.3)(redis@4.7.1)
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
         specifier: ^4.3.5
         version: 4.3.5
@@ -914,8 +962,12 @@ importers:
         specifier: ^1.0.44
         version: 1.1.1(react@19.2.3)
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/langgraph-cli':
@@ -978,7 +1030,11 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
         specifier: ^4.3.5
         version: 4.3.5
@@ -1449,8 +1505,12 @@ importers:
         specifier: ^17.7.2
         version: 17.7.2
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/langgraph-checkpoint':
@@ -1587,8 +1647,12 @@ importers:
         specifier: workspace:*
         version: link:../langgraph-core
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
       zod-to-json-schema:
         specifier: ^3.x
@@ -1694,8 +1758,12 @@ importers:
         specifier: ^1.0.8
         version: 1.0.8
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/core':
@@ -1807,8 +1875,12 @@ importers:
         specifier: ^2.7.0
         version: 2.8.2
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@types/babel__code-frame':
@@ -1842,7 +1914,11 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/anthropic':
@@ -1963,8 +2039,12 @@ importers:
         specifier: ^2.4.4
         version: 2.5.2
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/langgraph':
@@ -2037,8 +2117,12 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/langgraph':
@@ -2105,8 +2189,12 @@ importers:
         specifier: ^1.0.1
         version: 1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@langchain/langgraph':
@@ -2182,8 +2270,12 @@ importers:
         specifier: ^2.0.1
         version: 2.1.0
       zod:
+<<<<<<< HEAD
         specifier: ^4.3.5
         specifier: ^4.3.5
+=======
+        specifier: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
         version: 4.3.5
     devDependencies:
       '@types/node':
@@ -2369,8 +2461,12 @@ packages:
     resolution: {integrity: sha512-TGNDEUuEstk/DKu0/TflXAEt+p+p/WhTlFzEnoosvbaDU2LTjm42igSdlL0VijrKpWejtOKxX0b8A7uc+XiSAQ==}
     hasBin: true
     peerDependencies:
+<<<<<<< HEAD
       zod: ^4.3.5
       zod: ^4.3.5
+=======
+      zod: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
     peerDependenciesMeta:
       zod:
         optional: true
@@ -2900,7 +2996,11 @@ packages:
     resolution: {integrity: sha512-Io1B6d011Gj1KknV4rXYz4le5+5EubcWEU/speUjuw9XMMIaP3n78yXLhjd2A3PXaXaUwEAluOiAyLqhBEJgsw==}
     peerDependencies:
       hono: '>=3.9.0'
+<<<<<<< HEAD
       zod: ^4.3.5
+=======
+      zod: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
       zod: ^4.3.5
 
   '@huggingface/jinja@0.2.2':
@@ -3019,8 +3119,12 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@langchain/core': ^1.0.1
+<<<<<<< HEAD
       zod: ^4.3.5
       zod: ^4.3.5
+=======
+      zod: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
       zod-to-json-schema: ^3.x
     peerDependenciesMeta:
       zod-to-json-schema:
@@ -6442,7 +6546,11 @@ packages:
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
+<<<<<<< HEAD
       zod: ^4.3.5
+=======
+      zod: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
       zod: ^4.3.5
     peerDependenciesMeta:
       ws:
@@ -6455,7 +6563,11 @@ packages:
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
+<<<<<<< HEAD
       zod: ^4.3.5
+=======
+      zod: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
       zod: ^4.3.5
     peerDependenciesMeta:
       ws:
@@ -7954,7 +8066,11 @@ packages:
   zod-to-json-schema@3.25.1:
     resolution: {integrity: sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA==}
     peerDependencies:
+<<<<<<< HEAD
       zod: ^4.3.5
+=======
+      zod: ^4.2.0
+>>>>>>> 0e47e0e8 (pin zod version)
       zod: ^4.3.5
 
   zod@4.3.5:
