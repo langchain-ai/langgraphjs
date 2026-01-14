@@ -12,16 +12,8 @@ export function getJsonSchemaFromSchema(
 ): Record<string, unknown> | undefined {
   if (isStandardJSONSchema(schema)) {
     try {
-      const { jsonSchema } = schema["~standard"] as unknown as {
-        jsonSchema: unknown;
-      };
-      // jsonSchema may be a function or a value
-      if (typeof jsonSchema === "function") {
-        return jsonSchema() as Record<string, unknown>;
-      }
-      if (typeof jsonSchema === "object" && jsonSchema !== null) {
-        return jsonSchema as Record<string, unknown>;
-      }
+      const standard = schema["~standard"];
+      return standard.jsonSchema.input({ target: "draft-07" });
     } catch {
       return undefined;
     }

@@ -545,10 +545,17 @@ export class PregelLoop {
       );
     }
 
-    // Check if any channels are UntrackedValue
-    const hasUntrackedChannels = Object.values(this.channels).some(
-      (channel) => channel.lc_graph_name === "UntrackedValue"
-    );
+    // Check if any channels are UntrackedValue (manual loop for perf)
+    let hasUntrackedChannels = false;
+    for (const key in this.channels) {
+      if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
+        const channel = this.channels[key];
+        if (channel.lc_graph_name === "UntrackedValue") {
+          hasUntrackedChannels = true;
+          break;
+        }
+      }
+    }
 
     // Sanitize writes for checkpointing: remove UntrackedValue writes and sanitize Send packets
     let writesToSave = writesCopy;
@@ -577,7 +584,7 @@ export class PregelLoop {
     );
 
     // save writes (unsanitized for in-memory use)
-    for (const [c, v] of writesCopy) {
+    for (const [c, v] of writesToSave) {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
