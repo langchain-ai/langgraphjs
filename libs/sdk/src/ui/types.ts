@@ -121,12 +121,15 @@ export type InferMiddlewareStatesFromArray<T> = T extends readonly []
 /**
  * Base agent state that all agents have by default.
  * This includes the messages array which is fundamental to agent operation.
+ * The ToolCall type parameter allows proper typing of tool calls in messages.
  */
-type BaseAgentState = { messages: Message[] };
+type BaseAgentState<ToolCall = DefaultToolCall> = {
+  messages: Message<ToolCall>[];
+};
 
 export type InferAgentState<T> = T extends { "~agentTypes": infer Config }
   ? Config extends AgentTypeConfigLike
-    ? BaseAgentState &
+    ? BaseAgentState<InferAgentToolCalls<T>> &
         (Config["State"] extends undefined
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
