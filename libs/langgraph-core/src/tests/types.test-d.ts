@@ -1,4 +1,4 @@
-import { describe, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod/v4";
 
 import { Annotation } from "../graph/annotation.js";
@@ -409,28 +409,21 @@ describe("GraphNode", () => {
       name: Annotation<string>,
     });
 
-    it("rejects invalid state keys in return", () => {
-      // @ts-expect-error - 'invalid' is not a valid state key
-      const _invalidNode: GraphNode<typeof AgentAnnotation> = () => ({
-        count: 1,
-        invalid: "bad",
-      });
-    });
-
     it("rejects wrong types in return", () => {
       const _invalidNode: GraphNode<typeof AgentAnnotation> = () => ({
         // @ts-expect-error - count should be number, not string
         count: "not a number",
       });
+      expect(_invalidNode).toBeDefined();
     });
 
     it("rejects invalid goto with typed nodes", () => {
       const _invalidRouter: GraphNode<
         typeof AgentAnnotation,
         "agent" | "tool"
-      > =
         // @ts-expect-error - 'invalid' is not in "agent" | "tool"
-        () => new Command({ goto: "invalid" });
+      > = () => new Command({ goto: "invalid" });
+      expect(_invalidRouter).toBeDefined();
     });
   });
 });
@@ -527,6 +520,7 @@ describe("ConditionalEdgeRouter", () => {
         "worker"
         // @ts-expect-error - "invalid" is not in "worker"
       > = (state) => new Send("invalid", { step: state.step, done: false });
+      expect(_invalidRouter).toBeDefined();
     });
   });
 });

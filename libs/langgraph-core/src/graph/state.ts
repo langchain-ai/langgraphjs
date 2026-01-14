@@ -336,7 +336,7 @@ export class StateGraph<
   );
 
   constructor(
-    state: SD & StateSchema,
+    state: SD extends StateSchema ? SD : never,
     options?: {
       context?: C | AnnotationRoot<ToStateDefinition<C>>;
       input?: I | AnnotationRoot<ToStateDefinition<I>>;
