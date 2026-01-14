@@ -68,7 +68,13 @@ module.exports = {
   overrides: [
     {
       files: ["src/tests/**/*.ts"],
-      rules: { "no-instanceof/no-instanceof": 0 },
+      rules: {
+        "no-instanceof/no-instanceof": 0,
+        // Disable type-aware rules in tests to prevent OOM during linting
+        // (complex types like MessagesZodState cause deep recursive type checking)
+        "@typescript-eslint/no-floating-promises": 0,
+        "@typescript-eslint/no-misused-promises": 0,
+      },
     },
   ],
 };
