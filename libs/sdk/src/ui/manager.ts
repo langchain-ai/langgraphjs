@@ -192,12 +192,13 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
+      const stateValues = (this.state.values ?? [null, "stream"])[0];
       const prev = {
         ...historyValues,
-        ...(this.state.values ?? [null, "stream"])[0],
+        ...(stateValues ?? {}),
       };
       const next = typeof update === "function" ? update(prev) : update;
-      this.setStreamValues({ ...prev, ...next }, kind);
+      this.setStreamValues({ ...prev, ...(next ?? {}) }, kind);
     };
   };
 
@@ -304,8 +305,12 @@ export class StreamManager<
         }
 
         if (event === "values") {
-          if ("__interrupt__" in data) {
-            this.setStreamValues((prev) => ({ ...prev, ...data }));
+          if (
+            data != null &&
+            typeof data === "object" &&
+            "__interrupt__" in data
+          ) {
+            this.setStreamValues((prev) => ({ ...(prev ?? {}), ...data }));
           } else {
             this.setStreamValues(data);
           }
@@ -323,7 +328,10 @@ export class StreamManager<
           }
 
           this.setStreamValues((streamValues) => {
-            const values = { ...options.initialValues, ...streamValues };
+            const values = {
+              ...options.initialValues,
+              ...(streamValues ?? {}),
+            };
 
             // Assumption: we're concatenating the message
             let messages = options.getMessages(values).slice();
