@@ -77,18 +77,18 @@ export type ExtractStateType<
  * - InteropZodObject (Zod v3/v4 object schemas)
  *
  * @template Schema - The schema type to extract update type from
- * @template Fallback - Base type for fallback, defaults to Partial<Schema>
+ * @template FallbackBase - Base type for fallback (will be partialized), defaults to Schema
  */
 export type ExtractUpdateType<
   Schema,
-  Fallback = Partial<Schema>
+  FallbackBase = Schema
 > = Schema extends AnnotationRoot<infer SD>
   ? AnnotationUpdateType<SD>
   : AnnotationUpdateType<ToStateDefinition<Schema>> extends infer U
   ? [U] extends [never]
-    ? Fallback
+    ? Partial<FallbackBase>
     : U
-  : Fallback;
+  : Partial<FallbackBase>;
 
 /**
  * Strongly-typed utility for authoring graph nodes outside of the StateGraph builder,

@@ -137,9 +137,9 @@ describe("ExtractUpdateType", () => {
       expectTypeOf<Result>().toEqualTypeOf<{ custom?: true | undefined }>();
     });
 
-    it("uses explicit Fallback type when provided", () => {
+    it("uses explicit FallbackBase type when provided (partialized)", () => {
       type Result = ExtractUpdateType<unknown, { fallback: true }>;
-      expectTypeOf<Result>().toEqualTypeOf<{ fallback: true }>();
+      expectTypeOf<Result>().toEqualTypeOf<{ fallback?: true }>();
     });
   });
 });
