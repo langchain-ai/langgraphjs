@@ -328,7 +328,10 @@ export class StreamManager<
           }
 
           this.setStreamValues((streamValues) => {
-            const values = { ...options.initialValues, ...(streamValues ?? {}) };
+            const values = {
+              ...options.initialValues,
+              ...(streamValues ?? {}),
+            };
 
             // Assumption: we're concatenating the message
             let messages = options.getMessages(values).slice();

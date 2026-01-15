@@ -8,10 +8,7 @@ type TestState = {
 };
 
 type MutateFn = (
-  update:
-    | Partial<TestState>
-    | ((prev: TestState) => Partial<TestState>)
-    | null
+  update: Partial<TestState> | ((prev: TestState) => Partial<TestState>) | null
 ) => void;
 
 // Helper to create a mock async generator
@@ -87,7 +84,7 @@ describe("StreamManager", () => {
             {},
           ] as [
             { id: string; content: string; type: string },
-            Record<string, unknown>,
+            Record<string, unknown>
           ],
         },
       ];
