@@ -72,17 +72,56 @@ export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
 // requiring the full langchain dependency.
 
 /**
- * Helper type to extract state from a single middleware instance.
- * Middleware instances have a `stateSchema` property that defines their state.
+ * Minimal interface to structurally match AgentMiddleware from langchain.
+ * We can't import AgentMiddleware due to circular dependencies, so we match
+ * against its structure to extract type information.
  */
-type InferMiddlewareState<T> = T extends { stateSchema: infer S }
-  ? InferInteropZodInput<S>
-  : // eslint-disable-next-line @typescript-eslint/ban-types
-    {};
+export interface AgentMiddlewareLike<
+  TSchema = unknown,
+  TContextSchema = unknown,
+  TFullContext = unknown,
+  TTools = unknown
+> {
+  name: string;
+  stateSchema?: TSchema;
+  "~middlewareTypes"?: {
+    Schema: TSchema;
+    ContextSchema: TContextSchema;
+    FullContext: TFullContext;
+    Tools: TTools;
+  };
+}
+
+/**
+ * Helper type to extract state from a single middleware instance.
+ * Uses structural matching against AgentMiddleware to extract the state schema
+ * type parameter, similar to how langchain's InferMiddlewareState works.
+ */
+type InferMiddlewareState<T> =
+  // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema
+  T extends AgentMiddlewareLike<infer TSchema, unknown, unknown, unknown>
+    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      TSchema extends Record<string, any>
+      ? InferInteropZodInput<TSchema>
+      : // eslint-disable-next-line @typescript-eslint/ban-types
+        {}
+    : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
+    T extends { stateSchema: infer S }
+    ? InferInteropZodInput<S>
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {};
+
+/**
+ * Helper type to detect if a type is `any`.
+ * Uses the fact that `any` is both a subtype and supertype of all types.
+ */
+type IsAny<T> = 0 extends 1 & T ? true : false;
 
 /**
  * Helper type to extract and merge states from an array of middleware.
  * Recursively processes each middleware and intersects their state types.
+ *
+ * Handles both readonly and mutable arrays/tuples explicitly.
  *
  * @example
  * ```ts
@@ -90,15 +129,37 @@ type InferMiddlewareState<T> = T extends { stateSchema: infer S }
  * // Returns intersection of all middleware state types
  * ```
  */
-export type InferMiddlewareStatesFromArray<T> = T extends readonly []
-  ? // eslint-disable-next-line @typescript-eslint/ban-types
-    {}
-  : T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
-  ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
-  : T extends readonly (infer U)[]
-  ? InferMiddlewareState<U>
-  : // eslint-disable-next-line @typescript-eslint/ban-types
-    {};
+export type InferMiddlewareStatesFromArray<T> =
+  // Guard against `any` type - any extends everything so would match first branch incorrectly
+  IsAny<T> extends true
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle undefined/null
+    T extends undefined | null
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle empty readonly array
+    T extends readonly []
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle empty mutable array
+    T extends []
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle readonly tuple [First, ...Rest]
+    T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
+    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+    : // Handle mutable tuple [First, ...Rest]
+    T extends [infer First, ...infer Rest extends unknown[]]
+    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+    : // Handle readonly array of union type
+    T extends readonly (infer U)[]
+    ? InferMiddlewareState<U>
+    : // Handle mutable array of union type
+    T extends (infer U)[]
+    ? InferMiddlewareState<U>
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {};
 
 /**
  * Infer the complete merged state from an agent, including:
@@ -127,16 +188,16 @@ type BaseAgentState<ToolCall = DefaultToolCall> = {
   messages: Message<ToolCall>[];
 };
 
-export type InferAgentState<T> = T extends { "~agentTypes": infer Config }
-  ? Config extends AgentTypeConfigLike
-    ? BaseAgentState<InferAgentToolCalls<T>> &
-        (Config["State"] extends undefined
+export type InferAgentState<T> = T extends { "~agentTypes": unknown }
+  ? ExtractAgentConfig<T> extends never
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : BaseAgentState<InferAgentToolCalls<T>> &
+        (ExtractAgentConfig<T>["State"] extends undefined
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
-          : InferInteropZodInput<Config["State"]>) &
-        InferMiddlewareStatesFromArray<Config["Middleware"]>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
+          : InferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
+        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
   : T extends { "~RunOutput": infer RunOutput }
   ? RunOutput
   : T extends { messages: unknown }

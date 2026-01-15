@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type {
-  UseStreamOptions,
-  InferAgentToolCalls,
-  InferAgentState,
-} from "../ui/types.js";
-import type { Message } from "../types.messages.js";
+import type { UseStreamOptions, InferAgentState } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
   UseStream,
@@ -27,14 +22,16 @@ function isCustomOptions<
 
 /**
  * Helper type that infers StateType based on whether T is an agent-like type, a CompiledGraph/Pregel instance, or a state type.
- * - If T has `~agentTypes`, returns a state with typed messages based on the agent's tools,
- *   plus the agent's custom state schema and all middleware states
+ * - If T has `~agentTypes`, returns the full agent state including:
+ *   - Base agent state with typed messages based on the agent's tools
+ *   - The agent's custom state schema
+ *   - All middleware states
  * - If T has `~RunOutput` (CompiledGraph/CompiledStateGraph), returns the state type
  * - If T has `~OutputType` (Pregel), returns the output type as state
  * - Otherwise, returns T (direct state type)
  */
 type InferStateType<T> = T extends { "~agentTypes": unknown }
-  ? { messages: Message<InferAgentToolCalls<T>>[] } & InferAgentState<T>
+  ? InferAgentState<T>
   : T extends { "~RunOutput": infer S }
   ? S extends Record<string, unknown>
     ? S

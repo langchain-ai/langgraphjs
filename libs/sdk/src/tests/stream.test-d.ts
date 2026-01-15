@@ -7,6 +7,7 @@ import type {
   InferMiddlewareStatesFromArray,
   AgentTypeConfigLike,
   ExtractAgentConfig,
+  AgentMiddlewareLike,
 } from "../ui/types.js";
 
 // Todo schema for middleware tests
@@ -39,7 +40,7 @@ type Todo = z.infer<typeof todoSchema>;
 type TodosState = z.infer<typeof todosStateSchema>;
 type FilesState = z.infer<typeof filesStateSchema>;
 
-// Mock middleware structure using real Zod schemas
+// Mock middleware structure using real Zod schemas (simple version for backwards compatibility)
 interface MockMiddleware<TStateSchema extends z.ZodTypeAny> {
   name: string;
   stateSchema: TStateSchema;
@@ -73,7 +74,7 @@ describe("InferMiddlewareStatesFromArray", () => {
     type Middlewares = readonly [TodoMiddleware, CounterMiddleware];
 
     type Result = InferMiddlewareStatesFromArray<Middlewares>;
-    expectTypeOf<Result>().toMatchTypeOf<{ todos: Todo[]; count: number }>();
+    expectTypeOf<Result>().toExtend<{ todos: Todo[]; count: number }>();
   });
 
   test("returns empty object for empty middleware array", () => {
@@ -89,6 +90,24 @@ describe("InferMiddlewareStatesFromArray", () => {
     type Result = InferMiddlewareStatesFromArray<Middlewares>;
     // eslint-disable-next-line @typescript-eslint/ban-types
     expectTypeOf<Result>().toEqualTypeOf<{}>();
+  });
+
+  test("extracts state from AgentMiddleware-like structure with ~middlewareTypes", () => {
+    // This matches the actual structure of langchain's AgentMiddleware
+    type LocationMiddleware = AgentMiddlewareLike<typeof counterStateSchema>;
+    type Middlewares = readonly [LocationMiddleware];
+
+    type Result = InferMiddlewareStatesFromArray<Middlewares>;
+    expectTypeOf<Result>().toExtend<{ count: number }>();
+  });
+
+  test("merges states from multiple AgentMiddleware-like middlewares", () => {
+    type TodoMiddleware = AgentMiddlewareLike<typeof todosStateSchema>;
+    type CounterMiddleware = AgentMiddlewareLike<typeof counterStateSchema>;
+    type Middlewares = readonly [TodoMiddleware, CounterMiddleware];
+
+    type Result = InferMiddlewareStatesFromArray<Middlewares>;
+    expectTypeOf<Result>().toExtend<{ todos: Todo[]; count: number }>();
   });
 });
 
@@ -124,7 +143,7 @@ describe("InferAgentState", () => {
     type Agent = MockReactAgent<AgentConfig>;
     type Result = InferAgentState<Agent>;
 
-    expectTypeOf<Result>().toMatchTypeOf<{
+    expectTypeOf<Result>().toExtend<{
       customField: string;
       todos: Todo[];
     }>();
@@ -154,7 +173,7 @@ describe("InferAgentToolCalls", () => {
     type Result = InferAgentToolCalls<Agent>;
 
     // Should be a union of tool call types
-    expectTypeOf<Result>().toMatchTypeOf<
+    expectTypeOf<Result>().toExtend<
       | { name: "get_weather"; args: { location: string }; id?: string }
       | { name: "search"; args: { query: string }; id?: string }
     >();
@@ -181,6 +200,30 @@ describe("ExtractAgentConfig", () => {
     type Result = ExtractAgentConfig<{ notAnAgent: true }>;
     expectTypeOf<Result>().toEqualTypeOf<never>();
   });
+
+  test("correctly accesses Middleware from agent with AgentMiddleware-like middleware", () => {
+    // This test simulates the real structure from langchain's createAgent
+    type WeatherMiddleware = AgentMiddlewareLike<typeof counterStateSchema>;
+    type AgentConfig = {
+      Response: Record<string, unknown>;
+      State: undefined;
+      Context: unknown;
+      Middleware: readonly [WeatherMiddleware];
+      Tools: readonly [];
+    };
+
+    type Agent = MockReactAgent<AgentConfig>;
+    type Config = ExtractAgentConfig<Agent>;
+
+    // Verify Middleware is correctly extracted
+    expectTypeOf<Config["Middleware"]>().toEqualTypeOf<
+      readonly [WeatherMiddleware]
+    >();
+
+    // Verify full state inference works through InferAgentState
+    type State = InferAgentState<Agent>;
+    expectTypeOf<State>().toExtend<{ count: number; messages: Message[] }>();
+  });
 });
 
 describe("useStream type inference integration", () => {
@@ -204,10 +247,10 @@ describe("useStream type inference integration", () => {
     type StreamState = InferAgentState<Agent>;
 
     // Verify messages are present
-    expectTypeOf<StreamState["messages"]>().toMatchTypeOf<Message[]>();
+    expectTypeOf<StreamState["messages"]>().toExtend<Message[]>();
 
     // Verify todos from middleware are present
-    expectTypeOf<StreamState["todos"]>().toMatchTypeOf<Todo[]>();
+    expectTypeOf<StreamState["todos"]>().toExtend<Todo[]>();
 
     // Verify we can access todo properties
     type TodoFromState = StreamState["todos"][number];
@@ -234,8 +277,8 @@ describe("useStream type inference integration", () => {
     type StreamState = InferAgentState<Agent>;
 
     // Both middleware states should be present
-    expectTypeOf<StreamState["todos"]>().toMatchTypeOf<Todo[]>();
-    expectTypeOf<StreamState["files"]>().toMatchTypeOf<FilesState["files"]>();
+    expectTypeOf<StreamState["todos"]>().toExtend<Todo[]>();
+    expectTypeOf<StreamState["files"]>().toExtend<FilesState["files"]>();
   });
 
   test("infers state from agent with custom stateSchema", () => {
@@ -259,7 +302,7 @@ describe("useStream type inference integration", () => {
     }>();
 
     // Middleware state should also be present
-    expectTypeOf<StreamState["todos"]>().toMatchTypeOf<Todo[]>();
+    expectTypeOf<StreamState["todos"]>().toExtend<Todo[]>();
   });
 
   test("preserves behavior for non-agent types (CompiledGraph)", () => {
