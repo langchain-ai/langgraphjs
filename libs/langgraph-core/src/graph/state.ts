@@ -575,7 +575,7 @@ export class StateGraph<
         channel = val;
       }
       if (this.channels[key] !== undefined) {
-        if (this.channels[key] !== channel) {
+        if (!this.channels[key].equals(channel)) {
           if (channel.lc_graph_name !== "LastValue") {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
