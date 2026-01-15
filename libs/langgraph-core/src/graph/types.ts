@@ -1,15 +1,45 @@
+import type { InteropZodObject } from "@langchain/core/utils/types";
 import type { Runtime } from "../pregel/runnable_types.js";
 import type { CommandInstance, Send } from "../constants.js";
 import { END } from "../constants.js";
-import type { StateType } from "../index.js";
 import type {
   AnnotationRoot,
+  StateDefinition,
+  StateType,
   UpdateType as AnnotationUpdateType,
 } from "./annotation.js";
-import type { ToStateDefinition } from "./state.js";
+import type {
+  AnyStateSchema,
+  StateSchema,
+  StateSchemaFieldsToStateDefinition,
+} from "../state/schema.js";
+import type { InteropZodToStateDefinition } from "./zod/meta.js";
 
 // Re-export END for use in ConditionalEdgeRouter return types
 export { END };
+
+/**
+ * Convert any supported schema type to a StateDefinition.
+ *
+ * @internal
+ */
+export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
+  ? StateSchemaFieldsToStateDefinition<TInit>
+  : T extends InteropZodObject
+  ? InteropZodToStateDefinition<T>
+  : T extends StateDefinition
+  ? T
+  : never;
+
+/**
+ * Type for schema types that can be used to initialize state.
+ *
+ * @internal
+ */
+export type StateDefinitionInit =
+  | StateDefinition
+  | InteropZodObject
+  | AnyStateSchema;
 
 /**
  * Extract the State type from any supported schema type.

@@ -70,21 +70,19 @@ import { StateSchema } from "../state/index.js";
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
-import {
-  type SchemaMetaRegistry,
-  InteropZodToStateDefinition,
-  schemaMetaRegistry,
-} from "./zod/meta.js";
+import { type SchemaMetaRegistry, schemaMetaRegistry } from "./zod/meta.js";
 import type {
   InferInterruptResumeType,
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
-import type {
-  AnyStateSchema,
-  StateSchemaFieldsToStateDefinition,
-} from "../state/schema.js";
-import { ExtractStateType, ExtractUpdateType } from "./types.js";
+import type { AnyStateSchema } from "../state/schema.js";
+import {
+  ExtractStateType,
+  ExtractUpdateType,
+  ToStateDefinition,
+  type StateDefinitionInit,
+} from "./types.js";
 
 const ROOT = "__root__";
 
@@ -141,16 +139,6 @@ type ZodStateGraphArgsWithStateSchema<
   I extends StateDefinitionInit,
   O extends StateDefinitionInit
 > = { state: SD; input?: I; output?: O };
-
-type StateDefinitionInit = StateDefinition | InteropZodObject | AnyStateSchema;
-
-export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
-  ? StateSchemaFieldsToStateDefinition<TInit>
-  : T extends InteropZodObject
-  ? InteropZodToStateDefinition<T>
-  : T extends StateDefinition
-  ? T
-  : never;
 
 type ExtractStateDefinition<T> = T extends AnyStateSchema
   ? T // Keep StateSchema as-is to preserve type information
