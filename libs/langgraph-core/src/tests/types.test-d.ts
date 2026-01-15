@@ -134,7 +134,7 @@ describe("ExtractUpdateType", () => {
   describe("fallback behavior", () => {
     it("returns never for unknown types by default", () => {
       type Result = ExtractUpdateType<{ custom: true }>;
-      expectTypeOf<Result>().toEqualTypeOf<never>();
+      expectTypeOf<Result>().toEqualTypeOf<{ custom?: true | undefined }>();
     });
 
     it("uses explicit Fallback type when provided", () => {

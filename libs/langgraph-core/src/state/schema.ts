@@ -104,7 +104,7 @@ export type InferStateSchemaUpdate<TInit extends StateSchemaInit> = {
  * const graph = new StateGraph(AgentState);
  * ```
  */
-export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
+export class StateSchema<TInit extends StateSchemaInit> {
   /**
    * Symbol for runtime identification.
    * @internal Used by isInstance for runtime type checking
@@ -348,7 +348,8 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
     value: StateSchema<TInit>
   ): value is StateSchema<TInit>;
 
-  static isInstance(value: unknown): value is StateSchema;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static isInstance(value: unknown): value is StateSchema<any>;
 
   static isInstance<TInit extends StateSchemaInit>(
     value: unknown
@@ -361,3 +362,6 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
     );
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyStateSchema = StateSchema<any>;

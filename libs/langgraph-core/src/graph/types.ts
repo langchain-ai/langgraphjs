@@ -4,12 +4,7 @@ import type {
 } from "@langchain/core/utils/types";
 
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-import type {
-  StateSchema,
-  StateSchemaInit,
-  InferStateSchemaValue,
-  InferStateSchemaUpdate,
-} from "../state/index.js";
+import type { StateSchema } from "../state/index.js";
 import type {
   AnnotationRoot,
   StateDefinition,
@@ -38,9 +33,9 @@ export { END };
 export type ExtractStateType<
   Schema,
   Fallback = Schema
-> = Schema extends StateSchema<infer TInit extends StateSchemaInit>
-  ? InferStateSchemaValue<TInit>
-  : Schema extends AnnotationRoot<infer SD extends StateDefinition>
+> = Schema extends StateSchema<infer _TInit>
+  ? Schema["State"]
+  : Schema extends AnnotationRoot<infer SD>
   ? StateType<SD>
   : Schema extends StateDefinition
   ? StateType<Schema>
@@ -65,10 +60,10 @@ export type ExtractStateType<
  */
 export type ExtractUpdateType<
   Schema,
-  Fallback = never
-> = Schema extends StateSchema<infer TInit extends StateSchemaInit>
-  ? InferStateSchemaUpdate<TInit>
-  : Schema extends AnnotationRoot<infer SD extends StateDefinition>
+  Fallback = Partial<Schema>
+> = Schema extends StateSchema<infer _TInit>
+  ? Schema["Update"]
+  : Schema extends AnnotationRoot<infer SD>
   ? AnnotationUpdateType<SD>
   : Schema extends StateDefinition
   ? AnnotationUpdateType<Schema>

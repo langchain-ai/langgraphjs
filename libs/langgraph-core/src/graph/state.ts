@@ -81,6 +81,7 @@ import type {
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
 import { ExtractStateType, ExtractUpdateType } from "./types.js";
+import { AnyStateSchema } from "../state/schema.js";
 
 const ROOT = "__root__";
 
@@ -138,9 +139,9 @@ type ZodStateGraphArgsWithStateSchema<
   O extends StateDefinitionInit
 > = { state: SD; input?: I; output?: O };
 
-type StateDefinitionInit = StateDefinition | InteropZodObject | StateSchema;
+type StateDefinitionInit = StateDefinition | InteropZodObject | AnyStateSchema;
 
-type ToStateDefinition<T> = T extends StateSchema
+type ToStateDefinition<T> = T extends AnyStateSchema
   ? StateDefinition // StateSchema provides its own channels
   : T extends InteropZodObject
   ? InteropZodToStateDefinition<T>
@@ -148,7 +149,7 @@ type ToStateDefinition<T> = T extends StateSchema
   ? T
   : never;
 
-type ExtractStateDefinition<T> = T extends StateSchema
+type ExtractStateDefinition<T> = T extends AnyStateSchema
   ? T // Keep StateSchema as-is to preserve type information
   : T extends StateDefinitionInit
   ? ToStateDefinition<T>
@@ -262,7 +263,7 @@ type Prettify<T> = {
 export class StateGraph<
   SD extends StateDefinitionInit | unknown,
   S = ExtractStateType<SD>,
-  U = ExtractUpdateType<SD, Partial<S>>,
+  U = ExtractUpdateType<SD, S>,
   N extends string = typeof START,
   I extends StateDefinitionInit = ExtractStateDefinition<SD>,
   O extends StateDefinitionInit = ExtractStateDefinition<SD>,
@@ -280,7 +281,7 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _schemaRuntimeDefinition: InteropZodObject | StateSchema | undefined;
+  _schemaRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /** @internal */
   _inputDefinition: I;
@@ -288,7 +289,7 @@ export class StateGraph<
   /** @internal */
   _inputRuntimeDefinition:
     | InteropZodObject
-    | StateSchema
+    | AnyStateSchema
     | PartialStateSchema
     | undefined;
 
@@ -296,7 +297,7 @@ export class StateGraph<
   _outputDefinition: O;
 
   /** @internal */
-  _outputRuntimeDefinition: InteropZodObject | StateSchema | undefined;
+  _outputRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /**
    * Map schemas to managed values
@@ -336,7 +337,7 @@ export class StateGraph<
   );
 
   constructor(
-    state: SD extends StateSchema ? SD : never,
+    state: SD extends AnyStateSchema ? SD : never,
     options?: {
       context?: C | AnnotationRoot<ToStateDefinition<C>>;
       input?: I | AnnotationRoot<ToStateDefinition<I>>;
@@ -399,7 +400,7 @@ export class StateGraph<
   );
 
   constructor(
-    fields: SD extends StateSchema
+    fields: SD extends AnyStateSchema
       ? SD
       : SD extends InteropZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
