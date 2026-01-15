@@ -3,7 +3,7 @@ import type {
   InferInteropZodOutput,
 } from "@langchain/core/utils/types";
 
-import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import type { Runtime } from "../pregel/runnable_types.js";
 import type { StateSchema } from "../state/index.js";
 import type {
   AnnotationRoot,
@@ -12,8 +12,8 @@ import type {
   UpdateType as AnnotationUpdateType,
 } from "./annotation.js";
 import type { UpdateType as ZodUpdateType } from "./zod/meta.js";
-import type { Send } from "../constants.js";
-import { END, Command } from "../constants.js";
+import type { CommandInstance, Send } from "../constants.js";
+import { END } from "../constants.js";
 
 // Re-export END for use in ConditionalEdgeRouter return types
 export { END };
@@ -72,16 +72,19 @@ export type ExtractUpdateType<
   : Fallback;
 
 /**
- * Utility type for typing graph nodes outside of the StateGraph builder.
+ * Strongly-typed utility for authoring graph nodes outside of the StateGraph builder,
+ * supporting inference for both state (from Schema) and runtime context (from ContextType).
  *
- * This type allows you to define node functions with full type safety
- * before adding them to a graph, improving code organization and editor support.
+ * This type enables you to define graph node functions with full type safety—both
+ * for the evolving state and for additional context that may be passed in at runtime.
+ * Typing the context parameter allows for better code organization and precise editor support.
  *
- * Works with StateSchema, AnnotationRoot, and Zod object schemas.
+ * Works with StateSchema, AnnotationRoot, and Zod object schemas for state, and
+ * with a user-defined object shape for context.
  *
  * @template Schema - The state schema type (StateSchema, AnnotationRoot, or InteropZodObject)
- * @template Nodes - Optional union of valid node names for Command.goto (default: string)
- * @template Config - Optional custom config type extending LangGraphRunnableConfig
+ * @template ContextType - The type of the runtime context injected into this node (default: Record<string, unknown>)
+ * @template Nodes - An optional union of valid node names for Command.goto, used for type-safe routing (default: string)
  *
  * @example
  * ```typescript
@@ -93,13 +96,17 @@ export type ExtractUpdateType<
  *   step: z.number().default(0),
  * });
  *
- * // Simple node - just returns state update
- * const processNode: GraphNode<typeof AgentState> = (state, config) => {
+ * // Context shape for custom node logic (optional)
+ * type MyContext = { userId: string };
+ *
+ * // Node receiving state and context
+ * const processNode: GraphNode<typeof AgentState, MyContext> = (state, runtime) => {
+ *   const { userId } = runtime; // type-safe context access
  *   return { step: state.step + 1 };
  * };
  *
- * // Node with typed Command routing
- * const routerNode: GraphNode<typeof AgentState, "agent" | "tool"> = (state) => {
+ * // Node with type-safe graph routing
+ * const routerNode: GraphNode<typeof AgentState, MyContext, "agent" | "tool"> = (state, runtime) => {
  *   if (state.needsTool) {
  *     return new Command({ goto: "tool", update: { step: state.step + 1 } });
  *   }
@@ -115,17 +122,17 @@ export type ExtractUpdateType<
  */
 export type GraphNode<
   Schema,
-  Nodes extends string = string,
-  Config extends LangGraphRunnableConfig = LangGraphRunnableConfig
+  ContextType extends Record<string, unknown> = Record<string, unknown>,
+  Nodes extends string = string
 > = (
   state: ExtractStateType<Schema>,
-  config: Config
+  runtime: Runtime<ContextType>
 ) =>
   | ExtractUpdateType<Schema>
-  | Command<unknown, ExtractUpdateType<Schema>, Nodes>
+  | CommandInstance<unknown, ExtractUpdateType<Schema>, Nodes>
   | Promise<
       | ExtractUpdateType<Schema>
-      | Command<unknown, ExtractUpdateType<Schema>, Nodes>
+      | CommandInstance<unknown, ExtractUpdateType<Schema>, Nodes>
     >;
 
 /**

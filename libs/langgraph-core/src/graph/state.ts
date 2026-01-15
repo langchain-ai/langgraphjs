@@ -80,8 +80,8 @@ import type {
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
-import { ExtractStateType, ExtractUpdateType } from "./types.js";
-import { AnyStateSchema } from "../state/schema.js";
+import type { ExtractStateType, ExtractUpdateType } from "./types.js";
+import type { AnyStateSchema } from "../state/schema.js";
 
 const ROOT = "__root__";
 
