@@ -1,6 +1,7 @@
 import type { JSONSchema } from "@langchain/core/utils/json_schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
+import type { RunnableLike } from "../pregel/runnable_types.js";
 import {
   BaseChannel,
   LastValue,
@@ -15,6 +16,74 @@ import { ReducedValue } from "./values/reduced.js";
 import { UntrackedValue } from "./values/untracked.js";
 
 const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
+
+/**
+ * Maps a single StateSchema field definition to its corresponding Channel type.
+ *
+ * This utility type inspects the type of the field and returns an appropriate
+ * `BaseChannel` type, parameterized with the state "value" and "input" types according to the field's shape.
+ *
+ * Rules:
+ * - If the field (`F`) is a `ReducedValue<V, I>`, the channel will store values of type `V`
+ *   and accept input of type `I`.
+ * - If the field is a `UntrackedValue<V>`, the channel will store and accept values of type `V`.
+ * - If the field is a `SerializableSchema<I, O>`, the channel will store values of type `O`
+ *   (the schema's output/validated value) and accept input of type `I`.
+ * - For all other types, a generic `BaseChannel<unknown, unknown>` is used as fallback.
+ *
+ * @template F - The StateSchema field type to map to a Channel type.
+ *
+ * @example
+ * ```typescript
+ * type MyField = ReducedValue<number, string>;
+ * type ChannelType = StateSchemaFieldToChannel<MyField>;
+ * // ChannelType is BaseChannel<number, string>
+ * ```
+ */
+export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
+  infer V,
+  infer I
+>
+  ? BaseChannel<V, I>
+  : F extends UntrackedValue<infer V>
+  ? BaseChannel<V, V>
+  : F extends SerializableSchema<infer I, infer O>
+  ? BaseChannel<O, I>
+  : BaseChannel<unknown, unknown>;
+
+/**
+ * Converts a StateSchema "init" object (field map) into a strongly-typed
+ * State Definition object, where each key is mapped to its channel type.
+ *
+ * This utility type is used internally to create the shape of the state channels for a given schema,
+ * substituting each field with the result of `StateSchemaFieldToChannel`.
+ *
+ * If you define a state schema as:
+ * ```typescript
+ * const fields = {
+ *   a: ReducedValue<number, string>(),
+ *   b: UntrackedValue<boolean>(),
+ *   c: SomeSerializableSchemaType, // SerializableSchema<in, out>
+ * }
+ * ```
+ * then `StateSchemaFieldsToStateDefinition<typeof fields>` yields:
+ * ```typescript
+ * {
+ *   a: BaseChannel<number, string>;
+ *   b: BaseChannel<boolean, boolean>;
+ *   c: BaseChannel<typeof schema's output type, typeof schema's input type>;
+ * }
+ * ```
+ *
+ * @template TInit - The mapping of field names to StateSchema field types.
+ * @returns An object type mapping keys to channel types.
+ *
+ * @see StateSchemaFieldToChannel
+ */
+export type StateSchemaFieldsToStateDefinition<TInit extends StateSchemaInit> =
+  {
+    [K in keyof TInit]: StateSchemaFieldToChannel<TInit[K]>;
+  };
 
 /**
  * Valid field types for StateSchema.
@@ -103,7 +172,7 @@ export type InferStateSchemaUpdate<TInit extends StateSchemaInit> = {
  * const graph = new StateGraph(AgentState);
  * ```
  */
-export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
+export class StateSchema<TInit extends StateSchemaInit> {
   /**
    * Symbol for runtime identification.
    * @internal Used by isInstance for runtime type checking
@@ -122,6 +191,26 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
    * Use: `typeof myState.Update`
    */
   declare Update: InferStateSchemaUpdate<TInit>;
+
+  /**
+   * Type declaration for node functions.
+   * Use: `typeof myState.Node` to type node functions outside the graph builder.
+   *
+   * @example
+   * ```typescript
+   * const AgentState = new StateSchema({
+   *   count: z.number().default(0),
+   * });
+   *
+   * const myNode: typeof AgentState.Node = (state) => {
+   *   return { count: state.count + 1 };
+   * };
+   * ```
+   */
+  declare Node: RunnableLike<
+    InferStateSchemaValue<TInit>,
+    InferStateSchemaUpdate<TInit>
+  >;
 
   constructor(readonly init: TInit) {
     this.init = init;
@@ -270,7 +359,7 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
    * @param data - The input data to validate
    * @returns The validated data with coerced types
    */
-  async validateInput<T extends Record<string, unknown>>(data: T): Promise<T> {
+  async validateInput<T>(data: T): Promise<T> {
     if (data == null || typeof data !== "object") {
       return data;
     }
@@ -327,7 +416,8 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
     value: StateSchema<TInit>
   ): value is StateSchema<TInit>;
 
-  static isInstance(value: unknown): value is StateSchema;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static isInstance(value: unknown): value is StateSchema<any>;
 
   static isInstance<TInit extends StateSchemaInit>(
     value: unknown
@@ -340,3 +430,6 @@ export class StateSchema<TInit extends StateSchemaInit = StateSchemaInit> {
     );
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyStateSchema = StateSchema<any>;

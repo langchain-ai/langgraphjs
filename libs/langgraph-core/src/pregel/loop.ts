@@ -643,7 +643,11 @@ export class PregelLoop {
           // in `algo.ts` we append a bool to the task path to indicate
           // whether or not a call was present. If so, we don't emit the
           // the interrupt as it'll be emitted by the parent.
-          if (task.path?.[0] === PUSH && task.path?.at(-1) === true) return;
+          if (
+            task.path?.[0] === PUSH &&
+            task.path?.[task.path.length - 1] === true
+          )
+            return;
 
           const interruptWrites = writes
             .filter((w) => w[0] === INTERRUPT)

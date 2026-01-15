@@ -44,10 +44,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
-  END,
   SELF,
   Send,
   START,
+  END,
   TAG_HIDDEN,
   CommandInstance,
   isInterrupted,
@@ -65,22 +65,24 @@ import {
   SingleReducer,
   StateDefinition,
   StateType,
-  UpdateType,
 } from "./annotation.js";
 import { StateSchema } from "../state/index.js";
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
-import {
-  type SchemaMetaRegistry,
-  InteropZodToStateDefinition,
-  schemaMetaRegistry,
-} from "./zod/meta.js";
+import { type SchemaMetaRegistry, schemaMetaRegistry } from "./zod/meta.js";
 import type {
   InferInterruptResumeType,
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
+import type { AnyStateSchema } from "../state/schema.js";
+import {
+  ExtractStateType,
+  ExtractUpdateType,
+  ToStateDefinition,
+  type StateDefinitionInit,
+} from "./types.js";
 
 const ROOT = "__root__";
 
@@ -138,42 +140,7 @@ type ZodStateGraphArgsWithStateSchema<
   O extends StateDefinitionInit
 > = { state: SD; input?: I; output?: O };
 
-type StateDefinitionInit = StateDefinition | InteropZodObject | StateSchema;
-
-type ToStateDefinition<T> = T extends StateSchema
-  ? StateDefinition // StateSchema provides its own channels
-  : T extends InteropZodObject
-  ? InteropZodToStateDefinition<T>
-  : T extends StateDefinition
-  ? T
-  : never;
-
-/**
- * Extract State type from StateGraph-compatible schema types.
- *
- * For StateSchema: uses the declared State type directly
- * For StateDefinition/InteropZodObject: uses existing StateType mapping
- */
-type ExtractStateType<T> = T extends StateSchema
-  ? T["State"]
-  : T extends StateDefinition
-  ? StateType<T>
-  : T extends InteropZodObject
-  ? StateType<InteropZodToStateDefinition<T>>
-  : T;
-
-/**
- * Extract Update type from StateGraph-compatible schema types.
- */
-type ExtractUpdateType<T, S> = T extends StateSchema
-  ? T["Update"]
-  : T extends StateDefinition
-  ? UpdateType<T>
-  : T extends InteropZodObject
-  ? UpdateType<InteropZodToStateDefinition<T>>
-  : Partial<S>;
-
-type ExtractStateDefinition<T> = T extends StateSchema
+type ExtractStateDefinition<T> = T extends AnyStateSchema
   ? T // Keep StateSchema as-is to preserve type information
   : T extends StateDefinitionInit
   ? ToStateDefinition<T>
@@ -305,7 +272,7 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _schemaRuntimeDefinition: InteropZodObject | StateSchema | undefined;
+  _schemaRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /** @internal */
   _inputDefinition: I;
@@ -313,7 +280,7 @@ export class StateGraph<
   /** @internal */
   _inputRuntimeDefinition:
     | InteropZodObject
-    | StateSchema
+    | AnyStateSchema
     | PartialStateSchema
     | undefined;
 
@@ -321,7 +288,7 @@ export class StateGraph<
   _outputDefinition: O;
 
   /** @internal */
-  _outputRuntimeDefinition: InteropZodObject | StateSchema | undefined;
+  _outputRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /**
    * Map schemas to managed values
@@ -361,7 +328,7 @@ export class StateGraph<
   );
 
   constructor(
-    state: SD extends StateSchema ? SD : never,
+    state: SD extends AnyStateSchema ? SD : never,
     options?: {
       context?: C | AnnotationRoot<ToStateDefinition<C>>;
       input?: I | AnnotationRoot<ToStateDefinition<I>>;
@@ -424,7 +391,7 @@ export class StateGraph<
   );
 
   constructor(
-    fields: SD extends StateSchema
+    fields: SD extends AnyStateSchema
       ? SD
       : SD extends InteropZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>

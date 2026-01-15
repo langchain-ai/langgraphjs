@@ -101,7 +101,7 @@ const COMMAND_SYMBOL = Symbol.for("langgraph.command");
  */
 export class CommandInstance<
   Resume = unknown,
-  Update extends Record<string, unknown> = Record<string, unknown>,
+  Update = Record<string, unknown>,
   Nodes extends string = string
 > {
   [COMMAND_SYMBOL]: CommandParams<Resume, Update, Nodes>;
@@ -230,7 +230,7 @@ export function isInterrupted<Value = unknown>(
 
 export type CommandParams<
   Resume = unknown,
-  Update extends Record<string, unknown> = Record<string, unknown>,
+  Update = Record<string, unknown>,
   Nodes extends string = string
 > = {
   /**
