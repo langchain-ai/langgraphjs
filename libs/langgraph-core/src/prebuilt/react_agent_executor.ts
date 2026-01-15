@@ -888,8 +888,8 @@ export function createReactAgent<
       .addEdge("agent", "post_model_hook")
       .addConditionalEdges(
         "post_model_hook",
-        (state: AgentState<StructuredResponseFormat>) => {
-          const { messages } = state;
+        (state) => {
+          const { messages } = state as AgentState<StructuredResponseFormat>;
 
           const toolMessageIds: Set<string> = new Set(
             messages.filter(isToolMessage).map((msg) => msg.tool_call_id)
@@ -909,7 +909,7 @@ export function createReactAgent<
               (i) => i.id == null || !toolMessageIds.has(i.id)
             ) ?? [];
 
-          const lastMessage = messages.at(-1);
+          const lastMessage = messages[messages.length - 1];
           if (pendingToolCalls.length > 0) {
             if (version === "v2") {
               return pendingToolCalls.map(
@@ -943,7 +943,7 @@ export function createReactAgent<
   if (postModelHook == null) {
     allNodeWorkflows.addConditionalEdges(
       "agent",
-      (state: AgentState<StructuredResponseFormat>) => {
+      (state) => {
         const { messages } = state;
         const lastMessage = messages[messages.length - 1];
 
@@ -975,10 +975,11 @@ export function createReactAgent<
   if (shouldReturnDirect.size > 0) {
     allNodeWorkflows.addConditionalEdges(
       "tools",
-      (state: AgentState<StructuredResponseFormat>) => {
+      (state) => {
+        const agentState = state;
         // Check the last consecutive tool calls
-        for (let i = state.messages.length - 1; i >= 0; i -= 1) {
-          const message = state.messages[i];
+        for (let i = agentState.messages.length - 1; i >= 0; i -= 1) {
+          const message = agentState.messages[i];
           if (!isToolMessage(message)) break;
 
           // Check if this tool is configured to return directly
