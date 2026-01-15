@@ -44,10 +44,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
-  END,
   SELF,
   Send,
   START,
+  END,
   TAG_HIDDEN,
   CommandInstance,
   isInterrupted,
@@ -80,8 +80,11 @@ import type {
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
-import type { ExtractStateType, ExtractUpdateType } from "./types.js";
-import type { AnyStateSchema } from "../state/schema.js";
+import type {
+  AnyStateSchema,
+  StateSchemaFieldsToStateDefinition,
+} from "../state/schema.js";
+import { ExtractStateType, ExtractUpdateType } from "./types.js";
 
 const ROOT = "__root__";
 
@@ -141,8 +144,8 @@ type ZodStateGraphArgsWithStateSchema<
 
 type StateDefinitionInit = StateDefinition | InteropZodObject | AnyStateSchema;
 
-type ToStateDefinition<T> = T extends AnyStateSchema
-  ? StateDefinition // StateSchema provides its own channels
+export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
+  ? StateSchemaFieldsToStateDefinition<TInit>
   : T extends InteropZodObject
   ? InteropZodToStateDefinition<T>
   : T extends StateDefinition

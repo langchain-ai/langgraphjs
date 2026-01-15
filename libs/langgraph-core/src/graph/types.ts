@@ -1,19 +1,12 @@
-import type {
-  InteropZodObject,
-  InferInteropZodOutput,
-} from "@langchain/core/utils/types";
-
 import type { Runtime } from "../pregel/runnable_types.js";
-import type { StateSchema } from "../state/index.js";
-import type {
-  AnnotationRoot,
-  StateDefinition,
-  StateType,
-  UpdateType as AnnotationUpdateType,
-} from "./annotation.js";
-import type { UpdateType as ZodUpdateType } from "./zod/meta.js";
 import type { CommandInstance, Send } from "../constants.js";
 import { END } from "../constants.js";
+import type { StateType } from "../index.js";
+import type {
+  AnnotationRoot,
+  UpdateType as AnnotationUpdateType,
+} from "./annotation.js";
+import type { ToStateDefinition } from "./state.js";
 
 // Re-export END for use in ConditionalEdgeRouter return types
 export { END };
@@ -33,14 +26,12 @@ export { END };
 export type ExtractStateType<
   Schema,
   Fallback = Schema
-> = Schema extends StateSchema<infer _TInit>
-  ? Schema["State"]
-  : Schema extends AnnotationRoot<infer SD>
+> = Schema extends AnnotationRoot<infer SD>
   ? StateType<SD>
-  : Schema extends StateDefinition
-  ? StateType<Schema>
-  : Schema extends InteropZodObject
-  ? InferInteropZodOutput<Schema>
+  : StateType<ToStateDefinition<Schema>> extends infer S
+  ? [S] extends [never]
+    ? Fallback
+    : S
   : Fallback;
 
 /**
@@ -56,19 +47,17 @@ export type ExtractStateType<
  * - InteropZodObject (Zod v3/v4 object schemas)
  *
  * @template Schema - The schema type to extract update type from
- * @template Fallback - Type to return if schema doesn't match (default: never)
+ * @template Fallback - Base type for fallback, defaults to Partial<Schema>
  */
 export type ExtractUpdateType<
   Schema,
   Fallback = Partial<Schema>
-> = Schema extends StateSchema<infer _TInit>
-  ? Schema["Update"]
-  : Schema extends AnnotationRoot<infer SD>
+> = Schema extends AnnotationRoot<infer SD>
   ? AnnotationUpdateType<SD>
-  : Schema extends StateDefinition
-  ? AnnotationUpdateType<Schema>
-  : Schema extends InteropZodObject
-  ? ZodUpdateType<Schema>
+  : AnnotationUpdateType<ToStateDefinition<Schema>> extends infer U
+  ? [U] extends [never]
+    ? Fallback
+    : U
   : Fallback;
 
 /**
@@ -83,7 +72,7 @@ export type ExtractUpdateType<
  * with a user-defined object shape for context.
  *
  * @template Schema - The state schema type (StateSchema, AnnotationRoot, or InteropZodObject)
- * @template ContextType - The type of the runtime context injected into this node (default: Record<string, unknown>)
+ * @template Context - The type of the runtime context injected into this node (default: Record<string, unknown>)
  * @template Nodes - An optional union of valid node names for Command.goto, used for type-safe routing (default: string)
  *
  * @example
@@ -122,11 +111,11 @@ export type ExtractUpdateType<
  */
 export type GraphNode<
   Schema,
-  ContextType extends Record<string, unknown> = Record<string, unknown>,
+  Context = Record<string, unknown>,
   Nodes extends string = string
 > = (
   state: ExtractStateType<Schema>,
-  runtime: Runtime<ContextType>
+  runtime: Runtime<Context>
 ) =>
   | ExtractUpdateType<Schema>
   | CommandInstance<unknown, ExtractUpdateType<Schema>, Nodes>
@@ -139,15 +128,18 @@ export type GraphNode<
  * Type for conditional edge routing functions.
  *
  * Use this to type functions passed to `addConditionalEdges` for
- * full type safety on state access and return values.
+ * full type safety on state, runtime context, and return values.
  *
  * @template Schema - The state schema type
+ * @template Context - The runtime context type available to node logic
  * @template Nodes - Union of valid node names that can be routed to
  *
  * @example
  * ```typescript
- * const router: ConditionalEdgeRouter<typeof AgentState, "agent" | "tool" | "__end__"> =
- *   (state) => {
+ * type MyContext = { userId: string };
+ * const router: ConditionalEdgeRouter<typeof AgentState, MyContext, "agent" | "tool"> =
+ *   (state, runtime) => {
+ *     // Access runtime context as type-safe: runtime.userId
  *     if (state.done) return END;
  *     return state.needsTool ? "tool" : "agent";
  *   };
@@ -155,8 +147,13 @@ export type GraphNode<
  * graph.addConditionalEdges("router", router, ["agent", "tool"]);
  * ```
  */
-export type ConditionalEdgeRouter<Schema, Nodes extends string> = (
-  state: ExtractStateType<Schema>
+export type ConditionalEdgeRouter<
+  Schema,
+  Context = Record<string, unknown>,
+  Nodes extends string = string
+> = (
+  state: ExtractStateType<Schema>,
+  runtime: Runtime<Context>
 ) =>
   | Nodes
   | typeof END

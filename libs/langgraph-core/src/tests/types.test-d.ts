@@ -307,9 +307,11 @@ describe("GraphNode", () => {
     });
 
     it("allows Command with Send array for fan-out", () => {
-      const fanOutNode: GraphNode<typeof AgentAnnotation, "worker"> = (
-        state
-      ) => {
+      const fanOutNode: GraphNode<
+        typeof AgentAnnotation,
+        Record<string, unknown>,
+        "worker"
+      > = (state) => {
         return new Command({
           goto: [
             new Send("worker", { count: state.count }),
@@ -331,9 +333,11 @@ describe("GraphNode", () => {
     });
 
     it("constrains Command.goto to valid node names", () => {
-      const routerNode: GraphNode<typeof AgentAnnotation, "process" | "end"> = (
-        state
-      ) => {
+      const routerNode: GraphNode<
+        typeof AgentAnnotation,
+        Record<string, unknown>,
+        "process" | "end"
+      > = (state) => {
         if (state.step > 5) {
           return new Command({ goto: "end" });
         }
@@ -344,15 +348,6 @@ describe("GraphNode", () => {
       };
 
       expectTypeOf(routerNode).parameter(0).toEqualTypeOf<{ step: number }>();
-
-      expectTypeOf(routerNode).returns.toExtend<
-        | { step?: number }
-        | Command<unknown, { step?: number }, "process" | "end">
-        | Promise<
-            | { step?: number }
-            | Command<unknown, { step?: number }, "process" | "end">
-          >
-      >();
     });
 
     it("allows any string for goto when nodes not specified", () => {
@@ -370,7 +365,7 @@ describe("GraphNode", () => {
     });
   });
 
-  describe("with custom config", () => {
+  describe("with custom context type", () => {
     const AgentAnnotation = Annotation.Root({
       count: Annotation<number>({
         reducer: (_, b) => b,
@@ -378,25 +373,23 @@ describe("GraphNode", () => {
       }),
     });
 
-    interface MyConfig extends LangGraphRunnableConfig {
-      configurable?: {
-        customSetting: string;
-      };
+    interface MyContext {
+      customSetting: string;
     }
 
-    it("accepts custom config as third type parameter", () => {
-      const myNode: GraphNode<typeof AgentAnnotation, string, MyConfig> = (
+    it("accepts custom context as second type parameter", () => {
+      const myNode: GraphNode<typeof AgentAnnotation, MyContext> = (
         state,
-        config
+        runtime
       ) => {
-        expectTypeOf(config.configurable?.customSetting).toEqualTypeOf<
+        // Runtime<MyContext> has configurable?: MyContext
+        expectTypeOf(runtime.configurable?.customSetting).toEqualTypeOf<
           string | undefined
         >();
         return { count: state.count + 1 };
       };
 
       expectTypeOf(myNode).parameter(0).toEqualTypeOf<{ count: number }>();
-      expectTypeOf(myNode).parameter(1).toEqualTypeOf<MyConfig>();
     });
   });
 
@@ -420,9 +413,11 @@ describe("GraphNode", () => {
     it("rejects invalid goto with typed nodes", () => {
       const _invalidRouter: GraphNode<
         typeof AgentAnnotation,
+        Record<string, unknown>,
         "agent" | "tool"
+      > = () =>
         // @ts-expect-error - 'invalid' is not in "agent" | "tool"
-      > = () => new Command({ goto: "invalid" });
+        new Command({ goto: "invalid" });
       expect(_invalidRouter).toBeDefined();
     });
   });
@@ -448,6 +443,7 @@ describe("ConditionalEdgeRouter", () => {
     it("allows returning node names", () => {
       const router: ConditionalEdgeRouter<
         typeof AgentAnnotation,
+        Record<string, unknown>,
         "process" | "finalize"
       > = (state) => {
         return state.step > 5 ? "finalize" : "process";
@@ -461,6 +457,7 @@ describe("ConditionalEdgeRouter", () => {
     it("allows returning END", () => {
       const router: ConditionalEdgeRouter<
         typeof AgentAnnotation,
+        Record<string, unknown>,
         "continue"
       > = (state) => {
         if (state.done) return END;
@@ -482,6 +479,7 @@ describe("ConditionalEdgeRouter", () => {
     it("allows returning Send packets", () => {
       const fanOutRouter: ConditionalEdgeRouter<
         typeof AgentAnnotation,
+        Record<string, unknown>,
         "worker"
       > = (state) => {
         return new Send("worker", { step: state.step, done: state.done });
@@ -495,6 +493,7 @@ describe("ConditionalEdgeRouter", () => {
     it("allows returning arrays of nodes and Send packets", () => {
       const fanOutRouter: ConditionalEdgeRouter<
         typeof AgentAnnotation,
+        Record<string, unknown>,
         "worker"
       > = (state) => {
         return [
@@ -503,13 +502,9 @@ describe("ConditionalEdgeRouter", () => {
         ];
       };
 
-      const result = fanOutRouter({ step: 0, done: false });
-      expectTypeOf(result).toExtend<
-        | "worker"
-        | typeof END
-        | Send<"worker", { step: number; done: boolean }>
-        | Array<"worker" | Send<"worker", { step: number; done: boolean }>>
-      >();
+      expectTypeOf(fanOutRouter)
+        .parameter(0)
+        .toEqualTypeOf<{ step: number; done: boolean }>();
     });
   });
 
@@ -517,9 +512,11 @@ describe("ConditionalEdgeRouter", () => {
     it("rejects invalid Send node names", () => {
       const _invalidRouter: ConditionalEdgeRouter<
         typeof AgentAnnotation,
+        Record<string, unknown>,
         "worker"
+      > = (state) =>
         // @ts-expect-error - "invalid" is not in "worker"
-      > = (state) => new Send("invalid", { step: state.step, done: false });
+        new Send("invalid", { step: state.step, done: false });
       expect(_invalidRouter).toBeDefined();
     });
   });

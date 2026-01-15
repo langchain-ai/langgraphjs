@@ -18,6 +18,74 @@ import { UntrackedValue } from "./values/untracked.js";
 const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
 
 /**
+ * Maps a single StateSchema field definition to its corresponding Channel type.
+ *
+ * This utility type inspects the type of the field and returns an appropriate
+ * `BaseChannel` type, parameterized with the state "value" and "input" types according to the field's shape.
+ *
+ * Rules:
+ * - If the field (`F`) is a `ReducedValue<V, I>`, the channel will store values of type `V`
+ *   and accept input of type `I`.
+ * - If the field is a `UntrackedValue<V>`, the channel will store and accept values of type `V`.
+ * - If the field is a `SerializableSchema<I, O>`, the channel will store values of type `O`
+ *   (the schema's output/validated value) and accept input of type `I`.
+ * - For all other types, a generic `BaseChannel<unknown, unknown>` is used as fallback.
+ *
+ * @template F - The StateSchema field type to map to a Channel type.
+ *
+ * @example
+ * ```typescript
+ * type MyField = ReducedValue<number, string>;
+ * type ChannelType = StateSchemaFieldToChannel<MyField>;
+ * // ChannelType is BaseChannel<number, string>
+ * ```
+ */
+export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
+  infer V,
+  infer I
+>
+  ? BaseChannel<V, I>
+  : F extends UntrackedValue<infer V>
+  ? BaseChannel<V, V>
+  : F extends SerializableSchema<infer I, infer O>
+  ? BaseChannel<O, I>
+  : BaseChannel<unknown, unknown>;
+
+/**
+ * Converts a StateSchema "init" object (field map) into a strongly-typed
+ * State Definition object, where each key is mapped to its channel type.
+ *
+ * This utility type is used internally to create the shape of the state channels for a given schema,
+ * substituting each field with the result of `StateSchemaFieldToChannel`.
+ *
+ * If you define a state schema as:
+ * ```typescript
+ * const fields = {
+ *   a: ReducedValue<number, string>(),
+ *   b: UntrackedValue<boolean>(),
+ *   c: SomeSerializableSchemaType, // SerializableSchema<in, out>
+ * }
+ * ```
+ * then `StateSchemaFieldsToStateDefinition<typeof fields>` yields:
+ * ```typescript
+ * {
+ *   a: BaseChannel<number, string>;
+ *   b: BaseChannel<boolean, boolean>;
+ *   c: BaseChannel<typeof schema's output type, typeof schema's input type>;
+ * }
+ * ```
+ *
+ * @template TInit - The mapping of field names to StateSchema field types.
+ * @returns An object type mapping keys to channel types.
+ *
+ * @see StateSchemaFieldToChannel
+ */
+export type StateSchemaFieldsToStateDefinition<TInit extends StateSchemaInit> =
+  {
+    [K in keyof TInit]: StateSchemaFieldToChannel<TInit[K]>;
+  };
+
+/**
  * Valid field types for StateSchema.
  * Either a LangGraph state value type or a raw schema (e.g., Zod schema).
  */
@@ -291,7 +359,7 @@ export class StateSchema<TInit extends StateSchemaInit> {
    * @param data - The input data to validate
    * @returns The validated data with coerced types
    */
-  async validateInput<T extends Record<string, unknown>>(data: T): Promise<T> {
+  async validateInput<T>(data: T): Promise<T> {
     if (data == null || typeof data !== "object") {
       return data;
     }
