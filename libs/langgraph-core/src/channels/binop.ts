@@ -6,6 +6,12 @@ export type BinaryOperator<ValueType, UpdateType> = (
   b: UpdateType
 ) => ValueType;
 
+const isBinaryOperatorAggregate = (
+  value: BaseChannel
+): value is BinaryOperatorAggregate<unknown, unknown> => {
+  return value != null && value.lc_graph_name === "BinaryOperatorAggregate";
+};
+
 /**
  * Stores the result of applying a binary operator to the current value and each new value.
  */
@@ -84,11 +90,8 @@ export class BinaryOperatorAggregate<
    * This follows the Python implementation which compares operator references.
    */
   equals(other: BaseChannel): boolean {
-    // eslint-disable-next-line no-instanceof/no-instanceof
-    if (!(other instanceof BinaryOperatorAggregate)) {
-      return false;
-    }
-    // Compare operator function references, similar to Python's implementation
+    if (this === other) return true;
+    if (!isBinaryOperatorAggregate(other)) return false;
     return this.operator === other.operator;
   }
 }

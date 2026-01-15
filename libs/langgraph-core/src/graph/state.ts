@@ -511,14 +511,11 @@ export class StateGraph<
         channel = val;
       }
       if (this.channels[key] !== undefined) {
-        if (this.channels[key] !== channel) {
-          // Use equals method for semantic comparison (e.g., same reducer function)
-          if (!this.channels[key].equals(channel)) {
-            if (channel.lc_graph_name !== "LastValue") {
-              throw new Error(
-                `Channel "${key}" already exists with a different type.`
-              );
-            }
+        if (!this.channels[key].equals(channel)) {
+          if (channel.lc_graph_name !== "LastValue") {
+            throw new Error(
+              `Channel "${key}" already exists with a different type.`
+            );
           }
         }
       } else {

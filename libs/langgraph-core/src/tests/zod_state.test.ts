@@ -315,7 +315,9 @@ describe("StateGraph with Zod schemas", () => {
         .addNode("process", (state) => {
           return {
             items: { newKey: { value: "added" } },
-            count: Object.keys(state.items as unknown as Record<string, unknown>).length + 1,
+            count:
+              Object.keys(state.items as unknown as Record<string, unknown>)
+                .length + 1,
           };
         })
         .addEdge(START, "process")
