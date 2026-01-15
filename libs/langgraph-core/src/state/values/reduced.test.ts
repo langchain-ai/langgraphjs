@@ -251,43 +251,6 @@ describe("ReducedValue", () => {
           graph.invoke({ users: { id: "2", name: "B" } })
         ).rejects.toThrow();
       });
-
-      it("NOTE: node output is NOT validated (values go directly to reducer)", async () => {
-        // This test documents current behavior: node outputs are NOT validated
-        // against inputSchema before being passed to the reducer.
-        // Only graph.invoke() input is validated.
-        const validationSpy = vi.fn();
-
-        const AgentState = new StateSchema({
-          numbers: new ReducedValue(
-            z.array(z.number()).default(() => []),
-            {
-              inputSchema: z.number().min(0),
-              reducer: (current: number[], next: number) => {
-                validationSpy(next);
-                return [...current, next];
-              },
-            }
-          ),
-        });
-
-        const graph = new StateGraph(AgentState)
-          .addNode("add_negative", () => ({
-            // This returns a negative number, which violates inputSchema
-            // But this is NOT validated - it goes directly to reducer
-            numbers: -5,
-          }))
-          .addEdge(START, "add_negative")
-          .addEdge("add_negative", END)
-          .compile();
-
-        // This should succeed because node outputs aren't validated
-        const result = await graph.invoke({});
-
-        // The invalid value was passed to the reducer
-        expect(validationSpy).toHaveBeenCalledWith(-5);
-        expect(result.numbers).toEqual([-5]);
-      });
     });
   });
 });

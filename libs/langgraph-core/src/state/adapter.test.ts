@@ -144,18 +144,13 @@ describe("getJsonSchemaFromSchema", () => {
   });
 
   it("should return undefined for schemas without StandardJSONSchema support", () => {
-    // Note: Zod v4 may not expose jsonSchema via ~standard interface
-    // This test documents the current behavior
+    // Note: Zod v4 exposes jsonSchema via ~standard interface
     const schema = z.object({
       name: z.string(),
       age: z.number(),
     });
     const jsonSchema = getJsonSchemaFromSchema(schema);
 
-    // If Zod doesn't expose jsonSchema through ~standard, this returns undefined
-    // This is expected - use zod-to-json-schema for JSON schema generation
-    expect(jsonSchema === undefined || typeof jsonSchema === "object").toBe(
-      true
-    );
+    expect(jsonSchema).toBeDefined();
   });
 });

@@ -583,7 +583,7 @@ export class PregelLoop {
       (w) => w[0] !== taskId
     );
 
-    // save writes (unsanitized for in-memory use)
+    // save writes
     for (const [c, v] of writesToSave) {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
