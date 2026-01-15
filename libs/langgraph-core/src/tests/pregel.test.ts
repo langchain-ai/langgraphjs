@@ -68,6 +68,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import {
   Annotation,
   Graph,
+  messagesStateReducer,
   StateGraph,
   StateGraphArgs,
 } from "../graph/index.js";
@@ -84,7 +85,7 @@ import {
   shouldInterrupt,
 } from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
-import { MessageGraph, messagesStateReducer } from "../graph/message.js";
+import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
 import {

@@ -190,6 +190,44 @@ export class RemoteException extends BaseLangGraphError {
 }
 
 /**
+ * Error thrown when invalid input is provided to a StateGraph.
+ *
+ * This typically means that the input to the StateGraph constructor or builder
+ * did not match the required types. A valid input should be a
+ * StateDefinition, an Annotation.Root, or a Zod schema.
+ *
+ * @example
+ * // Example of incorrect usage:
+ * try {
+ *   new StateGraph({ foo: "bar" }); // Not a valid input
+ * } catch (err) {
+ *   if (err instanceof StateGraphInputError) {
+ *     console.error(err.message);
+ *   }
+ * }
+ */
+export class StateGraphInputError extends BaseLangGraphError {
+  /**
+   * Create a new StateGraphInputError.
+   * @param message - Optional custom error message.
+   * @param fields - Optional additional error fields.
+   */
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
+    this.name = "StateGraphInputError";
+    this.message =
+      "Invalid StateGraph input. Make sure to pass a valid StateDefinition, Annotation.Root, or Zod schema.";
+  }
+
+  /**
+   * The unminifiable (static, human-readable) error name for this error class.
+   */
+  static get unminifiable_name() {
+    return "StateGraphInputError";
+  }
+}
+
+/**
  * Used for subgraph detection.
  */
 export const getSubgraphsSeenSet = () => {

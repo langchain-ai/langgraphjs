@@ -33,6 +33,7 @@ import type {
 } from "./types.js";
 import {
   isCommand,
+  _isSend,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -45,6 +46,7 @@ import {
   NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
+  TASKS,
   PUSH,
   CONFIG_KEY_SCRATCHPAD,
   CONFIG_KEY_CHECKPOINT_NS,
@@ -59,6 +61,7 @@ import {
   _prepareSingleTask,
   increment,
   shouldInterrupt,
+  sanitizeUntrackedValuesInSend,
   WritesProtocol,
 } from "./algo.js";
 import {
@@ -542,13 +545,46 @@ export class PregelLoop {
       );
     }
 
+    // Check if any channels are UntrackedValue (manual loop for perf)
+    let hasUntrackedChannels = false;
+    for (const key in this.channels) {
+      if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
+        const channel = this.channels[key];
+        if (channel.lc_graph_name === "UntrackedValue") {
+          hasUntrackedChannels = true;
+          break;
+        }
+      }
+    }
+
+    // Sanitize writes for checkpointing: remove UntrackedValue writes and sanitize Send packets
+    let writesToSave = writesCopy;
+    if (hasUntrackedChannels) {
+      writesToSave = writesCopy
+        .filter(([c]) => {
+          // Don't persist UntrackedValue channel writes
+          const channel = this.channels[c];
+          return !channel || channel.lc_graph_name !== "UntrackedValue";
+        })
+        .map(([c, v]) => {
+          // Sanitize UntrackedValues nested within Send packets
+          if (c === TASKS && _isSend(v)) {
+            return [c, sanitizeUntrackedValuesInSend(v, this.channels)] as [
+              string,
+              unknown
+            ];
+          }
+          return [c, v] as [string, unknown];
+        });
+    }
+
     // remove existing writes for this task
     this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
       (w) => w[0] !== taskId
     );
 
     // save writes
-    for (const [c, v] of writesCopy) {
+    for (const [c, v] of writesToSave) {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
@@ -559,7 +595,8 @@ export class PregelLoop {
 
     if (this.durability !== "exit" && this.checkpointer != null) {
       this.checkpointerPromises.push(
-        this.checkpointer.putWrites(config, writesCopy, taskId)
+        // Use sanitized writes for checkpointer
+        this.checkpointer.putWrites(config, writesToSave, taskId)
       );
     }
 

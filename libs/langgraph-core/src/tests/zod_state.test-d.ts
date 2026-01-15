@@ -10,7 +10,7 @@ import {
   MessagesZodMeta,
   MessagesZodState,
 } from "../graph/messages_annotation.js";
-import type { Messages } from "../graph/message.js";
+import type { Messages } from "../graph/messages_reducer.js";
 import { StateGraph } from "../graph/state.js";
 import { START } from "../constants.js";
 import { registry } from "../graph/zod/zod-registry.js";

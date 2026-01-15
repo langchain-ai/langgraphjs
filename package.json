@@ -44,7 +44,8 @@
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",
-      "semver": "^7.0.0"
+      "semver": "^7.0.0",
+      "zod": "^4.3.5"
     },
     "onlyBuiltDependencies": [
       "@swc/core",

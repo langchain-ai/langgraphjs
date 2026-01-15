@@ -3,7 +3,7 @@
 import { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod/v3";
 import { Annotation } from "./annotation.js";
-import { Messages, messagesStateReducer } from "./message.js";
+import { Messages, messagesStateReducer } from "./messages_reducer.js";
 import { SchemaMeta, withLangGraph } from "./zod/meta.js";
 
 /**
