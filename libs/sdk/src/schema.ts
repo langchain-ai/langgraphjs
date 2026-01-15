@@ -190,7 +190,7 @@ export interface Interrupt<TValue = unknown> {
   ns?: string[];
 }
 
-export interface Thread<ValuesType = DefaultValues> {
+export interface Thread<ValuesType = DefaultValues, TInterruptValue = unknown> {
   /** The ID of the thread. */
   thread_id: string;
 
@@ -210,7 +210,13 @@ export interface Thread<ValuesType = DefaultValues> {
   values: ValuesType;
 
   /** Interrupts which were thrown in this thread */
-  interrupts: Record<string, Array<Interrupt>>;
+  interrupts: Record<string, Array<Interrupt<TInterruptValue>>>;
+
+  /** The config for the thread */
+  config?: Config;
+
+  /** The error for the thread (if status == "error") */
+  error?: Optional<string | Record<string, unknown>>;
 }
 
 export interface Cron {
@@ -222,6 +228,9 @@ export interface Cron {
 
   /** The ID of the thread */
   thread_id: Optional<string>;
+
+  /** What to do with the thread after the run completes. Only applicable for stateless crons. */
+  on_run_completed?: "delete" | "keep";
 
   /** The end date to stop running the cron. */
   end_time: Optional<string>;
@@ -275,14 +284,17 @@ export interface ThreadState<ValuesType = DefaultValues> {
   tasks: Array<ThreadTask>;
 }
 
-export interface ThreadTask {
+export interface ThreadTask<
+  ValuesType = DefaultValues,
+  TInterruptValue = unknown
+> {
   id: string;
   name: string;
   result?: unknown;
   error: Optional<string>;
-  interrupts: Array<Interrupt>;
+  interrupts: Array<Interrupt<TInterruptValue>>;
   checkpoint: Optional<Checkpoint>;
-  state: Optional<ThreadState>;
+  state: Optional<ThreadState<ValuesType>>;
 }
 
 export interface Run {

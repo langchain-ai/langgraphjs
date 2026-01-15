@@ -44,7 +44,7 @@ interface AgentState {
 const IS_MEMORY = true;
 
 beforeAll(async () => {
-  if (process.env.TURBO_HASH) {
+  if (process.env.CI) {
     server = spawn(
       "tsx",
       ["./tests/utils.server.mts", "-c", "./graphs/langgraph.json"],
@@ -103,6 +103,30 @@ describe("assistants", () => {
     );
   });
 
+  it("delete assistant and threads", async () => {
+    const graphId = "agent";
+    const config = { configurable: { model_name: "gpt" } };
+
+    const assistant = await client.assistants.create({
+      graphId,
+      config,
+      description: "foo",
+    });
+    const assistantId = assistant.assistant_id;
+
+    const metadata = { name: "test_thread", assistant_id: assistantId };
+    const thread = await client.threads.create({ metadata });
+    const threadId = thread.thread_id;
+
+    await client.assistants.delete(assistantId, { deleteThreads: true });
+    await expect(() => client.assistants.get(assistantId)).rejects.toThrow(
+      "HTTP 404: Assistant not found"
+    );
+    await expect(() => client.threads.get(threadId)).rejects.toThrow(
+      `HTTP 404: Thread with ID ${threadId} not found`
+    );
+  });
+
   it("schemas", { timeout: 30_000 }, async () => {
     const graphId = "agent";
     const config = { configurable: { model: "openai" } };
@@ -156,12 +180,12 @@ describe("assistants", () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },

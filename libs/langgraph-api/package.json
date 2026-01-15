@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "1.1.2",
+  "version": "1.1.11",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -52,10 +52,10 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/",
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-api",
-    "build:internal": "yarn clean && node scripts/build.mjs",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-api",
+    "build:internal": "pnpm clean && node scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts --dev",
-    "prepublish": "yarn build",
+    "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
@@ -64,7 +64,7 @@
   "dependencies": {
     "@babel/code-frame": "^7.26.2",
     "@hono/node-server": "^1.12.0",
-    "@hono/zod-validator": "^0.2.2",
+    "@hono/zod-validator": "^0.7.6",
     "@langchain/langgraph-ui": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@typescript/vfs": "^1.6.0",

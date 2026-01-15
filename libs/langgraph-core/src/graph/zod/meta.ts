@@ -163,7 +163,7 @@ export class SchemaMetaRegistry {
           InferInteropZodOutput<typeof channelSchema>
         >(meta.reducer.fn, meta.default);
       } else {
-        channels[key] = new LastValue();
+        channels[key] = new LastValue(meta?.default);
       }
     }
     return channels as InteropZodToStateDefinition<T>;

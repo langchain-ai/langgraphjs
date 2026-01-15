@@ -5,24 +5,26 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  BagTemplate,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
+  GetToolCallsType,
   RunCallbackMeta,
   GetConfigurableType,
-  UseStreamCustomOptions,
-  UseStreamCustom,
   UseStreamTransport,
+  UseStreamCustomOptions,
   CustomSubmitOptions,
-} from "./types.js";
-import type { Message } from "../types.messages.js";
+} from "../ui/types.js";
+import type { UseStreamCustom } from "./types.js";
+import { type Message } from "../types.messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { Interrupt } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
+import type { BagTemplate } from "../types.template.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -99,12 +101,7 @@ export class FetchStreamTransport<
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {
@@ -112,6 +109,7 @@ export function useStreamCustom<
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+  type ToolCallType = GetToolCallsType<StateType>;
 
   const [messageManager] = useState(() => new MessageTupleManager());
   const [stream] = useState(
@@ -140,7 +138,9 @@ export function useStreamCustom<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+    return Array.isArray(value[messagesKey])
+      ? (value[messagesKey] as Message[])
+      : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
@@ -244,9 +244,22 @@ export function useStreamCustom<
       return undefined;
     },
 
-    get messages() {
+    get messages(): Message<ToolCallType>[] {
       if (!stream.values) return [];
       return getMessages(stream.values);
+    },
+
+    get toolCalls() {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values);
+      return getToolCallsWithResults<ToolCallType>(msgs);
+    },
+
+    getToolCalls(message) {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values);
+      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
     },
   };
 }
