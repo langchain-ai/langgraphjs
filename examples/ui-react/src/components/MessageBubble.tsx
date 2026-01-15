@@ -41,12 +41,12 @@ export function MessageBubble({ message }: { message: Message }) {
     return null;
   }
 
-  if (message.type === "human") {
-    return <HumanBubble content={content} />;
-  }
-
   if (message.type === "system") {
     return <SystemBubble content={content} />;
+  }
+
+  if (message.type === "human") {
+    return <HumanBubble content={content} />;
   }
 
   return <AssistantBubble message={message} />;
