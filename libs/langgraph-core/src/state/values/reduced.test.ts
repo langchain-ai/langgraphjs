@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod/v4";
 import { ReducedValue } from "./reduced.js";
 import { UntrackedValue } from "./untracked.js";

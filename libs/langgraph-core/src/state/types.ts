@@ -143,8 +143,7 @@ export function isStandardJSONSchema<Input = unknown, Output = Input>(
     "~standard" in schema &&
     typeof schema["~standard"] === "object" &&
     schema["~standard"] !== null &&
-    "jsonSchema" in schema["~standard"] &&
-    typeof schema["~standard"].jsonSchema === "function"
+    "jsonSchema" in schema["~standard"]
   );
 }
 
