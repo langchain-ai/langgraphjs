@@ -235,7 +235,7 @@ export interface Cron {
   /** The end date to stop running the cron. */
   end_time: Optional<string>;
 
-  /** The schedule to run, cron format. */
+  /** The schedule to run, cron format. Schedules are interpreted in UTC. */
   schedule: string;
 
   /** The time the cron was created. */
