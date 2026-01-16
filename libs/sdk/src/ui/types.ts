@@ -1,5 +1,6 @@
-import type { Client, ClientConfig } from "../client.js";
+import type { InferInteropZodInput } from "@langchain/core/utils/types";
 
+import type { Client, ClientConfig } from "../client.js";
 import type { ThreadState, Config, Checkpoint, Metadata } from "../schema.js";
 import type {
   Command,
@@ -18,7 +19,7 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { DefaultToolCall, AIMessage } from "../types.messages.js";
+import type { DefaultToolCall, AIMessage, Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 
 // ============================================================================
@@ -64,16 +65,145 @@ export type ExtractAgentConfig<T> = T extends { "~agentTypes": infer Config }
     : never
   : never;
 
+// ============================================================================
+// Middleware State Extraction Helpers
+// ============================================================================
+// These types enable extracting state types from middleware arrays without
+// requiring the full langchain dependency.
+
 /**
- * Helper type to infer schema input type, supporting both Zod v3 and v4.
- * - Zod v4 uses `_zod.input` property
- * - Zod v3 uses `_input` property
+ * Minimal interface to structurally match AgentMiddleware from langchain.
+ * We can't import AgentMiddleware due to circular dependencies, so we match
+ * against its structure to extract type information.
  */
-type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
-  ? Args
-  : S extends { _input: infer Args }
-  ? Args
-  : never;
+export interface AgentMiddlewareLike<
+  TSchema = unknown,
+  TContextSchema = unknown,
+  TFullContext = unknown,
+  TTools = unknown
+> {
+  name: string;
+  stateSchema?: TSchema;
+  "~middlewareTypes"?: {
+    Schema: TSchema;
+    ContextSchema: TContextSchema;
+    FullContext: TFullContext;
+    Tools: TTools;
+  };
+}
+
+/**
+ * Helper type to extract state from a single middleware instance.
+ * Uses structural matching against AgentMiddleware to extract the state schema
+ * type parameter, similar to how langchain's InferMiddlewareState works.
+ */
+type InferMiddlewareState<T> =
+  // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema
+  T extends AgentMiddlewareLike<infer TSchema, unknown, unknown, unknown>
+    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      TSchema extends Record<string, any>
+      ? InferInteropZodInput<TSchema>
+      : // eslint-disable-next-line @typescript-eslint/ban-types
+        {}
+    : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
+    T extends { stateSchema: infer S }
+    ? InferInteropZodInput<S>
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {};
+
+/**
+ * Helper type to detect if a type is `any`.
+ * Uses the fact that `any` is both a subtype and supertype of all types.
+ */
+type IsAny<T> = 0 extends 1 & T ? true : false;
+
+/**
+ * Helper type to extract and merge states from an array of middleware.
+ * Recursively processes each middleware and intersects their state types.
+ *
+ * Handles both readonly and mutable arrays/tuples explicitly.
+ *
+ * @example
+ * ```ts
+ * type States = InferMiddlewareStatesFromArray<typeof middlewareArray>;
+ * // Returns intersection of all middleware state types
+ * ```
+ */
+export type InferMiddlewareStatesFromArray<T> =
+  // Guard against `any` type - any extends everything so would match first branch incorrectly
+  IsAny<T> extends true
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle undefined/null
+    T extends undefined | null
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle empty readonly array
+    T extends readonly []
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle empty mutable array
+    T extends []
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : // Handle readonly tuple [First, ...Rest]
+    T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
+    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+    : // Handle mutable tuple [First, ...Rest]
+    T extends [infer First, ...infer Rest extends unknown[]]
+    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+    : // Handle readonly array of union type
+    T extends readonly (infer U)[]
+    ? InferMiddlewareState<U>
+    : // Handle mutable array of union type
+    T extends (infer U)[]
+    ? InferMiddlewareState<U>
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {};
+
+/**
+ * Infer the complete merged state from an agent, including:
+ * - The agent's own state schema (via State)
+ * - All middleware states (via Middleware)
+ *
+ * This is the SDK equivalent of langchain's `InferAgentState` type.
+ *
+ * @example
+ * ```ts
+ * const agent = createAgent({
+ *   middleware: [todoListMiddleware()],
+ *   // ...
+ * });
+ *
+ * type State = InferAgentState<typeof agent>;
+ * // State includes { todos: Todo[], ... }
+ * ```
+ */
+/**
+ * Base agent state that all agents have by default.
+ * This includes the messages array which is fundamental to agent operation.
+ * The ToolCall type parameter allows proper typing of tool calls in messages.
+ */
+type BaseAgentState<ToolCall = DefaultToolCall> = {
+  messages: Message<ToolCall>[];
+};
+
+export type InferAgentState<T> = T extends { "~agentTypes": unknown }
+  ? ExtractAgentConfig<T> extends never
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : BaseAgentState<InferAgentToolCalls<T>> &
+        (ExtractAgentConfig<T>["State"] extends undefined
+          ? // eslint-disable-next-line @typescript-eslint/ban-types
+            {}
+          : InferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
+        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
+  : T extends { "~RunOutput": infer RunOutput }
+  ? RunOutput
+  : T extends { messages: unknown }
+  ? T
+  : // eslint-disable-next-line @typescript-eslint/ban-types
+    {};
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
@@ -87,7 +217,7 @@ type InferToolInput<T> = T extends {
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferSchemaInput<S>
+  ? InferInteropZodInput<S>
   : never;
 
 /**
