@@ -1,5 +1,5 @@
 import { describe, test, expectTypeOf } from "vitest";
-import { z } from "zod";
+import { z } from "zod/v4";
 import type { Message } from "../types.messages.js";
 import type {
   InferAgentState,

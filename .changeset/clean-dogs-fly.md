@@ -1,5 +1,4 @@
 ---
-"@examples/ui-react": patch
 "@langchain/langgraph-sdk": patch
 ---
 
