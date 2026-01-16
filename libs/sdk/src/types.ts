@@ -213,7 +213,7 @@ export interface RunsCreatePayload extends RunsInvokePayload {
 
 export interface CronsCreatePayload extends RunsCreatePayload {
   /**
-   * Schedule for running the Cron Job
+   * Schedule for running the Cron Job. Schedules are interpreted in UTC.
    */
   schedule: string;
 
