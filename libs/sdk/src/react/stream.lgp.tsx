@@ -196,6 +196,8 @@ export function useStreamLGP<
     () =>
       new StreamManager<StateType, Bag>(messageManager, {
         throttle: options.throttle ?? false,
+        subagentToolNames: options.subagentToolNames,
+        filterSubagentMessages: options.filterSubagentMessages,
       })
   );
 
@@ -716,6 +718,26 @@ export function useStreamLGP<
       }
 
       return undefined;
+    },
+
+    get subagents() {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagents();
+    },
+
+    get activeSubagents() {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getActiveSubagents();
+    },
+
+    getSubagent(toolCallId: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagent(toolCallId);
+    },
+
+    getSubagentsByType(type: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagentsByType(type);
     },
   };
 }

@@ -22,6 +22,7 @@ import type {
   SubmitOptions,
   CustomSubmitOptions,
   RunCallbackMeta,
+  SubagentExecution,
 } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
 import type { StreamEvent } from "../types.js";
@@ -40,6 +41,7 @@ export type {
   SubmitOptions,
   CustomSubmitOptions,
   RunCallbackMeta,
+  SubagentExecution,
 };
 
 export interface UseStream<
@@ -215,6 +217,77 @@ export interface UseStream<
       }) => boolean;
     }
   ) => Promise<void>;
+
+  /**
+   * All currently active and completed subagent executions.
+   * Keyed by tool call ID for easy lookup.
+   *
+   * Subagents are tracked when the AI invokes the "task" tool (or similar
+   * subagent-spawning tools). Multiple subagents can run concurrently when
+   * the AI calls multiple task tools in parallel.
+   *
+   * @example
+   * ```tsx
+   * // Iterate over all subagents
+   * for (const [id, subagent] of stream.subagents) {
+   *   console.log(`Subagent ${id}: ${subagent.status}`);
+   * }
+   * ```
+   */
+  subagents: Map<string, SubagentExecution<GetToolCallsType<StateType>>>;
+
+  /**
+   * Convenience: array of currently running subagents.
+   * Derived from `subagents` where status === "running".
+   *
+   * @example
+   * ```tsx
+   * {stream.activeSubagents.map((agent) => (
+   *   <div key={agent.id}>
+   *     <Loader2 className="animate-spin" />
+   *     {agent.toolCall.args.subagent_type}:
+   *     {agent.messages.filter(m => m.type === "ai").map(m => m.content).join("")}
+   *   </div>
+   * ))}
+   * ```
+   */
+  activeSubagents: SubagentExecution<GetToolCallsType<StateType>>[];
+
+  /**
+   * Get subagent execution info by tool call ID.
+   *
+   * @param toolCallId - The tool call ID that initiated the subagent.
+   * @returns The subagent execution, or undefined if not found.
+   *
+   * @example
+   * ```tsx
+   * const subagent = stream.getSubagent("call_abc123");
+   * if (subagent?.status === "running") {
+   *   // Show streaming content
+   * }
+   * ```
+   */
+  getSubagent(
+    toolCallId: string
+  ): SubagentExecution<GetToolCallsType<StateType>> | undefined;
+
+  /**
+   * Get all subagents of a specific type.
+   * Useful for filtering by subagent_type (e.g., "researcher", "analyst").
+   *
+   * @param type - The subagent_type to filter by.
+   * @returns Array of matching subagent executions.
+   *
+   * @example
+   * ```tsx
+   * // Get all research agents
+   * const researchers = stream.getSubagentsByType("researcher");
+   * console.log(`${researchers.length} research agents active`);
+   * ```
+   */
+  getSubagentsByType(
+    type: string
+  ): SubagentExecution<GetToolCallsType<StateType>>[];
 }
 
 export type UseStreamCustom<
@@ -230,6 +303,10 @@ export type UseStreamCustom<
   | "messages"
   | "toolCalls"
   | "getToolCalls"
+  | "subagents"
+  | "activeSubagents"
+  | "getSubagent"
+  | "getSubagentsByType"
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,

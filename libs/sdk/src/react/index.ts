@@ -1,6 +1,6 @@
 export { useStream } from "./stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
-export type { UseStream, UseStreamCustom } from "./types.js";
+export type { UseStream, UseStreamCustom, SubagentExecution } from "./types.js";
 export type {
   MessageMetadata,
   UseStreamOptions,
@@ -13,6 +13,9 @@ export type {
   IsAgentLike,
   ExtractAgentConfig,
   InferAgentToolCalls,
+  // Subagent types
+  SubagentToolCall,
+  SubagentStatus,
 } from "../ui/types.js";
 export type {
   ToolCallWithResult,
@@ -21,3 +24,10 @@ export type {
   ToolCallFromTool,
   ToolCallsFromTools,
 } from "../types.messages.js";
+export {
+  SubagentManager,
+  extractToolCallIdFromNamespace,
+  calculateDepthFromNamespace,
+  extractParentIdFromNamespace,
+  isSubagentNamespace,
+} from "../ui/subagents.js";

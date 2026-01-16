@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import z from "zod";
 import { tool, type ToolRuntime, createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
@@ -12,15 +12,22 @@ const model = new ChatOpenAI({
   model: "gpt-4o-mini",
 });
 
+const analyzeDataSchema = z.object({
+  dataSource: z
+    .enum(["sales", "inventory", "customers", "transactions"])
+    .describe("The data source to analyze"),
+  analysisType: z
+    .enum(["trends", "anomalies", "correlations", "summary"])
+    .describe("The type of analysis to perform"),
+});
+
 /**
  * Data analysis tool - demonstrates custom streaming events
  * Emits progress updates during execution using typed custom events
  */
 const analyzeDataTool = tool(
-  async (
-    { dataSource, analysisType },
-    config: ToolRuntime
-  ): Promise<string> => {
+  async (input: { dataSource: string; analysisType: string }, config: ToolRuntime): Promise<string> => {
+    const { dataSource, analysisType } = input;
     const steps = [
       { step: "connecting", message: `Connecting to ${dataSource}...` },
       { step: "fetching", message: "Fetching data records..." },
@@ -89,22 +96,23 @@ const analyzeDataTool = tool(
     name: "analyze_data",
     description:
       "Analyze data from various sources. Streams progress updates during analysis.",
-    schema: z.object({
-      dataSource: z
-        .enum(["sales", "inventory", "customers", "transactions"])
-        .describe("The data source to analyze"),
-      analysisType: z
-        .enum(["trends", "anomalies", "correlations", "summary"])
-        .describe("The type of analysis to perform"),
-    }),
+    schema: analyzeDataSchema,
   }
 );
+
+const processFileSchema = z.object({
+  filename: z.string().describe("The filename to process"),
+  operation: z
+    .enum(["read", "compress", "validate", "transform"])
+    .describe("The operation to perform"),
+});
 
 /**
  * File processing tool - demonstrates status updates
  */
 const processFileTool = tool(
-  async ({ filename, operation }, config: ToolRuntime) => {
+  async (input: { filename: string; operation: string }, config: ToolRuntime) => {
+    const { filename, operation } = input;
     /**
      * Use a unique ID for this file operation to make it persistent
      */
@@ -142,12 +150,7 @@ const processFileTool = tool(
   {
     name: "process_file",
     description: "Process a file with various operations",
-    schema: z.object({
-      filename: z.string().describe("The filename to process"),
-      operation: z
-        .enum(["read", "compress", "validate", "transform"])
-        .describe("The operation to perform"),
-    }),
+    schema: processFileSchema,
   }
 );
 

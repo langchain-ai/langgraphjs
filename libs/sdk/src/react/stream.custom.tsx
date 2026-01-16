@@ -116,6 +116,8 @@ export function useStreamCustom<
     () =>
       new StreamManager<StateType, Bag>(messageManager, {
         throttle: options.throttle ?? false,
+        subagentToolNames: options.subagentToolNames,
+        filterSubagentMessages: options.filterSubagentMessages,
       })
   );
 
@@ -260,6 +262,22 @@ export function useStreamCustom<
       const msgs = getMessages(stream.values);
       const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
       return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+    },
+
+    get subagents() {
+      return stream.getSubagents();
+    },
+
+    get activeSubagents() {
+      return stream.getActiveSubagents();
+    },
+
+    getSubagent(toolCallId: string) {
+      return stream.getSubagent(toolCallId);
+    },
+
+    getSubagentsByType(type: string) {
+      return stream.getSubagentsByType(type);
     },
   };
 }
