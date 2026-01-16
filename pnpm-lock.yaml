@@ -762,6 +762,9 @@ importers:
       '@langchain/openai':
         specifier: ^1.2.2
         version: 1.2.2(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(ws@8.19.0)
+      deepagents:
+        specifier: ^1.4.2
+        version: 1.4.2(openai@6.15.0(ws@8.19.0)(zod@4.3.5))(zod-to-json-schema@3.25.1(zod@4.3.5))
       langchain:
         specifier: ^1.2.10
         version: 1.2.10(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(openai@6.15.0(ws@8.19.0)(zod@4.3.5))(zod-to-json-schema@3.25.1(zod@4.3.5))
@@ -816,7 +819,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^1.12.0
-        version: 1.19.8(hono@4.11.3)
+        version: 1.19.8(hono@4.11.4)
       '@langchain/core':
         specifier: ^1.0.1
         version: 1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
@@ -831,7 +834,7 @@ importers:
         version: 1.2.1(@langchain/core@1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(ws@8.19.0)
       hono:
         specifier: ^4.8.2
-        version: 4.11.3
+        version: 4.11.4
       react:
         specifier: ^19.0.0
         version: 19.2.3
@@ -1498,10 +1501,10 @@ importers:
         version: 7.27.1
       '@hono/node-server':
         specifier: ^1.12.0
-        version: 1.19.8(hono@4.11.3)
+        version: 1.19.8(hono@4.11.4)
       '@hono/zod-validator':
         specifier: ^0.7.6
-        version: 0.7.6(hono@4.11.3)(zod@4.3.5)
+        version: 0.7.6(hono@4.11.4)(zod@4.3.5)
       '@langchain/langgraph-ui':
         specifier: workspace:*
         version: link:../langgraph-ui
@@ -1522,7 +1525,7 @@ importers:
         version: 4.0.0
       hono:
         specifier: ^4.5.4
-        version: 4.11.3
+        version: 4.11.4
       langsmith:
         specifier: ^0.3.33
         version: 0.3.87(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
@@ -2184,7 +2187,7 @@ importers:
         version: 4.7.0(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       hono:
         specifier: ^4.8.2
-        version: 4.11.3
+        version: 4.11.4
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0
@@ -2872,6 +2875,17 @@ packages:
 
   '@langchain/langgraph@1.0.13':
     resolution: {integrity: sha512-V+T9xr9xd1raHBwFV43Wie+af0FjWF6SozUbe3nn9wlURhUlWE/8G2d6PXcSpN70Lxf6taPfLUy+C5GKq02Ctg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@langchain/core': ^1.0.1
+      zod: ^4.3.5
+      zod-to-json-schema: ^3.x
+    peerDependenciesMeta:
+      zod-to-json-schema:
+        optional: true
+
+  '@langchain/langgraph@1.0.15':
+    resolution: {integrity: sha512-l7/f255sPilanhyY+lbX+VDXQSnytFwJ4FVoEl4OBpjDoCHuDyHUL5yrb568apBSHgQA7aKsYac0mBEqIR5Bjg==}
     engines: {node: '>=18'}
     peerDependencies:
       '@langchain/core': ^1.0.1
@@ -4805,6 +4819,9 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
+  deepagents@1.4.2:
+    resolution: {integrity: sha512-dKA2Sjosa7rolFtU4Z0f0nxO3aIw0dwyRPJcMNB1+1bI8Ln1lcaWzIpp3PCfMP7E/CeezAVQwm9PKFRG0bPq7A==}
+
   deepmerge@4.3.1:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
     engines: {node: '>=0.10.0'}
@@ -5473,8 +5490,8 @@ packages:
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
 
-  hono@4.11.3:
-    resolution: {integrity: sha512-PmQi306+M/ct/m5s66Hrg+adPnkD5jiO6IjA7WhWw0gSBSo1EcRegwuI1deZ+wd5pzCGynCcn2DprnE4/yEV4w==}
+  hono@4.11.4:
+    resolution: {integrity: sha512-U7tt8JsyrxSRKspfhtLET79pU8K+tInj5QZXs1jSugO1Vq5dFj3kmZsRldo29mTBfcjDRVRXrEZ6LS63Cog9ZA==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -8221,13 +8238,13 @@ snapshots:
       protobufjs: 7.5.4
       yargs: 17.7.2
 
-  '@hono/node-server@1.19.8(hono@4.11.3)':
+  '@hono/node-server@1.19.8(hono@4.11.4)':
     dependencies:
-      hono: 4.11.3
+      hono: 4.11.4
 
-  '@hono/zod-validator@0.7.6(hono@4.11.3)(zod@4.3.5)':
+  '@hono/zod-validator@0.7.6(hono@4.11.4)(zod@4.3.5)':
     dependencies:
-      hono: 4.11.3
+      hono: 4.11.4
       zod: 4.3.5
 
   '@huggingface/jinja@0.2.2': {}
@@ -8372,6 +8389,12 @@ snapshots:
       '@langchain/core': 1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
       zod: 4.3.5
 
+  '@langchain/anthropic@1.3.7(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))':
+    dependencies:
+      '@anthropic-ai/sdk': 0.71.2(zod@4.3.5)
+      '@langchain/core': 1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
+      zod: 4.3.5
+
   '@langchain/classic@1.0.8(@langchain/core@1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(cheerio@1.1.2)(openai@6.15.0(ws@8.19.0)(zod@4.3.5))(typeorm@0.3.28(better-sqlite3@11.10.0)(mongodb@6.21.0)(pg@8.16.3)(redis@4.7.1))(ws@8.19.0)':
     dependencies:
       '@langchain/core': 1.1.12(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
@@ -8476,7 +8499,7 @@ snapshots:
     optionalDependencies:
       zod-to-json-schema: 3.25.1(zod@4.3.5)
 
-  '@langchain/langgraph@1.0.13(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(zod-to-json-schema@3.25.1(zod@4.3.5))(zod@4.3.5)':
+  '@langchain/langgraph@1.0.15(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(zod-to-json-schema@3.25.1(zod@4.3.5))(zod@4.3.5)':
     dependencies:
       '@langchain/core': 1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
       '@langchain/langgraph-checkpoint': link:libs/checkpoint
@@ -10560,6 +10583,23 @@ snapshots:
 
   deep-is@0.1.4: {}
 
+  deepagents@1.4.2(openai@6.15.0(ws@8.19.0)(zod@4.3.5))(zod-to-json-schema@3.25.1(zod@4.3.5)):
+    dependencies:
+      '@langchain/anthropic': 1.3.7(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))
+      '@langchain/core': 1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
+      '@langchain/langgraph': 1.0.15(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(zod-to-json-schema@3.25.1(zod@4.3.5))(zod@4.3.5)
+      fast-glob: 3.3.3
+      langchain: 1.2.10(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(openai@6.15.0(ws@8.19.0)(zod@4.3.5))(zod-to-json-schema@3.25.1(zod@4.3.5))
+      micromatch: 4.0.8
+      yaml: 2.8.2
+      zod: 4.3.5
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - '@opentelemetry/exporter-trace-otlp-proto'
+      - '@opentelemetry/sdk-trace-base'
+      - openai
+      - zod-to-json-schema
+
   deepmerge@4.3.1: {}
 
   default-browser-id@5.0.1: {}
@@ -11400,7 +11440,7 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  hono@4.11.3: {}
+  hono@4.11.4: {}
 
   hookable@5.5.3: {}
 
@@ -11735,7 +11775,7 @@ snapshots:
   langchain@1.2.10(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(openai@6.15.0(ws@8.19.0)(zod@4.3.5))(zod-to-json-schema@3.25.1(zod@4.3.5)):
     dependencies:
       '@langchain/core': 1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
-      '@langchain/langgraph': 1.0.13(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(zod-to-json-schema@3.25.1(zod@4.3.5))(zod@4.3.5)
+      '@langchain/langgraph': 1.0.15(@langchain/core@1.1.15(openai@6.15.0(ws@8.19.0)(zod@4.3.5)))(zod-to-json-schema@3.25.1(zod@4.3.5))(zod@4.3.5)
       '@langchain/langgraph-checkpoint': link:libs/checkpoint
       langsmith: 0.4.5(openai@6.15.0(ws@8.19.0)(zod@4.3.5))
       uuid: 10.0.0

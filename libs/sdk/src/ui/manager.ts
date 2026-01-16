@@ -15,6 +15,12 @@ import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import {
+  SubagentManager,
+  extractToolCallIdFromNamespace,
+  isSubagentNamespace,
+} from "./subagents.js";
+import type { SubagentExecution } from "./types.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
@@ -94,6 +100,65 @@ interface StreamManagerEventCallbacks<
   ) => void;
 }
 
+/**
+ * Options for StreamManager constructor.
+ */
+export interface StreamManagerOptions {
+  /**
+   * Throttle the stream updates.
+   * If a number is provided, updates are throttled to the given milliseconds.
+   * If `true`, updates are batched in a single macrotask.
+   * If `false`, updates are not throttled.
+   */
+  throttle: number | boolean;
+
+  /**
+   * Tool names that indicate subagent invocation.
+   *
+   * When an AI message contains tool calls with these names, they are
+   * automatically tracked as subagent executions. This enables the
+   * `subagents`, `activeSubagents`, `getSubagent()`, and `getSubagentsByType()`
+   * properties on the stream.
+   *
+   * @default ["task"]
+   *
+   * @example
+   * ```typescript
+   * // Track both "task" and "delegate" as subagent tools
+   * subagentToolNames: ["task", "delegate", "spawn_agent"]
+   * ```
+   */
+  subagentToolNames?: string[];
+
+  /**
+   * Filter out messages from subagent streams in the main messages array.
+   *
+   * When enabled, messages from subagraph executions (those with a `tools:` namespace)
+   * are excluded from `stream.messages`. Instead, these messages are tracked
+   * per-subagent and accessible via `stream.subagents.get(id).messages`.
+   *
+   * This is useful for deep agent architectures where you want to display
+   * the main conversation separately from subagent activity.
+   *
+   * @default false
+   *
+   * @example
+   * ```typescript
+   * const stream = useStream({
+   *   assistantId: "my-agent",
+   *   filterSubagentMessages: true,
+   * });
+   *
+   * // Main thread messages only (no subagent messages)
+   * stream.messages
+   *
+   * // Access subagent messages individually
+   * stream.subagents.get("call_xyz").messages
+   * ```
+   */
+  filterSubagentMessages?: boolean;
+}
+
 export class StreamManager<
   StateType extends Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
@@ -102,9 +167,13 @@ export class StreamManager<
 
   private messages: MessageTupleManager;
 
+  private subagentManager: SubagentManager;
+
   private listeners = new Set<() => void>();
 
   private throttle: number | boolean;
+
+  private filterSubagentMessages: boolean;
 
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -114,15 +183,56 @@ export class StreamManager<
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
     error: unknown;
+    /** Version counter to force React re-renders on subagent changes */
+    version: number;
   };
 
-  constructor(
-    messages: MessageTupleManager,
-    options: { throttle: number | boolean }
-  ) {
+  constructor(messages: MessageTupleManager, options: StreamManagerOptions) {
     this.messages = messages;
-    this.state = { isLoading: false, values: null, error: undefined };
+    this.state = { isLoading: false, values: null, error: undefined, version: 0 };
     this.throttle = options.throttle;
+    this.filterSubagentMessages = options.filterSubagentMessages ?? false;
+    this.subagentManager = new SubagentManager({
+      subagentToolNames: options.subagentToolNames,
+      onSubagentChange: () => this.bumpVersion(),
+    });
+  }
+
+  /**
+   * Increment version counter to trigger React re-renders.
+   * Called when subagent state changes.
+   */
+  private bumpVersion = () => {
+    this.state = { ...this.state, version: this.state.version + 1 };
+    this.notifyListeners();
+  };
+
+  /**
+   * Get all subagents as a Map.
+   */
+  getSubagents(): Map<string, SubagentExecution> {
+    return this.subagentManager.getSubagents();
+  }
+
+  /**
+   * Get all currently running subagents.
+   */
+  getActiveSubagents(): SubagentExecution[] {
+    return this.subagentManager.getActiveSubagents();
+  }
+
+  /**
+   * Get a specific subagent by tool call ID.
+   */
+  getSubagent(toolCallId: string): SubagentExecution | undefined {
+    return this.subagentManager.getSubagent(toolCallId);
+  }
+
+  /**
+   * Get all subagents of a specific type.
+   */
+  getSubagentsByType(type: string): SubagentExecution[] {
+    return this.subagentManager.getSubagentsByType(type);
   }
 
   private setState = (newState: Partial<typeof this.state>) => {
@@ -286,6 +396,78 @@ export class StreamManager<
 
         if (this.matchEventType("updates", event, data)) {
           options.callbacks.onUpdateEvent?.(data, { namespace, mutate });
+
+          // Track subagent streaming updates from subgraph namespaces
+          // Mark the subagent as running when we receive updates
+          // The actual message content is handled via addMessageToSubagent
+          if (namespace && isSubagentNamespace(namespace)) {
+            const namespaceId = extractToolCallIdFromNamespace(namespace);
+            if (namespaceId && this.filterSubagentMessages) {
+              this.subagentManager.markRunningFromNamespace(
+                namespaceId,
+                namespace
+              );
+            }
+          }
+
+          // Also register subagents from main agent updates (tool_calls in messages)
+          // AND process tool results to complete subagents
+          // This is needed because tool_calls often appear complete in updates
+          // before they appear in the messages stream
+          if (!namespace || !isSubagentNamespace(namespace)) {
+            const updateData = data as Record<string, unknown>;
+            for (const nodeData of Object.values(updateData)) {
+              if (
+                nodeData &&
+                typeof nodeData === "object" &&
+                "messages" in nodeData
+              ) {
+                const { messages } = nodeData as { messages: unknown[] };
+                if (Array.isArray(messages)) {
+                  for (const msg of messages) {
+                    if (!msg || typeof msg !== "object") continue;
+                    const msgObj = msg as Record<string, unknown>;
+
+                    // Register subagents from AI messages with tool_calls
+                    if (
+                      msgObj.type === "ai" &&
+                      "tool_calls" in msgObj &&
+                      Array.isArray(msgObj.tool_calls)
+                    ) {
+                      this.subagentManager.registerFromToolCalls(
+                        msgObj.tool_calls as Array<{
+                          id?: string;
+                          name: string;
+                          args: Record<string, unknown> | string;
+                        }>
+                      );
+                    }
+
+                    // Complete subagents from tool messages (task results)
+                    if (
+                      msgObj.type === "tool" &&
+                      "tool_call_id" in msgObj &&
+                      typeof msgObj.tool_call_id === "string"
+                    ) {
+                      const content =
+                        typeof msgObj.content === "string"
+                          ? msgObj.content
+                          : JSON.stringify(msgObj.content);
+                      const status =
+                        "status" in msgObj && msgObj.status === "error"
+                          ? "error"
+                          : "success";
+                      this.subagentManager.processToolMessage(
+                        msgObj.tool_call_id,
+                        content,
+                        status
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
 
         if (this.matchEventType("custom", event, data)) {
@@ -304,20 +486,67 @@ export class StreamManager<
           options.callbacks.onDebugEvent?.(data, { namespace });
         }
 
-        if (event === "values") {
-          if (
-            data != null &&
+        // Handle values events - use startsWith to match both "values" and "values|tools:xxx"
+        if (event === "values" || event.startsWith("values|")) {
+          // Check if this is a subgraph values event (for namespace mapping)
+          if (namespace && isSubagentNamespace(namespace)) {
+            const namespaceId = extractToolCallIdFromNamespace(namespace);
+            if (namespaceId && this.filterSubagentMessages) {
+              // Try to establish namespace mapping from the initial human message
+              const messages = (data as Record<string, unknown>)
+                .messages as unknown[];
+              if (Array.isArray(messages) && messages.length > 0) {
+                const firstMsg = messages[0] as Record<string, unknown>;
+                if (
+                  firstMsg?.type === "human" &&
+                  typeof firstMsg?.content === "string"
+                ) {
+                  this.subagentManager.matchSubgraphToSubagent(
+                    namespaceId,
+                    firstMsg.content
+                  );
+                }
+              }
+            }
+          } else if (
+            data &&
             typeof data === "object" &&
             "__interrupt__" in data
           ) {
-            this.setStreamValues((prev) => ({ ...(prev ?? {}), ...data }));
+            const interruptData = data as Partial<StateType>;
+            this.setStreamValues(
+              (prev) => ({ ...prev, ...interruptData }) as StateType
+            );
           } else {
-            this.setStreamValues(data);
+            this.setStreamValues(data as StateType);
           }
         }
 
         if (this.matchEventType("messages", event, data)) {
           const [serialized, metadata] = data;
+
+          // Check if this message is from a subagent namespace
+          const rawCheckpointNs =
+            (metadata?.langgraph_checkpoint_ns as string | undefined) ||
+            (metadata?.checkpoint_ns as string | undefined);
+          const checkpointNs: string | undefined =
+            typeof rawCheckpointNs === "string" ? rawCheckpointNs : undefined;
+          const isFromSubagent = isSubagentNamespace(checkpointNs);
+          const toolCallId = isFromSubagent
+            ? extractToolCallIdFromNamespace(checkpointNs?.split("|"))
+            : undefined;
+
+          // If filtering is enabled and this is a subagent message,
+          // add it to the subagent's messages instead of the main stream
+          if (this.filterSubagentMessages && isFromSubagent && toolCallId) {
+            // Add to subagent's message list
+            this.subagentManager.addMessageToSubagent(
+              toolCallId,
+              serialized,
+              metadata
+            );
+            continue;
+          }
 
           const messageId = this.messages.add(serialized, metadata);
           if (!messageId) {
@@ -348,7 +577,36 @@ export class StreamManager<
                 messages.splice(index, 1);
               }
             } else {
-              messages[index] = toMessageDict(chunk);
+              const msgDict = toMessageDict(chunk);
+              messages[index] = msgDict;
+
+              // Track subagents from AI messages with tool calls (main agent only)
+              if (
+                !isFromSubagent &&
+                msgDict.type === "ai" &&
+                "tool_calls" in msgDict &&
+                Array.isArray(msgDict.tool_calls)
+              ) {
+                this.subagentManager.registerFromToolCalls(msgDict.tool_calls);
+              }
+
+              // Complete subagents when tool messages arrive (main agent only)
+              if (
+                !isFromSubagent &&
+                msgDict.type === "tool" &&
+                "tool_call_id" in msgDict
+              ) {
+                const tcId = msgDict.tool_call_id as string;
+                const content =
+                  typeof msgDict.content === "string"
+                    ? msgDict.content
+                    : JSON.stringify(msgDict.content);
+                const status =
+                  "status" in msgDict && msgDict.status === "error"
+                    ? "error"
+                    : "success";
+                this.subagentManager.processToolMessage(tcId, content, status);
+              }
             }
 
             return options.setMessages(values, messages);
@@ -443,5 +701,8 @@ export class StreamManager<
 
     // Clear any pending messages
     this.messages.clear();
+
+    // Clear subagent state
+    this.subagentManager.clear();
   };
 }

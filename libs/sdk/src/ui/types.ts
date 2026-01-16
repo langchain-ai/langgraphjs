@@ -22,6 +22,69 @@ import type {
 import type { DefaultToolCall, AIMessage, Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 
+/**
+ * Represents a tool call that initiated a subagent.
+ */
+export interface SubagentToolCall {
+  /** The tool call ID */
+  id: string;
+  /** The name of the tool (typically "task") */
+  name: string;
+  /** The arguments passed to the tool */
+  args: {
+    /** The task description for the subagent */
+    description?: string;
+    /** The type of subagent to use */
+    subagent_type?: string;
+    /** Additional custom arguments */
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * The execution status of a subagent.
+ */
+export type SubagentStatus = "pending" | "running" | "complete" | "error";
+
+/**
+ * Represents a single subagent execution.
+ * Tracks the lifecycle of a subagent from invocation to completion.
+ */
+export interface SubagentExecution<ToolCall = DefaultToolCall> {
+  /** Unique identifier (the tool call ID) */
+  id: string;
+
+  /** The tool call that invoked this subagent */
+  toolCall: SubagentToolCall;
+
+  /** Current execution status */
+  status: SubagentStatus;
+
+  /** Final result content (when complete) */
+  result: string | null;
+
+  /** Error message (if status === "error") */
+  error: string | null;
+
+  /** Namespace path for this subagent execution */
+  namespace: string[];
+
+  /** Messages accumulated during this subagent's execution */
+  messages: Message<ToolCall>[];
+
+  /** Tool call ID of parent subagent (for nested subagents) */
+  parentId: string | null;
+
+  /** Nesting depth (0 = called by main agent, 1 = called by subagent, etc.) */
+  depth: number;
+
+  /** Timing information */
+  startedAt: Date | null;
+
+  /** When the subagent completed */
+  completedAt: Date | null;
+}
+
 // ============================================================================
 // Agent Type Extraction Helpers
 // ============================================================================
@@ -602,6 +665,57 @@ export interface UseStreamOptions<
    * @default true
    */
   throttle?: number | boolean;
+
+  /**
+   * Tool names that indicate subagent invocation.
+   *
+   * When an AI message contains tool calls with these names, they are
+   * automatically tracked as subagent executions. This enables the
+   * `subagents`, `activeSubagents`, `getSubagent()`, and `getSubagentsByType()`
+   * properties on the stream.
+   *
+   * @default ["task"]
+   *
+   * @example
+   * ```typescript
+   * const stream = useStream({
+   *   assistantId: "my-agent",
+   *   // Track both "task" and "delegate" as subagent tools
+   *   subagentToolNames: ["task", "delegate", "spawn_agent"],
+   * });
+   *
+   * // Now stream.subagents will include executions from any of these tools
+   * ```
+   */
+  subagentToolNames?: string[];
+
+  /**
+   * Filter out messages from subagent streams in the main messages array.
+   *
+   * When enabled, messages from subgraph executions (those with a `tools:` namespace)
+   * are excluded from `stream.messages`. Instead, these messages are tracked
+   * per-subagent and accessible via `stream.subagents.get(id).messages`.
+   *
+   * This is useful for deep agent architectures where you want to display
+   * the main conversation separately from subagent activity.
+   *
+   * @default false
+   *
+   * @example
+   * ```typescript
+   * const stream = useStream({
+   *   assistantId: "my-agent",
+   *   filterSubagentMessages: true,
+   * });
+   *
+   * // Main thread messages only (no subagent messages)
+   * stream.messages
+   *
+   * // Access subagent messages individually
+   * stream.subagents.get("call_xyz").messages
+   * ```
+   */
+  filterSubagentMessages?: boolean;
 }
 
 interface RunMetadataStorage {
@@ -703,6 +817,8 @@ export type UseStreamCustomOptions<
   | "onStop"
   | "initialValues"
   | "throttle"
+  | "subagentToolNames"
+  | "filterSubagentMessages"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 export type CustomSubmitOptions<
