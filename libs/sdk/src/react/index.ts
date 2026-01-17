@@ -30,8 +30,6 @@ export type {
   MessageMetadata,
   UseStreamOptions,
   UseStreamCustomOptions,
-} from "./types.js";
-export type {
   UseStreamTransport,
   UseStreamThread,
   GetToolCallsType,

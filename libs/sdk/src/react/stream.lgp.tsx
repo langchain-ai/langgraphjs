@@ -577,7 +577,6 @@ export function useStreamLGP<
 
         initialValues: historyValues,
         callbacks: options,
-
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
           const newHistory = await history.mutate(threadId);
