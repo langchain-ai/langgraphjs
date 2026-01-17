@@ -83,7 +83,7 @@ describe.each([["global"], ["mocked"]])(
           headers: { "X-Api-Key": "custom-value" },
         });
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "custom-value",
@@ -109,7 +109,7 @@ describe.each([["global"], ["mocked"]])(
         });
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "test-api-key",
@@ -132,7 +132,7 @@ describe.each([["global"], ["mocked"]])(
         });
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "test-api-key",
@@ -141,7 +141,7 @@ describe.each([["global"], ["mocked"]])(
           })
         );
         expect(expectedFetchMock).not.toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-null": null,
@@ -161,7 +161,7 @@ describe.each([["global"], ["mocked"]])(
         await (client.threads as any).fetch("/test", { headers });
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "test-api-key",
@@ -187,7 +187,7 @@ describe.each([["global"], ["mocked"]])(
         await (client.threads as any).fetch("/test", { headers });
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "test-api-key",
@@ -213,7 +213,7 @@ describe.each([["global"], ["mocked"]])(
 
         expect(expectedFetchMock).toHaveBeenNthCalledWith(
           1,
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "env-api-key",
@@ -226,7 +226,7 @@ describe.each([["global"], ["mocked"]])(
 
         expect(expectedFetchMock).toHaveBeenNthCalledWith(
           2,
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "env-api-key",
@@ -249,7 +249,7 @@ describe.each([["global"], ["mocked"]])(
         await (client.threads as any).fetch("/test");
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.not.objectContaining({
               "x-api-key": expect.anything(),
@@ -274,7 +274,7 @@ describe.each([["global"], ["mocked"]])(
         await (client.threads as any).fetch("/test");
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
-          expect.any(URL),
+          expect.any(String),
           expect.objectContaining({
             headers: expect.objectContaining({
               "x-api-key": "explicit-api-key",
