@@ -339,7 +339,7 @@ class BaseClient {
       finalInit = await this.onRequest(url, init);
     }
 
-    const response = await this.asyncCaller.fetch(url, finalInit);
+    const response = await this.asyncCaller.fetch(url.toString(), finalInit);
 
     const body = (() => {
       if (response.status === 202 || response.status === 204) {
@@ -406,7 +406,7 @@ class BaseClient {
       }
 
       // Make the request
-      const response = await this.asyncCaller.fetch(url, init);
+      const response = await this.asyncCaller.fetch(url.toString(), init);
 
       // Call onInitialResponse callback for the first request
       if (!isReconnect && config.onInitialResponse) {
@@ -2010,7 +2010,7 @@ class UiClient extends BaseClient {
         });
         if (this.onRequest != null) init = await this.onRequest(url, init);
 
-        const response = await this.asyncCaller.fetch(url, init);
+        const response = await this.asyncCaller.fetch(url.toString(), init);
         return response.text();
       }
     );
