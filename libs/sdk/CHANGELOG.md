@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.5.5
+
+### Patch Changes
+
+- [#1893](https://github.com/langchain-ai/langgraphjs/pull/1893) [`98c0f26`](https://github.com/langchain-ai/langgraphjs/commit/98c0f26f4cc2c246359914704278ff5e3ae46a01) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): infer agent types in stream.values
+
+- [#1909](https://github.com/langchain-ai/langgraphjs/pull/1909) [`a3669be`](https://github.com/langchain-ai/langgraphjs/commit/a3669be176c5bca4b5bbcc6a6245882a684fb12f) Thanks [@dqbd](https://github.com/dqbd)! - Make sure we always pass URL as a string to fetch
+
 ## 1.5.4
 
 ### Patch Changes
