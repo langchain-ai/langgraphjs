@@ -116,7 +116,7 @@ jobs:
 
       - name: Publish to pkg.pr.new
         if: ${{ github.event_name == 'pull_request' }}
-        run: pnpm dlx pkg-pr-new publish
+        run: pnpm dlx pkg-pr-new publish './libs/*'
         continue-on-error: true
 
       - name: Upload build artifacts
