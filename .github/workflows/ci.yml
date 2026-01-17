@@ -114,6 +114,11 @@ jobs:
       - name: Create build archive
         run: tar -czf build-artifacts.tar.gz libs/*/dist libs/*/.turbo .turbo 2>/dev/null || tar -czf build-artifacts.tar.gz libs/*/dist
 
+      - name: Publish to pkg.pr.new
+        if: ${{ github.event_name == 'pull_request' }}
+        run: pnpm dlx pkg-pr-new publish './libs/*'
+        continue-on-error: true
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
         with:

@@ -24,6 +24,7 @@ import type {
   RunCallbackMeta,
 } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
+import type { StreamEvent } from "../types.js";
 
 // Re-export types from ui/types.ts
 export type {
@@ -205,7 +206,14 @@ export interface UseStream<
   joinStream: (
     runId: string,
     lastEventId?: string,
-    options?: { streamMode?: StreamMode | StreamMode[] }
+    options?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    }
   ) => Promise<void>;
 }
 

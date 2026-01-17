@@ -1,5 +1,112 @@
 # @langchain/langgraph
 
+## 1.1.0
+
+### Minor Changes
+
+- [#1852](https://github.com/langchain-ai/langgraphjs/pull/1852) [`2ea3128`](https://github.com/langchain-ai/langgraphjs/commit/2ea3128ac48e52c9a180a9eb9d978dd9067ac80e) Thanks [@hntrl](https://github.com/hntrl)! - feat: add type utilities for authoring graph nodes and conditional edges
+
+  New exported type utilities for improved TypeScript ergonomics:
+
+  - `ExtractStateType<Schema>` - Extract the State type from any supported schema (StateSchema, AnnotationRoot, or Zod object)
+  - `ExtractUpdateType<Schema>` - Extract the Update type (partial state for node returns) from any supported schema
+  - `GraphNode<Schema, Context?, Nodes?>` - Strongly-typed utility for defining graph node functions with full inference for state, runtime context, and optional type-safe routing via Command
+  - `ConditionalEdgeRouter<Schema, Context?, Nodes?>` - Type for conditional edge routing functions passed to `addConditionalEdges`
+
+  These utilities enable defining nodes outside the StateGraph builder while maintaining full type safety:
+
+  ```typescript
+  import {
+    StateSchema,
+    GraphNode,
+    ConditionalEdgeRouter,
+    END,
+  } from "@langchain/langgraph";
+  import { z } from "zod/v4";
+
+  const AgentState = new StateSchema({
+    messages: MessagesValue,
+    step: z.number().default(0),
+  });
+
+  interface MyContext {
+    userId: string;
+  }
+
+  // Fully typed node function
+  const processNode: GraphNode<typeof AgentState> = (state, runtime) => {
+    return { step: state.step + 1 };
+  };
+
+  // Type-safe routing with Command
+  const routerNode: GraphNode<
+    typeof AgentState,
+    MyContext,
+    "agent" | "tool"
+  > = (state) => new Command({ goto: state.needsTool ? "tool" : "agent" });
+
+  // Conditional edge router
+  const router: ConditionalEdgeRouter<
+    typeof AgentState,
+    MyContext,
+    "continue"
+  > = (state) => (state.done ? END : "continue");
+  ```
+
+- [#1842](https://github.com/langchain-ai/langgraphjs/pull/1842) [`7ddf854`](https://github.com/langchain-ai/langgraphjs/commit/7ddf85468f01b8cfea62b1c513e04bd578580444) Thanks [@hntrl](https://github.com/hntrl)! - feat: `StateSchema`, `ReducedValue`, and `UntrackedValue`
+
+  **StateSchema** provides a new API for defining graph state that works with any [Standard Schema](https://github.com/standard-schema/standard-schema)-compliant validation library (Zod, Valibot, ArkType, and others).
+
+  ### Standard Schema support
+
+  LangGraph now supports [Standard Schema](https://standardschema.dev/), an open specification implemented by Zod 4, Valibot, ArkType, and other schema libraries. This means you can use your preferred validation library without lock-in:
+
+  ```typescript
+  import { z } from "zod"; // or valibot, arktype, etc.
+  import {
+    StateSchema,
+    ReducedValue,
+    MessagesValue,
+  } from "@langchain/langgraph";
+
+  const AgentState = new StateSchema({
+    messages: MessagesValue,
+    currentStep: z.string(),
+    count: z.number().default(0),
+    history: new ReducedValue(
+      z.array(z.string()).default(() => []),
+      {
+        inputSchema: z.string(),
+        reducer: (current, next) => [...current, next],
+      }
+    ),
+  });
+
+  // Type-safe state and update types
+  type State = typeof AgentState.State;
+  type Update = typeof AgentState.Update;
+
+  const graph = new StateGraph(AgentState)
+    .addNode("agent", (state) => ({ count: state.count + 1 }))
+    .addEdge(START, "agent")
+    .addEdge("agent", END)
+    .compile();
+  ```
+
+  ### New exports
+
+  - **`StateSchema`** - Define state with any Standard Schema-compliant library
+  - **`ReducedValue`** - Define fields with custom reducer functions for accumulating state
+  - **`UntrackedValue`** - Define transient fields that are not persisted to checkpoints
+  - **`MessagesValue`** - Pre-built message list channel with add/remove semantics
+
+### Patch Changes
+
+- [#1901](https://github.com/langchain-ai/langgraphjs/pull/1901) [`6d8f3ed`](https://github.com/langchain-ai/langgraphjs/commit/6d8f3ed4c879419d941a25ee48bed0d5545add4d) Thanks [@dqbd](https://github.com/dqbd)! - Perform reference equality check on reducers before throwing "Channel already exists with a different type" error
+
+- Updated dependencies [[`5629d46`](https://github.com/langchain-ai/langgraphjs/commit/5629d46362509f506ab455389e600eff7d9b34bb), [`78743d6`](https://github.com/langchain-ai/langgraphjs/commit/78743d6bca96945d574713ffefe32b04a4c04d29)]:
+  - @langchain/langgraph-sdk@1.5.4
+
 ## 1.0.15
 
 ### Patch Changes

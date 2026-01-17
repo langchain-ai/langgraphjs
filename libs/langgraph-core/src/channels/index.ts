@@ -17,3 +17,4 @@ export {
   NamedBarrierValueAfterFinish,
 } from "./named_barrier_value.js";
 export { Topic } from "./topic.js";
+export { UntrackedValueChannel } from "./untracked_value.js";
