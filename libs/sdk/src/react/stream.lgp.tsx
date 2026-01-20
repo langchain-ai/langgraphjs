@@ -294,6 +294,28 @@ export function useStreamLGP<
     options.initialValues ??
     ({} as StateType);
 
+  // Reconstruct subagents from history when:
+  // 1. History is loaded (not loading, has data)
+  // 2. No active stream is running
+  // 3. Subagent filtering is enabled (otherwise subagents aren't tracked)
+  // This ensures subagent visualization persists after page refresh or stream completion
+  const historyMessages = getMessages(historyValues);
+  const shouldReconstructSubagents =
+    options.filterSubagentMessages &&
+    !stream.isLoading &&
+    !history.isLoading &&
+    historyMessages.length > 0;
+
+  useEffect(() => {
+    if (shouldReconstructSubagents) {
+      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
+      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+    }
+    // We intentionally only run this when shouldReconstructSubagents changes
+    // to avoid unnecessary reconstructions during streaming
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldReconstructSubagents, historyMessages.length]);
+
   const historyError = (() => {
     const error = branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;

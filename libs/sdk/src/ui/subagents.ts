@@ -1,5 +1,9 @@
 import type { Message, DefaultToolCall } from "../types.messages.js";
-import type { SubagentExecution, SubagentToolCall } from "./types.js";
+import type {
+  SubagentExecution,
+  SubagentToolCall,
+  SubagentStatus,
+} from "./types.js";
 import { MessageTupleManager, toMessageDict } from "./messages.js";
 
 /**
@@ -676,5 +680,134 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       content,
       status === "success" ? "complete" : "error"
     );
+  }
+
+  /**
+   * Reconstruct subagent state from historical messages.
+   *
+   * This method parses an array of messages (typically from thread history)
+   * to identify subagent executions and their results. It's used to restore
+   * subagent state after:
+   * - Page refresh (when stream has already completed)
+   * - Loading thread history
+   * - Navigating between threads
+   *
+   * The reconstruction process:
+   * 1. Find AI messages with tool calls matching subagent tool names
+   * 2. Find corresponding tool messages with results
+   * 3. Create SubagentExecution entries with "complete" status
+   *
+   * Note: Internal subagent messages (their streaming conversation) are not
+   * reconstructed since they are not persisted in the main thread state.
+   *
+   * @param messages - Array of messages from thread history
+   * @param options - Optional configuration
+   * @param options.skipIfPopulated - If true, skip reconstruction if subagents already exist
+   */
+  reconstructFromMessages(
+    messages: Message<DefaultToolCall>[],
+    options?: { skipIfPopulated?: boolean }
+  ): void {
+    // Skip if we already have subagents (from active streaming)
+    if (options?.skipIfPopulated && this.subagents.size > 0) {
+      return;
+    }
+
+    // Build a map of tool_call_id -> tool message content for quick lookup
+    const toolResults = new Map<
+      string,
+      { content: string; status: "success" | "error" }
+    >();
+
+    for (const message of messages) {
+      if (message.type === "tool" && "tool_call_id" in message) {
+        const toolCallId = message.tool_call_id as string;
+        const content =
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content);
+        const status =
+          "status" in message && message.status === "error"
+            ? "error"
+            : "success";
+        toolResults.set(toolCallId, { content, status });
+      }
+    }
+
+    // Find AI messages with subagent tool calls
+    let hasChanges = false;
+
+    for (const message of messages) {
+      if (
+        message.type !== "ai" ||
+        !("tool_calls" in message) ||
+        !Array.isArray(message.tool_calls)
+      ) {
+        continue;
+      }
+
+      for (const toolCall of message.tool_calls) {
+        if (!toolCall.id) continue;
+        if (!this.isSubagentToolCall(toolCall.name)) continue;
+
+        // Skip if we already have this subagent
+        if (this.subagents.has(toolCall.id)) continue;
+
+        // Parse args
+        const parsedArgs = this.parseArgs(toolCall.args);
+
+        // Skip if no valid subagent_type
+        if (!this.isValidSubagentType(parsedArgs.subagent_type)) continue;
+
+        // Create the subagent tool call
+        const subagentToolCall: SubagentToolCall = {
+          id: toolCall.id,
+          name: toolCall.name,
+          args: {
+            description: parsedArgs.description as string | undefined,
+            subagent_type: parsedArgs.subagent_type as string | undefined,
+            ...parsedArgs,
+          },
+        };
+
+        // Check if we have a result for this tool call
+        const toolResult = toolResults.get(toolCall.id);
+        const isComplete = !!toolResult;
+        const status: SubagentStatus = isComplete
+          ? toolResult.status === "error"
+            ? "error"
+            : "complete"
+          : "running";
+
+        // Create the subagent execution
+        const execution: SubagentExecution<ToolCall> = {
+          id: toolCall.id,
+          toolCall: subagentToolCall,
+          status,
+          result: isComplete && status === "complete" ? toolResult.content : null,
+          error: isComplete && status === "error" ? toolResult.content : null,
+          namespace: [],
+          messages: [], // Internal messages are not available from history
+          parentId: null,
+          depth: 0,
+          startedAt: null,
+          completedAt: isComplete ? new Date() : null,
+        };
+
+        this.subagents.set(toolCall.id, execution);
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      this.onSubagentChange?.();
+    }
+  }
+
+  /**
+   * Check if any subagents are currently tracked.
+   */
+  hasSubagents(): boolean {
+    return this.subagents.size > 0;
   }
 }

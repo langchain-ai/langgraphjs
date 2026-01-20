@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, useEffect } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
-import { AlertCircle, Plane, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, Plane, Sparkles } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import type { Message } from "@langchain/langgraph-sdk";
 
@@ -9,8 +9,8 @@ import { LoadingIndicator } from "../../components/Loading";
 import { EmptyState } from "../../components/States";
 import { MessageBubble } from "../../components/MessageBubble";
 import { MessageInput } from "../../components/MessageInput";
+import { SubagentPipeline } from "./components/SubagentPipeline";
 
-import { SubagentCard } from "./components/SubagentCard";
 import type { agent } from "./agent";
 
 const VACATION_SUGGESTIONS = [
@@ -36,84 +36,34 @@ function hasContent(message: Message): boolean {
 }
 
 /**
- * Pipeline visualization showing all subagents
+ * Custom hook to manage thread ID in URL search params
  */
-function SubagentPipeline({
-  subagents,
-  isLoading,
-}: {
-  subagents: Map<string, any>;
-  isLoading: boolean;
-}) {
-  // Sort subagents by type for consistent display order
-  const sortOrder = ["weather-scout", "experience-curator", "budget-optimizer"];
-  const sortedSubagents = useMemo(() => {
-    return [...subagents.values()].sort((a, b) => {
-      const aType = a.toolCall?.args?.subagent_type || "";
-      const bType = b.toolCall?.args?.subagent_type || "";
-      const aIndex = sortOrder.indexOf(aType);
-      const bIndex = sortOrder.indexOf(bType);
-      // Put unknown types at the end
-      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-    });
-  }, [subagents]);
+function useThreadIdParam() {
+  const [threadId, setThreadId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("threadId");
+  });
 
-  if (sortedSubagents.length === 0) {
-    return null;
-  }
+  const updateThreadId = useCallback((newThreadId: string | null) => {
+    setThreadId(newThreadId);
 
-  const completedCount = sortedSubagents.filter(
-    (s) => s.status === "complete"
-  ).length;
-  const totalCount = sortedSubagents.length;
+    const url = new URL(window.location.href);
+    if (newThreadId == null) {
+      url.searchParams.delete("threadId");
+    } else {
+      url.searchParams.set("threadId", newThreadId);
+    }
+    window.history.replaceState({}, "", url.toString());
+  }, []);
 
-  return (
-    <div className="mb-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-brand-accent/20 flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-brand-accent" />
-          </div>
-          <div>
-            <h3 className="font-medium text-neutral-200">
-              Specialist Agents Working
-            </h3>
-            <p className="text-xs text-neutral-500">
-              {completedCount}/{totalCount} completed
-            </p>
-          </div>
-        </div>
-
-        {isLoading && (
-          <div className="flex items-center gap-2 text-brand-accent text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Agents working in parallel...</span>
-          </div>
-        )}
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-1.5 bg-neutral-800 rounded-full mb-4 overflow-hidden">
-        <div
-          className="h-full bg-linear-to-r from-sky-500 via-amber-500 to-emerald-500 transition-all duration-500"
-          style={{ width: `${(completedCount / totalCount) * 100}%` }}
-        />
-      </div>
-
-      {/* Subagent Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {sortedSubagents.map((subagent) => (
-          <SubagentCard key={subagent.id} subagent={subagent} />
-        ))}
-      </div>
-    </div>
-  );
+  return [threadId, updateThreadId] as const;
 }
 
 export function DeepAgentDemo() {
   const { scrollRef, contentRef } = useStickToBottom();
   const [pipelineShown, setPipelineShown] = useState(false);
+  const [threadId, onThreadId] = useThreadIdParam();
 
   // Use filterSubagentMessages to keep main messages clean
   // Subagent messages are accessible via stream.subagents.get(id).messages
@@ -121,6 +71,10 @@ export function DeepAgentDemo() {
     assistantId: "deepagent",
     apiUrl: "http://localhost:2024",
     filterSubagentMessages: true,
+    threadId,
+    onThreadId,
+    // Enable automatic stream reconnection after page refresh
+    reconnectOnMount: true,
   });
 
   const hasMessages = stream.messages.length > 0;

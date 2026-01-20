@@ -240,6 +240,33 @@ export class StreamManager<
     return this.subagentManager.getSubagentsByType(type);
   }
 
+  /**
+   * Reconstruct subagent state from historical messages.
+   *
+   * This method should be called when loading thread history to restore
+   * subagent visualization after:
+   * - Page refresh (when stream has already completed)
+   * - Loading thread history
+   * - Navigating between threads
+   *
+   * @param messages - Array of messages from thread history
+   * @param options - Optional configuration
+   * @param options.skipIfPopulated - If true, skip reconstruction if subagents already exist
+   */
+  reconstructSubagents(
+    messages: Message[],
+    options?: { skipIfPopulated?: boolean }
+  ): void {
+    this.subagentManager.reconstructFromMessages(messages, options);
+  }
+
+  /**
+   * Check if any subagents are currently tracked.
+   */
+  hasSubagents(): boolean {
+    return this.subagentManager.hasSubagents();
+  }
+
   private setState = (newState: Partial<typeof this.state>) => {
     this.state = { ...this.state, ...newState };
     this.notifyListeners();

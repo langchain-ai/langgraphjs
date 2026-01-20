@@ -152,6 +152,27 @@ export function useStreamCustom<
 
   const historyValues = options.initialValues ?? ({} as StateType);
 
+  // Reconstruct subagents from initialValues when:
+  // 1. Subagent filtering is enabled
+  // 2. Not currently streaming
+  // 3. initialValues has messages
+  // This ensures subagent visualization works with cached/persisted state
+  const historyMessages = getMessages(historyValues);
+  const shouldReconstructSubagents =
+    options.filterSubagentMessages &&
+    !stream.isLoading &&
+    historyMessages.length > 0;
+
+  useEffect(() => {
+    if (shouldReconstructSubagents) {
+      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
+      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+    }
+    // We intentionally only run this when shouldReconstructSubagents changes
+    // to avoid unnecessary reconstructions during streaming
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldReconstructSubagents, historyMessages.length]);
+
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
   const submit = async (

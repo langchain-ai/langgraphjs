@@ -1,6 +1,7 @@
 import { tool } from "langchain";
 import { z } from "zod/v3";
 import { createDeepAgent } from "deepagents";
+import { MemorySaver } from "@langchain/langgraph";
 
 // ============================================================================
 // Weather Scout Tools
@@ -318,8 +319,10 @@ const calculateTotalBudget = tool(
 // Create Deep Agent with Subagents
 // ============================================================================
 
+const checkpointer = new MemorySaver();
 export const agent = createDeepAgent({
   model: "gpt-5.2",
+  checkpointer,
   subagents: [
     {
       name: "weather-scout",
