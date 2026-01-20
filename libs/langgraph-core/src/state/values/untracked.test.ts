@@ -1,9 +1,39 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod/v4";
 import { UntrackedValue } from "./untracked.js";
 import { ReducedValue } from "./reduced.js";
 
 describe("UntrackedValue", () => {
+  describe("type inference", () => {
+    it("should infer ValueType from schema", () => {
+      const untracked = new UntrackedValue(z.string());
+      expectTypeOf(untracked).toHaveProperty("ValueType");
+      expectTypeOf<typeof untracked.ValueType>().toEqualTypeOf<string>();
+    });
+
+    it("should infer ValueType for complex schemas", () => {
+      const untracked = new UntrackedValue(
+        z.object({ name: z.string(), count: z.number() })
+      );
+      expectTypeOf<typeof untracked.ValueType>().toEqualTypeOf<{
+        name: string;
+        count: number;
+      }>();
+    });
+
+    it("should infer ValueType with optional schema", () => {
+      const untracked = new UntrackedValue(z.string().optional());
+      expectTypeOf<typeof untracked.ValueType>().toEqualTypeOf<
+        string | undefined
+      >();
+    });
+
+    it("should default to unknown when no schema provided", () => {
+      const untracked = new UntrackedValue();
+      expectTypeOf<typeof untracked.ValueType>().toEqualTypeOf<unknown>();
+    });
+  });
+
   it("should create with default guard=true", () => {
     const untracked = new UntrackedValue(z.string());
 
