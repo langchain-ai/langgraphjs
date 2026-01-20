@@ -189,7 +189,12 @@ export class StreamManager<
 
   constructor(messages: MessageTupleManager, options: StreamManagerOptions) {
     this.messages = messages;
-    this.state = { isLoading: false, values: null, error: undefined, version: 0 };
+    this.state = {
+      isLoading: false,
+      values: null,
+      error: undefined,
+      version: 0,
+    };
     this.throttle = options.throttle;
     this.filterSubagentMessages = options.filterSubagentMessages ?? false;
     this.subagentManager = new SubagentManager({
@@ -515,7 +520,7 @@ export class StreamManager<
           ) {
             const interruptData = data as Partial<StateType>;
             this.setStreamValues(
-              (prev) => ({ ...prev, ...interruptData }) as StateType
+              (prev) => ({ ...prev, ...interruptData } as StateType)
             );
           } else {
             this.setStreamValues(data as StateType);

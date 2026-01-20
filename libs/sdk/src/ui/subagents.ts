@@ -273,7 +273,6 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     return undefined;
   }
 
-
   /**
    * Check if a tool call is a subagent invocation.
    */

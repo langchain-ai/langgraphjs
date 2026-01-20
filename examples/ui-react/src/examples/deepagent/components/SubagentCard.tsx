@@ -120,7 +120,7 @@ const DEFAULT_CONFIG = {
  */
 function getSubagentTitle(type: string | undefined): string {
   if (!type) return "Specialist Agent";
-  
+
   // Convert kebab-case to Title Case
   return type
     .split("-")
@@ -155,19 +155,17 @@ function StatusIcon({
 /**
  * SubagentCard - Displays a single subagent's execution status and streaming content
  */
-export function SubagentCard({
-  subagent,
-}: {
-  subagent: SubagentExecution;
-}) {
+export function SubagentCard({ subagent }: { subagent: SubagentExecution }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const subagentType = subagent.toolCall?.args?.subagent_type;
-  const config = (subagentType && SUBAGENT_CONFIGS[subagentType]) || DEFAULT_CONFIG;
-  
+  const config =
+    (subagentType && SUBAGENT_CONFIGS[subagentType]) || DEFAULT_CONFIG;
+
   // Use configured title or generate from type
-  const title = config.title !== DEFAULT_CONFIG.title 
-    ? config.title 
-    : getSubagentTitle(subagentType);
+  const title =
+    config.title !== DEFAULT_CONFIG.title
+      ? config.title
+      : getSubagentTitle(subagentType);
 
   // Get streaming content from messages (same pattern as main stream)
   const streamingContent = useMemo(
@@ -184,9 +182,7 @@ export function SubagentCard({
 
   // Get display content
   const displayContent =
-    subagent.status === "complete"
-      ? subagent.result
-      : streamingContent;
+    subagent.status === "complete" ? subagent.result : streamingContent;
 
   // Get task description
   const taskDescription =
@@ -197,7 +193,11 @@ export function SubagentCard({
       className={`
         relative flex flex-col h-full rounded-2xl border-2 transition-all duration-300
         ${config.borderColor} ${config.bgColor}
-        ${subagent.status === "running" ? "ring-2 ring-offset-2 ring-offset-black ring-opacity-50" : ""}
+        ${
+          subagent.status === "running"
+            ? "ring-2 ring-offset-2 ring-offset-black ring-opacity-50"
+            : ""
+        }
       `}
       style={{
         ["--ring-color" as string]: config.accentColor.replace("text-", ""),
@@ -219,9 +219,7 @@ export function SubagentCard({
           {config.icon}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className={`font-semibold ${config.accentColor}`}>
-            {title}
-          </h3>
+          <h3 className={`font-semibold ${config.accentColor}`}>{title}</h3>
           <p className="text-xs text-neutral-500 truncate">{taskDescription}</p>
         </div>
         <StatusIcon status={subagent.status} accentColor={config.accentColor} />
@@ -267,7 +265,12 @@ export function SubagentCard({
           {subagent.completedAt && subagent.startedAt ? (
             <span>
               Completed in{" "}
-              {((subagent.completedAt.getTime() - subagent.startedAt.getTime()) / 1000).toFixed(1)}s
+              {(
+                (subagent.completedAt.getTime() -
+                  subagent.startedAt.getTime()) /
+                1000
+              ).toFixed(1)}
+              s
             </span>
           ) : subagent.startedAt ? (
             <span>Started at {subagent.startedAt.toLocaleTimeString()}</span>

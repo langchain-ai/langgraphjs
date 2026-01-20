@@ -10,7 +10,9 @@ const getWeatherForecast = tool(
   async ({ location, days }) => {
     // Use Open-Meteo geocoding API to get coordinates
     const geoResponse = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        location
+      )}&count=1`
     );
     const geoData = await geoResponse.json();
 
@@ -39,16 +41,13 @@ const getWeatherForecast = tool(
       95: "⛈️ Thunderstorm",
     };
 
-    const forecast = weatherData.daily.time.map(
-      (date: string, i: number) => ({
-        date,
-        high: `${weatherData.daily.temperature_2m_max[i]}°C`,
-        low: `${weatherData.daily.temperature_2m_min[i]}°C`,
-        precipitation: `${weatherData.daily.precipitation_probability_max[i]}%`,
-        condition:
-          weatherCodes[weatherData.daily.weather_code[i]] || "Unknown",
-      })
-    );
+    const forecast = weatherData.daily.time.map((date: string, i: number) => ({
+      date,
+      high: `${weatherData.daily.temperature_2m_max[i]}°C`,
+      low: `${weatherData.daily.temperature_2m_min[i]}°C`,
+      precipitation: `${weatherData.daily.precipitation_probability_max[i]}%`,
+      condition: weatherCodes[weatherData.daily.weather_code[i]] || "Unknown",
+    }));
 
     return JSON.stringify({
       location: `${name}, ${country}`,
@@ -61,7 +60,12 @@ const getWeatherForecast = tool(
     description: "Get weather forecast for a location for the next N days",
     schema: z.object({
       location: z.string().describe("City or location name"),
-      days: z.number().min(1).max(14).default(7).describe("Number of forecast days"),
+      days: z
+        .number()
+        .min(1)
+        .max(14)
+        .default(7)
+        .describe("Number of forecast days"),
     }),
   }
 );
@@ -69,7 +73,10 @@ const getWeatherForecast = tool(
 const getBestTravelSeason = tool(
   async ({ destination }) => {
     // Simulate seasonal data (in real app, would query a travel API)
-    const seasons: Record<string, { best: string; avoid: string; tip: string }> = {
+    const seasons: Record<
+      string,
+      { best: string; avoid: string; tip: string }
+    > = {
       default: {
         best: "Spring (Apr-May) and Fall (Sep-Oct)",
         avoid: "Peak summer crowds",
@@ -103,7 +110,9 @@ const searchAttractions = tool(
   async ({ location, category }) => {
     // Use Open-Meteo geocoding to get location name
     const geoResponse = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        location
+      )}&count=1`
     );
     const geoData = await geoResponse.json();
 
@@ -131,7 +140,14 @@ const searchAttractions = tool(
     schema: z.object({
       location: z.string().describe("City or destination"),
       category: z
-        .enum(["all", "museums", "nature", "cultural", "restaurants", "nightlife"])
+        .enum([
+          "all",
+          "museums",
+          "nature",
+          "cultural",
+          "restaurants",
+          "nightlife",
+        ])
         .default("all")
         .describe("Category of attractions"),
     }),
@@ -162,7 +178,9 @@ const getLocalEvents = tool(
     description: "Find local events and activities happening during your visit",
     schema: z.object({
       location: z.string().describe("City or destination"),
-      dateRange: z.string().describe("Date range for events (e.g., 'Dec 15-22')"),
+      dateRange: z
+        .string()
+        .describe("Date range for events (e.g., 'Dec 15-22')"),
     }),
   }
 );
@@ -228,12 +246,21 @@ const estimateAccommodation = tool(
       averagePerNight: `$${avgPrice}`,
       totalEstimate: `$${totalCost}`,
       recommendations: [
-        { name: `${style === "luxury" ? "Grand" : "Cozy"} ${location} Hotel`, price: `$${avgPrice}`, rating: "4.5★" },
-        { name: `${location} ${style === "budget" ? "Hostel" : "Suites"}`, price: `$${avgPrice - 20}`, rating: "4.3★" },
+        {
+          name: `${style === "luxury" ? "Grand" : "Cozy"} ${location} Hotel`,
+          price: `$${avgPrice}`,
+          rating: "4.5★",
+        },
+        {
+          name: `${location} ${style === "budget" ? "Hostel" : "Suites"}`,
+          price: `$${avgPrice - 20}`,
+          rating: "4.3★",
+        },
       ],
-      tip: style === "budget"
-        ? "Consider hostels or Airbnb for even better rates!"
-        : "Book directly with hotels for potential upgrades",
+      tip:
+        style === "budget"
+          ? "Consider hostels or Airbnb for even better rates!"
+          : "Book directly with hotels for potential upgrades",
     });
   },
   {
@@ -242,7 +269,10 @@ const estimateAccommodation = tool(
     schema: z.object({
       location: z.string().describe("City or destination"),
       nights: z.number().min(1).describe("Number of nights"),
-      style: z.enum(["budget", "midrange", "luxury"]).default("midrange").describe("Accommodation style"),
+      style: z
+        .enum(["budget", "midrange", "luxury"])
+        .default("midrange")
+        .describe("Accommodation style"),
     }),
   }
 );

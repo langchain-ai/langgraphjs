@@ -240,24 +240,13 @@ export function DeepAgentDemo() {
                           Deep Agent Todos
                         </h4>
                         <p className="text-xs text-neutral-500">
-                          {todos.length} active
+                          {stream.values.todos.length} active
                         </p>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {todos.map((todo, idx) => {
-                      const todoText =
-                        typeof todo === "string"
-                          ? todo
-                          : todo?.title ??
-                            todo?.text ??
-                            todo?.name ??
-                            JSON.stringify(todo);
-                      const todoStatus =
-                        typeof todo === "object" && todo != null
-                          ? todo.status ?? (todo.done ? "done" : undefined)
-                          : undefined;
+                    {stream.values.todos.map((todo, idx) => {
                       return (
                         <div
                           key={`todo-${idx}`}
@@ -265,12 +254,10 @@ export function DeepAgentDemo() {
                         >
                           <div className="mt-1 h-2 w-2 rounded-full bg-brand-accent/70" />
                           <div className="flex-1 text-neutral-200">
-                            <div>{todoText}</div>
-                            {todoStatus && (
-                              <div className="text-xs text-neutral-500 mt-1">
-                                Status: {String(todoStatus)}
-                              </div>
-                            )}
+                            <div>{todo.content}</div>
+                            <div className="text-xs text-neutral-500 mt-1">
+                              Status: {todo.status}
+                            </div>
                           </div>
                         </div>
                       );
