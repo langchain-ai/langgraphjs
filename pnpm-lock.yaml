@@ -1652,7 +1652,7 @@ importers:
         version: 0.1.11
       tar:
         specifier: ^7.4.3
-        version: 7.5.2
+        version: 7.5.3
       winston:
         specifier: ^3.17.0
         version: 3.19.0
@@ -7088,8 +7088,8 @@ packages:
   tar-stream@3.1.7:
     resolution: {integrity: sha512-qJj60CXt7IU1Ffyc3NJMjh6EkuCFej46zUqJ4J7pqYlThyd9bO0XBTmcOIhSzZJVWfsLks0+nle/j538YAW9RQ==}
 
-  tar@7.5.2:
-    resolution: {integrity: sha512-7NyxrTE4Anh8km8iEy7o0QYPs+0JKBTj5ZaqHg6B39erLg0qYXN3BijtShwbsNSvQ+LN75+KV+C4QR/f6Gwnpg==}
+  tar@7.5.3:
+    resolution: {integrity: sha512-ENg5JUHUm2rDD7IvKNFGzyElLXNjachNLp6RaGf4+JOgxXHkqA+gq81ZAMCUmtMtqBsoU62lcp6S27g1LCYGGQ==}
     engines: {node: '>=18'}
 
   testcontainers@10.28.0:
@@ -13237,7 +13237,7 @@ snapshots:
       - bare-abort-controller
       - react-native-b4a
 
-  tar@7.5.2:
+  tar@7.5.3:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
       chownr: 3.0.0
