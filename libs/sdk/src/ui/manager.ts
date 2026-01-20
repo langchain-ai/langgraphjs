@@ -20,7 +20,7 @@ import {
   extractToolCallIdFromNamespace,
   isSubagentNamespace,
 } from "./subagents.js";
-import type { SubagentExecution } from "./types.js";
+import type { SubagentStream } from "./types.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
@@ -215,28 +215,28 @@ export class StreamManager<
   /**
    * Get all subagents as a Map.
    */
-  getSubagents(): Map<string, SubagentExecution> {
+  getSubagents(): Map<string, SubagentStream> {
     return this.subagentManager.getSubagents();
   }
 
   /**
    * Get all currently running subagents.
    */
-  getActiveSubagents(): SubagentExecution[] {
+  getActiveSubagents(): SubagentStream[] {
     return this.subagentManager.getActiveSubagents();
   }
 
   /**
    * Get a specific subagent by tool call ID.
    */
-  getSubagent(toolCallId: string): SubagentExecution | undefined {
+  getSubagent(toolCallId: string): SubagentStream | undefined {
     return this.subagentManager.getSubagent(toolCallId);
   }
 
   /**
    * Get all subagents of a specific type.
    */
-  getSubagentsByType(type: string): SubagentExecution[] {
+  getSubagentsByType(type: string): SubagentStream[] {
     return this.subagentManager.getSubagentsByType(type);
   }
 
@@ -520,13 +520,14 @@ export class StreamManager<
 
         // Handle values events - use startsWith to match both "values" and "values|tools:xxx"
         if (event === "values" || event.startsWith("values|")) {
-          // Check if this is a subgraph values event (for namespace mapping)
+          // Check if this is a subgraph values event (for namespace mapping and values)
           if (namespace && isSubagentNamespace(namespace)) {
             const namespaceId = extractToolCallIdFromNamespace(namespace);
             if (namespaceId && this.filterSubagentMessages) {
+              const valuesData = data as Record<string, unknown>;
+
               // Try to establish namespace mapping from the initial human message
-              const messages = (data as Record<string, unknown>)
-                .messages as unknown[];
+              const messages = valuesData.messages as unknown[];
               if (Array.isArray(messages) && messages.length > 0) {
                 const firstMsg = messages[0] as Record<string, unknown>;
                 if (
@@ -539,6 +540,9 @@ export class StreamManager<
                   );
                 }
               }
+
+              // Update the subagent's values with the full state
+              this.subagentManager.updateSubagentValues(namespaceId, valuesData);
             }
           } else if (
             data &&

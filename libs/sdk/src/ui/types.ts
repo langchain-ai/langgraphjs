@@ -1,7 +1,13 @@
 import type { InferInteropZodInput } from "@langchain/core/utils/types";
 
 import type { Client, ClientConfig } from "../client.js";
-import type { ThreadState, Config, Checkpoint, Metadata } from "../schema.js";
+import type {
+  ThreadState,
+  Config,
+  Checkpoint,
+  Metadata,
+  Interrupt,
+} from "../schema.js";
 import type {
   Command,
   MultitaskStrategy,
@@ -19,7 +25,12 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { DefaultToolCall, AIMessage, Message } from "../types.messages.js";
+import type {
+  DefaultToolCall,
+  AIMessage,
+  Message,
+  ToolCallWithResult,
+} from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 
 /**
@@ -43,14 +54,135 @@ export interface SubagentToolCall {
 
 /**
  * The execution status of a subagent.
+ *
+ * - `"pending"` - The subagent has been invoked but hasn't started processing yet.
+ *   This is the initial state when a tool call is detected but before any
+ *   streaming events are received from the subgraph.
+ *
+ * - `"running"` - The subagent is actively executing and streaming updates.
+ *   The subagent transitions to this state when the first update event is
+ *   received from its namespace.
+ *
+ * - `"complete"` - The subagent has finished execution successfully.
+ *   A tool message with the result has been received, and the `result`
+ *   property contains the final output.
+ *
+ * - `"error"` - The subagent encountered an error during execution.
+ *   The `error` property on the SubagentStream contains error details.
  */
 export type SubagentStatus = "pending" | "running" | "complete" | "error";
 
 /**
- * Represents a single subagent execution.
- * Tracks the lifecycle of a subagent from invocation to completion.
+ * Base interface for stream-like objects.
+ * Contains common properties shared between UseStream and SubagentStream.
+ *
+ * @template StateType - The type of the stream's state values.
+ * @template ToolCall - The type of tool calls in messages.
+ * @template InterruptType - The type of interrupt values.
  */
-export interface SubagentExecution<ToolCall = DefaultToolCall> {
+export interface StreamBase<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  InterruptType = unknown
+> {
+  /**
+   * The current state values of the stream.
+   */
+  values: StateType;
+
+  /**
+   * Last seen error from the stream.
+   */
+  error: unknown;
+
+  /**
+   * Whether the stream is currently running.
+   */
+  isLoading: boolean;
+
+  /**
+   * Messages accumulated during the stream.
+   */
+  messages: Message<ToolCall>[];
+
+  /**
+   * Tool calls paired with their results.
+   * Useful for rendering tool invocations and their outputs together.
+   */
+  toolCalls: ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get tool calls for a specific AI message.
+   *
+   * @param message - The AI message to get tool calls for.
+   * @returns Array of tool calls initiated by the message.
+   */
+  getToolCalls: (message: AIMessage<ToolCall>) => ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get the interrupt value for the stream if interrupted.
+   */
+  interrupt: Interrupt<InterruptType> | undefined;
+
+  /**
+   * All currently active and completed subagent streams.
+   * Keyed by tool call ID for easy lookup.
+   */
+  subagents: Map<string, SubagentStream<Record<string, unknown>, ToolCall>>;
+
+  /**
+   * Currently active subagents (where status === "running").
+   */
+  activeSubagents: SubagentStream<Record<string, unknown>, ToolCall>[];
+
+  /**
+   * Get subagent stream by tool call ID.
+   *
+   * @param toolCallId - The tool call ID that initiated the subagent.
+   * @returns The subagent stream, or undefined if not found.
+   */
+  getSubagent: (
+    toolCallId: string
+  ) => SubagentStream<Record<string, unknown>, ToolCall> | undefined;
+
+  /**
+   * Get all subagents of a specific type.
+   *
+   * @param type - The subagent_type to filter by.
+   * @returns Array of matching subagent streams.
+   */
+  getSubagentsByType: (
+    type: string
+  ) => SubagentStream<Record<string, unknown>, ToolCall>[];
+}
+
+/**
+ * Represents a single subagent stream.
+ * Tracks the lifecycle of a subagent from invocation to completion.
+ *
+ * Extends StreamBase to share common properties with UseStream,
+ * allowing subagents to be treated similarly to the main stream.
+ *
+ * @template StateType - The state type of the subagent. Defaults to Record<string, unknown>
+ *   since different subagents may have different state types. Can be narrowed using
+ *   DeepAgent type helpers like `InferSubagentByName` when the specific subagent is known.
+ * @template ToolCall - The type of tool calls in messages.
+ *
+ * @example
+ * ```typescript
+ * // Default usage with unknown state
+ * const subagent: SubagentStream = stream.getSubagent("call_123");
+ *
+ * // Narrowed state type when subagent type is known
+ * type ResearcherState = { research_notes: string };
+ * const researcher = stream.getSubagent("call_123") as SubagentStream<ResearcherState>;
+ * console.log(researcher.values.research_notes);
+ * ```
+ */
+export interface SubagentStream<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall
+> extends StreamBase<StateType, ToolCall> {
   /** Unique identifier (the tool call ID) */
   id: string;
 
@@ -63,14 +195,8 @@ export interface SubagentExecution<ToolCall = DefaultToolCall> {
   /** Final result content (when complete) */
   result: string | null;
 
-  /** Error message (if status === "error") */
-  error: string | null;
-
   /** Namespace path for this subagent execution */
   namespace: string[];
-
-  /** Messages accumulated during this subagent's execution */
-  messages: Message<ToolCall>[];
 
   /** Tool call ID of parent subagent (for nested subagents) */
   parentId: string | null;
@@ -78,7 +204,7 @@ export interface SubagentExecution<ToolCall = DefaultToolCall> {
   /** Nesting depth (0 = called by main agent, 1 = called by subagent, etc.) */
   depth: number;
 
-  /** Timing information */
+  /** When the subagent started */
   startedAt: Date | null;
 
   /** When the subagent completed */

@@ -19,9 +19,9 @@ interface SubagentMessage {
 }
 
 /**
- * SubagentExecution interface (matches the one from the SDK)
+ * SubagentStream interface (matches the one from the SDK)
  */
-interface SubagentExecution {
+interface SubagentStream {
   id: string;
   toolCall: {
     id: string;
@@ -155,7 +155,7 @@ function StatusIcon({
 /**
  * SubagentCard - Displays a single subagent's execution status and streaming content
  */
-export function SubagentCard({ subagent }: { subagent: SubagentExecution }) {
+export function SubagentCard({ subagent }: { subagent: SubagentStream }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const subagentType = subagent.toolCall?.args?.subagent_type;
   const config =

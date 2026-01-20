@@ -1,10 +1,16 @@
-import type { Message, DefaultToolCall } from "../types.messages.js";
 import type {
-  SubagentExecution,
+  Message,
+  DefaultToolCall,
+  AIMessage,
+  ToolCallWithResult,
+} from "../types.messages.js";
+import type {
+  SubagentStream,
   SubagentToolCall,
   SubagentStatus,
 } from "./types.js";
 import { MessageTupleManager, toMessageDict } from "./messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 
 /**
  * Default tool names that indicate subagent invocation.
@@ -111,13 +117,29 @@ export interface SubagentManagerOptions {
 }
 
 /**
+ * Internal base type for SubagentStream storage.
+ * Excludes derived properties that are computed on retrieval.
+ */
+type SubagentStreamBase<ToolCall> = Omit<
+  SubagentStream<Record<string, unknown>, ToolCall>,
+  | "isLoading"
+  | "toolCalls"
+  | "getToolCalls"
+  | "interrupt"
+  | "subagents"
+  | "activeSubagents"
+  | "getSubagent"
+  | "getSubagentsByType"
+>;
+
+/**
  * Manages subagent execution state.
  *
  * Tracks subagents from the moment they are invoked (AI message with tool calls)
  * through streaming to completion (tool message result).
  */
 export class SubagentManager<ToolCall = DefaultToolCall> {
-  private subagents = new Map<string, SubagentExecution<ToolCall>>();
+  private subagents = new Map<string, SubagentStreamBase<ToolCall>>();
 
   /**
    * Maps namespace IDs (pregel task IDs) to tool call IDs.
@@ -178,6 +200,40 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       }
     }
     return messages;
+  }
+
+  /**
+   * Create a complete SubagentStream object with all derived properties.
+   * This ensures consistency with UseStream interface.
+   */
+  private createSubagentStream(
+    base: SubagentStreamBase<ToolCall>
+  ): SubagentStream<Record<string, unknown>, ToolCall> {
+    const { messages } = base;
+    const allToolCalls = getToolCallsWithResults<ToolCall>(messages);
+
+    return {
+      ...base,
+      // Derived from status for UseStream consistency
+      isLoading: base.status === "running",
+
+      // Tool calls derived from messages
+      toolCalls: allToolCalls,
+
+      // Method to get tool calls for a specific message
+      getToolCalls: (message: AIMessage<ToolCall>): ToolCallWithResult<ToolCall>[] => {
+        return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+      },
+
+      // Subagents don't have interrupts yet (future enhancement)
+      interrupt: undefined,
+
+      // Nested subagent tracking (empty for now, future enhancement)
+      subagents: new Map<string, SubagentStream<Record<string, unknown>, ToolCall>>(),
+      activeSubagents: [],
+      getSubagent: () => undefined,
+      getSubagentsByType: () => [],
+    };
   }
 
   /**
@@ -325,21 +381,36 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * but we only show them to the user once LangGraph confirms they're
    * actually executing (via namespace events).
    */
-  private isValidSubagent(subagent: SubagentExecution<ToolCall>): boolean {
+  private isValidSubagent(subagent: SubagentStreamBase<ToolCall>): boolean {
     // Only show subagents that have started running or completed
     // This ensures we don't show partial/pending subagents
     return subagent.status === "running" || subagent.status === "complete";
   }
 
   /**
+   * Build a complete SubagentStream from internal state.
+   * Adds messages and derived properties.
+   */
+  private buildExecution(
+    base: SubagentStreamBase<ToolCall>
+  ): SubagentStream<Record<string, unknown>, ToolCall> {
+    // Get fresh messages from the manager
+    const messages = this.getMessagesForSubagent(base.id);
+    return this.createSubagentStream({
+      ...base,
+      messages,
+    });
+  }
+
+  /**
    * Get all subagents as a Map.
    * Filters out incomplete/phantom subagents that lack subagent_type.
    */
-  getSubagents(): Map<string, SubagentExecution<ToolCall>> {
-    const result = new Map<string, SubagentExecution<ToolCall>>();
+  getSubagents(): Map<string, SubagentStream<Record<string, unknown>, ToolCall>> {
+    const result = new Map<string, SubagentStream<Record<string, unknown>, ToolCall>>();
     for (const [id, subagent] of this.subagents) {
       if (this.isValidSubagent(subagent)) {
-        result.set(id, subagent);
+        result.set(id, this.buildExecution(subagent));
       }
     }
     return result;
@@ -349,26 +420,31 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Get all currently running subagents.
    * Filters out incomplete/phantom subagents.
    */
-  getActiveSubagents(): SubagentExecution<ToolCall>[] {
-    return [...this.subagents.values()].filter(
-      (s) => s.status === "running" && this.isValidSubagent(s)
-    );
+  getActiveSubagents(): SubagentStream<Record<string, unknown>, ToolCall>[] {
+    return [...this.subagents.values()]
+      .filter((s) => s.status === "running" && this.isValidSubagent(s))
+      .map((s) => this.buildExecution(s));
   }
 
   /**
    * Get a specific subagent by tool call ID.
    */
-  getSubagent(toolCallId: string): SubagentExecution<ToolCall> | undefined {
-    return this.subagents.get(toolCallId);
+  getSubagent(
+    toolCallId: string
+  ): SubagentStream<Record<string, unknown>, ToolCall> | undefined {
+    const subagent = this.subagents.get(toolCallId);
+    return subagent ? this.buildExecution(subagent) : undefined;
   }
 
   /**
    * Get all subagents of a specific type.
    */
-  getSubagentsByType(type: string): SubagentExecution<ToolCall>[] {
-    return [...this.subagents.values()].filter(
-      (s) => s.toolCall.args.subagent_type === type
-    );
+  getSubagentsByType(
+    type: string
+  ): SubagentStream<Record<string, unknown>, ToolCall>[] {
+    return [...this.subagents.values()]
+      .filter((s) => s.toolCall.args.subagent_type === type)
+      .map((s) => this.buildExecution(s));
   }
 
   /**
@@ -466,10 +542,11 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         },
       };
 
-      const execution: SubagentExecution<ToolCall> = {
+      const execution: SubagentStreamBase<ToolCall> = {
         id: toolCall.id,
         toolCall: subagentToolCall,
         status: "pending",
+        values: {},
         result: null,
         error: null,
         namespace: [],
@@ -622,6 +699,38 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
+   * Update subagent values from a values stream event.
+   *
+   * Called when a values event is received from a subagent's namespace.
+   * This populates the subagent's state values, making them accessible
+   * via the `values` property.
+   *
+   * @param namespaceId - The namespace ID (pregel task ID) from the stream
+   * @param values - The state values from the stream event
+   */
+  updateSubagentValues(
+    namespaceId: string,
+    values: Record<string, unknown>
+  ): void {
+    // Resolve the actual tool call ID from the namespace mapping
+    const toolCallId = this.getToolCallIdFromNamespace(namespaceId);
+    const existing = this.subagents.get(toolCallId);
+
+    if (!existing) {
+      return;
+    }
+
+    this.subagents.set(toolCallId, {
+      ...existing,
+      values,
+      status: existing.status === "pending" ? "running" : existing.status,
+      startedAt: existing.startedAt ?? new Date(),
+    });
+
+    this.onSubagentChange?.();
+  }
+
+  /**
    * Complete a subagent with a result.
    *
    * Called when a tool message is received for the subagent.
@@ -695,7 +804,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * The reconstruction process:
    * 1. Find AI messages with tool calls matching subagent tool names
    * 2. Find corresponding tool messages with results
-   * 3. Create SubagentExecution entries with "complete" status
+   * 3. Create SubagentStream entries with "complete" status
    *
    * Note: Internal subagent messages (their streaming conversation) are not
    * reconstructed since they are not persisted in the main thread state.
@@ -773,6 +882,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         // Check if we have a result for this tool call
         const toolResult = toolResults.get(toolCall.id);
         const isComplete = !!toolResult;
+        // eslint-disable-next-line no-nested-ternary
         const status: SubagentStatus = isComplete
           ? toolResult.status === "error"
             ? "error"
@@ -780,10 +890,11 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           : "running";
 
         // Create the subagent execution
-        const execution: SubagentExecution<ToolCall> = {
+        const execution: SubagentStreamBase<ToolCall> = {
           id: toolCall.id,
           toolCall: subagentToolCall,
           status,
+          values: {}, // Values not available from history
           result: isComplete && status === "complete" ? toolResult.content : null,
           error: isComplete && status === "error" ? toolResult.content : null,
           namespace: [],

@@ -1,6 +1,6 @@
 export { useStream } from "./stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
-export type { UseStream, UseStreamCustom, SubagentExecution } from "./types.js";
+export type { UseStream, UseStreamCustom, SubagentStream } from "./types.js";
 export type {
   MessageMetadata,
   UseStreamOptions,
