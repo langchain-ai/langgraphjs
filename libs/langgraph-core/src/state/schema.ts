@@ -81,10 +81,11 @@ export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
  *
  * @see StateSchemaFieldToChannel
  */
-export type StateSchemaFieldsToStateDefinition<TFields extends StateSchemaFields> =
-  {
-    [K in keyof TFields]: StateSchemaFieldToChannel<TFields[K]>;
-  };
+export type StateSchemaFieldsToStateDefinition<
+  TFields extends StateSchemaFields
+> = {
+  [K in keyof TFields]: StateSchemaFieldToChannel<TFields[K]>;
+};
 
 /**
  * Valid field types for StateSchema.
