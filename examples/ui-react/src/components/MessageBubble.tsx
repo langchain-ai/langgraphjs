@@ -138,7 +138,7 @@ function ReasoningBubble({ content }: { content: string }) {
  * Supports the standardized content block format where both OpenAI reasoning
  * and Anthropic extended thinking are normalized to `type: "reasoning"` blocks
  * with a `reasoning` field in message.content, e.g.
- * 
+ *
  * ```ts
  * const message: AIMessage = {
  *   type: "ai",
@@ -147,7 +147,7 @@ function ReasoningBubble({ content }: { content: string }) {
  *     { type: "text", text: "The answer is 42" },
  *   ],
  * };
- * 
+ *
  * console.log(message.text); // "The answer is 42"
  * ```
  *

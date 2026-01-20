@@ -45,9 +45,9 @@ export const getFact = tool(
   async ({ topic }) => {
     const model = new ChatOpenAI({
       model: "gpt-4o-mini",
-      streaming: false
+      streaming: false,
     });
-    
+
     const randomFact = await model.invoke(
       `Give me a random fact about ${topic}`
     );
