@@ -62,6 +62,11 @@ export class UntrackedValue<Value = unknown> {
   readonly guard: boolean;
 
   /**
+   * Represents the type of value stored in this untracked state field.
+   */
+  declare ValueType: Value;
+
+  /**
    * Create a new untracked value state field.
    *
    * @param schema - Optional type schema describing the value (e.g. a Zod schema).

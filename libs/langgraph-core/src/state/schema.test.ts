@@ -15,36 +15,31 @@ import { Command, END, Send, START } from "../constants.js";
 describe("StateSchema", () => {
   describe("type inference", () => {
     describe("plain schemas", () => {
-      it("should infer State type correctly", () => {
+      it("should infer State and Update types correctly", () => {
         const AgentState = new StateSchema({
           name: z.string(),
           count: z.number(),
           active: z.boolean().default(false),
         });
 
-        type MyState = typeof AgentState.State;
+        expectTypeOf<typeof AgentState.State>().toEqualTypeOf<{
+          name: string;
+          count: number;
+          active: boolean;
+        }>();
 
-        // Verify state type is an object
-        expectTypeOf<MyState>().toBeObject();
-      });
-
-      it("should infer Update type correctly (all optional)", () => {
-        const AgentState = new StateSchema({
-          name: z.string(),
-          count: z.number(),
-        });
-
-        type MyUpdate = typeof AgentState.Update;
-
-        // Verify update type is an object
-        expectTypeOf<MyUpdate>().toBeObject();
+        expectTypeOf<typeof AgentState.Update>().toEqualTypeOf<{
+          name?: string;
+          count?: number;
+          active?: boolean;
+        }>();
       });
     });
 
     describe("ReducedValue types", () => {
-      it("should infer different value vs update types", () => {
+      it("should infer different value vs input types", () => {
         const state = new StateSchema({
-          // Note: Type assertions needed due to complex generic inference
+          // State gets string[], Update takes string
           items: new ReducedValue(
             z.array(z.string()).default(() => []),
             {
@@ -54,72 +49,80 @@ describe("StateSchema", () => {
           ),
         });
 
-        type MyState = typeof state.State;
-        type MyUpdate = typeof state.Update;
+        expectTypeOf<typeof state.State>().toEqualTypeOf<{
+          items: string[];
+        }>();
 
-        // Verify types exist
-        expectTypeOf<MyState>().toBeObject();
-        expectTypeOf<MyUpdate>().toBeObject();
+        expectTypeOf<typeof state.Update>().toEqualTypeOf<{
+          items?: string;
+        }>();
       });
 
-      it("should use value schema when input schema not provided", () => {
+      it("should use value schema type when input schema not provided", () => {
         const state = new StateSchema({
-          // For z.number().default(0): output is `number`, input is `number | undefined`
-          // because you can pass undefined and get the default
           count: new ReducedValue(z.number().default(0), {
             reducer: (a, b) => a + (b ?? 0),
           }),
         });
 
-        // Verify types exist
-        type MyState = typeof state.State;
-        type MyUpdate = typeof state.Update;
+        expectTypeOf<typeof state.State>().toEqualTypeOf<{
+          count: number;
+        }>();
 
-        expectTypeOf<MyState>().toBeObject();
-        expectTypeOf<MyUpdate>().toBeObject();
+        // Input type is number | undefined due to .default() on value schema
+        expectTypeOf<typeof state.Update>().toEqualTypeOf<{
+          count?: number | undefined;
+        }>();
+      });
+
+      it("should handle complex Value/Input type differences", () => {
+        // Accumulating numbers into an object
+        const state = new StateSchema({
+          totals: new ReducedValue(
+            z
+              .object({ sum: z.number(), count: z.number() })
+              .default(() => ({ sum: 0, count: 0 })),
+            {
+              inputSchema: z.number(),
+              reducer: (current, next) => ({
+                sum: current.sum + next,
+                count: current.count + 1,
+              }),
+            }
+          ),
+        });
+
+        expectTypeOf<typeof state.State>().toEqualTypeOf<{
+          totals: { sum: number; count: number };
+        }>();
+
+        expectTypeOf<typeof state.Update>().toEqualTypeOf<{
+          totals?: number;
+        }>();
       });
     });
 
     describe("UntrackedValue types", () => {
-      it("should infer types from schema", () => {
+      it("should use same type for State and Update", () => {
         const state = new StateSchema({
           temp: new UntrackedValue(z.string()),
+          optionalTemp: new UntrackedValue(z.string().optional()),
         });
 
-        type MyState = typeof state.State;
-        type MyUpdate = typeof state.Update;
+        expectTypeOf<typeof state.State>().toEqualTypeOf<{
+          temp: string;
+          optionalTemp: string | undefined;
+        }>();
 
-        expectTypeOf<MyState>().toBeObject();
-        expectTypeOf<MyUpdate>().toBeObject();
-      });
-    });
-
-    describe("type helper utilities", () => {
-      it("State type is accessible", () => {
-        const AgentState = new StateSchema({
-          name: z.string(),
-          count: z.number(),
-        });
-
-        type MyState = typeof AgentState.State;
-
-        expectTypeOf<MyState>().toBeObject();
-      });
-
-      it("Update type is accessible", () => {
-        const AgentState = new StateSchema({
-          name: z.string(),
-          count: z.number(),
-        });
-
-        type MyUpdate = typeof AgentState.Update;
-
-        expectTypeOf<MyUpdate>().toBeObject();
+        expectTypeOf<typeof state.Update>().toEqualTypeOf<{
+          temp?: string;
+          optionalTemp?: string | undefined;
+        }>();
       });
     });
 
     describe("mixed state definition", () => {
-      it("should handle complex mixed state", () => {
+      it("should handle all field types together", () => {
         const ComplexState = new StateSchema({
           // Plain schema
           query: z.string(),
@@ -137,20 +140,23 @@ describe("StateSchema", () => {
           cacheKey: new UntrackedValue(z.string().optional()),
         });
 
-        type MyState = typeof ComplexState.State;
-        type MyUpdate = typeof ComplexState.Update;
+        expectTypeOf<typeof ComplexState.State>().toEqualTypeOf<{
+          query: string;
+          retryCount: number;
+          history: string[];
+          cacheKey: string | undefined;
+        }>();
 
-        // Verify types compile successfully
-        expectTypeOf<MyState>().toBeObject();
-        expectTypeOf<MyUpdate>().toBeObject();
-
-        // Basic type checks for simple schemas
-        expectTypeOf<MyState["query"]>().toEqualTypeOf<string>();
-        expectTypeOf<MyState["retryCount"]>().toEqualTypeOf<number>();
+        expectTypeOf<typeof ComplexState.Update>().toEqualTypeOf<{
+          query?: string;
+          retryCount?: number;
+          history?: string;
+          cacheKey?: string | undefined;
+        }>();
       });
     });
 
-    it("should preserve State and Update types through compilation", async () => {
+    it("should preserve State and Update types through StateGraph", async () => {
       const AgentState = new StateSchema({
         count: z.number().default(0),
         name: z.string(),
@@ -163,40 +169,32 @@ describe("StateSchema", () => {
         ),
       });
 
-      // Verify state type has correct structure
-      expectTypeOf<typeof AgentState.State>().toMatchTypeOf<{
+      expectTypeOf<typeof AgentState.State>().toEqualTypeOf<{
         count: number;
         name: string;
         items: string[];
       }>();
 
-      // Update type should have optional fields
-      expectTypeOf<typeof AgentState.Update>().toMatchTypeOf<{
-        count?: number | undefined;
-        name?: string | undefined;
-        items?: string | undefined;
+      expectTypeOf<typeof AgentState.Update>().toEqualTypeOf<{
+        count?: number;
+        name?: string;
+        items?: string;
       }>();
 
       const graph = new StateGraph(AgentState)
         .addNode("node", (s) => {
           // Node receives State type
-          expectTypeOf(s.count).toEqualTypeOf<number>();
-          expectTypeOf(s.name).toEqualTypeOf<string>();
-          expectTypeOf(s.items).toEqualTypeOf<string[]>();
+          expectTypeOf(s).toEqualTypeOf<typeof AgentState.State>();
           return { count: s.count + 1 };
         })
         .addEdge(START, "node")
         .addEdge("node", END)
         .compile();
 
-      // invoke should accept Update type (partial)
       const result = await graph.invoke({ name: "test" });
 
       // Result should be State type
-      expectTypeOf(result).toMatchTypeOf<typeof AgentState.State>();
-      expectTypeOf(result.count).toEqualTypeOf<number>();
-      expectTypeOf(result.name).toEqualTypeOf<string>();
-      expectTypeOf(result.items).toEqualTypeOf<string[]>();
+      expectTypeOf(result).toEqualTypeOf<typeof AgentState.State>();
 
       expect(result.count).toBe(1);
       expect(result.name).toBe("test");

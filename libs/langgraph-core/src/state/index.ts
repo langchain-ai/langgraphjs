@@ -4,7 +4,7 @@ export { getJsonSchemaFromSchema, getSchemaDefaultGetter } from "./adapter.js";
 
 export {
   StateSchema,
-  type StateSchemaInit,
+  type StateSchemaFields,
   type StateSchemaField,
   type InferStateSchemaValue,
   type InferStateSchemaUpdate,
