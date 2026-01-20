@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { JSONSchema } from "@langchain/core/utils/json_schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -52,8 +53,8 @@ export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
   : BaseChannel<unknown, unknown>;
 
 /**
- * Converts a StateSchema "init" object (field map) into a strongly-typed
- * State Definition object, where each key is mapped to its channel type.
+ * Converts StateSchema fields into a strongly-typed
+ * State Definition object, where each field is mapped to its channel type.
  *
  * This utility type is used internally to create the shape of the state channels for a given schema,
  * substituting each field with the result of `StateSchemaFieldToChannel`.
@@ -75,14 +76,14 @@ export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
  * }
  * ```
  *
- * @template TInit - The mapping of field names to StateSchema field types.
- * @returns An object type mapping keys to channel types.
+ * @template TFields - The mapping of field names to StateSchema field types.
+ * @returns An object type mapping field names to channel types.
  *
  * @see StateSchemaFieldToChannel
  */
-export type StateSchemaFieldsToStateDefinition<TInit extends StateSchemaInit> =
+export type StateSchemaFieldsToStateDefinition<TFields extends StateSchemaFields> =
   {
-    [K in keyof TInit]: StateSchemaFieldToChannel<TInit[K]>;
+    [K in keyof TFields]: StateSchemaFieldToChannel<TFields[K]>;
   };
 
 /**
@@ -98,43 +99,42 @@ export type StateSchemaField<Input = unknown, Output = Input> =
  * Init object for StateSchema constructor.
  * Uses `any` to allow variance in generic types (e.g., ReducedValue<string, string[]>).
  */
-export type StateSchemaInit = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type StateSchemaFields = {
   [key: string]: StateSchemaField<any, any>;
 };
 
 /**
- * Infer the State type from a StateSchemaInit.
+ * Infer the State type from a StateSchemaFields.
  * This is the type of the full state object.
  *
  * - ReducedValue<Value, Input> → Value (the stored type)
  * - UntrackedValue<Value> → Value
  * - SerializableSchema<Input, Output> → Output (the validated type)
  */
-export type InferStateSchemaValue<TInit extends StateSchemaInit> = {
-  [K in keyof TInit]: TInit[K] extends { ValueType: infer TValue }
-    ? TValue
-    : TInit[K] extends UntrackedValue<infer TValue>
-    ? TValue
-    : TInit[K] extends SerializableSchema<unknown, infer TOutput>
+export type InferStateSchemaValue<TFields extends StateSchemaFields> = {
+  [K in keyof TFields]: TFields[K] extends ReducedValue<any, any>
+    ? TFields[K]["ValueType"]
+    : TFields[K] extends UntrackedValue<any>
+    ? TFields[K]["ValueType"]
+    : TFields[K] extends SerializableSchema<any, infer TOutput>
     ? TOutput
     : never;
 };
 
 /**
- * Infer the Update type from a StateSchemaInit.
+ * Infer the Update type from a StateSchemaFields.
  * This is the type for partial updates to state.
  *
  * - ReducedValue<Value, Input> → Input (the reducer input type)
  * - UntrackedValue<Value> → Value
  * - SerializableSchema<Input, Output> → Input (what you provide)
  */
-export type InferStateSchemaUpdate<TInit extends StateSchemaInit> = {
-  [K in keyof TInit]?: TInit[K] extends { InputType: infer TInput }
-    ? TInput
-    : TInit[K] extends UntrackedValue<infer TValue>
-    ? TValue
-    : TInit[K] extends SerializableSchema<infer TInput, unknown>
+export type InferStateSchemaUpdate<TFields extends StateSchemaFields> = {
+  [K in keyof TFields]?: TFields[K] extends ReducedValue<any, any>
+    ? TFields[K]["InputType"]
+    : TFields[K] extends UntrackedValue<any>
+    ? TFields[K]["ValueType"]
+    : TFields[K] extends SerializableSchema<infer TInput, any>
     ? TInput
     : never;
 };
@@ -172,7 +172,7 @@ export type InferStateSchemaUpdate<TInit extends StateSchemaInit> = {
  * const graph = new StateGraph(AgentState);
  * ```
  */
-export class StateSchema<TInit extends StateSchemaInit> {
+export class StateSchema<TFields extends StateSchemaFields> {
   /**
    * Symbol for runtime identification.
    * @internal Used by isInstance for runtime type checking
@@ -184,13 +184,13 @@ export class StateSchema<TInit extends StateSchemaInit> {
    * Type declaration for the full state type.
    * Use: `typeof myState.State`
    */
-  declare State: InferStateSchemaValue<TInit>;
+  declare State: InferStateSchemaValue<TFields>;
 
   /**
    * Type declaration for the update type.
    * Use: `typeof myState.Update`
    */
-  declare Update: InferStateSchemaUpdate<TInit>;
+  declare Update: InferStateSchemaUpdate<TFields>;
 
   /**
    * Type declaration for node functions.
@@ -208,13 +208,11 @@ export class StateSchema<TInit extends StateSchemaInit> {
    * ```
    */
   declare Node: RunnableLike<
-    InferStateSchemaValue<TInit>,
-    InferStateSchemaUpdate<TInit>
+    InferStateSchemaValue<TFields>,
+    InferStateSchemaUpdate<TFields>
   >;
 
-  constructor(readonly init: TInit) {
-    this.init = init;
-  }
+  constructor(readonly fields: TFields) {}
 
   /**
    * Get the channel definitions for use with StateGraph.
@@ -223,7 +221,7 @@ export class StateSchema<TInit extends StateSchemaInit> {
   getChannels(): Record<string, BaseChannel> {
     const channels: Record<string, BaseChannel> = {};
 
-    for (const [key, value] of Object.entries(this.init)) {
+    for (const [key, value] of Object.entries(this.fields)) {
       if (ReducedValue.isInstance(value)) {
         // ReducedValue -> BinaryOperatorAggregate
         const defaultGetter = getSchemaDefaultGetter(value.valueSchema);
@@ -262,7 +260,7 @@ export class StateSchema<TInit extends StateSchemaInit> {
     const properties: Record<string, JSONSchema> = {};
     const required: string[] = [];
 
-    for (const [key, value] of Object.entries(this.init)) {
+    for (const [key, value] of Object.entries(this.fields)) {
       let fieldSchema: JSONSchema | undefined;
 
       if (ReducedValue.isInstance(value)) {
@@ -313,7 +311,7 @@ export class StateSchema<TInit extends StateSchemaInit> {
   getInputJsonSchema(): JSONSchema {
     const properties: Record<string, JSONSchema> = {};
 
-    for (const [key, value] of Object.entries(this.init)) {
+    for (const [key, value] of Object.entries(this.fields)) {
       let fieldSchema: JSONSchema | undefined;
 
       if (ReducedValue.isInstance(value)) {
@@ -342,14 +340,14 @@ export class StateSchema<TInit extends StateSchemaInit> {
    * Get the list of channel keys (excluding managed values).
    */
   getChannelKeys(): string[] {
-    return Object.entries(this.init).map(([key]) => key);
+    return Object.entries(this.fields).map(([key]) => key);
   }
 
   /**
    * Get all keys (channels + managed values).
    */
   getAllKeys(): string[] {
-    return Object.keys(this.init);
+    return Object.keys(this.fields);
   }
 
   /**
@@ -367,7 +365,7 @@ export class StateSchema<TInit extends StateSchemaInit> {
     const result: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(data)) {
-      const fieldDef = this.init[key];
+      const fieldDef = this.fields[key];
 
       if (fieldDef === undefined) {
         // Unknown field, pass through
@@ -412,16 +410,15 @@ export class StateSchema<TInit extends StateSchemaInit> {
    * @param value - The value to check.
    * @returns True if the value is a StateSchema instance with the correct runtime tag.
    */
-  static isInstance<TInit extends StateSchemaInit>(
-    value: StateSchema<TInit>
-  ): value is StateSchema<TInit>;
+  static isInstance<TFields extends StateSchemaFields>(
+    value: StateSchema<TFields>
+  ): value is StateSchema<TFields>;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static isInstance(value: unknown): value is StateSchema<any>;
 
-  static isInstance<TInit extends StateSchemaInit>(
+  static isInstance<TFields extends StateSchemaFields>(
     value: unknown
-  ): value is StateSchema<TInit> {
+  ): value is StateSchema<TFields> {
     return (
       typeof value === "object" &&
       value !== null &&
@@ -431,5 +428,4 @@ export class StateSchema<TInit extends StateSchemaInit> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyStateSchema = StateSchema<any>;

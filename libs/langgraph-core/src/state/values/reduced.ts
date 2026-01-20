@@ -162,7 +162,7 @@ export class ReducedValue<Value = unknown, Input = Value> {
   );
 
   constructor(
-    valueSchema: SerializableSchema<unknown, Value>,
+    valueSchema: SerializableSchema<Input, Value>,
     init: ReducedValueInitBase<Value>
   );
 
