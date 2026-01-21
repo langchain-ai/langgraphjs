@@ -5,6 +5,7 @@ import {
   START,
 } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
+import type { BaseLanguageModelInput } from "@langchain/core/language_models/base";
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -19,7 +20,7 @@ const graph = new StateGraph(StateAnnotation)
   .addNode("agent", async ({ messages }) => ({
     // Cast needed due to @langchain/core version mismatch in monorepo
     messages: await llm.invoke(
-      messages as unknown as Parameters<typeof llm.invoke>[0]
+      messages as unknown as BaseLanguageModelInput
     ),
   }))
   .addEdge(START, "agent")
