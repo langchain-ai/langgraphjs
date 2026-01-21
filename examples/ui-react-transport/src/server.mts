@@ -1,32 +1,26 @@
-import type { BaseMessage } from "@langchain/core/messages";
 import {
-  Annotation,
   StateGraph,
-  messagesStateReducer,
+  StateSchema,
+  MessagesValue,
   START,
 } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { z } from "zod/v4";
 
 const llm = new ChatOpenAI({ model: "gpt-4o-mini" });
 
-const StateAnnotation = Annotation.Root({
-  messages: Annotation<BaseMessage[]>({
-    reducer: messagesStateReducer,
-    default: () => [],
-  }),
-});
-
-const schema = z.object({
-  messages: z.custom<BaseMessage[]>(),
+const StateAnnotation = new StateSchema({
+  messages: MessagesValue,
 });
 
 const graph = new StateGraph(StateAnnotation)
   .addNode("agent", async ({ messages }) => ({
-    messages: await llm.invoke(messages),
+    // Cast needed due to @langchain/core version mismatch in monorepo
+    messages: await llm.invoke(
+      messages as unknown as Parameters<typeof llm.invoke>[0]
+    ),
   }))
   .addEdge(START, "agent")
   .compile();
@@ -37,9 +31,7 @@ const app = new Hono();
 
 app.post("/api/stream", async (c) => {
   const body = await c.req.json();
-  const input = schema.parse(body.input);
-
-  const stream = await graph.stream(input, {
+  const stream = await graph.stream(body.input, {
     encoding: "text/event-stream",
     streamMode: ["values", "messages", "updates"],
   });
