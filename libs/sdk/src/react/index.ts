@@ -1,6 +1,29 @@
 export { useStream } from "./stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
+// Legacy exports - kept for backward compatibility
 export type { UseStream, UseStreamCustom, SubagentStream } from "./types.js";
+// New stream interface types
+export type {
+  // Base stream types
+  BaseStream,
+  // Graph stream types (for CompiledStateGraph)
+  UseGraphStream,
+  UseGraphStreamOptions,
+  // Agent stream types (for createAgent)
+  UseAgentStream,
+  UseAgentStreamOptions,
+  // DeepAgent stream types (for createDeepAgent)
+  UseDeepAgentStream,
+  UseDeepAgentStreamOptions,
+  // Type resolvers
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  InferStateType,
+  InferToolCalls,
+  InferSubagentStates,
+  InferNodeNames,
+  InferBag,
+} from "../ui/stream/index.js";
 export type {
   MessageMetadata,
   UseStreamOptions,
@@ -30,6 +53,9 @@ export type {
   SubagentStateMap,
   DefaultSubagentStates,
   BaseSubagentState,
+  // Node stream types
+  NodeStream,
+  NodeStatus,
 } from "../ui/types.js";
 export type {
   ToolCallWithResult,
@@ -45,3 +71,4 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "../ui/subagents.js";
+export { NodeManager } from "../ui/nodes.js";

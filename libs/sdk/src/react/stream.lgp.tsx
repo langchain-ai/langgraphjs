@@ -16,7 +16,7 @@ import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  UseStreamOptions,
+  AnyStreamOptions,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
@@ -27,6 +27,7 @@ import type {
   UseStreamThread,
 } from "../ui/types.js";
 import type { UseStream, SubmitOptions } from "./types.js";
+
 import { Client, getClientConfigHash } from "../client.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
@@ -157,7 +158,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
->(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
+>(options: AnyStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
@@ -760,6 +761,30 @@ export function useStreamLGP<
     getSubagentsByType(type: string) {
       trackStreamMode("updates", "messages-tuple");
       return stream.getSubagentsByType(type);
+    },
+
+    // ==========================================================================
+    // Node Streaming
+    // ==========================================================================
+
+    get nodes() {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getNodes();
+    },
+
+    get activeNodes() {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getActiveNodes();
+    },
+
+    getNodeStream(executionId: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getNodeStream(executionId);
+    },
+
+    getNodeStreamsByName(nodeName: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getNodeStreamsByName(nodeName);
     },
   };
 }

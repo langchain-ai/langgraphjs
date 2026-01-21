@@ -12,7 +12,7 @@ import type {
   RunCallbackMeta,
   GetConfigurableType,
   UseStreamTransport,
-  UseStreamCustomOptions,
+  AnyStreamCustomOptions,
   CustomSubmitOptions,
 } from "../ui/types.js";
 import type { UseStreamCustom } from "./types.js";
@@ -103,7 +103,7 @@ export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 >(
-  options: UseStreamCustomOptions<StateType, Bag>
+  options: AnyStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;

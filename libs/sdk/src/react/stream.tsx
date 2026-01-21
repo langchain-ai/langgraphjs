@@ -1,19 +1,15 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type {
-  UseStreamOptions,
-  InferAgentState,
-  InferAgentToolCalls,
-  SubagentStateMap,
-  DefaultSubagentStates,
-} from "../ui/types.js";
+import type { UseStreamOptions } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
+import type { UseStreamCustomOptions } from "./types.js";
 import type {
-  UseStream,
-  UseStreamCustom,
-  UseStreamCustomOptions,
-} from "./types.js";
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  InferBag,
+  InferStateType,
+} from "../ui/stream/index.js";
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -25,54 +21,6 @@ function isCustomOptions<
 ): options is UseStreamCustomOptions<StateType, Bag> {
   return "transport" in options;
 }
-
-/**
- * Helper type that infers StateType based on whether T is an agent-like type, a CompiledGraph/Pregel instance, or a state type.
- * - If T has `~agentTypes`, returns the full agent state including:
- *   - Base agent state with typed messages based on the agent's tools
- *   - The agent's custom state schema
- *   - All middleware states
- * - If T has `~RunOutput` (CompiledGraph/CompiledStateGraph), returns the state type
- * - If T has `~OutputType` (Pregel), returns the output type as state
- * - Otherwise, returns T (direct state type)
- */
-type InferStateType<T> = T extends { "~agentTypes": unknown }
-  ? InferAgentState<T>
-  : T extends { "~RunOutput": infer S }
-  ? S extends Record<string, unknown>
-    ? S
-    : Record<string, unknown>
-  : T extends { "~OutputType": infer O }
-  ? O extends Record<string, unknown>
-    ? O
-    : Record<string, unknown>
-  : T extends Record<string, unknown>
-  ? T
-  : Record<string, unknown>;
-
-/**
- * Helper type that infers Bag based on whether T is an agent-like type.
- * - If T has `~agentTypes`, extracts bag from the agent's tools
- * - Otherwise, returns the default BagTemplate
- */
-type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
-  "~agentTypes": unknown;
-}
-  ? BagTemplate
-  : B;
-
-/**
- * Helper type that infers SubagentStates from a DeepAgent type.
- * - If T has `~deepAgentTypes` (DeepAgent), infers the subagent state map
- *   with properly typed tool calls from the agent
- * - Otherwise, returns DefaultSubagentStates
- *
- * This enables automatic type inference for subagent streams when using
- * `useStream<typeof agent>` with a DeepAgent created by createDeepAgent.
- */
-type InferSubagentStatesFromAgent<T> = T extends { "~deepAgentTypes": unknown }
-  ? SubagentStateMap<T, InferAgentToolCalls<T>>
-  : DefaultSubagentStates;
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -181,12 +129,8 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 >(
-  options: UseStreamOptions<InferStateType<T>, InferBag<T, Bag>>
-): UseStream<
-  InferStateType<T>,
-  InferBag<T, Bag>,
-  InferSubagentStatesFromAgent<T>
->;
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -209,11 +153,7 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): UseStreamCustom<
-  InferStateType<T>,
-  InferBag<T, Bag>,
-  InferSubagentStatesFromAgent<T>
->;
+): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {

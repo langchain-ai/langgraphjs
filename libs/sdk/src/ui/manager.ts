@@ -20,7 +20,8 @@ import {
   extractToolCallIdFromNamespace,
   isSubagentNamespace,
 } from "./subagents.js";
-import type { SubagentStream } from "./types.js";
+import { NodeManager } from "./nodes.js";
+import type { SubagentStream, NodeStream } from "./types.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
@@ -169,6 +170,8 @@ export class StreamManager<
 
   private subagentManager: SubagentManager;
 
+  private nodeManager: NodeManager<StateType>;
+
   private listeners = new Set<() => void>();
 
   private throttle: number | boolean;
@@ -200,6 +203,9 @@ export class StreamManager<
     this.subagentManager = new SubagentManager({
       subagentToolNames: options.subagentToolNames,
       onSubagentChange: () => this.bumpVersion(),
+    });
+    this.nodeManager = new NodeManager<StateType>({
+      onNodeChange: () => this.bumpVersion(),
     });
   }
 
@@ -265,6 +271,45 @@ export class StreamManager<
    */
   hasSubagents(): boolean {
     return this.subagentManager.hasSubagents();
+  }
+
+  // ==========================================================================
+  // Node Management
+  // ==========================================================================
+
+  /**
+   * Get all node executions as a Map.
+   */
+  getNodes(): Map<string, NodeStream> {
+    return this.nodeManager.getNodes();
+  }
+
+  /**
+   * Get all currently running nodes.
+   */
+  getActiveNodes(): NodeStream[] {
+    return this.nodeManager.getActiveNodes();
+  }
+
+  /**
+   * Get a specific node execution by ID.
+   */
+  getNodeStream(executionId: string): NodeStream | undefined {
+    return this.nodeManager.getNodeStream(executionId);
+  }
+
+  /**
+   * Get all executions of a specific node by name.
+   */
+  getNodeStreamsByName(nodeName: string): NodeStream[] {
+    return this.nodeManager.getNodeStreamsByName(nodeName);
+  }
+
+  /**
+   * Check if any node executions are currently tracked.
+   */
+  hasNodes(): boolean {
+    return this.nodeManager.hasNodes();
   }
 
   private setState = (newState: Partial<typeof this.state>) => {
@@ -442,6 +487,25 @@ export class StreamManager<
             }
           }
 
+          // Track node executions from updates
+          // Updates are structured as { nodeName: updatePayload }
+          // Only track main graph nodes (not subgraph nodes)
+          if (!namespace || !isSubagentNamespace(namespace)) {
+            const updateData = data as Record<string, unknown>;
+            for (const [nodeName, nodeUpdate] of Object.entries(updateData)) {
+              // Skip internal/special keys
+              if (nodeName.startsWith("__")) continue;
+
+              // Record the update for this node
+              if (nodeUpdate && typeof nodeUpdate === "object") {
+                this.nodeManager.recordUpdate(
+                  nodeName,
+                  nodeUpdate as Partial<StateType>
+                );
+              }
+            }
+          }
+
           // Also register subagents from main agent updates (tool_calls in messages)
           // AND process tool results to complete subagents
           // This is needed because tool_calls often appear complete in updates
@@ -585,6 +649,15 @@ export class StreamManager<
               metadata
             );
             continue;
+          }
+
+          // Track messages to nodes using langgraph_node metadata
+          // Only track main graph nodes (not subgraph nodes)
+          if (!isFromSubagent) {
+            const nodeName = metadata?.langgraph_node as string | undefined;
+            if (nodeName && typeof nodeName === "string") {
+              this.nodeManager.addMessage(nodeName, serialized, metadata);
+            }
           }
 
           const messageId = this.messages.add(serialized, metadata);
@@ -743,5 +816,8 @@ export class StreamManager<
 
     // Clear subagent state
     this.subagentManager.clear();
+
+    // Clear node state
+    this.nodeManager.clear();
   };
 }

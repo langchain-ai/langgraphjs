@@ -73,6 +73,16 @@ export interface SubagentToolCall {
 export type SubagentStatus = "pending" | "running" | "complete" | "error";
 
 /**
+ * The execution status of a node.
+ *
+ * - `"pending"` - The node is scheduled but hasn't started execution yet.
+ * - `"running"` - The node is actively executing and streaming updates.
+ * - `"complete"` - The node has finished execution.
+ * - `"error"` - The node encountered an error during execution.
+ */
+export type NodeStatus = "pending" | "running" | "complete" | "error";
+
+/**
  * Default subagent state map used when no specific subagent types are provided.
  * Maps any string key to Record<string, unknown>.
  */
@@ -189,6 +199,42 @@ export interface StreamBase<
     // Overload for unknown names - returns untyped streams
     (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
   };
+
+  // ==========================================================================
+  // Node Streaming
+  // ==========================================================================
+
+  /**
+   * All node executions, keyed by unique execution ID.
+   *
+   * Each entry represents a single execution of a node. If a node runs
+   * multiple times (e.g., in a loop), each execution has its own entry.
+   */
+  nodes: Map<string, NodeStream>;
+
+  /**
+   * Currently active nodes (where status === "running").
+   */
+  activeNodes: NodeStream[];
+
+  /**
+   * Get a specific node execution by its unique execution ID.
+   *
+   * @param executionId - The unique execution ID
+   * @returns The node stream, or undefined if not found
+   */
+  getNodeStream: (executionId: string) => NodeStream | undefined;
+
+  /**
+   * Get all executions of a specific node by name.
+   *
+   * Returns all executions in chronological order (oldest first).
+   * Useful for nodes that run multiple times in a workflow.
+   *
+   * @param nodeName - The name of the node
+   * @returns Array of all executions of that node
+   */
+  getNodeStreamsByName: (nodeName: string) => NodeStream[];
 }
 
 /**
@@ -243,6 +289,102 @@ export interface SubagentStream<
   startedAt: Date | null;
 
   /** When the subagent completed */
+  completedAt: Date | null;
+}
+
+/**
+ * Represents a single node execution stream.
+ *
+ * Tracks the lifecycle of a node execution including messages streamed from
+ * the node, its local state values, and the update payload it sent to the
+ * graph state.
+ *
+ * Multiple executions of the same node (e.g., in a loop) are tracked as
+ * separate NodeStream instances. Use `getNodeStreamsByName` to get all
+ * executions of a specific node.
+ *
+ * @template StateType - The graph's state type.
+ * @template NodeName - The name of the node (narrowed when using getNodeStreamsByName).
+ * @template NodeValues - The type of values this node produces (inferred from node return type).
+ *
+ * @example
+ * ```typescript
+ * const stream = useStream<typeof graph>({ assistantId: "my-graph" });
+ *
+ * // Get all executions of the "researcher" node
+ * const researcherStreams = stream.getNodeStreamsByName("researcher");
+ *
+ * researcherStreams.forEach(nodeStream => {
+ *   console.log(nodeStream.name);       // "researcher" (typed literal)
+ *   console.log(nodeStream.messages);   // Messages from this execution
+ *   console.log(nodeStream.values);     // Typed to node's return type
+ *   console.log(nodeStream.update);     // State update payload
+ *   console.log(nodeStream.isLoading);  // Is it currently streaming?
+ * });
+ *
+ * // Track all currently active nodes
+ * stream.activeNodes.forEach(node => {
+ *   console.log(`${node.name} is running...`);
+ * });
+ * ```
+ */
+export interface NodeStream<
+  NodeName extends string = string,
+  NodeValues extends Record<string, unknown> = Record<string, unknown>
+> {
+  /**
+   * Unique identifier for this node execution.
+   * Generated from a combination of node name and execution timestamp.
+   */
+  id: string;
+
+  /**
+   * The name of the node.
+   * When using with a typed graph, this is constrained to the actual node names.
+   */
+  name: NodeName;
+
+  /**
+   * Messages streamed from this node execution.
+   * Includes AI messages with their content as it streams in.
+   */
+  messages: Message[];
+
+  /**
+   * The node's local state values during this execution.
+   * This contains the values this specific node produced.
+   * When using `getNodeStreamsByName`, this is typed to the node's return type.
+   */
+  values: NodeValues;
+
+  /**
+   * The update payload this node sent to the graph state.
+   * Typed to the node's return type when using `getNodeStreamsByName`.
+   * `undefined` if the node hasn't produced an update yet.
+   */
+  update: Partial<NodeValues> | undefined;
+
+  /**
+   * Current execution status of the node.
+   */
+  status: NodeStatus;
+
+  /**
+   * Whether the node is currently streaming.
+   * Convenience property equivalent to `status === "running"`.
+   */
+  isLoading: boolean;
+
+  /**
+   * When the node started execution.
+   * `null` if the node is still pending.
+   */
+  startedAt: Date | null;
+
+  /**
+   * When the node completed execution.
+   * `null` if the node is still running or pending.
+   */
   completedAt: Date | null;
 }
 
@@ -445,22 +587,38 @@ type InferToolInput<T> = T extends {
   : never;
 
 /**
+ * Helper type to check if a type is a literal string (not generic `string`).
+ * Returns true only for literal types like "get_weather", false for `string`.
+ */
+type IsLiteralString<T> = string extends T
+  ? false
+  : T extends string
+  ? true
+  : false;
+
+/**
  * Extract a tool call type from a single tool.
  * Works with tools created via `tool()` from `@langchain/core/tools`.
  *
  * This extracts the literal name type from DynamicStructuredTool's NameT parameter
  * and the args type from the _call method or schema's input property.
+ *
+ * Note: Only tools with literal string names (e.g., "get_weather") are included.
+ * Tools with generic `name: string` are filtered out to ensure discriminated
+ * union narrowing works correctly in TypeScript.
  */
 type ToolCallFromAgentTool<T> = T extends { name: infer N }
   ? N extends string
-    ? InferToolInput<T> extends infer Args
-      ? Args extends never
-        ? never
-        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Args extends Record<string, any>
-        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+    ? IsLiteralString<N> extends true
+      ? InferToolInput<T> extends infer Args
+        ? Args extends never
+          ? never
+          : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Args extends Record<string, any>
+          ? { name: N; args: Args; id?: string; type?: "tool_call" }
+          : never
         : never
-      : never
+      : never // Filter out generic `string` names
     : never
   : never;
 
@@ -1034,57 +1192,29 @@ export interface UseStreamOptions<
    */
   throttle?: number | boolean;
 
-  /**
-   * Tool names that indicate subagent invocation.
-   *
-   * When an AI message contains tool calls with these names, they are
-   * automatically tracked as subagent executions. This enables the
-   * `subagents`, `activeSubagents`, `getSubagent()`, and `getSubagentsByType()`
-   * properties on the stream.
-   *
-   * @default ["task"]
-   *
-   * @example
-   * ```typescript
-   * const stream = useStream({
-   *   assistantId: "my-agent",
-   *   // Track both "task" and "delegate" as subagent tools
-   *   subagentToolNames: ["task", "delegate", "spawn_agent"],
-   * });
-   *
-   * // Now stream.subagents will include executions from any of these tools
-   * ```
-   */
-  subagentToolNames?: string[];
-
-  /**
-   * Filter out messages from subagent streams in the main messages array.
-   *
-   * When enabled, messages from subgraph executions (those with a `tools:` namespace)
-   * are excluded from `stream.messages`. Instead, these messages are tracked
-   * per-subagent and accessible via `stream.subagents.get(id).messages`.
-   *
-   * This is useful for deep agent architectures where you want to display
-   * the main conversation separately from subagent activity.
-   *
-   * @default false
-   *
-   * @example
-   * ```typescript
-   * const stream = useStream({
-   *   assistantId: "my-agent",
-   *   filterSubagentMessages: true,
-   * });
-   *
-   * // Main thread messages only (no subagent messages)
-   * stream.messages
-   *
-   * // Access subagent messages individually
-   * stream.subagents.get("call_xyz").messages
-   * ```
-   */
-  filterSubagentMessages?: boolean;
+  // Note: Agent-specific options are defined in their respective option interfaces:
+  // - UseAgentStreamOptions: subagentToolNames
+  // - UseDeepAgentStreamOptions: filterSubagentMessages
+  // See libs/sdk/src/ui/stream/agent.ts and libs/sdk/src/ui/stream/deep-agent.ts
 }
+
+/**
+ * Union of all stream options types.
+ *
+ * Used internally by the implementation to accept any options type.
+ * This allows the implementation functions to handle options from
+ * any agent type while maintaining type safety at the public API level.
+ *
+ * @internal
+ */
+export type AnyStreamOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> = UseStreamOptions<StateType, Bag> & {
+  // Agent-specific options (optional, only present for agent types)
+  subagentToolNames?: string[];
+  filterSubagentMessages?: boolean;
+};
 
 interface RunMetadataStorage {
   getItem(key: `lg:stream:${string}`): string | null;
@@ -1185,9 +1315,25 @@ export type UseStreamCustomOptions<
   | "onStop"
   | "initialValues"
   | "throttle"
-  | "subagentToolNames"
-  | "filterSubagentMessages"
 > & { transport: UseStreamTransport<StateType, Bag> };
+
+/**
+ * Union of all custom stream options types.
+ *
+ * Used internally by the implementation to accept any custom options type.
+ * This allows the implementation functions to handle options from
+ * any agent type while maintaining type safety at the public API level.
+ *
+ * @internal
+ */
+export type AnyStreamCustomOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> = UseStreamCustomOptions<StateType, Bag> & {
+  // Agent-specific options (optional, only present for agent types)
+  subagentToolNames?: string[];
+  filterSubagentMessages?: boolean;
+};
 
 export type CustomSubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,

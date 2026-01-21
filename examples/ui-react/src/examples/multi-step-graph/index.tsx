@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 
 import type { ContentBlock } from "langchain";
-import { useStream } from "@langchain/langgraph-sdk/react";
-import type { AIMessage, Message } from "@langchain/langgraph-sdk";
+import type { InferNodeNames, InferStateType } from "@langchain/langgraph-sdk";
+import { useStream, type NodeStream } from "@langchain/langgraph-sdk/react";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -20,19 +20,22 @@ import { MessageInput } from "../../components/MessageInput";
 
 import type { agent } from "./agent";
 
+interface NodeStyles {
+  icon: React.ReactNode;
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}
+
+type NodeName = InferNodeNames<typeof agent>;
+type AgentState = InferStateType<typeof agent>;
+
 /**
- * Node configuration for visual display
+ * Node configuration for visual display.
+ * Keys are type-safe based on the graph's node names.
  */
-const NODE_CONFIG: Record<
-  string,
-  {
-    icon: React.ReactNode;
-    label: string;
-    color: string;
-    bgColor: string;
-    borderColor: string;
-  }
-> = {
+const NODE_CONFIG: Record<NodeName, NodeStyles> = {
   extract_topic: {
     icon: <Target className="w-4 h-4" />,
     label: "Topic Extraction",
@@ -71,17 +74,20 @@ const NODE_CONFIG: Record<
 };
 
 /**
- * Pipeline visualization showing the workflow
+ * Pipeline visualization showing the workflow.
+ * Derives node order dynamically from execution history.
  */
-function PipelineVisualization({ currentNode }: { currentNode?: string }) {
-  const nodes = [
-    "extract_topic",
-    "research_node",
-    "analyze",
-    "draft_node",
-    "review",
-  ];
-  const currentIndex = currentNode ? nodes.indexOf(currentNode) : -1;
+function PipelineVisualization({
+  nodeExecutions,
+}: {
+  nodeExecutions: NodeStream<AgentState, NodeName>[];
+}) {
+  // Get unique node names in execution order, filtered to known pipeline nodes
+  const pipelineNodes = [...new Set(nodeExecutions.map((n) => n.name))].filter(
+    (name) => NODE_CONFIG[name]
+  );
+
+  if (pipelineNodes.length === 0) return null;
 
   return (
     <div className="fixed right-6 top-1/2 -translate-y-1/2 z-50 bg-neutral-900/90 backdrop-blur-sm rounded-xl p-4 border border-neutral-800 shadow-xl">
@@ -89,13 +95,17 @@ function PipelineVisualization({ currentNode }: { currentNode?: string }) {
         Pipeline
       </div>
       <div className="flex flex-col items-center gap-1">
-        {nodes.map((node, idx) => {
-          const config = NODE_CONFIG[node];
-          const isActive = idx === currentIndex;
-          const isComplete = idx < currentIndex;
+        {pipelineNodes.map((nodeName, idx) => {
+          const config = NODE_CONFIG[nodeName];
+          // Find the latest execution for this node
+          const latestExecution = [...nodeExecutions]
+            .reverse()
+            .find((n) => n.name === nodeName);
+          const isActive = latestExecution?.isLoading ?? false;
+          const isComplete = latestExecution?.status === "complete";
 
           return (
-            <div key={node} className="flex flex-row items-start gap-3">
+            <div key={nodeName} className="flex flex-row items-start gap-3">
               {/* Icon column with connector */}
               <div className="flex flex-col items-center">
                 <div
@@ -131,12 +141,12 @@ function PipelineVisualization({ currentNode }: { currentNode?: string }) {
                     {config.icon}
                   </span>
                 </div>
-                {idx < nodes.length - 1 && (
+                {idx < pipelineNodes.length - 1 && (
                   <div
                     className={`
                     w-0.5 h-6 my-1
                     ${
-                      idx < currentIndex
+                      isComplete
                         ? "bg-linear-to-b from-emerald-500/50 to-emerald-500/20"
                         : "bg-neutral-700"
                     }
@@ -175,31 +185,40 @@ function PipelineVisualization({ currentNode }: { currentNode?: string }) {
 }
 
 /**
- * Node output card
+ * Extract text content from a node stream's messages
  */
-function NodeOutputCard({ message }: { message: Message }) {
-  /**
-   * Extract node name from message
-   */
-  const nodeName = typeof message.name === "string" ? message.name : undefined;
-  const config = nodeName ? NODE_CONFIG[nodeName] : null;
+function getNodeContent(nodeStream: NodeStream): string {
+  const aiMessages = nodeStream.messages.filter((m) => m.type === "ai");
+  const lastMessage = aiMessages[aiMessages.length - 1];
+  if (!lastMessage) return "";
 
-  /**
-   * Extract content
-   */
   const content =
-    typeof message.content === "string"
-      ? message.content
-      : Array.isArray(message.content)
-      ? message.content.find(
+    typeof lastMessage.content === "string"
+      ? lastMessage.content
+      : Array.isArray(lastMessage.content)
+      ? lastMessage.content.find(
           (c): c is ContentBlock.Text => c.type === "text" && "text" in c
         )?.text || ""
       : "";
 
+  // Strip emoji headers
+  return content.replace(/^[📌🔍🧠✍️✅]\s*\*\*.*?\*\*:?\n?/, "");
+}
+
+/**
+ * Node output card - renders a node's streaming content
+ */
+function NodeOutputCard({
+  nodeStream,
+}: {
+  nodeStream: NodeStream<AgentState, NodeName>;
+}) {
+  const config = NODE_CONFIG[nodeStream.name];
+  const content = getNodeContent(nodeStream);
+
+  if (!content.trim()) return null;
+
   if (!config) {
-    /**
-     * Render as regular message if no node config
-     */
     return (
       <div className="bg-neutral-800/50 rounded-xl p-4 border border-neutral-700">
         <div className="text-sm text-neutral-200 whitespace-pre-wrap leading-relaxed">
@@ -222,9 +241,12 @@ function NodeOutputCard({ message }: { message: Message }) {
         <span className={`text-sm font-semibold ${config.color}`}>
           {config.label}
         </span>
+        {nodeStream.isLoading && (
+          <div className="ml-auto w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        )}
       </div>
       <div className="text-sm text-neutral-200 whitespace-pre-wrap leading-relaxed">
-        {content.replace(/^[📌🔍🧠✍️✅]\s*\*\*.*?\*\*:?\n?/, "")}
+        {content}
       </div>
     </div>
   );
@@ -244,14 +266,15 @@ export function MultiStepGraph() {
 
   const { scrollRef, contentRef } = useStickToBottom();
 
-  const hasMessages = stream.messages.length > 0;
+  // Get all node executions as an array, sorted by start time
+  const nodeExecutions = Array.from(stream.nodes.values()).sort(
+    (a, b) => (a.startedAt?.getTime() ?? 0) - (b.startedAt?.getTime() ?? 0)
+  );
 
-  /**
-   * Get current node from the latest AI message
-   */
-  const currentNode = stream.messages
-    .filter((m): m is AIMessage => Boolean(m.type === "ai" && m.name))
-    .pop()?.name;
+  const hasStarted = nodeExecutions.length > 0 || stream.messages.length > 0;
+
+  // Get the currently active node (for loading indicator)
+  const activeNode = stream.activeNodes[0];
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -263,14 +286,21 @@ export function MultiStepGraph() {
     [stream]
   );
 
+  // Extract user's input from the first human message
+  const userInput = stream.messages.find((m) => m.type === "human");
+  const userContent =
+    typeof userInput?.content === "string" ? userInput.content : "";
+
   return (
     <div className="h-full flex flex-col">
       <main ref={scrollRef} className="flex-1 overflow-y-auto">
         <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
           {/* Fixed pipeline visualization on the right side */}
-          {hasMessages && <PipelineVisualization currentNode={currentNode} />}
+          {hasStarted && (
+            <PipelineVisualization nodeExecutions={nodeExecutions} />
+          )}
 
-          {!hasMessages ? (
+          {!hasStarted ? (
             <EmptyState
               icon={FileEdit}
               title="Content Writer Pipeline"
@@ -279,66 +309,35 @@ export function MultiStepGraph() {
               onSuggestionClick={handleSubmit}
             />
           ) : (
-            <>
-              <div className="flex flex-col gap-4">
-                {stream.messages.map((message, idx) => {
-                  /**
-                   * User messages
-                   */
-                  if (message.type === "human") {
-                    return (
-                      <div key={message.id ?? idx} className="flex justify-end">
-                        <div className="bg-brand-accent/20 border border-brand-accent/30 rounded-xl px-4 py-2.5 max-w-[80%]">
-                          <p className="text-sm text-white">
-                            {typeof message.content === "string"
-                              ? message.content
-                              : ""}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
+            <div className="flex flex-col gap-4">
+              {/* User's input */}
+              {userContent && (
+                <div className="flex justify-end">
+                  <div className="bg-brand-accent/20 border border-brand-accent/30 rounded-xl px-4 py-2.5 max-w-[80%]">
+                    <p className="text-sm text-white">{userContent}</p>
+                  </div>
+                </div>
+              )}
 
-                  /**
-                   * AI messages - render as node output cards
-                   */
-                  if (message.type === "ai") {
-                    const content =
-                      typeof message.content === "string"
-                        ? message.content
-                        : Array.isArray(message.content)
-                        ? message.content.find(
-                            (c): c is ContentBlock.Text =>
-                              c.type === "text" && "text" in c
-                          )?.text || ""
-                        : "";
+              {/* Node outputs - render each node's stream */}
+              {nodeExecutions
+                .filter((ns) => NODE_CONFIG[ns.name]) // Only show pipeline nodes
+                .map((nodeStream) => (
+                  <NodeOutputCard key={nodeStream.id} nodeStream={nodeStream} />
+                ))}
 
-                    if (!content.trim()) return null;
-
-                    return (
-                      <NodeOutputCard
-                        key={message.id ?? idx}
-                        message={message}
-                      />
-                    );
-                  }
-
-                  return null;
-                })}
-
-                {/* Loading indicator with current node info */}
-                {stream.isLoading && (
+              {/* Loading indicator with current node info */}
+              {stream.isLoading &&
+                activeNode &&
+                NODE_CONFIG[activeNode.name] && (
                   <div className="flex items-center gap-3 text-neutral-400 animate-pulse">
                     <LoadingIndicator />
-                    {currentNode && NODE_CONFIG[currentNode] && (
-                      <span className="text-sm">
-                        Processing in {NODE_CONFIG[currentNode].label}...
-                      </span>
-                    )}
+                    <span className="text-sm">
+                      Processing in {NODE_CONFIG[activeNode.name].label}...
+                    </span>
                   </div>
                 )}
-              </div>
-            </>
+            </div>
           )}
         </div>
       </main>
