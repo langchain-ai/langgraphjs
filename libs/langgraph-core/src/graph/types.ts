@@ -1,4 +1,9 @@
-import type { InteropZodObject } from "@langchain/core/utils/types";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  isInteropZodObject,
+  type InteropZodObject,
+} from "@langchain/core/utils/types";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   LangGraphRunnableConfig,
   Runtime,
@@ -11,12 +16,13 @@ import type {
   StateType,
   UpdateType as AnnotationUpdateType,
 } from "./annotation.js";
-import type {
+import {
   AnyStateSchema,
   StateSchema,
   StateSchemaFieldsToStateDefinition,
 } from "../state/schema.js";
 import type { InteropZodToStateDefinition } from "./zod/meta.js";
+import { isBaseChannel } from "../channels/base.js";
 
 // Re-export END for use in ConditionalEdgeRouter return types
 export { END };
@@ -28,6 +34,8 @@ export { END };
  */
 export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
   ? StateSchemaFieldsToStateDefinition<TInit>
+  : T extends AnnotationRoot<infer SD>
+  ? SD
   : T extends InteropZodObject
   ? InteropZodToStateDefinition<T>
   : T extends StateDefinition
@@ -36,13 +44,161 @@ export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
 
 /**
  * Type for schema types that can be used to initialize state.
+ * Supports all valid schema types: StateDefinition, Zod objects, StateSchema, and AnnotationRoot.
  *
  * @internal
  */
 export type StateDefinitionInit =
   | StateDefinition
   | InteropZodObject
-  | AnyStateSchema;
+  | AnyStateSchema
+  | AnnotationRoot<any>;
+
+/**
+ * Check if a value is a valid StateDefinitionInit type.
+ * Supports: StateSchema, InteropZodObject (Zod), AnnotationRoot, StateDefinition
+ *
+ * @internal
+ */
+export function isStateDefinitionInit(
+  value: unknown
+): value is StateDefinitionInit {
+  if (value == null) return false;
+
+  // StateSchema
+  if (StateSchema.isInstance(value)) return true;
+
+  // InteropZodObject (Zod v3/v4 object schemas)
+  if (isInteropZodObject(value)) return true;
+
+  // AnnotationRoot
+  if (
+    typeof value === "object" &&
+    "lc_graph_name" in value &&
+    (value as { lc_graph_name: unknown }).lc_graph_name === "AnnotationRoot"
+  ) {
+    return true;
+  }
+
+  // StateDefinition (raw channel map)
+  if (
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.values(value).every(
+      (v) => typeof v === "function" || isBaseChannel(v)
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Valid types for context schema.
+ * Context doesn't have channels/reducers, so StateSchema is NOT supported.
+ * Supports StandardSchemaV1 (Zod, Valibot, etc.) and AnnotationRoot (backward compat).
+ *
+ * @internal
+ */
+export type ContextSchemaInit =
+  | StandardSchemaV1
+  | AnnotationRoot<StateDefinition>;
+
+/**
+ * Initialization options for StateGraph.
+ * Accepts any combination of schema types for state/input/output.
+ *
+ * Supports both `state` and `stateSchema` as aliases for backward compatibility.
+ * If only `input` is provided (no state/stateSchema), `input` is used as the state schema.
+ *
+ * @template SD - State definition type
+ * @template I - Input definition type (defaults to undefined)
+ * @template O - Output definition type (defaults to undefined)
+ * @template C - Context schema type (defaults to undefined)
+ * @template N - Node name union type (defaults to string)
+ * @template InterruptType - Interrupt type (defaults to unknown)
+ * @template WriterType - Writer type (defaults to unknown)
+ */
+export type StateGraphInit<
+  SD extends StateDefinitionInit = StateDefinitionInit,
+  I extends StateDefinitionInit | undefined = undefined,
+  O extends StateDefinitionInit | undefined = undefined,
+  C extends ContextSchemaInit | undefined = undefined,
+  N extends string = string,
+  InterruptType = unknown,
+  WriterType = unknown
+> = {
+  /** Primary key for state schema */
+  state?: SD;
+
+  /**
+   * @deprecated Use `state` instead. Will be removed in a future version.
+   */
+  stateSchema?: SD;
+
+  input?: I;
+  output?: O;
+
+  /** Context schema for runtime configuration validation. Does not support StateSchema. */
+  context?: C;
+
+  interrupt?: InterruptType;
+  writer?: WriterType;
+  nodes?: N[];
+};
+
+/**
+ * Options for the second argument when passing a direct schema.
+ * Excludes `state` and `stateSchema` since those come from the first arg.
+ *
+ * @internal
+ */
+export type StateGraphOptions<
+  I extends StateDefinitionInit | undefined = undefined,
+  O extends StateDefinitionInit | undefined = undefined,
+  C extends ContextSchemaInit | undefined = undefined,
+  N extends string = string,
+  InterruptType = unknown,
+  WriterType = unknown
+> = Omit<
+  StateGraphInit<StateDefinitionInit, I, O, C, N, InterruptType, WriterType>,
+  "state" | "stateSchema"
+>;
+
+/**
+ * Check if a value is a StateGraphInit object (has state, stateSchema, or input with valid schema).
+ *
+ * @internal
+ */
+export function isStateGraphInit(
+  value: unknown
+): value is StateGraphInit<StateDefinitionInit> {
+  if (typeof value !== "object" || value == null) return false;
+
+  const obj = value as Record<string, unknown>;
+
+  // Must have at least one of: state, stateSchema, or input
+  const hasState = "state" in obj && isStateDefinitionInit(obj.state);
+  const hasStateSchema =
+    "stateSchema" in obj && isStateDefinitionInit(obj.stateSchema);
+  const hasInput = "input" in obj && isStateDefinitionInit(obj.input);
+
+  if (!hasState && !hasStateSchema && !hasInput) return false;
+
+  // Validate input/output if provided
+  if ("input" in obj && obj.input != null && !isStateDefinitionInit(obj.input))
+    return false;
+  if (
+    "output" in obj &&
+    obj.output != null &&
+    !isStateDefinitionInit(obj.output)
+  )
+    return false;
+
+  return true;
+}
 
 /**
  * Extract the State type from any supported schema type.

@@ -17,7 +17,7 @@ import type {
   LangGraphRunnableConfig,
   Runtime,
 } from "../pregel/runnable_types.js";
-import { BaseChannel, isBaseChannel } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
   Graph,
@@ -78,8 +78,13 @@ import type {
 import type { InferWriterType } from "../writer.js";
 import type { AnyStateSchema } from "../state/schema.js";
 import {
+  ContextSchemaInit,
   ExtractStateType,
   ExtractUpdateType,
+  isStateDefinitionInit,
+  isStateGraphInit,
+  StateGraphInit,
+  StateGraphOptions,
   ToStateDefinition,
   type StateDefinitionInit,
 } from "./types.js";
@@ -108,12 +113,19 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   cachePolicy?: CachePolicy;
 };
 
-export type StateGraphAddNodeOptions<Nodes extends string = string> = {
+/**
+ * Options for StateGraph.addNode() method.
+ *
+ * @template Nodes - Node name constraints
+ * @template InputSchema - Per-node input schema type (inferred from options.input)
+ */
+export type StateGraphAddNodeOptions<
+  Nodes extends string = string,
+  InputSchema extends StateDefinitionInit | undefined = undefined
+> = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
-  // TODO: Fix generic typing for annotations
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: AnnotationRoot<any> | InteropZodObject;
+  input?: InputSchema;
 } & AddNodeOptions<Nodes>;
 
 export type StateGraphArgsWithStateSchema<
@@ -313,210 +325,270 @@ export class StateGraph<
 
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
+  /**
+   * Create a new StateGraph for building stateful, multi-step workflows.
+   *
+   * Accepts state definitions via `Annotation.Root`, `StateSchema`, or Zod schemas.
+   *
+   * @example Direct schema
+   * ```ts
+   * const StateAnnotation = Annotation.Root({
+   *   messages: Annotation<string[]>({ reducer: (a, b) => [...a, ...b] }),
+   * });
+   * const graph = new StateGraph(StateAnnotation);
+   * ```
+   *
+   * @example Direct schema with input/output filtering
+   * ```ts
+   * const graph = new StateGraph(StateAnnotation, {
+   *   input: InputSchema,
+   *   output: OutputSchema,
+   * });
+   * ```
+   *
+   * @example Object pattern with state, input, output
+   * ```ts
+   * const graph = new StateGraph({
+   *   state: FullStateSchema,
+   *   input: InputSchema,
+   *   output: OutputSchema,
+   * });
+   * ```
+   *
+   * @example Input/output only (state inferred from input)
+   * ```ts
+   * const graph = new StateGraph({
+   *   input: InputAnnotation,
+   *   output: OutputAnnotation,
+   * });
+   * ```
+   */
   constructor(
-    state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
-    options?: {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
+    state: SD extends StateDefinitionInit ? SD : never,
+    options?: StateGraphOptions<
+      I,
+      O,
+      C extends ContextSchemaInit ? C : undefined,
+      N,
+      InterruptType,
+      WriterType
+    >
+  );
 
-      interrupt?: InterruptType;
-      writer?: WriterType;
-
-      nodes?: N[];
+  constructor(
+    init: Omit<
+      StateGraphInit<
+        SD extends StateDefinitionInit ? SD : StateDefinitionInit,
+        SD extends StateDefinitionInit ? SD : StateDefinitionInit,
+        O,
+        C extends ContextSchemaInit ? C : undefined,
+        N,
+        InterruptType,
+        WriterType
+      >,
+      "state" | "stateSchema"
+    > & {
+      input: SD extends StateDefinitionInit ? SD : never;
+      state?: never;
+      stateSchema?: never;
     }
   );
 
   constructor(
-    state: SD extends AnyStateSchema ? SD : never,
-    options?: {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
-
-      interrupt?: InterruptType;
-      writer?: WriterType;
-
-      nodes?: N[];
-    }
+    init: StateGraphInit<
+      SD extends StateDefinitionInit ? SD : StateDefinitionInit,
+      I,
+      O,
+      C extends ContextSchemaInit ? C : undefined,
+      N,
+      InterruptType,
+      WriterType
+    >
   );
 
+  /** @deprecated Use `Annotation.Root`, `StateSchema`, or Zod schemas instead. */
   constructor(
-    state: SD extends InteropZodObject ? SD : never,
-    options?: {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
-
-      interrupt?: InterruptType;
-      writer?: WriterType;
-
-      nodes?: N[];
-    }
-  );
-
-  constructor(
-    fields: SD extends StateDefinition
-      ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
-      : never,
+    fields: StateGraphArgs<S>,
     contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
-    fields: SD extends StateDefinition
-      ?
-          | AnnotationRoot<SD>
-          | StateGraphArgsWithStateSchema<
-              SD,
-              ToStateDefinition<I>,
-              ToStateDefinition<O>
-            >
-      : never,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
-  );
-
-  /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
-  constructor(
-    fields: SD extends StateDefinition
-      ? SD | StateGraphArgs<S>
-      : StateGraphArgs<S>,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
-  );
-
-  constructor(
-    fields: SD extends InteropZodObject
-      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
-      : never,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
-  );
-
-  constructor(
-    fields: SD extends AnyStateSchema
-      ? SD
-      : SD extends InteropZodObject
-      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
-      : SD extends StateDefinition
-      ?
-          | SD
-          | AnnotationRoot<SD>
-          | StateGraphArgs<S>
-          | StateGraphArgsWithStateSchema<
-              SD,
-              ToStateDefinition<I>,
-              ToStateDefinition<O>
-            >
-          | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
-      : StateGraphArgs<S>,
-    contextSchema?:
+    stateOrInit:
+      | StateDefinitionInit
+      | StateGraphInit<StateDefinitionInit, I, O>
+      | StateGraphArgs<S>,
+    options?:
       | C
       | AnnotationRoot<ToStateDefinition<C>>
-      | {
-          input?: I | AnnotationRoot<ToStateDefinition<I>>;
-          output?: O | AnnotationRoot<ToStateDefinition<O>>;
-          context?: C | AnnotationRoot<ToStateDefinition<C>>;
-          interrupt?: InterruptType;
-          writer?: WriterType;
-          nodes?: N[];
-        }
+      | StateGraphOptions<
+          I,
+          O,
+          C extends ContextSchemaInit ? C : undefined,
+          N,
+          InterruptType,
+          WriterType
+        >
   ) {
     super();
 
-    if (StateSchema.isInstance(fields)) {
-      const channels = fields.getChannels();
-      this._schemaDefinition = channels;
-      this.channels = channels;
+    // Normalize all input patterns to StateGraphInit format
+    const init = this._normalizeToStateGraphInit(stateOrInit, options);
 
-      this._schemaRuntimeDefinition = fields;
-      this._inputRuntimeDefinition = PartialStateSchema;
-      this._outputRuntimeDefinition = fields;
-    } else if (isZodStateGraphArgsWithStateSchema(fields)) {
-      const stateDef = this._metaRegistry.getChannelsForSchema(fields.state);
-      const inputDef =
-        fields.input != null
-          ? this._metaRegistry.getChannelsForSchema(fields.input)
-          : stateDef;
-      const outputDef =
-        fields.output != null
-          ? this._metaRegistry.getChannelsForSchema(fields.output)
-          : stateDef;
-
-      this._schemaDefinition = stateDef;
-      this._schemaRuntimeDefinition = fields.state;
-
-      this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input ?? PartialStateSchema;
-
-      this._outputDefinition = outputDef as O;
-      this._outputRuntimeDefinition = fields.output ?? fields.state;
-    } else if (isInteropZodObject(fields)) {
-      const stateDef = this._metaRegistry.getChannelsForSchema(fields);
-
-      this._schemaDefinition = stateDef;
-      this._schemaRuntimeDefinition = fields;
-
-      this._inputDefinition = stateDef as I;
-      this._inputRuntimeDefinition = PartialStateSchema;
-
-      this._outputDefinition = stateDef as O;
-      this._outputRuntimeDefinition = fields;
-    } else if (
-      isStateGraphArgsWithInputOutputSchemas<
-        SD extends StateDefinition ? SD : never,
-        O extends StateDefinition ? O : never
-      >(fields)
-    ) {
-      this._schemaDefinition = fields.input.spec;
-      this._inputDefinition = fields.input.spec as unknown as I;
-      this._outputDefinition = fields.output.spec;
-    } else if (isStateGraphArgsWithStateSchema(fields)) {
-      this._schemaDefinition = fields.stateSchema.spec;
-      this._inputDefinition = (fields.input?.spec ??
-        this._schemaDefinition) as I;
-      this._outputDefinition = (fields.output?.spec ??
-        this._schemaDefinition) as O;
-    } else if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
-      const spec = isAnnotationRoot(fields) ? fields.spec : fields;
-      this._schemaDefinition = spec;
-    } else if (isStateGraphArgs(fields)) {
-      const spec = _getChannels(fields.channels);
-      this._schemaDefinition = spec;
-    } else {
+    // Resolve state schema: state > stateSchema (deprecated) > input
+    const stateSchema = init.state ?? init.stateSchema ?? init.input;
+    if (!stateSchema) {
       throw new StateGraphInputError();
     }
 
-    this._inputDefinition ??= this._schemaDefinition as I;
-    this._outputDefinition ??= this._schemaDefinition as O;
+    // Get channel definitions from the schema (may contain channel factories)
+    const stateChannelDef = this._getChannelsFromSchema(stateSchema);
 
+    // Set schema definitions (these may contain channel factories)
+    this._schemaDefinition = stateChannelDef;
+
+    // Set runtime definitions for validation
+    if (StateSchema.isInstance(stateSchema)) {
+      this._schemaRuntimeDefinition = stateSchema;
+    } else if (isInteropZodObject(stateSchema)) {
+      this._schemaRuntimeDefinition = stateSchema;
+    }
+
+    // Set input runtime definition
+    if (init.input) {
+      if (StateSchema.isInstance(init.input)) {
+        this._inputRuntimeDefinition = init.input;
+      } else if (isInteropZodObject(init.input)) {
+        this._inputRuntimeDefinition = init.input;
+      } else {
+        this._inputRuntimeDefinition = PartialStateSchema;
+      }
+    } else {
+      this._inputRuntimeDefinition = PartialStateSchema;
+    }
+
+    // Set output runtime definition
+    if (init.output) {
+      if (StateSchema.isInstance(init.output)) {
+        this._outputRuntimeDefinition = init.output;
+      } else if (isInteropZodObject(init.output)) {
+        this._outputRuntimeDefinition = init.output;
+      } else {
+        this._outputRuntimeDefinition = this._schemaRuntimeDefinition;
+      }
+    } else {
+      this._outputRuntimeDefinition = this._schemaRuntimeDefinition;
+    }
+
+    // Set input/output definitions (default to state)
+    const inputChannelDef = init.input
+      ? this._getChannelsFromSchema(init.input)
+      : stateChannelDef;
+    const outputChannelDef = init.output
+      ? (this._getChannelsFromSchema(init.output) as O)
+      : stateChannelDef;
+    this._inputDefinition = inputChannelDef as I;
+    this._outputDefinition = outputChannelDef as O;
+
+    // Add all schemas (_addSchema instantiates channel factories and populates this.channels)
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
 
-    function isOptions(options: unknown): options is {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
-      interrupt?: InterruptType;
-      writer?: WriterType;
-      nodes?: N[];
-    } {
-      return (
-        typeof options === "object" &&
-        options != null &&
-        !("spec" in options) &&
-        !isInteropZodObject(options)
-      );
+    // Handle context schema
+    if (init.context) {
+      if (isInteropZodObject(init.context)) {
+        this._configRuntimeSchema = init.context;
+      }
     }
 
-    // Handle runtime config options
-    if (isOptions(contextSchema)) {
-      if (isInteropZodObject(contextSchema.context)) {
-        this._configRuntimeSchema = contextSchema.context;
-      }
-      this._interrupt = contextSchema.interrupt as InterruptType;
-      this._writer = contextSchema.writer as WriterType;
-    } else if (isInteropZodObject(contextSchema)) {
-      this._configRuntimeSchema = contextSchema;
+    // Handle interrupt and writer
+    this._interrupt = init.interrupt as InterruptType;
+    this._writer = init.writer as WriterType;
+  }
+
+  /**
+   * Normalize all constructor input patterns to a unified StateGraphInit object.
+   * @internal
+   */
+  private _normalizeToStateGraphInit(
+    stateOrInit: unknown,
+    options?: unknown
+  ): StateGraphInit<StateDefinitionInit, I, O> {
+    // Check if already StateGraphInit format
+    if (isStateGraphInit(stateOrInit)) {
+      // Merge any 2nd arg options
+      const opts = options as StateGraphOptions<I, O> | undefined;
+      return {
+        ...stateOrInit,
+        input: stateOrInit.input ?? opts?.input,
+        output: stateOrInit.output ?? opts?.output,
+        context: stateOrInit.context ?? opts?.context,
+        interrupt: stateOrInit.interrupt ?? opts?.interrupt,
+        writer: stateOrInit.writer ?? opts?.writer,
+        nodes: stateOrInit.nodes ?? opts?.nodes,
+      } as StateGraphInit<StateDefinitionInit, I, O>;
     }
+
+    // Check if direct schema (StateSchema, Zod, Annotation, StateDefinition)
+    if (isStateDefinitionInit(stateOrInit)) {
+      const opts = options as StateGraphOptions<I, O> | undefined;
+      return {
+        state: stateOrInit as StateDefinitionInit,
+        input: opts?.input as I,
+        output: opts?.output as O,
+        context: opts?.context,
+        interrupt: opts?.interrupt,
+        writer: opts?.writer,
+        nodes: opts?.nodes,
+      };
+    }
+
+    // Check for legacy { channels } format
+    if (isStateGraphArgs(stateOrInit as StateGraphArgs<S>)) {
+      const legacyArgs = stateOrInit as StateGraphArgs<S>;
+      const spec = _getChannels(legacyArgs.channels);
+      return {
+        state: spec as StateDefinitionInit,
+      };
+    }
+
+    throw new StateGraphInputError();
+  }
+
+  /**
+   * Convert any supported schema type to a StateDefinition (channel map).
+   * @internal
+   */
+  private _getChannelsFromSchema(schema: StateDefinitionInit): StateDefinition {
+    if (StateSchema.isInstance(schema)) {
+      return schema.getChannels();
+    }
+
+    if (isInteropZodObject(schema)) {
+      return this._metaRegistry.getChannelsForSchema(schema);
+    }
+
+    // AnnotationRoot - has .spec property that is the StateDefinition
+    if (
+      typeof schema === "object" &&
+      "lc_graph_name" in schema &&
+      (schema as { lc_graph_name: unknown }).lc_graph_name === "AnnotationRoot"
+    ) {
+      return (schema as AnnotationRoot<StateDefinition>).spec;
+    }
+
+    // StateDefinition (raw channel map) - return as-is
+    if (
+      typeof schema === "object" &&
+      !Array.isArray(schema) &&
+      Object.keys(schema).length > 0
+    ) {
+      return schema as StateDefinition;
+    }
+
+    throw new StateGraphInputError(
+      "Invalid schema type. Expected StateSchema, Zod object, AnnotationRoot, or StateDefinition."
+    );
   }
 
   get allEdges(): Set<[string, string]> {
@@ -597,6 +669,31 @@ export class StateGraph<
           >,
           options?: StateGraphAddNodeOptions
         ][]
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
+
+  override addNode<
+    K extends string,
+    InputSchema extends StateDefinitionInit,
+    NodeOutput extends U = U
+  >(
+    key: K,
+    action: NodeAction<
+      ExtractStateType<InputSchema>,
+      NodeOutput,
+      C,
+      InterruptType,
+      WriterType
+    >,
+    options: StateGraphAddNodeOptions<N | K, InputSchema>
   ): StateGraph<
     SD,
     S,
@@ -710,17 +807,11 @@ export class StateGraph<
         throw new Error(`Node \`${key}\` is reserved.`);
       }
 
-      let inputSpec = this._schemaDefinition;
+      let inputSpec: StateDefinition = this._schemaDefinition;
       if (options?.input !== undefined) {
-        if (isInteropZodObject(options.input)) {
-          inputSpec = this._metaRegistry.getChannelsForSchema(options.input);
-        } else if (options.input.spec !== undefined) {
-          inputSpec = options.input.spec;
-        }
+        inputSpec = this._getChannelsFromSchema(options.input);
       }
-      if (inputSpec !== undefined) {
-        this._addSchema(inputSpec);
-      }
+      this._addSchema(inputSpec);
 
       let runnable;
       if (Runnable.isRunnable(action)) {
@@ -1322,8 +1413,27 @@ export class CompiledStateGraph<
     const inputDef = this.builder._inputRuntimeDefinition;
     const schemaDef = this.builder._schemaRuntimeDefinition;
 
-    // Handle StateSchema validation
-    if (StateSchema.isInstance(schemaDef)) {
+    // Determine which schema to use for validation
+    // Priority: inputDef (if it's a validatable schema), otherwise fall back to schemaDef
+
+    // Handle StateSchema validation for input schema
+    if (StateSchema.isInstance(inputDef)) {
+      if (isCommand(input)) {
+        const parsedInput = input;
+        if (input.update) {
+          parsedInput.update = await inputDef.validateInput(
+            Array.isArray(input.update)
+              ? Object.fromEntries(input.update)
+              : input.update
+          );
+        }
+        return parsedInput;
+      }
+      return await inputDef.validateInput(input);
+    }
+
+    // Handle StateSchema validation for state schema (when input is partial state)
+    if (inputDef === PartialStateSchema && StateSchema.isInstance(schemaDef)) {
       if (isCommand(input)) {
         const parsedInput = input;
         if (input.update) {
@@ -1382,27 +1492,11 @@ export class CompiledStateGraph<
   }
 }
 
-function isStateDefinition(obj: unknown): obj is StateDefinition {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    !Array.isArray(obj) &&
-    Object.keys(obj).length > 0 &&
-    Object.values(obj).every((v) => typeof v === "function" || isBaseChannel(v))
-  );
-}
-
-function isAnnotationRoot<SD extends StateDefinition>(
-  obj: unknown | AnnotationRoot<SD>
-): obj is AnnotationRoot<SD> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    "lc_graph_name" in obj &&
-    obj.lc_graph_name === "AnnotationRoot"
-  );
-}
-
+/**
+ * Check if value is a legacy StateGraphArgs with channels.
+ * @internal
+ * @deprecated Use StateGraphInit instead
+ */
 function isStateGraphArgs<Channels extends object | unknown>(
   obj: unknown | StateGraphArgs<Channels>
 ): obj is StateGraphArgs<Channels> {
@@ -1411,60 +1505,6 @@ function isStateGraphArgs<Channels extends object | unknown>(
     obj !== null &&
     (obj as StateGraphArgs<Channels>).channels !== undefined
   );
-}
-
-function isStateGraphArgsWithStateSchema<
-  SD extends StateDefinition,
-  I extends StateDefinition,
-  O extends StateDefinition
->(
-  obj: unknown | StateGraphArgsWithStateSchema<SD, I, O>
-): obj is StateGraphArgsWithStateSchema<SD, I, O> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    (obj as StateGraphArgsWithStateSchema<SD, I, O>).stateSchema !== undefined
-  );
-}
-
-function isStateGraphArgsWithInputOutputSchemas<
-  SD extends StateDefinition,
-  O extends StateDefinition
->(
-  obj: unknown | StateGraphArgsWithInputOutputSchemas<SD, O>
-): obj is StateGraphArgsWithInputOutputSchemas<SD, O> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (obj as any).stateSchema === undefined &&
-    (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
-    (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
-  );
-}
-
-function isZodStateGraphArgsWithStateSchema<
-  SD extends InteropZodObject,
-  I extends InteropZodObject,
-  O extends InteropZodObject
->(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
-  if (typeof value !== "object" || value == null) {
-    return false;
-  }
-
-  if (!("state" in value) || !isInteropZodObject(value.state)) {
-    return false;
-  }
-
-  if ("input" in value && !isInteropZodObject(value.input)) {
-    return false;
-  }
-
-  if ("output" in value && !isInteropZodObject(value.output)) {
-    return false;
-  }
-
-  return true;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
