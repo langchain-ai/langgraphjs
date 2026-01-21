@@ -20,7 +20,10 @@ describe("StateGraph", () => {
 
         const graph = new StateGraph(StateAnnotation)
           .addNode("increment", (state) => {
-            expectTypeOf(state).toEqualTypeOf<{ count: number; name: string }>();
+            expectTypeOf(state).toEqualTypeOf<{
+              count: number;
+              name: string;
+            }>();
             return { count: 1 };
           })
           .addEdge(START, "increment")
@@ -41,7 +44,10 @@ describe("StateGraph", () => {
 
         const graph = new StateGraph(AgentState)
           .addNode("increment", (state) => {
-            expectTypeOf(state).toEqualTypeOf<{ count: number; name: string }>();
+            expectTypeOf(state).toEqualTypeOf<{
+              count: number;
+              name: string;
+            }>();
             return { count: state.count + 1 };
           })
           .addEdge(START, "increment")
@@ -62,7 +68,10 @@ describe("StateGraph", () => {
 
         const graph = new StateGraph(stateSchema)
           .addNode("increment", (state) => {
-            expectTypeOf(state).toEqualTypeOf<{ count: number; name: string }>();
+            expectTypeOf(state).toEqualTypeOf<{
+              count: number;
+              name: string;
+            }>();
             return { count: state.count + 1 };
           })
           .addEdge(START, "increment")
@@ -739,10 +748,13 @@ describe("StateGraph", () => {
     it("StateSchema node types work correctly", () => {
       const AgentState = new StateSchema({
         count: z.number().default(0),
-        items: new ReducedValue(z.array(z.string()).default(() => []), {
-          inputSchema: z.string(),
-          reducer: (current: string[], next: string) => [...current, next],
-        }),
+        items: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], next: string) => [...current, next],
+          }
+        ),
       });
 
       new StateGraph(AgentState).addNode("process", (state) => {
@@ -936,10 +948,13 @@ describe("StateGraph", () => {
 
     it("supports StateSchema with ReducedValue", async () => {
       const AgentState = new StateSchema({
-        items: new ReducedValue(z.array(z.string()).default(() => []), {
-          inputSchema: z.string(),
-          reducer: (current: string[], next: string) => [...current, next],
-        }),
+        items: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], next: string) => [...current, next],
+          }
+        ),
         count: z.number().default(0),
       });
 
