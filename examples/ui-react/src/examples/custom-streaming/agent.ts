@@ -26,10 +26,7 @@ const analyzeDataSchema = z.object({
  * Emits progress updates during execution using typed custom events
  */
 const analyzeDataTool = tool(
-  async (
-    input: { dataSource: string; analysisType: string },
-    config: ToolRuntime
-  ): Promise<string> => {
+  async (input, config: ToolRuntime): Promise<string> => {
     const { dataSource, analysisType } = input;
     const steps = [
       { step: "connecting", message: `Connecting to ${dataSource}...` },
@@ -114,10 +111,7 @@ const processFileSchema = z.object({
  * File processing tool - demonstrates status updates
  */
 const processFileTool = tool(
-  async (
-    input: { filename: string; operation: "read" | "compress" | "validate" | "transform" },
-    config: ToolRuntime
-  ) => {
+  async (input, config: ToolRuntime) => {
     const { filename, operation } = input;
     /**
      * Use a unique ID for this file operation to make it persistent

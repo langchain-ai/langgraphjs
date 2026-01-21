@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type { UseStreamOptions, InferAgentState } from "../ui/types.js";
+import type {
+  UseStreamOptions,
+  InferAgentState,
+  InferAgentToolCalls,
+  SubagentStateMap,
+  DefaultSubagentStates,
+} from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
   UseStream,
@@ -54,6 +60,19 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
 }
   ? BagTemplate
   : B;
+
+/**
+ * Helper type that infers SubagentStates from a DeepAgent type.
+ * - If T has `~deepAgentTypes` (DeepAgent), infers the subagent state map
+ *   with properly typed tool calls from the agent
+ * - Otherwise, returns DefaultSubagentStates
+ *
+ * This enables automatic type inference for subagent streams when using
+ * `useStream<typeof agent>` with a DeepAgent created by createDeepAgent.
+ */
+type InferSubagentStatesFromAgent<T> = T extends { "~deepAgentTypes": unknown }
+  ? SubagentStateMap<T, InferAgentToolCalls<T>>
+  : DefaultSubagentStates;
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -163,7 +182,11 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamOptions<InferStateType<T>, InferBag<T, Bag>>
-): UseStream<InferStateType<T>, InferBag<T, Bag>>;
+): UseStream<
+  InferStateType<T>,
+  InferBag<T, Bag>,
+  InferSubagentStatesFromAgent<T>
+>;
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -186,7 +209,11 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): UseStreamCustom<InferStateType<T>, InferBag<T, Bag>>;
+): UseStreamCustom<
+  InferStateType<T>,
+  InferBag<T, Bag>,
+  InferSubagentStatesFromAgent<T>
+>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {

@@ -16,6 +16,7 @@ import "../examples/custom-streaming";
 import "../examples/branching-chat";
 import "../examples/session-persistence";
 import "../examples/deepagent";
+import "../examples/deepagent-tools";
 
 function WelcomeScreen() {
   return (

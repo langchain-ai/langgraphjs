@@ -4,6 +4,7 @@
     "agent": "./src/examples/branching-chat/agent.ts:agent",
     "custom-streaming": "./src/examples/custom-streaming/agent.ts:agent",
     "deepagent": "./src/examples/deepagent/agent.ts:agent",
+    "deepagent-tools": "./src/examples/deepagent-tools/agent.ts:agent",
     "human-in-the-loop": "./src/examples/human-in-the-loop/agent.ts:agent",
     "multi-step-graph": "./src/examples/multi-step-graph/agent.ts:agent",
     "parallel-research": "./src/examples/parallel-research/agent.ts:agent",

@@ -20,6 +20,20 @@ import type {
   RunCallbackMeta,
   SubagentStream,
   StreamBase,
+  DefaultSubagentStates,
+  // DeepAgent type helpers for subagent inference
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  BaseSubagentState,
 } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
 import type { StreamEvent } from "../types.js";
@@ -40,12 +54,32 @@ export type {
   RunCallbackMeta,
   SubagentStream,
   StreamBase,
+  DefaultSubagentStates,
+  // DeepAgent type helpers for subagent inference
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  BaseSubagentState,
 };
 
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> extends StreamBase<StateType, GetToolCallsType<StateType>, GetInterruptType<Bag>> {
+  Bag extends BagTemplate = BagTemplate,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+> extends StreamBase<
+    StateType,
+    GetToolCallsType<StateType>,
+    GetInterruptType<Bag>,
+    SubagentStates
+  > {
   /**
    * Whether the thread is currently being loaded.
    */
@@ -127,9 +161,10 @@ export interface UseStream<
 
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
 > = Pick<
-  UseStream<StateType, Bag>,
+  UseStream<StateType, Bag, SubagentStates>,
   | "values"
   | "error"
   | "isLoading"

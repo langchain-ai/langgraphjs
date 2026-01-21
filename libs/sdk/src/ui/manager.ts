@@ -542,7 +542,10 @@ export class StreamManager<
               }
 
               // Update the subagent's values with the full state
-              this.subagentManager.updateSubagentValues(namespaceId, valuesData);
+              this.subagentManager.updateSubagentValues(
+                namespaceId,
+                valuesData
+              );
             }
           } else if (
             data &&

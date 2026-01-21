@@ -73,17 +73,26 @@ export interface SubagentToolCall {
 export type SubagentStatus = "pending" | "running" | "complete" | "error";
 
 /**
+ * Default subagent state map used when no specific subagent types are provided.
+ * Maps any string key to Record<string, unknown>.
+ */
+export type DefaultSubagentStates = Record<string, Record<string, unknown>>;
+
+/**
  * Base interface for stream-like objects.
  * Contains common properties shared between UseStream and SubagentStream.
  *
  * @template StateType - The type of the stream's state values.
  * @template ToolCall - The type of tool calls in messages.
  * @template InterruptType - The type of interrupt values.
+ * @template SubagentStates - A map of subagent names to their state types.
+ *   Use `SubagentStateMap<typeof agent>` to infer from a DeepAgent.
  */
 export interface StreamBase<
   StateType = Record<string, unknown>,
   ToolCall = DefaultToolCall,
-  InterruptType = unknown
+  InterruptType = unknown,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
 > {
   /**
    * The current state values of the stream.
@@ -117,7 +126,9 @@ export interface StreamBase<
    * @param message - The AI message to get tool calls for.
    * @returns Array of tool calls initiated by the message.
    */
-  getToolCalls: (message: AIMessage<ToolCall>) => ToolCallWithResult<ToolCall>[];
+  getToolCalls: (
+    message: AIMessage<ToolCall>
+  ) => ToolCallWithResult<ToolCall>[];
 
   /**
    * Get the interrupt value for the stream if interrupted.
@@ -128,12 +139,18 @@ export interface StreamBase<
    * All currently active and completed subagent streams.
    * Keyed by tool call ID for easy lookup.
    */
-  subagents: Map<string, SubagentStream<Record<string, unknown>, ToolCall>>;
+  subagents: Map<
+    string,
+    SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+  >;
 
   /**
    * Currently active subagents (where status === "running").
    */
-  activeSubagents: SubagentStream<Record<string, unknown>, ToolCall>[];
+  activeSubagents: SubagentStream<
+    SubagentStates[keyof SubagentStates],
+    ToolCall
+  >[];
 
   /**
    * Get subagent stream by tool call ID.
@@ -143,17 +160,35 @@ export interface StreamBase<
    */
   getSubagent: (
     toolCallId: string
-  ) => SubagentStream<Record<string, unknown>, ToolCall> | undefined;
+  ) =>
+    | SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+    | undefined;
 
   /**
    * Get all subagents of a specific type.
+   * When called with a literal type name that matches a key in SubagentStates,
+   * returns streams with properly inferred state types.
    *
    * @param type - The subagent_type to filter by.
-   * @returns Array of matching subagent streams.
+   * @returns Array of matching subagent streams with inferred state types.
+   *
+   * @example
+   * ```ts
+   * // With DeepAgent type inference
+   * const stream = useStream<typeof agent>(...);
+   * const researchers = stream.getSubagentsByType("researcher");
+   * // researchers[0].values is typed with ResearcherMiddleware state
+   * ```
    */
-  getSubagentsByType: (
-    type: string
-  ) => SubagentStream<Record<string, unknown>, ToolCall>[];
+  getSubagentsByType: {
+    // Overload for known subagent names - returns typed streams
+    <TName extends keyof SubagentStates & string>(type: TName): SubagentStream<
+      SubagentStates[TName],
+      ToolCall
+    >[];
+    // Overload for unknown names - returns untyped streams
+    (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
+  };
 }
 
 /**
@@ -452,6 +487,213 @@ export type InferAgentToolCalls<T> =
       ? DefaultToolCall
       : ToolCallFromAgentTool<Tool>
     : DefaultToolCall;
+
+// ============================================================================
+// DeepAgent Type Extraction Helpers
+// ============================================================================
+// These types enable extracting subagent type information from a DeepAgent instance
+// created with `createDeepAgent` from the deepagents package.
+// They are copied here to avoid circular dependencies (deepagents depends on this SDK).
+
+/**
+ * Minimal interface matching the structure of a SubAgent from deepagents.
+ * Used for structural type matching without importing deepagents.
+ */
+export interface SubAgentLike {
+  name: string;
+  description: string;
+  middleware?: readonly AgentMiddlewareLike[];
+}
+
+/**
+ * Minimal interface matching the structure of a CompiledSubAgent from deepagents.
+ * Used for structural type matching without importing deepagents.
+ */
+export interface CompiledSubAgentLike {
+  name: string;
+  description: string;
+  runnable: unknown;
+}
+
+/**
+ * Minimal interface matching the structure of DeepAgentTypeConfig from deepagents.
+ * Extends AgentTypeConfigLike to include subagent type information.
+ */
+export interface DeepAgentTypeConfigLike extends AgentTypeConfigLike {
+  Subagents: unknown;
+}
+
+/**
+ * Check if a type is a DeepAgent (has `~deepAgentTypes` phantom property).
+ * This property is present on DeepAgent instances created with `createDeepAgent`.
+ */
+export type IsDeepAgentLike<T> = T extends {
+  "~deepAgentTypes": DeepAgentTypeConfigLike;
+}
+  ? true
+  : false;
+
+/**
+ * Extract the DeepAgentTypeConfig from a DeepAgent-like type.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({ subagents: [...] });
+ * type Config = ExtractDeepAgentConfig<typeof agent>;
+ * // Config includes { Subagents: [...] }
+ * ```
+ */
+export type ExtractDeepAgentConfig<T> = T extends {
+  "~deepAgentTypes": infer Config;
+}
+  ? Config extends DeepAgentTypeConfigLike
+    ? Config
+    : never
+  : never;
+
+/**
+ * Helper type to extract middleware from a SubAgent definition.
+ * Handles both mutable and readonly middleware arrays.
+ */
+export type ExtractSubAgentMiddleware<T> = T extends {
+  middleware?: infer M;
+}
+  ? M extends readonly AgentMiddlewareLike[]
+    ? M
+    : M extends AgentMiddlewareLike[]
+    ? M
+    : readonly []
+  : readonly [];
+
+/**
+ * Extract the Subagents array type from a DeepAgent.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({ subagents: [researcher, writer] as const });
+ * type Subagents = InferDeepAgentSubagents<typeof agent>;
+ * // Subagents is the readonly tuple of subagent definitions
+ * ```
+ */
+export type InferDeepAgentSubagents<T> = ExtractDeepAgentConfig<T> extends never
+  ? never
+  : ExtractDeepAgentConfig<T>["Subagents"];
+
+/**
+ * Helper type to extract a subagent by name from a DeepAgent.
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam TName - The name of the subagent to extract
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", description: "...", middleware: [ResearchMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type Researcher = InferSubagentByName<typeof agent, "researcher">;
+ * ```
+ */
+export type InferSubagentByName<
+  T,
+  TName extends string
+> = InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+  ? SA extends { name: TName }
+    ? SA
+    : never
+  : never;
+
+/**
+ * Base state type for subagents.
+ * All subagents have at least a messages array, similar to the main agent.
+ *
+ * @template ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ */
+export type BaseSubagentState<ToolCall = DefaultToolCall> = {
+  messages: Message<ToolCall>[];
+};
+
+/**
+ * Infer the state type for a specific subagent by extracting and merging
+ * its middleware state schemas, plus the base agent state (messages).
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam TName - The name of the subagent
+ * @typeParam ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", middleware: [ResearchMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type ResearcherState = InferSubagentState<typeof agent, "researcher">;
+ * // ResearcherState includes { messages: Message<ToolCall>[], ...ResearchMiddleware state }
+ * ```
+ */
+export type InferSubagentState<
+  T,
+  TName extends string,
+  ToolCall = DefaultToolCall
+> = InferSubagentByName<T, TName> extends never
+  ? Record<string, unknown>
+  : InferSubagentByName<T, TName> extends infer SA
+  ? BaseSubagentState<ToolCall> &
+      InferMiddlewareStatesFromArray<ExtractSubAgentMiddleware<SA>>
+  : Record<string, unknown>;
+
+/**
+ * Extract all subagent names as a string union from a DeepAgent.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", ... },
+ *     { name: "writer", ... }
+ *   ] as const,
+ * });
+ *
+ * type SubagentNames = InferSubagentNames<typeof agent>;
+ * // SubagentNames = "researcher" | "writer"
+ * ```
+ */
+export type InferSubagentNames<T> =
+  InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+    ? SA extends { name: infer N }
+      ? N extends string
+        ? N
+        : never
+      : never
+    : never;
+
+/**
+ * Create a map of subagent names to their state types.
+ * This is useful for type-safe `getSubagentsByType` calls.
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", middleware: [ResearchMiddleware] },
+ *     { name: "writer", middleware: [WriterMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type StateMap = SubagentStateMap<typeof agent>;
+ * // StateMap = { researcher: ResearchState; writer: WriterState }
+ * ```
+ */
+export type SubagentStateMap<T, ToolCall = DefaultToolCall> = {
+  [K in InferSubagentNames<T>]: InferSubagentState<T, K, ToolCall>;
+};
 
 // ============================================================================
 // StateType Tool Call Extraction Helpers

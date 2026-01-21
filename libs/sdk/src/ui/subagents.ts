@@ -221,7 +221,9 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       toolCalls: allToolCalls,
 
       // Method to get tool calls for a specific message
-      getToolCalls: (message: AIMessage<ToolCall>): ToolCallWithResult<ToolCall>[] => {
+      getToolCalls: (
+        message: AIMessage<ToolCall>
+      ): ToolCallWithResult<ToolCall>[] => {
         return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
       },
 
@@ -229,7 +231,10 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       interrupt: undefined,
 
       // Nested subagent tracking (empty for now, future enhancement)
-      subagents: new Map<string, SubagentStream<Record<string, unknown>, ToolCall>>(),
+      subagents: new Map<
+        string,
+        SubagentStream<Record<string, unknown>, ToolCall>
+      >(),
       activeSubagents: [],
       getSubagent: () => undefined,
       getSubagentsByType: () => [],
@@ -406,8 +411,14 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Get all subagents as a Map.
    * Filters out incomplete/phantom subagents that lack subagent_type.
    */
-  getSubagents(): Map<string, SubagentStream<Record<string, unknown>, ToolCall>> {
-    const result = new Map<string, SubagentStream<Record<string, unknown>, ToolCall>>();
+  getSubagents(): Map<
+    string,
+    SubagentStream<Record<string, unknown>, ToolCall>
+  > {
+    const result = new Map<
+      string,
+      SubagentStream<Record<string, unknown>, ToolCall>
+    >();
     for (const [id, subagent] of this.subagents) {
       if (this.isValidSubagent(subagent)) {
         result.set(id, this.buildExecution(subagent));
@@ -895,7 +906,8 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           toolCall: subagentToolCall,
           status,
           values: {}, // Values not available from history
-          result: isComplete && status === "complete" ? toolResult.content : null,
+          result:
+            isComplete && status === "complete" ? toolResult.content : null,
           error: isComplete && status === "error" ? toolResult.content : null,
           namespace: [],
           messages: [], // Internal messages are not available from history

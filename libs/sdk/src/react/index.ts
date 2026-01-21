@@ -16,6 +16,20 @@ export type {
   // Subagent types
   SubagentToolCall,
   SubagentStatus,
+  // DeepAgent type helpers for subagent inference
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  DefaultSubagentStates,
+  BaseSubagentState,
 } from "../ui/types.js";
 export type {
   ToolCallWithResult,
