@@ -404,14 +404,30 @@ export class StateGraph<
    */
   constructor(
     state: SD extends StateDefinitionInit ? SD : never,
-    options?: StateGraphOptions<
-      I,
-      O,
-      C extends ContextSchemaInit ? C : undefined,
-      N,
-      InterruptType,
-      WriterType
-    >
+    options?:
+      | C
+      | AnnotationRoot<ToStateDefinition<C>>
+      | StateGraphOptions<
+          I,
+          O,
+          C extends ContextSchemaInit ? C : undefined,
+          N,
+          InterruptType,
+          WriterType
+        >
+  );
+
+  constructor(
+    fields: SD extends StateDefinition
+      ?
+          | AnnotationRoot<SD>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
@@ -425,7 +441,7 @@ export class StateGraph<
         InterruptType,
         WriterType
       >,
-      "state" | "stateSchema"
+      "state" | "stateSchema" | "input"
     > & {
       input: SD extends StateDefinitionInit ? SD : never;
       state?: never;
@@ -629,6 +645,18 @@ export class StateGraph<
 
     // Check if direct schema (StateSchema, Zod, Annotation, StateDefinition)
     if (isStateDefinitionInit(stateOrInit)) {
+      // Second arg can be either a direct context schema or an options object
+      if (
+        options &&
+        typeof options === "object" &&
+        !("input" in options || "output" in options || "context" in options)
+      ) {
+        // options is a direct context schema (Zod or AnnotationRoot)
+        return {
+          state: stateOrInit as StateDefinitionInit,
+          context: options as ContextSchemaInit,
+        };
+      }
       const opts = options as StateGraphOptions<I, O> | undefined;
       return {
         state: stateOrInit as StateDefinitionInit,
