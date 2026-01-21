@@ -1,5 +1,8 @@
 import type { InteropZodObject } from "@langchain/core/utils/types";
-import type { Runtime } from "../pregel/runnable_types.js";
+import type {
+  LangGraphRunnableConfig,
+  Runtime,
+} from "../pregel/runnable_types.js";
 import type { CommandInstance, Send } from "../constants.js";
 import { END } from "../constants.js";
 import type {
@@ -155,6 +158,15 @@ export type GraphNode<
     >;
 
 /**
+ * Return type for conditional edge routing functions.
+ */
+type ConditionalEdgeRouterReturnValue<Nodes extends string, State> =
+  | Nodes
+  | typeof END
+  | Send<Nodes, State>
+  | Array<Nodes | Send<Nodes, State>>;
+
+/**
  * Type for conditional edge routing functions.
  *
  * Use this to type functions passed to `addConditionalEdges` for
@@ -168,8 +180,8 @@ export type GraphNode<
  * ```typescript
  * type MyContext = { userId: string };
  * const router: ConditionalEdgeRouter<typeof AgentState, MyContext, "agent" | "tool"> =
- *   (state, runtime) => {
- *     // Access runtime context as type-safe: runtime.userId
+ *   (state, config) => {
+ *     const userId = config.context?.userId;
  *     if (state.done) return END;
  *     return state.needsTool ? "tool" : "agent";
  *   };
@@ -179,13 +191,11 @@ export type GraphNode<
  */
 export type ConditionalEdgeRouter<
   Schema,
-  Context = Record<string, unknown>,
+  Context extends Record<string, unknown> = Record<string, unknown>,
   Nodes extends string = string
 > = (
   state: ExtractStateType<Schema>,
-  runtime: Runtime<Context>
+  config: LangGraphRunnableConfig<Context>
 ) =>
-  | Nodes
-  | typeof END
-  | Send<Nodes, ExtractStateType<Schema>>
-  | Array<Nodes | Send<Nodes, ExtractStateType<Schema>>>;
+  | ConditionalEdgeRouterReturnValue<Nodes, ExtractStateType<Schema>>
+  | Promise<ConditionalEdgeRouterReturnValue<Nodes, ExtractStateType<Schema>>>;
