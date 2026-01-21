@@ -67,13 +67,7 @@ const searchWeb = tool(
 );
 
 const sendEmail = tool(
-  async ({
-    to,
-  }: {
-    to: string;
-    subject: string;
-    body: string;
-  }) => {
+  async ({ to }: { to: string; subject: string; body: string }) => {
     return `Email sent to ${to}`;
   },
   {
@@ -245,7 +239,7 @@ describe("InferMiddlewareStatesFromArray", () => {
   test("merges states from multiple middlewares", () => {
     type Middlewares = readonly [
       typeof todoListMiddleware,
-      typeof counterMiddleware,
+      typeof counterMiddleware
     ];
     type Result = InferMiddlewareStatesFromArray<Middlewares>;
 
@@ -272,14 +266,16 @@ describe("InferAgentState", () => {
     type State = InferAgentState<typeof simpleAgent>;
 
     expectTypeOf<State>().toHaveProperty("messages");
-    expectTypeOf<State["messages"]>().toExtend<Message<{
-      name: "get_weather";
-      args: {
-        location: string;
-      };
-      id?: string;
-      type?: "tool_call";
-    }>[]>();
+    expectTypeOf<State["messages"]>().toExtend<
+      Message<{
+        name: "get_weather";
+        args: {
+          location: string;
+        };
+        id?: string;
+        type?: "tool_call";
+      }>[]
+    >();
   });
 
   test("infers middleware state from agent with middleware", () => {
@@ -654,7 +650,7 @@ describe("useStream type inference integration", () => {
   test("complete workflow: agent with middleware and tools", () => {
     const stream = useStream<typeof agentWithMiddleware>({
       assistantId: "some-agent",
-    })
+    });
 
     // Verify state has both base and middleware state
     expectTypeOf(stream.values).toHaveProperty("messages");
@@ -662,7 +658,7 @@ describe("useStream type inference integration", () => {
     expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
 
     // Verify tool calls are typed
-    const toolCallType = stream.toolCalls[0].call
+    const toolCallType = stream.toolCalls[0].call;
     expectTypeOf(toolCallType.name).toEqualTypeOf<"get_weather">();
     expectTypeOf(toolCallType.args).toEqualTypeOf<{ location: string }>();
 
@@ -721,8 +717,12 @@ describe("useStream type inference integration", () => {
 
     // Verify nodes map
     expectTypeOf(stream.nodes).toMatchTypeOf<Map<string, unknown>>();
-    expectTypeOf([...stream.nodes.values()][0].name).toEqualTypeOf<"dispatcher" | "researcher_analytical" | "researcher_creative">();
-    expectTypeOf([...stream.nodes.values()][0].values).toEqualTypeOf<Record<string, unknown>>();
+    expectTypeOf([...stream.nodes.values()][0].name).toEqualTypeOf<
+      "dispatcher" | "researcher_analytical" | "researcher_creative"
+    >();
+    expectTypeOf([...stream.nodes.values()][0].values).toEqualTypeOf<
+      Record<string, unknown>
+    >();
 
     // Verify activeNodes is an array
     expectTypeOf(stream.activeNodes).toBeArray();
@@ -734,14 +734,17 @@ describe("useStream type inference integration", () => {
     expectTypeOf(dispatcherStreams).toBeArray();
     expectTypeOf(dispatcherStreams[0].name).toEqualTypeOf<"dispatcher">();
     // values is typed to what the dispatcher node returns
-    expectTypeOf(dispatcherStreams[0].values).toEqualTypeOf<{ topic: string }>();
+    expectTypeOf(dispatcherStreams[0].values).toEqualTypeOf<{
+      topic: string;
+    }>();
 
     // Verify other nodes have their own typed values
-    const analyticalStreams =
-      stream.getNodeStreamsByName("researcher_analytical");
-    expectTypeOf(analyticalStreams[0].name).toEqualTypeOf<
+    const analyticalStreams = stream.getNodeStreamsByName(
       "researcher_analytical"
-    >();
+    );
+    expectTypeOf(
+      analyticalStreams[0].name
+    ).toEqualTypeOf<"researcher_analytical">();
     expectTypeOf(analyticalStreams[0].values).toEqualTypeOf<{
       analyticalResearch: string;
     }>();
@@ -751,7 +754,9 @@ describe("useStream type inference integration", () => {
     >();
 
     const creativeStreams = stream.getNodeStreamsByName("researcher_creative");
-    expectTypeOf(creativeStreams[0].name).toEqualTypeOf<"researcher_creative">();
+    expectTypeOf(
+      creativeStreams[0].name
+    ).toEqualTypeOf<"researcher_creative">();
     expectTypeOf(creativeStreams[0].values).toEqualTypeOf<{
       creativeResearch: string;
     }>();
