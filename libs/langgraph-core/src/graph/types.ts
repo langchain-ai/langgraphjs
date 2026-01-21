@@ -4,6 +4,12 @@ import {
   type InteropZodObject,
 } from "@langchain/core/utils/types";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  isInteropZodObject,
+  type InteropZodObject,
+} from "@langchain/core/utils/types";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   LangGraphRunnableConfig,
   Runtime,
@@ -17,11 +23,13 @@ import type {
   UpdateType as AnnotationUpdateType,
 } from "./annotation.js";
 import {
+import {
   AnyStateSchema,
   StateSchema,
   StateSchemaFieldsToStateDefinition,
 } from "../state/schema.js";
 import type { InteropZodToStateDefinition } from "./zod/meta.js";
+import { isBaseChannel } from "../channels/base.js";
 import { isBaseChannel } from "../channels/base.js";
 
 // Re-export END for use in ConditionalEdgeRouter return types
@@ -36,6 +44,8 @@ export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
   ? StateSchemaFieldsToStateDefinition<TInit>
   : T extends AnnotationRoot<infer SD>
   ? SD
+  : T extends AnnotationRoot<infer SD>
+  ? SD
   : T extends InteropZodObject
   ? InteropZodToStateDefinition<T>
   : T extends StateDefinition
@@ -44,6 +54,7 @@ export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
 
 /**
  * Type for schema types that can be used to initialize state.
+ * Supports all valid schema types: StateDefinition, Zod objects, StateSchema, and AnnotationRoot.
  * Supports all valid schema types: StateDefinition, Zod objects, StateSchema, and AnnotationRoot.
  *
  * @internal
@@ -125,7 +136,7 @@ export type StateGraphInit<
   SD extends StateDefinitionInit = StateDefinitionInit,
   I extends StateDefinitionInit | undefined = undefined,
   O extends StateDefinitionInit | undefined = undefined,
-  C extends StateDefinitionInit | undefined = undefined,
+  C extends ContextSchemaInit | undefined = undefined,
   N extends string = string,
   InterruptType = unknown,
   WriterType = unknown
@@ -158,7 +169,7 @@ export type StateGraphInit<
 export type StateGraphOptions<
   I extends StateDefinitionInit | undefined = undefined,
   O extends StateDefinitionInit | undefined = undefined,
-  C extends StateDefinitionInit | undefined = undefined,
+  C extends ContextSchemaInit | undefined = undefined,
   N extends string = string,
   InterruptType = unknown,
   WriterType = unknown
