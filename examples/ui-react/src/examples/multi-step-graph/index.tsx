@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import type { ContentBlock } from "langchain";
-import type { InferNodeNames, InferStateType } from "@langchain/langgraph-sdk";
+import type { InferNodeNames } from "@langchain/langgraph-sdk";
 import { useStream, type NodeStream } from "@langchain/langgraph-sdk/react";
 
 import { registerExample } from "../registry";
@@ -29,7 +29,6 @@ interface NodeStyles {
 }
 
 type NodeName = InferNodeNames<typeof agent>;
-type AgentState = InferStateType<typeof agent>;
 
 /**
  * Node configuration for visual display.
@@ -80,7 +79,7 @@ const NODE_CONFIG: Record<NodeName, NodeStyles> = {
 function PipelineVisualization({
   nodeExecutions,
 }: {
-  nodeExecutions: NodeStream<AgentState, NodeName>[];
+  nodeExecutions: NodeStream<NodeName>[];
 }) {
   // Get unique node names in execution order, filtered to known pipeline nodes
   const pipelineNodes = [...new Set(nodeExecutions.map((n) => n.name))].filter(
@@ -211,7 +210,7 @@ function getNodeContent(nodeStream: NodeStream): string {
 function NodeOutputCard({
   nodeStream,
 }: {
-  nodeStream: NodeStream<AgentState, NodeName>;
+  nodeStream: NodeStream<NodeName>;
 }) {
   const config = NODE_CONFIG[nodeStream.name];
   const content = getNodeContent(nodeStream);

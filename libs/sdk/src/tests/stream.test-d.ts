@@ -7,19 +7,31 @@
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
  * to verify type correctness. This allows us to test the type inference
  * system without needing working LLM integrations.
+ *
+ * ⚠️ CIRCULAR DEPENDENCY NOTE:
+ * We use mocked StateGraph types from ./fixtures/langgraph-mocks.ts because
+ * @langchain/langgraph-sdk is a dependency of @langchain/langgraph. Importing
+ * from @langchain/langgraph here would create a circular dependency.
+ *
+ * This will be resolved once we separate the SDK into:
+ * - @langchain/langgraph-sdk (BaseClient, API types)
+ * - @langchain/react (useStream, React hooks)
+ *
  */
 
 import { describe, test, expectTypeOf } from "vitest";
 import { z } from "zod/v4";
-import {
-  StateGraph,
-  START,
-  END,
-  StateSchema,
-  MessagesValue,
-} from "@langchain/langgraph";
 import { createAgent, tool, createMiddleware } from "langchain";
 import { createDeepAgent } from "deepagents";
+
+// Mocked LangGraph StateGraph types (see fixtures/langgraph-mocks.ts for details)
+import {
+  MockStateGraph as StateGraph,
+  MockStateSchema as StateSchema,
+  MessagesValue,
+  START,
+  END,
+} from "./fixtures/langgraph-mocks.js";
 
 import { useStream } from "../react/stream.js";
 import type { Message } from "../types.messages.js";
