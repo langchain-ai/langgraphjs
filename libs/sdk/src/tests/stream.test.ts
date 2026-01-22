@@ -37,6 +37,37 @@ const createSSEResponseBody = (
 };
 
 /**
+ * Helper to create a stream that yields some chunks then errors
+ */
+const createErroringSSEResponseBody = (
+  chunks: Array<{ id?: string; event: string; data: unknown }>,
+  error: Error
+): ReadableStream<Uint8Array> => {
+  const sseLines = chunks.flatMap((chunk) => {
+    const lines: string[] = [];
+    if (chunk.id) lines.push(`id: ${chunk.id}\n`);
+    if (chunk.event) lines.push(`event: ${chunk.event}\n`);
+    lines.push(`data: ${JSON.stringify(chunk.data)}\n`);
+    lines.push("\n");
+    return lines;
+  });
+
+  const uint8Arrays = sseLines.map((line) => textEncoder.encode(line));
+
+  let index = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index < uint8Arrays.length) {
+        controller.enqueue(uint8Arrays[index]);
+        index += 1;
+      } else {
+        controller.error(error);
+      }
+    },
+  });
+};
+
+/**
  * Helper to gather all chunks from an async generator
  */
 const gatherStream = async <T>(stream: AsyncGenerator<T>): Promise<T[]> => {
@@ -194,6 +225,120 @@ describe("Client streaming with retry", () => {
         stream_mode: ["values"],
         assistant_id: "assistant-1",
       });
+    });
+
+    test("retries when stream errors before first event if reconnect path exists", async () => {
+      let callCount = 0;
+      const locationPath = "/threads/thread-1/runs/run-1/stream";
+
+      mockFetch.mockImplementation(() => {
+        callCount += 1;
+
+        if (callCount === 1) {
+          return Promise.resolve(
+            new Response(
+              createErroringSSEResponseBody([], new TypeError("terminated")),
+              {
+                status: 200,
+                headers: {
+                  "content-type": "text/event-stream",
+                  location: locationPath,
+                },
+              }
+            )
+          );
+        }
+
+        return Promise.resolve(
+          new Response(
+            createSSEResponseBody([
+              { id: "1", event: "values", data: { ok: true } },
+            ]),
+            {
+              status: 200,
+              headers: {
+                "content-type": "text/event-stream",
+                location: locationPath,
+              },
+            }
+          )
+        );
+      });
+
+      const stream = client.runs.stream("thread-1", "assistant-1", {
+        input: { message: "test" },
+        streamMode: ["values"],
+        streamResumable: true,
+      });
+
+      const resultsPromise = gatherStream(stream);
+      await vi.runAllTimersAsync();
+      const results = await resultsPromise;
+
+      expect(callCount).toBe(2);
+      expect(results).toHaveLength(1);
+
+      const [, init] = mockFetch.mock.calls[1];
+      expect(init.method).toBe("GET");
+    });
+
+    test("retries when reconnect request fails with terminated error", async () => {
+      let callCount = 0;
+      const locationPath = "/threads/thread-1/runs/run-1/stream";
+
+      mockFetch.mockImplementation(() => {
+        callCount += 1;
+
+        if (callCount === 1) {
+          return Promise.resolve(
+            new Response(
+              createErroringSSEResponseBody(
+                [{ id: "1", event: "values", data: { step: 1 } }],
+                new TypeError("terminated")
+              ),
+              {
+                status: 200,
+                headers: {
+                  "content-type": "text/event-stream",
+                  location: locationPath,
+                },
+              }
+            )
+          );
+        }
+
+        if (callCount === 2) {
+          return Promise.reject(new TypeError("terminated"));
+        }
+
+        return Promise.resolve(
+          new Response(
+            createSSEResponseBody([
+              { id: "2", event: "values", data: { step: 2 } },
+            ]),
+            {
+              status: 200,
+              headers: {
+                "content-type": "text/event-stream",
+                location: locationPath,
+              },
+            }
+          )
+        );
+      });
+
+      const stream = client.runs.stream("thread-1", "assistant-1", {
+        input: { message: "test" },
+        streamMode: ["values"],
+        streamResumable: true,
+      });
+
+      const resultsPromise = gatherStream(stream);
+      await vi.runAllTimersAsync();
+      const results = await resultsPromise;
+
+      expect(callCount).toBe(3);
+      expect(results).toHaveLength(2);
     });
   });
 

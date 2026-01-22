@@ -339,7 +339,7 @@ class BaseClient {
       finalInit = await this.onRequest(url, init);
     }
 
-    const response = await this.asyncCaller.fetch(url, finalInit);
+    const response = await this.asyncCaller.fetch(url.toString(), finalInit);
 
     const body = (() => {
       if (response.status === 202 || response.status === 204) {
@@ -381,7 +381,7 @@ class BaseClient {
       const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
 
       // Determine method and options based on whether this is a reconnection
-      const isReconnect = !!reconnectParams?.lastEventId;
+      const isReconnect = !!reconnectParams?.reconnectPath;
       const method = isReconnect ? "GET" : config.method || "GET";
 
       // Build headers - add Last-Event-ID for reconnections
@@ -406,7 +406,7 @@ class BaseClient {
       }
 
       // Make the request
-      const response = await this.asyncCaller.fetch(url, init);
+      const response = await this.asyncCaller.fetch(url.toString(), init);
 
       // Call onInitialResponse callback for the first request
       if (!isReconnect && config.onInitialResponse) {
@@ -490,6 +490,7 @@ export class CronsClient extends BaseClient {
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       webhook: payload?.webhook,
+      on_run_completed: payload?.onRunCompleted,
       multitask_strategy: payload?.multitaskStrategy,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
@@ -710,15 +711,21 @@ export class AssistantsClient extends BaseClient {
    * Delete an assistant.
    *
    * @param assistantId ID of the assistant.
+   * @param deleteThreads If true, delete all threads with `metadata.assistant_id` equal to `assistantId`. Defaults to false.
    */
   async delete(
     assistantId: string,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; deleteThreads?: boolean }
   ): Promise<void> {
-    return this.fetch<void>(`/assistants/${assistantId}`, {
-      method: "DELETE",
-      signal: options?.signal,
-    });
+    return this.fetch<void>(
+      `/assistants/${assistantId}?delete_threads=${
+        options?.deleteThreads ?? false
+      }`,
+      {
+        method: "DELETE",
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -2003,7 +2010,7 @@ class UiClient extends BaseClient {
         });
         if (this.onRequest != null) init = await this.onRequest(url, init);
 
-        const response = await this.asyncCaller.fetch(url, init);
+        const response = await this.asyncCaller.fetch(url.toString(), init);
         return response.text();
       }
     );

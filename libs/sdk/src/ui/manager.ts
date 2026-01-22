@@ -14,13 +14,13 @@ import type {
 import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
+import type { BagTemplate } from "../types.template.js";
 
-type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-};
+/**
+ * Special ID used by LangGraph's messagesStateReducer to signal
+ * that all messages should be removed from the state.
+ */
+export const REMOVE_ALL_MESSAGES = "__remove_all__";
 
 type GetUpdateType<
   Bag extends BagTemplate,
@@ -192,12 +192,13 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
+      const stateValues = (this.state.values ?? [null, "stream"])[0];
       const prev = {
         ...historyValues,
-        ...(this.state.values ?? [null, "stream"])[0],
+        ...(stateValues ?? {}),
       };
       const next = typeof update === "function" ? update(prev) : update;
-      this.setStreamValues({ ...prev, ...next }, kind);
+      this.setStreamValues({ ...prev, ...(next ?? {}) }, kind);
     };
   };
 
@@ -304,8 +305,12 @@ export class StreamManager<
         }
 
         if (event === "values") {
-          if ("__interrupt__" in data) {
-            this.setStreamValues((prev) => ({ ...prev, ...data }));
+          if (
+            data != null &&
+            typeof data === "object" &&
+            "__interrupt__" in data
+          ) {
+            this.setStreamValues((prev) => ({ ...(prev ?? {}), ...data }));
           } else {
             this.setStreamValues(data);
           }
@@ -323,16 +328,25 @@ export class StreamManager<
           }
 
           this.setStreamValues((streamValues) => {
-            const values = { ...options.initialValues, ...streamValues };
+            const values = {
+              ...options.initialValues,
+              ...(streamValues ?? {}),
+            };
 
             // Assumption: we're concatenating the message
-            const messages = options.getMessages(values).slice();
+            let messages = options.getMessages(values).slice();
             const { chunk, index } =
               this.messages.get(messageId, messages.length) ?? {};
 
             if (!chunk || index == null) return values;
             if (chunk.getType() === "remove") {
-              messages.splice(index, 1);
+              // Check for special REMOVE_ALL_MESSAGES sentinel
+              if (chunk.id === REMOVE_ALL_MESSAGES) {
+                // Clear all messages when __remove_all__ is received
+                messages = [];
+              } else {
+                messages.splice(index, 1);
+              }
             } else {
               messages[index] = toMessageDict(chunk);
             }

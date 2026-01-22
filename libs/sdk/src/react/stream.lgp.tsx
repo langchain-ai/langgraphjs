@@ -11,29 +11,31 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { findLast, unique } from "../ui/utils.js";
+import { filterStream, findLast, unique } from "../ui/utils.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  BagTemplate,
   UseStreamOptions,
-  UseStream,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
   GetConfigurableType,
+  GetToolCallsType,
   RunCallbackMeta,
-  SubmitOptions,
   MessageMetadata,
   UseStreamThread,
-} from "./types.js";
+} from "../ui/types.js";
+import type { UseStream, SubmitOptions } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
-import type { Message } from "../types.messages.js";
+import { type Message } from "../types.messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 import type { Interrupt, ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
+import type { StreamEvent } from "../types.js";
+import type { BagTemplate } from "../types.template.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -154,17 +156,13 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate
 >(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+  type ToolCallType = GetToolCallsType<StateType>;
 
   const reconnectOnMountRef = useRef(options.reconnectOnMount);
   const runMetadataStorage = useMemo(() => {
@@ -276,7 +274,9 @@ export function useStreamLGP<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+    return Array.isArray(value[messagesKey])
+      ? (value[messagesKey] as Message[])
+      : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
@@ -522,7 +522,14 @@ export function useStreamLGP<
   const joinStream = async (
     runId: string,
     lastEventId?: string,
-    joinOptions?: { streamMode?: StreamMode | StreamMode[] }
+    joinOptions?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    }
   ) => {
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
@@ -536,13 +543,17 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
-        return client.runs.joinStream(threadId, runId, {
+        const stream = client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
+
+        return joinOptions?.filter != null
+          ? filterStream(stream, joinOptions.filter)
+          : stream;
       },
       {
         getMessages,
@@ -668,13 +679,26 @@ export function useStreamLGP<
       return interrupts.at(-1) as Interrupt<InterruptType> | undefined;
     },
 
-    get messages() {
+    get messages(): Message<ToolCallType>[] {
       trackStreamMode("messages-tuple", "values");
       return getMessages(values);
     },
 
+    get toolCalls() {
+      trackStreamMode("messages-tuple", "values");
+      const msgs = getMessages(values) as Message<ToolCallType>[];
+      return getToolCallsWithResults<ToolCallType>(msgs);
+    },
+
+    getToolCalls(message) {
+      trackStreamMode("messages-tuple", "values");
+      const msgs = getMessages(values) as Message<ToolCallType>[];
+      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+    },
+
     getMessagesMetadata(
-      message: Message,
+      message: Message<ToolCallType>,
       index?: number
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("values");

@@ -14,7 +14,7 @@ build-docs: generate-prebuilt-page
 		fi \
 	fi
 	python -m mkdocs build --clean -f mkdocs.yml --strict -d site
-	yarn run build
+	pnpm run build
 
 generate-prebuilt-page:
 	# Use to create an update to date prebuilt page.

@@ -213,9 +213,17 @@ export interface RunsCreatePayload extends RunsInvokePayload {
 
 export interface CronsCreatePayload extends RunsCreatePayload {
   /**
-   * Schedule for running the Cron Job
+   * Schedule for running the Cron Job. Schedules are interpreted in UTC.
    */
   schedule: string;
+
+  /**
+   * What to do with the thread after the run completes.
+   * - "delete" (default): Automatically deletes the thread after the run completes.
+   * - "keep": Preserves the thread after the run completes, allowing you to retrieve run results later.
+   *   You are responsible for cleaning up kept threads.
+   */
+  onRunCompleted?: "delete" | "keep";
 }
 
 export interface RunsWaitPayload extends RunsStreamPayload {

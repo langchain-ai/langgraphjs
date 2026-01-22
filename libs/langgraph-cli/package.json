@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "1.1.2",
+  "version": "1.1.11",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -21,9 +21,9 @@
   },
   "scripts": {
     "clean": "rm -rf dist/ .turbo/",
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-cli",
-    "build:internal": "yarn clean && node scripts/build.mjs",
-    "prepublish": "yarn build",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-cli",
+    "build:internal": "pnpm clean && node scripts/build.mjs",
+    "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",
     "cli": "tsx src/cli/cli.mts",
     "cli:watch": "tsx watch src/cli/cli.mts",

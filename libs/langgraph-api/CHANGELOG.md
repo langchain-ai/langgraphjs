@@ -1,5 +1,77 @@
 # @langchain/langgraph-api
 
+## 1.1.11
+
+### Patch Changes
+
+- [#1873](https://github.com/langchain-ai/langgraphjs/pull/1873) [`2b9f3ee`](https://github.com/langchain-ai/langgraphjs/commit/2b9f3ee83d0b8ba023e7a52b938260af3f6433d4) Thanks [@andrewnguonly](https://github.com/andrewnguonly)! - Add delete_threads query parameter to delete assistants API.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.11
+
+## 1.1.10
+
+### Patch Changes
+
+- [#1862](https://github.com/langchain-ai/langgraphjs/pull/1862) [`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c) Thanks [@dqbd](https://github.com/dqbd)! - retry release: bump @hono/zod-validator
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.10
+
+## 1.1.9
+
+### Patch Changes
+
+- [#1856](https://github.com/langchain-ai/langgraphjs/pull/1856) [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: bump @hono/zod-validator
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.9
+
+## 1.1.8
+
+### Patch Changes
+
+- [#1853](https://github.com/langchain-ai/langgraphjs/pull/1853) [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: bump @hono/zod-validator
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.8
+
+## 1.1.7
+
+### Patch Changes
+
+- [#1850](https://github.com/langchain-ai/langgraphjs/pull/1850) [`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: bump @hono/zod-validator
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.7
+
+## 1.1.6
+
+### Patch Changes
+
+- 3ec85a4: retry release: bump @hono/zod-validator
+  - @langchain/langgraph-ui@1.1.6
+
+## 1.1.5
+
+### Patch Changes
+
+- 3613386: retry release: bump @hono/zod-validator
+  - @langchain/langgraph-ui@1.1.5
+
+## 1.1.4
+
+### Patch Changes
+
+- 730dc7c: fix(api): bump @hono/zod-validator
+  - @langchain/langgraph-ui@1.1.4
+
+## 1.1.3
+
+### Patch Changes
+
+- @langchain/langgraph-ui@1.1.3
+
 ## 1.1.2
 
 ### Patch Changes

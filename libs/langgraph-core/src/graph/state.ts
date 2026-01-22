@@ -44,38 +44,45 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
-  END,
   SELF,
   Send,
   START,
+  END,
   TAG_HIDDEN,
   CommandInstance,
   isInterrupted,
   Interrupt,
   INTERRUPT,
 } from "../constants.js";
-import { InvalidUpdateError, ParentCommand } from "../errors.js";
+import {
+  InvalidUpdateError,
+  ParentCommand,
+  StateGraphInputError,
+} from "../errors.js";
 import {
   AnnotationRoot,
   getChannel,
   SingleReducer,
   StateDefinition,
   StateType,
-  UpdateType,
 } from "./annotation.js";
+import { StateSchema } from "../state/index.js";
 import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
-import {
-  type SchemaMetaRegistry,
-  InteropZodToStateDefinition,
-  schemaMetaRegistry,
-} from "./zod/meta.js";
+import { type SchemaMetaRegistry, schemaMetaRegistry } from "./zod/meta.js";
 import type {
   InferInterruptResumeType,
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
+import type { AnyStateSchema } from "../state/schema.js";
+import {
+  ExtractStateType,
+  ExtractUpdateType,
+  ToStateDefinition,
+  type StateDefinitionInit,
+} from "./types.js";
 
 const ROOT = "__root__";
 
@@ -129,22 +136,20 @@ export type StateGraphArgsWithInputOutputSchemas<
 
 type ZodStateGraphArgsWithStateSchema<
   SD extends InteropZodObject,
-  I extends SDZod,
-  O extends SDZod
+  I extends StateDefinitionInit,
+  O extends StateDefinitionInit
 > = { state: SD; input?: I; output?: O };
 
-type SDZod = StateDefinition | InteropZodObject;
-
-type ToStateDefinition<T> = T extends InteropZodObject
-  ? InteropZodToStateDefinition<T>
-  : T extends StateDefinition
-  ? T
-  : never;
+type ExtractStateDefinition<T> = T extends AnyStateSchema
+  ? T // Keep StateSchema as-is to preserve type information
+  : T extends StateDefinitionInit
+  ? ToStateDefinition<T>
+  : StateDefinition;
 
 type NodeAction<
   S,
   U,
-  C extends SDZod,
+  C extends StateDefinitionInit,
   InterruptType,
   WriterType
 > = RunnableLike<
@@ -156,7 +161,7 @@ type NodeAction<
 type StrictNodeAction<
   S,
   U,
-  C extends SDZod,
+  C extends StateDefinitionInit,
   Nodes extends string,
   InterruptType,
   WriterType
@@ -247,13 +252,13 @@ type Prettify<T> = {
  * ```
  */
 export class StateGraph<
-  SD extends SDZod | unknown,
-  S = SD extends SDZod ? StateType<ToStateDefinition<SD>> : SD,
-  U = SD extends SDZod ? UpdateType<ToStateDefinition<SD>> : Partial<S>,
+  SD extends StateDefinitionInit | unknown,
+  S = ExtractStateType<SD>,
+  U = ExtractUpdateType<SD, S>,
   N extends string = typeof START,
-  I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
-  O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
-  C extends SDZod = StateDefinition,
+  I extends StateDefinitionInit = ExtractStateDefinition<SD>,
+  O extends StateDefinitionInit = ExtractStateDefinition<SD>,
+  C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
   WriterType = unknown
@@ -267,19 +272,23 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _schemaRuntimeDefinition: InteropZodObject | undefined;
+  _schemaRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /** @internal */
   _inputDefinition: I;
 
   /** @internal */
-  _inputRuntimeDefinition: InteropZodObject | PartialStateSchema | undefined;
+  _inputRuntimeDefinition:
+    | InteropZodObject
+    | AnyStateSchema
+    | PartialStateSchema
+    | undefined;
 
   /** @internal */
   _outputDefinition: O;
 
   /** @internal */
-  _outputRuntimeDefinition: InteropZodObject | undefined;
+  _outputRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /**
    * Map schemas to managed values
@@ -306,6 +315,20 @@ export class StateGraph<
 
   constructor(
     state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
+    options?: {
+      context?: C | AnnotationRoot<ToStateDefinition<C>>;
+      input?: I | AnnotationRoot<ToStateDefinition<I>>;
+      output?: O | AnnotationRoot<ToStateDefinition<O>>;
+
+      interrupt?: InterruptType;
+      writer?: WriterType;
+
+      nodes?: N[];
+    }
+  );
+
+  constructor(
+    state: SD extends AnyStateSchema ? SD : never,
     options?: {
       context?: C | AnnotationRoot<ToStateDefinition<C>>;
       input?: I | AnnotationRoot<ToStateDefinition<I>>;
@@ -368,7 +391,9 @@ export class StateGraph<
   );
 
   constructor(
-    fields: SD extends InteropZodObject
+    fields: SD extends AnyStateSchema
+      ? SD
+      : SD extends InteropZodObject
       ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
       : SD extends StateDefinition
       ?
@@ -396,7 +421,15 @@ export class StateGraph<
   ) {
     super();
 
-    if (isZodStateGraphArgsWithStateSchema(fields)) {
+    if (StateSchema.isInstance(fields)) {
+      const channels = fields.getChannels();
+      this._schemaDefinition = channels;
+      this.channels = channels;
+
+      this._schemaRuntimeDefinition = fields;
+      this._inputRuntimeDefinition = PartialStateSchema;
+      this._outputRuntimeDefinition = fields;
+    } else if (isZodStateGraphArgsWithStateSchema(fields)) {
       const stateDef = this._metaRegistry.getChannelsForSchema(fields.state);
       const inputDef =
         fields.input != null
@@ -448,9 +481,7 @@ export class StateGraph<
       const spec = _getChannels(fields.channels);
       this._schemaDefinition = spec;
     } else {
-      throw new Error(
-        "Invalid StateGraph input. Make sure to pass a valid Annotation.Root or Zod schema."
-      );
+      throw new StateGraphInputError();
     }
 
     this._inputDefinition ??= this._schemaDefinition as I;
@@ -497,7 +528,7 @@ export class StateGraph<
     ]);
   }
 
-  _addSchema(stateDefinition: SDZod) {
+  _addSchema(stateDefinition: StateDefinitionInit) {
     if (this._schemaDefinitions.has(stateDefinition)) {
       return;
     }
@@ -511,7 +542,7 @@ export class StateGraph<
         channel = val;
       }
       if (this.channels[key] !== undefined) {
-        if (this.channels[key] !== channel) {
+        if (!this.channels[key].equals(channel)) {
           if (channel.lc_graph_name !== "LastValue") {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
@@ -1016,9 +1047,9 @@ export class CompiledStateGraph<
   S,
   U,
   N extends string = typeof START,
-  I extends SDZod = StateDefinition,
-  O extends SDZod = StateDefinition,
-  C extends SDZod = StateDefinition,
+  I extends StateDefinitionInit = StateDefinition,
+  O extends StateDefinitionInit = StateDefinition,
+  C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
   WriterType = unknown
@@ -1026,9 +1057,9 @@ export class CompiledStateGraph<
   N,
   S,
   U,
-  StateType<ToStateDefinition<C>>,
-  UpdateType<ToStateDefinition<I>>,
-  StateType<ToStateDefinition<O>>,
+  ExtractStateType<C>,
+  ExtractUpdateType<I, ExtractStateType<I>>,
+  ExtractStateType<O>,
   NodeReturnType,
   CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
   InferWriterType<WriterType>
@@ -1052,9 +1083,9 @@ export class CompiledStateGraph<
       N,
       S,
       U,
-      StateType<ToStateDefinition<C>>,
-      UpdateType<ToStateDefinition<I>>,
-      StateType<ToStateDefinition<O>>,
+      ExtractStateType<C>,
+      ExtractUpdateType<I, ExtractStateType<I>>,
+      ExtractStateType<O>,
       NodeReturnType,
       CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
       InferWriterType<WriterType>
@@ -1284,14 +1315,31 @@ export class CompiledStateGraph<
   }
 
   protected async _validateInput(
-    input: UpdateType<ToStateDefinition<I>>
-  ): Promise<UpdateType<ToStateDefinition<I>>> {
+    input: ExtractUpdateType<I, ExtractStateType<I>>
+  ): Promise<ExtractUpdateType<I, ExtractStateType<I>>> {
     if (input == null) return input;
 
-    const schema = (() => {
-      const input = this.builder._inputRuntimeDefinition;
-      const schema = this.builder._schemaRuntimeDefinition;
+    const inputDef = this.builder._inputRuntimeDefinition;
+    const schemaDef = this.builder._schemaRuntimeDefinition;
 
+    // Handle StateSchema validation
+    if (StateSchema.isInstance(schemaDef)) {
+      if (isCommand(input)) {
+        const parsedInput = input;
+        if (input.update) {
+          parsedInput.update = await schemaDef.validateInput(
+            Array.isArray(input.update)
+              ? Object.fromEntries(input.update)
+              : input.update
+          );
+        }
+        return parsedInput;
+      }
+      return await schemaDef.validateInput(input);
+    }
+
+    // Handle InteropZodObject validation
+    const schema = (() => {
       const apply = (schema: InteropZodObject | undefined) => {
         if (schema == null) return undefined;
         return this._metaRegistry.getExtendedChannelSchemas(schema, {
@@ -1299,9 +1347,12 @@ export class CompiledStateGraph<
         });
       };
 
-      if (isInteropZodObject(input)) return apply(input);
-      if (input === PartialStateSchema) {
-        return interopZodObjectPartial(apply(schema)!);
+      if (isInteropZodObject(inputDef)) return apply(inputDef);
+      if (inputDef === PartialStateSchema) {
+        if (isInteropZodObject(schemaDef)) {
+          return interopZodObjectPartial(apply(schemaDef)!);
+        }
+        return undefined;
       }
       return undefined;
     })();

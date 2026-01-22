@@ -1,5 +1,203 @@
 # @langchain/langgraph
 
+## 1.1.1
+
+### Patch Changes
+
+- [#1912](https://github.com/langchain-ai/langgraphjs/pull/1912) [`4b2e448`](https://github.com/langchain-ai/langgraphjs/commit/4b2e448ed7c05be3a5f2cb07b28f3fabe4079c01) Thanks [@hntrl](https://github.com/hntrl)! - fix StateSchema/ReducedValue type inference
+
+- Updated dependencies [[`98c0f26`](https://github.com/langchain-ai/langgraphjs/commit/98c0f26f4cc2c246359914704278ff5e3ae46a01), [`a3669be`](https://github.com/langchain-ai/langgraphjs/commit/a3669be176c5bca4b5bbcc6a6245882a684fb12f)]:
+  - @langchain/langgraph-sdk@1.5.5
+
+## 1.1.0
+
+### Minor Changes
+
+- [#1852](https://github.com/langchain-ai/langgraphjs/pull/1852) [`2ea3128`](https://github.com/langchain-ai/langgraphjs/commit/2ea3128ac48e52c9a180a9eb9d978dd9067ac80e) Thanks [@hntrl](https://github.com/hntrl)! - feat: add type utilities for authoring graph nodes and conditional edges
+
+  New exported type utilities for improved TypeScript ergonomics:
+
+  - `ExtractStateType<Schema>` - Extract the State type from any supported schema (StateSchema, AnnotationRoot, or Zod object)
+  - `ExtractUpdateType<Schema>` - Extract the Update type (partial state for node returns) from any supported schema
+  - `GraphNode<Schema, Context?, Nodes?>` - Strongly-typed utility for defining graph node functions with full inference for state, runtime context, and optional type-safe routing via Command
+  - `ConditionalEdgeRouter<Schema, Context?, Nodes?>` - Type for conditional edge routing functions passed to `addConditionalEdges`
+
+  These utilities enable defining nodes outside the StateGraph builder while maintaining full type safety:
+
+  ```typescript
+  import {
+    StateSchema,
+    GraphNode,
+    ConditionalEdgeRouter,
+    END,
+  } from "@langchain/langgraph";
+  import { z } from "zod/v4";
+
+  const AgentState = new StateSchema({
+    messages: MessagesValue,
+    step: z.number().default(0),
+  });
+
+  interface MyContext {
+    userId: string;
+  }
+
+  // Fully typed node function
+  const processNode: GraphNode<typeof AgentState> = (state, runtime) => {
+    return { step: state.step + 1 };
+  };
+
+  // Type-safe routing with Command
+  const routerNode: GraphNode<
+    typeof AgentState,
+    MyContext,
+    "agent" | "tool"
+  > = (state) => new Command({ goto: state.needsTool ? "tool" : "agent" });
+
+  // Conditional edge router
+  const router: ConditionalEdgeRouter<
+    typeof AgentState,
+    MyContext,
+    "continue"
+  > = (state) => (state.done ? END : "continue");
+  ```
+
+- [#1842](https://github.com/langchain-ai/langgraphjs/pull/1842) [`7ddf854`](https://github.com/langchain-ai/langgraphjs/commit/7ddf85468f01b8cfea62b1c513e04bd578580444) Thanks [@hntrl](https://github.com/hntrl)! - feat: `StateSchema`, `ReducedValue`, and `UntrackedValue`
+
+  **StateSchema** provides a new API for defining graph state that works with any [Standard Schema](https://github.com/standard-schema/standard-schema)-compliant validation library (Zod, Valibot, ArkType, and others).
+
+  ### Standard Schema support
+
+  LangGraph now supports [Standard Schema](https://standardschema.dev/), an open specification implemented by Zod 4, Valibot, ArkType, and other schema libraries. This means you can use your preferred validation library without lock-in:
+
+  ```typescript
+  import { z } from "zod"; // or valibot, arktype, etc.
+  import {
+    StateSchema,
+    ReducedValue,
+    MessagesValue,
+  } from "@langchain/langgraph";
+
+  const AgentState = new StateSchema({
+    messages: MessagesValue,
+    currentStep: z.string(),
+    count: z.number().default(0),
+    history: new ReducedValue(
+      z.array(z.string()).default(() => []),
+      {
+        inputSchema: z.string(),
+        reducer: (current, next) => [...current, next],
+      }
+    ),
+  });
+
+  // Type-safe state and update types
+  type State = typeof AgentState.State;
+  type Update = typeof AgentState.Update;
+
+  const graph = new StateGraph(AgentState)
+    .addNode("agent", (state) => ({ count: state.count + 1 }))
+    .addEdge(START, "agent")
+    .addEdge("agent", END)
+    .compile();
+  ```
+
+  ### New exports
+
+  - **`StateSchema`** - Define state with any Standard Schema-compliant library
+  - **`ReducedValue`** - Define fields with custom reducer functions for accumulating state
+  - **`UntrackedValue`** - Define transient fields that are not persisted to checkpoints
+  - **`MessagesValue`** - Pre-built message list channel with add/remove semantics
+
+### Patch Changes
+
+- [#1901](https://github.com/langchain-ai/langgraphjs/pull/1901) [`6d8f3ed`](https://github.com/langchain-ai/langgraphjs/commit/6d8f3ed4c879419d941a25ee48bed0d5545add4d) Thanks [@dqbd](https://github.com/dqbd)! - Perform reference equality check on reducers before throwing "Channel already exists with a different type" error
+
+- Updated dependencies [[`5629d46`](https://github.com/langchain-ai/langgraphjs/commit/5629d46362509f506ab455389e600eff7d9b34bb), [`78743d6`](https://github.com/langchain-ai/langgraphjs/commit/78743d6bca96945d574713ffefe32b04a4c04d29)]:
+  - @langchain/langgraph-sdk@1.5.4
+
+## 1.0.15
+
+### Patch Changes
+
+- Updated dependencies [[`344b2d2`](https://github.com/langchain-ai/langgraphjs/commit/344b2d2c1a6dca43e9b01e436b00bca393bc9538), [`84a636e`](https://github.com/langchain-ai/langgraphjs/commit/84a636e52f7d3a4b97ae69d050efd9ca0224c6ca), [`2b9f3ee`](https://github.com/langchain-ai/langgraphjs/commit/2b9f3ee83d0b8ba023e7a52b938260af3f6433d4)]:
+  - @langchain/langgraph-sdk@1.5.0
+
+## 1.0.14
+
+### Patch Changes
+
+- [#1862](https://github.com/langchain-ai/langgraphjs/pull/1862) [`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c) Thanks [@dqbd](https://github.com/dqbd)! - retry release: improved Zod interop
+
+- Updated dependencies [[`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c)]:
+  - @langchain/langgraph-sdk@1.4.6
+
+## 1.0.13
+
+### Patch Changes
+
+- [#1856](https://github.com/langchain-ai/langgraphjs/pull/1856) [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: improved Zod interop
+
+- Updated dependencies [[`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217)]:
+  - @langchain/langgraph-sdk@1.4.5
+
+## 1.0.12
+
+### Patch Changes
+
+- [#1853](https://github.com/langchain-ai/langgraphjs/pull/1853) [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: improved Zod interop
+
+- Updated dependencies [[`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e)]:
+  - @langchain/langgraph-sdk@1.4.4
+
+## 1.0.11
+
+### Patch Changes
+
+- [#1850](https://github.com/langchain-ai/langgraphjs/pull/1850) [`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: improved Zod interop
+
+- Updated dependencies [[`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd)]:
+  - @langchain/langgraph-sdk@1.4.3
+
+## 1.0.10
+
+### Patch Changes
+
+- 3ec85a4: retry release: improved Zod interop
+- Updated dependencies [3ec85a4]
+  - @langchain/langgraph-sdk@1.4.2
+
+## 1.0.9
+
+### Patch Changes
+
+- 3613386: retry release: improved Zod interop
+- Updated dependencies [3613386]
+  - @langchain/langgraph-sdk@1.4.1
+
+## 1.0.8
+
+### Patch Changes
+
+- 730dc7c: fix(core): improved Zod interop
+- Updated dependencies [730dc7c]
+- Updated dependencies [4ffdde9]
+- Updated dependencies [730dc7c]
+  - @langchain/langgraph-sdk@1.4.0
+
+## 1.0.7
+
+### Patch Changes
+
+- f602df6: Adding support for resumableStreams on remote graphs.
+
+## 1.0.6
+
+### Patch Changes
+
+- de1454a: undeprecate toolsCondition
+- 2340a54: respect meta defaults in `LastValue`
+
 ## 1.0.5
 
 ### Patch Changes

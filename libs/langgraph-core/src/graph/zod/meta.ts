@@ -186,7 +186,7 @@ export class SchemaMetaRegistry {
           InferInteropZodOutput<typeof channelSchema>
         >(meta.reducer.fn, meta.default);
       } else {
-        channel = new LastValue();
+        channel = new LastValue(meta?.default);
       }
 
       this._channelCache.set(channelSchema, channel);

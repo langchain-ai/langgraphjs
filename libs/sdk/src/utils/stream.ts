@@ -32,7 +32,7 @@ export interface StreamWithRetryOptions {
  */
 export interface StreamRequestParams {
   /**
-   * If provided, this is a reconnection request with the last event ID
+   * Last event ID to resume from, if available
    */
   lastEventId?: string;
 
@@ -58,7 +58,7 @@ export class MaxReconnectAttemptsError extends Error {
  * Implements reconnection behavior similar to the Python SDK.
  *
  * @param makeRequest Function to make requests. When `params` is undefined/empty, it's the initial request.
- *                    When `params.lastEventId` is provided, it's a reconnection request.
+ *                    When `params.reconnectPath` is provided, it's a reconnection request.
  * @param options Configuration options
  * @returns AsyncGenerator yielding stream events
  */
@@ -83,9 +83,9 @@ export async function* streamWithRetry<T extends { id?: string }>(
       // Check if aborted before making request
       if (options.signal?.aborted) return;
 
-      // Make request - initial if no lastEventId, reconnect otherwise
+      // Make request - initial if no reconnect path, reconnect otherwise
       const { response, stream } = await makeRequest(
-        lastEventId ? { lastEventId, reconnectPath } : undefined
+        reconnectPath ? { lastEventId, reconnectPath } : undefined
       );
 
       // Check for Location header (server-provided reconnection path)
@@ -130,8 +130,8 @@ export async function* streamWithRetry<T extends { id?: string }>(
         // Stream completed successfully, exit retry loop
         break;
       } catch (error) {
-        // Error during streaming - attempt reconnect if we have lastEventId and a location header
-        if (lastEventId && reconnectPath && !options.signal?.aborted) {
+        // Error during streaming - attempt reconnect if we have a location header
+        if (reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;
         } else {
           throw error;
@@ -149,12 +149,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
       lastError = error;
 
       // Only retry if we have reconnection capability and it's a network error
-      if (
-        isNetworkError(error) &&
-        lastEventId &&
-        reconnectPath &&
-        !options.signal?.aborted
-      ) {
+      if (isNetworkError(error) && reconnectPath && !options.signal?.aborted) {
         shouldRetry = true;
       } else {
         throw error;

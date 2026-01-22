@@ -37,7 +37,8 @@ async function buildProject(
   const watch = opts.watch ?? false;
   const sourcemap = !opts.skipSourcemap;
   const exportsCJS = Object.values(pkg.exports || {}).some(
-    (exp) => typeof exp === "object" && exp && "require" in exp);
+    (exp) => typeof exp === "object" && exp && "require" in exp
+  );
   const format: Format[] = exportsCJS ? ["esm", "cjs"] : ["esm"];
 
   /**
@@ -110,11 +111,7 @@ async function buildProject(
     format,
     watch,
     tsconfig: resolve(path, "tsconfig.json"),
-    ignoreWatch: [
-      `${path}/.turbo`,
-      `${path}/dist`,
-      `${path}/node_modules`,
-    ],
+    ignoreWatch: [`${path}/.turbo`, `${path}/dist`, `${path}/node_modules`],
     inputOptions: {
       cwd: path,
     },

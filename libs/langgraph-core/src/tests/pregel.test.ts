@@ -68,6 +68,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import {
   Annotation,
   Graph,
+  messagesStateReducer,
   StateGraph,
   StateGraphArgs,
 } from "../graph/index.js";
@@ -84,7 +85,7 @@ import {
   shouldInterrupt,
 } from "../pregel/algo.js";
 import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
-import { MessageGraph, messagesStateReducer } from "../graph/message.js";
+import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
 import {
@@ -3831,7 +3832,9 @@ graph TD;
         description: "Searches the API for the query",
       });
 
-      const toolsByName = { [searchApi.name]: searchApi };
+      const toolsByName: Record<string, typeof searchApi> = {
+        [searchApi.name]: searchApi,
+      };
       const model = new FakeChatModel({
         responses: [
           new AIMessage({
@@ -10236,9 +10239,9 @@ graph TD;
         })
         .addNode("subgraph", subgraph)
         .addNode("two", (state) => {
-          if (state.items.length < 2) {
+          if (state.items!.length < 2) {
             throw new Error(
-              `Expected at least 2 items, got ${state.items.length}`
+              `Expected at least 2 items, got ${state.items!.length}`
             );
           }
           return { foo: "done", items: ["two"] };

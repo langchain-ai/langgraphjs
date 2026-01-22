@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-mongodb",
-  "version": "1.0.0",
+  "version": "1.1.6",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -14,14 +14,14 @@
     "directory": "libs/checkpoint-mongodb"
   },
   "scripts": {
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-mongodb",
-    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-checkpoint-mongodb",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-mongodb",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-mongodb",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
-    "lint": "yarn lint:eslint && yarn lint:dpdm",
-    "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepublish": "yarn build",
+    "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+    "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+    "prepublish": "pnpm build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:int": "vitest run --mode int",
@@ -31,7 +31,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "mongodb": "^6.8.0"
+    "mongodb": "^6.21.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
