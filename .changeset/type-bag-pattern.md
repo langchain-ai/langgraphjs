@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph": minor
+"@langchain/langgraph": patch
 ---
 
 Add type bag pattern for `GraphNode` and `ConditionalEdgeRouter` type utilities.
