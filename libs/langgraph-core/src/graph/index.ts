@@ -28,5 +28,8 @@ export type {
   ExtractStateType,
   ExtractUpdateType,
   GraphNode,
+  GraphNodeTypes,
+  GraphNodeReturnValue,
   ConditionalEdgeRouter,
+  ConditionalEdgeRouterTypes,
 } from "./types.js";

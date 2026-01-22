@@ -421,6 +421,183 @@ describe("GraphNode", () => {
       expect(_invalidRouter).toBeDefined();
     });
   });
+
+  describe("with type bag", () => {
+    describe("using StateSchema", () => {
+      const InputSchema = new StateSchema({
+        messages: z.array(z.string()).default(() => []),
+        query: z.string(),
+      });
+
+      const OutputSchema = new StateSchema({
+        answer: z.string(),
+      });
+
+      const ContextSchema = z.object({
+        userId: z.string(),
+      });
+
+      it("infers input type from InputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+        }> = (state) => {
+          expectTypeOf(state.messages).toEqualTypeOf<string[]>();
+          expectTypeOf(state.query).toEqualTypeOf<string>();
+          return {};
+        };
+
+        expectTypeOf(node)
+          .parameter(0)
+          .toEqualTypeOf<{ messages: string[]; query: string }>();
+      });
+
+      it("infers output type from OutputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+          OutputSchema: typeof OutputSchema;
+        }> = (state) => {
+          return { answer: `Response to: ${state.query}` };
+        };
+
+        expect(node).toBeDefined();
+      });
+
+      it("infers context type from ContextSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+          ContextSchema: typeof ContextSchema;
+        }> = (_state, runtime) => {
+          expectTypeOf(runtime.configurable).toEqualTypeOf<
+            { userId: string } | undefined
+          >();
+          return {};
+        };
+
+        expect(node).toBeDefined();
+      });
+
+      it("infers Nodes type for Command.goto", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+          OutputSchema: typeof OutputSchema;
+          Nodes: "agent" | "tool";
+        }> = (state) => {
+          return new Command({
+            goto: "agent",
+            update: { answer: `Response to: ${state.query}` },
+          });
+        };
+
+        expect(node).toBeDefined();
+      });
+
+      it("allows partial type bag with only InputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+        }> = (state) => {
+          return { messages: [...state.messages, "new"] };
+        };
+
+        expectTypeOf(node)
+          .parameter(0)
+          .toEqualTypeOf<{ messages: string[]; query: string }>();
+      });
+    });
+
+    describe("using Zod schema", () => {
+      const InputSchema = z.object({
+        messages: z.array(z.string()),
+        query: z.string(),
+      });
+
+      const OutputSchema = z.object({
+        answer: z.string(),
+      });
+
+      const ContextSchema = z.object({
+        userId: z.string(),
+        threshold: z.number(),
+      });
+
+      it("infers input type from Zod InputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+        }> = (state) => {
+          expectTypeOf(state.messages).toEqualTypeOf<string[]>();
+          expectTypeOf(state.query).toEqualTypeOf<string>();
+          return {};
+        };
+
+        expectTypeOf(node)
+          .parameter(0)
+          .toEqualTypeOf<{ messages: string[]; query: string }>();
+      });
+
+      it("infers output type from Zod OutputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+          OutputSchema: typeof OutputSchema;
+        }> = (state) => {
+          return { answer: `Response to: ${state.query}` };
+        };
+
+        expect(node).toBeDefined();
+      });
+
+      it("infers context type from Zod ContextSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputSchema;
+          ContextSchema: typeof ContextSchema;
+        }> = (_state, runtime) => {
+          expectTypeOf(runtime.configurable).toEqualTypeOf<
+            { userId: string; threshold: number } | undefined
+          >();
+          return {};
+        };
+
+        expect(node).toBeDefined();
+      });
+    });
+
+    describe("using Annotation", () => {
+      const InputAnnotation = Annotation.Root({
+        messages: Annotation<string[]>({
+          reducer: (a, b) => [...a, ...b],
+          default: () => [],
+        }),
+        query: Annotation<string>,
+      });
+
+      const OutputAnnotation = Annotation.Root({
+        answer: Annotation<string>,
+      });
+
+      it("infers input type from Annotation InputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputAnnotation;
+        }> = (state) => {
+          expectTypeOf(state.messages).toEqualTypeOf<string[]>();
+          expectTypeOf(state.query).toEqualTypeOf<string>();
+          return {};
+        };
+
+        expectTypeOf(node)
+          .parameter(0)
+          .toEqualTypeOf<{ messages: string[]; query: string }>();
+      });
+
+      it("infers output type from Annotation OutputSchema", () => {
+        const node: GraphNode<{
+          InputSchema: typeof InputAnnotation;
+          OutputSchema: typeof OutputAnnotation;
+        }> = (state) => {
+          return { answer: `Response to: ${state.query}` };
+        };
+
+        expect(node).toBeDefined();
+      });
+    });
+  });
 });
 
 describe("ConditionalEdgeRouter", () => {
@@ -966,6 +1143,135 @@ describe("ConditionalEdgeRouter", () => {
         };
 
         expect(router).toBeDefined();
+      });
+    });
+  });
+
+  describe("with type bag", () => {
+    describe("using StateSchema", () => {
+      const StateSchema_ = new StateSchema({
+        step: z.number().default(0),
+        done: z.boolean().default(false),
+      });
+
+      const ContextSchema = z.object({
+        userId: z.string(),
+      });
+
+      it("infers state type from InputSchema", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof StateSchema_;
+        }> = (state) => {
+          expectTypeOf(state.step).toEqualTypeOf<number>();
+          expectTypeOf(state.done).toEqualTypeOf<boolean>();
+          return state.done ? END : "process";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("infers context type from ContextSchema", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof StateSchema_;
+          ContextSchema: typeof ContextSchema;
+        }> = (_state, config) => {
+          expectTypeOf(config.configurable).toEqualTypeOf<
+            { userId: string } | undefined
+          >();
+          return END;
+        };
+
+        expect(router).toBeDefined();
+      });
+
+      it("constrains return to Nodes type", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof StateSchema_;
+          Nodes: "process" | "finalize";
+        }> = (state) => {
+          return state.done ? "finalize" : "process";
+        };
+
+        expect(router).toBeDefined();
+      });
+
+      it("allows Send with constrained Nodes", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof StateSchema_;
+          Nodes: "worker";
+        }> = (state) => {
+          return new Send("worker", { step: state.step, done: state.done });
+        };
+
+        expect(router).toBeDefined();
+      });
+    });
+
+    describe("using Zod schema", () => {
+      const ZodSchema = z.object({
+        step: z.number(),
+        done: z.boolean(),
+      });
+
+      const ContextSchema = z.object({
+        threshold: z.number(),
+      });
+
+      it("infers state type from Zod InputSchema", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof ZodSchema;
+        }> = (state) => {
+          expectTypeOf(state.step).toEqualTypeOf<number>();
+          expectTypeOf(state.done).toEqualTypeOf<boolean>();
+          return state.done ? END : "process";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("infers context type from Zod ContextSchema", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof ZodSchema;
+          ContextSchema: typeof ContextSchema;
+        }> = (_state, config) => {
+          expectTypeOf(config.configurable).toEqualTypeOf<
+            { threshold: number } | undefined
+          >();
+          return END;
+        };
+
+        expect(router).toBeDefined();
+      });
+    });
+
+    describe("using Annotation", () => {
+      const AnnotationSchema = Annotation.Root({
+        step: Annotation<number>({
+          reducer: (_, b) => b,
+          default: () => 0,
+        }),
+        done: Annotation<boolean>({
+          reducer: (_, b) => b,
+          default: () => false,
+        }),
+      });
+
+      it("infers state type from Annotation InputSchema", () => {
+        const router: ConditionalEdgeRouter<{
+          InputSchema: typeof AnnotationSchema;
+        }> = (state) => {
+          expectTypeOf(state.step).toEqualTypeOf<number>();
+          expectTypeOf(state.done).toEqualTypeOf<boolean>();
+          return state.done ? END : "process";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
       });
     });
   });
