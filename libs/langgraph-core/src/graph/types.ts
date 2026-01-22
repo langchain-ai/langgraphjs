@@ -136,7 +136,7 @@ export type StateGraphInit<
   SD extends StateDefinitionInit = StateDefinitionInit,
   I extends StateDefinitionInit | undefined = undefined,
   O extends StateDefinitionInit | undefined = undefined,
-  C extends ContextSchemaInit | undefined = undefined,
+  C extends StateDefinitionInit | undefined = undefined,
   N extends string = string,
   InterruptType = unknown,
   WriterType = unknown
@@ -169,7 +169,7 @@ export type StateGraphInit<
 export type StateGraphOptions<
   I extends StateDefinitionInit | undefined = undefined,
   O extends StateDefinitionInit | undefined = undefined,
-  C extends ContextSchemaInit | undefined = undefined,
+  C extends StateDefinitionInit | undefined = undefined,
   N extends string = string,
   InterruptType = unknown,
   WriterType = unknown
