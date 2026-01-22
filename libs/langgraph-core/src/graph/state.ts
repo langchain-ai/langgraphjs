@@ -121,7 +121,7 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
  */
 export type StateGraphAddNodeOptions<
   Nodes extends string = string,
-  InputSchema extends StateDefinitionInit | undefined = undefined
+  InputSchema extends StateDefinitionInit | undefined = StateDefinitionInit | undefined
 > = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
@@ -362,14 +362,7 @@ export class StateGraph<
     options?:
       | C
       | AnnotationRoot<ToStateDefinition<C>>
-      | StateGraphOptions<
-          I,
-          O,
-          C extends ContextSchemaInit ? C : undefined,
-          N,
-          InterruptType,
-          WriterType
-        >
+      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
   );
 
   constructor(
@@ -439,14 +432,7 @@ export class StateGraph<
     options?:
       | C
       | AnnotationRoot<ToStateDefinition<C>>
-      | StateGraphOptions<
-          I,
-          O,
-          C extends ContextSchemaInit ? C : undefined,
-          N,
-          InterruptType,
-          WriterType
-        >
+      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
   ) {
     super();
 
@@ -532,7 +518,7 @@ export class StateGraph<
   private _normalizeToStateGraphInit(
     stateOrInit: unknown,
     options?: unknown
-  ): StateGraphInit<StateDefinitionInit, I, O> {
+  ): StateGraphInit<StateDefinitionInit, I, O, C> {
     // Check if already StateGraphInit format
     if (isStateGraphInit(stateOrInit)) {
       // Merge any 2nd arg options
@@ -545,7 +531,7 @@ export class StateGraph<
         interrupt: stateOrInit.interrupt ?? opts?.interrupt,
         writer: stateOrInit.writer ?? opts?.writer,
         nodes: stateOrInit.nodes ?? opts?.nodes,
-      } as StateGraphInit<StateDefinitionInit, I, O>;
+      } as StateGraphInit<StateDefinitionInit, I, O, C>;
     }
 
     // Check if direct schema (StateSchema, Zod, Annotation, StateDefinition)
@@ -559,7 +545,7 @@ export class StateGraph<
         // options is a direct context schema (Zod or AnnotationRoot)
         return {
           state: stateOrInit as StateDefinitionInit,
-          context: options as StateDefinitionInit,
+          context: options as C,
         };
       }
       const opts = options as StateGraphOptions<I, O> | undefined;
