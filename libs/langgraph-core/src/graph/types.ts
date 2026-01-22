@@ -4,16 +4,7 @@ import {
   type InteropZodObject,
 } from "@langchain/core/utils/types";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  isInteropZodObject,
-  type InteropZodObject,
-} from "@langchain/core/utils/types";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type {
-  LangGraphRunnableConfig,
-  Runtime,
-} from "../pregel/runnable_types.js";
+import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import type { CommandInstance, Send } from "../constants.js";
 import { END } from "../constants.js";
 import type {
@@ -371,7 +362,7 @@ export type GraphNodeReturnValue<Update, Nodes extends string = string> =
 
 /**
  * Strongly-typed utility for authoring graph nodes outside of the StateGraph builder,
- * supporting inference for both state (from Schema) and runtime context (from ContextType).
+ * supporting inference for both state (from Schema) and config context (from Context type).
  *
  * This type enables you to define graph node functions with full type safety—both
  * for the evolving state and for additional context that may be passed in at runtime.
@@ -389,7 +380,7 @@ export type GraphNodeReturnValue<Update, Nodes extends string = string> =
  *    `GraphNode<{ InputSchema; OutputSchema; ContextSchema; Nodes }>`
  *
  * @template Schema - The state schema type (StateSchema, AnnotationRoot, InteropZodObject) OR a type bag
- * @template Context - The type of the runtime context injected into this node (default: Record<string, unknown>)
+ * @template Context - The type of the context passed into this node (default: Record<string, unknown>)
  * @template Nodes - An optional union of valid node names for Command.goto, used for type-safe routing (default: string)
  *
  * @example Single schema usage
@@ -405,14 +396,14 @@ export type GraphNodeReturnValue<Update, Nodes extends string = string> =
  * // Context shape for custom node logic (optional)
  * type MyContext = { userId: string };
  *
- * // Node receiving state and context
- * const processNode: GraphNode<typeof AgentState, MyContext> = (state, runtime) => {
- *   const { userId } = runtime; // type-safe context access
+ * // Node receiving state and config
+ * const processNode: GraphNode<typeof AgentState, MyContext> = (state, config) => {
+ *   const userId = config.configurable?.userId; // type-safe context access
  *   return { step: state.step + 1 };
  * };
  *
  * // Node with type-safe graph routing
- * const routerNode: GraphNode<typeof AgentState, MyContext, "agent" | "tool"> = (state, runtime) => {
+ * const routerNode: GraphNode<typeof AgentState, MyContext, "agent" | "tool"> = (state, config) => {
  *   if (state.needsTool) {
  *     return new Command({ goto: "tool", update: { step: state.step + 1 } });
  *   }
@@ -444,22 +435,24 @@ export type GraphNodeReturnValue<Update, Nodes extends string = string> =
  *   OutputSchema: typeof OutputSchema;
  *   ContextSchema: typeof ContextSchema;
  *   Nodes: "agent" | "tool";
- * }> = (state, runtime) => {
+ * }> = (state, config) => {
  *   // state is { messages: string[]; query: string }
- *   // runtime.configurable is { userId: string } | undefined
+ *   // config.configurable is { userId: string } | undefined
  *   return { answer: `Response to: ${state.query}` };
  * };
  * ```
  */
 export type GraphNode<
   Schema,
-  Context = Record<string, unknown>,
+  Context extends Record<string, any> = Record<string, any>,
   Nodes extends string = string
 > = IsGraphNodeTypeBag<Schema> extends true
   ? // Type bag pattern - extract types from schemas
     (
       state: ExtractBagInput<Schema, unknown>,
-      runtime: Runtime<ExtractBagContext<Schema, Record<string, unknown>>>
+      config: LangGraphRunnableConfig<
+        ExtractBagContext<Schema, Record<string, unknown>>
+      >
     ) => GraphNodeReturnValue<
       ExtractBagOutput<Schema, Partial<ExtractBagInput<Schema, unknown>>>,
       ExtractBagNodes<Schema, string>
@@ -467,7 +460,7 @@ export type GraphNode<
   : // Single schema pattern (backward compatible)
     (
       state: ExtractStateType<Schema>,
-      runtime: Runtime<Context>
+      config: LangGraphRunnableConfig<Context>
     ) => GraphNodeReturnValue<ExtractUpdateType<Schema>, Nodes>;
 
 /**
@@ -563,7 +556,7 @@ type ConditionalEdgeRouterReturnValue<Nodes extends string, State> =
  */
 export type ConditionalEdgeRouter<
   Schema,
-  Context extends Record<string, unknown> = Record<string, unknown>,
+  Context extends Record<string, any> = Record<string, any>,
   Nodes extends string = string
 > = IsConditionalEdgeRouterTypeBag<Schema> extends true
   ? // Type bag pattern - extract types from schemas

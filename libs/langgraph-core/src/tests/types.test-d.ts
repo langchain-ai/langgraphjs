@@ -380,10 +380,10 @@ describe("GraphNode", () => {
     it("accepts custom context as second type parameter", () => {
       const myNode: GraphNode<typeof AgentAnnotation, MyContext> = (
         state,
-        runtime
+        config
       ) => {
-        // Runtime<MyContext> has configurable?: MyContext
-        expectTypeOf(runtime.configurable?.customSetting).toEqualTypeOf<
+        // LangGraphRunnableConfig<MyContext> has context?: MyContext
+        expectTypeOf(config.context?.customSetting).toEqualTypeOf<
           string | undefined
         >();
         return { count: state.count + 1 };
@@ -466,8 +466,8 @@ describe("GraphNode", () => {
         const node: GraphNode<{
           InputSchema: typeof InputSchema;
           ContextSchema: typeof ContextSchema;
-        }> = (_state, runtime) => {
-          expectTypeOf(runtime.configurable).toEqualTypeOf<
+        }> = (_state, config) => {
+          expectTypeOf(config.context).toEqualTypeOf<
             { userId: string } | undefined
           >();
           return {};
@@ -548,8 +548,8 @@ describe("GraphNode", () => {
         const node: GraphNode<{
           InputSchema: typeof InputSchema;
           ContextSchema: typeof ContextSchema;
-        }> = (_state, runtime) => {
-          expectTypeOf(runtime.configurable).toEqualTypeOf<
+        }> = (_state, config) => {
+          expectTypeOf(config.context).toEqualTypeOf<
             { userId: string; threshold: number } | undefined
           >();
           return {};
