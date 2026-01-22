@@ -919,37 +919,37 @@ importers:
         version: 0.5.6
     optionalDependencies:
       '@esbuild/win32-x64':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.27.2
       '@rolldown/binding-darwin-arm64':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-darwin-x64':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-linux-arm64-gnu':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-linux-arm64-musl':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-linux-x64-gnu':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-linux-x64-musl':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-win32-arm64-msvc':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-win32-ia32-msvc':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@rolldown/binding-win32-x64-msvc':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 0.15.1
       '@swc/core-win32-x64-msvc':
-        specifier: '*'
+        specifier: '>=0.0.0'
         version: 1.15.10
 
   libs/checkpoint:
