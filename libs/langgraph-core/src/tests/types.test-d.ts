@@ -423,108 +423,553 @@ describe("GraphNode", () => {
   });
 });
 
-// =============================================================================
-// ConditionalEdgeRouter
-// =============================================================================
-
 describe("ConditionalEdgeRouter", () => {
-  const AgentAnnotation = Annotation.Root({
-    step: Annotation<number>({
-      reducer: (_, b) => b,
-      default: () => 0,
-    }),
-    done: Annotation<boolean>({
-      reducer: (_, b) => b,
-      default: () => false,
-    }),
+  describe("with Annotation", () => {
+    const AgentAnnotation = Annotation.Root({
+      step: Annotation<number>({
+        reducer: (_, b) => b,
+        default: () => 0,
+      }),
+      done: Annotation<boolean>({
+        reducer: (_, b) => b,
+        default: () => false,
+      }),
+    });
+
+    describe("return types", () => {
+      it("allows returning node names", () => {
+        const router: ConditionalEdgeRouter<
+          typeof AgentAnnotation,
+          Record<string, unknown>,
+          "process" | "finalize"
+        > = (state) => {
+          return state.step > 5 ? "finalize" : "process";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning END", () => {
+        const router: ConditionalEdgeRouter<
+          typeof AgentAnnotation,
+          Record<string, unknown>,
+          "continue"
+        > = (state) => {
+          if (state.done) return END;
+          return "continue";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+
+        // Return type includes Promise to support async routers
+        expectTypeOf(router).returns.toExtend<
+          | "continue"
+          | typeof END
+          | Send<"continue", { step: number; done: boolean }>
+          | Array<
+              "continue" | Send<"continue", { step: number; done: boolean }>
+            >
+          | Promise<
+              | "continue"
+              | typeof END
+              | Send<"continue", { step: number; done: boolean }>
+              | Array<
+                  "continue" | Send<"continue", { step: number; done: boolean }>
+                >
+            >
+        >();
+      });
+
+      it("allows returning Send packets", () => {
+        const fanOutRouter: ConditionalEdgeRouter<
+          typeof AgentAnnotation,
+          Record<string, unknown>,
+          "worker"
+        > = (state) => {
+          return new Send("worker", { step: state.step, done: state.done });
+        };
+
+        expectTypeOf(fanOutRouter)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning arrays of nodes and Send packets", () => {
+        const fanOutRouter: ConditionalEdgeRouter<
+          typeof AgentAnnotation,
+          Record<string, unknown>,
+          "worker"
+        > = (state) => {
+          return [
+            new Send("worker", { step: state.step, done: state.done }),
+            new Send("worker", { step: state.step + 1, done: false }),
+          ];
+        };
+
+        expectTypeOf(fanOutRouter)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+    });
+
+    describe("type safety", () => {
+      it("rejects invalid Send node names", () => {
+        const _invalidRouter: ConditionalEdgeRouter<
+          typeof AgentAnnotation,
+          Record<string, unknown>,
+          "worker"
+        > = (state) =>
+          // @ts-expect-error - "invalid" is not in "worker"
+          new Send("invalid", { step: state.step, done: false });
+        expect(_invalidRouter).toBeDefined();
+      });
+    });
+
+    describe("usage with addConditionalEdges", () => {
+      it("works with addConditionalEdges using array pathMap", () => {
+        const GraphState = Annotation.Root({
+          summary: Annotation<string>,
+          messages: Annotation<string[]>({
+            reducer: (a, b) => [...a, ...b],
+            default: () => [],
+          }),
+        });
+
+        const callModel = (_state: typeof GraphState.State) => ({
+          messages: ["Hello!"],
+        });
+        const summarizeConversation = (_state: typeof GraphState.State) => ({
+          summary: "Summary",
+        });
+
+        const shouldContinue: ConditionalEdgeRouter<
+          typeof GraphState,
+          Record<string, unknown>,
+          "summarize_conversation"
+        > = (state, _config) => {
+          if (state.messages.length > 5) {
+            return "summarize_conversation";
+          }
+          return END;
+        };
+
+        const _workflow = new StateGraph(GraphState)
+          .addNode("conversation", callModel)
+          .addNode("summarize_conversation", summarizeConversation)
+          .addEdge(START, "conversation")
+          .addConditionalEdges("conversation", shouldContinue, [
+            "summarize_conversation",
+            END,
+          ])
+          .addEdge("summarize_conversation", END);
+
+        expect(_workflow).toBeDefined();
+      });
+
+      it("works with async conditional edge routers", () => {
+        const GraphState = Annotation.Root({
+          count: Annotation<number>({
+            reducer: (_, b) => b,
+            default: () => 0,
+          }),
+        });
+
+        const processNode = (_state: typeof GraphState.State) => ({
+          count: 1,
+        });
+
+        const asyncRouter: ConditionalEdgeRouter<
+          typeof GraphState,
+          Record<string, unknown>,
+          "process"
+        > = async (state) => {
+          // Simulate async operation
+          await Promise.resolve();
+          if (state.count > 5) {
+            return END;
+          }
+          return "process";
+        };
+
+        const _workflow = new StateGraph(GraphState)
+          .addNode("process", processNode)
+          .addEdge(START, "process")
+          .addConditionalEdges("process", asyncRouter, ["process", END]);
+
+        expect(_workflow).toBeDefined();
+      });
+
+      it("provides config with typed configurable", () => {
+        const GraphState = Annotation.Root({
+          value: Annotation<string>,
+        });
+
+        type MyContext = { userId: string; threshold: number };
+
+        const router: ConditionalEdgeRouter<
+          typeof GraphState,
+          MyContext,
+          "nodeA" | "nodeB"
+        > = (_state, config) => {
+          // Config should have typed configurable
+          expectTypeOf(config.configurable).toEqualTypeOf<
+            MyContext | undefined
+          >();
+
+          if (
+            config.configurable?.threshold &&
+            config.configurable.threshold > 5
+          ) {
+            return "nodeA";
+          }
+          return "nodeB";
+        };
+
+        expect(router).toBeDefined();
+      });
+    });
   });
 
-  describe("return types", () => {
-    it("allows returning node names", () => {
-      const router: ConditionalEdgeRouter<
-        typeof AgentAnnotation,
-        Record<string, unknown>,
-        "process" | "finalize"
-      > = (state) => {
-        return state.step > 5 ? "finalize" : "process";
-      };
-
-      expectTypeOf(router)
-        .parameter(0)
-        .toEqualTypeOf<{ step: number; done: boolean }>();
+  describe("with StateSchema", () => {
+    const AgentState = new StateSchema({
+      step: z.number().default(0),
+      done: z.boolean().default(false),
     });
 
-    it("allows returning END", () => {
-      const router: ConditionalEdgeRouter<
-        typeof AgentAnnotation,
-        Record<string, unknown>,
-        "continue"
-      > = (state) => {
-        if (state.done) return END;
-        return "continue";
-      };
+    describe("return types", () => {
+      it("allows returning node names", () => {
+        const router: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "process" | "finalize"
+        > = (state) => {
+          return state.step > 5 ? "finalize" : "process";
+        };
 
-      expectTypeOf(router)
-        .parameter(0)
-        .toEqualTypeOf<{ step: number; done: boolean }>();
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
 
-      expectTypeOf(router).returns.toExtend<
-        | "continue"
-        | typeof END
-        | Send<"continue", { step: number; done: boolean }>
-        | Array<"continue" | Send<"continue", { step: number; done: boolean }>>
-      >();
+      it("allows returning END", () => {
+        const router: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "continue"
+        > = (state) => {
+          if (state.done) return END;
+          return "continue";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning Send packets", () => {
+        const fanOutRouter: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "worker"
+        > = (state) => {
+          return new Send("worker", { step: state.step, done: state.done });
+        };
+
+        expectTypeOf(fanOutRouter)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning arrays of nodes and Send packets", () => {
+        const fanOutRouter: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "worker"
+        > = (state) => {
+          return [
+            new Send("worker", { step: state.step, done: state.done }),
+            new Send("worker", { step: state.step + 1, done: false }),
+          ];
+        };
+
+        expectTypeOf(fanOutRouter)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
     });
 
-    it("allows returning Send packets", () => {
-      const fanOutRouter: ConditionalEdgeRouter<
-        typeof AgentAnnotation,
-        Record<string, unknown>,
-        "worker"
-      > = (state) => {
-        return new Send("worker", { step: state.step, done: state.done });
-      };
+    describe("usage with addConditionalEdges", () => {
+      it("works with StateSchema and addConditionalEdges", () => {
+        const GraphState = new StateSchema({
+          summary: z.string().optional(),
+          messages: new ReducedValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.array(z.string()),
+              reducer: (a: string[], b: string[]) => [...a, ...b],
+            }
+          ),
+        });
 
-      expectTypeOf(fanOutRouter)
-        .parameter(0)
-        .toEqualTypeOf<{ step: number; done: boolean }>();
-    });
+        const callModel = (_state: typeof GraphState.State) => ({
+          messages: ["Hello!"],
+        });
+        const summarizeConversation = (_state: typeof GraphState.State) => ({
+          summary: "Summary",
+        });
 
-    it("allows returning arrays of nodes and Send packets", () => {
-      const fanOutRouter: ConditionalEdgeRouter<
-        typeof AgentAnnotation,
-        Record<string, unknown>,
-        "worker"
-      > = (state) => {
-        return [
-          new Send("worker", { step: state.step, done: state.done }),
-          new Send("worker", { step: state.step + 1, done: false }),
-        ];
-      };
+        const shouldContinue: ConditionalEdgeRouter<
+          typeof GraphState,
+          Record<string, unknown>,
+          "summarize_conversation"
+        > = (state, _config) => {
+          if (state.messages.length > 5) {
+            return "summarize_conversation";
+          }
+          return END;
+        };
 
-      expectTypeOf(fanOutRouter)
-        .parameter(0)
-        .toEqualTypeOf<{ step: number; done: boolean }>();
+        const _workflow = new StateGraph(GraphState)
+          .addNode("conversation", callModel)
+          .addNode("summarize_conversation", summarizeConversation)
+          .addEdge(START, "conversation")
+          .addConditionalEdges("conversation", shouldContinue, [
+            "summarize_conversation",
+            END,
+          ])
+          .addEdge("summarize_conversation", END);
+
+        expect(_workflow).toBeDefined();
+      });
+
+      it("works with async conditional edge routers", () => {
+        const GraphState = new StateSchema({
+          count: z.number().default(0),
+        });
+
+        const processNode = (_state: typeof GraphState.State) => ({
+          count: 1,
+        });
+
+        const asyncRouter: ConditionalEdgeRouter<
+          typeof GraphState,
+          Record<string, unknown>,
+          "process"
+        > = async (state) => {
+          await Promise.resolve();
+          if (state.count > 5) {
+            return END;
+          }
+          return "process";
+        };
+
+        const _workflow = new StateGraph(GraphState)
+          .addNode("process", processNode)
+          .addEdge(START, "process")
+          .addConditionalEdges("process", asyncRouter, ["process", END]);
+
+        expect(_workflow).toBeDefined();
+      });
+
+      it("provides config with typed configurable", () => {
+        const GraphState = new StateSchema({
+          value: z.string(),
+        });
+
+        type MyContext = { userId: string; threshold: number };
+
+        const router: ConditionalEdgeRouter<
+          typeof GraphState,
+          MyContext,
+          "nodeA" | "nodeB"
+        > = (_state, config) => {
+          expectTypeOf(config.configurable).toEqualTypeOf<
+            MyContext | undefined
+          >();
+
+          if (
+            config.configurable?.threshold &&
+            config.configurable.threshold > 5
+          ) {
+            return "nodeA";
+          }
+          return "nodeB";
+        };
+
+        expect(router).toBeDefined();
+      });
     });
   });
 
-  describe("type safety", () => {
-    it("rejects invalid Send node names", () => {
-      const _invalidRouter: ConditionalEdgeRouter<
-        typeof AgentAnnotation,
-        Record<string, unknown>,
-        "worker"
-      > = (state) =>
-        // @ts-expect-error - "invalid" is not in "worker"
-        new Send("invalid", { step: state.step, done: false });
-      expect(_invalidRouter).toBeDefined();
+  describe("with Zod object", () => {
+    const AgentState = z.object({
+      step: z.number().default(0),
+      done: z.boolean().default(false),
+    });
+
+    describe("return types", () => {
+      it("allows returning node names", () => {
+        const router: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "process" | "finalize"
+        > = (state) => {
+          return state.step > 5 ? "finalize" : "process";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning END", () => {
+        const router: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "continue"
+        > = (state) => {
+          if (state.done) return END;
+          return "continue";
+        };
+
+        expectTypeOf(router)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning Send packets", () => {
+        const fanOutRouter: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "worker"
+        > = (state) => {
+          return new Send("worker", { step: state.step, done: state.done });
+        };
+
+        expectTypeOf(fanOutRouter)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+
+      it("allows returning arrays of nodes and Send packets", () => {
+        const fanOutRouter: ConditionalEdgeRouter<
+          typeof AgentState,
+          Record<string, unknown>,
+          "worker"
+        > = (state) => {
+          return [
+            new Send("worker", { step: state.step, done: state.done }),
+            new Send("worker", { step: state.step + 1, done: false }),
+          ];
+        };
+
+        expectTypeOf(fanOutRouter)
+          .parameter(0)
+          .toEqualTypeOf<{ step: number; done: boolean }>();
+      });
+    });
+
+    describe("usage with addConditionalEdges", () => {
+      it("works with Zod object and addConditionalEdges", () => {
+        const GraphState = z.object({
+          summary: z.string().optional(),
+          messages: z.array(z.string()).default(() => []),
+        });
+
+        const callModel = (_state: z.infer<typeof GraphState>) => ({
+          messages: ["Hello!"],
+        });
+        const summarizeConversation = (_state: z.infer<typeof GraphState>) => ({
+          summary: "Summary",
+        });
+
+        const shouldContinue: ConditionalEdgeRouter<
+          typeof GraphState,
+          Record<string, unknown>,
+          "summarize_conversation"
+        > = (state, _config) => {
+          if (state.messages.length > 5) {
+            return "summarize_conversation";
+          }
+          return END;
+        };
+
+        const _workflow = new StateGraph(GraphState)
+          .addNode("conversation", callModel)
+          .addNode("summarize_conversation", summarizeConversation)
+          .addEdge(START, "conversation")
+          .addConditionalEdges("conversation", shouldContinue, [
+            "summarize_conversation",
+            END,
+          ])
+          .addEdge("summarize_conversation", END);
+
+        expect(_workflow).toBeDefined();
+      });
+
+      it("works with async conditional edge routers", () => {
+        const GraphState = z.object({
+          count: z.number().default(0),
+        });
+
+        const processNode = (_state: z.infer<typeof GraphState>) => ({
+          count: 1,
+        });
+
+        const asyncRouter: ConditionalEdgeRouter<
+          typeof GraphState,
+          Record<string, unknown>,
+          "process"
+        > = async (state) => {
+          await Promise.resolve();
+          if (state.count > 5) {
+            return END;
+          }
+          return "process";
+        };
+
+        const _workflow = new StateGraph(GraphState)
+          .addNode("process", processNode)
+          .addEdge(START, "process")
+          .addConditionalEdges("process", asyncRouter, ["process", END]);
+
+        expect(_workflow).toBeDefined();
+      });
+
+      it("provides config with typed configurable", () => {
+        const GraphState = z.object({
+          value: z.string(),
+        });
+
+        type MyContext = { userId: string; threshold: number };
+
+        const router: ConditionalEdgeRouter<
+          typeof GraphState,
+          MyContext,
+          "nodeA" | "nodeB"
+        > = (_state, config) => {
+          expectTypeOf(config.configurable).toEqualTypeOf<
+            MyContext | undefined
+          >();
+
+          if (
+            config.configurable?.threshold &&
+            config.configurable.threshold > 5
+          ) {
+            return "nodeA";
+          }
+          return "nodeB";
+        };
+
+        expect(router).toBeDefined();
+      });
     });
   });
 });
-
-// =============================================================================
-// Send
-// =============================================================================
 
 describe("Send", () => {
   const AgentAnnotation = Annotation.Root({
@@ -548,10 +993,6 @@ describe("Send", () => {
     }>();
   });
 });
-
-// =============================================================================
-// Schema type helpers
-// =============================================================================
 
 describe("Schema type helpers", () => {
   describe("Annotation.Root", () => {

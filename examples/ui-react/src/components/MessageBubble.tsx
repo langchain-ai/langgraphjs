@@ -1,4 +1,5 @@
 import { Brain } from "lucide-react";
+import type { ContentBlock } from "langchain";
 import type { Message } from "@langchain/langgraph-sdk";
 
 // Styles for each message type - kept separate for readability
@@ -40,12 +41,12 @@ export function MessageBubble({ message }: { message: Message }) {
     return null;
   }
 
-  if (message.type === "human") {
-    return <HumanBubble content={content} />;
-  }
-
   if (message.type === "system") {
     return <SystemBubble content={content} />;
+  }
+
+  if (message.type === "human") {
+    return <HumanBubble content={content} />;
   }
 
   return <AssistantBubble message={message} />;
@@ -133,105 +134,54 @@ function ReasoningBubble({ content }: { content: string }) {
 
 /**
  * Extracts reasoning/thinking content from an AI message.
- * Supports both OpenAI reasoning (additional_kwargs.reasoning.summary)
- * and Anthropic extended thinking (contentBlocks with type "thinking").
+ *
+ * Supports the standardized content block format where both OpenAI reasoning
+ * and Anthropic extended thinking are normalized to `type: "reasoning"` blocks
+ * with a `reasoning` field in message.content, e.g.
+ *
+ * ```ts
+ * const message: AIMessage = {
+ *   type: "ai",
+ *   content: [
+ *     { type: "reasoning", reasoning: "I am thinking..." },
+ *     { type: "text", text: "The answer is 42" },
+ *   ],
+ * };
+ *
+ * console.log(message.text); // "The answer is 42"
+ * ```
  *
  * @param message - The AI message to extract reasoning from.
  * @returns a string of the reasoning/thinking content if found, undefined otherwise.
  *
  * @example
  * ```ts
- * const reasoning = getReasoningFromMessage(aiMessage, stream.isLoading);
+ * const reasoning = getReasoningFromMessage(aiMessage);
  * if (reasoning) {
- *   console.log("Model is thinking:", reasoning.content);
+ *   console.log("Model is thinking:", reasoning);
  * }
  * ```
  */
 export function getReasoningFromMessage(message: Message): string | undefined {
-  // Type for accessing additional properties
-  type MessageWithExtras = Message & {
-    additional_kwargs?: { reasoning?: OpenAIReasoning };
-    contentBlocks?: Array<{ type: string; thinking?: string; text?: string }>;
-  };
-
-  const msg = message as MessageWithExtras;
-
-  // Check for OpenAI reasoning in additional_kwargs
-  if (msg.additional_kwargs?.reasoning?.summary) {
-    const { summary } = msg.additional_kwargs.reasoning;
-    const content = summary
+  if (Array.isArray(message.content)) {
+    console.log(message);
+    const reasoningContent = (message.content as ContentBlock[])
       .filter(
-        (item): item is ReasoningSummaryItem =>
-          item.type === "summary_text" && typeof item.text === "string"
+        (block): block is ContentBlock.Reasoning =>
+          typeof block === "object" &&
+          block !== null &&
+          "type" in block &&
+          block.type === "reasoning" &&
+          "reasoning" in block &&
+          typeof block.reasoning === "string"
       )
-      .map((item) => item.text)
+      .map((block) => block.reasoning)
       .join("");
 
-    if (content.trim()) {
-      return content;
-    }
-  }
-
-  // Check for Anthropic thinking in contentBlocks
-  if (msg.contentBlocks && Array.isArray(msg.contentBlocks)) {
-    const thinkingBlocks = msg.contentBlocks.filter(
-      (block): block is ThinkingContentBlock =>
-        block.type === "thinking" && typeof block.thinking === "string"
-    );
-
-    if (thinkingBlocks.length > 0) {
-      return thinkingBlocks.map((b) => b.thinking).join("\n");
-    }
-  }
-
-  // Check for thinking in message.content array
-  if (Array.isArray(msg.content)) {
-    const thinkingContent: string[] = [];
-    for (const block of msg.content) {
-      if (
-        typeof block === "object" &&
-        block !== null &&
-        "type" in block &&
-        (block as { type: string }).type === "thinking" &&
-        "thinking" in block &&
-        typeof (block as { thinking: unknown }).thinking === "string"
-      ) {
-        thinkingContent.push((block as { thinking: string }).thinking);
-      }
-    }
-
-    if (thinkingContent.length > 0) {
-      return thinkingContent.join("\n");
+    if (reasoningContent.trim()) {
+      return reasoningContent;
     }
   }
 
   return undefined;
 }
-
-/**
- * Anthropic thinking content block structure.
- * Used when streaming extended thinking from Claude models.
- */
-export type ThinkingContentBlock = {
-  type: "thinking";
-  thinking: string;
-};
-
-/**
- * OpenAI reasoning summary item structure.
- * Used when streaming reasoning tokens from OpenAI models.
- */
-export type ReasoningSummaryItem = {
-  type: "summary_text";
-  text: string;
-  index?: number;
-};
-
-/**
- * OpenAI reasoning structure in additional_kwargs.
- */
-export type OpenAIReasoning = {
-  id?: string;
-  type: "reasoning";
-  summary?: ReasoningSummaryItem[];
-};

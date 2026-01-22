@@ -43,32 +43,19 @@ export const calculate = tool(
  */
 export const getFact = tool(
   async ({ topic }) => {
-    const facts: Record<string, string[]> = {
-      science: [
-        "Honey never spoils - archaeologists have found 3000-year-old honey in Egyptian tombs that was still edible.",
-        "Octopuses have three hearts and blue blood.",
-        "A day on Venus is longer than a year on Venus.",
-      ],
-      history: [
-        "Cleopatra lived closer in time to the Moon landing than to the construction of the Great Pyramid.",
-        "Oxford University is older than the Aztec Empire.",
-        "The Eiffel Tower can grow up to 6 inches taller during summer due to thermal expansion.",
-      ],
-      nature: [
-        "Trees can communicate with each other through underground fungal networks.",
-        "Crows can recognize human faces and hold grudges.",
-        "Bananas are berries, but strawberries are not.",
-      ],
-    };
+    const model = new ChatOpenAI({
+      model: "gpt-4o-mini",
+      streaming: false,
+    });
 
-    const topicFacts = facts[topic.toLowerCase()] || facts.science;
-    const randomFact =
-      topicFacts[Math.floor(Math.random() * topicFacts.length)];
+    const randomFact = await model.invoke(
+      `Give me a random fact about ${topic}`
+    );
 
     return JSON.stringify({
       status: "success",
       topic,
-      fact: randomFact,
+      fact: randomFact.text,
     });
   },
   {

@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.1.1
+
+### Patch Changes
+
+- [#1912](https://github.com/langchain-ai/langgraphjs/pull/1912) [`4b2e448`](https://github.com/langchain-ai/langgraphjs/commit/4b2e448ed7c05be3a5f2cb07b28f3fabe4079c01) Thanks [@hntrl](https://github.com/hntrl)! - fix StateSchema/ReducedValue type inference
+
+- Updated dependencies [[`98c0f26`](https://github.com/langchain-ai/langgraphjs/commit/98c0f26f4cc2c246359914704278ff5e3ae46a01), [`a3669be`](https://github.com/langchain-ai/langgraphjs/commit/a3669be176c5bca4b5bbcc6a6245882a684fb12f)]:
+  - @langchain/langgraph-sdk@1.5.5
+
 ## 1.1.0
 
 ### Minor Changes

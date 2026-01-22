@@ -55,7 +55,6 @@ export function ReasoningAgent() {
               {stream.isLoading && stream.messages.length <= 2 && (
                 <div className="flex items-center gap-3 text-amber-400/70">
                   <LoadingIndicator />
-                  <span className="text-sm">Thinking...</span>
                 </div>
               )}
             </div>
