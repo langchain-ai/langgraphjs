@@ -511,7 +511,6 @@ describe("ResolveStreamOptions", () => {
     type Options = ResolveStreamOptions<typeof simpleAgent, BagTemplate>;
 
     expectTypeOf<Options>().toHaveProperty("assistantId");
-    expectTypeOf<Options>().toHaveProperty("subagentToolNames");
   });
 
   test("deep agent stream options have filterSubagentMessages", () => {

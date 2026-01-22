@@ -147,7 +147,6 @@ export interface UseAgentStream<
  * const stream = useStream<typeof agent>({
  *   assistantId: "my-agent",
  *   apiUrl: "http://localhost:2024",
- *   subagentToolNames: ["task", "delegate"],
  *   onError: (error) => console.error(error),
  * });
  * ```
@@ -155,27 +154,4 @@ export interface UseAgentStream<
 export interface UseAgentStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
-> extends UseGraphStreamOptions<StateType, Bag> {
-  /**
-   * Tool names that indicate subagent invocation.
-   *
-   * When an AI message contains tool calls with these names, they are
-   * automatically tracked as subagent executions. This enables the
-   * `subagents`, `activeSubagents`, `getSubagent()`, and `getSubagentsByType()`
-   * properties on the stream.
-   *
-   * @default ["task"]
-   *
-   * @example
-   * ```typescript
-   * const stream = useStream<typeof agent>({
-   *   assistantId: "my-agent",
-   *   // Track both "task" and "delegate" as subagent tools
-   *   subagentToolNames: ["task", "delegate", "spawn_agent"],
-   * });
-   *
-   * // Now stream.subagents will include executions from any of these tools
-   * ```
-   */
-  subagentToolNames?: string[];
-}
+> extends UseGraphStreamOptions<StateType, Bag> {}

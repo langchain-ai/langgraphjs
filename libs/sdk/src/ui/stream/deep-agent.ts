@@ -216,7 +216,8 @@ export interface UseDeepAgentStream<
  *   assistantId: "deep-agent",
  *   apiUrl: "http://localhost:2024",
  *
- *   // DeepAgent-specific option
+ *   // DeepAgent-specific options
+ *   subagentToolNames: ["task", "delegate"],
  *   filterSubagentMessages: true,
  *
  *   onError: (error) => console.error(error),
@@ -227,6 +228,29 @@ export interface UseDeepAgentStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > extends UseAgentStreamOptions<StateType, Bag> {
+  /**
+   * Tool names that indicate subagent invocation.
+   *
+   * When an AI message contains tool calls with these names, they are
+   * automatically tracked as subagent executions. This enables the
+   * `subagents`, `activeSubagents`, `getSubagent()`, and `getSubagentsByType()`
+   * properties on the stream.
+   *
+   * @default ["task"]
+   *
+   * @example
+   * ```typescript
+   * const stream = useStream<typeof agent>({
+   *   assistantId: "deep-agent",
+   *   // Track both "task" and "delegate" as subagent tools
+   *   subagentToolNames: ["task", "delegate", "spawn_agent"],
+   * });
+   *
+   * // Now stream.subagents will include executions from any of these tools
+   * ```
+   */
+  subagentToolNames?: string[];
+
   /**
    * Whether to filter out messages from subagent namespaces.
    *
