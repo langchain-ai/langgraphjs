@@ -419,6 +419,13 @@ export class StateGraph<
 
   constructor(
     fields: SD extends StateDefinition
+      ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends StateDefinition
       ?
           | AnnotationRoot<SD>
           | StateGraphArgsWithStateSchema<
@@ -446,7 +453,8 @@ export class StateGraph<
       input: SD extends StateDefinitionInit ? SD : never;
       state?: never;
       stateSchema?: never;
-    }
+    },
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
@@ -458,7 +466,8 @@ export class StateGraph<
       N,
       InterruptType,
       WriterType
-    >
+    >,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   /** @deprecated Use `Annotation.Root`, `StateSchema`, or Zod schemas instead. */
@@ -654,7 +663,7 @@ export class StateGraph<
         // options is a direct context schema (Zod or AnnotationRoot)
         return {
           state: stateOrInit as StateDefinitionInit,
-          context: options as ContextSchemaInit,
+          context: options as StateDefinitionInit,
         };
       }
       const opts = options as StateGraphOptions<I, O> | undefined;
