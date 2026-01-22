@@ -105,8 +105,8 @@ export class MockStateSchema<TFields extends Record<string, unknown>> {
     [K in keyof TFields]: TFields[K] extends MockReducedValue<infer V>
       ? V
       : TFields[K] extends z.ZodType
-        ? z.infer<TFields[K]>
-        : TFields[K];
+      ? z.infer<TFields[K]>
+      : TFields[K];
   };
 
   constructor(_fields: TFields) {}

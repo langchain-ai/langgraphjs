@@ -207,11 +207,7 @@ function getNodeContent(nodeStream: NodeStream): string {
 /**
  * Node output card - renders a node's streaming content
  */
-function NodeOutputCard({
-  nodeStream,
-}: {
-  nodeStream: NodeStream<NodeName>;
-}) {
+function NodeOutputCard({ nodeStream }: { nodeStream: NodeStream<NodeName> }) {
   const config = NODE_CONFIG[nodeStream.name];
   const content = getNodeContent(nodeStream);
 

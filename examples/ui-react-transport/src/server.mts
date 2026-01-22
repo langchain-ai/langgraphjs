@@ -19,9 +19,7 @@ const StateAnnotation = new StateSchema({
 const graph = new StateGraph(StateAnnotation)
   .addNode("agent", async ({ messages }) => ({
     // Cast needed due to @langchain/core version mismatch in monorepo
-    messages: await llm.invoke(
-      messages as unknown as BaseLanguageModelInput
-    ),
+    messages: await llm.invoke(messages as unknown as BaseLanguageModelInput),
   }))
   .addEdge(START, "agent")
   .compile();
