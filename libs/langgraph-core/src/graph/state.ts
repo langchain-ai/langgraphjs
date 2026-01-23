@@ -18,7 +18,6 @@ import type {
   Runtime,
 } from "../pregel/runnable_types.js";
 import { BaseChannel } from "../channels/base.js";
-import { BaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
   Graph,
@@ -80,13 +79,8 @@ import type { InferWriterType } from "../writer.js";
 import type { AnyStateSchema } from "../state/schema.js";
 import {
   ContextSchemaInit,
-  ContextSchemaInit,
   ExtractStateType,
   ExtractUpdateType,
-  isStateDefinitionInit,
-  isStateGraphInit,
-  StateGraphInit,
-  StateGraphOptions,
   isStateDefinitionInit,
   isStateGraphInit,
   StateGraphInit,
@@ -127,13 +121,10 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
  */
 export type StateGraphAddNodeOptions<
   Nodes extends string = string,
-  InputSchema extends StateDefinitionInit | undefined =
-    | StateDefinitionInit
-    | undefined
+  InputSchema extends StateDefinitionInit | undefined = undefined
 > = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
-  input?: InputSchema;
   input?: InputSchema;
 } & AddNodeOptions<Nodes>;
 
@@ -366,70 +357,16 @@ export class StateGraph<
    * });
    * ```
    */
-  /**
-   * Create a new StateGraph for building stateful, multi-step workflows.
-   *
-   * Accepts state definitions via `Annotation.Root`, `StateSchema`, or Zod schemas.
-   *
-   * @example Direct schema
-   * ```ts
-   * const StateAnnotation = Annotation.Root({
-   *   messages: Annotation<string[]>({ reducer: (a, b) => [...a, ...b] }),
-   * });
-   * const graph = new StateGraph(StateAnnotation);
-   * ```
-   *
-   * @example Direct schema with input/output filtering
-   * ```ts
-   * const graph = new StateGraph(StateAnnotation, {
-   *   input: InputSchema,
-   *   output: OutputSchema,
-   * });
-   * ```
-   *
-   * @example Object pattern with state, input, output
-   * ```ts
-   * const graph = new StateGraph({
-   *   state: FullStateSchema,
-   *   input: InputSchema,
-   *   output: OutputSchema,
-   * });
-   * ```
-   *
-   * @example Input/output only (state inferred from input)
-   * ```ts
-   * const graph = new StateGraph({
-   *   input: InputAnnotation,
-   *   output: OutputAnnotation,
-   * });
-   * ```
-   */
   constructor(
     state: SD extends StateDefinitionInit ? SD : never,
-    options?:
-      | C
-      | AnnotationRoot<ToStateDefinition<C>>
-      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
-  );
-
-  constructor(
-    fields: SD extends StateDefinition
-      ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
-      : never,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
-  );
-
-  constructor(
-    fields: SD extends StateDefinition
-      ?
-          | AnnotationRoot<SD>
-          | StateGraphArgsWithStateSchema<
-              SD,
-              ToStateDefinition<I>,
-              ToStateDefinition<O>
-            >
-      : never,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    options?: StateGraphOptions<
+      I,
+      O,
+      C extends ContextSchemaInit ? C : undefined,
+      N,
+      InterruptType,
+      WriterType
+    >
   );
 
   constructor(
@@ -443,13 +380,12 @@ export class StateGraph<
         InterruptType,
         WriterType
       >,
-      "state" | "stateSchema" | "input"
+      "state" | "stateSchema"
     > & {
       input: SD extends StateDefinitionInit ? SD : never;
       state?: never;
       stateSchema?: never;
-    },
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    }
   );
 
   constructor(
@@ -461,8 +397,7 @@ export class StateGraph<
       N,
       InterruptType,
       WriterType
-    >,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    >
   );
 
   /** @deprecated Use `Annotation.Root`, `StateSchema`, or Zod schemas instead. */
@@ -479,69 +414,17 @@ export class StateGraph<
     options?:
       | C
       | AnnotationRoot<ToStateDefinition<C>>
-      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
+      | StateGraphOptions<
+          I,
+          O,
+          C extends ContextSchemaInit ? C : undefined,
+          N,
+          InterruptType,
+          WriterType
+        >
   ) {
     super();
 
-    // Normalize all input patterns to StateGraphInit format
-    const init = this._normalizeToStateGraphInit(stateOrInit, options);
-
-    // Resolve state schema: state > stateSchema (deprecated) > input
-    const stateSchema = init.state ?? init.stateSchema ?? init.input;
-    if (!stateSchema) {
-      throw new StateGraphInputError();
-    }
-
-    // Get channel definitions from the schema (may contain channel factories)
-    const stateChannelDef = this._getChannelsFromSchema(stateSchema);
-
-    // Set schema definitions (these may contain channel factories)
-    this._schemaDefinition = stateChannelDef;
-
-    // Set runtime definitions for validation
-    if (StateSchema.isInstance(stateSchema)) {
-      this._schemaRuntimeDefinition = stateSchema;
-    } else if (isInteropZodObject(stateSchema)) {
-      this._schemaRuntimeDefinition = stateSchema;
-    }
-
-    // Set input runtime definition
-    if (init.input) {
-      if (StateSchema.isInstance(init.input)) {
-        this._inputRuntimeDefinition = init.input;
-      } else if (isInteropZodObject(init.input)) {
-        this._inputRuntimeDefinition = init.input;
-      } else {
-        this._inputRuntimeDefinition = PartialStateSchema;
-      }
-    } else {
-      this._inputRuntimeDefinition = PartialStateSchema;
-    }
-
-    // Set output runtime definition
-    if (init.output) {
-      if (StateSchema.isInstance(init.output)) {
-        this._outputRuntimeDefinition = init.output;
-      } else if (isInteropZodObject(init.output)) {
-        this._outputRuntimeDefinition = init.output;
-      } else {
-        this._outputRuntimeDefinition = this._schemaRuntimeDefinition;
-      }
-    } else {
-      this._outputRuntimeDefinition = this._schemaRuntimeDefinition;
-    }
-
-    // Set input/output definitions (default to state)
-    const inputChannelDef = init.input
-      ? this._getChannelsFromSchema(init.input)
-      : stateChannelDef;
-    const outputChannelDef = init.output
-      ? (this._getChannelsFromSchema(init.output) as O)
-      : stateChannelDef;
-    this._inputDefinition = inputChannelDef as I;
-    this._outputDefinition = outputChannelDef as O;
-
-    // Add all schemas (_addSchema instantiates channel factories and populates this.channels)
     // Normalize all input patterns to StateGraphInit format
     const init = this._normalizeToStateGraphInit(stateOrInit, options);
 
@@ -627,6 +510,13 @@ export class StateGraph<
   ): StateGraphInit<StateDefinitionInit, I, O, C> {
     // Check if already StateGraphInit format
     if (isStateGraphInit(stateOrInit)) {
+      // Second arg can be either a direct context schema or an options object
+      if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
+        return {
+          ...stateOrInit,
+          context: options as C,
+        };
+      }
       // Merge any 2nd arg options
       const opts = options as StateGraphOptions<I, O> | undefined;
       return {
@@ -643,14 +533,9 @@ export class StateGraph<
     // Check if direct schema (StateSchema, Zod, Annotation, StateDefinition)
     if (isStateDefinitionInit(stateOrInit)) {
       // Second arg can be either a direct context schema or an options object
-      if (
-        options &&
-        typeof options === "object" &&
-        !("input" in options || "output" in options || "context" in options)
-      ) {
-        // options is a direct context schema (Zod or AnnotationRoot)
+      if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
         return {
-          state: stateOrInit as StateDefinitionInit,
+          state: stateOrInit,
           context: options as C,
         };
       }
@@ -956,11 +841,7 @@ export class StateGraph<
       }
 
       let inputSpec: StateDefinition = this._schemaDefinition;
-      let inputSpec: StateDefinition = this._schemaDefinition;
       if (options?.input !== undefined) {
-        inputSpec = this._getChannelsFromSchema(options.input);
-      }
-      this._addSchema(inputSpec);
         inputSpec = this._getChannelsFromSchema(options.input);
       }
       this._addSchema(inputSpec);
@@ -1586,27 +1467,6 @@ export class CompiledStateGraph<
 
     // Handle StateSchema validation for state schema (when input is partial state)
     if (inputDef === PartialStateSchema && StateSchema.isInstance(schemaDef)) {
-    // Determine which schema to use for validation
-    // Priority: inputDef (if it's a validatable schema), otherwise fall back to schemaDef
-
-    // Handle StateSchema validation for input schema
-    if (StateSchema.isInstance(inputDef)) {
-      if (isCommand(input)) {
-        const parsedInput = input;
-        if (input.update) {
-          parsedInput.update = await inputDef.validateInput(
-            Array.isArray(input.update)
-              ? Object.fromEntries(input.update)
-              : input.update
-          );
-        }
-        return parsedInput;
-      }
-      return await inputDef.validateInput(input);
-    }
-
-    // Handle StateSchema validation for state schema (when input is partial state)
-    if (inputDef === PartialStateSchema && StateSchema.isInstance(schemaDef)) {
       if (isCommand(input)) {
         const parsedInput = input;
         if (input.update) {
@@ -1665,11 +1525,6 @@ export class CompiledStateGraph<
   }
 }
 
-/**
- * Check if value is a legacy StateGraphArgs with channels.
- * @internal
- * @deprecated Use StateGraphInit instead
- */
 /**
  * Check if value is a legacy StateGraphArgs with channels.
  * @internal

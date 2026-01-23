@@ -14,13 +14,11 @@ import type {
   UpdateType as AnnotationUpdateType,
 } from "./annotation.js";
 import {
-import {
   AnyStateSchema,
   StateSchema,
   StateSchemaFieldsToStateDefinition,
 } from "../state/schema.js";
 import type { InteropZodToStateDefinition } from "./zod/meta.js";
-import { isBaseChannel } from "../channels/base.js";
 import { isBaseChannel } from "../channels/base.js";
 
 // Re-export END for use in ConditionalEdgeRouter return types
@@ -35,8 +33,6 @@ export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
   ? StateSchemaFieldsToStateDefinition<TInit>
   : T extends AnnotationRoot<infer SD>
   ? SD
-  : T extends AnnotationRoot<infer SD>
-  ? SD
   : T extends InteropZodObject
   ? InteropZodToStateDefinition<T>
   : T extends StateDefinition
@@ -45,7 +41,6 @@ export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
 
 /**
  * Type for schema types that can be used to initialize state.
- * Supports all valid schema types: StateDefinition, Zod objects, StateSchema, and AnnotationRoot.
  * Supports all valid schema types: StateDefinition, Zod objects, StateSchema, and AnnotationRoot.
  *
  * @internal
