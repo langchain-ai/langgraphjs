@@ -1,8 +1,18 @@
 # @langchain/langgraph
 
-## 1.1.3
+## 1.1.2
 
 ### Patch Changes
+
+- [#1914](https://github.com/langchain-ai/langgraphjs/pull/1914) [`e60ec1b`](https://github.com/langchain-ai/langgraphjs/commit/e60ec1be6efc3b7fd1bde907de3d1d08fa2a0262) Thanks [@hntrl](https://github.com/hntrl)! - fix ConditionalEdgeRouter type rejection
+
+- [#1916](https://github.com/langchain-ai/langgraphjs/pull/1916) [`9f34c8c`](https://github.com/langchain-ai/langgraphjs/commit/9f34c8ce420f44c604f12468806be807f7b372c1) Thanks [@hntrl](https://github.com/hntrl)! - Add unified schema support for `StateGraph` constructor
+
+  - Support mixing `AnnotationRoot`, Zod schemas, and `StateSchema` for state, input, and output definitions
+  - Add `{ input, output }` only pattern where state is inferred from input schema
+  - Add per-node input schema support via `addNode` options
+  - Deprecate `stateSchema` property in favor of `state`
+  - Simplify constructor overloads with unified `StateGraphInit` type
 
 - [#1918](https://github.com/langchain-ai/langgraphjs/pull/1918) [`cc12263`](https://github.com/langchain-ai/langgraphjs/commit/cc12263ad26804ef53760cabf1bd2fda0be575d6) Thanks [@hntrl](https://github.com/hntrl)! - Add type bag pattern for `GraphNode` and `ConditionalEdgeRouter` type utilities.
 
@@ -38,20 +48,6 @@
      ```
 
   The type bag pattern enables nodes that receive a subset of state fields and return different fields, with full type safety.
-
-## 1.1.2
-
-### Patch Changes
-
-- [#1914](https://github.com/langchain-ai/langgraphjs/pull/1914) [`e60ec1b`](https://github.com/langchain-ai/langgraphjs/commit/e60ec1be6efc3b7fd1bde907de3d1d08fa2a0262) Thanks [@hntrl](https://github.com/hntrl)! - fix ConditionalEdgeRouter type rejection
-
-- [#1916](https://github.com/langchain-ai/langgraphjs/pull/1916) [`9f34c8c`](https://github.com/langchain-ai/langgraphjs/commit/9f34c8ce420f44c604f12468806be807f7b372c1) Thanks [@hntrl](https://github.com/hntrl)! - Add unified schema support for `StateGraph` constructor
-
-  - Support mixing `AnnotationRoot`, Zod schemas, and `StateSchema` for state, input, and output definitions
-  - Add `{ input, output }` only pattern where state is inferred from input schema
-  - Add per-node input schema support via `addNode` options
-  - Deprecate `stateSchema` property in favor of `state`
-  - Simplify constructor overloads with unified `StateGraphInit` type
 
 ## 1.1.1
 
