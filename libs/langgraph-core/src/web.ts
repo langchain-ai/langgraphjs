@@ -19,6 +19,10 @@ export {
   type ConditionalEdgeRouter,
   type ExtractStateType,
   type ExtractUpdateType,
+  type StateDefinitionInit,
+  type ContextSchemaInit,
+  type StateGraphInit,
+  type StateGraphOptions,
 } from "./graph/index.js";
 export type {
   StateSnapshot,

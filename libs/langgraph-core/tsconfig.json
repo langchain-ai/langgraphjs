@@ -4,7 +4,7 @@
     "outDir": "../dist",
     "rootDir": "./src",
     "target": "ES2021",
-    "lib": ["ES2021", "ES2022.Object", "ES2022.Error", "DOM"],
+    "lib": ["ES2021", "ES2022.Object", "ES2022.Error", "ES2022.Array", "DOM"],
     "module": "ES2020",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
