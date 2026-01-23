@@ -416,8 +416,7 @@ export class StateGraph<
       N,
       InterruptType,
       WriterType
-    >,
-    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+    >
   );
 
   /** @deprecated Use `Annotation.Root`, `StateSchema`, or Zod schemas instead. */
@@ -434,7 +433,14 @@ export class StateGraph<
     options?:
       | C
       | AnnotationRoot<ToStateDefinition<C>>
-      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
+      | StateGraphOptions<
+          I,
+          O,
+          C extends ContextSchemaInit ? C : undefined,
+          N,
+          InterruptType,
+          WriterType
+        >
   ) {
     super();
 
@@ -523,13 +529,14 @@ export class StateGraph<
   ): StateGraphInit<StateDefinitionInit, I, O, C> {
     // Check if already StateGraphInit format
     if (isStateGraphInit(stateOrInit)) {
-      // Merge any 2nd arg options
+      // Second arg can be either a direct context schema or an options object
       if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
         return {
           ...stateOrInit,
           context: options as C,
         };
       }
+      // Merge any 2nd arg options
       const opts = options as StateGraphOptions<I, O> | undefined;
       return {
         ...stateOrInit,
@@ -547,7 +554,7 @@ export class StateGraph<
       // Second arg can be either a direct context schema or an options object
       if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
         return {
-          state: stateOrInit as StateDefinitionInit,
+          state: stateOrInit,
           context: options as C,
         };
       }
@@ -689,6 +696,31 @@ export class StateGraph<
           >,
           options?: StateGraphAddNodeOptions
         ][]
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
+
+  override addNode<
+    K extends string,
+    InputSchema extends StateDefinitionInit,
+    NodeOutput extends U = U
+  >(
+    key: K,
+    action: NodeAction<
+      ExtractStateType<InputSchema>,
+      NodeOutput,
+      C,
+      InterruptType,
+      WriterType
+    >,
+    options: StateGraphAddNodeOptions<N | K, InputSchema>
   ): StateGraph<
     SD,
     S,
