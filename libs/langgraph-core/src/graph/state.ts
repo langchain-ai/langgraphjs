@@ -524,6 +524,12 @@ export class StateGraph<
     // Check if already StateGraphInit format
     if (isStateGraphInit(stateOrInit)) {
       // Merge any 2nd arg options
+      if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
+        return {
+          ...stateOrInit,
+          context: options as C,
+        };
+      }
       const opts = options as StateGraphOptions<I, O> | undefined;
       return {
         ...stateOrInit,
@@ -539,12 +545,7 @@ export class StateGraph<
     // Check if direct schema (StateSchema, Zod, Annotation, StateDefinition)
     if (isStateDefinitionInit(stateOrInit)) {
       // Second arg can be either a direct context schema or an options object
-      if (
-        options &&
-        typeof options === "object" &&
-        !("input" in options || "output" in options || "context" in options)
-      ) {
-        // options is a direct context schema (Zod or AnnotationRoot)
+      if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
         return {
           state: stateOrInit as StateDefinitionInit,
           context: options as C,
