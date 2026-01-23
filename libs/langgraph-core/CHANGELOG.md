@@ -14,6 +14,41 @@
   - Deprecate `stateSchema` property in favor of `state`
   - Simplify constructor overloads with unified `StateGraphInit` type
 
+- [#1918](https://github.com/langchain-ai/langgraphjs/pull/1918) [`cc12263`](https://github.com/langchain-ai/langgraphjs/commit/cc12263ad26804ef53760cabf1bd2fda0be575d6) Thanks [@hntrl](https://github.com/hntrl)! - Add type bag pattern for `GraphNode` and `ConditionalEdgeRouter` type utilities.
+
+  **New types:**
+
+  - `GraphNodeTypes<InputSchema, OutputSchema, ContextSchema, Nodes>` - Type bag interface for GraphNode
+  - `GraphNodeReturnValue<Update, Nodes>` - Return type helper for node functions
+  - `ConditionalEdgeRouterTypes<InputSchema, ContextSchema, Nodes>` - Type bag interface for ConditionalEdgeRouter
+
+  **Usage:**
+
+  Both `GraphNode` and `ConditionalEdgeRouter` now support two patterns:
+
+  1. **Single schema** (backward compatible):
+
+     ```typescript
+     const node: GraphNode<typeof AgentState, MyContext, "agent" | "tool"> = ...
+     ```
+
+  2. **Type bag pattern** (new):
+     ```typescript
+     const node: GraphNode<{
+       InputSchema: typeof InputSchema;
+       OutputSchema: typeof OutputSchema;
+       ContextSchema: typeof ContextSchema;
+       Nodes: "agent" | "tool";
+     }> = (state, runtime) => {
+       // state type inferred from InputSchema
+       // return type validated against OutputSchema
+       // runtime.configurable type inferred from ContextSchema
+       return { answer: "response" };
+     };
+     ```
+
+  The type bag pattern enables nodes that receive a subset of state fields and return different fields, with full type safety.
+
 ## 1.1.1
 
 ### Patch Changes
