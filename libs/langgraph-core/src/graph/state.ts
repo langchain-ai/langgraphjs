@@ -359,14 +359,30 @@ export class StateGraph<
    */
   constructor(
     state: SD extends StateDefinitionInit ? SD : never,
-    options?: StateGraphOptions<
-      I,
-      O,
-      C extends ContextSchemaInit ? C : undefined,
-      N,
-      InterruptType,
-      WriterType
-    >
+    options?:
+      | C
+      | AnnotationRoot<ToStateDefinition<C>>
+      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
+  );
+
+  constructor(
+    fields: SD extends StateDefinition
+      ? StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
+  );
+
+  constructor(
+    fields: SD extends StateDefinition
+      ?
+          | AnnotationRoot<SD>
+          | StateGraphArgsWithStateSchema<
+              SD,
+              ToStateDefinition<I>,
+              ToStateDefinition<O>
+            >
+      : never,
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
@@ -380,12 +396,13 @@ export class StateGraph<
         InterruptType,
         WriterType
       >,
-      "state" | "stateSchema"
+      "state" | "stateSchema" | "input"
     > & {
       input: SD extends StateDefinitionInit ? SD : never;
       state?: never;
       stateSchema?: never;
-    }
+    },
+    contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
