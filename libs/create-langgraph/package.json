@@ -28,15 +28,15 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",
-    "@commander-js/extra-typings": "^13.0.0",
-    "commander": "^13.0.0",
+    "@commander-js/extra-typings": "^14.0.0",
+    "commander": "^14.0.2",
     "dedent": "^1.5.3",
     "extract-zip": "^2.0.1",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "@types/node": "^18.15.11",
-    "prettier": "^2.8.3",
+    "@types/node": "^25.0.10",
+    "prettier": "^3.8.1",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^4.0.16"
