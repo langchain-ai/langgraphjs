@@ -121,7 +121,9 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
  */
 export type StateGraphAddNodeOptions<
   Nodes extends string = string,
-  InputSchema extends StateDefinitionInit | undefined = undefined
+  InputSchema extends StateDefinitionInit | undefined =
+    | StateDefinitionInit
+    | undefined
 > = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
