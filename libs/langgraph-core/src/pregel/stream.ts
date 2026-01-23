@@ -129,6 +129,7 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   }
 
   push(chunk: StreamChunk) {
+    if (this._closed) return;
     this.passthroughFn?.(chunk);
     this.controller.enqueue(chunk);
   }
