@@ -11,9 +11,9 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { filterStream, findLast, unique } from "../ui/utils.js";
+import { filterStream, unique } from "../ui/utils.js";
 import { StreamError } from "../ui/errors.js";
-import { getBranchContext } from "../ui/branching.js";
+import { getBranchContext, getMessagesMetadataMap } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   UseStreamOptions,
@@ -30,12 +30,13 @@ import type { UseStream, SubmitOptions } from "./types.js";
 import { Client, getClientConfigHash } from "../client.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import type { Interrupt, ThreadState } from "../schema.js";
+import type { ThreadState } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { useControllableThreadId } from "./thread.js";
 import type { StreamEvent } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
+import { extractInterrupts } from "../ui/interrupts.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -154,6 +155,55 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   };
 }
 
+function useTrackStreamMode() {
+  const trackStreamModeRef = useRef<Exclude<StreamMode, "messages">[]>([]);
+
+  const trackStreamMode = useCallback(
+    (...mode: Exclude<StreamMode, "messages">[]) => {
+      const ref = trackStreamModeRef.current;
+      for (const m of mode) {
+        if (!ref.includes(m)) ref.push(m);
+      }
+    },
+    []
+  );
+
+  return [trackStreamModeRef, trackStreamMode] as [
+    typeof trackStreamModeRef,
+    typeof trackStreamMode
+  ];
+}
+
+function useCallbackStreamMode<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(options: UseStreamOptions<StateType, Bag>) {
+  const hasUpdateListener = options.onUpdateEvent != null;
+  const hasCustomListener = options.onCustomEvent != null;
+  const hasLangChainListener = options.onLangChainEvent != null;
+  const hasDebugListener = options.onDebugEvent != null;
+  const hasCheckpointListener = options.onCheckpointEvent != null;
+  const hasTaskListener = options.onTaskEvent != null;
+
+  return useMemo(() => {
+    const modes: Exclude<StreamMode, "messages">[] = [];
+    if (hasUpdateListener) modes.push("updates");
+    if (hasCustomListener) modes.push("custom");
+    if (hasLangChainListener) modes.push("events");
+    if (hasDebugListener) modes.push("debug");
+    if (hasCheckpointListener) modes.push("checkpoints");
+    if (hasTaskListener) modes.push("tasks");
+    return modes;
+  }, [
+    hasUpdateListener,
+    hasCustomListener,
+    hasLangChainListener,
+    hasDebugListener,
+    hasCheckpointListener,
+    hasTaskListener,
+  ]);
+}
+
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
@@ -199,6 +249,19 @@ export function useStreamLGP<
       })
   );
 
+  const [trackStreamModeRef, trackStreamMode] = useTrackStreamMode();
+  const callbackStreamMode = useCallbackStreamMode(options);
+
+  const getMessages = (value: StateType): Message[] => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+  };
+
+  const setMessages = (current: StateType, messages: Message[]): StateType => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return { ...current, [messagesKey]: messages };
+  };
+
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
@@ -206,42 +269,6 @@ export function useStreamLGP<
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
-  const trackStreamModeRef = useRef<Exclude<StreamMode, "messages">[]>([]);
-
-  const trackStreamMode = useCallback(
-    (...mode: Exclude<StreamMode, "messages">[]) => {
-      const ref = trackStreamModeRef.current;
-      for (const m of mode) {
-        if (!ref.includes(m)) ref.push(m);
-      }
-    },
-    []
-  );
-
-  const hasUpdateListener = options.onUpdateEvent != null;
-  const hasCustomListener = options.onCustomEvent != null;
-  const hasLangChainListener = options.onLangChainEvent != null;
-  const hasDebugListener = options.onDebugEvent != null;
-  const hasCheckpointListener = options.onCheckpointEvent != null;
-  const hasTaskListener = options.onTaskEvent != null;
-
-  const callbackStreamMode = useMemo(() => {
-    const modes: Exclude<StreamMode, "messages">[] = [];
-    if (hasUpdateListener) modes.push("updates");
-    if (hasCustomListener) modes.push("custom");
-    if (hasLangChainListener) modes.push("events");
-    if (hasDebugListener) modes.push("debug");
-    if (hasCheckpointListener) modes.push("checkpoints");
-    if (hasTaskListener) modes.push("tasks");
-    return modes;
-  }, [
-    hasUpdateListener,
-    hasCustomListener,
-    hasLangChainListener,
-    hasDebugListener,
-    hasCheckpointListener,
-    hasTaskListener,
-  ]);
 
   const threadIdRef = useRef<string | null>(threadId);
   const threadIdStreamingRef = useRef<string | null>(null);
@@ -256,7 +283,7 @@ export function useStreamLGP<
 
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
-    options.fetchStateHistory != null
+      options.fetchStateHistory != null
       ? options.fetchStateHistory.limit ?? false
       : options.fetchStateHistory ?? false;
 
@@ -272,17 +299,6 @@ export function useStreamLGP<
   );
   const history = options.thread ?? builtInHistory;
 
-  const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey])
-      ? (value[messagesKey] as Message[])
-      : [];
-  };
-
-  const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return { ...current, [messagesKey]: messages };
-  };
 
   const [branch, setBranch] = useState<string>("");
   const branchContext = getBranchContext(branch, history.data ?? undefined);
@@ -305,43 +321,12 @@ export function useStreamLGP<
     return error;
   })();
 
-  const messageMetadata = (() => {
-    const alreadyShown = new Set<string>();
-    return getMessages(historyValues).map(
-      (message, idx): Omit<MessageMetadata<StateType>, "streamMetadata"> => {
-        const messageId = message.id ?? idx;
-
-        // Find the first checkpoint where the message was seen
-        const firstSeenState = findLast(history.data ?? [], (state) =>
-          getMessages(state.values)
-            .map((m, idx) => m.id ?? idx)
-            .includes(messageId)
-        );
-
-        const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;
-        let branch =
-          checkpointId != null
-            ? branchContext.branchByCheckpoint[checkpointId]
-            : undefined;
-        if (!branch?.branch?.length) branch = undefined;
-
-        // serialize branches
-        const optionsShown = branch?.branchOptions?.flat(2).join(",");
-        if (optionsShown) {
-          if (alreadyShown.has(optionsShown)) branch = undefined;
-          alreadyShown.add(optionsShown);
-        }
-
-        return {
-          messageId: messageId.toString(),
-          firstSeenState,
-
-          branch: branch?.branch,
-          branchOptions: branch?.branchOptions,
-        };
-      }
-    );
-  })();
+  const messageMetadata = getMessagesMetadataMap({
+    initialValues: options.initialValues,
+    history: history.data,
+    getMessages,
+    branchContext,
+  });
 
   const stop = () =>
     stream.stop(historyValues, {
@@ -651,32 +636,11 @@ export function useStreamLGP<
     },
 
     get interrupt() {
-      if (
-        values != null &&
-        "__interrupt__" in values &&
-        Array.isArray(values.__interrupt__)
-      ) {
-        const valueInterrupts = values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
-        return valueInterrupts;
-      }
-
-      // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
-      if (stream.isLoading) return undefined;
-
-      const interrupts = branchContext.threadHead?.tasks?.at(-1)?.interrupts;
-      if (interrupts == null || interrupts.length === 0) {
-        // check if there's a next task present
-        const next = branchContext.threadHead?.next ?? [];
-        if (!next.length || error != null) return undefined;
-        return { when: "breakpoint" };
-      }
-
-      // Return only the current interrupt
-      return interrupts.at(-1) as Interrupt<InterruptType> | undefined;
+      return extractInterrupts<InterruptType>(values, {
+        error,
+        isLoading: stream.isLoading,
+        threadState: branchContext.threadHead,
+      });
     },
 
     get messages(): Message<ToolCallType>[] {
