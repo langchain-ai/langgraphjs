@@ -1,7 +1,13 @@
 import type { InferInteropZodInput } from "@langchain/core/utils/types";
 
 import type { Client, ClientConfig } from "../client.js";
-import type { ThreadState, Config, Checkpoint, Metadata } from "../schema.js";
+import type {
+  ThreadState,
+  Config,
+  Checkpoint,
+  Metadata,
+  Interrupt,
+} from "../schema.js";
 import type {
   Command,
   MultitaskStrategy,
@@ -19,8 +25,368 @@ import type {
   TasksStreamEvent,
   StreamMode,
 } from "../types.stream.js";
-import type { DefaultToolCall, AIMessage, Message } from "../types.messages.js";
+import type {
+  DefaultToolCall,
+  AIMessage,
+  Message,
+  ToolCallWithResult,
+} from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+
+/**
+ * Represents a tool call that initiated a subagent.
+ */
+export interface SubagentToolCall {
+  /** The tool call ID */
+  id: string;
+  /** The name of the tool (typically "task") */
+  name: string;
+  /** The arguments passed to the tool */
+  args: {
+    /** The task description for the subagent */
+    description?: string;
+    /** The type of subagent to use */
+    subagent_type?: string;
+    /** Additional custom arguments */
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * The execution status of a subagent.
+ *
+ * - `"pending"` - The subagent has been invoked but hasn't started processing yet.
+ *   This is the initial state when a tool call is detected but before any
+ *   streaming events are received from the subgraph.
+ *
+ * - `"running"` - The subagent is actively executing and streaming updates.
+ *   The subagent transitions to this state when the first update event is
+ *   received from its namespace.
+ *
+ * - `"complete"` - The subagent has finished execution successfully.
+ *   A tool message with the result has been received, and the `result`
+ *   property contains the final output.
+ *
+ * - `"error"` - The subagent encountered an error during execution.
+ *   The `error` property on the SubagentStream contains error details.
+ */
+export type SubagentStatus = "pending" | "running" | "complete" | "error";
+
+/**
+ * The execution status of a node.
+ *
+ * - `"pending"` - The node is scheduled but hasn't started execution yet.
+ * - `"running"` - The node is actively executing and streaming updates.
+ * - `"complete"` - The node has finished execution.
+ * - `"error"` - The node encountered an error during execution.
+ */
+export type NodeStatus = "pending" | "running" | "complete" | "error";
+
+/**
+ * Default subagent state map used when no specific subagent types are provided.
+ * Maps any string key to Record<string, unknown>.
+ */
+export type DefaultSubagentStates = Record<string, Record<string, unknown>>;
+
+/**
+ * Base interface for stream-like objects.
+ * Contains common properties shared between UseStream and SubagentStream.
+ *
+ * @template StateType - The type of the stream's state values.
+ * @template ToolCall - The type of tool calls in messages.
+ * @template InterruptType - The type of interrupt values.
+ * @template SubagentStates - A map of subagent names to their state types.
+ *   Use `SubagentStateMap<typeof agent>` to infer from a DeepAgent.
+ */
+export interface StreamBase<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  InterruptType = unknown,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+> {
+  /**
+   * The current state values of the stream.
+   */
+  values: StateType;
+
+  /**
+   * Last seen error from the stream.
+   */
+  error: unknown;
+
+  /**
+   * Whether the stream is currently running.
+   */
+  isLoading: boolean;
+
+  /**
+   * Messages accumulated during the stream.
+   */
+  messages: Message<ToolCall>[];
+
+  /**
+   * Tool calls paired with their results.
+   * Useful for rendering tool invocations and their outputs together.
+   */
+  toolCalls: ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get tool calls for a specific AI message.
+   *
+   * @param message - The AI message to get tool calls for.
+   * @returns Array of tool calls initiated by the message.
+   */
+  getToolCalls: (
+    message: AIMessage<ToolCall>
+  ) => ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get the interrupt value for the stream if interrupted.
+   */
+  interrupt: Interrupt<InterruptType> | undefined;
+
+  /**
+   * All currently active and completed subagent streams.
+   * Keyed by tool call ID for easy lookup.
+   */
+  subagents: Map<
+    string,
+    SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+  >;
+
+  /**
+   * Currently active subagents (where status === "running").
+   */
+  activeSubagents: SubagentStream<
+    SubagentStates[keyof SubagentStates],
+    ToolCall
+  >[];
+
+  /**
+   * Get subagent stream by tool call ID.
+   *
+   * @param toolCallId - The tool call ID that initiated the subagent.
+   * @returns The subagent stream, or undefined if not found.
+   */
+  getSubagent: (
+    toolCallId: string
+  ) =>
+    | SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+    | undefined;
+
+  /**
+   * Get all subagents of a specific type.
+   * When called with a literal type name that matches a key in SubagentStates,
+   * returns streams with properly inferred state types.
+   *
+   * @param type - The subagent_type to filter by.
+   * @returns Array of matching subagent streams with inferred state types.
+   *
+   * @example
+   * ```ts
+   * // With DeepAgent type inference
+   * const stream = useStream<typeof agent>(...);
+   * const researchers = stream.getSubagentsByType("researcher");
+   * // researchers[0].values is typed with ResearcherMiddleware state
+   * ```
+   */
+  getSubagentsByType: {
+    // Overload for known subagent names - returns typed streams
+    <TName extends keyof SubagentStates & string>(type: TName): SubagentStream<
+      SubagentStates[TName],
+      ToolCall
+    >[];
+    // Overload for unknown names - returns untyped streams
+    (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
+  };
+
+  // ==========================================================================
+  // Node Streaming
+  // ==========================================================================
+
+  /**
+   * All node executions, keyed by unique execution ID.
+   *
+   * Each entry represents a single execution of a node. If a node runs
+   * multiple times (e.g., in a loop), each execution has its own entry.
+   */
+  nodes: Map<string, NodeStream>;
+
+  /**
+   * Currently active nodes (where status === "running").
+   */
+  activeNodes: NodeStream[];
+
+  /**
+   * Get a specific node execution by its unique execution ID.
+   *
+   * @param executionId - The unique execution ID
+   * @returns The node stream, or undefined if not found
+   */
+  getNodeStream: (executionId: string) => NodeStream | undefined;
+
+  /**
+   * Get all executions of a specific node by name.
+   *
+   * Returns all executions in chronological order (oldest first).
+   * Useful for nodes that run multiple times in a workflow.
+   *
+   * @param nodeName - The name of the node
+   * @returns Array of all executions of that node
+   */
+  getNodeStreamsByName: (nodeName: string) => NodeStream[];
+}
+
+/**
+ * Represents a single subagent stream.
+ * Tracks the lifecycle of a subagent from invocation to completion.
+ *
+ * Extends StreamBase to share common properties with UseStream,
+ * allowing subagents to be treated similarly to the main stream.
+ *
+ * @template StateType - The state type of the subagent. Defaults to Record<string, unknown>
+ *   since different subagents may have different state types. Can be narrowed using
+ *   DeepAgent type helpers like `InferSubagentByName` when the specific subagent is known.
+ * @template ToolCall - The type of tool calls in messages.
+ *
+ * @example
+ * ```typescript
+ * // Default usage with unknown state
+ * const subagent: SubagentStream = stream.getSubagent("call_123");
+ *
+ * // Narrowed state type when subagent type is known
+ * type ResearcherState = { research_notes: string };
+ * const researcher = stream.getSubagent("call_123") as SubagentStream<ResearcherState>;
+ * console.log(researcher.values.research_notes);
+ * ```
+ */
+export interface SubagentStream<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall
+> extends StreamBase<StateType, ToolCall> {
+  /** Unique identifier (the tool call ID) */
+  id: string;
+
+  /** The tool call that invoked this subagent */
+  toolCall: SubagentToolCall;
+
+  /** Current execution status */
+  status: SubagentStatus;
+
+  /** Final result content (when complete) */
+  result: string | null;
+
+  /** Namespace path for this subagent execution */
+  namespace: string[];
+
+  /** Tool call ID of parent subagent (for nested subagents) */
+  parentId: string | null;
+
+  /** Nesting depth (0 = called by main agent, 1 = called by subagent, etc.) */
+  depth: number;
+
+  /** When the subagent started */
+  startedAt: Date | null;
+
+  /** When the subagent completed */
+  completedAt: Date | null;
+}
+
+/**
+ * Represents a single node execution stream.
+ *
+ * Tracks the lifecycle of a node execution including messages streamed from
+ * the node, its local state values, and the update payload it sent to the
+ * graph state.
+ *
+ * Multiple executions of the same node (e.g., in a loop) are tracked as
+ * separate NodeStream instances. Use `getNodeStreamsByName` to get all
+ * executions of a specific node.
+ *
+ * @template StateType - The graph's state type.
+ * @template NodeName - The name of the node (narrowed when using getNodeStreamsByName).
+ * @template NodeValues - The type of values this node produces (inferred from node return type).
+ *
+ * @example
+ * ```typescript
+ * const stream = useStream<typeof graph>({ assistantId: "my-graph" });
+ *
+ * // Get all executions of the "researcher" node
+ * const researcherStreams = stream.getNodeStreamsByName("researcher");
+ *
+ * researcherStreams.forEach(nodeStream => {
+ *   console.log(nodeStream.name);       // "researcher" (typed literal)
+ *   console.log(nodeStream.messages);   // Messages from this execution
+ *   console.log(nodeStream.values);     // Typed to node's return type
+ *   console.log(nodeStream.update);     // State update payload
+ *   console.log(nodeStream.isLoading);  // Is it currently streaming?
+ * });
+ *
+ * // Track all currently active nodes
+ * stream.activeNodes.forEach(node => {
+ *   console.log(`${node.name} is running...`);
+ * });
+ * ```
+ */
+export interface NodeStream<
+  NodeName extends string = string,
+  NodeValues extends Record<string, unknown> = Record<string, unknown>
+> {
+  /**
+   * Unique identifier for this node execution.
+   * Generated from a combination of node name and execution timestamp.
+   */
+  id: string;
+
+  /**
+   * The name of the node.
+   * When using with a typed graph, this is constrained to the actual node names.
+   */
+  name: NodeName;
+
+  /**
+   * Messages streamed from this node execution.
+   * Includes AI messages with their content as it streams in.
+   */
+  messages: Message[];
+
+  /**
+   * The node's local state values during this execution.
+   * This contains the values this specific node produced.
+   * When using `getNodeStreamsByName`, this is typed to the node's return type.
+   */
+  values: NodeValues;
+
+  /**
+   * The update payload this node sent to the graph state.
+   * Typed to the node's return type when using `getNodeStreamsByName`.
+   * `undefined` if the node hasn't produced an update yet.
+   */
+  update: Partial<NodeValues> | undefined;
+
+  /**
+   * Current execution status of the node.
+   */
+  status: NodeStatus;
+
+  /**
+   * Whether the node is currently streaming.
+   * Convenience property equivalent to `status === "running"`.
+   */
+  isLoading: boolean;
+
+  /**
+   * When the node started execution.
+   * `null` if the node is still pending.
+   */
+  startedAt: Date | null;
+
+  /**
+   * When the node completed execution.
+   * `null` if the node is still running or pending.
+   */
+  completedAt: Date | null;
+}
 
 // ============================================================================
 // Agent Type Extraction Helpers
@@ -221,22 +587,38 @@ type InferToolInput<T> = T extends {
   : never;
 
 /**
+ * Helper type to check if a type is a literal string (not generic `string`).
+ * Returns true only for literal types like "get_weather", false for `string`.
+ */
+type IsLiteralString<T> = string extends T
+  ? false
+  : T extends string
+  ? true
+  : false;
+
+/**
  * Extract a tool call type from a single tool.
  * Works with tools created via `tool()` from `@langchain/core/tools`.
  *
  * This extracts the literal name type from DynamicStructuredTool's NameT parameter
  * and the args type from the _call method or schema's input property.
+ *
+ * Note: Only tools with literal string names (e.g., "get_weather") are included.
+ * Tools with generic `name: string` are filtered out to ensure discriminated
+ * union narrowing works correctly in TypeScript.
  */
 type ToolCallFromAgentTool<T> = T extends { name: infer N }
   ? N extends string
-    ? InferToolInput<T> extends infer Args
-      ? Args extends never
-        ? never
-        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Args extends Record<string, any>
-        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+    ? IsLiteralString<N> extends true
+      ? InferToolInput<T> extends infer Args
+        ? Args extends never
+          ? never
+          : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Args extends Record<string, any>
+          ? { name: N; args: Args; id?: string; type?: "tool_call" }
+          : never
         : never
-      : never
+      : never // Filter out generic `string` names
     : never
   : never;
 
@@ -263,6 +645,213 @@ export type InferAgentToolCalls<T> =
       ? DefaultToolCall
       : ToolCallFromAgentTool<Tool>
     : DefaultToolCall;
+
+// ============================================================================
+// DeepAgent Type Extraction Helpers
+// ============================================================================
+// These types enable extracting subagent type information from a DeepAgent instance
+// created with `createDeepAgent` from the deepagents package.
+// They are copied here to avoid circular dependencies (deepagents depends on this SDK).
+
+/**
+ * Minimal interface matching the structure of a SubAgent from deepagents.
+ * Used for structural type matching without importing deepagents.
+ */
+export interface SubAgentLike {
+  name: string;
+  description: string;
+  middleware?: readonly AgentMiddlewareLike[];
+}
+
+/**
+ * Minimal interface matching the structure of a CompiledSubAgent from deepagents.
+ * Used for structural type matching without importing deepagents.
+ */
+export interface CompiledSubAgentLike {
+  name: string;
+  description: string;
+  runnable: unknown;
+}
+
+/**
+ * Minimal interface matching the structure of DeepAgentTypeConfig from deepagents.
+ * Extends AgentTypeConfigLike to include subagent type information.
+ */
+export interface DeepAgentTypeConfigLike extends AgentTypeConfigLike {
+  Subagents: unknown;
+}
+
+/**
+ * Check if a type is a DeepAgent (has `~deepAgentTypes` phantom property).
+ * This property is present on DeepAgent instances created with `createDeepAgent`.
+ */
+export type IsDeepAgentLike<T> = T extends {
+  "~deepAgentTypes": DeepAgentTypeConfigLike;
+}
+  ? true
+  : false;
+
+/**
+ * Extract the DeepAgentTypeConfig from a DeepAgent-like type.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({ subagents: [...] });
+ * type Config = ExtractDeepAgentConfig<typeof agent>;
+ * // Config includes { Subagents: [...] }
+ * ```
+ */
+export type ExtractDeepAgentConfig<T> = T extends {
+  "~deepAgentTypes": infer Config;
+}
+  ? Config extends DeepAgentTypeConfigLike
+    ? Config
+    : never
+  : never;
+
+/**
+ * Helper type to extract middleware from a SubAgent definition.
+ * Handles both mutable and readonly middleware arrays.
+ */
+export type ExtractSubAgentMiddleware<T> = T extends {
+  middleware?: infer M;
+}
+  ? M extends readonly AgentMiddlewareLike[]
+    ? M
+    : M extends AgentMiddlewareLike[]
+    ? M
+    : readonly []
+  : readonly [];
+
+/**
+ * Extract the Subagents array type from a DeepAgent.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({ subagents: [researcher, writer] as const });
+ * type Subagents = InferDeepAgentSubagents<typeof agent>;
+ * // Subagents is the readonly tuple of subagent definitions
+ * ```
+ */
+export type InferDeepAgentSubagents<T> = ExtractDeepAgentConfig<T> extends never
+  ? never
+  : ExtractDeepAgentConfig<T>["Subagents"];
+
+/**
+ * Helper type to extract a subagent by name from a DeepAgent.
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam TName - The name of the subagent to extract
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", description: "...", middleware: [ResearchMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type Researcher = InferSubagentByName<typeof agent, "researcher">;
+ * ```
+ */
+export type InferSubagentByName<
+  T,
+  TName extends string
+> = InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+  ? SA extends { name: TName }
+    ? SA
+    : never
+  : never;
+
+/**
+ * Base state type for subagents.
+ * All subagents have at least a messages array, similar to the main agent.
+ *
+ * @template ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ */
+export type BaseSubagentState<ToolCall = DefaultToolCall> = {
+  messages: Message<ToolCall>[];
+};
+
+/**
+ * Infer the state type for a specific subagent by extracting and merging
+ * its middleware state schemas, plus the base agent state (messages).
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam TName - The name of the subagent
+ * @typeParam ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", middleware: [ResearchMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type ResearcherState = InferSubagentState<typeof agent, "researcher">;
+ * // ResearcherState includes { messages: Message<ToolCall>[], ...ResearchMiddleware state }
+ * ```
+ */
+export type InferSubagentState<
+  T,
+  TName extends string,
+  ToolCall = DefaultToolCall
+> = InferSubagentByName<T, TName> extends never
+  ? Record<string, unknown>
+  : InferSubagentByName<T, TName> extends infer SA
+  ? BaseSubagentState<ToolCall> &
+      InferMiddlewareStatesFromArray<ExtractSubAgentMiddleware<SA>>
+  : Record<string, unknown>;
+
+/**
+ * Extract all subagent names as a string union from a DeepAgent.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", ... },
+ *     { name: "writer", ... }
+ *   ] as const,
+ * });
+ *
+ * type SubagentNames = InferSubagentNames<typeof agent>;
+ * // SubagentNames = "researcher" | "writer"
+ * ```
+ */
+export type InferSubagentNames<T> =
+  InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+    ? SA extends { name: infer N }
+      ? N extends string
+        ? N
+        : never
+      : never
+    : never;
+
+/**
+ * Create a map of subagent names to their state types.
+ * This is useful for type-safe `getSubagentsByType` calls.
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", middleware: [ResearchMiddleware] },
+ *     { name: "writer", middleware: [WriterMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type StateMap = SubagentStateMap<typeof agent>;
+ * // StateMap = { researcher: ResearchState; writer: WriterState }
+ * ```
+ */
+export type SubagentStateMap<T, ToolCall = DefaultToolCall> = {
+  [K in InferSubagentNames<T>]: InferSubagentState<T, K, ToolCall>;
+};
 
 // ============================================================================
 // StateType Tool Call Extraction Helpers
@@ -602,7 +1191,30 @@ export interface UseStreamOptions<
    * @default true
    */
   throttle?: number | boolean;
+
+  // Note: Agent-specific options are defined in their respective option interfaces:
+  // - UseAgentStreamOptions: subagentToolNames
+  // - UseDeepAgentStreamOptions: filterSubagentMessages
+  // See libs/sdk/src/ui/stream/agent.ts and libs/sdk/src/ui/stream/deep-agent.ts
 }
+
+/**
+ * Union of all stream options types.
+ *
+ * Used internally by the implementation to accept any options type.
+ * This allows the implementation functions to handle options from
+ * any agent type while maintaining type safety at the public API level.
+ *
+ * @internal
+ */
+export type AnyStreamOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> = UseStreamOptions<StateType, Bag> & {
+  // Agent-specific options (optional, only present for agent types)
+  subagentToolNames?: string[];
+  filterSubagentMessages?: boolean;
+};
 
 interface RunMetadataStorage {
   getItem(key: `lg:stream:${string}`): string | null;
@@ -704,6 +1316,24 @@ export type UseStreamCustomOptions<
   | "initialValues"
   | "throttle"
 > & { transport: UseStreamTransport<StateType, Bag> };
+
+/**
+ * Union of all custom stream options types.
+ *
+ * Used internally by the implementation to accept any custom options type.
+ * This allows the implementation functions to handle options from
+ * any agent type while maintaining type safety at the public API level.
+ *
+ * @internal
+ */
+export type AnyStreamCustomOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> = UseStreamCustomOptions<StateType, Bag> & {
+  // Agent-specific options (optional, only present for agent types)
+  subagentToolNames?: string[];
+  filterSubagentMessages?: boolean;
+};
 
 export type CustomSubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,

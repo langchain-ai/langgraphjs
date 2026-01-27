@@ -16,6 +16,7 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/openai": "^1.2.3",
+    "deepagents": "^1.5.0",
     "langchain": "^1.2.11",
     "lucide-react": "^0.561.0",
     "react": "^19.0.0",

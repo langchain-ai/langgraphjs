@@ -32,6 +32,8 @@ const practicalModel = new ChatOpenAI({
 });
 
 // Define the state schema with Zod
+// Note: We don't need a "currentNode" field because the SDK's getNodeStreamsByName()
+// API automatically tracks which nodes are running and their streaming status.
 const StateAnnotation = z.object({
   messages: withLangGraph(z.custom<BaseMessage[]>(), {
     reducer: {
@@ -46,7 +48,6 @@ const StateAnnotation = z.object({
   creativeResearch: z.string().default(""),
   practicalResearch: z.string().default(""),
   selectedResearch: z.string().default(""),
-  currentNode: z.string().default(""),
 });
 
 type State = z.infer<typeof StateAnnotation>;
@@ -61,7 +62,6 @@ async function dispatcherNode(state: State): Promise<Partial<State>> {
 
   return {
     topic: userInput,
-    currentNode: "dispatcher",
     messages: [
       new AIMessage({
         content: `🎯 **Research Topic:** ${userInput}\n\nDispatching to 3 parallel research models...`,
@@ -111,7 +111,6 @@ Use markdown formatting with headers, bullet points, and emphasis where appropri
 
   return {
     analyticalResearch: content,
-    currentNode: "researcher_analytical",
     messages: [
       new AIMessage({
         content: content,
@@ -150,7 +149,6 @@ Use markdown formatting with creative headers and engaging prose.`,
 
   return {
     creativeResearch: content,
-    currentNode: "researcher_creative",
     messages: [
       new AIMessage({
         content: content,
@@ -189,7 +187,6 @@ Use markdown formatting with clear action items and recommendations.`,
 
   return {
     practicalResearch: content,
-    currentNode: "researcher_practical",
     messages: [
       new AIMessage({
         content: content,
@@ -204,7 +201,6 @@ Use markdown formatting with clear action items and recommendations.`,
  */
 async function collectorNode(): Promise<Partial<State>> {
   return {
-    currentNode: "collector",
     messages: [
       new AIMessage({
         content: `✅ **All research complete!**\n\nThree different perspectives are now available. Review each approach and select the one that best fits your needs.`,

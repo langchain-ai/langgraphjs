@@ -1,6 +1,13 @@
+import { z } from "zod";
 import { ChatOpenAI } from "@langchain/openai";
-import { StateGraph, Annotation, START, END } from "@langchain/langgraph";
-import { BaseMessage, AIMessage } from "langchain";
+import {
+  StateGraph,
+  StateSchema,
+  MessagesValue,
+  START,
+  END,
+} from "@langchain/langgraph";
+import { AIMessage } from "@langchain/core/messages";
 
 const model = new ChatOpenAI({ model: "gpt-4o-mini" });
 
@@ -16,42 +23,16 @@ const model = new ChatOpenAI({ model: "gpt-4o-mini" });
  * 5. review_node - Reviews and refines the draft
  */
 
-// Define the state annotation with reducer for messages
-const StateAnnotation = Annotation.Root({
-  messages: Annotation<BaseMessage[]>({
-    reducer: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) => {
-      return Array.isArray(right) ? left.concat(right) : left.concat([right]);
-    },
-    default: () => [],
-  }),
-  topic: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  research: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  analysis: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  draft: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  finalContent: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
-  researchIterations: Annotation<number>({
-    reducer: (_, right) => right,
-    default: () => 0,
-  }),
-  currentNode: Annotation<string>({
-    reducer: (_, right) => right,
-    default: () => "",
-  }),
+// Define the state schema using StateSchema with Zod
+const StateAnnotation = new StateSchema({
+  messages: MessagesValue,
+  topic: z.string().default(""),
+  research: z.string().default(""),
+  analysis: z.string().default(""),
+  draft: z.string().default(""),
+  finalContent: z.string().default(""),
+  researchIterations: z.number().default(0),
+  currentNode: z.string().default(""),
 });
 
 type State = typeof StateAnnotation.State;
