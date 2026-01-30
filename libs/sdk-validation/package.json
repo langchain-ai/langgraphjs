@@ -22,17 +22,17 @@
     "@testing-library/user-event": "^14.6.1",
     "@tsconfig/recommended": "^1.0.2",
     "@types/json-schema": "^7.0.15",
-    "@types/node": "^18.15.11",
+    "@types/node": "^25.1.0",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "@vitejs/plugin-react": "^4.4.1",
+    "@vitejs/plugin-react": "^5.1.2",
     "hono": "^4.8.2",
-    "jsdom": "^26.1.0",
+    "jsdom": "^27.4.0",
     "msw": "^2.8.2",
-    "prettier": "^2.8.3",
+    "prettier": "^3.8.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.18"
   }
 }
