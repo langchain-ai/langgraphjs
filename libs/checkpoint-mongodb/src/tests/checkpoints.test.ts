@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { type MongoClient } from "mongodb";
 import { MongoDBSaver } from "../index.js";
 
