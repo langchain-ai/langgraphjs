@@ -16,6 +16,7 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+  ttl?: number; // Time to live in seconds
 };
 
 /**
@@ -25,6 +26,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
 
   protected db: MongoDatabase;
+
+  protected ttl?: number;
 
   checkpointCollectionName = "checkpoints";
 
@@ -36,6 +39,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      ttl,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
@@ -45,10 +49,36 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       name: "langgraphjs_checkpoint_saver",
     });
     this.db = this.client.db(dbName);
+    this.ttl = ttl;
     this.checkpointCollectionName =
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
+  }
+
+  /**
+   * Creates TTL indexes on the checkpoint collections if TTL is configured.
+   * This method is idempotent and safe to call multiple times.
+   * Returns an array of errors (empty if successful) so caller can decide how to handle.
+   */
+  async setup(): Promise<Error[]> {
+    if (this.ttl == null) return [];
+
+    const ttlIndex = { upserted_at: 1 };
+    const options = { expireAfterSeconds: this.ttl };
+
+    const results = await Promise.allSettled([
+      this.db
+        .collection(this.checkpointCollectionName)
+        .createIndex(ttlIndex, options),
+      this.db
+        .collection(this.checkpointWritesCollectionName)
+        .createIndex(ttlIndex, options),
+    ]);
+
+    return results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => r.reason as Error);
   }
 
   /**
@@ -237,6 +267,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      ...(this.ttl != null && { upserted_at: new Date() }),
     };
     const upsertQuery = {
       thread_id,
@@ -292,7 +323,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         return {
           updateOne: {
             filter: upsertQuery,
-            update: { $set: { channel, type, value: serializedValue } },
+            update: {
+              $set: {
+                channel,
+                type,
+                value: serializedValue,
+                ...(this.ttl != null && { upserted_at: new Date() }),
+              },
+            },
             upsert: true,
           },
         };

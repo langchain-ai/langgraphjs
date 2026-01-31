@@ -63,3 +63,30 @@ for await (const checkpoint of checkpointer.list(readConfig)) {
 
 await client.close();
 ```
+
+## TTL (Time-To-Live) Support
+
+Automatically expire old checkpoints using MongoDB's TTL indexes:
+
+```ts
+import { MongoClient } from "mongodb";
+import { MongoDBSaver } from "@langchain/langgraph-checkpoint-mongodb";
+
+const client = new MongoClient(process.env.MONGODB_URL);
+
+// Create checkpointer with 1-hour TTL (in seconds)
+const checkpointer = new MongoDBSaver({
+  client,
+  ttl: 3600,
+});
+
+// Create TTL indexes (call during deployment/startup)
+await checkpointer.setup();
+```
+
+When TTL is enabled:
+- An `upserted_at` timestamp is added to each document on every write
+- MongoDB automatically deletes documents after the TTL expires
+- Each update resets the expiration timer
+
+The `setup()` method creates the required TTL indexes. Call it during application startup or deployment. It is idempotent and handles concurrent calls safely.
