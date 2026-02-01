@@ -147,6 +147,59 @@ describe("StateGraph with Zod schemas", () => {
     });
   });
 
+  it("should preserve langgraph_type metadata when using Zod v4 .register() with MessagesZodMeta", async () => {
+    // This test verifies the fix for the issue where Zod v4's .register() method
+    // wasn't properly storing MessagesZodMeta metadata, causing LangGraph Studio
+    // to not detect the messages key and disable the Chat tab.
+    // See: https://github.com/langchain-ai/langgraphjs/issues/1722
+
+    const { MessagesZodMeta } = await import("../graph/messages_annotation.js");
+    const customStateSchema = z4.object({
+      messages: z4.array(z4.any()).register(registry, MessagesZodMeta),
+      llmCalls: z4.number().optional(),
+    });
+
+    const graph = new StateGraph(customStateSchema)
+      .addNode("agent", () => ({
+        messages: [{ type: "ai", content: "response" }],
+      }))
+      .addEdge("__start__", "agent")
+      .compile();
+
+    // Verify the graph works correctly
+    expect(
+      await graph.invoke({
+        messages: [{ type: "human", content: "hello" }],
+      })
+    ).toMatchObject({
+      messages: [
+        new _AnyIdHumanMessage("hello"),
+        new _AnyIdAIMessage("response"),
+      ],
+    });
+
+    // "messages" must be present in the generated JSON Schema. This is what LangGraph
+    // Studio checks to determine if the Chat tab should be enabled.
+    const inputSchema = getInputTypeSchema(graph);
+    expect(inputSchema).toBeDefined();
+    expect(inputSchema?.properties?.messages).toMatchObject({
+      langgraph_type: "messages",
+    });
+
+    // Also verify other schema types have the metadata
+    expect.soft(getStateTypeSchema(graph)?.properties?.messages).toMatchObject({
+      langgraph_type: "messages",
+    });
+
+    expect.soft(getUpdateTypeSchema(graph)?.properties?.messages).toMatchObject({
+      langgraph_type: "messages",
+    });
+
+    expect.soft(getOutputTypeSchema(graph)?.properties?.messages).toMatchObject({
+      langgraph_type: "messages",
+    });
+  });
+
   describe("registry default values", () => {
     it("should apply registry default when field is missing from input", async () => {
       const stateSchema = z4.object({
