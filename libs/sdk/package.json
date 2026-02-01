@@ -48,12 +48,14 @@
     "react-dom": "^19.0.0",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",
+    "vue": "^3.5.27",
     "zod": "^4.3.5"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.15",
     "react": "^18 || ^19",
-    "react-dom": "^18 || ^19"
+    "react-dom": "^18 || ^19",
+    "vue": "^3"
   },
   "peerDependenciesMeta": {
     "@langchain/core": {
@@ -63,6 +65,9 @@
       "optional": true
     },
     "react-dom": {
+      "optional": true
+    },
+    "vue": {
       "optional": true
     }
   },
@@ -115,6 +120,18 @@
       "require": {
         "types": "./dist/react/index.d.cts",
         "default": "./dist/react/index.cjs"
+      }
+    },
+    "./vue": {
+      "input": "./src/vue/index.ts",
+      "typedoc": "./src/vue/index.ts",
+      "import": {
+        "types": "./dist/vue/index.d.ts",
+        "default": "./dist/vue/index.js"
+      },
+      "require": {
+        "types": "./dist/vue/index.d.cts",
+        "default": "./dist/vue/index.cjs"
       }
     },
     "./logging": {
