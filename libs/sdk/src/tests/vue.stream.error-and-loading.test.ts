@@ -42,6 +42,7 @@ describe("vue/useStream (error + loading + stop)", () => {
   test("custom: error.value updates when transport throws", async () => {
     type State = { messages: string[] };
 
+    const onError = vi.fn();
     const errorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -49,6 +50,7 @@ describe("vue/useStream (error + loading + stop)", () => {
     const result = scope.run(() => {
       const stream = useStream<State>({
         throttle: false,
+        onError,
         transport: {
           async stream() {
             throw new Error("boom");
@@ -68,6 +70,7 @@ describe("vue/useStream (error + loading + stop)", () => {
     expect(result.stream.error.value).toBeInstanceOf(Error);
     expect((result.stream.error.value as Error).message).toContain("boom");
     expect(result.stream.isLoading.value).toBe(false);
+    expect(onError).toHaveBeenCalledTimes(1);
 
     scope.stop();
     errorSpy.mockRestore();
@@ -77,11 +80,15 @@ describe("vue/useStream (error + loading + stop)", () => {
     type State = { messages: string[] };
 
     let seenSignal: AbortSignal | undefined;
+    const onStop = vi.fn(({ mutate }: any) => {
+      mutate(() => ({ messages: ["stopped"] }));
+    });
 
     const scope = effectScope();
     const result = scope.run(() => {
       const stream = useStream<State>({
         throttle: false,
+        onStop,
         transport: {
           async stream({ signal }) {
             seenSignal = signal;
@@ -106,6 +113,8 @@ describe("vue/useStream (error + loading + stop)", () => {
 
     await result.stream.stop();
     expect(seenSignal?.aborted).toBe(true);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(result.stream.values.value.messages?.[0]).toBe("stopped");
 
     await waitFor(() => result.stream.isLoading.value === false);
     await submitPromise;
@@ -158,6 +167,94 @@ describe("vue/useStream (error + loading + stop)", () => {
     await p1;
     await waitFor(() => result.stream.values.value.messages?.[0] === "run-2");
     await p2;
+
+    scope.stop();
+  });
+
+  test("custom: optimisticValues apply before first streamed values", async () => {
+    type State = { messages: string[] };
+
+    const scope = effectScope();
+    const result = scope.run(() => {
+      const stream = useStream<State>({
+        throttle: false,
+        transport: {
+          async stream() {
+            async function* gen() {
+              // delay first yield so we can observe optimistic state
+              await new Promise((r) => {
+                setTimeout(r, 25);
+              });
+              yield { event: "values", data: { messages: ["streamed"] } };
+            }
+            return gen();
+          },
+        },
+      });
+      return { stream };
+    });
+
+    if (!result) throw new Error("Failed to create Vue effect scope.");
+
+    await result.stream.submit(null, {
+      optimisticValues: { messages: ["optimistic"] },
+    });
+
+    // should see optimistic state before stream yields
+    expect(result.stream.values.value.messages?.[0]).toBe("optimistic");
+
+    await waitFor(
+      () => result.stream.values.value.messages?.[0] === "streamed"
+    );
+
+    scope.stop();
+  });
+
+  test("LGP: optimisticValues apply before first streamed values", async () => {
+    type State = { messages: string[] };
+
+    const scope = effectScope();
+    const result = scope.run(() => {
+      const stream = useStream<State>({
+        assistantId: "a1",
+        threadId: "t1",
+        fetchStateHistory: false,
+        thread: {
+          data: [],
+          error: undefined,
+          isLoading: false,
+          mutate: async () => [],
+        },
+        client: {
+          runs: {
+            async *stream() {
+              await new Promise((r) => {
+                setTimeout(r, 25);
+              });
+              yield { event: "values", data: { messages: ["streamed"] } };
+            },
+            async *joinStream() {
+              // no-op
+            },
+            cancel: async () => undefined,
+          },
+          threads: { create: async () => ({ thread_id: "t-created" }) },
+        } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        throttle: false,
+      });
+      return { stream };
+    });
+
+    if (!result) throw new Error("Failed to create Vue effect scope.");
+
+    await result.stream.submit(null, {
+      optimisticValues: { messages: ["optimistic"] },
+    });
+    expect(result.stream.values.value.messages?.[0]).toBe("optimistic");
+
+    await waitFor(
+      () => result.stream.values.value.messages?.[0] === "streamed"
+    );
 
     scope.stop();
   });
@@ -330,12 +427,14 @@ describe("vue/useStream (error + loading + stop)", () => {
       const errorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => undefined);
+      const onError = vi.fn();
       const scope = effectScope();
       const result = scope.run(() => {
         const stream = useStream<State>({
           assistantId: "a1",
           threadId: "t1",
           fetchStateHistory: false,
+          onError,
           thread: {
             data: [historyErrorState] as any, // eslint-disable-line @typescript-eslint/no-explicit-any
             error: "history.error",
@@ -366,6 +465,7 @@ describe("vue/useStream (error + loading + stop)", () => {
       ); // eslint-disable-line @typescript-eslint/no-explicit-any
       expect(result.stream.error.value).toBeInstanceOf(StreamError);
       expect((result.stream.error.value as Error).message).toBe("stream-error");
+      expect(onError).toHaveBeenCalledTimes(1);
 
       scope.stop();
       errorSpy.mockRestore();

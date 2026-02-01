@@ -1,4 +1,4 @@
-import { describe, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { effectScope, reactive } from "vue";
 import { useStream } from "../vue/index.js";
 
@@ -125,6 +125,47 @@ describe("vue/useStream (LGP)", () => {
     await waitFor(
       () => (result.stream.values.value.messages?.length ?? 0) === 0
     );
+
+    scope.stop();
+  });
+
+  test("joinStream updates values from join generator", async () => {
+    type State = { messages: string[] };
+
+    const scope = effectScope();
+    const result = scope.run(() => {
+      const stream = useStream<State>({
+        assistantId: "a1",
+        threadId: "t1",
+        fetchStateHistory: false,
+        thread: {
+          data: [],
+          error: undefined,
+          isLoading: false,
+          mutate: async () => [],
+        },
+        client: {
+          runs: {
+            async *stream() {
+              // no-op
+            },
+            async *joinStream(_threadId: string, _runId: string) {
+              yield { event: "values", data: { messages: ["joined"] } };
+            },
+            cancel: async () => undefined,
+          },
+          threads: { create: async () => ({ thread_id: "t-created" }) },
+        } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        throttle: false,
+      });
+      return { stream };
+    });
+
+    if (!result) throw new Error("Failed to create Vue effect scope.");
+
+    await result.stream.joinStream("run-1");
+    await waitFor(() => result.stream.values.value.messages?.[0] === "joined");
+    expect(result.stream.values.value.messages?.[0]).toBe("joined");
 
     scope.stop();
   });

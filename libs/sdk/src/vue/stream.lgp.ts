@@ -540,9 +540,13 @@ export function useStreamLGP<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
 
-        return joinOptions?.filter != null
-          ? filterStream(stream, joinOptions.filter)
-          : stream;
+        const filter = joinOptions?.filter as
+          | ((
+              event: EventStreamEvent<StateType, UpdateType, CustomType>
+            ) => boolean)
+          | undefined;
+
+        return filter != null ? filterStream(stream, filter) : stream;
       },
       {
         getMessages,
@@ -586,12 +590,16 @@ export function useStreamLGP<
     }
   });
 
-  watch(reconnectKey, (key) => {
-    if (key && reconnectRef.value.shouldReconnect) {
-      reconnectRef.value.shouldReconnect = false;
-      void joinStream(key.runId);
-    }
-  });
+  watch(
+    reconnectKey,
+    (key) => {
+      if (key && reconnectRef.value.shouldReconnect) {
+        reconnectRef.value.shouldReconnect = false;
+        void joinStream(key.runId);
+      }
+    },
+    { immediate: true }
+  );
 
   const error = computed(() => {
     return streamError.value ?? historyError.value ?? history.error;

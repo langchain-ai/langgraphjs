@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { effectScope } from "vue";
 import { useStream } from "../vue/index.js";
 
@@ -81,5 +81,50 @@ describe("vue/useStream (custom transport)", () => {
 
     // The submit promise should settle after abort.
     await result.submitPromise;
+  });
+
+  test("generates threadId via crypto.randomUUID and injects configurable.thread_id", async () => {
+    type State = { messages: string[] };
+
+    const onThreadId = vi.fn();
+    const generated = "00000000-0000-0000-0000-000000000000";
+    const uuidSpy = vi.spyOn(crypto, "randomUUID").mockReturnValue(generated);
+
+    let seenThreadId: string | undefined;
+    let seenConfigThreadId: string | undefined;
+
+    const scope = effectScope();
+    const result = scope.run(() => {
+      const stream = useStream<State>({
+        throttle: false,
+        onThreadId,
+        transport: {
+          async stream({ config }) {
+            // capture injected thread id
+            seenThreadId = (config as any)?.configurable?.thread_id; // eslint-disable-line @typescript-eslint/no-explicit-any
+            seenConfigThreadId = (config as any)?.configurable?.thread_id; // eslint-disable-line @typescript-eslint/no-explicit-any
+            async function* gen() {
+              yield { event: "values", data: { messages: ["ok"] } };
+            }
+            return gen();
+          },
+        },
+      });
+      return { stream };
+    });
+
+    if (!result) throw new Error("Failed to create Vue effect scope.");
+
+    await result.stream.submit({});
+
+    await waitFor(() => result.stream.values.value.messages?.[0] === "ok");
+
+    expect(uuidSpy).toHaveBeenCalledTimes(1);
+    expect(onThreadId).toHaveBeenCalledWith(generated);
+    expect(seenThreadId).toBe(generated);
+    expect(seenConfigThreadId).toBe(generated);
+
+    scope.stop();
+    uuidSpy.mockRestore();
   });
 });
