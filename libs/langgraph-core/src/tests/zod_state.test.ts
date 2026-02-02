@@ -182,23 +182,23 @@ describe("StateGraph with Zod schemas", () => {
     // Studio checks to determine if the Chat tab should be enabled.
     const inputSchema = getInputTypeSchema(graph);
     expect(inputSchema).toBeDefined();
-    expect(inputSchema?.properties?.messages).toMatchObject({
+    expect((inputSchema as any)?.properties?.messages).toMatchObject({
       langgraph_type: "messages",
     });
 
     // Also verify other schema types have the metadata
-    expect.soft(getStateTypeSchema(graph)?.properties?.messages).toMatchObject({
+    expect.soft((getStateTypeSchema(graph) as any)?.properties?.messages).toMatchObject({
       langgraph_type: "messages",
     });
 
     expect
-      .soft(getUpdateTypeSchema(graph)?.properties?.messages)
+      .soft((getUpdateTypeSchema(graph) as any)?.properties?.messages)
       .toMatchObject({
         langgraph_type: "messages",
       });
 
     expect
-      .soft(getOutputTypeSchema(graph)?.properties?.messages)
+      .soft((getOutputTypeSchema(graph) as any)?.properties?.messages)
       .toMatchObject({
         langgraph_type: "messages",
       });
