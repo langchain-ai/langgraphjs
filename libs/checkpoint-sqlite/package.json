@@ -31,7 +31,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^11.7.0"
+    "better-sqlite3": "^12.6.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
@@ -45,7 +45,7 @@
     "@types/uuid": "^10",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.6.0",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
     "eslint": "^8.33.0",
