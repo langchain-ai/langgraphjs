@@ -187,9 +187,11 @@ describe("StateGraph with Zod schemas", () => {
     });
 
     // Also verify other schema types have the metadata
-    expect.soft((getStateTypeSchema(graph) as any)?.properties?.messages).toMatchObject({
-      langgraph_type: "messages",
-    });
+    expect
+      .soft((getStateTypeSchema(graph) as any)?.properties?.messages)
+      .toMatchObject({
+        langgraph_type: "messages",
+      });
 
     expect
       .soft((getUpdateTypeSchema(graph) as any)?.properties?.messages)
