@@ -191,13 +191,17 @@ describe("StateGraph with Zod schemas", () => {
       langgraph_type: "messages",
     });
 
-    expect.soft(getUpdateTypeSchema(graph)?.properties?.messages).toMatchObject({
-      langgraph_type: "messages",
-    });
+    expect
+      .soft(getUpdateTypeSchema(graph)?.properties?.messages)
+      .toMatchObject({
+        langgraph_type: "messages",
+      });
 
-    expect.soft(getOutputTypeSchema(graph)?.properties?.messages).toMatchObject({
-      langgraph_type: "messages",
-    });
+    expect
+      .soft(getOutputTypeSchema(graph)?.properties?.messages)
+      .toMatchObject({
+        langgraph_type: "messages",
+      });
   });
 
   describe("registry default values", () => {
