@@ -1,28 +1,23 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-
-"use client";
-
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { computed, onScopeDispose, shallowRef, watch } from "vue";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  GetUpdateType,
+  GetConfigurableType,
   GetCustomEventType,
   GetInterruptType,
   GetToolCallsType,
+  GetUpdateType,
   RunCallbackMeta,
-  GetConfigurableType,
   UseStreamCustomOptions,
   CustomSubmitOptions,
 } from "../ui/types.js";
 import type { UseStreamCustom } from "./types.js";
-import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
 import { Interrupt } from "../schema.js";
-import { useControllableThreadId } from "./thread.js";
+import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
-
-export { FetchStreamTransport } from "../stream.transport.js";
+import { useControllableThreadId } from "./thread.js";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -36,30 +31,40 @@ export function useStreamCustom<
   type ConfigurableType = GetConfigurableType<Bag>;
   type ToolCallType = GetToolCallsType<StateType>;
 
-  const [messageManager] = useState(() => new MessageTupleManager());
-  const [stream] = useState(
-    () =>
-      new StreamManager<StateType, Bag>(messageManager, {
-        throttle: options.throttle ?? false,
-      })
-  );
+  const messageManager = new MessageTupleManager();
+  const stream = new StreamManager<StateType, Bag>(messageManager, {
+    throttle: options.throttle ?? false,
+  });
 
-  useSyncExternalStore(
-    stream.subscribe,
-    stream.getSnapshot,
-    stream.getSnapshot
-  );
+  // Bridge StreamManager's external store into Vue reactivity.
+  const snapshot = shallowRef(stream.getSnapshot());
+  const unsubscribe = stream.subscribe(() => {
+    snapshot.value = stream.getSnapshot();
+  });
+
+  const historyValues = (options.initialValues ??
+    ({} as StateType)) as StateType;
+
+  onScopeDispose(() => {
+    unsubscribe();
+    // Stop any in-flight stream when the owning scope is disposed.
+    void stream.stop(historyValues, { onStop: options.onStop });
+  });
 
   const [threadId, onThreadId] = useControllableThreadId(options);
-  const threadIdRef = useRef<string | null>(threadId);
+  const threadIdRef = shallowRef<string | null>(threadId.value);
 
   // Cancel the stream if thread ID has changed
-  useEffect(() => {
-    if (threadIdRef.current !== threadId) {
-      threadIdRef.current = threadId;
-      stream.clear();
-    }
-  }, [threadId, stream]);
+  watch(
+    threadId,
+    (next) => {
+      if (threadIdRef.value !== next) {
+        threadIdRef.value = next;
+        stream.clear();
+      }
+    },
+    { flush: "sync" }
+  );
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -73,8 +78,6 @@ export function useStreamCustom<
     return { ...current, [messagesKey]: messages };
   };
 
-  const historyValues = options.initialValues ?? ({} as StateType);
-
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
   const submit = async (
@@ -82,7 +85,7 @@ export function useStreamCustom<
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
     let callbackMeta: RunCallbackMeta | undefined;
-    let usableThreadId = threadId;
+    let usableThreadId = threadId.value;
 
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
@@ -93,7 +96,6 @@ export function useStreamCustom<
             : submitOptions.optimisticValues),
         };
       }
-
       return { ...historyValues };
     });
 
@@ -102,7 +104,7 @@ export function useStreamCustom<
         if (!usableThreadId) {
           // generate random thread id
           usableThreadId = crypto.randomUUID();
-          threadIdRef.current = usableThreadId;
+          threadIdRef.value = usableThreadId;
           onThreadId(usableThreadId);
         }
 
@@ -129,10 +131,8 @@ export function useStreamCustom<
       {
         getMessages,
         setMessages,
-
         initialValues: {} as StateType,
         callbacks: options,
-
         onSuccess: () => undefined,
         onError(error) {
           options.onError?.(error, callbackMeta);
@@ -141,49 +141,47 @@ export function useStreamCustom<
     );
   };
 
+  const streamValues = computed(() => snapshot.value.values?.[0] ?? null);
+  const valuesRef = computed(() => streamValues.value ?? ({} as StateType));
+
+  const interrupt = computed((): Interrupt<InterruptType> | undefined => {
+    const v = streamValues.value;
+    if (
+      v != null &&
+      "__interrupt__" in v &&
+      Array.isArray((v as any).__interrupt__) // eslint-disable-line @typescript-eslint/no-explicit-any
+    ) {
+      const valueInterrupts = (v as any).__interrupt__ as unknown[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (valueInterrupts.length === 0) return { when: "breakpoint" };
+      if (valueInterrupts.length === 1) return valueInterrupts[0] as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      // TODO: fix the typing of interrupts if multiple interrupts are returned
+      return valueInterrupts as unknown as Interrupt<InterruptType>;
+    }
+    return undefined;
+  });
+
+  const messages = computed((): Message<ToolCallType>[] => {
+    const v = streamValues.value;
+    if (!v) return [];
+    return getMessages(v) as Message<ToolCallType>[];
+  });
+
+  const toolCalls = computed(() => {
+    const msgs = messages.value;
+    return getToolCallsWithResults<ToolCallType>(msgs);
+  });
+
   return {
-    get values() {
-      return stream.values ?? ({} as StateType);
-    },
-
-    error: stream.error,
-    isLoading: stream.isLoading,
-
+    values: valuesRef,
+    error: computed(() => snapshot.value.error),
+    isLoading: computed(() => snapshot.value.isLoading),
     stop,
     submit,
-
-    get interrupt(): Interrupt<InterruptType> | undefined {
-      if (
-        stream.values != null &&
-        "__interrupt__" in stream.values &&
-        Array.isArray(stream.values.__interrupt__)
-      ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
-        return valueInterrupts as Interrupt<InterruptType>;
-      }
-
-      return undefined;
-    },
-
-    get messages(): Message<ToolCallType>[] {
-      if (!stream.values) return [];
-      return getMessages(stream.values);
-    },
-
-    get toolCalls() {
-      if (!stream.values) return [];
-      const msgs = getMessages(stream.values);
-      return getToolCallsWithResults<ToolCallType>(msgs);
-    },
-
+    interrupt,
+    messages,
+    toolCalls,
     getToolCalls(message) {
-      if (!stream.values) return [];
-      const msgs = getMessages(stream.values);
-      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+      const allToolCalls = toolCalls.value;
       return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
     },
   };
