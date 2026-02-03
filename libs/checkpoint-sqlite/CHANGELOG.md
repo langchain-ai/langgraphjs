@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-sqlite
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1902](https://github.com/langchain-ai/langgraphjs/pull/1902) [`2378b9e`](https://github.com/langchain-ai/langgraphjs/commit/2378b9e951ff245a3e8a502acf42be55cce35a46) Thanks [@warjiang](https://github.com/warjiang)! - chore: upgrade better-sqlite
+
 ## 1.0.0
 
 ### Major Changes
