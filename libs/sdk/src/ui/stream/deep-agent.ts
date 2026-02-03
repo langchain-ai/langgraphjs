@@ -21,6 +21,8 @@ import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
  *
  * Use this interface when streaming from an agent created with `createDeepAgent`
  * that orchestrates multiple specialized subagents.
+ * 
+ * @experimental This interface is subject to change.
  *
  * @template StateType - The agent's state type
  * @template ToolCall - Tool call type from agent's tools

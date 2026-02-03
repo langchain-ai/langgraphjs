@@ -27,7 +27,7 @@ function isCustomOptions<
  *
  * The `useStream` hook handles all the complexities of streaming, state management, and branching logic,
  * letting you focus on building great chat experiences. It provides automatic state management for
- * messages, interrupts, loading states, and errors.
+ * messages, interrupts, loading states, subagent streams, and errors.
  *
  * ## Usage with ReactAgent (recommended for createAgent users)
  *
@@ -37,7 +37,7 @@ function isCustomOptions<
  * @example
  * ```typescript
  * // In your agent file (e.g., agent.ts)
- * import { createAgent, tool } from "@langchain/langgraph";
+ * import { createAgent, tool } from "langchain";
  * import { z } from "zod";
  *
  * const getWeather = tool(
@@ -113,6 +113,51 @@ function isCustomOptions<
  *   });
  *
  *   // stream.interrupt is typed as { question: string } | undefined
+ * }
+ * ```
+ *
+ * ## Usage with Deep Agents (subagent streaming, experimental)
+ *
+ * For agents that spawn subagents (nested graphs), use `filterSubagentMessages`
+ * to keep the main message stream clean while tracking subagent activity separately:
+ *
+ * @example
+ * ```typescript
+ * import { useStream, SubagentStream } from "@langchain/langgraph-sdk/react";
+ * import type { agent } from "./agent";
+ *
+ * function DeepAgentChat() {
+ *   const stream = useStream<typeof agent>({
+ *     assistantId: "deepagent",
+ *     apiUrl: "http://localhost:2024",
+ *     // Filter subagent messages from main stream
+ *     filterSubagentMessages: true,
+ *   });
+ *
+ *   const handleSubmit = (content: string) => {
+ *     stream.submit(
+ *       { messages: [{ content, type: "human" }] },
+ *       { streamSubgraphs: true } // Enable subgraph streaming
+ *     );
+ *   };
+ *
+ *   // Access subagent streams via stream.subagents (Map<string, SubagentStream>)
+ *   const subagentList = [...stream.subagents.values()];
+ *
+ *   return (
+ *     <div>
+ *       {stream.messages.map((msg) => <Message key={msg.id} message={msg} />)}
+ *
+ *       {subagentList.map((subagent) => (
+ *         <SubagentCard
+ *           key={subagent.id}
+ *           status={subagent.status} // "pending" | "running" | "complete" | "error"
+ *           messages={subagent.messages}
+ *           toolCalls={subagent.toolCalls}
+ *         />
+ *       ))}
+ *     </div>
+ *   );
  * }
  * ```
  *
