@@ -24,7 +24,7 @@ import type { UseStreamOptions } from "../types.js";
  *
  * Use this interface when streaming from an agent created with `createAgent`.
  * For subagent streaming capabilities, use {@link UseDeepAgentStream} with `createDeepAgent`.
- * 
+ *
  * @experimental This interface is subject to change.
  *
  * @template StateType - The agent's state type (base + middleware states)
@@ -141,7 +141,7 @@ export interface UseAgentStream<
  *
  * Use this options interface when calling `useStream` with a ReactAgent
  * created via `createAgent`.
- * 
+ *
  * @experimental This interface is subject to change.
  *
  * @template StateType - The agent's state type
