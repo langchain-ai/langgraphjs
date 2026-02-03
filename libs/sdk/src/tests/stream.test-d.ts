@@ -465,10 +465,6 @@ describe("useStream resolves correct interface by agent type", () => {
     expectTypeOf(stream).toHaveProperty("values");
     expectTypeOf(stream).toHaveProperty("messages");
     expectTypeOf(stream).toHaveProperty("submit");
-    expectTypeOf(stream).toHaveProperty("nodes");
-    expectTypeOf(stream).toHaveProperty("activeNodes");
-    expectTypeOf(stream).toHaveProperty("getNodeStream");
-    expectTypeOf(stream).toHaveProperty("getNodeStreamsByName");
   });
 
   test("useStream with middleware agent includes middleware state", () => {
@@ -538,77 +534,6 @@ describe("ResolveStreamOptions", () => {
       ? true
       : false;
     expectTypeOf<HasFilterSubagent>().toEqualTypeOf<false>();
-  });
-});
-
-// ============================================================================
-// Type Tests: Node Stream Inference
-// ============================================================================
-
-describe("Node Stream Types", () => {
-  test("InferNodeNames extracts node names from graph", () => {
-    const stream = useStream<typeof compiledGraph>({
-      assistantId: "graph",
-    });
-
-    // Node names should be narrowed to the specific node queried
-    const nodeStreams = stream.getNodeStreamsByName("dispatcher");
-    expectTypeOf(nodeStreams[0].name).toEqualTypeOf<"dispatcher">();
-  });
-
-  test("stream has typed nodes map", () => {
-    const stream = useStream<typeof compiledGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.nodes).toMatchTypeOf<Map<string, unknown>>();
-  });
-
-  test("node stream has correct properties", () => {
-    const stream = useStream<typeof compiledGraph>({
-      assistantId: "graph",
-    });
-
-    const nodeStream = stream.getNodeStream("some-id");
-    if (nodeStream) {
-      expectTypeOf(nodeStream).toHaveProperty("id");
-      expectTypeOf(nodeStream).toHaveProperty("name");
-      expectTypeOf(nodeStream).toHaveProperty("messages");
-      expectTypeOf(nodeStream).toHaveProperty("values");
-      expectTypeOf(nodeStream).toHaveProperty("update");
-      expectTypeOf(nodeStream).toHaveProperty("status");
-      expectTypeOf(nodeStream).toHaveProperty("isLoading");
-      expectTypeOf(nodeStream).toHaveProperty("startedAt");
-      expectTypeOf(nodeStream).toHaveProperty("completedAt");
-
-      // Verify specific types
-      expectTypeOf(nodeStream.id).toEqualTypeOf<string>();
-      expectTypeOf(nodeStream.isLoading).toEqualTypeOf<boolean>();
-      expectTypeOf(nodeStream.messages).toBeArray();
-    }
-  });
-
-  test("activeNodes is an array of NodeStream", () => {
-    const stream = useStream<typeof compiledGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.activeNodes).toBeArray();
-
-    // Each active node should have expected properties
-    const activeNode = stream.activeNodes[0];
-    expectTypeOf(activeNode.name).toEqualTypeOf<
-      "dispatcher" | "researcher_analytical" | "researcher_creative"
-    >();
-  });
-
-  test("getNodeStreamsByName returns array", () => {
-    const stream = useStream<typeof compiledGraph>({
-      assistantId: "graph",
-    });
-
-    const nodeStreams = stream.getNodeStreamsByName("dispatcher");
-    expectTypeOf(nodeStreams).toBeArray();
   });
 });
 
@@ -719,69 +644,6 @@ describe("useStream type inference integration", () => {
     expectTypeOf(stream.values).toHaveProperty("analyticalResearch");
     expectTypeOf(stream.values).toHaveProperty("creativeResearch");
     expectTypeOf(stream.values.topic).toEqualTypeOf<string>();
-
-    // Verify node streaming methods exist
-    expectTypeOf(stream).toHaveProperty("nodes");
-    expectTypeOf(stream).toHaveProperty("activeNodes");
-    expectTypeOf(stream).toHaveProperty("getNodeStream");
-    expectTypeOf(stream).toHaveProperty("getNodeStreamsByName");
-
-    // Verify nodes map
-    expectTypeOf(stream.nodes).toMatchTypeOf<Map<string, unknown>>();
-    expectTypeOf([...stream.nodes.values()][0].name).toEqualTypeOf<
-      "dispatcher" | "researcher_analytical" | "researcher_creative"
-    >();
-    expectTypeOf([...stream.nodes.values()][0].values).toEqualTypeOf<
-      Record<string, unknown>
-    >();
-
-    // Verify activeNodes is an array
-    expectTypeOf(stream.activeNodes).toBeArray();
-
-    // Verify getNodeStreamsByName returns array with narrowed name and values types
-    // @ts-expect-error - not a node name
-    stream.getNodeStreamsByName("not-a-node");
-    const dispatcherStreams = stream.getNodeStreamsByName("dispatcher");
-    expectTypeOf(dispatcherStreams).toBeArray();
-    expectTypeOf(dispatcherStreams[0].name).toEqualTypeOf<"dispatcher">();
-    // values is typed to what the dispatcher node returns
-    expectTypeOf(dispatcherStreams[0].values).toEqualTypeOf<{
-      topic: string;
-    }>();
-
-    // Verify other nodes have their own typed values
-    const analyticalStreams = stream.getNodeStreamsByName(
-      "researcher_analytical"
-    );
-    expectTypeOf(
-      analyticalStreams[0].name
-    ).toEqualTypeOf<"researcher_analytical">();
-    expectTypeOf(analyticalStreams[0].values).toEqualTypeOf<{
-      analyticalResearch: string;
-    }>();
-    // update is Partial<NodeValues> | undefined
-    expectTypeOf(analyticalStreams[0].update).toEqualTypeOf<
-      { analyticalResearch?: string } | undefined
-    >();
-
-    const creativeStreams = stream.getNodeStreamsByName("researcher_creative");
-    expectTypeOf(
-      creativeStreams[0].name
-    ).toEqualTypeOf<"researcher_creative">();
-    expectTypeOf(creativeStreams[0].values).toEqualTypeOf<{
-      creativeResearch: string;
-    }>();
-
-    // Verify node stream has expected properties
-    const nodeStream = stream.getNodeStream("some-id");
-    if (nodeStream) {
-      expectTypeOf(nodeStream.id).toEqualTypeOf<string>();
-      expectTypeOf(nodeStream.name).toEqualTypeOf<
-        "dispatcher" | "researcher_analytical" | "researcher_creative"
-      >();
-      expectTypeOf(nodeStream.isLoading).toEqualTypeOf<boolean>();
-      expectTypeOf(nodeStream.messages).toBeArray();
-    }
   });
 
   test("simple agent without middleware", () => {

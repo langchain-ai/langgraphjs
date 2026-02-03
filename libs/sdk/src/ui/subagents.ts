@@ -242,12 +242,6 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       activeSubagents: [],
       getSubagent: () => undefined,
       getSubagentsByType: () => [],
-
-      // Node tracking (empty for subagents, could be enhanced in the future)
-      nodes: new Map(),
-      activeNodes: [],
-      getNodeStream: () => undefined,
-      getNodeStreamsByName: () => [],
     };
   }
 

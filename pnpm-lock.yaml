@@ -2061,6 +2061,9 @@ importers:
 
   libs/sdk:
     dependencies:
+      '@types/json-schema':
+        specifier: ^7.0.15
+        version: 7.0.15
       p-queue:
         specifier: ^9.0.1
         version: 9.1.0

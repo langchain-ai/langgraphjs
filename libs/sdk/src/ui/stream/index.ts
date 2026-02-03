@@ -20,10 +20,11 @@ import type {
   DefaultSubagentStates,
   AgentTypeConfigLike,
   DeepAgentTypeConfigLike,
+  UseStreamOptions
 } from "../types.js";
+import type { BaseStream } from "./base.js";
 
 // Import for internal use
-import type { UseGraphStream, UseGraphStreamOptions } from "./graph.js";
 import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
 import type {
   UseDeepAgentStream,
@@ -32,7 +33,6 @@ import type {
 
 // Re-export all stream interfaces
 export type { BaseStream } from "./base.js";
-export type { UseGraphStream, UseGraphStreamOptions } from "./graph.js";
 export type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
 export type {
   UseDeepAgentStream,
@@ -203,13 +203,7 @@ export type ResolveStreamInterface<
     >
   : IsReactAgent<T> extends true
   ? UseAgentStream<InferStateType<T>, InferToolCalls<T>, Bag>
-  : UseGraphStream<
-      InferStateType<T>,
-      InferToolCalls<T>,
-      Bag,
-      InferNodeNames<T>,
-      InferNodeReturnTypes<T>
-    >;
+  : BaseStream<InferStateType<T>, InferToolCalls<T>, Bag>;
 
 // ============================================================================
 // Options Interface Resolution
@@ -248,7 +242,7 @@ export type ResolveStreamOptions<
   ? UseDeepAgentStreamOptions<InferStateType<T>, Bag>
   : IsReactAgent<T> extends true
   ? UseAgentStreamOptions<InferStateType<T>, Bag>
-  : UseGraphStreamOptions<InferStateType<T>, Bag>;
+  : UseStreamOptions<InferStateType<T>, Bag>;
 
 // ============================================================================
 // Convenience Type Aliases

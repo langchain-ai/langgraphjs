@@ -413,7 +413,7 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         stream.setStreamValues((values) => {
-          const prev = { ...historyValues, ...(values ?? {}) };
+          const prev = { ...historyValues, ...values };
           if (submitOptions?.optimisticValues != null) {
             return {
               ...prev,
@@ -761,30 +761,6 @@ export function useStreamLGP<
     getSubagentsByType(type: string) {
       trackStreamMode("updates", "messages-tuple");
       return stream.getSubagentsByType(type);
-    },
-
-    // ==========================================================================
-    // Node Streaming
-    // ==========================================================================
-
-    get nodes() {
-      trackStreamMode("updates", "messages-tuple");
-      return stream.getNodes();
-    },
-
-    get activeNodes() {
-      trackStreamMode("updates", "messages-tuple");
-      return stream.getActiveNodes();
-    },
-
-    getNodeStream(executionId: string) {
-      trackStreamMode("updates", "messages-tuple");
-      return stream.getNodeStream(executionId);
-    },
-
-    getNodeStreamsByName(nodeName: string) {
-      trackStreamMode("updates", "messages-tuple");
-      return stream.getNodeStreamsByName(nodeName);
     },
   };
 }

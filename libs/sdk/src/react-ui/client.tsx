@@ -38,7 +38,7 @@ export function useStreamContext<
   return new Proxy(ctx, {
     get(target, prop: keyof UseStreamContext<StateType, Bag>) {
       if (prop === "meta") return target.meta;
-      return target.stream[prop];
+      return target.stream[prop as keyof typeof target.stream];
     },
   }) as unknown as UseStreamContext<StateType, Bag>;
 }

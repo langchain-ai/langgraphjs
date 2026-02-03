@@ -13,7 +13,8 @@ import type {
   ToolCallWithResult,
 } from "../../types.messages.js";
 import type { BagTemplate } from "../../types.template.js";
-import type { UseGraphStream, UseGraphStreamOptions } from "./graph.js";
+import type { BaseStream } from "./base.js";
+import type { UseStreamOptions } from "../types.js";
 
 /**
  * Stream interface for ReactAgent instances created with `createAgent`.
@@ -83,7 +84,7 @@ export interface UseAgentStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   Bag extends BagTemplate = BagTemplate
-> extends UseGraphStream<StateType, ToolCall, Bag> {
+> extends BaseStream<StateType, ToolCall, Bag> {
   /**
    * Tool calls paired with their results.
    *
@@ -154,4 +155,4 @@ export interface UseAgentStream<
 export interface UseAgentStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
-> extends UseGraphStreamOptions<StateType, Bag> {}
+> extends UseStreamOptions<StateType, Bag> {}

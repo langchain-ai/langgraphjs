@@ -22,6 +22,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@types/json-schema": "^7.0.15",
     "p-queue": "^9.0.1",
     "p-retry": "^7.1.1",
     "uuid": "^13.0.0"

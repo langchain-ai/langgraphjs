@@ -9,7 +9,6 @@ import type {
   GetCustomEventType,
   GetInterruptType,
   GetToolCallsType,
-  RunCallbackMeta,
   GetConfigurableType,
   UseStreamTransport,
   AnyStreamCustomOptions,
@@ -179,7 +178,6 @@ export function useStreamCustom<
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
-    let callbackMeta: RunCallbackMeta | undefined;
     let usableThreadId = threadId;
 
     stream.setStreamValues(() => {
@@ -233,7 +231,7 @@ export function useStreamCustom<
 
         onSuccess: () => undefined,
         onError(error) {
-          options.onError?.(error, callbackMeta);
+          options.onError?.(error, undefined);
         },
       }
     );
