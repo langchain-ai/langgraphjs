@@ -303,6 +303,56 @@ describe("StateSchema", () => {
       expect(schema.properties).toBeDefined();
       // Note: JSON schema generation requires StandardJSONSchema support
     });
+
+    it("should preserve langgraph_type metadata when using MessagesValue", () => {
+      // This test verifies that the jsonSchemaExtra metadata from MessagesValue
+      // is properly attached when generating JSON schemas
+      const state = new StateSchema({
+        messages: MessagesValue,
+        count: z.number().default(0),
+      });
+
+      const schema = state.getJsonSchema() as {
+        type: string;
+        properties?: Record<string, { langgraph_type?: string }>;
+      };
+
+      expect(schema.type).toBe("object");
+      expect(schema.properties).toBeDefined();
+      // MessagesValue.jsonSchemaExtra should be merged into the generated JSON schema
+      expect(schema.properties?.messages).toMatchObject({
+        langgraph_type: "messages",
+      });
+    });
+
+    it("should preserve custom jsonSchemaExtra on ReducedValue", () => {
+      const state = new StateSchema({
+        history: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], next: string) => [...current, next],
+            jsonSchemaExtra: {
+              langgraph_type: "custom_type",
+              description: "Custom history field",
+            },
+          }
+        ),
+      });
+
+      const schema = state.getJsonSchema() as {
+        type: string;
+        properties?: Record<
+          string,
+          { langgraph_type?: string; description?: string }
+        >;
+      };
+
+      expect(schema.properties?.history).toMatchObject({
+        langgraph_type: "custom_type",
+        description: "Custom history field",
+      });
+    });
   });
 
   describe("StateGraph integration", () => {
