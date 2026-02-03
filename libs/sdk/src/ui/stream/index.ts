@@ -20,7 +20,7 @@ import type {
   DefaultSubagentStates,
   AgentTypeConfigLike,
   DeepAgentTypeConfigLike,
-  UseStreamOptions
+  UseStreamOptions,
 } from "../types.js";
 import type { BaseStream } from "./base.js";
 

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useMemo } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -8,8 +8,7 @@ import {
   Loader2,
 } from "lucide-react";
 
-import type { InferNodeNames } from "@langchain/langgraph-sdk";
-import { useStream, type NodeStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/langgraph-sdk/react";
 
 import { registerExample } from "../registry";
 import { EmptyState } from "../../components/States";
@@ -18,18 +17,8 @@ import { MessageInput } from "../../components/MessageInput";
 import { ResearchCard } from "./components/ResearchCard";
 import { TopicBar } from "./components/TopicBar";
 import { SelectedResearchDisplay } from "./components/SelectedResearchDisplay";
-import type { ResearchId, ResearchConfig } from "./types";
+import type { ResearchContents, ResearchId, ResearchConfig } from "./types";
 import type { agent } from "./agent";
-
-/**
- * Helper to extract the content from a node stream's messages.
- */
-function getNodeContent(nodeStream: NodeStream | undefined): string {
-  if (!nodeStream) return "";
-  const aiMessages = nodeStream.messages.filter((m) => m.type === "ai");
-  const lastMessage = aiMessages[aiMessages.length - 1];
-  return typeof lastMessage?.content === "string" ? lastMessage.content : "";
-}
 
 const RESEARCH_CONFIGS: ResearchConfig[] = [
   {
@@ -89,36 +78,111 @@ export function ParallelResearch() {
   );
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Simple derived state - no complex memos needed!
-  const currentTopic = stream.values?.topic || null;
-  const hasStarted = Boolean(currentTopic);
+  /**
+   * Extract streaming research content from messages using metadata
+   * This allows us to show content as it streams in real-time
+   */
+  const streamingContents = useMemo((): ResearchContents => {
+    const contents: ResearchContents = {
+      analytical: "",
+      creative: "",
+      practical: "",
+    };
+
+    /**
+     * Track streaming messages by their langgraph_node metadata
+     */
+    for (const message of stream.messages) {
+      if (message.type !== "ai") continue;
+
+      /**
+       * Get the stream metadata for this message
+       */
+      const metadata = stream.getMessagesMetadata?.(message);
+      const nodeFromMetadata = metadata?.streamMetadata?.langgraph_node as
+        | string
+        | undefined;
+
+      /**
+       * Also check the message name (set after node completion)
+       */
+      const nodeName = (message as { name?: string }).name;
+      const node = nodeFromMetadata || nodeName;
+
+      if (!node) continue;
+
+      const content =
+        typeof message.content === "string" ? message.content : "";
+
+      if (node === "researcher_analytical" && content) {
+        contents.analytical = content;
+      } else if (node === "researcher_creative" && content) {
+        contents.creative = content;
+      } else if (node === "researcher_practical" && content) {
+        contents.practical = content;
+      }
+    }
+
+    return contents;
+  }, [stream.messages, stream.getMessagesMetadata]);
 
   /**
-   * Get the node stream for a research config.
-   * Falls back to state values for persistence after page refresh.
+   * Get research contents - prefer streaming content, fall back to state values
    */
-  const getResearchData = (config: ResearchConfig) => {
-    const nodeStreams = stream.getNodeStreamsByName(
-      config.nodeName as InferNodeNames<typeof agent>
-    );
-    const nodeStream = nodeStreams[nodeStreams.length - 1];
-
-    // Get content from node stream, fall back to persisted state
-    const stateKey = `${config.id}Research` as keyof typeof stream.values;
-    const content =
-      getNodeContent(nodeStream) || (stream.values?.[stateKey] as string) || "";
-
+  const researchContents = useMemo((): ResearchContents => {
     return {
-      content,
-      isLoading: nodeStream?.isLoading ?? false,
-      isComplete: nodeStream ? !nodeStream.isLoading && !!content : !!content,
+      analytical:
+        streamingContents.analytical || stream.values?.analyticalResearch || "",
+      creative:
+        streamingContents.creative || stream.values?.creativeResearch || "",
+      practical:
+        streamingContents.practical || stream.values?.practicalResearch || "",
     };
-  };
+  }, [
+    streamingContents,
+    stream.values?.analyticalResearch,
+    stream.values?.creativeResearch,
+    stream.values?.practicalResearch,
+  ]);
 
-  // Check if all research is complete
-  const isResearchComplete =
-    !stream.isLoading &&
-    RESEARCH_CONFIGS.every((config) => getResearchData(config).isComplete);
+  /**
+   * Get the current topic directly from state
+   */
+  const currentTopic = stream.values?.topic || null;
+
+  /**
+   * Check which researchers are currently loading (streaming but not complete)
+   * Since all 3 researchers run in parallel, they're all "loading" until the collector runs
+   */
+  const loadingStates = useMemo(() => {
+    const activeNodes = new Set<ResearchId>();
+    const currentNode = stream.values?.currentNode || "";
+
+    // If we're loading and the collector hasn't finished, all researchers are considered active
+    if (stream.isLoading && currentTopic && currentNode !== "collector") {
+      activeNodes.add("analytical");
+      activeNodes.add("creative");
+      activeNodes.add("practical");
+    }
+
+    return activeNodes;
+  }, [stream.isLoading, currentTopic, stream.values?.currentNode]);
+
+  /**
+   * Check if all research is complete
+   */
+  const isResearchComplete = useMemo(() => {
+    const currentNode = stream.values?.currentNode || "";
+    return (
+      !stream.isLoading &&
+      currentNode === "collector" &&
+      Boolean(researchContents.analytical) &&
+      Boolean(researchContents.creative) &&
+      Boolean(researchContents.practical)
+    );
+  }, [stream.isLoading, stream.values?.currentNode, researchContents]);
+
+  const hasStarted = Boolean(stream.values?.topic);
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -154,21 +218,18 @@ export function ParallelResearch() {
 
               {/* Three Column Research Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-                {RESEARCH_CONFIGS.map((config) => {
-                  const { content, isLoading } = getResearchData(config);
-                  return (
-                    <div key={config.id} className="h-[500px]">
-                      <ResearchCard
-                        config={config}
-                        content={content}
-                        isLoading={isLoading}
-                        isSelected={selectedResearch === config.id}
-                        onSelect={() => handleSelectResearch(config.id)}
-                        disabled={!isResearchComplete}
-                      />
-                    </div>
-                  );
-                })}
+                {RESEARCH_CONFIGS.map((config) => (
+                  <div key={config.id} className="h-[500px]">
+                    <ResearchCard
+                      config={config}
+                      content={researchContents[config.id] || ""}
+                      isLoading={loadingStates.has(config.id)}
+                      isSelected={selectedResearch === config.id}
+                      onSelect={() => handleSelectResearch(config.id)}
+                      disabled={!isResearchComplete}
+                    />
+                  </div>
+                ))}
               </div>
 
               {/* Selected Research Display */}
@@ -177,11 +238,7 @@ export function ParallelResearch() {
                   config={
                     RESEARCH_CONFIGS.find((c) => c.id === selectedResearch)!
                   }
-                  content={
-                    getResearchData(
-                      RESEARCH_CONFIGS.find((c) => c.id === selectedResearch)!
-                    ).content
-                  }
+                  content={researchContents[selectedResearch] || ""}
                 />
               )}
 
