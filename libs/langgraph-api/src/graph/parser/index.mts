@@ -88,7 +88,82 @@ export async function getStaticGraphSchema(
   );
 }
 
-export async function getRuntimeGraphSchema(
+// Symbol used when input inherits from state schema but as partial
+const PartialStateSchema = Symbol.for("langgraph.state.partial");
+
+/**
+ * Type for graph builder internal properties.
+ * @internal
+ */
+interface GraphBuilder {
+  _schemaRuntimeDefinition?: unknown;
+  _inputRuntimeDefinition?: unknown;
+  _outputRuntimeDefinition?: unknown;
+  _configRuntimeSchema?: unknown;
+}
+
+/**
+ * Try to extract schema from StateSchema instance.
+ * StateSchema handles jsonSchemaExtra internally via ReducedValue.jsonSchemaExtra
+ *
+ * @param graph - The compiled graph to extract schemas from
+ * @returns GraphSchema if StateSchema instances found, undefined otherwise
+ */
+async function tryStateSchemaExtraction(
+  graph: Pregel<any, any, any, any, any>
+): Promise<GraphSchema | undefined> {
+  const builder = (graph as unknown as { builder?: GraphBuilder }).builder;
+  if (!builder) return undefined;
+
+  // Dynamic import to avoid circular deps
+  const { StateSchema } = await import("@langchain/langgraph");
+
+  // Check if ANY of the schemas are StateSchema instances
+  const hasStateSchema =
+    StateSchema.isInstance(builder._schemaRuntimeDefinition) ||
+    StateSchema.isInstance(builder._inputRuntimeDefinition) ||
+    StateSchema.isInstance(builder._outputRuntimeDefinition);
+
+  if (!hasStateSchema) return undefined;
+
+  // Extract from StateSchema instances
+  const state = StateSchema.isInstance(builder._schemaRuntimeDefinition)
+    ? (builder._schemaRuntimeDefinition.getJsonSchema() as JSONSchema7)
+    : undefined;
+
+  const input = (() => {
+    if (StateSchema.isInstance(builder._inputRuntimeDefinition)) {
+      return builder._inputRuntimeDefinition.getInputJsonSchema() as JSONSchema7;
+    }
+    // PartialStateSchema means input inherits from state as partial
+    if (
+      builder._inputRuntimeDefinition === PartialStateSchema &&
+      StateSchema.isInstance(builder._schemaRuntimeDefinition)
+    ) {
+      return builder._schemaRuntimeDefinition.getInputJsonSchema() as JSONSchema7;
+    }
+    return undefined;
+  })();
+
+  const output = StateSchema.isInstance(builder._outputRuntimeDefinition)
+    ? (builder._outputRuntimeDefinition.getJsonSchema() as JSONSchema7)
+    : undefined;
+
+  // StateSchema doesn't have config schema support yet
+  const config = undefined;
+
+  if (!state && !input && !output) return undefined;
+  return { state, input, output, config };
+}
+
+/**
+ * Try existing Zod extraction via schemaMetaRegistry.
+ * This handles jsonSchemaExtra from withLangGraph() calls.
+ *
+ * @param graph - The compiled graph to extract schemas from
+ * @returns GraphSchema if Zod schemas found in registry, undefined otherwise
+ */
+async function tryZodRegistryExtraction(
   graph: Pregel<any, any, any, any, any>
 ): Promise<GraphSchema | undefined> {
   try {
@@ -109,8 +184,85 @@ export async function getRuntimeGraphSchema(
     if (Object.values(result).every((i) => i == null)) return undefined;
     return result;
   } catch {
-    // ignore
+    return undefined;
   }
+}
 
+/**
+ * Fallback: Try direct Zod conversion without registry.
+ * Handles Zod schemas that weren't registered with withLangGraph().
+ * Note: jsonSchemaExtra will NOT be included in this path.
+ *
+ * @param graph - The compiled graph to extract schemas from
+ * @returns GraphSchema if Zod schemas found, undefined otherwise
+ */
+async function tryDirectZodExtraction(
+  graph: Pregel<any, any, any, any, any>
+): Promise<GraphSchema | undefined> {
+  try {
+    const { toJsonSchema } = await import("@langchain/core/utils/json_schema");
+    const { isZodSchemaV3, isZodSchemaV4 } = await import(
+      "@langchain/core/utils/types"
+    );
+
+    const builder = (graph as unknown as { builder?: GraphBuilder }).builder;
+    if (!builder) return undefined;
+
+    const extractSchema = (schema: unknown): JSONSchema7 | undefined => {
+      if (!schema) return undefined;
+      if (isZodSchemaV4(schema) || isZodSchemaV3(schema)) {
+        try {
+          return toJsonSchema(schema) as JSONSchema7;
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    };
+
+    const state = extractSchema(builder._schemaRuntimeDefinition);
+    const input =
+      extractSchema(builder._inputRuntimeDefinition) ??
+      (state ? { ...state, required: undefined } : undefined);
+    const output = extractSchema(builder._outputRuntimeDefinition);
+    const config = extractSchema(builder._configRuntimeSchema);
+
+    if (!state && !input && !output && !config) return undefined;
+    return { state, input, output, config };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Extract JSON schemas from a compiled graph at runtime.
+ *
+ * Uses a multi-tier extraction strategy:
+ * 1. StateSchema - Native JSON schema via getJsonSchema() (handles jsonSchemaExtra)
+ * 2. Zod Registry - Via schemaMetaRegistry (handles withLangGraph jsonSchemaExtra)
+ * 3. Direct Zod - Fallback conversion without registry (no jsonSchemaExtra)
+ * 4. Returns undefined to fall back to static TypeScript parser
+ *
+ * @param graph - The compiled Pregel graph to extract schemas from
+ * @returns GraphSchema with state/input/output/config schemas, or undefined if extraction fails
+ */
+export async function getRuntimeGraphSchema(
+  graph: Pregel<any, any, any, any, any>
+): Promise<GraphSchema | undefined> {
+  if (!(graph as unknown as { builder?: unknown }).builder) return undefined;
+
+  // Priority 1: StateSchema (handles jsonSchemaExtra via ReducedValue)
+  const stateSchemaResult = await tryStateSchemaExtraction(graph);
+  if (stateSchemaResult) return stateSchemaResult;
+
+  // Priority 2: Zod via schemaMetaRegistry (handles jsonSchemaExtra from withLangGraph)
+  const zodRegistryResult = await tryZodRegistryExtraction(graph);
+  if (zodRegistryResult) return zodRegistryResult;
+
+  // Priority 3: Direct Zod conversion (no jsonSchemaExtra, but better than nothing)
+  const directZodResult = await tryDirectZodExtraction(graph);
+  if (directZodResult) return directZodResult;
+
+  // Priority 4: Fall through to static TypeScript parser
   return undefined;
 }
