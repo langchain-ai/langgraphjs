@@ -34,6 +34,7 @@ import {
 import type {
   Command,
   CronsCreatePayload,
+  CronsUpdatePayload,
   OnConflictBehavior,
   RunsCreatePayload,
   RunsStreamPayload,
@@ -459,6 +460,7 @@ export class CronsClient extends BaseClient {
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      enabled: payload?.enabled,
     };
     return this.fetch<CronCreateForThreadResponse>(
       `/threads/${threadId}/runs/crons`,
@@ -495,6 +497,7 @@ export class CronsClient extends BaseClient {
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      enabled: payload?.enabled,
     };
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
@@ -504,8 +507,65 @@ export class CronsClient extends BaseClient {
   }
 
   /**
+   * Update a cron job by ID.
+   *
+   * @param cronId The cron ID to update.
+   * @param payload Payload for updating a cron job.
+   * @returns The updated cron job.
+   * ```
+   */
+  async update(
+    cronId: string,
+    payload?: CronsUpdatePayload
+  ): Promise<Cron> {
+    const json: Record<string, unknown> = {};
+
+    if (payload?.schedule !== undefined) {
+      json.schedule = payload.schedule;
+    }
+    if (payload?.endTime !== undefined) {
+      json.end_time = payload.endTime;
+    }
+    if (payload?.input !== undefined) {
+      json.input = payload.input;
+    }
+    if (payload?.metadata !== undefined) {
+      json.metadata = payload.metadata;
+    }
+    if (payload?.config !== undefined) {
+      json.config = payload.config;
+    }
+    if (payload?.context !== undefined) {
+      json.context = payload.context;
+    }
+    if (payload?.webhook !== undefined) {
+      json.webhook = payload.webhook;
+    }
+    if (payload?.interruptBefore !== undefined) {
+      json.interrupt_before = payload.interruptBefore;
+    }
+    if (payload?.interruptAfter !== undefined) {
+      json.interrupt_after = payload.interruptAfter;
+    }
+    if (payload?.onRunCompleted !== undefined) {
+      json.on_run_completed = payload.onRunCompleted;
+    }
+    if (payload?.enabled !== undefined) {
+      json.enabled = payload.enabled;
+    }
+
+    return this.fetch<Cron>(`/runs/crons/${cronId}`, {
+      method: "PATCH",
+      json,
+      signal: payload?.signal,
+    });
+  }
+
+  /**
+   * Delete a cron job by ID.
    *
    * @param cronId Cron ID of Cron job to delete.
+   * @param options Optional parameters for the request.
    */
   async delete(
     cronId: string,
@@ -525,6 +585,7 @@ export class CronsClient extends BaseClient {
   async search(query?: {
     assistantId?: string;
     threadId?: string;
+    enabled?: boolean;
     limit?: number;
     offset?: number;
     sortBy?: CronSortBy;
@@ -537,6 +598,7 @@ export class CronsClient extends BaseClient {
       json: {
         assistant_id: query?.assistantId ?? undefined,
         thread_id: query?.threadId ?? undefined,
+        enabled: query?.enabled ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,

@@ -224,6 +224,24 @@ export interface CronsCreatePayload extends RunsCreatePayload {
    *   You are responsible for cleaning up kept threads.
    */
   onRunCompleted?: "delete" | "keep";
+
+  /**
+   * Whether the cron is enabled.
+   */
+  enabled?: boolean;
+}
+
+export interface CronsUpdatePayload extends RunsInvokePayload {
+  schedule?: string;
+  endTime?: string;
+  /**
+   * What to do with the thread after the run completes.
+   * - "delete" (default): Automatically deletes the thread after the run completes.
+   * - "keep": Preserves the thread after the run completes, allowing you to retrieve run results later.
+   *   You are responsible for cleaning up kept threads.
+   */
+  onRunCompleted?: "delete" | "keep";
+  enabled?: boolean;
 }
 
 export interface RunsWaitPayload extends RunsStreamPayload {
