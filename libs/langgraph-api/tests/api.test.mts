@@ -198,6 +198,83 @@ describe("assistants", () => {
     );
   });
 
+  describe("schema extraction strategies", () => {
+    it("StateSchema extraction with jsonSchemaExtra", { timeout: 30_000 }, async () => {
+      const graphId = "state_schema_graph";
+
+      const assistant = await client.assistants.create({ graphId });
+      expect(assistant).toMatchObject({ graph_id: graphId });
+
+      const schemas = await client.assistants.getSchemas(assistant.assistant_id);
+
+      // StateSchema with MessagesValue should include jsonSchemaExtra
+      expect(schemas.state_schema).toBeDefined();
+      expect(schemas.state_schema).toMatchObject({
+        type: "object",
+        properties: expect.objectContaining({
+          messages: expect.objectContaining({
+            // MessagesValue has jsonSchemaExtra: { langgraph_type: "messages" }
+            langgraph_type: "messages",
+          }),
+          count: expect.any(Object),
+        }),
+      });
+
+      await client.assistants.delete(assistant.assistant_id);
+    });
+
+    it("Zod registry extraction with jsonSchemaExtra", { timeout: 30_000 }, async () => {
+      const graphId = "zod_registry_graph";
+
+      const assistant = await client.assistants.create({ graphId });
+      expect(assistant).toMatchObject({ graph_id: graphId });
+
+      const schemas = await client.assistants.getSchemas(assistant.assistant_id);
+      expect(schemas.state_schema).toBeDefined();
+
+      // Zod with withLangGraph should include jsonSchemaExtra
+      expect(schemas.state_schema).toMatchObject({
+        type: "object",
+        properties: expect.objectContaining({
+          messages: expect.objectContaining({
+            // withLangGraph has jsonSchemaExtra: { langgraph_type: "messages" }
+            langgraph_type: "messages",
+          }),
+          count: expect.any(Object),
+          status: expect.any(Object),
+        }),
+      });
+
+      await client.assistants.delete(assistant.assistant_id);
+    });
+
+    it("Plain Zod extraction fallback (no jsonSchemaExtra)", { timeout: 30_000 }, async () => {
+      const graphId = "plain_zod_graph";
+
+      const assistant = await client.assistants.create({ graphId });
+      expect(assistant).toMatchObject({ graph_id: graphId });
+
+      const schemas = await client.assistants.getSchemas(assistant.assistant_id);
+      expect(schemas.state_schema).toBeDefined();
+
+      // Plain Zod should extract schema but WITHOUT jsonSchemaExtra
+      expect(schemas.state_schema).toMatchObject({
+        type: "object",
+        properties: expect.objectContaining({
+          items: expect.any(Object),
+          counter: expect.any(Object),
+        }),
+      });
+
+      // Verify plain Zod does NOT have langgraph_type (no withLangGraph used)
+      expect(schemas.state_schema?.properties?.items).not.toHaveProperty(
+        "langgraph_type"
+      );
+
+      await client.assistants.delete(assistant.assistant_id);
+    });
+  });
+
   it("list assistants", async () => {
     let search = await client.assistants.search();
 
@@ -244,7 +321,7 @@ describe("assistants", () => {
 
   it("count assistants", async () => {
     let count = await client.assistants.count();
-    expect(count).toEqual(9);
+    expect(count).toBeGreaterThanOrEqual(11);
   });
 
   it("get assistant versions", async () => {

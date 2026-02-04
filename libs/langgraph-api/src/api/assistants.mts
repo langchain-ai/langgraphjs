@@ -189,7 +189,6 @@ api.get(
     const schema = await (async () => {
       const runtimeSchema = await getRuntimeGraphSchema(graph);
       if (runtimeSchema) return runtimeSchema;
-
       const graphSchema = await getCachedStaticGraphSchema(assistant.graph_id);
       const rootGraphId = Object.keys(graphSchema).find(
         (i) => !i.includes("|")

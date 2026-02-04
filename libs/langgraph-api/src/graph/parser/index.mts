@@ -103,6 +103,26 @@ interface GraphBuilder {
 }
 
 /**
+ * Duck-type check for StateSchema-like objects.
+ * Checks for getJsonSchema and getInputJsonSchema methods.
+ */
+interface StateSchemaLike {
+  getJsonSchema(): unknown;
+  getInputJsonSchema(): unknown;
+}
+
+function isStateSchemaLike(value: unknown): value is StateSchemaLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "getJsonSchema" in value &&
+    typeof (value as StateSchemaLike).getJsonSchema === "function" &&
+    "getInputJsonSchema" in value &&
+    typeof (value as StateSchemaLike).getInputJsonSchema === "function"
+  );
+}
+
+/**
  * Try to extract schema from StateSchema instance.
  * StateSchema handles jsonSchemaExtra internally via ReducedValue.jsonSchemaExtra
  *
@@ -115,37 +135,34 @@ async function tryStateSchemaExtraction(
   const builder = (graph as unknown as { builder?: GraphBuilder }).builder;
   if (!builder) return undefined;
 
-  // Dynamic import to avoid circular deps
-  const { StateSchema } = await import("@langchain/langgraph");
-
-  // Check if ANY of the schemas are StateSchema instances
-  const hasStateSchema =
-    StateSchema.isInstance(builder._schemaRuntimeDefinition) ||
-    StateSchema.isInstance(builder._inputRuntimeDefinition) ||
-    StateSchema.isInstance(builder._outputRuntimeDefinition);
+  // Check if ANY of the schemas are StateSchema-like (have getJsonSchema/getInputJsonSchema methods)
+  const schemaDefIsLike = isStateSchemaLike(builder._schemaRuntimeDefinition);
+  const inputDefIsLike = isStateSchemaLike(builder._inputRuntimeDefinition);
+  const outputDefIsLike = isStateSchemaLike(builder._outputRuntimeDefinition);
+  const hasStateSchema = schemaDefIsLike || inputDefIsLike || outputDefIsLike;
 
   if (!hasStateSchema) return undefined;
 
-  // Extract from StateSchema instances
-  const state = StateSchema.isInstance(builder._schemaRuntimeDefinition)
+  // Extract from StateSchema-like instances
+  const state = isStateSchemaLike(builder._schemaRuntimeDefinition)
     ? (builder._schemaRuntimeDefinition.getJsonSchema() as JSONSchema7)
     : undefined;
 
   const input = (() => {
-    if (StateSchema.isInstance(builder._inputRuntimeDefinition)) {
+    if (isStateSchemaLike(builder._inputRuntimeDefinition)) {
       return builder._inputRuntimeDefinition.getInputJsonSchema() as JSONSchema7;
     }
     // PartialStateSchema means input inherits from state as partial
     if (
       builder._inputRuntimeDefinition === PartialStateSchema &&
-      StateSchema.isInstance(builder._schemaRuntimeDefinition)
+      isStateSchemaLike(builder._schemaRuntimeDefinition)
     ) {
       return builder._schemaRuntimeDefinition.getInputJsonSchema() as JSONSchema7;
     }
     return undefined;
   })();
 
-  const output = StateSchema.isInstance(builder._outputRuntimeDefinition)
+  const output = isStateSchemaLike(builder._outputRuntimeDefinition)
     ? (builder._outputRuntimeDefinition.getJsonSchema() as JSONSchema7)
     : undefined;
 
@@ -249,7 +266,8 @@ async function tryDirectZodExtraction(
 export async function getRuntimeGraphSchema(
   graph: Pregel<any, any, any, any, any>
 ): Promise<GraphSchema | undefined> {
-  if (!(graph as unknown as { builder?: unknown }).builder) return undefined;
+  const builder = (graph as unknown as { builder?: GraphBuilder }).builder;
+  if (!builder) return undefined;
 
   // Priority 1: StateSchema (handles jsonSchemaExtra via ReducedValue)
   const stateSchemaResult = await tryStateSchemaExtraction(graph);
