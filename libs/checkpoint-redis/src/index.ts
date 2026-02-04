@@ -13,6 +13,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
+import { escapeRediSearchTagValue } from "./utils.js";
 
 // Type for Redis client - supports both standalone and cluster
 export type RedisClientType =
@@ -293,10 +294,14 @@ export class RedisSaver extends BaseCheckpointSaver {
           } else if (value === null) {
             // Skip null values for RediSearch query, will handle in post-processing
           } else if (typeof value === "string") {
-            // Don't escape, just wrap in braces for exact match
-            queryParts.push(`(@${key}:{${value}})`);
+            // Escape both key and value to prevent RediSearch query injection
+            const escapedKey = escapeRediSearchTagValue(key);
+            const escapedValue = escapeRediSearchTagValue(value);
+            queryParts.push(`(@${escapedKey}:{${escapedValue}})`);
           } else if (typeof value === "number") {
-            queryParts.push(`(@${key}:[${value} ${value}])`);
+            // Escape key to prevent injection; numbers don't need value escaping
+            const escapedKey = escapeRediSearchTagValue(key);
+            queryParts.push(`(@${escapedKey}:[${value} ${value}])`);
           } else if (
             typeof value === "object" &&
             Object.keys(value).length === 0
