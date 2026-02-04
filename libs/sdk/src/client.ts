@@ -514,10 +514,7 @@ export class CronsClient extends BaseClient {
    * @returns The updated cron job.
    * ```
    */
-  async update(
-    cronId: string,
-    payload?: CronsUpdatePayload
-  ): Promise<Cron> {
+  async update(cronId: string, payload?: CronsUpdatePayload): Promise<Cron> {
     const json: Record<string, unknown> = {};
 
     if (payload?.schedule !== undefined) {
