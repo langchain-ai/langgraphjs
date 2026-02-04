@@ -40,7 +40,14 @@ module.exports = {
     "import/extensions": [2, "ignorePackages"],
     "import/no-extraneous-dependencies": [
       "error",
-      { devDependencies: ["**/*.test.ts", "**/*.test-d.ts", "src/tests/**", "src/**/tests/**"] },
+      {
+        devDependencies: [
+          "**/*.test.ts",
+          "**/*.test-d.ts",
+          "src/tests/**",
+          "src/**/tests/**",
+        ],
+      },
     ],
     "import/no-unresolved": 0,
     "import/prefer-default-export": 0,
@@ -64,10 +71,13 @@ module.exports = {
     "func-names": 0,
     "no-lonely-if": 0,
     "prefer-rest-params": 0,
-    "prefer-const": ["error", {
-      "destructuring": "all",
-      "ignoreReadBeforeAssign": false
-    }],
+    "prefer-const": [
+      "error",
+      {
+        destructuring: "all",
+        ignoreReadBeforeAssign: false,
+      },
+    ],
     "new-cap": ["error", { properties: false, capIsNew: false }],
   },
   overrides: [
