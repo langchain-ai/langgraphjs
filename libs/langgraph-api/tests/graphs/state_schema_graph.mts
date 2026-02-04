@@ -12,6 +12,7 @@ import {
   MessagesValue,
   START,
   END,
+  GraphNode,
 } from "@langchain/langgraph";
 
 // Define state using StateSchema with MessagesValue (has langgraph_type: "messages")
@@ -20,18 +21,16 @@ const AgentState = new StateSchema({
   count: z.number().default(0),
 });
 
-async function processNode(
-  state: typeof AgentState.State
-): Promise<typeof AgentState.Update> {
+const processNode: GraphNode<typeof AgentState> = (state) => {
   return {
     messages: [new AIMessage(`Response ${state.count + 1}`)],
     count: state.count + 1,
   };
-}
+};
 
 const workflow = new StateGraph(AgentState)
   .addNode("process", processNode)
   .addEdge(START, "process")
   .addEdge("process", END);
 
-export const graph = workflow.compile();
+export const graph: any = workflow.compile();

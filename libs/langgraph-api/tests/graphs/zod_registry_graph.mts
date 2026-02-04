@@ -3,7 +3,7 @@
  * This tests Priority 2 of the schema extraction strategy.
  */
 import { z } from "zod/v3";
-import { StateGraph, START, END } from "@langchain/langgraph";
+import { StateGraph, START, END, GraphNode } from "@langchain/langgraph";
 import { withLangGraph } from "@langchain/langgraph/zod";
 
 // Define state using Zod with withLangGraph for jsonSchemaExtra
@@ -22,15 +22,13 @@ const AgentState = z.object({
   status: z.enum(["idle", "processing", "done"]).default("idle"),
 });
 
-type AgentStateType = z.infer<typeof AgentState>;
-
-async function processNode(state: AgentStateType): Promise<Partial<AgentStateType>> {
+const processNode: GraphNode<typeof AgentState> = (state) => {
   return {
-    messages: [`Message ${state.count + 1}`],
+    messages: `Message ${state.count + 1}`,
     count: state.count + 1,
     status: "processing",
   };
-}
+};
 
 const workflow = new StateGraph(AgentState)
   .addNode("process", processNode)
