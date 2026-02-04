@@ -84,13 +84,13 @@ export class SchemaMetaRegistry {
    * Internal map storing schema metadata.
    * @internal
    */
-  _map = new WeakMap<InteropZodType, SchemaMeta>();
+  _map = new Map<InteropZodType, SchemaMeta>();
 
   /**
-   * Cache for extended schfemas.
+   * Cache for extended schemas.
    * @internal
    */
-  _extensionCache = new Map<string, WeakMap<InteropZodType, InteropZodType>>();
+  _extensionCache = new Map<string, Map<InteropZodType, InteropZodType>>();
 
   /**
    * Retrieves the metadata associated with a given schema.
@@ -212,7 +212,7 @@ export class SchemaMetaRegistry {
       .map(([k, v]) => `${k}:${v}`)
       .join("|");
 
-    const cache = this._extensionCache.get(cacheKey) ?? new WeakMap();
+    const cache = this._extensionCache.get(cacheKey) ?? new Map();
     if (cache.has(schema)) return cache.get(schema)! as T;
 
     let modifiedSchema: InteropZodObject = schema;
