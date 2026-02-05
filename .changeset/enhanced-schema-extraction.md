@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph-api": minor
+"@langchain/langgraph-api": patch
 ---
 
 Enhanced JSON schema extraction for Studio with multi-tier strategy:
