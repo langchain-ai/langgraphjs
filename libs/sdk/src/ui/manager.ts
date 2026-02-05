@@ -241,6 +241,13 @@ export class StreamManager<
   }
 
   /**
+   * Get all subagents triggered by a specific AI message.
+   */
+  getSubagentsByMessage(messageId: string): SubagentStream[] {
+    return this.subagentManager.getSubagentsByMessage(messageId);
+  }
+
+  /**
    * Reconstruct subagent state from historical messages.
    *
    * This method should be called when loading thread history to restore
@@ -471,7 +478,8 @@ export class StreamManager<
                           id?: string;
                           name: string;
                           args: Record<string, unknown> | string;
-                        }>
+                        }>,
+                        msgObj.id as string | undefined
                       );
                     }
 
@@ -626,7 +634,10 @@ export class StreamManager<
                 "tool_calls" in msgDict &&
                 Array.isArray(msgDict.tool_calls)
               ) {
-                this.subagentManager.registerFromToolCalls(msgDict.tool_calls);
+                this.subagentManager.registerFromToolCalls(
+                  msgDict.tool_calls,
+                  msgDict.id as string | undefined
+                );
               }
 
               // Complete subagents when tool messages arrive (main agent only)

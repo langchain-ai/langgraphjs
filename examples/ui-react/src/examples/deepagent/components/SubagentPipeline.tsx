@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
+import type { SubagentStream } from "@langchain/langgraph-sdk/react";
 import { SubagentCard } from "./SubagentCard";
 
 /**
@@ -9,13 +10,13 @@ export function SubagentPipeline({
   subagents,
   isLoading,
 }: {
-  subagents: Map<string, any>;
+  subagents: SubagentStream[];
   isLoading: boolean;
 }) {
   // Sort subagents by type for consistent display order
   const sortOrder = ["weather-scout", "experience-curator", "budget-optimizer"];
   const sortedSubagents = useMemo(() => {
-    return [...subagents.values()].sort((a, b) => {
+    return [...subagents].sort((a, b) => {
       const aType = a.toolCall?.args?.subagent_type || "";
       const bType = b.toolCall?.args?.subagent_type || "";
       const aIndex = sortOrder.indexOf(aType);

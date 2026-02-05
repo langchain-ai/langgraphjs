@@ -177,6 +177,7 @@ export type UseStreamCustom<
   | "activeSubagents"
   | "getSubagent"
   | "getSubagentsByType"
+  | "getSubagentsByMessage"
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,

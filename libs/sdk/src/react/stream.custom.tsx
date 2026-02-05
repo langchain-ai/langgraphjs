@@ -298,5 +298,9 @@ export function useStreamCustom<
     getSubagentsByType(type: string) {
       return stream.getSubagentsByType(type);
     },
+
+    getSubagentsByMessage(messageId: string) {
+      return stream.getSubagentsByMessage(messageId);
+    },
   };
 }

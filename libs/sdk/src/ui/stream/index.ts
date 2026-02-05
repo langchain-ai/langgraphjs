@@ -162,7 +162,7 @@ export type InferSubagentStates<T> = T extends { "~deepAgentTypes": unknown }
  * the type of agent or graph passed to `useStream`:
  *
  * 1. **DeepAgent** (`~deepAgentTypes`) → {@link UseDeepAgentStream}
- *    - Includes: values, messages, toolCalls, subagents, getSubagentsByType
+ *    - Includes: values, messages, toolCalls, subagents, getSubagentsByType, getSubagentsByMessage
  *
  * 2. **ReactAgent** (`~agentTypes`) → {@link UseAgentStream}
  *    - Includes: values, messages, toolCalls, getToolCalls

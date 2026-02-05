@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
-import { AlertCircle, Layers, Sparkles, Loader2 } from "lucide-react";
+import { AlertCircle, Layers, Sparkles } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
-import type { SubagentStream } from "@langchain/langgraph-sdk/react";
 import type { Message } from "@langchain/langgraph-sdk";
 
 import { registerExample } from "../registry";
@@ -10,10 +9,9 @@ import { LoadingIndicator } from "../../components/Loading";
 import { EmptyState } from "../../components/States";
 import { MessageBubble } from "../../components/MessageBubble";
 import { MessageInput } from "../../components/MessageInput";
-import { SubagentStreamCard } from "./components/SubagentStreamCard";
+import { SubagentPipeline } from "./components/SubagentPipeline";
 
 import type { agent } from "./agent";
-import type { SubagentType } from "./types";
 
 const EXAMPLE_SUGGESTIONS = [
   "Research the current state of AI in healthcare and create a summary report",
@@ -62,105 +60,8 @@ function useThreadIdParam() {
   return [threadId, updateThreadId] as const;
 }
 
-/**
- * Sort subagents by type for consistent display order
- */
-const SORT_ORDER: SubagentType[] = [
-  "researcher",
-  "data-analyst",
-  "content-writer",
-];
-
-function sortSubagents(
-  subagents: Map<string, SubagentStream>
-): SubagentStream[] {
-  return [...subagents.values()].sort((a, b) => {
-    const aType = (a.toolCall?.args?.subagent_type as SubagentType) || "";
-    const bType = (b.toolCall?.args?.subagent_type as SubagentType) || "";
-    const aIndex = SORT_ORDER.indexOf(aType);
-    const bIndex = SORT_ORDER.indexOf(bType);
-    return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-  });
-}
-
-/**
- * Pipeline visualization showing all subagents with their tool calls
- */
-function SubagentPipeline({
-  subagents,
-  isLoading,
-}: {
-  subagents: Map<string, SubagentStream>;
-  isLoading: boolean;
-}) {
-  const sortedSubagents = useMemo(() => sortSubagents(subagents), [subagents]);
-
-  if (sortedSubagents.length === 0) {
-    return null;
-  }
-
-  const completedCount = sortedSubagents.filter(
-    (s) => s.status === "complete"
-  ).length;
-  const totalCount = sortedSubagents.length;
-
-  // Count total tool calls across all subagents
-  const totalToolCalls = sortedSubagents.reduce(
-    (acc, s) => acc + s.toolCalls.length,
-    0
-  );
-
-  return (
-    <div className="mb-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-brand-accent/20 flex items-center justify-center">
-            <Layers className="w-4 h-4 text-brand-accent" />
-          </div>
-          <div>
-            <h3 className="font-medium text-neutral-200">Subagent Pipeline</h3>
-            <p className="text-xs text-neutral-500">
-              {completedCount}/{totalCount} agents • {totalToolCalls} tool calls
-            </p>
-          </div>
-        </div>
-
-        {isLoading && (
-          <div className="flex items-center gap-2 text-brand-accent text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Agents working...</span>
-          </div>
-        )}
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-1.5 bg-neutral-800 rounded-full mb-4 overflow-hidden">
-        <div
-          className="h-full bg-linear-to-r from-blue-500 via-purple-500 to-rose-500 transition-all duration-500"
-          style={{ width: `${(completedCount / totalCount) * 100}%` }}
-        />
-      </div>
-
-      {/* Subagent Cards - Vertical Stack for better tool call visibility */}
-      <div className="space-y-4">
-        {sortedSubagents.map((subagent) => (
-          <SubagentStreamCard
-            key={subagent.id}
-            subagent={subagent}
-            defaultExpanded={
-              subagent.status === "running" || subagent.toolCalls.length > 0
-            }
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function DeepAgentToolsDemo() {
   const { scrollRef, contentRef } = useStickToBottom();
-  const [pipelineShown, setPipelineShown] = useState(false);
   const [threadId, onThreadId] = useThreadIdParam();
 
   // Use filterSubagentMessages to keep main messages clean
@@ -180,20 +81,6 @@ export function DeepAgentToolsDemo() {
 
   const hasMessages = stream.messages.length > 0;
   const hasSubagents = stream.subagents.size > 0;
-
-  // Reset pipeline shown state when messages are cleared
-  useEffect(() => {
-    if (!hasMessages && !hasSubagents) {
-      setPipelineShown(false);
-    }
-  }, [hasMessages, hasSubagents]);
-
-  // Mark pipeline as shown when we have subagents
-  useEffect(() => {
-    if (hasSubagents && !pipelineShown) {
-      setPipelineShown(true);
-    }
-  }, [hasSubagents, pipelineShown]);
 
   // Check if we're in the synthesis phase (subagents done, waiting for final response)
   const allSubagentsDone =
@@ -219,7 +106,6 @@ export function DeepAgentToolsDemo() {
 
   const handleSubmit = useCallback(
     (content: string) => {
-      setPipelineShown(false);
       stream.submit(
         { messages: [{ content, type: "human" }] },
         {
@@ -233,15 +119,30 @@ export function DeepAgentToolsDemo() {
     [stream]
   );
 
-  // Determine where to show pipeline (after the last human message)
-  const humanMessageIndex = useMemo(() => {
-    for (let i = displayMessages.length - 1; i >= 0; i--) {
-      if (displayMessages[i].type === "human") {
-        return i;
+  // Build a map of human message ID -> subagents for that turn.
+  // With filterSubagentMessages enabled, each turn follows a predictable
+  // pattern: Human -> AI (with tool_calls) -> Tool(s) -> AI (synthesis).
+  const subagentsByHumanMessage = useMemo(() => {
+    const result = new Map<
+      string,
+      ReturnType<typeof stream.getSubagentsByMessage>
+    >();
+    const msgs = stream.messages;
+
+    for (let i = 0; i < msgs.length; i++) {
+      if (msgs[i].type !== "human") continue;
+
+      // The next message in the turn is the AI message with tool_calls
+      const next = msgs[i + 1];
+      if (!next || next.type !== "ai" || !next.id) continue;
+
+      const subagents = stream.getSubagentsByMessage(next.id);
+      if (subagents.length > 0) {
+        result.set(msgs[i].id!, subagents);
       }
     }
-    return -1;
-  }, [displayMessages]);
+    return result;
+  }, [stream.messages, stream.subagents]);
 
   return (
     <div className="h-full flex flex-col">
@@ -257,38 +158,32 @@ export function DeepAgentToolsDemo() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {displayMessages.map((message, idx) => (
-                <div key={message.id ?? `msg-${idx}`}>
-                  <MessageBubble message={message} />
+              {displayMessages.map((message, idx) => {
+                const messageKey = message.id ?? `msg-${idx}`;
+                const turnSubagents =
+                  message.type === "human"
+                    ? subagentsByHumanMessage.get(messageKey)
+                    : undefined;
 
-                  {/* Show pipeline right after the human message */}
-                  {idx === humanMessageIndex &&
-                    pipelineShown &&
-                    hasSubagents && (
+                return (
+                  <div key={messageKey}>
+                    <MessageBubble message={message} />
+
+                    {/* Show pipeline right after the human message that triggered it */}
+                    {turnSubagents && turnSubagents.length > 0 && (
                       <div className="mt-6">
                         <SubagentPipeline
-                          subagents={stream.subagents}
+                          subagents={turnSubagents}
                           isLoading={stream.isLoading && !allSubagentsDone}
                         />
                       </div>
                     )}
-                </div>
-              ))}
-
-              {/* Show pipeline if we have subagents but no display messages yet */}
-              {displayMessages.length === 0 &&
-                pipelineShown &&
-                hasSubagents && (
-                  <SubagentPipeline
-                    subagents={stream.subagents}
-                    isLoading={stream.isLoading && !allSubagentsDone}
-                  />
-                )}
+                  </div>
+                );
+              })}
 
               {/* Show loading indicator when waiting for initial response */}
-              {stream.isLoading && !hasSubagents && !pipelineShown && (
-                <LoadingIndicator />
-              )}
+              {stream.isLoading && !hasSubagents && <LoadingIndicator />}
 
               {/* Show synthesis indicator when subagents are done but still loading */}
               {stream.isLoading && allSubagentsDone && (

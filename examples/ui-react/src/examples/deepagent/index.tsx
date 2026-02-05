@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { AlertCircle, Plane, Sparkles } from "lucide-react";
 import { useStream } from "@langchain/langgraph-sdk/react";
@@ -62,7 +62,6 @@ function useThreadIdParam() {
 
 export function DeepAgentDemo() {
   const { scrollRef, contentRef } = useStickToBottom();
-  const [pipelineShown, setPipelineShown] = useState(false);
   const [threadId, onThreadId] = useThreadIdParam();
 
   // Use filterSubagentMessages to keep main messages clean
@@ -79,20 +78,6 @@ export function DeepAgentDemo() {
 
   const hasMessages = stream.messages.length > 0;
   const hasSubagents = stream.subagents.size > 0;
-
-  // Reset pipeline shown state when messages are cleared
-  useEffect(() => {
-    if (!hasMessages && !hasSubagents) {
-      setPipelineShown(false);
-    }
-  }, [hasMessages, hasSubagents]);
-
-  // Mark pipeline as shown when we have subagents
-  useEffect(() => {
-    if (hasSubagents && !pipelineShown) {
-      setPipelineShown(true);
-    }
-  }, [hasSubagents, pipelineShown]);
 
   // Check if we're in the synthesis phase (subagents done, waiting for final response)
   const allSubagentsDone =
@@ -126,7 +111,6 @@ export function DeepAgentDemo() {
 
   const handleSubmit = useCallback(
     (content: string) => {
-      setPipelineShown(false);
       stream.submit(
         { messages: [{ content, type: "human" }] },
         {
@@ -140,15 +124,31 @@ export function DeepAgentDemo() {
     [stream]
   );
 
-  // Determine where to show pipeline (after the last human message)
-  const humanMessageIndex = useMemo(() => {
-    for (let i = displayMessages.length - 1; i >= 0; i--) {
-      if (displayMessages[i].type === "human") {
-        return i;
+  /**
+   * Build a map of human message ID -> subagents for that turn.
+   * A "turn" is everything between two consecutive human messages.
+   */
+  const subagentsByHumanMessage = useMemo(() => {
+    const result = new Map<
+      string,
+      ReturnType<typeof stream.getSubagentsByMessage>
+    >();
+    const msgs = stream.messages;
+
+    for (let i = 0; i < msgs.length; i++) {
+      if (msgs[i].type !== "human") continue;
+
+      // The next message in the turn is the AI message with tool_calls
+      const next = msgs[i + 1];
+      if (!next || next.type !== "ai" || !next.id) continue;
+
+      const subagents = stream.getSubagentsByMessage(next.id);
+      if (subagents.length > 0) {
+        result.set(msgs[i].id!, subagents);
       }
     }
-    return -1;
-  }, [displayMessages]);
+    return result;
+  }, [stream.messages, stream.subagents]);
 
   return (
     <div className="h-full flex flex-col">
@@ -164,23 +164,29 @@ export function DeepAgentDemo() {
             />
           ) : (
             <div className="flex flex-col gap-6">
-              {displayMessages.map((message, idx) => (
-                <div key={message.id ?? `msg-${idx}`}>
-                  <MessageBubble message={message} />
+              {displayMessages.map((message, idx) => {
+                const messageKey = message.id ?? `msg-${idx}`;
+                const turnSubagents =
+                  message.type === "human"
+                    ? subagentsByHumanMessage.get(messageKey)
+                    : undefined;
 
-                  {/* Show pipeline right after the human message */}
-                  {idx === humanMessageIndex &&
-                    pipelineShown &&
-                    hasSubagents && (
+                return (
+                  <div key={messageKey}>
+                    <MessageBubble message={message} />
+
+                    {/* Show pipeline right after the human message that triggered it */}
+                    {turnSubagents && turnSubagents.length > 0 && (
                       <div className="mt-6">
                         <SubagentPipeline
-                          subagents={stream.subagents}
+                          subagents={turnSubagents}
                           isLoading={stream.isLoading && !allSubagentsDone}
                         />
                       </div>
                     )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
 
               {stream.values.todos && stream.values.todos.length > 0 && (
                 <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
@@ -220,20 +226,8 @@ export function DeepAgentDemo() {
                 </div>
               )}
 
-              {/* Show pipeline if we have subagents but no display messages yet */}
-              {displayMessages.length === 0 &&
-                pipelineShown &&
-                hasSubagents && (
-                  <SubagentPipeline
-                    subagents={stream.subagents}
-                    isLoading={stream.isLoading && !allSubagentsDone}
-                  />
-                )}
-
               {/* Show loading indicator when waiting for initial response */}
-              {stream.isLoading && !hasSubagents && !pipelineShown && (
-                <LoadingIndicator />
-              )}
+              {stream.isLoading && !hasSubagents && <LoadingIndicator />}
 
               {/* Show synthesis indicator when subagents are done but still loading */}
               {stream.isLoading && allSubagentsDone && (

@@ -79,6 +79,7 @@ import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
  * - `activeSubagents` - Array of currently running subagents
  * - `getSubagent(id)` - Get a specific subagent by tool call ID
  * - `getSubagentsByType(type)` - Get all subagents of a specific type with typed state
+ * - `getSubagentsByMessage(messageId)` - Get all subagents triggered by a specific AI message
  *
  * It also enables the `filterSubagentMessages` option to exclude subagent
  * messages from the main `messages` array.
@@ -200,6 +201,35 @@ export interface UseDeepAgentStream<
      */
     (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
   };
+
+  /**
+   * Get all subagents triggered by a specific AI message.
+   *
+   * Useful for rendering subagent activities grouped by conversation turn.
+   * Each AI message that contains subagent tool calls will have its triggered
+   * subagents returned by this method.
+   *
+   * @param messageId - The ID of the AI message that triggered the subagents
+   * @returns Array of subagent streams triggered by that message
+   *
+   * @example
+   * ```tsx
+   * // Render subagents inline after the AI message that triggered them
+   * {stream.messages.map((msg) => (
+   *   <div key={msg.id}>
+   *     <MessageBubble message={msg} />
+   *     {msg.type === "ai" && "tool_calls" in msg && (
+   *       <SubagentPipeline
+   *         subagents={stream.getSubagentsByMessage(msg.id)}
+   *       />
+   *     )}
+   *   </div>
+   * ))}
+   * ```
+   */
+  getSubagentsByMessage: (
+    messageId: string
+  ) => SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>[];
 }
 
 /**
@@ -235,7 +265,7 @@ export interface UseDeepAgentStreamOptions<
    *
    * When an AI message contains tool calls with these names, they are
    * automatically tracked as subagent executions. This enables the
-   * `subagents`, `activeSubagents`, `getSubagent()`, and `getSubagentsByType()`
+   * `subagents`, `activeSubagents`, `getSubagent()`, `getSubagentsByType()`, and `getSubagentsByMessage()`
    * properties on the stream.
    *
    * @default ["task"]

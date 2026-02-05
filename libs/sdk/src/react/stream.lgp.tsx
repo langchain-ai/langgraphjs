@@ -762,5 +762,10 @@ export function useStreamLGP<
       trackStreamMode("updates", "messages-tuple");
       return stream.getSubagentsByType(type);
     },
+
+    getSubagentsByMessage(messageId: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagentsByMessage(messageId);
+    },
   };
 }

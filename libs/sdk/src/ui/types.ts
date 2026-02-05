@@ -189,6 +189,34 @@ export interface StreamBase<
     // Overload for unknown names - returns untyped streams
     (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
   };
+
+  /**
+   * Get all subagents triggered by a specific AI message.
+   *
+   * Useful for rendering subagent activities grouped by the AI message
+   * (and therefore conversation turn) that spawned them.
+   *
+   * @param messageId - The ID of the AI message that triggered the subagents.
+   * @returns Array of subagent streams triggered by that message.
+   *
+   * @example
+   * ```tsx
+   * // Render subagents after each AI message that triggered them
+   * {stream.messages.map((msg) => (
+   *   <div key={msg.id}>
+   *     <MessageBubble message={msg} />
+   *     {msg.type === "ai" && "tool_calls" in msg && (
+   *       <SubagentPipeline
+   *         subagents={stream.getSubagentsByMessage(msg.id)}
+   *       />
+   *     )}
+   *   </div>
+   * ))}
+   * ```
+   */
+  getSubagentsByMessage: (
+    messageId: string
+  ) => SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>[];
 }
 
 /**

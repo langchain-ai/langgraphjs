@@ -130,11 +130,15 @@ type SubagentStreamBase<ToolCall> = Omit<
   | "activeSubagents"
   | "getSubagent"
   | "getSubagentsByType"
+  | "getSubagentsByMessage"
   | "nodes"
   | "activeNodes"
   | "getNodeStream"
   | "getNodeStreamsByName"
->;
+> & {
+  /** Internal: ID of the AI message that triggered this subagent */
+  aiMessageId: string | null;
+};
 
 /**
  * Manages subagent execution state.
@@ -242,6 +246,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       activeSubagents: [],
       getSubagent: () => undefined,
       getSubagentsByType: () => [],
+      getSubagentsByMessage: () => [],
     };
   }
 
@@ -463,6 +468,20 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
+   * Get all subagents triggered by a specific AI message.
+   *
+   * @param messageId - The ID of the AI message.
+   * @returns Array of subagent streams triggered by that message.
+   */
+  getSubagentsByMessage(
+    messageId: string
+  ): SubagentStream<Record<string, unknown>, ToolCall>[] {
+    return [...this.subagents.values()]
+      .filter((s) => s.aiMessageId === messageId && this.isValidSubagent(s))
+      .map((s) => this.buildExecution(s));
+  }
+
+  /**
    * Parse tool call args, handling both object and string formats.
    * During streaming, args might come as a string that needs parsing.
    */
@@ -487,13 +506,15 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Creates pending subagent entries for each subagent tool call.
    *
    * @param toolCalls - The tool calls from an AI message
+   * @param aiMessageId - The ID of the AI message that triggered the tool calls
    */
   registerFromToolCalls(
     toolCalls: Array<{
       id?: string;
       name: string;
       args: Record<string, unknown> | string;
-    }>
+    }>,
+    aiMessageId?: string | null
   ): void {
     let hasChanges = false;
 
@@ -566,6 +587,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         error: null,
         namespace: [],
         messages: [],
+        aiMessageId: aiMessageId ?? null,
         parentId: null,
         depth: 0,
         startedAt: null,
@@ -915,6 +937,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           error: isComplete && status === "error" ? toolResult.content : null,
           namespace: [],
           messages: [], // Internal messages are not available from history
+          aiMessageId: (message.id as string) ?? null,
           parentId: null,
           depth: 0,
           startedAt: null,

@@ -9,50 +9,23 @@ import {
   Clock,
 } from "lucide-react";
 
-/**
- * Message interface for subagent messages
- */
-interface SubagentMessage {
-  id?: string;
-  type: "human" | "ai" | "tool" | "system";
-  content: string | Array<{ type: string; text?: string }>;
-}
-
-/**
- * SubagentStream interface (matches the one from the SDK)
- */
-interface SubagentStream {
-  id: string;
-  toolCall: {
-    id: string;
-    name: string;
-    args: {
-      description?: string;
-      subagent_type?: string;
-      [key: string]: unknown;
-    };
-  };
-  status: "pending" | "running" | "complete" | "error";
-  result: string | null;
-  error: string | null;
-  namespace: string[];
-  messages: SubagentMessage[];
-  startedAt: Date | null;
-  completedAt: Date | null;
-}
+import type { SubagentStream } from "@langchain/langgraph-sdk/react";
+import type { Message } from "@langchain/langgraph-sdk";
 
 /**
  * Extract streaming content from subagent messages.
  * This mirrors how the main stream handles messages.
  */
-function getStreamingContent(messages: SubagentMessage[]): string {
+function getStreamingContent(messages: Message[]): string {
   return messages
     .filter((m) => m.type === "ai")
     .map((m) => {
       if (typeof m.content === "string") return m.content;
       if (Array.isArray(m.content)) {
         return m.content
-          .filter((c) => c.type === "text" && c.text)
+          .filter((c): c is { type: "text"; text: string } =>
+            Boolean(c.type === "text" && c.text)
+          )
           .map((c) => c.text)
           .join("");
       }
@@ -254,7 +227,7 @@ export function SubagentCard({ subagent }: { subagent: SubagentStream }) {
           </div>
         ) : subagent.status === "error" ? (
           <div className="text-red-400 text-sm">
-            Error: {subagent.error || "Unknown error occurred"}
+            Error: {subagent.error ? "Unknown error occurred" : null}
           </div>
         ) : null}
       </div>
