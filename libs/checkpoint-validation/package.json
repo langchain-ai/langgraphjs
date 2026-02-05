@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-validation",
-  "version": "1.0.9",
+  "version": "1.0.0",
   "description": "Library for validating LangGraph checkpoint saver implementations.",
   "type": "module",
   "engines": {
@@ -10,12 +10,11 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
-    "directory": "libs/checkpoint-validation"
+    "url": "git@github.com:langchain-ai/langgraphjs.git"
   },
   "scripts": {
     "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-validation",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-validation && cp src/runner.ts dist/runner.ts",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-validation && cp src/runner.ts dist/runner.ts && tsc src/cli.ts --outDir dist --target ES2022 --module ES2022 --moduleResolution bundler --esModuleInterop",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
@@ -33,7 +32,7 @@
   "dependencies": {
     "vitest": "^3.2.4",
     "yargs": "^17.7.2",
-    "zod": "^3.25.76 || ^4"
+    "zod": "^3.23.8"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
@@ -46,8 +45,6 @@
     "@langchain/langgraph-checkpoint-redis": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
-    "testcontainers": "^11.0.3",
-    "redis": "^4.7.0",
     "@testcontainers/mongodb": "^11.0.3",
     "@testcontainers/postgresql": "^11.0.3",
     "@tsconfig/recommended": "^1.0.3",
@@ -64,10 +61,11 @@
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-prettier": "^4.2.1",
-    "mongodb": "^6.21.0",
+    "mongodb": "^6.8.0",
     "pg": "^8.12.0",
     "prettier": "^2.8.3",
     "rollup": "^4.37.0",
+    "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5"
   },
   "publishConfig": {
@@ -86,11 +84,6 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    },
-    "./cli": {
-      "input": "./src/cli.ts",
-      "import": "./dist/cli.js",
-      "require": "./dist/cli.cjs"
     },
     "./package.json": "./package.json"
   },

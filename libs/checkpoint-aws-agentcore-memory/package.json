@@ -1,0 +1,76 @@
+{
+  "name": "@langchain/langgraph-checkpoint-aws-agentcore-memory",
+  "version": "0.1.0",
+  "description": "LangGraph checkpointer implementation using AWS Bedrock AgentCore Memory",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:langchain-ai/langgraphjs.git"
+  },
+  "scripts": {
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-aws-agentcore-memory",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-aws-agentcore-memory",
+    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "prepublish": "pnpm build",
+    "test": "vitest run --exclude='**/*.int.test.ts'",
+    "test:watch": "vitest watch --exclude='**/*.int.test.ts'",
+    "test:int": "vitest run src/tests/checkpoints.int.test.ts",
+    "test:int:store": "vitest run src/tests/store.int.test.ts",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+    "lint": "pnpm lint:eslint && pnpm lint:dpdm",
+    "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
+    "format": "prettier --config .prettierrc --write \"src\"",
+    "format:check": "prettier --config .prettierrc --check \"src\""
+  },
+  "author": "Hasnain Virk",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.0.0",
+    "@langchain/core": "^0.3.0",
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@smithy/node-http-handler": "^3.0.0",
+    "@smithy/util-retry": "^3.0.0"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-checkpoint-validation": "workspace:*",
+    "@types/uuid": "^9",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "dotenv": "^16.0.0",
+    "dpdm": "^3.12.0",
+    "eslint": "^8.33.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-prettier": "^4.2.1",
+    "prettier": "^2.8.3",
+    "resolve-tspaths": "^0.8.8",
+    "typescript": "~5.1.6",
+    "uuid": "^9",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "require": "./dist-cjs/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "dist-cjs/",
+    "index.cjs",
+    "index.js",
+    "index.d.ts"
+  ]
+}

@@ -70,7 +70,7 @@ export function listTests<T extends BaseCheckpointSaver>(
       for await (const tuple of putTuples(checkpointer, generatedTuples)) {
         storedTuples.set(tuple.checkpoint.id, tuple);
       }
-    });
+    }, 120000); // 2 minutes timeout for setup with AWS throttling
 
     afterAll(async () => {
       await initializer.destroyCheckpointer?.(checkpointer);

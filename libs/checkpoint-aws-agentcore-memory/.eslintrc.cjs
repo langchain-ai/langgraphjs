@@ -23,8 +23,15 @@ module.exports = {
     "*.d.ts",
   ],
   rules: {
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/ban-ts-comment": "error",
     "no-process-env": 2,
-    "no-instanceof/no-instanceof": 2,
+    "no-instanceof/no-instanceof": "off",
+    "no-param-reassign": "off",
+    "no-plusplus": "off",
+    "no-constant-condition": "off",
+    "no-promise-executor-return": "off",
+    "no-unreachable-loop": "off",
     "@typescript-eslint/explicit-module-boundary-types": 0,
     "@typescript-eslint/no-empty-function": 0,
     "@typescript-eslint/no-shadow": 0,
@@ -39,7 +46,7 @@ module.exports = {
     "import/extensions": [2, "ignorePackages"],
     "import/no-extraneous-dependencies": [
       "error",
-      { devDependencies: ["src/tests/**/*.ts"] },
+      { devDependencies: ["**/*.test.ts", "**/*.int.test.ts"] },
     ],
     "import/no-unresolved": 0,
     "import/prefer-default-export": 0,
@@ -67,7 +74,7 @@ module.exports = {
   },
   overrides: [
     {
-      files: ["src/tests/**/*.ts"],
+      files: ["**/*.int.test.ts"],
       rules: {
         "no-process-env": "off",
       },
