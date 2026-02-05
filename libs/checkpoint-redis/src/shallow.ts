@@ -10,6 +10,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient } from "redis";
+import { escapeRediSearchTagValue } from "./utils.js";
 
 export interface TTLConfig {
   defaultTTL?: number; // TTL in minutes
@@ -263,9 +264,14 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
           } else if (value === null) {
             // Skip null values for RediSearch query, will handle in post-processing
           } else if (typeof value === "string") {
-            queryParts.push(`(@${key}:{${value}})`);
+            // Escape both key and value to prevent RediSearch query injection
+            const escapedKey = escapeRediSearchTagValue(key);
+            const escapedValue = escapeRediSearchTagValue(value);
+            queryParts.push(`(@${escapedKey}:{${escapedValue}})`);
           } else if (typeof value === "number") {
-            queryParts.push(`(@${key}:[${value} ${value}])`);
+            // Escape key to prevent injection; numbers don't need value escaping
+            const escapedKey = escapeRediSearchTagValue(key);
+            queryParts.push(`(@${escapedKey}:[${value} ${value}])`);
           }
         }
       }
