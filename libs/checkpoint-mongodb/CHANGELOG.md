@@ -1,5 +1,14 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.1.7
+
+### Patch Changes
+
+- [#1943](https://github.com/langchain-ai/langgraphjs/pull/1943) [`814c76d`](https://github.com/langchain-ai/langgraphjs/commit/814c76dc3938d0f6f7e17ca3bc11d6a12270b2a1) Thanks [@hntrl](https://github.com/hntrl)! - fix(mongodb): validate filter values are primitives
+
+  Added validation to ensure filter values in the `list()` method are primitive types
+  (string, number, boolean, or null).
+
 ## 1.1.6
 
 ### Patch Changes

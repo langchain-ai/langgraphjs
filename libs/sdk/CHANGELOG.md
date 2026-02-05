@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.5.6
+
+### Patch Changes
+
+- [#1940](https://github.com/langchain-ai/langgraphjs/pull/1940) [`d23a4db`](https://github.com/langchain-ai/langgraphjs/commit/d23a4dbcb98d0247869dcb876022d680f9c328c4) Thanks [@rx5ad](https://github.com/rx5ad)! - feat(sdk-js): add support for pausing/unpausing crons
+
 ## 1.5.5
 
 ### Patch Changes
