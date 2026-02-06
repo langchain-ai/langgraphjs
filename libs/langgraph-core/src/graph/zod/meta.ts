@@ -262,7 +262,35 @@ export class SchemaMetaRegistry {
   }
 }
 
-export const schemaMetaRegistry = new SchemaMetaRegistry();
+const SCHEMA_META_REGISTRY_KEY = Symbol.for(
+  "@langchain/langgraph/schemaMetaRegistry"
+);
+
+function isSchemaMetaRegistry(obj: unknown): obj is SchemaMetaRegistry {
+  return (
+    obj != null &&
+    typeof obj === "object" &&
+    "_map" in obj &&
+    "_extensionCache" in obj &&
+    typeof (obj as SchemaMetaRegistry).get === "function" &&
+    typeof (obj as SchemaMetaRegistry).extend === "function"
+  );
+}
+
+function getGlobalSchemaMetaRegistry(): SchemaMetaRegistry {
+  const existing = (globalThis as Record<symbol, unknown>)[
+    SCHEMA_META_REGISTRY_KEY
+  ];
+  if (isSchemaMetaRegistry(existing)) {
+    return existing;
+  }
+
+  const registry = new SchemaMetaRegistry();
+  (globalThis as Record<symbol, unknown>)[SCHEMA_META_REGISTRY_KEY] = registry;
+  return registry;
+}
+
+export const schemaMetaRegistry = getGlobalSchemaMetaRegistry();
 
 export function withLangGraph<
   TValue,
