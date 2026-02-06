@@ -120,7 +120,7 @@ describe("StreamManager", () => {
       expect(() => {
         streamManager.setStreamValues((prev) => {
           // prev should be null here since state.values is null
-          return { ...(prev ?? {}), messages: [] } as TestState;
+          return { ...prev, messages: [] } as TestState;
         });
       }).not.toThrow();
     });

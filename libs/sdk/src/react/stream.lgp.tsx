@@ -16,7 +16,7 @@ import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  UseStreamOptions,
+  AnyStreamOptions,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
@@ -27,6 +27,7 @@ import type {
   UseStreamThread,
 } from "../ui/types.js";
 import type { UseStream, SubmitOptions } from "./types.js";
+
 import { Client, getClientConfigHash } from "../client.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
@@ -157,7 +158,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
->(options: UseStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
+>(options: AnyStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
@@ -196,6 +197,8 @@ export function useStreamLGP<
     () =>
       new StreamManager<StateType, Bag>(messageManager, {
         throttle: options.throttle ?? false,
+        subagentToolNames: options.subagentToolNames,
+        filterSubagentMessages: options.filterSubagentMessages,
       })
   );
 
@@ -291,6 +294,28 @@ export function useStreamLGP<
     branchContext.threadHead?.values ??
     options.initialValues ??
     ({} as StateType);
+
+  // Reconstruct subagents from history when:
+  // 1. History is loaded (not loading, has data)
+  // 2. No active stream is running
+  // 3. Subagent filtering is enabled (otherwise subagents aren't tracked)
+  // This ensures subagent visualization persists after page refresh or stream completion
+  const historyMessages = getMessages(historyValues);
+  const shouldReconstructSubagents =
+    options.filterSubagentMessages &&
+    !stream.isLoading &&
+    !history.isLoading &&
+    historyMessages.length > 0;
+
+  useEffect(() => {
+    if (shouldReconstructSubagents) {
+      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
+      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+    }
+    // We intentionally only run this when shouldReconstructSubagents changes
+    // to avoid unnecessary reconstructions during streaming
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldReconstructSubagents, historyMessages.length]);
 
   const historyError = (() => {
     const error = branchContext.threadHead?.tasks?.at(-1)?.error;
@@ -388,7 +413,7 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         stream.setStreamValues((values) => {
-          const prev = { ...historyValues, ...(values ?? {}) };
+          const prev = { ...historyValues, ...values };
           if (submitOptions?.optimisticValues != null) {
             return {
               ...prev,
@@ -716,6 +741,31 @@ export function useStreamLGP<
       }
 
       return undefined;
+    },
+
+    get subagents() {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagents();
+    },
+
+    get activeSubagents() {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getActiveSubagents();
+    },
+
+    getSubagent(toolCallId: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagent(toolCallId);
+    },
+
+    getSubagentsByType(type: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagentsByType(type);
+    },
+
+    getSubagentsByMessage(messageId: string) {
+      trackStreamMode("updates", "messages-tuple");
+      return stream.getSubagentsByMessage(messageId);
     },
   };
 }

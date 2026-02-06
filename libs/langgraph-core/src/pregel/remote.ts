@@ -19,7 +19,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { StreamEvent } from "@langchain/core/tracers/log_stream";
 import { IterableReadableStream } from "@langchain/core/utils/stream";
-import { isBaseMessage } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
 
 import {
   BaseChannel,
@@ -67,7 +67,7 @@ const _serializeInputs = (obj: any): any => {
   }
 
   // Handle BaseMessage instances by converting them to a serializable format
-  if (isBaseMessage(obj)) {
+  if (BaseMessage.isInstance(obj)) {
     const dict = obj.toDict();
     return {
       ...dict.data,

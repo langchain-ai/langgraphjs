@@ -1,7 +1,14 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { StateGraph, START, END, Send } from "@langchain/langgraph";
-import { withLangGraph } from "@langchain/langgraph/zod";
-import { BaseMessage, AIMessage } from "@langchain/core/messages";
+import {
+  StateGraph,
+  START,
+  END,
+  Send,
+  StateSchema,
+  MessagesValue,
+  ReducedValue,
+} from "@langchain/langgraph";
+import { AIMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 /**
@@ -32,24 +39,20 @@ const practicalModel = new ChatOpenAI({
 });
 
 // Define the state schema with Zod
-const StateAnnotation = z.object({
-  messages: withLangGraph(z.custom<BaseMessage[]>(), {
-    reducer: {
-      fn: (left: BaseMessage[], right: BaseMessage | BaseMessage[]) => {
-        return Array.isArray(right) ? left.concat(right) : left.concat([right]);
-      },
-    },
-    default: () => [],
-  }),
+const StateAnnotation = new StateSchema({
+  messages: MessagesValue,
   topic: z.string().default(""),
   analyticalResearch: z.string().default(""),
   creativeResearch: z.string().default(""),
   practicalResearch: z.string().default(""),
   selectedResearch: z.string().default(""),
-  currentNode: z.string().default(""),
+  currentNode: new ReducedValue(z.string().default(""), {
+    inputSchema: z.string(),
+    reducer: (_: string, next: string) => next,
+  }),
 });
 
-type State = z.infer<typeof StateAnnotation>;
+type State = typeof StateAnnotation.State;
 
 /**
  * Dispatcher node - Extracts topic and triggers parallel research

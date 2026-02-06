@@ -1,12 +1,8 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
 import type { Client } from "../client.js";
 
-import type { ThreadState, Interrupt } from "../schema.js";
-import type {
-  Message,
-  AIMessage,
-  ToolCallWithResult,
-} from "../types.messages.js";
+import type { ThreadState } from "../schema.js";
+import type { Message } from "../types.messages.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
 import type {
@@ -22,6 +18,22 @@ import type {
   SubmitOptions,
   CustomSubmitOptions,
   RunCallbackMeta,
+  SubagentStream,
+  StreamBase,
+  DefaultSubagentStates,
+  // DeepAgent type helpers for subagent inference
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  BaseSubagentState,
 } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
 import type { StreamEvent } from "../types.js";
@@ -40,27 +52,34 @@ export type {
   SubmitOptions,
   CustomSubmitOptions,
   RunCallbackMeta,
+  SubagentStream,
+  StreamBase,
+  DefaultSubagentStates,
+  // DeepAgent type helpers for subagent inference
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  BaseSubagentState,
 };
 
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> {
-  /**
-   * The current values of the thread.
-   */
-  values: StateType;
-
-  /**
-   * Last seen error from the thread or during streaming.
-   */
-  error: unknown;
-
-  /**
-   * Whether the stream is currently running.
-   */
-  isLoading: boolean;
-
+  Bag extends BagTemplate = BagTemplate,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+> extends StreamBase<
+    StateType,
+    GetToolCallsType<StateType>,
+    GetInterruptType<Bag>,
+    SubagentStates
+  > {
   /**
    * Whether the thread is currently being loaded.
    */
@@ -99,83 +118,6 @@ export interface UseStream<
    * @experimental
    */
   experimental_branchTree: Sequence<StateType>;
-
-  /**
-   * Get the interrupt value for the stream if interrupted.
-   */
-  interrupt: Interrupt<GetInterruptType<Bag>> | undefined;
-
-  /**
-   * Messages inferred from the thread.
-   * Will automatically update with incoming message chunks.
-   * Includes all message types including ToolMessage.
-   */
-  messages: Message<GetToolCallsType<StateType>>[];
-
-  /**
-   * Tool calls paired with their results.
-   * Useful for rendering tool invocations and their outputs together.
-   *
-   * Each item contains the tool call from an AI message paired with its
-   * corresponding ToolMessage result (if available), along with lifecycle state.
-   *
-   * @example
-   * ```tsx
-   * // With type-safe tool calls - embed the type in your messages
-   * type MyToolCalls =
-   *   | { name: "get_weather"; args: { location: string }; id?: string }
-   *   | { name: "search"; args: { query: string }; id?: string };
-   *
-   * interface MyState {
-   *   messages: Message<MyToolCalls>[];
-   * }
-   *
-   * const stream = useStream<MyState>({ ... });
-   *
-   * {stream.toolCalls.map(({ id, call, result, state }) => {
-   *   if (call.name === "get_weather") {
-   *     // call.args is { location: string }
-   *     return (
-   *       <WeatherCard
-   *         key={id}
-   *         location={call.args.location}
-   *         result={result?.content}
-   *         isLoading={state === "pending"}
-   *       />
-   *     );
-   *   }
-   * })}
-   * ```
-   */
-  toolCalls: ToolCallWithResult<GetToolCallsType<StateType>>[];
-
-  /**
-   * Get tool calls for a specific AI message.
-   * Useful when rendering messages and their associated tool calls together.
-   *
-   * @param message - The AI message to get tool calls for.
-   * @returns Array of tool calls initiated by the message.
-   *
-   * @example
-   * ```tsx
-   * {stream.uiMessages.map((message) => {
-   *   if (message.type === "ai") {
-   *     const toolCalls = stream.getToolCalls(message);
-   *     if (toolCalls.length > 0) {
-   *       return (
-   *         <div key={message.id}>
-   *           {toolCalls.map(tc => <ToolCard key={tc.id} toolCall={tc} />)}
-   *         </div>
-   *       );
-   *     }
-   *   }
-   *   return <MessageBubble key={message.id} message={message} />;
-   * })}
-   * ```
-   */
-  getToolCalls: (
-    message: AIMessage<GetToolCallsType<StateType>>
-  ) => ToolCallWithResult<GetToolCallsType<StateType>>[];
 
   /**
    * Get the metadata for a message, such as first thread state the message
@@ -219,9 +161,10 @@ export interface UseStream<
 
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
 > = Pick<
-  UseStream<StateType, Bag>,
+  UseStream<StateType, Bag, SubagentStates>,
   | "values"
   | "error"
   | "isLoading"
@@ -230,6 +173,11 @@ export type UseStreamCustom<
   | "messages"
   | "toolCalls"
   | "getToolCalls"
+  | "subagents"
+  | "activeSubagents"
+  | "getSubagent"
+  | "getSubagentsByType"
+  | "getSubagentsByMessage"
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,

@@ -86,6 +86,7 @@ module.exports = {
       rules: {
         "no-instanceof/no-instanceof": 0,
         "@typescript-eslint/no-explicit-any": 0,
+        "import/no-extraneous-dependencies": 0,
       },
     },
   ],
