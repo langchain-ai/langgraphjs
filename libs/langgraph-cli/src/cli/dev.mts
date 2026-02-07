@@ -24,6 +24,7 @@ builder
   .option("-p, --port <number>", "port to run the server on", "2024")
   .option("-h, --host <string>", "host to bind to", "localhost")
   .option("--no-browser", "disable auto-opening the browser")
+  .option("--no-reload", "disable automatic reloading when code changes are detected")
   .option("-n, --n-jobs-per-worker <number>", "number of workers to run", "10")
   .option("-c, --config <path>", "path to configuration file", process.cwd())
   .option(
@@ -171,10 +172,12 @@ builder
         }
       };
 
-      watcher.on("all", async (_name, path) => {
-        logger.warn(`Detected changes in ${path}, restarting server`);
-        launchServer();
-      });
+      if (options.reload) {
+        watcher.on("all", async (_name, path) => {
+          logger.warn(`Detected changes in ${path}, restarting server`);
+          launchServer();
+        });
+      }
 
       // TODO: sometimes the server keeps sending stuff
       // while gracefully exiting
