@@ -87,7 +87,7 @@ export interface GraphSchema {
 export type Subgraphs = Record<string, GraphSchema>;
 
 export type Metadata = Optional<{
-  source?: "input" | "loop" | "update" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+  source?: "input" | "loop" | "update" | (string & {}); // eslint-disable-line @typescript-eslint/no-empty-object-type
 
   step?: number;
 
@@ -127,6 +127,7 @@ export interface AssistantBase {
   description?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface AssistantVersion extends AssistantBase {}
 
 export interface Assistant extends AssistantBase {
@@ -175,7 +176,7 @@ export interface Interrupt<TValue = unknown> {
    * Will be deprecated in the future.
    * @deprecated Will be removed in the future.
    */
-  when?: "during" | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+  when?: "during" | (string & {}); // eslint-disable-line @typescript-eslint/no-empty-object-type
 
   /**
    * Whether the interrupt can be resumed.
