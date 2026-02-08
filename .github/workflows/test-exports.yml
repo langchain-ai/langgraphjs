@@ -11,6 +11,9 @@ on:
   # Allow manual triggering (will build from scratch)
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: exports-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
