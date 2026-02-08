@@ -19,7 +19,7 @@
     "@types/react": "18.0.33",
     "@types/react-dom": "18.0.11",
     "eslint": "9.26.0",
-    "eslint-config-next": "13.3.0",
+    "eslint-config-next": "15.5.12",
     "next": "^15.4.7",
     "react": "18.2.0",
     "react-dom": "18.2.0",
