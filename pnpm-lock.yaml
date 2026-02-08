@@ -10,6 +10,7 @@ overrides:
   cheerio: ^1.0.0-rc.12
   semver: ^7.0.0
   zod: ^4.3.5
+  rolldown: 1.0.0-rc.2
 
 importers:
 
@@ -971,11 +972,11 @@ importers:
         specifier: ^10
         version: 10.0.0
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -987,13 +988,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1041,11 +1042,11 @@ importers:
         specifier: ^10
         version: 10.0.0
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1057,13 +1058,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1111,11 +1112,11 @@ importers:
         specifier: ^10
         version: 10.0.0
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1127,13 +1128,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1181,11 +1182,11 @@ importers:
         specifier: ^20
         version: 20.19.30
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1197,13 +1198,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1254,11 +1255,11 @@ importers:
         specifier: ^10
         version: 10.0.0
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1270,13 +1271,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1348,11 +1349,11 @@ importers:
         specifier: ^17.0.33
         version: 17.0.35
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       better-sqlite3:
         specifier: ^11.7.0
         version: 11.10.0
@@ -1367,13 +1368,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1458,11 +1459,11 @@ importers:
         specifier: ^1.0.3
         version: 1.0.13
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dpdm:
         specifier: ^3.12.0
         version: 3.14.0
@@ -1471,13 +1472,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1743,11 +1744,11 @@ importers:
         specifier: ^10
         version: 10.0.0
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@vitest/browser':
         specifier: ^3.0.8
         version: 3.2.4(msw@2.12.7(@types/node@20.19.30)(typescript@5.9.3))(playwright@1.57.0)(vite@7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))(vitest@3.2.4)
@@ -1768,13 +1769,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1837,11 +1838,11 @@ importers:
         specifier: ^1.0.3
         version: 1.0.13
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1853,13 +1854,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1910,11 +1911,11 @@ importers:
         specifier: ^1.0.3
         version: 1.0.13
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1926,13 +1927,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -1977,11 +1978,11 @@ importers:
         specifier: ^1.0.3
         version: 1.0.13
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1
@@ -1993,13 +1994,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -2096,11 +2097,11 @@ importers:
         specifier: ^9.0.1
         version: 9.0.8
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.12.0
-        version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^6.12.0
-        version: 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.0.0
+        version: 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       deepagents:
         specifier: ^1.5.0
         version: 1.5.0(openai@6.16.0(ws@8.19.0)(zod@4.3.5))(zod-to-json-schema@3.25.1(zod@4.3.5))
@@ -2109,13 +2110,13 @@ importers:
         version: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-config-airbnb-base:
         specifier: ^15.0.0
-        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-config-prettier:
         specifier: ^8.6.0
         version: 8.10.2(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-import:
         specifier: ^2.29.1
-        version: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+        version: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       eslint-plugin-no-instanceof:
         specifier: ^1.0.1
         version: 1.0.1
@@ -3052,8 +3053,8 @@ packages:
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
 
-  '@oxc-project/types@0.112.0':
-    resolution: {integrity: sha512-m6RebKHIRsax2iCwVpYW2ErQwa4ywHJrE4sCK3/8JK8ZZAWOKXaRJFl/uP51gaVyyXlaS4+chU1nSCdzYf6QqQ==}
+  '@oxc-project/types@0.111.0':
+    resolution: {integrity: sha512-bh54LJMafgRGl2cPQ/QM+tI5rWaShm/wK9KywEj/w36MhiPKXYM67H2y3q+9pr4YO7ufwg2AKdBAZkhHBD8ClA==}
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -3128,8 +3129,8 @@ packages:
     peerDependencies:
       '@redis/client': ^1.0.0
 
-  '@rolldown/binding-android-arm64@1.0.0-rc.3':
-    resolution: {integrity: sha512-0T1k9FinuBZ/t7rZ8jN6OpUKPnUjNdYHoj/cESWrQ3ZraAJ4OMm6z7QjSfCxqj8mOp9kTKc1zHK3kGz5vMu+nQ==}
+  '@rolldown/binding-android-arm64@1.0.0-rc.2':
+    resolution: {integrity: sha512-AGV80viZ4Hil4C16GFH+PSwq10jclV9oyRFhD+5HdowPOCJ+G+99N5AClQvMkUMIahTY8cX0SQpKEEWcCg6fSA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [android]
@@ -3139,8 +3140,8 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@rolldown/binding-darwin-arm64@1.0.0-rc.3':
-    resolution: {integrity: sha512-JWWLzvcmc/3pe7qdJqPpuPk91SoE/N+f3PcWx/6ZwuyDVyungAEJPvKm/eEldiDdwTmaEzWfIR+HORxYWrCi1A==}
+  '@rolldown/binding-darwin-arm64@1.0.0-rc.2':
+    resolution: {integrity: sha512-PYR+PQu1mMmQiiKHN2JiOctvH32Xc/Mf+Su2RSmWtC9BbIqlqsVWjbulnShk0imjRim0IsbkMMCN5vYQwiuqaA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [darwin]
@@ -3150,20 +3151,20 @@ packages:
     cpu: [x64]
     os: [darwin]
 
-  '@rolldown/binding-darwin-x64@1.0.0-rc.3':
-    resolution: {integrity: sha512-MTakBxfx3tde5WSmbHxuqlDsIW0EzQym+PJYGF4P6lG2NmKzi128OGynoFUqoD5ryCySEY85dug4v+LWGBElIw==}
+  '@rolldown/binding-darwin-x64@1.0.0-rc.2':
+    resolution: {integrity: sha512-X2G36Z6oh5ynoYpE2JAyG+uQ4kO/3N7XydM/I98FNk8VVgDKjajFF+v7TXJ2FMq6xa7Xm0UIUKHW2MRQroqoUA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [darwin]
 
-  '@rolldown/binding-freebsd-x64@1.0.0-rc.3':
-    resolution: {integrity: sha512-jje3oopyOLs7IwfvXoS6Lxnmie5JJO7vW29fdGFu5YGY1EDbVDhD+P9vDihqS5X6fFiqL3ZQZCMBg6jyHkSVww==}
+  '@rolldown/binding-freebsd-x64@1.0.0-rc.2':
+    resolution: {integrity: sha512-XpiFTsl9qjiDfrmJF6CE3dgj1nmSbxUIT+p2HIbXV6WOj/32btO8FKkWSsOphUwVinEt3R8HVkVrcLtFNruMMQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [freebsd]
 
-  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.3':
-    resolution: {integrity: sha512-A0n8P3hdLAaqzSFrQoA42p23ZKBYQOw+8EH5r15Sa9X1kD9/JXe0YT2gph2QTWvdr0CVK2BOXiK6ENfy6DXOag==}
+  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.2':
+    resolution: {integrity: sha512-zjYZ99e47Wlygs4hW+sQ+kshlO8ake9OoY2ecnJ9cwpDGiiIB9rQ3LgP3kt8j6IeVyMSksu//VEhc8Mrd1lRIw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm]
     os: [linux]
@@ -3173,8 +3174,8 @@ packages:
     cpu: [arm64]
     os: [linux]
 
-  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.3':
-    resolution: {integrity: sha512-kWXkoxxarYISBJ4bLNf5vFkEbb4JvccOwxWDxuK9yee8lg5XA7OpvlTptfRuwEvYcOZf+7VS69Uenpmpyo5Bjw==}
+  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.2':
+    resolution: {integrity: sha512-Piso04EZ9IHV1aZSsLQVMOPTiCq4Ps2UPL3pchjNXHGJGFiB9U42s22LubPaEBFS+i6tCawS5EarIwex1zC4BA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
@@ -3184,8 +3185,8 @@ packages:
     cpu: [arm64]
     os: [linux]
 
-  '@rolldown/binding-linux-arm64-musl@1.0.0-rc.3':
-    resolution: {integrity: sha512-Z03/wrqau9Bicfgb3Dbs6SYTHliELk2PM2LpG2nFd+cGupTMF5kanLEcj2vuuJLLhptNyS61rtk7SOZ+lPsTUA==}
+  '@rolldown/binding-linux-arm64-musl@1.0.0-rc.2':
+    resolution: {integrity: sha512-OwJCeMZlmjKsN9pfJfTmqYpe3JC+L6RO87+hu9ajRLr1Lh6cM2FRQ8e48DLRyRDww8Ti695XQvqEANEMmsuzLw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
@@ -3195,8 +3196,8 @@ packages:
     cpu: [x64]
     os: [linux]
 
-  '@rolldown/binding-linux-x64-gnu@1.0.0-rc.3':
-    resolution: {integrity: sha512-iSXXZsQp08CSilff/DCTFZHSVEpEwdicV3W8idHyrByrcsRDVh9sGC3sev6d8BygSGj3vt8GvUKBPCoyMA4tgQ==}
+  '@rolldown/binding-linux-x64-gnu@1.0.0-rc.2':
+    resolution: {integrity: sha512-uQqBmA8dTWbKvfqbeSsXNUssRGfdgQCc0hkGfhQN7Pf85wG2h0Fd/z2d+ykyT4YbcsjQdgEGxBNsg3v4ekOuEA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
@@ -3206,20 +3207,20 @@ packages:
     cpu: [x64]
     os: [linux]
 
-  '@rolldown/binding-linux-x64-musl@1.0.0-rc.3':
-    resolution: {integrity: sha512-qaj+MFudtdCv9xZo9znFvkgoajLdc+vwf0Kz5N44g+LU5XMe+IsACgn3UG7uTRlCCvhMAGXm1XlpEA5bZBrOcw==}
+  '@rolldown/binding-linux-x64-musl@1.0.0-rc.2':
+    resolution: {integrity: sha512-ItZabVsICCYWHbP+jcAgNzjPAYg5GIVQp/NpqT6iOgWctaMYtobClc5m0kNtxwqfNrLXoyt998xUey4AvcxnGQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
 
-  '@rolldown/binding-openharmony-arm64@1.0.0-rc.3':
-    resolution: {integrity: sha512-U662UnMETyjT65gFmG9ma+XziENrs7BBnENi/27swZPYagubfHRirXHG2oMl+pEax2WvO7Kb9gHZmMakpYqBHQ==}
+  '@rolldown/binding-openharmony-arm64@1.0.0-rc.2':
+    resolution: {integrity: sha512-U4UYANwafcMXSUC0VqdrqTAgCo2v8T7SiuTYwVFXgia0KOl8jiv3okwCFqeZNuw/G6EWDiqhT8kK1DLgyLsxow==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [openharmony]
 
-  '@rolldown/binding-wasm32-wasi@1.0.0-rc.3':
-    resolution: {integrity: sha512-gekrQ3Q2HiC1T5njGyuUJoGpK/l6B/TNXKed3fZXNf9YRTJn3L5MOZsFBn4bN2+UX+8+7hgdlTcEsexX988G4g==}
+  '@rolldown/binding-wasm32-wasi@1.0.0-rc.2':
+    resolution: {integrity: sha512-ZIWCjQsMon4tqRoao0Vzowjwx0cmFT3kublh2nNlgeasIJMWlIGHtr0d4fPypm57Rqx4o1h4L8SweoK2q6sMGA==}
     engines: {node: '>=14.0.0'}
     cpu: [wasm32]
 
@@ -3228,8 +3229,8 @@ packages:
     cpu: [arm64]
     os: [win32]
 
-  '@rolldown/binding-win32-arm64-msvc@1.0.0-rc.3':
-    resolution: {integrity: sha512-85y5JifyMgs8m5K2XzR/VDsapKbiFiohl7s5lEj7nmNGO0pkTXE7q6TQScei96BNAsoK7JC3pA7ukA8WRHVJpg==}
+  '@rolldown/binding-win32-arm64-msvc@1.0.0-rc.2':
+    resolution: {integrity: sha512-NIo7vwRUPEzZ4MuZGr5YbDdjJ84xdiG+YYf8ZBfTgvIsk9wM0sZamJPEXvaLkzVIHpOw5uqEHXS85Gqqb7aaqQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [win32]
@@ -3244,8 +3245,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rolldown/binding-win32-x64-msvc@1.0.0-rc.3':
-    resolution: {integrity: sha512-a4VUQZH7LxGbUJ3qJ/TzQG8HxdHvf+jOnqf7B7oFx1TEBm+j2KNL2zr5SQ7wHkNAcaPevF6gf9tQnVBnC4mD+A==}
+  '@rolldown/binding-win32-x64-msvc@1.0.0-rc.2':
+    resolution: {integrity: sha512-bLKzyLFbvngeNPZocuLo3LILrKwCrkyMxmRXs6fZYDrvh7cyZRw9v56maDL9ipPas0OOmQK1kAKYwvTs30G21Q==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
@@ -3253,8 +3254,8 @@ packages:
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
 
-  '@rolldown/pluginutils@1.0.0-rc.3':
-    resolution: {integrity: sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q==}
+  '@rolldown/pluginutils@1.0.0-rc.2':
+    resolution: {integrity: sha512-izyXV/v+cHiRfozX62W9htOAvwMo4/bXKDrQ+vom1L1qRuexPock/7VZDAhnpHCLNejd3NJ6hiab+tO0D44Rgw==}
 
   '@rollup/plugin-commonjs@13.0.2':
     resolution: {integrity: sha512-9JXf2k8xqvMYfqmhgtB6eCgMN9fbxwF1XDF3mGKJc6pkAmt0jnsqurxQ0tC1akQKNSXCm7c3unQxa3zuxtZ7mQ==}
@@ -3869,63 +3870,64 @@ packages:
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
 
-  '@typescript-eslint/eslint-plugin@6.21.0':
-    resolution: {integrity: sha512-oy9+hTPCUFpngkEZUSzbf9MxI65wbKFoQYsgPdILTfbUldp5ovUuphZVe4i30emU9M/kP+T64Di0mxl7dSw3MA==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/eslint-plugin@8.54.0':
+    resolution: {integrity: sha512-hAAP5io/7csFStuOmR782YmTthKBJ9ND3WVL60hcOjvtGFb+HJxH4O5huAcmcZ9v9G8P+JETiZ/G1B8MALnWZQ==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
-      '@typescript-eslint/parser': ^6.0.0 || ^6.0.0-alpha
-      eslint: ^7.0.0 || ^8.0.0
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
+      '@typescript-eslint/parser': ^8.54.0
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <6.0.0'
 
-  '@typescript-eslint/parser@6.21.0':
-    resolution: {integrity: sha512-tbsV1jPne5CkFQCgPBcDOt30ItF7aJoZL997JSF7MhGQqOeT3svWRYxiqlfA5RUdlHN6Fi+EI9bxqbdyAUZjYQ==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/parser@8.54.0':
+    resolution: {integrity: sha512-BtE0k6cjwjLZoZixN0t5AKP0kSzlGu7FctRXYuPAm//aaiZhmfq1JwdYpYr1brzEspYyFeF+8XF5j2VK6oalrA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
-      eslint: ^7.0.0 || ^8.0.0
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <6.0.0'
 
-  '@typescript-eslint/scope-manager@6.21.0':
-    resolution: {integrity: sha512-OwLUIWZJry80O99zvqXVEioyniJMa+d2GrqpUTqi5/v5D5rOrppJVBPa0yKCblcigC0/aYAzxxqQ1B+DS2RYsg==}
-    engines: {node: ^16.0.0 || >=18.0.0}
-
-  '@typescript-eslint/type-utils@6.21.0':
-    resolution: {integrity: sha512-rZQI7wHfao8qMX3Rd3xqeYSMCL3SoiSQLBATSiVKARdFGCYSRvmViieZjqc58jKgs8Y8i9YvVVhRbHSTA4VBag==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/project-service@8.54.0':
+    resolution: {integrity: sha512-YPf+rvJ1s7MyiWM4uTRhE4DvBXrEV+d8oC3P9Y2eT7S+HBS0clybdMIPnhiATi9vZOYDc7OQ1L/i6ga6NFYK/g==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
-      eslint: ^7.0.0 || ^8.0.0
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
+      typescript: '>=4.8.4 <6.0.0'
 
-  '@typescript-eslint/types@6.21.0':
-    resolution: {integrity: sha512-1kFmZ1rOm5epu9NZEZm1kckCDGj5UJEf7P1kliH4LKu/RkwpsfqqGmY2OOcUs18lSlQBKLDYBOGxRVtrMN5lpg==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/scope-manager@8.54.0':
+    resolution: {integrity: sha512-27rYVQku26j/PbHYcVfRPonmOlVI6gihHtXFbTdB5sb6qA0wdAQAbyXFVarQ5t4HRojIz64IV90YtsjQSSGlQg==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@typescript-eslint/typescript-estree@6.21.0':
-    resolution: {integrity: sha512-6npJTkZcO+y2/kr+z0hc4HwNfrrP4kNYh57ek7yCNlrBjWQ1Y0OS7jiZTkgumrvkX5HkEKXFZkkdFNkaW2wmUQ==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/tsconfig-utils@8.54.0':
+    resolution: {integrity: sha512-dRgOyT2hPk/JwxNMZDsIXDgyl9axdJI3ogZ2XWhBPsnZUv+hPesa5iuhdYt2gzwA9t8RE5ytOJ6xB0moV0Ujvw==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
-      typescript: '*'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
+      typescript: '>=4.8.4 <6.0.0'
 
-  '@typescript-eslint/utils@6.21.0':
-    resolution: {integrity: sha512-NfWVaC8HP9T8cbKQxHcsJBY5YE1O33+jpMwN45qzWWaPDZgLIbo12toGMWnmhvCpd3sIxkpDw3Wv1B3dYrbDQQ==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/type-utils@8.54.0':
+    resolution: {integrity: sha512-hiLguxJWHjjwL6xMBwD903ciAwd7DmK30Y9Axs/etOkftC3ZNN9K44IuRD/EB08amu+Zw6W37x9RecLkOo3pMA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
-      eslint: ^7.0.0 || ^8.0.0
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <6.0.0'
 
-  '@typescript-eslint/visitor-keys@6.21.0':
-    resolution: {integrity: sha512-JJtkDduxLi9bivAB+cYOVMtbkqdPOhZ+ZI5LC47MIRrDV4Yn2o+ZnW10Nkmr28xRpSpdJ6Sm42Hjf2+REYXm0A==}
-    engines: {node: ^16.0.0 || >=18.0.0}
+  '@typescript-eslint/types@8.54.0':
+    resolution: {integrity: sha512-PDUI9R1BVjqu7AUDsRBbKMtwmjWcn4J3le+5LpcFgWULN3LvHC5rkc9gCVxbrsrGmO1jfPybN5s6h4Jy+OnkAA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@typescript-eslint/typescript-estree@8.54.0':
+    resolution: {integrity: sha512-BUwcskRaPvTk6fzVWgDPdUndLjB87KYDrN5EYGetnktoeAvPtO4ONHlAZDnj5VFnUANg0Sjm7j4usBlnoVMHwA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      typescript: '>=4.8.4 <6.0.0'
+
+  '@typescript-eslint/utils@8.54.0':
+    resolution: {integrity: sha512-9Cnda8GS57AQakvRyG0PTejJNlA2xhvyNtEVIMlDWOOeEyBkYWhGPnfrIAnqxLMTSTo6q8g12XVjjev5l1NvMA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0
+      typescript: '>=4.8.4 <6.0.0'
+
+  '@typescript-eslint/visitor-keys@8.54.0':
+    resolution: {integrity: sha512-VFlhGSl4opC0bprJiItPQ1RfUhGDIBokcPwaFH4yiBCaNPeld/9VeXbiPO1cLyorQi1G1vL+ecBk1x8o1axORA==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260120.1':
     resolution: {integrity: sha512-r3pWFuR2H7mn6ScwpH5jJljKQqKto0npVuJSk6pRwFwexpTyxOGmJTZJ1V0AWiisaNxU2+CNAqWFJSJYIE/QTg==}
@@ -4146,10 +4148,6 @@ packages:
   array-includes@3.1.9:
     resolution: {integrity: sha512-FmeCCAenzH0KH381SPT5FZmiA/TmpndpcaShhfgEN9eCVjnFBqq3l1xrI42y8+PPLI6hypzou4GXw00WHmPBLQ==}
     engines: {node: '>= 0.4'}
-
-  array-union@2.1.0:
-    resolution: {integrity: sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw==}
-    engines: {node: '>=8'}
 
   array.prototype.findlastindex@1.2.6:
     resolution: {integrity: sha512-F/TKATkzseUExPlfvmwQKGITM3DGTK+vkAsCZoDc5daVygbJBnjEUCbgkAvVFsgfXfX4YIqZ/27G3k3tdXrTxQ==}
@@ -4939,10 +4937,6 @@ packages:
   diffie-hellman@5.0.3:
     resolution: {integrity: sha512-kqag/Nl+f3GwyK25fhUMYj81BUOrZ9IuJsjIcDE5icNM9FJHAVm3VcUDxdLPoQtTuUylWm6ZIknYJwwaPxsUzg==}
 
-  dir-glob@3.0.1:
-    resolution: {integrity: sha512-WkrWp9GR4KXfKGYzOLmTuGVi1UWFfws377n9cc55/tb6DuqyF6pcQ5AbiHEshaDpY9v6oaSr2XCDidGmMwdzIA==}
-    engines: {node: '>=8'}
-
   docker-compose@0.24.8:
     resolution: {integrity: sha512-plizRs/Vf15H+GCVxq2EUvyPK7ei9b/cVesHvjnX4xaXjM9spHe2Ytq0BitndFgvTJ3E3NljPNUEl7BAN43iZw==}
     engines: {node: '>= 6.0.0'}
@@ -5535,19 +5529,12 @@ packages:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
 
-  globby@11.1.0:
-    resolution: {integrity: sha512-jhIXaOzy1sb8IyocaruWSn1TjmnBVs8Ayhcy83rmxNJ8q2uWKCAj3CnJY+KpGSXCueAPc0i05kVvVKtP1t9S3g==}
-    engines: {node: '>=10'}
-
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
-
-  graphemer@1.4.0:
-    resolution: {integrity: sha512-EtKwoO6kxCL9WO5xipiHTZlSzBm7WLT627TqC/uVRd0HKmq8NXyebnNYxDoBi7wt8eTWrUrKXCOVaFq9x1kgag==}
 
   graphql@16.12.0:
     resolution: {integrity: sha512-DKKrynuQRne0PNpEbzuEdHlYOMksHSUI8Zc9Unei5gTsMNA2/vMpoMz/yKba50pejK56qj98qM0SjYxAKi13gQ==}
@@ -5667,6 +5654,10 @@ packages:
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
+    engines: {node: '>= 4'}
+
+  ignore@7.0.5:
+    resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
     engines: {node: '>= 4'}
 
   import-fresh@3.3.1:
@@ -6225,10 +6216,6 @@ packages:
     resolution: {integrity: sha512-lKwV/1brpG6mBUFHtb7NUmtABCb2WZZmm2wNiOA5hAb8VdCS4B3dtMWyvcoViccwAW/COERjXLt0zP1zXUN26g==}
     engines: {node: '>=10'}
 
-  minimatch@9.0.3:
-    resolution: {integrity: sha512-RHiac9mvaRw0x3AYRgDC1CxAP7HTcNrrECeA8YYJeWnpo+2Q5CegtZjaotWTWxDG3UeGA1coE05iH1mPjT/2mg==}
-    engines: {node: '>=16 || 14 >=14.17'}
-
   minimatch@9.0.5:
     resolution: {integrity: sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow==}
     engines: {node: '>=16 || 14 >=14.17'}
@@ -6599,10 +6586,6 @@ packages:
   path-to-regexp@8.3.0:
     resolution: {integrity: sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==}
 
-  path-type@4.0.0:
-    resolution: {integrity: sha512-gDKb8aZMDeD/tZWs9P6+q0J9Mwkdl6xMV8TjnGP3qJVJ06bdMgkbBlLU8IdfOsIsFz2BW1rNVT3XuNEl8zPAvw==}
-    engines: {node: '>=8'}
-
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
@@ -6963,7 +6946,7 @@ packages:
     engines: {node: '>=20.18.0'}
     peerDependencies:
       '@typescript/native-preview': '>=7.0.0-dev.20250601.1'
-      rolldown: ^1.0.0-beta.9
+      rolldown: 1.0.0-rc.2
       typescript: ^5.0.0
       vue-tsc: ~3.0.3
     peerDependenciesMeta:
@@ -6974,8 +6957,8 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown@1.0.0-rc.3:
-    resolution: {integrity: sha512-Po/YZECDOqVXjIXrtC5h++a5NLvKAQNrd9ggrIG3sbDfGO5BqTUsrI6l8zdniKRp3r5Tp/2JTrXqx4GIguFCMw==}
+  rolldown@1.0.0-rc.2:
+    resolution: {integrity: sha512-1g/8Us9J8sgJGn3hZfBecX1z4U3y5KO7V/aV2U1M/9UUzLNqHA8RfFQ/NPT7HLxOIldyIgrcjaYTRvA81KhJIg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -7137,10 +7120,6 @@ packages:
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
-
-  slash@3.0.0:
-    resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
-    engines: {node: '>=8'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -7418,11 +7397,11 @@ packages:
   ts-algebra@2.0.0:
     resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
 
-  ts-api-utils@1.4.3:
-    resolution: {integrity: sha512-i3eMG77UTMD0hZhgRS562pv83RC6ukSAC2GMNWc+9dieh/+jDM5u5YG+NHX6VNDRHQcHwmsTHctP9LhbC3WxVw==}
-    engines: {node: '>=16'}
+  ts-api-utils@2.4.0:
+    resolution: {integrity: sha512-3TaVTaAv2gTiMB35i3FiGJaRfwb3Pyn/j3m/bfAvGe8FB7CF6u+LMYqYlDh7reQf7UNvoTvdfAqHGmPGOSsPmA==}
+    engines: {node: '>=18.12'}
     peerDependencies:
-      typescript: '>=4.2.0'
+      typescript: '>=4.8.4'
 
   ts-morph@21.0.1:
     resolution: {integrity: sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg==}
@@ -8941,7 +8920,7 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@oxc-project/types@0.112.0': {}
+  '@oxc-project/types@0.111.0': {}
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
@@ -9003,55 +8982,55 @@ snapshots:
     dependencies:
       '@redis/client': 1.6.1
 
-  '@rolldown/binding-android-arm64@1.0.0-rc.3':
+  '@rolldown/binding-android-arm64@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-darwin-arm64@0.15.1':
     optional: true
 
-  '@rolldown/binding-darwin-arm64@1.0.0-rc.3':
+  '@rolldown/binding-darwin-arm64@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-darwin-x64@0.15.1':
     optional: true
 
-  '@rolldown/binding-darwin-x64@1.0.0-rc.3':
+  '@rolldown/binding-darwin-x64@1.0.0-rc.2':
     optional: true
 
-  '@rolldown/binding-freebsd-x64@1.0.0-rc.3':
+  '@rolldown/binding-freebsd-x64@1.0.0-rc.2':
     optional: true
 
-  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.3':
+  '@rolldown/binding-linux-arm-gnueabihf@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-linux-arm64-gnu@0.15.1':
     optional: true
 
-  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.3':
+  '@rolldown/binding-linux-arm64-gnu@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-linux-arm64-musl@0.15.1':
     optional: true
 
-  '@rolldown/binding-linux-arm64-musl@1.0.0-rc.3':
+  '@rolldown/binding-linux-arm64-musl@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-linux-x64-gnu@0.15.1':
     optional: true
 
-  '@rolldown/binding-linux-x64-gnu@1.0.0-rc.3':
+  '@rolldown/binding-linux-x64-gnu@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-linux-x64-musl@0.15.1':
     optional: true
 
-  '@rolldown/binding-linux-x64-musl@1.0.0-rc.3':
+  '@rolldown/binding-linux-x64-musl@1.0.0-rc.2':
     optional: true
 
-  '@rolldown/binding-openharmony-arm64@1.0.0-rc.3':
+  '@rolldown/binding-openharmony-arm64@1.0.0-rc.2':
     optional: true
 
-  '@rolldown/binding-wasm32-wasi@1.0.0-rc.3':
+  '@rolldown/binding-wasm32-wasi@1.0.0-rc.2':
     dependencies:
       '@napi-rs/wasm-runtime': 1.1.1
     optional: true
@@ -9059,7 +9038,7 @@ snapshots:
   '@rolldown/binding-win32-arm64-msvc@0.15.1':
     optional: true
 
-  '@rolldown/binding-win32-arm64-msvc@1.0.0-rc.3':
+  '@rolldown/binding-win32-arm64-msvc@1.0.0-rc.2':
     optional: true
 
   '@rolldown/binding-win32-ia32-msvc@0.15.1':
@@ -9068,12 +9047,12 @@ snapshots:
   '@rolldown/binding-win32-x64-msvc@0.15.1':
     optional: true
 
-  '@rolldown/binding-win32-x64-msvc@1.0.0-rc.3':
+  '@rolldown/binding-win32-x64-msvc@1.0.0-rc.2':
     optional: true
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 
-  '@rolldown/pluginutils@1.0.0-rc.3': {}
+  '@rolldown/pluginutils@1.0.0-rc.2': {}
 
   '@rollup/plugin-commonjs@13.0.2(rollup@2.79.2)':
     dependencies:
@@ -9665,91 +9644,96 @@ snapshots:
       '@types/node': 18.19.130
     optional: true
 
-  '@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/eslint-plugin@8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
-      '@typescript-eslint/parser': 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/scope-manager': 6.21.0
-      '@typescript-eslint/type-utils': 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/utils': 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/visitor-keys': 6.21.0
-      debug: 4.4.3
+      '@typescript-eslint/parser': 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/scope-manager': 8.54.0
+      '@typescript-eslint/type-utils': 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/visitor-keys': 8.54.0
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
-      graphemer: 1.4.0
-      ignore: 5.3.2
+      ignore: 7.0.5
       natural-compare: 1.4.0
-      semver: 7.7.3
-      ts-api-utils: 1.4.3(typescript@5.9.3)
-    optionalDependencies:
+      ts-api-utils: 2.4.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/scope-manager': 6.21.0
-      '@typescript-eslint/types': 6.21.0
-      '@typescript-eslint/typescript-estree': 6.21.0(typescript@5.9.3)
-      '@typescript-eslint/visitor-keys': 6.21.0
+      '@typescript-eslint/scope-manager': 8.54.0
+      '@typescript-eslint/types': 8.54.0
+      '@typescript-eslint/typescript-estree': 8.54.0(typescript@5.9.3)
+      '@typescript-eslint/visitor-keys': 8.54.0
       debug: 4.4.3
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
-    optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/scope-manager@6.21.0':
+  '@typescript-eslint/project-service@8.54.0(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/types': 6.21.0
-      '@typescript-eslint/visitor-keys': 6.21.0
+      '@typescript-eslint/tsconfig-utils': 8.54.0(typescript@5.9.3)
+      '@typescript-eslint/types': 8.54.0
+      debug: 4.4.3
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - supports-color
 
-  '@typescript-eslint/type-utils@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/scope-manager@8.54.0':
     dependencies:
-      '@typescript-eslint/typescript-estree': 6.21.0(typescript@5.9.3)
-      '@typescript-eslint/utils': 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/types': 8.54.0
+      '@typescript-eslint/visitor-keys': 8.54.0
+
+  '@typescript-eslint/tsconfig-utils@8.54.0(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
+
+  '@typescript-eslint/type-utils@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
+    dependencies:
+      '@typescript-eslint/types': 8.54.0
+      '@typescript-eslint/typescript-estree': 8.54.0(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       debug: 4.4.3
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
-      ts-api-utils: 1.4.3(typescript@5.9.3)
-    optionalDependencies:
+      ts-api-utils: 2.4.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/types@6.21.0': {}
+  '@typescript-eslint/types@8.54.0': {}
 
-  '@typescript-eslint/typescript-estree@6.21.0(typescript@5.9.3)':
+  '@typescript-eslint/typescript-estree@8.54.0(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/types': 6.21.0
-      '@typescript-eslint/visitor-keys': 6.21.0
+      '@typescript-eslint/project-service': 8.54.0(typescript@5.9.3)
+      '@typescript-eslint/tsconfig-utils': 8.54.0(typescript@5.9.3)
+      '@typescript-eslint/types': 8.54.0
+      '@typescript-eslint/visitor-keys': 8.54.0
       debug: 4.4.3
-      globby: 11.1.0
-      is-glob: 4.0.3
-      minimatch: 9.0.3
+      minimatch: 9.0.5
       semver: 7.7.3
-      ts-api-utils: 1.4.3(typescript@5.9.3)
-    optionalDependencies:
+      tinyglobby: 0.2.15
+      ts-api-utils: 2.4.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/utils@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/utils@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
-      '@types/json-schema': 7.0.15
-      '@types/semver': 7.7.1
-      '@typescript-eslint/scope-manager': 6.21.0
-      '@typescript-eslint/types': 6.21.0
-      '@typescript-eslint/typescript-estree': 6.21.0(typescript@5.9.3)
+      '@typescript-eslint/scope-manager': 8.54.0
+      '@typescript-eslint/types': 8.54.0
+      '@typescript-eslint/typescript-estree': 8.54.0(typescript@5.9.3)
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
-      semver: 7.7.3
+      typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
-      - typescript
 
-  '@typescript-eslint/visitor-keys@6.21.0':
+  '@typescript-eslint/visitor-keys@8.54.0':
     dependencies:
-      '@typescript-eslint/types': 6.21.0
-      eslint-visitor-keys: 3.4.3
+      '@typescript-eslint/types': 8.54.0
+      eslint-visitor-keys: 4.2.1
 
   '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260120.1':
     optional: true
@@ -10057,8 +10041,6 @@ snapshots:
       get-intrinsic: 1.3.0
       is-string: 1.1.1
       math-intrinsics: 1.1.0
-
-  array-union@2.1.0: {}
 
   array.prototype.findlastindex@1.2.6:
     dependencies:
@@ -10906,10 +10888,6 @@ snapshots:
       miller-rabin: 4.0.1
       randombytes: 2.1.0
 
-  dir-glob@3.0.1:
-    dependencies:
-      path-type: 4.0.0
-
   docker-compose@0.24.8:
     dependencies:
       yaml: 2.8.2
@@ -11192,11 +11170,11 @@ snapshots:
 
   escape-string-regexp@5.0.0: {}
 
-  eslint-config-airbnb-base@15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)):
+  eslint-config-airbnb-base@15.0.0(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)):
     dependencies:
       confusing-browser-globals: 1.0.11
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       object.assign: 4.1.7
       object.entries: 1.1.9
       semver: 7.7.3
@@ -11213,17 +11191,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
-      '@typescript-eslint/parser': 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/parser': 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-import-resolver-node: 0.3.9
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -11234,7 +11212,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1)
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -11246,7 +11224,7 @@ snapshots:
       string.prototype.trimend: 1.0.9
       tsconfig-paths: 3.15.0
     optionalDependencies:
-      '@typescript-eslint/parser': 6.21.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/parser': 8.54.0(eslint@9.26.0(@cfworker/json-schema@4.1.1)(jiti@2.6.1))(typescript@5.9.3)
     transitivePeerDependencies:
       - eslint-import-resolver-typescript
       - eslint-import-resolver-webpack
@@ -11672,20 +11650,9 @@ snapshots:
       define-properties: 1.2.1
       gopd: 1.2.0
 
-  globby@11.1.0:
-    dependencies:
-      array-union: 2.1.0
-      dir-glob: 3.0.1
-      fast-glob: 3.3.3
-      ignore: 5.3.2
-      merge2: 1.4.1
-      slash: 3.0.0
-
   gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
-
-  graphemer@1.4.0: {}
 
   graphql@16.12.0: {}
 
@@ -11821,6 +11788,8 @@ snapshots:
   ieee754@1.2.1: {}
 
   ignore@5.3.2: {}
+
+  ignore@7.0.5: {}
 
   import-fresh@3.3.1:
     dependencies:
@@ -12370,10 +12339,6 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.2
 
-  minimatch@9.0.3:
-    dependencies:
-      brace-expansion: 2.0.2
-
   minimatch@9.0.5:
     dependencies:
       brace-expansion: 2.0.2
@@ -12777,8 +12742,6 @@ snapshots:
 
   path-to-regexp@8.3.0: {}
 
-  path-type@4.0.0: {}
-
   pathe@2.0.3: {}
 
   pathval@2.0.1: {}
@@ -13173,7 +13136,7 @@ snapshots:
 
   robust-predicates@3.0.2: {}
 
-  rolldown-plugin-dts@0.15.10(@typescript/native-preview@7.0.0-dev.20260120.1)(rolldown@1.0.0-rc.3)(typescript@5.9.3):
+  rolldown-plugin-dts@0.15.10(@typescript/native-preview@7.0.0-dev.20260120.1)(rolldown@1.0.0-rc.2)(typescript@5.9.3):
     dependencies:
       '@babel/generator': 7.28.6
       '@babel/parser': 7.28.6
@@ -13183,7 +13146,7 @@ snapshots:
       debug: 4.4.3
       dts-resolver: 2.1.3
       get-tsconfig: 4.13.0
-      rolldown: 1.0.0-rc.3
+      rolldown: 1.0.0-rc.2
     optionalDependencies:
       '@typescript/native-preview': 7.0.0-dev.20260120.1
       typescript: 5.9.3
@@ -13191,24 +13154,24 @@ snapshots:
       - oxc-resolver
       - supports-color
 
-  rolldown@1.0.0-rc.3:
+  rolldown@1.0.0-rc.2:
     dependencies:
-      '@oxc-project/types': 0.112.0
-      '@rolldown/pluginutils': 1.0.0-rc.3
+      '@oxc-project/types': 0.111.0
+      '@rolldown/pluginutils': 1.0.0-rc.2
     optionalDependencies:
-      '@rolldown/binding-android-arm64': 1.0.0-rc.3
-      '@rolldown/binding-darwin-arm64': 1.0.0-rc.3
-      '@rolldown/binding-darwin-x64': 1.0.0-rc.3
-      '@rolldown/binding-freebsd-x64': 1.0.0-rc.3
-      '@rolldown/binding-linux-arm-gnueabihf': 1.0.0-rc.3
-      '@rolldown/binding-linux-arm64-gnu': 1.0.0-rc.3
-      '@rolldown/binding-linux-arm64-musl': 1.0.0-rc.3
-      '@rolldown/binding-linux-x64-gnu': 1.0.0-rc.3
-      '@rolldown/binding-linux-x64-musl': 1.0.0-rc.3
-      '@rolldown/binding-openharmony-arm64': 1.0.0-rc.3
-      '@rolldown/binding-wasm32-wasi': 1.0.0-rc.3
-      '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.3
-      '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.3
+      '@rolldown/binding-android-arm64': 1.0.0-rc.2
+      '@rolldown/binding-darwin-arm64': 1.0.0-rc.2
+      '@rolldown/binding-darwin-x64': 1.0.0-rc.2
+      '@rolldown/binding-freebsd-x64': 1.0.0-rc.2
+      '@rolldown/binding-linux-arm-gnueabihf': 1.0.0-rc.2
+      '@rolldown/binding-linux-arm64-gnu': 1.0.0-rc.2
+      '@rolldown/binding-linux-arm64-musl': 1.0.0-rc.2
+      '@rolldown/binding-linux-x64-gnu': 1.0.0-rc.2
+      '@rolldown/binding-linux-x64-musl': 1.0.0-rc.2
+      '@rolldown/binding-openharmony-arm64': 1.0.0-rc.2
+      '@rolldown/binding-wasm32-wasi': 1.0.0-rc.2
+      '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.2
+      '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.2
 
   rollup@2.79.2:
     optionalDependencies:
@@ -13451,8 +13414,6 @@ snapshots:
       totalist: 3.0.1
 
   sisteransi@1.0.5: {}
-
-  slash@3.0.0: {}
 
   source-map-js@1.2.1: {}
 
@@ -13779,7 +13740,7 @@ snapshots:
 
   ts-algebra@2.0.0: {}
 
-  ts-api-utils@1.4.3(typescript@5.9.3):
+  ts-api-utils@2.4.0(typescript@5.9.3):
     dependencies:
       typescript: 5.9.3
 
@@ -13804,8 +13765,8 @@ snapshots:
       diff: 8.0.3
       empathic: 2.0.0
       hookable: 5.5.3
-      rolldown: 1.0.0-rc.3
-      rolldown-plugin-dts: 0.15.10(@typescript/native-preview@7.0.0-dev.20260120.1)(rolldown@1.0.0-rc.3)(typescript@5.9.3)
+      rolldown: 1.0.0-rc.2
+      rolldown-plugin-dts: 0.15.10(@typescript/native-preview@7.0.0-dev.20260120.1)(rolldown@1.0.0-rc.2)(typescript@5.9.3)
       semver: 7.7.3
       tinyexec: 1.0.2
       tinyglobby: 0.2.15
