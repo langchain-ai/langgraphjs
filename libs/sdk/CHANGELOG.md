@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.6.0
+
+### Minor Changes
+
+- [#1903](https://github.com/langchain-ai/langgraphjs/pull/1903) [`8d5c2d6`](https://github.com/langchain-ai/langgraphjs/commit/8d5c2d688d330012638d8f34ce20a454600ebc1b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(sdk): add multi-subagent tracking to useStream
+
 ## 1.5.6
 
 ### Patch Changes
