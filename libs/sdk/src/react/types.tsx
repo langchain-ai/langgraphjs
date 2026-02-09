@@ -170,6 +170,7 @@ export type UseStreamCustom<
   | "isLoading"
   | "stop"
   | "interrupt"
+  | "interrupts"
   | "messages"
   | "toolCalls"
   | "getToolCalls"

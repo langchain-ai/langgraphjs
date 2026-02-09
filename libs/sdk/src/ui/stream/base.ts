@@ -85,9 +85,17 @@ export interface BaseStream<
 
   /**
    * Current interrupt, if the stream is interrupted.
-   * Used for human-in-the-loop workflows.
+   * Convenience alias for `interrupts[0]`.
+   * For workflows with multiple concurrent interrupts, use `interrupts` instead.
    */
   interrupt: Interrupt<GetInterruptType<Bag>> | undefined;
+
+  /**
+   * All current interrupts from the stream.
+   * When using Send() fan-out with per-task interrupt() calls,
+   * multiple interrupts may be pending simultaneously.
+   */
+  interrupts: Interrupt<GetInterruptType<Bag>>[];
 
   /**
    * Stops the currently running stream.

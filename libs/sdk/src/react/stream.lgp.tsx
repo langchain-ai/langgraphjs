@@ -675,33 +675,41 @@ export function useStreamLGP<
       return branchContext.branchTree;
     },
 
-    get interrupt() {
+    get interrupts(): Interrupt<InterruptType>[] {
       if (
         values != null &&
         "__interrupt__" in values &&
         Array.isArray(values.__interrupt__)
       ) {
         const valueInterrupts = values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
+        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
         return valueInterrupts;
       }
 
       // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
-      if (stream.isLoading) return undefined;
+      if (stream.isLoading) return [];
 
-      const interrupts = branchContext.threadHead?.tasks?.at(-1)?.interrupts;
-      if (interrupts == null || interrupts.length === 0) {
-        // check if there's a next task present
-        const next = branchContext.threadHead?.next ?? [];
-        if (!next.length || error != null) return undefined;
-        return { when: "breakpoint" };
+      // Collect interrupts from ALL tasks (not just the last one)
+      const allTasks = branchContext.threadHead?.tasks ?? [];
+      const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
+
+      if (allInterrupts.length > 0) {
+        return allInterrupts as Interrupt<InterruptType>[];
       }
 
-      // Return only the current interrupt
-      return interrupts.at(-1) as Interrupt<InterruptType> | undefined;
+      // check if there's a next task present (breakpoint-style interrupt)
+      const next = branchContext.threadHead?.next ?? [];
+      if (!next.length || error != null) return [];
+      return [{ when: "breakpoint" }];
+    },
+
+    get interrupt() {
+      const all = this.interrupts;
+      if (all.length === 0) return undefined;
+      if (all.length === 1) return all[0];
+
+      // Multiple interrupts: return the array for backward compat
+      return all as unknown as Interrupt<InterruptType>;
     },
 
     get messages(): Message<ToolCallType>[] {

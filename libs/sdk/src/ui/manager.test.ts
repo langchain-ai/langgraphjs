@@ -213,6 +213,89 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("multiple interrupts", () => {
+    it("should preserve all interrupts in __interrupt__ array", async () => {
+      const interrupts = [
+        { id: "int-1", value: "approve tool 1?" },
+        { id: "int-2", value: "approve tool 2?" },
+        { id: "int-3", value: "approve tool 3?" },
+      ];
+
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: interrupts,
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      // All three interrupts should be preserved in stream values
+      const values = streamManager.values as unknown as {
+        __interrupt__: typeof interrupts;
+      };
+      expect(values.__interrupt__).toHaveLength(3);
+      expect(values.__interrupt__[0].id).toBe("int-1");
+      expect(values.__interrupt__[1].id).toBe("int-2");
+      expect(values.__interrupt__[2].id).toBe("int-3");
+    });
+
+    it("should preserve single interrupt in __interrupt__ array", async () => {
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-1", value: "approve?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(1);
+      expect(values.__interrupt__[0].id).toBe("int-1");
+    });
+  });
+
   describe("regression: handling null/undefined data", () => {
     it("should not throw TypeError when values data is null", async () => {
       const events = [

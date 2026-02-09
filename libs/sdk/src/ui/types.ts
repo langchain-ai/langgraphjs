@@ -132,8 +132,16 @@ export interface StreamBase<
 
   /**
    * Get the interrupt value for the stream if interrupted.
+   * Convenience alias for `interrupts[0]`.
    */
   interrupt: Interrupt<InterruptType> | undefined;
+
+  /**
+   * All current interrupts from the stream.
+   * When using Send() fan-out with per-task interrupt() calls,
+   * multiple interrupts may be pending simultaneously.
+   */
+  interrupts: Interrupt<InterruptType>[];
 
   /**
    * All currently active and completed subagent streams.
