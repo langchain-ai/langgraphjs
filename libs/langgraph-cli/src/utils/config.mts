@@ -64,11 +64,20 @@ const BaseConfigSchema = z.object({
 });
 
 const DEFAULT_PYTHON_VERSION = "3.11" as const;
-const DEFAULT_NODE_VERSION = "20" as const;
+const DEFAULT_NODE_VERSION = "24" as const;
+const MIN_NODE_VERSION = 20;
 const PYTHON_EXTENSIONS = [".py", ".pyx", ".pyd", ".pyi"];
 
 const PythonVersionSchema = z.union([z.literal("3.11"), z.literal("3.12")]);
-const NodeVersionSchema = z.union([z.literal("20"), z.literal("22")]);
+const NodeVersionSchema = z.string().refine(
+  (version) => {
+    const majorVersion = parseInt(version.split(".")[0], 10);
+    return !isNaN(majorVersion) && majorVersion >= MIN_NODE_VERSION;
+  },
+  {
+    message: `Node.js version must be >= ${MIN_NODE_VERSION}`,
+  }
+);
 
 const PythonConfigSchema = BaseConfigSchema.merge(
   z.object({
