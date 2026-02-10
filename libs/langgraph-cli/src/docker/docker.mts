@@ -241,17 +241,27 @@ async function updateGraphPaths(
   }
 }
 
-export function getBaseImage(config: Config) {
+export function getBaseImage(config: Config, apiVersion?: string) {
+  const resolvedApiVersion = apiVersion ?? config.api_version;
+
   if ("node_version" in config) {
-    return `langchain/langgraphjs-api:${
-      config._INTERNAL_docker_tag || config.node_version
-    }`;
+    if (config._INTERNAL_docker_tag) {
+      return `langchain/langgraphjs-api:${config._INTERNAL_docker_tag}`;
+    }
+    if (resolvedApiVersion) {
+      return `langchain/langgraphjs-api:${resolvedApiVersion}-node${config.node_version}`;
+    }
+    return `langchain/langgraphjs-api:${config.node_version}`;
   }
 
   if ("python_version" in config) {
-    return `langchain/langgraph-api:${
-      config._INTERNAL_docker_tag || config.python_version
-    }`;
+    if (config._INTERNAL_docker_tag) {
+      return `langchain/langgraph-api:${config._INTERNAL_docker_tag}`;
+    }
+    if (resolvedApiVersion) {
+      return `langchain/langgraph-api:${resolvedApiVersion}-py${config.python_version}`;
+    }
+    return `langchain/langgraph-api:${config.python_version}`;
   }
 
   throw new Error("Invalid config type");
