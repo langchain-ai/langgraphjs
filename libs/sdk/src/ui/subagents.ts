@@ -440,7 +440,10 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Get all currently running subagents.
    * Filters out incomplete/phantom subagents.
    */
-  getActiveSubagents(): SubagentStreamInterface<Record<string, unknown>, ToolCall>[] {
+  getActiveSubagents(): SubagentStreamInterface<
+    Record<string, unknown>,
+    ToolCall
+  >[] {
     return [...this.subagents.values()]
       .filter((s) => s.status === "running" && this.isValidSubagent(s))
       .map((s) => this.buildExecution(s));
