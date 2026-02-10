@@ -932,9 +932,7 @@ describe("getBaseImage", () => {
       graphs: { agent: "./agent.py:graph" },
       api_version: "0.2.74",
     });
-    expect(getBaseImage(config)).toBe(
-      "langchain/langgraph-api:0.2.74-py3.11"
-    );
+    expect(getBaseImage(config)).toBe("langchain/langgraph-api:0.2.74-py3.11");
   });
 
   it("api_version override parameter", () => {
