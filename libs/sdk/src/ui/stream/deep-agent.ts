@@ -9,7 +9,10 @@
 
 import type { DefaultToolCall } from "../../types.messages.js";
 import type { BagTemplate } from "../../types.template.js";
-import type { SubagentStream, DefaultSubagentStates } from "../types.js";
+import type {
+  SubagentStreamInterface,
+  DefaultSubagentStates,
+} from "../types.js";
 import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
 
 /**
@@ -109,7 +112,11 @@ export interface UseDeepAgentStream<
    */
   subagents: Map<
     string,
-    SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+    SubagentStreamInterface<
+      SubagentStates[keyof SubagentStates],
+      ToolCall,
+      keyof SubagentStates & string
+    >
   >;
 
   /**
@@ -130,9 +137,10 @@ export interface UseDeepAgentStream<
    * ));
    * ```
    */
-  activeSubagents: SubagentStream<
+  activeSubagents: SubagentStreamInterface<
     SubagentStates[keyof SubagentStates],
-    ToolCall
+    ToolCall,
+    keyof SubagentStates & string
   >[];
 
   /**
@@ -156,7 +164,11 @@ export interface UseDeepAgentStream<
   getSubagent: (
     toolCallId: string
   ) =>
-    | SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+    | SubagentStreamInterface<
+        SubagentStates[keyof SubagentStates],
+        ToolCall,
+        keyof SubagentStates & string
+      >
     | undefined;
 
   /**
@@ -190,16 +202,18 @@ export interface UseDeepAgentStream<
      * Overload for known subagent names - returns typed streams.
      * TypeScript infers the state type from SubagentStates[TName].
      */
-    <TName extends keyof SubagentStates & string>(type: TName): SubagentStream<
-      SubagentStates[TName],
-      ToolCall
-    >[];
+    <TName extends keyof SubagentStates & string>(
+      type: TName
+    ): SubagentStreamInterface<SubagentStates[TName], ToolCall, TName>[];
 
     /**
      * Overload for unknown names - returns untyped streams.
      * Used when the subagent name is not known at compile time.
      */
-    (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
+    (type: string): SubagentStreamInterface<
+      Record<string, unknown>,
+      ToolCall
+    >[];
   };
 
   /**
@@ -229,7 +243,11 @@ export interface UseDeepAgentStream<
    */
   getSubagentsByMessage: (
     messageId: string
-  ) => SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>[];
+  ) => SubagentStreamInterface<
+    SubagentStates[keyof SubagentStates],
+    ToolCall,
+    keyof SubagentStates & string
+  >[];
 }
 
 /**

@@ -5,7 +5,7 @@ import type {
   ToolCallWithResult,
 } from "../types.messages.js";
 import type {
-  SubagentStream,
+  SubagentStreamInterface,
   SubagentToolCall,
   SubagentStatus,
 } from "./types.js";
@@ -121,7 +121,7 @@ export interface SubagentManagerOptions {
  * Excludes derived properties that are computed on retrieval.
  */
 type SubagentStreamBase<ToolCall> = Omit<
-  SubagentStream<Record<string, unknown>, ToolCall>,
+  SubagentStreamInterface<Record<string, unknown>, ToolCall>,
   | "isLoading"
   | "toolCalls"
   | "getToolCalls"
@@ -216,7 +216,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   private createSubagentStream(
     base: SubagentStreamBase<ToolCall>
-  ): SubagentStream<Record<string, unknown>, ToolCall> {
+  ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
     const { messages } = base;
     const allToolCalls = getToolCallsWithResults<ToolCall>(messages);
 
@@ -241,7 +241,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       // Nested subagent tracking (empty for now, future enhancement)
       subagents: new Map<
         string,
-        SubagentStream<Record<string, unknown>, ToolCall>
+        SubagentStreamInterface<Record<string, unknown>, ToolCall>
       >(),
       activeSubagents: [],
       getSubagent: () => undefined,
@@ -407,7 +407,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   private buildExecution(
     base: SubagentStreamBase<ToolCall>
-  ): SubagentStream<Record<string, unknown>, ToolCall> {
+  ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
     // Get fresh messages from the manager
     const messages = this.getMessagesForSubagent(base.id);
     return this.createSubagentStream({
@@ -422,11 +422,11 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   getSubagents(): Map<
     string,
-    SubagentStream<Record<string, unknown>, ToolCall>
+    SubagentStreamInterface<Record<string, unknown>, ToolCall>
   > {
     const result = new Map<
       string,
-      SubagentStream<Record<string, unknown>, ToolCall>
+      SubagentStreamInterface<Record<string, unknown>, ToolCall>
     >();
     for (const [id, subagent] of this.subagents) {
       if (this.isValidSubagent(subagent)) {
@@ -440,7 +440,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Get all currently running subagents.
    * Filters out incomplete/phantom subagents.
    */
-  getActiveSubagents(): SubagentStream<Record<string, unknown>, ToolCall>[] {
+  getActiveSubagents(): SubagentStreamInterface<Record<string, unknown>, ToolCall>[] {
     return [...this.subagents.values()]
       .filter((s) => s.status === "running" && this.isValidSubagent(s))
       .map((s) => this.buildExecution(s));
@@ -451,7 +451,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   getSubagent(
     toolCallId: string
-  ): SubagentStream<Record<string, unknown>, ToolCall> | undefined {
+  ): SubagentStreamInterface<Record<string, unknown>, ToolCall> | undefined {
     const subagent = this.subagents.get(toolCallId);
     return subagent ? this.buildExecution(subagent) : undefined;
   }
@@ -461,7 +461,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   getSubagentsByType(
     type: string
-  ): SubagentStream<Record<string, unknown>, ToolCall>[] {
+  ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[] {
     return [...this.subagents.values()]
       .filter((s) => s.toolCall.args.subagent_type === type)
       .map((s) => this.buildExecution(s));
@@ -475,7 +475,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   getSubagentsByMessage(
     messageId: string
-  ): SubagentStream<Record<string, unknown>, ToolCall>[] {
+  ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[] {
     return [...this.subagents.values()]
       .filter((s) => s.aiMessageId === messageId && this.isValidSubagent(s))
       .map((s) => this.buildExecution(s));

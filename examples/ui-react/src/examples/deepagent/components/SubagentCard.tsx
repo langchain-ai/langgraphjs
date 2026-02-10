@@ -9,8 +9,15 @@ import {
   Clock,
 } from "lucide-react";
 
-import type { SubagentStream } from "@langchain/langgraph-sdk/react";
+import type {
+  SubagentStream,
+  InferSubagentNames,
+} from "@langchain/langgraph-sdk/react";
 import type { Message } from "@langchain/langgraph-sdk";
+
+import type { agent } from "../agent";
+
+type SubagentName = InferSubagentNames<typeof agent>;
 
 /**
  * Extract streaming content from subagent messages.
@@ -38,7 +45,7 @@ function getStreamingContent(messages: Message[]): string {
  * Configuration for each subagent type
  */
 const SUBAGENT_CONFIGS: Record<
-  string,
+  SubagentName,
   {
     icon: React.ReactNode;
     title: string;
@@ -91,7 +98,7 @@ const DEFAULT_CONFIG = {
 /**
  * Get a human-readable title for a subagent type
  */
-function getSubagentTitle(type: string | undefined): string {
+function getSubagentTitle(type?: SubagentName): string {
   if (!type) return "Specialist Agent";
 
   // Convert kebab-case to Title Case
@@ -128,9 +135,13 @@ function StatusIcon({
 /**
  * SubagentCard - Displays a single subagent's execution status and streaming content
  */
-export function SubagentCard({ subagent }: { subagent: SubagentStream }) {
+export function SubagentCard({
+  subagent,
+}: {
+  subagent: SubagentStream<typeof agent>;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const subagentType = subagent.toolCall?.args?.subagent_type;
+  const subagentType = subagent.toolCall.args.subagent_type;
   const config =
     (subagentType && SUBAGENT_CONFIGS[subagentType]) || DEFAULT_CONFIG;
 
