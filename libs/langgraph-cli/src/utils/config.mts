@@ -20,6 +20,21 @@ const BaseConfigSchema = z.object({
   ui: z.record(z.string()).optional(),
   ui_config: z.object({ shared: z.array(z.string()).optional() }).optional(),
   _INTERNAL_docker_tag: z.string().optional(),
+  api_version: z
+    .string()
+    .refine(
+      (v) => {
+        const base = v.split("-")[0];
+        const parts = base.split(".");
+        if (parts.length === 0 || parts.length > 3) return false;
+        return parts.every((p) => /^\d+$/.test(p));
+      },
+      {
+        message:
+          "api_version must be in format major, major.minor, or major.minor.patch",
+      }
+    )
+    .optional(),
   env: z
     .union([z.array(z.string()), z.record(z.string()), z.string()])
     .default({}),
@@ -94,6 +109,13 @@ export type Config = z.infer<typeof ConfigSchema>;
 // TODO: implement this in Python CLI
 export const getConfig = (config: z.input<typeof ConfigSchema> | string) => {
   let input = typeof config === "string" ? JSON.parse(config) : config;
+
+  if (input.api_version && input._INTERNAL_docker_tag) {
+    throw new Error(
+      "Cannot specify both _INTERNAL_docker_tag and api_version."
+    );
+  }
+
   const { graphs } = BaseConfigSchema.parse(input);
 
   const isPython = Object.values(graphs).map((graphDef) => {
