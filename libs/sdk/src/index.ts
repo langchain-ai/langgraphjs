@@ -58,3 +58,5 @@ export type {
 
 export type { BagTemplate } from "./types.template.js";
 export type * from "./ui/stream/index.js";
+
+export { StreamError } from "./ui/errors.js";
