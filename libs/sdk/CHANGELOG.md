@@ -1,5 +1,30 @@
 # @langchain/langgraph-sdk
 
+## 1.6.2
+
+### Patch Changes
+
+- [#1956](https://github.com/langchain-ai/langgraphjs/pull/1956) [`8a84c04`](https://github.com/langchain-ai/langgraphjs/commit/8a84c0448eb2db7619c43be7c6e35daa058ac613) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): make SubagentStream and SubagentToolCall generic for type-safe subagent inference
+
+## 1.6.1
+
+### Patch Changes
+
+- [#1951](https://github.com/langchain-ai/langgraphjs/pull/1951) [`948aa2d`](https://github.com/langchain-ai/langgraphjs/commit/948aa2d8617398dc797e67b3f152ac6f8d7bdfd3) Thanks [@maahir30](https://github.com/maahir30)! - feat(stream): Add interrupts array to useStream for multi-interrupt support
+  - Adds a new interrupts (plural) array property to the useStream hook
+
+## 1.6.0
+
+### Minor Changes
+
+- [#1903](https://github.com/langchain-ai/langgraphjs/pull/1903) [`8d5c2d6`](https://github.com/langchain-ai/langgraphjs/commit/8d5c2d688d330012638d8f34ce20a454600ebc1b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(sdk): add multi-subagent tracking to useStream
+
+## 1.5.6
+
+### Patch Changes
+
+- [#1940](https://github.com/langchain-ai/langgraphjs/pull/1940) [`d23a4db`](https://github.com/langchain-ai/langgraphjs/commit/d23a4dbcb98d0247869dcb876022d680f9c328c4) Thanks [@rx5ad](https://github.com/rx5ad)! - feat(sdk-js): add support for pausing/unpausing crons
+
 ## 1.5.5
 
 ### Patch Changes

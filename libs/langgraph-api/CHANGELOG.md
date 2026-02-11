@@ -1,5 +1,34 @@
 # @langchain/langgraph-api
 
+## 1.1.13
+
+### Patch Changes
+
+- [#1960](https://github.com/langchain-ai/langgraphjs/pull/1960) [`4ebe31e`](https://github.com/langchain-ai/langgraphjs/commit/4ebe31ec6ea289f2eeff324fb1875af869d543c9) Thanks [@hntrl](https://github.com/hntrl)! - relax langsmith dep
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.13
+
+## 1.1.12
+
+### Patch Changes
+
+- [#1939](https://github.com/langchain-ai/langgraphjs/pull/1939) [`ad39dcf`](https://github.com/langchain-ai/langgraphjs/commit/ad39dcfddf575a5e5438cd40b284ac0d549b5827) Thanks [@hntrl](https://github.com/hntrl)! - Enhanced JSON schema extraction for Studio with multi-tier strategy:
+
+  - **StateSchema support**: Extract schemas from `StateSchema` instances using `getJsonSchema()` and `getInputJsonSchema()` methods, preserving `jsonSchemaExtra` metadata (e.g., `langgraph_type: "messages"`)
+  - **Improved Zod handling**: Fall back to Zod registry extraction for `withLangGraph()` schemas, then direct Zod conversion for plain Zod schemas
+  - **Reduced reliance on TypeScript parser**: Only fall back to the brittle TypeScript AST parser when all runtime extraction methods fail
+
+  Extraction priority:
+
+  1. StateSchema (handles `jsonSchemaExtra` via `ReducedValue`)
+  2. Zod via `schemaMetaRegistry` (handles `jsonSchemaExtra` from `withLangGraph()`)
+  3. Direct Zod conversion (no `jsonSchemaExtra`, but better than static parsing)
+  4. Static TypeScript parser (fallback)
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.12
+
 ## 1.1.11
 
 ### Patch Changes

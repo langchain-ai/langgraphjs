@@ -5,6 +5,7 @@ import {
   configToCompose,
   configToDocker,
   configToWatch,
+  getBaseImage,
 } from "../src/docker/docker.mjs";
 import { type Config, getConfig } from "../src/utils/config.mjs";
 import { fileURLToPath } from "node:url";
@@ -328,6 +329,64 @@ describe("config to docker", () => {
     `);
   });
 
+  it("js with api_version", async () => {
+    const graphs = { agent: "./graphs/agent.js:graph" };
+    const config = getConfig({
+      dockerfile_lines: [],
+      env: {},
+      node_version: "22" as const,
+      api_version: "0.7.29",
+      graphs,
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toEqual(dedenter`
+      FROM langchain/langgraphjs-api:0.7.29-node22
+      ADD . /deps/unit_tests
+      ENV LANGSERVE_GRAPHS='{"agent":"./graphs/agent.js:graph"}'
+      WORKDIR /deps/unit_tests
+      RUN npm i
+      RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+    `);
+  });
+
+  it("python with api_version", async () => {
+    const graphs = { agent: "./agent.py:graph" };
+    const config = getConfig({
+      ...DEFAULT_CONFIG,
+      dependencies: ["."],
+      graphs,
+      api_version: "0.2.74",
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toEqual(dedenter`
+      FROM langchain/langgraph-api:0.2.74-py3.11
+      ADD . /deps/__outer_unit_tests/unit_tests
+      RUN set -ex && \
+          for line in '[project]' \
+                      'name = "unit_tests"' \
+                      'version = "0.1"' \
+                      '[tool.setuptools.package-data]' \
+                      '"*" = ["**/*"]'; do \
+              echo "$$line" >> /deps/__outer_unit_tests/pyproject.toml; \
+          done
+      RUN --mount=type=cache,target=/root/.cache/pip PYTHONDONTWRITEBYTECODE=1 pip install -c /api/constraints.txt -e /deps/*
+      ENV LANGSERVE_GRAPHS='{"agent":"/deps/__outer_unit_tests/unit_tests/agent.py:graph"}'
+      WORKDIR /deps/__outer_unit_tests/unit_tests
+    `);
+  });
+
   it("description", async () => {
     const graphs = {
       agent: { path: "./graphs/agent.js:graph", description: "My agent" },
@@ -600,6 +659,37 @@ describe("config to compose", () => {
     );
   });
 
+  it("js with api_version", async () => {
+    const graph = { agent: "./graphs/agent.js:graph" };
+    const config = getConfig({
+      dockerfile_lines: [],
+      env: {},
+      node_version: "22" as const,
+      api_version: "0.7.29",
+      graphs: graph,
+    });
+
+    const { apiDef: actual } = await configToCompose(PATH_TO_CONFIG, config, {
+      watch: false,
+    });
+
+    const expected =
+      dedenter`
+        pull_policy: build
+        build:
+          context: .
+          dockerfile_inline: |
+            FROM langchain/langgraphjs-api:0.7.29-node22
+            ADD . /deps/unit_tests
+            ENV LANGSERVE_GRAPHS='{"agent":"./graphs/agent.js:graph"}'
+            WORKDIR /deps/unit_tests
+            RUN npm i
+            RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+      ` + "\n";
+
+    expect(yaml.stringify(actual, { blockQuote: "literal" })).toEqual(expected);
+  });
+
   it("multilanguage", async () => {
     const graphs = {
       python: "./graphs/agent.py:graph",
@@ -806,6 +896,88 @@ describe("packaging", () => {
   });
 });
 
+describe("getBaseImage", () => {
+  it("node without api_version", () => {
+    const config = getConfig({
+      node_version: "20",
+      graphs: { agent: "./agent.js:graph" },
+    });
+    expect(getBaseImage(config)).toBe("langchain/langgraphjs-api:20");
+  });
+
+  it("node with api_version", () => {
+    const config = getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29",
+    });
+    expect(getBaseImage(config)).toBe(
+      "langchain/langgraphjs-api:0.7.29-node22"
+    );
+  });
+
+  it("python without api_version", () => {
+    const config = getConfig({
+      python_version: "3.11",
+      dependencies: ["."],
+      graphs: { agent: "./agent.py:graph" },
+    });
+    expect(getBaseImage(config)).toBe("langchain/langgraph-api:3.11");
+  });
+
+  it("python with api_version", () => {
+    const config = getConfig({
+      python_version: "3.11",
+      dependencies: ["."],
+      graphs: { agent: "./agent.py:graph" },
+      api_version: "0.2.74",
+    });
+    expect(getBaseImage(config)).toBe("langchain/langgraph-api:0.2.74-py3.11");
+  });
+
+  it("api_version override parameter", () => {
+    const config = getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29",
+    });
+    // Parameter overrides config
+    expect(getBaseImage(config, "0.8.0")).toBe(
+      "langchain/langgraphjs-api:0.8.0-node22"
+    );
+  });
+
+  it("api_version parameter when config has none", () => {
+    const config = getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+    });
+    expect(getBaseImage(config, "0.7.29")).toBe(
+      "langchain/langgraphjs-api:0.7.29-node22"
+    );
+  });
+
+  it("api_version with suffix", () => {
+    const config = getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29-rc1",
+    });
+    expect(getBaseImage(config)).toBe(
+      "langchain/langgraphjs-api:0.7.29-rc1-node22"
+    );
+  });
+
+  it("_INTERNAL_docker_tag takes precedence", () => {
+    const config = getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      _INTERNAL_docker_tag: "custom-tag",
+    });
+    expect(getBaseImage(config)).toBe("langchain/langgraphjs-api:custom-tag");
+  });
+});
+
 it("node config and python config", () => {
   // node config
   expect(
@@ -934,4 +1106,83 @@ it("node config and python config", () => {
       })
     )
     .toThrow();
+
+  // api_version
+  expect(
+    getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29",
+    })
+  ).toEqual({
+    node_version: "22",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+    api_version: "0.7.29",
+  });
+
+  // api_version major.minor format
+  expect(
+    getConfig({
+      node_version: "20",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7",
+    })
+  ).toEqual({
+    node_version: "20",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+    api_version: "0.7",
+  });
+
+  // api_version and _INTERNAL_docker_tag conflict
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "22",
+        graphs: { agent: "./agent.js:graph" },
+        api_version: "0.7.29",
+        _INTERNAL_docker_tag: "custom-tag",
+      })
+    )
+    .toThrow("Cannot specify both _INTERNAL_docker_tag and api_version.");
+
+  // Invalid api_version format - too many parts
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "22",
+        graphs: { agent: "./agent.js:graph" },
+        api_version: "0.7.29.1",
+      })
+    )
+    .toThrow();
+
+  // Invalid api_version format - non-numeric
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "22",
+        graphs: { agent: "./agent.js:graph" },
+        api_version: "abc",
+      })
+    )
+    .toThrow();
+
+  // Valid api_version with suffix
+  expect(
+    getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29-rc1",
+    })
+  ).toEqual({
+    node_version: "22",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+    api_version: "0.7.29-rc1",
+  });
 });

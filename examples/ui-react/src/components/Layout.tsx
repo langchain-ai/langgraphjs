@@ -8,13 +8,14 @@ import { EXAMPLES, getExample } from "../examples/registry";
  */
 import "../examples/tool-calling-agent";
 import "../examples/human-in-the-loop";
-import "../examples/multi-step-graph";
 import "../examples/summarization-agent";
 import "../examples/parallel-research";
 import "../examples/reasoning-agent";
 import "../examples/custom-streaming";
 import "../examples/branching-chat";
 import "../examples/session-persistence";
+import "../examples/deepagent";
+import "../examples/deepagent-tools";
 
 function WelcomeScreen() {
   return (

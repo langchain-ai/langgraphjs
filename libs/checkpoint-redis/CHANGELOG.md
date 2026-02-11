@@ -1,5 +1,14 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.0.2
+
+### Patch Changes
+
+- [#1943](https://github.com/langchain-ai/langgraphjs/pull/1943) [`814c76d`](https://github.com/langchain-ai/langgraphjs/commit/814c76dc3938d0f6f7e17ca3bc11d6a12270b2a1) Thanks [@hntrl](https://github.com/hntrl)! - fix(redis): escape RediSearch filter values
+
+  Added proper escaping for filter keys and values when constructing RediSearch queries
+  in the `list()` method to handle special characters correctly.
+
 ## 1.0.1
 
 ### Patch Changes
