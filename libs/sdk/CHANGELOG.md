@@ -1,5 +1,12 @@
 # @langchain/langgraph-sdk
 
+## 1.6.1
+
+### Patch Changes
+
+- [#1951](https://github.com/langchain-ai/langgraphjs/pull/1951) [`948aa2d`](https://github.com/langchain-ai/langgraphjs/commit/948aa2d8617398dc797e67b3f152ac6f8d7bdfd3) Thanks [@maahir30](https://github.com/maahir30)! - feat(stream): Add interrupts array to useStream for multi-interrupt support
+  - Adds a new interrupts (plural) array property to the useStream hook
+
 ## 1.6.0
 
 ### Minor Changes
