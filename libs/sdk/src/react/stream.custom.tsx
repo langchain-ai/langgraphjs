@@ -248,21 +248,27 @@ export function useStreamCustom<
     stop,
     submit,
 
-    get interrupt(): Interrupt<InterruptType> | undefined {
+    get interrupts(): Interrupt<InterruptType>[] {
       if (
         stream.values != null &&
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
         const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
-        return valueInterrupts as Interrupt<InterruptType>;
+        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+        return valueInterrupts;
       }
 
-      return undefined;
+      return [];
+    },
+
+    get interrupt(): Interrupt<InterruptType> | undefined {
+      const all = this.interrupts;
+      if (all.length === 0) return undefined;
+      if (all.length === 1) return all[0];
+
+      // Multiple interrupts: return the array for backward compat
+      return all as Interrupt<InterruptType>;
     },
 
     get messages(): Message<ToolCallType>[] {

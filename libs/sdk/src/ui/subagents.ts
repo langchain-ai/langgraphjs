@@ -126,6 +126,7 @@ type SubagentStreamBase<ToolCall> = Omit<
   | "toolCalls"
   | "getToolCalls"
   | "interrupt"
+  | "interrupts"
   | "subagents"
   | "activeSubagents"
   | "getSubagent"
@@ -237,6 +238,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
       // Subagents don't have interrupts yet (future enhancement)
       interrupt: undefined,
+      interrupts: [],
 
       // Nested subagent tracking (empty for now, future enhancement)
       subagents: new Map<
