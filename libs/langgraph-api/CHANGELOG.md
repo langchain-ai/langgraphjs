@@ -1,5 +1,14 @@
 # @langchain/langgraph-api
 
+## 1.1.13
+
+### Patch Changes
+
+- [#1960](https://github.com/langchain-ai/langgraphjs/pull/1960) [`4ebe31e`](https://github.com/langchain-ai/langgraphjs/commit/4ebe31ec6ea289f2eeff324fb1875af869d543c9) Thanks [@hntrl](https://github.com/hntrl)! - relax langsmith dep
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.13
+
 ## 1.1.12
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.6.2
+
+### Patch Changes
+
+- [#1956](https://github.com/langchain-ai/langgraphjs/pull/1956) [`8a84c04`](https://github.com/langchain-ai/langgraphjs/commit/8a84c0448eb2db7619c43be7c6e35daa058ac613) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): make SubagentStream and SubagentToolCall generic for type-safe subagent inference
+
 ## 1.6.1
 
 ### Patch Changes
