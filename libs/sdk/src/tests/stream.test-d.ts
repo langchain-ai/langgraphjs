@@ -264,7 +264,7 @@ describe("InferMiddlewareStatesFromArray", () => {
   test("returns empty object for empty middleware array", () => {
     type Middlewares = readonly [];
     type Result = InferMiddlewareStatesFromArray<Middlewares>;
-    // eslint-disable-next-line @typescript-eslint/ban-types
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     expectTypeOf<Result>().toEqualTypeOf<{}>();
   });
 });

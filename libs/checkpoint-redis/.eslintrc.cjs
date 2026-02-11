@@ -16,7 +16,11 @@ module.exports = {
     "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": [
       "error",
-      { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrors: "none",
+      },
     ],
     "no-undef": "off", // TypeScript handles this
     "no-redeclare": "off",

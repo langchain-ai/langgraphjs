@@ -363,12 +363,12 @@ type InferMiddlewareState<T> =
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
       TSchema extends Record<string, any>
       ? InferInteropZodInput<TSchema>
-      : // eslint-disable-next-line @typescript-eslint/ban-types
+      : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
         {}
     : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
     T extends { stateSchema: infer S }
     ? InferInteropZodInput<S>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
+    : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {};
 
 /**
@@ -392,19 +392,19 @@ type IsAny<T> = 0 extends 1 & T ? true : false;
 export type InferMiddlewareStatesFromArray<T> =
   // Guard against `any` type - any extends everything so would match first branch incorrectly
   IsAny<T> extends true
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
+    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {}
     : // Handle undefined/null
     T extends undefined | null
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
+    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {}
     : // Handle empty readonly array
     T extends readonly []
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
+    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {}
     : // Handle empty mutable array
     T extends []
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
+    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {}
     : // Handle readonly tuple [First, ...Rest]
     T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
@@ -418,7 +418,7 @@ export type InferMiddlewareStatesFromArray<T> =
     : // Handle mutable array of union type
     T extends (infer U)[]
     ? InferMiddlewareState<U>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
+    : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {};
 
 /**
@@ -450,11 +450,11 @@ type BaseAgentState<ToolCall = DefaultToolCall> = {
 
 export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? ExtractAgentConfig<T> extends never
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
+    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
       {}
     : BaseAgentState<InferAgentToolCalls<T>> &
         (ExtractAgentConfig<T>["State"] extends undefined
-          ? // eslint-disable-next-line @typescript-eslint/ban-types
+          ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
             {}
           : InferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
         InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
@@ -462,7 +462,7 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? RunOutput
   : T extends { messages: unknown }
   ? T
-  : // eslint-disable-next-line @typescript-eslint/ban-types
+  : // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     {};
 
 /**

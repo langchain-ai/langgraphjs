@@ -156,6 +156,7 @@ export interface UseAgentStream<
  * });
  * ```
  */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface UseAgentStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate

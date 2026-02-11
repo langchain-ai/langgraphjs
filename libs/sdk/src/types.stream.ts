@@ -223,7 +223,7 @@ export type EventsStreamEvent = {
           | "tool"
           | "retriever"
           | "prompt"}_${"start" | "stream" | "end"}`
-      | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+      | (string & {}); // eslint-disable-line @typescript-eslint/no-empty-object-type
     name: string;
     tags: string[];
     run_id: string;
