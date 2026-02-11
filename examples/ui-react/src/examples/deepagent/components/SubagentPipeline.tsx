@@ -1,7 +1,8 @@
-import { useMemo } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import type { SubagentStream } from "@langchain/langgraph-sdk/react";
 import { SubagentCard } from "./SubagentCard";
+
+import type { agent } from "../agent";
 
 /**
  * Pipeline visualization showing all subagents
@@ -10,30 +11,17 @@ export function SubagentPipeline({
   subagents,
   isLoading,
 }: {
-  subagents: SubagentStream[];
+  subagents: SubagentStream<typeof agent>[];
   isLoading: boolean;
 }) {
-  // Sort subagents by type for consistent display order
-  const sortOrder = ["weather-scout", "experience-curator", "budget-optimizer"];
-  const sortedSubagents = useMemo(() => {
-    return [...subagents].sort((a, b) => {
-      const aType = a.toolCall?.args?.subagent_type || "";
-      const bType = b.toolCall?.args?.subagent_type || "";
-      const aIndex = sortOrder.indexOf(aType);
-      const bIndex = sortOrder.indexOf(bType);
-      // Put unknown types at the end
-      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-    });
-  }, [subagents]);
-
-  if (sortedSubagents.length === 0) {
+  if (subagents.length === 0) {
     return null;
   }
 
-  const completedCount = sortedSubagents.filter(
+  const completedCount = subagents.filter(
     (s) => s.status === "complete"
   ).length;
-  const totalCount = sortedSubagents.length;
+  const totalCount = subagents.length;
 
   return (
     <div className="mb-8">
@@ -71,7 +59,7 @@ export function SubagentPipeline({
 
       {/* Subagent Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {sortedSubagents.map((subagent) => (
+        {subagents.map((subagent) => (
           <SubagentCard key={subagent.id} subagent={subagent} />
         ))}
       </div>

@@ -20,7 +20,7 @@ import {
   extractToolCallIdFromNamespace,
   isSubagentNamespace,
 } from "./subagents.js";
-import type { SubagentStream } from "./types.js";
+import type { SubagentStreamInterface } from "./types.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
@@ -215,35 +215,35 @@ export class StreamManager<
   /**
    * Get all subagents as a Map.
    */
-  getSubagents(): Map<string, SubagentStream> {
+  getSubagents(): Map<string, SubagentStreamInterface> {
     return this.subagentManager.getSubagents();
   }
 
   /**
    * Get all currently running subagents.
    */
-  getActiveSubagents(): SubagentStream[] {
+  getActiveSubagents(): SubagentStreamInterface[] {
     return this.subagentManager.getActiveSubagents();
   }
 
   /**
    * Get a specific subagent by tool call ID.
    */
-  getSubagent(toolCallId: string): SubagentStream | undefined {
+  getSubagent(toolCallId: string): SubagentStreamInterface | undefined {
     return this.subagentManager.getSubagent(toolCallId);
   }
 
   /**
    * Get all subagents of a specific type.
    */
-  getSubagentsByType(type: string): SubagentStream[] {
+  getSubagentsByType(type: string): SubagentStreamInterface[] {
     return this.subagentManager.getSubagentsByType(type);
   }
 
   /**
    * Get all subagents triggered by a specific AI message.
    */
-  getSubagentsByMessage(messageId: string): SubagentStream[] {
+  getSubagentsByMessage(messageId: string): SubagentStreamInterface[] {
     return this.subagentManager.getSubagentsByMessage(messageId);
   }
 

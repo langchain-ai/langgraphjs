@@ -35,8 +35,12 @@ import type { BagTemplate } from "../types.template.js";
 
 /**
  * Represents a tool call that initiated a subagent.
+ *
+ * @template SubagentName - The subagent name type. When inferred from a
+ *   DeepAgent, this is a union of all subagent names (e.g. `"researcher" | "writer"`),
+ *   making `args.subagent_type` a typed discriminant.
  */
-export interface SubagentToolCall {
+export interface SubagentToolCall<SubagentName extends string = string> {
   /** The tool call ID */
   id: string;
   /** The name of the tool (typically "task") */
@@ -46,7 +50,7 @@ export interface SubagentToolCall {
     /** The task description for the subagent */
     description?: string;
     /** The type of subagent to use */
-    subagent_type?: string;
+    subagent_type?: SubagentName;
     /** Additional custom arguments */
     [key: string]: unknown;
   };
@@ -149,15 +153,20 @@ export interface StreamBase<
    */
   subagents: Map<
     string,
-    SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+    SubagentStreamInterface<
+      SubagentStates[keyof SubagentStates],
+      ToolCall,
+      keyof SubagentStates & string
+    >
   >;
 
   /**
    * Currently active subagents (where status === "running").
    */
-  activeSubagents: SubagentStream<
+  activeSubagents: SubagentStreamInterface<
     SubagentStates[keyof SubagentStates],
-    ToolCall
+    ToolCall,
+    keyof SubagentStates & string
   >[];
 
   /**
@@ -169,7 +178,11 @@ export interface StreamBase<
   getSubagent: (
     toolCallId: string
   ) =>
-    | SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>
+    | SubagentStreamInterface<
+        SubagentStates[keyof SubagentStates],
+        ToolCall,
+        keyof SubagentStates & string
+      >
     | undefined;
 
   /**
@@ -190,12 +203,14 @@ export interface StreamBase<
    */
   getSubagentsByType: {
     // Overload for known subagent names - returns typed streams
-    <TName extends keyof SubagentStates & string>(type: TName): SubagentStream<
-      SubagentStates[TName],
+    <TName extends keyof SubagentStates & string>(
+      type: TName
+    ): SubagentStreamInterface<SubagentStates[TName], ToolCall, TName>[];
+    // Overload for unknown names - returns untyped streams
+    (type: string): SubagentStreamInterface<
+      Record<string, unknown>,
       ToolCall
     >[];
-    // Overload for unknown names - returns untyped streams
-    (type: string): SubagentStream<Record<string, unknown>, ToolCall>[];
   };
 
   /**
@@ -224,41 +239,40 @@ export interface StreamBase<
    */
   getSubagentsByMessage: (
     messageId: string
-  ) => SubagentStream<SubagentStates[keyof SubagentStates], ToolCall>[];
+  ) => SubagentStreamInterface<
+    SubagentStates[keyof SubagentStates],
+    ToolCall,
+    keyof SubagentStates & string
+  >[];
 }
 
 /**
- * Represents a single subagent stream.
+ * Base interface for a single subagent stream.
  * Tracks the lifecycle of a subagent from invocation to completion.
  *
  * Extends StreamBase to share common properties with UseStream,
  * allowing subagents to be treated similarly to the main stream.
  *
+ * Prefer using {@link SubagentStream} which supports passing an agent type
+ * directly for automatic type inference.
+ *
  * @template StateType - The state type of the subagent. Defaults to Record<string, unknown>
  *   since different subagents may have different state types. Can be narrowed using
  *   DeepAgent type helpers like `InferSubagentByName` when the specific subagent is known.
  * @template ToolCall - The type of tool calls in messages.
- *
- * @example
- * ```typescript
- * // Default usage with unknown state
- * const subagent: SubagentStream = stream.getSubagent("call_123");
- *
- * // Narrowed state type when subagent type is known
- * type ResearcherState = { research_notes: string };
- * const researcher = stream.getSubagent("call_123") as SubagentStream<ResearcherState>;
- * console.log(researcher.values.research_notes);
- * ```
+ * @template SubagentName - The subagent name union type. When inferred from a DeepAgent,
+ *   enables typed `toolCall.args.subagent_type`.
  */
-export interface SubagentStream<
+export interface SubagentStreamInterface<
   StateType = Record<string, unknown>,
-  ToolCall = DefaultToolCall
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string
 > extends StreamBase<StateType, ToolCall> {
   /** Unique identifier (the tool call ID) */
   id: string;
 
   /** The tool call that invoked this subagent */
-  toolCall: SubagentToolCall;
+  toolCall: SubagentToolCall<SubagentName>;
 
   /** Current execution status */
   status: SubagentStatus;
@@ -281,6 +295,46 @@ export interface SubagentStream<
   /** When the subagent completed */
   completedAt: Date | null;
 }
+
+/**
+ * Represents a single subagent stream.
+ *
+ * Supports two usage patterns:
+ *
+ * 1. **Agent type inference** (recommended): Pass a DeepAgent type directly and
+ *    let TypeScript infer the correct state and tool call types.
+ *
+ * ```typescript
+ * import type { agent } from "./agent";
+ *
+ * // Automatically infers state and tool call types from the agent
+ * const subagent: SubagentStream<typeof agent> = ...;
+ * ```
+ *
+ * 2. **Explicit generics**: Pass state and tool call types manually.
+ *
+ * ```typescript
+ * type ResearcherState = { research_notes: string };
+ * const researcher: SubagentStream<ResearcherState, MyToolCall> = ...;
+ * ```
+ *
+ * @template T - Either a DeepAgent/Agent type for automatic inference,
+ *   or a state type (Record) for explicit typing. Defaults to Record<string, unknown>.
+ * @template ToolCall - The type of tool calls in messages.
+ *   Only used when T is a state type. Defaults to DefaultToolCall.
+ */
+export type SubagentStream<
+  T = Record<string, unknown>,
+  ToolCall = DefaultToolCall
+> = IsDeepAgentLike<T> extends true
+  ? SubagentStreamInterface<
+      SubagentStateMap<T, InferAgentToolCalls<T>>[InferSubagentNames<T>],
+      InferAgentToolCalls<T>,
+      InferSubagentNames<T>
+    >
+  : IsAgentLike<T> extends true
+  ? SubagentStreamInterface<InferAgentState<T>, InferAgentToolCalls<T>>
+  : SubagentStreamInterface<T, ToolCall>;
 
 // ============================================================================
 // Agent Type Extraction Helpers

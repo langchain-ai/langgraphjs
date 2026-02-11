@@ -1,7 +1,12 @@
 export { useStream } from "./stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
 // Legacy exports - kept for backward compatibility
-export type { UseStream, UseStreamCustom, SubagentStream } from "./types.js";
+export type {
+  UseStream,
+  UseStreamCustom,
+  SubagentStream,
+  SubagentStreamInterface,
+} from "./types.js";
 // New stream interface types
 export type {
   // Base stream types

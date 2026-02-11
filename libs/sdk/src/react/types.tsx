@@ -19,6 +19,7 @@ import type {
   CustomSubmitOptions,
   RunCallbackMeta,
   SubagentStream,
+  SubagentStreamInterface,
   StreamBase,
   DefaultSubagentStates,
   // DeepAgent type helpers for subagent inference
@@ -53,6 +54,7 @@ export type {
   CustomSubmitOptions,
   RunCallbackMeta,
   SubagentStream,
+  SubagentStreamInterface,
   StreamBase,
   DefaultSubagentStates,
   // DeepAgent type helpers for subagent inference
