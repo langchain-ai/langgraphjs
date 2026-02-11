@@ -21,8 +21,15 @@ export {
 } from "./messages_reducer.js";
 export { CommandInstance, type CommandParams } from "../constants.js";
 export type {
-  GraphNode,
-  ConditionalEdgeRouter,
+  StateDefinitionInit,
+  ContextSchemaInit,
+  StateGraphInit,
+  StateGraphOptions,
   ExtractStateType,
   ExtractUpdateType,
+  GraphNode,
+  GraphNodeTypes,
+  GraphNodeReturnValue,
+  ConditionalEdgeRouter,
+  ConditionalEdgeRouterTypes,
 } from "./types.js";

@@ -18,6 +18,8 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
+import { escapeRediSearchTagValue } from "./utils.js";
+
 // Type guard functions for operations
 export function isPutOperation(op: Operation): op is PutOperation {
   return "value" in op && "namespace" in op && "key" in op;
@@ -1045,18 +1047,8 @@ export class RedisStore {
   }
 
   private escapeTagValue(value: string): string {
-    // For TAG fields, we need to escape special characters
-    // Based on RediSearch documentation, these characters need escaping in TAG fields
-    // when used within curly braces: , . < > { } [ ] " ' : ; ! @ # $ % ^ & * ( ) - + = ~ | \ ? /
-    // Handle empty string as a special case - use a placeholder
-    if (value === "") {
-      // Use a special placeholder for empty strings
-      return "__EMPTY_STRING__";
-    }
-    // We'll escape the most common ones that appear in keys
-    return value
-      .replace(/\\/g, "\\\\")
-      .replace(/[-\s,.:<>{}[\]"';!@#$%^&*()+=~|?/]/g, "\\$&");
+    // Delegate to shared utility for RediSearch TAG field escaping
+    return escapeRediSearchTagValue(value);
   }
 
   /**

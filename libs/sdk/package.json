@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.5.5",
+  "version": "1.6.1",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "repository": {
@@ -22,13 +22,16 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@types/json-schema": "^7.0.15",
     "p-queue": "^9.0.1",
     "p-retry": "^7.1.1",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.15",
+    "@langchain/core": "^1.1.16",
     "@langchain/scripts": "^0.1.4",
+    "deepagents": "^1.5.0",
+    "langchain": "^1.2.11",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "@types/react": "^19.0.8",
@@ -51,7 +54,7 @@
     "zod": "^4.3.5"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.15",
+    "@langchain/core": "^1.1.16",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },

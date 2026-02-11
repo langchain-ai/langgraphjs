@@ -255,6 +255,9 @@ export interface Cron {
 
   /** The metadata of the cron */
   metadata: Record<string, unknown>;
+
+  /** Whether the cron is enabled */
+  enabled: boolean;
 }
 
 export type DefaultValues = Record<string, unknown>[] | Record<string, unknown>;

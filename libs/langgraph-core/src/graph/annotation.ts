@@ -72,6 +72,15 @@ export class AnnotationRoot<SD extends StateDefinition> {
   constructor(s: SD) {
     this.spec = s;
   }
+
+  static isInstance(value: unknown): value is AnnotationRoot<StateDefinition> {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "lc_graph_name" in value &&
+      (value as { lc_graph_name: unknown }).lc_graph_name === "AnnotationRoot"
+    );
+  }
 }
 
 /**

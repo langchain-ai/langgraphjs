@@ -9,10 +9,9 @@ import type {
   GetCustomEventType,
   GetInterruptType,
   GetToolCallsType,
-  RunCallbackMeta,
   GetConfigurableType,
   UseStreamTransport,
-  UseStreamCustomOptions,
+  AnyStreamCustomOptions,
   CustomSubmitOptions,
 } from "../ui/types.js";
 import type { UseStreamCustom } from "./types.js";
@@ -103,7 +102,7 @@ export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 >(
-  options: UseStreamCustomOptions<StateType, Bag>
+  options: AnyStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -116,6 +115,8 @@ export function useStreamCustom<
     () =>
       new StreamManager<StateType, Bag>(messageManager, {
         throttle: options.throttle ?? false,
+        subagentToolNames: options.subagentToolNames,
+        filterSubagentMessages: options.filterSubagentMessages,
       })
   );
 
@@ -150,13 +151,33 @@ export function useStreamCustom<
 
   const historyValues = options.initialValues ?? ({} as StateType);
 
+  // Reconstruct subagents from initialValues when:
+  // 1. Subagent filtering is enabled
+  // 2. Not currently streaming
+  // 3. initialValues has messages
+  // This ensures subagent visualization works with cached/persisted state
+  const historyMessages = getMessages(historyValues);
+  const shouldReconstructSubagents =
+    options.filterSubagentMessages &&
+    !stream.isLoading &&
+    historyMessages.length > 0;
+
+  useEffect(() => {
+    if (shouldReconstructSubagents) {
+      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
+      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+    }
+    // We intentionally only run this when shouldReconstructSubagents changes
+    // to avoid unnecessary reconstructions during streaming
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldReconstructSubagents, historyMessages.length]);
+
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
   const submit = async (
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
-    let callbackMeta: RunCallbackMeta | undefined;
     let usableThreadId = threadId;
 
     stream.setStreamValues(() => {
@@ -210,7 +231,7 @@ export function useStreamCustom<
 
         onSuccess: () => undefined,
         onError(error) {
-          options.onError?.(error, callbackMeta);
+          options.onError?.(error, undefined);
         },
       }
     );
@@ -227,21 +248,27 @@ export function useStreamCustom<
     stop,
     submit,
 
-    get interrupt(): Interrupt<InterruptType> | undefined {
+    get interrupts(): Interrupt<InterruptType>[] {
       if (
         stream.values != null &&
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
         const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
-        return valueInterrupts as Interrupt<InterruptType>;
+        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+        return valueInterrupts;
       }
 
-      return undefined;
+      return [];
+    },
+
+    get interrupt(): Interrupt<InterruptType> | undefined {
+      const all = this.interrupts;
+      if (all.length === 0) return undefined;
+      if (all.length === 1) return all[0];
+
+      // Multiple interrupts: return the array for backward compat
+      return all as Interrupt<InterruptType>;
     },
 
     get messages(): Message<ToolCallType>[] {
@@ -260,6 +287,26 @@ export function useStreamCustom<
       const msgs = getMessages(stream.values);
       const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
       return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+    },
+
+    get subagents() {
+      return stream.getSubagents();
+    },
+
+    get activeSubagents() {
+      return stream.getActiveSubagents();
+    },
+
+    getSubagent(toolCallId: string) {
+      return stream.getSubagent(toolCallId);
+    },
+
+    getSubagentsByType(type: string) {
+      return stream.getSubagentsByType(type);
+    },
+
+    getSubagentsByMessage(messageId: string) {
+      return stream.getSubagentsByMessage(messageId);
     },
   };
 }

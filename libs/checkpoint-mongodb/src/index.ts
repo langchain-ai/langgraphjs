@@ -154,6 +154,12 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
     if (filter) {
       Object.entries(filter).forEach(([key, value]) => {
+        // Prevent MongoDB operator injection - only allow primitive values
+        if (value !== null && typeof value === "object") {
+          throw new Error(
+            `Invalid filter value for key "${key}": filter values must be primitives (string, number, boolean, or null)`
+          );
+        }
         query[`metadata.${key}`] = value;
       });
     }

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -96,7 +96,7 @@
     }
   },
   "devDependencies": {
-    "@langchain/core": "^1.0.0",
+    "@langchain/core": "^1.1.16",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",

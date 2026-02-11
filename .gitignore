@@ -28,3 +28,4 @@ __pycache__
 .DS_Store
 tsconfig.vitest-temp.json
 .pnpm-store
+.idea

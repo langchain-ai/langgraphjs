@@ -16,9 +16,16 @@ export {
   type SingleReducer,
   type CompiledGraph,
   type GraphNode,
+  type GraphNodeTypes,
+  type GraphNodeReturnValue,
   type ConditionalEdgeRouter,
+  type ConditionalEdgeRouterTypes,
   type ExtractStateType,
   type ExtractUpdateType,
+  type StateDefinitionInit,
+  type ContextSchemaInit,
+  type StateGraphInit,
+  type StateGraphOptions,
 } from "./graph/index.js";
 export type {
   StateSnapshot,
