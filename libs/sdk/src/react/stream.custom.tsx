@@ -268,7 +268,7 @@ export function useStreamCustom<
       if (all.length === 1) return all[0];
 
       // Multiple interrupts: return the array for backward compat
-      return all as unknown as Interrupt<InterruptType>;
+      return all as Interrupt<InterruptType>;
     },
 
     get messages(): Message<ToolCallType>[] {
