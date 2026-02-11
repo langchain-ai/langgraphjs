@@ -19,16 +19,16 @@
     "unplugin-unused": "^0.5.1"
   },
   "optionalDependencies": {
-    "@esbuild/win32-x64": "*",
-    "@rolldown/binding-darwin-arm64": "*",
-    "@rolldown/binding-darwin-x64": "*",
-    "@rolldown/binding-linux-arm64-gnu": "*",
-    "@rolldown/binding-linux-arm64-musl": "*",
-    "@rolldown/binding-linux-x64-gnu": "*",
-    "@rolldown/binding-linux-x64-musl": "*",
-    "@rolldown/binding-win32-arm64-msvc": "*",
-    "@rolldown/binding-win32-ia32-msvc": "*",
-    "@rolldown/binding-win32-x64-msvc": "*",
-    "@swc/core-win32-x64-msvc": "*"
+    "@esbuild/win32-x64": ">=0.0.0",
+    "@rolldown/binding-darwin-arm64": ">=0.0.0",
+    "@rolldown/binding-darwin-x64": ">=0.0.0",
+    "@rolldown/binding-linux-arm64-gnu": ">=0.0.0",
+    "@rolldown/binding-linux-arm64-musl": ">=0.0.0",
+    "@rolldown/binding-linux-x64-gnu": ">=0.0.0",
+    "@rolldown/binding-linux-x64-musl": ">=0.0.0",
+    "@rolldown/binding-win32-arm64-msvc": ">=0.0.0",
+    "@rolldown/binding-win32-ia32-msvc": ">=0.0.0",
+    "@rolldown/binding-win32-x64-msvc": ">=0.0.0",
+    "@swc/core-win32-x64-msvc": ">=0.0.0"
   }
 }

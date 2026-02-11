@@ -210,6 +210,36 @@ type Prettify<T> = {
  * After adding nodes and edges to your graph, you must call `.compile()` on it before
  * you can use it.
  *
+ * @typeParam SD - The state definition used to construct the graph. Can be an
+ *   {@link AnnotationRoot}, {@link StateSchema}, or Zod object schema. This is the
+ *   primary generic from which `S` and `U` are derived.
+ *
+ * @typeParam S - The full state type representing the complete shape of your graph's
+ *   state after all reducers have been applied. Automatically inferred from `SD`.
+ *
+ * @typeParam U - The update type representing what nodes can return to modify state.
+ *   Typically a partial of the state type. Automatically inferred from `SD`.
+ *
+ * @typeParam N - Union of all node names in the graph (e.g., `"agent" | "tool"`).
+ *   Accumulated as you call `.addNode()`. Used for type-safe routing.
+ *
+ * @typeParam I - The input schema definition. Set via the `input` option in the
+ *   constructor to restrict what data the graph accepts when invoked.
+ *
+ * @typeParam O - The output schema definition. Set via the `output` option in the
+ *   constructor to restrict what data the graph returns after execution.
+ *
+ * @typeParam C - The config/context schema definition. Set via the `context` option
+ *   to define additional configuration passed at runtime.
+ *
+ * @typeParam NodeReturnType - Constrains what types nodes in this graph can return.
+ *
+ * @typeParam InterruptType - The type for {@link interrupt} resume values. Set via
+ *   the `interrupt` option for typed human-in-the-loop patterns.
+ *
+ * @typeParam WriterType - The type for custom stream writers. Set via the `writer`
+ *   option to enable typed custom streaming from within nodes.
+ *
  * @example
  * ```ts
  * import {
@@ -1185,6 +1215,35 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
  * Final result from building and compiling a {@link StateGraph}.
  * Should not be instantiated directly, only using the StateGraph `.compile()`
  * instance method.
+ *
+ * @typeParam S - The full state type representing the complete shape of your graph's
+ *   state after all reducers have been applied. This is the type you receive when
+ *   reading state in nodes or after invoking the graph.
+ *
+ * @typeParam U - The update type representing what nodes can return to modify state.
+ *   Typically a partial of the state type, allowing nodes to update only specific fields.
+ *   Can also include {@link Command} objects for advanced control flow.
+ *
+ * @typeParam N - Union of all node names in the graph (e.g., `"agent" | "tool"`).
+ *   Used for type-safe routing with {@link Command.goto} and edge definitions.
+ *
+ * @typeParam I - The input schema definition. Determines what shape of data the graph
+ *   accepts when invoked. Defaults to the main state schema if not explicitly set.
+ *
+ * @typeParam O - The output schema definition. Determines what shape of data the graph
+ *   returns after execution. Defaults to the main state schema if not explicitly set.
+ *
+ * @typeParam C - The config/context schema definition. Defines additional configuration
+ *   that can be passed to the graph at runtime via {@link LangGraphRunnableConfig}.
+ *
+ * @typeParam NodeReturnType - Constrains what types nodes in this graph can return.
+ *   Useful for enforcing consistent return patterns across all nodes.
+ *
+ * @typeParam InterruptType - The type of values that can be passed when resuming from
+ *   an {@link interrupt}. Used with human-in-the-loop patterns.
+ *
+ * @typeParam WriterType - The type for custom stream writers. Used with the `writer`
+ *   option to enable typed custom streaming from within nodes.
  */
 export class CompiledStateGraph<
   S,

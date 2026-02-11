@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type { UseStreamOptions, InferAgentState } from "../ui/types.js";
+import type { UseStreamOptions } from "../ui/types.js";
 import type { BagTemplate } from "../types.template.js";
+import type { UseStreamCustomOptions } from "./types.js";
 import type {
-  UseStream,
-  UseStreamCustom,
-  UseStreamCustomOptions,
-} from "./types.js";
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  InferBag,
+  InferStateType,
+} from "../ui/stream/index.js";
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -21,46 +23,11 @@ function isCustomOptions<
 }
 
 /**
- * Helper type that infers StateType based on whether T is an agent-like type, a CompiledGraph/Pregel instance, or a state type.
- * - If T has `~agentTypes`, returns the full agent state including:
- *   - Base agent state with typed messages based on the agent's tools
- *   - The agent's custom state schema
- *   - All middleware states
- * - If T has `~RunOutput` (CompiledGraph/CompiledStateGraph), returns the state type
- * - If T has `~OutputType` (Pregel), returns the output type as state
- * - Otherwise, returns T (direct state type)
- */
-type InferStateType<T> = T extends { "~agentTypes": unknown }
-  ? InferAgentState<T>
-  : T extends { "~RunOutput": infer S }
-  ? S extends Record<string, unknown>
-    ? S
-    : Record<string, unknown>
-  : T extends { "~OutputType": infer O }
-  ? O extends Record<string, unknown>
-    ? O
-    : Record<string, unknown>
-  : T extends Record<string, unknown>
-  ? T
-  : Record<string, unknown>;
-
-/**
- * Helper type that infers Bag based on whether T is an agent-like type.
- * - If T has `~agentTypes`, extracts bag from the agent's tools
- * - Otherwise, returns the default BagTemplate
- */
-type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
-  "~agentTypes": unknown;
-}
-  ? BagTemplate
-  : B;
-
-/**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
  *
  * The `useStream` hook handles all the complexities of streaming, state management, and branching logic,
  * letting you focus on building great chat experiences. It provides automatic state management for
- * messages, interrupts, loading states, and errors.
+ * messages, interrupts, loading states, subagent streams, and errors.
  *
  * ## Usage with ReactAgent (recommended for createAgent users)
  *
@@ -70,7 +37,7 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  * @example
  * ```typescript
  * // In your agent file (e.g., agent.ts)
- * import { createAgent, tool } from "@langchain/langgraph";
+ * import { createAgent, tool } from "langchain";
  * import { z } from "zod";
  *
  * const getWeather = tool(
@@ -149,6 +116,51 @@ type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
  * }
  * ```
  *
+ * ## Usage with Deep Agents (subagent streaming, experimental)
+ *
+ * For agents that spawn subagents (nested graphs), use `filterSubagentMessages`
+ * to keep the main message stream clean while tracking subagent activity separately:
+ *
+ * @example
+ * ```typescript
+ * import { useStream, SubagentStream } from "@langchain/langgraph-sdk/react";
+ * import type { agent } from "./agent";
+ *
+ * function DeepAgentChat() {
+ *   const stream = useStream<typeof agent>({
+ *     assistantId: "deepagent",
+ *     apiUrl: "http://localhost:2024",
+ *     // Filter subagent messages from main stream
+ *     filterSubagentMessages: true,
+ *   });
+ *
+ *   const handleSubmit = (content: string) => {
+ *     stream.submit(
+ *       { messages: [{ content, type: "human" }] },
+ *       { streamSubgraphs: true } // Enable subgraph streaming
+ *     );
+ *   };
+ *
+ *   // Access subagent streams via stream.subagents (Map<string, SubagentStream>)
+ *   const subagentList = [...stream.subagents.values()];
+ *
+ *   return (
+ *     <div>
+ *       {stream.messages.map((msg) => <Message key={msg.id} message={msg} />)}
+ *
+ *       {subagentList.map((subagent) => (
+ *         <SubagentCard
+ *           key={subagent.id}
+ *           status={subagent.status} // "pending" | "running" | "complete" | "error"
+ *           messages={subagent.messages}
+ *           toolCalls={subagent.toolCalls}
+ *         />
+ *       ))}
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
  * @template T Either a ReactAgent type (with `~agentTypes`) or a state type (`Record<string, unknown>`)
  * @template Bag Type configuration bag containing:
  *   - `ConfigurableType`: Type for the `config.configurable` property
@@ -162,8 +174,8 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 >(
-  options: UseStreamOptions<InferStateType<T>, InferBag<T, Bag>>
-): UseStream<InferStateType<T>, InferBag<T, Bag>>;
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -186,7 +198,7 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): UseStreamCustom<InferStateType<T>, InferBag<T, Bag>>;
+): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
