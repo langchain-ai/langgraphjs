@@ -1528,7 +1528,7 @@ importers:
         version: 4.11.4
       langsmith:
         specifier: '>=0.3.33 <1.0.0'
-        version: 0.3.87(openai@6.16.0(ws@8.19.0)(zod@4.3.5))
+        version: 0.4.6(openai@6.16.0(ws@8.19.0)(zod@4.3.5))
       open:
         specifier: ^10.1.0
         version: 10.2.0
@@ -1642,8 +1642,8 @@ importers:
         specifier: ^2.0.1
         version: 2.0.1
       langsmith:
-        specifier: ^0.3.33
-        version: 0.3.87(openai@6.16.0(ws@8.19.0)(zod@4.3.5))
+        specifier: ^0.4.6
+        version: 0.4.7(openai@6.16.0(ws@8.19.0)(zod@4.3.5))
       open:
         specifier: ^10.1.0
         version: 10.2.0
@@ -5857,8 +5857,8 @@ packages:
     peerDependencies:
       '@langchain/core': 1.1.16
 
-  langsmith@0.3.87:
-    resolution: {integrity: sha512-XXR1+9INH8YX96FKWc5tie0QixWz6tOqAsAKfcJyPkE0xPep+NDz0IQLR32q4bn10QK3LqD2HN6T3n6z1YLW7Q==}
+  langsmith@0.4.6:
+    resolution: {integrity: sha512-9aYop1fEwA8RgFuvv8XPeV9ieeSnKnVRn3bNemkFQCyINLAxfNHC547bVMW8i8MuS1F1pgKwopqhLNf80qS1bQ==}
     peerDependencies:
       '@opentelemetry/api': '*'
       '@opentelemetry/exporter-trace-otlp-proto': '*'
@@ -6870,6 +6870,11 @@ packages:
 
   semver@7.7.3:
     resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
+    engines: {node: '>=10'}
+    hasBin: true
+
+  semver@7.7.4:
+    resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -7916,7 +7921,7 @@ snapshots:
       '@babel/helper-validator-option': 7.27.1
       browserslist: 4.28.1
       lru-cache: 5.1.1
-      semver: 7.7.3
+      semver: 7.7.4
 
   '@babel/helper-globals@7.28.0': {}
 
@@ -11753,7 +11758,7 @@ snapshots:
       - openai
       - zod-to-json-schema
 
-  langsmith@0.3.87(openai@6.16.0(ws@8.19.0)(zod@4.3.5)):
+  langsmith@0.4.6(openai@6.16.0(ws@8.19.0)(zod@4.3.5)):
     dependencies:
       '@types/uuid': 10.0.0
       chalk: 4.1.2
@@ -11770,7 +11775,7 @@ snapshots:
       chalk: 4.1.2
       console-table-printer: 2.15.0
       p-queue: 6.6.2
-      semver: 7.7.3
+      semver: 7.7.4
       uuid: 10.0.0
     optionalDependencies:
       openai: 4.104.0(ws@8.19.0)(zod@4.3.5)
@@ -11781,7 +11786,7 @@ snapshots:
       chalk: 4.1.2
       console-table-printer: 2.15.0
       p-queue: 6.6.2
-      semver: 7.7.3
+      semver: 7.7.4
       uuid: 10.0.0
     optionalDependencies:
       openai: 6.16.0(ws@8.19.0)(zod@4.3.5)
@@ -12051,7 +12056,7 @@ snapshots:
 
   node-abi@3.87.0:
     dependencies:
-      semver: 7.7.3
+      semver: 7.7.4
 
   node-addon-api@6.1.0: {}
 
@@ -12849,6 +12854,8 @@ snapshots:
       - encoding
 
   semver@7.7.3: {}
+
+  semver@7.7.4: {}
 
   set-function-length@1.2.2:
     dependencies:
