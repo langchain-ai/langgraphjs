@@ -1,5 +1,14 @@
 # @langchain/langgraph-cli
 
+## 1.1.13
+
+### Patch Changes
+
+- [#1954](https://github.com/langchain-ai/langgraphjs/pull/1954) [`632d39f`](https://github.com/langchain-ai/langgraphjs/commit/632d39f5a1c6d0f838e48e5e59e580d5a82faa94) Thanks [@hinthornw](https://github.com/hinthornw)! - Support `api_version` field in `langgraph.json` to control the base Docker image tag. When set, the image tag becomes `{api_version}-node{node_version}` (e.g., `langchain/langgraphjs-api:0.7.29-node22`) instead of just `{node_version}`.
+
+- Updated dependencies [[`4ebe31e`](https://github.com/langchain-ai/langgraphjs/commit/4ebe31ec6ea289f2eeff324fb1875af869d543c9)]:
+  - @langchain/langgraph-api@1.1.13
+
 ## 1.1.12
 
 ### Patch Changes

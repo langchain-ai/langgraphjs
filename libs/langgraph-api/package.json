@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -72,7 +72,7 @@
     "dotenv": "^16.4.7",
     "exit-hook": "^4.0.0",
     "hono": "^4.5.4",
-    "langsmith": "^0.3.33",
+    "langsmith": ">=0.3.33 <1.0.0",
     "open": "^10.1.0",
     "semver": "^7.7.1",
     "stacktrace-parser": "^0.1.10",
