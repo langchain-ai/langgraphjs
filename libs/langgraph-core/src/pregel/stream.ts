@@ -135,21 +135,27 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
       // when async operations try to push after stream termination
       return;
     }
-    
+
     try {
       // Forward chunk to passthrough function if provided
       this.passthroughFn?.(chunk);
-      
+
       // Attempt to enqueue the chunk to the underlying stream
       this.controller.enqueue(chunk);
     } catch (error) {
-      // Handle the specific case where controller was closed between check and enqueue
-      // This race condition can occur with parallel async operations
-      if (error instanceof TypeError && 
-          error.message.includes('Controller is already closed')) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof (error as { message?: unknown }).message === "string" &&
+        (error as { message: string }).message.includes(
+          "Controller is already closed"
+        )
+      ) {
         // Silently ignore - this is expected during stream closure with concurrent pushes
         return;
       }
+
       // Re-throw any other unexpected errors to maintain proper error reporting
       throw error;
     }
