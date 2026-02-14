@@ -285,36 +285,33 @@ export class PregelRunner {
 
     let startedTasksCount = 0;
 
-    // Listen directly on individual signals instead of creating a second
-    // combineAbortSignals call, which would stack additional listeners on the
-    // shared externalAbortSignal across ticks.
-    let externalAbortListener: (() => void) | undefined;
-    let timeoutAbortListener: (() => void) | undefined;
-
-    const hasAbortableSignal =
-      signals?.externalAbortSignal || signals?.timeoutAbortSignal;
-    const abortPromise = hasAbortableSignal
+    // Listen on the per-tick composedAbortSignal instead of the shared
+    // externalAbortSignal/timeoutAbortSignal. composedAbortSignal is created
+    // fresh each tick by combineAbortSignals(), so listeners don't accumulate
+    // across concurrent ticks/subgraphs on the shared signals.
+    let composedAbortListener: (() => void) | undefined;
+    const abortPromise = signals?.composedAbortSignal
       ? new Promise<never>((_resolve, reject) => {
-          const onAbort = () => reject(new Error("Abort"));
-          if (
-            signals?.externalAbortSignal &&
-            !signals.externalAbortSignal.aborted
-          ) {
-            externalAbortListener = onAbort;
-            signals.externalAbortSignal.addEventListener("abort", onAbort, {
+          const onAbort = () => {
+            // Only reject for timeout/cancel aborts, not for node-exception
+            // aborts. This preserves the error collection flow: when a node
+            // throws, tick() fires the exception signal which triggers
+            // composedAbortSignal, but we still need the generator to continue
+            // yielding remaining task results so tick() can collect all errors.
+            if (
+              signals?.externalAbortSignal?.aborted ||
+              signals?.timeoutAbortSignal?.aborted
+            ) {
+              reject(new Error("Abort"));
+            }
+          };
+          if (!signals.composedAbortSignal!.aborted) {
+            composedAbortListener = onAbort;
+            signals.composedAbortSignal!.addEventListener("abort", onAbort, {
               once: true,
             });
           }
-          if (
-            signals?.timeoutAbortSignal &&
-            !signals.timeoutAbortSignal.aborted
-          ) {
-            timeoutAbortListener = onAbort;
-            signals.timeoutAbortSignal.addEventListener("abort", onAbort, {
-              once: true,
-            });
-          }
-          // If already aborted, reject immediately
+          // If already aborted by timeout/cancel, reject immediately
           if (
             signals?.externalAbortSignal?.aborted ||
             signals?.timeoutAbortSignal?.aborted
@@ -369,17 +366,11 @@ export class PregelRunner {
         executingCounter.count -= 1;
       }
     } finally {
-      // Clean up abort listeners when generator finishes
-      if (externalAbortListener != null) {
-        signals?.externalAbortSignal?.removeEventListener(
+      // Clean up the single composed listener when generator finishes
+      if (composedAbortListener != null) {
+        signals?.composedAbortSignal?.removeEventListener(
           "abort",
-          externalAbortListener
-        );
-      }
-      if (timeoutAbortListener != null) {
-        signals?.timeoutAbortSignal?.removeEventListener(
-          "abort",
-          timeoutAbortListener
+          composedAbortListener
         );
       }
     }
