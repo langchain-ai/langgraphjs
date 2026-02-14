@@ -54,6 +54,10 @@ export function ensureLangGraphConfig(
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (implicitConfig !== undefined) {
     for (const k in implicitConfig) {
+      if (!Object.prototype.hasOwnProperty.call(implicitConfig, k)) {
+        continue;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const v = (implicitConfig as Record<string, any>)[k];
       if (v !== undefined) {
@@ -90,6 +94,10 @@ export function ensureLangGraphConfig(
     }
 
     for (const k in config) {
+      if (!Object.prototype.hasOwnProperty.call(config, k)) {
+        continue;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const v = (config as Record<string, any>)[k];
       if (v !== undefined && CONFIG_KEYS.has(k)) {
@@ -100,6 +108,10 @@ export function ensureLangGraphConfig(
   }
 
   for (const key in empty.configurable!) {
+    if (!Object.prototype.hasOwnProperty.call(empty.configurable!, key)) {
+      continue;
+    }
+
     const value = empty.configurable![key];
     empty.metadata = empty.metadata ?? {};
     if (
