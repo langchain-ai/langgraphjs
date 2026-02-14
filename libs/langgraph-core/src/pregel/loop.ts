@@ -738,16 +738,18 @@ export class PregelLoop {
     } else if (this.toInterrupt.length > 0) {
       this.status = "interrupt_before";
       throw new GraphInterrupt();
-    } else if (
-      Object.values(this.tasks).every((task) => task.writes.length > 0)
-    ) {
+    } else {
+      const taskList = Object.values(this.tasks);
+      if (!taskList.every((task) => task.writes.length > 0)) {
+        return false;
+      }
       // finish superstep
-      const writes = Object.values(this.tasks).flatMap((t) => t.writes);
+      const writes = taskList.flatMap((t) => t.writes);
       // All tasks have finished
       this.updatedChannels = _applyWrites(
         this.checkpoint,
         this.channels,
-        Object.values(this.tasks),
+        taskList,
         this.checkpointerGetNextVersion,
         this.triggerToNodes
       );
@@ -764,11 +766,7 @@ export class PregelLoop {
       await this._putCheckpoint({ source: "loop" });
       // after execution, check if we should interrupt
       if (
-        shouldInterrupt(
-          this.checkpoint,
-          this.interruptAfter,
-          Object.values(this.tasks)
-        )
+        shouldInterrupt(this.checkpoint, this.interruptAfter, taskList)
       ) {
         this.status = "interrupt_after";
         throw new GraphInterrupt();
@@ -778,8 +776,6 @@ export class PregelLoop {
       if (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) {
         delete this.config.configurable?.[CONFIG_KEY_RESUMING];
       }
-    } else {
-      return false;
     }
     if (this.step > this.stop) {
       this.status = "out_of_steps";
@@ -805,6 +801,7 @@ export class PregelLoop {
       }
     );
     this.tasks = nextTasks;
+    const newTaskList = Object.values(this.tasks);
 
     // Produce debug output
     if (this.checkpointer) {
@@ -816,7 +813,7 @@ export class PregelLoop {
               this.channels,
               this.streamKeys,
               this.checkpointMetadata,
-              Object.values(this.tasks),
+              newTaskList,
               this.checkpointPendingWrites,
               this.prevCheckpointConfig,
               this.outputKeys
@@ -827,7 +824,7 @@ export class PregelLoop {
       );
     }
 
-    if (Object.values(this.tasks).length === 0) {
+    if (newTaskList.length === 0) {
       this.status = "done";
       return false;
     }
@@ -837,29 +834,25 @@ export class PregelLoop {
         if (k === ERROR || k === INTERRUPT || k === RESUME) {
           continue;
         }
-        const task = Object.values(this.tasks).find((t) => t.id === tid);
+        const task = newTaskList.find((t) => t.id === tid);
         if (task) {
           task.writes.push([k, v]);
         }
       }
-      for (const task of Object.values(this.tasks)) {
+      for (const task of newTaskList) {
         if (task.writes.length > 0) {
           this._outputWrites(task.id, task.writes, true);
         }
       }
     }
     // if all tasks have finished, re-tick
-    if (Object.values(this.tasks).every((task) => task.writes.length > 0)) {
+    if (newTaskList.every((task) => task.writes.length > 0)) {
       return this.tick({ inputKeys });
     }
 
     // Before execution, check if we should interrupt
     if (
-      shouldInterrupt(
-        this.checkpoint,
-        this.interruptBefore,
-        Object.values(this.tasks)
-      )
+      shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)
     ) {
       this.status = "interrupt_before";
       throw new GraphInterrupt();
@@ -867,7 +860,7 @@ export class PregelLoop {
 
     // Produce debug output
     const debugOutput = await gatherIterator(
-      prefixGenerator(mapDebugTasks(Object.values(this.tasks)), "tasks")
+      prefixGenerator(mapDebugTasks(newTaskList), "tasks")
     );
     this._emit(debugOutput);
 
@@ -897,15 +890,17 @@ export class PregelLoop {
     }
     if (suppress) {
       // emit one last "values" event, with pending writes applied
+      const finishTaskList =
+        this.tasks !== undefined ? Object.values(this.tasks) : [];
       if (
         this.tasks !== undefined &&
         this.checkpointPendingWrites.length > 0 &&
-        Object.values(this.tasks).some((task) => task.writes.length > 0)
+        finishTaskList.some((task) => task.writes.length > 0)
       ) {
         this.updatedChannels = _applyWrites(
           this.checkpoint,
           this.channels,
-          Object.values(this.tasks),
+          finishTaskList,
           this.checkpointerGetNextVersion,
           this.triggerToNodes
         );
@@ -915,7 +910,7 @@ export class PregelLoop {
             prefixGenerator(
               mapOutputValues(
                 this.outputKeys,
-                Object.values(this.tasks).flatMap((t) => t.writes),
+                finishTaskList.flatMap((t) => t.writes),
                 this.channels
               ),
               "values"
@@ -1283,16 +1278,17 @@ export class PregelLoop {
   protected _matchWrites(
     tasks: Record<string, PregelExecutableTask<string, string>>
   ) {
+    const matchTaskList = Object.values(tasks);
     for (const [tid, k, v] of this.checkpointPendingWrites) {
       if (k === ERROR || k === INTERRUPT || k === RESUME) {
         continue;
       }
-      const task = Object.values(tasks).find((t) => t.id === tid);
+      const task = matchTaskList.find((t) => t.id === tid);
       if (task) {
         task.writes.push([k, v]);
       }
     }
-    for (const task of Object.values(tasks)) {
+    for (const task of matchTaskList) {
       if (task.writes.length > 0) {
         this._outputWrites(task.id, task.writes, true);
       }

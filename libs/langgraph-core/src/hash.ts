@@ -78,10 +78,10 @@ function assert(a: boolean) {
   if (!a) throw new Error("Assert failed");
 }
 
+const bswap64Scratch = new DataView(new ArrayBuffer(8));
 function bswap64(a: bigint) {
-  const scratchbuf = new DataView(new ArrayBuffer(8));
-  scratchbuf.setBigUint64(0, a, true);
-  return scratchbuf.getBigUint64(0, false);
+  bswap64Scratch.setBigUint64(0, a, true);
+  return bswap64Scratch.getBigUint64(0, false);
 }
 
 function bswap32(input: bigint) {
@@ -476,13 +476,14 @@ function XXH3_len_129to240_128b(
   return h128l | (h128h << n(64));
 }
 
+const encoder = new TextEncoder();
+const hexDigest = (data: bigint) => data.toString(16).padStart(32, "0");
+
 // 16 byte min input
 export function XXH3(input: Uint8Array | string, seed: bigint = n(0)) {
-  const encoder = new TextEncoder();
   const data = view(typeof input === "string" ? encoder.encode(input) : input);
   const len = data.byteLength;
 
-  const hexDigest = (data: bigint) => data.toString(16).padStart(32, "0");
   if (len <= 16) return hexDigest(XXH3_len_0to16_128b(data, seed));
   if (len <= 128) return hexDigest(XXH3_len_17to128_128b(data, kkey, seed));
   if (len <= 240) return hexDigest(XXH3_len_129to240_128b(data, kkey, seed));

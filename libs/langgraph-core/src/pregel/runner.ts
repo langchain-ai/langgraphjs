@@ -118,10 +118,9 @@ export class PregelRunner {
       ? AbortSignal.timeout(timeout)
       : undefined;
 
-    // Start task execution
-    const pendingTasks = Object.values(this.loop.tasks).filter(
-      (t) => t.writes.length === 0
-    );
+    // Start task execution (cache Object.values once)
+    const allTasks = Object.values(this.loop.tasks);
+    const pendingTasks = allTasks.filter((t) => t.writes.length === 0);
 
     const { signals, disposeCombinedSignal } = this._initializeAbortSignals({
       exceptionSignal,
@@ -165,9 +164,7 @@ export class PregelRunner {
 
     onStepWrite?.(
       this.loop.step,
-      Object.values(this.loop.tasks)
-        .map((task) => task.writes)
-        .flat()
+      allTasks.map((task) => task.writes).flat()
     );
 
     if (nodeErrors.size === 1) {
@@ -307,7 +304,7 @@ export class PregelRunner {
     ) {
       for (
         ;
-        Object.values(executingTasksMap).length <
+        Object.keys(executingTasksMap).length <
           (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
         startedTasksCount += 1
       ) {
@@ -327,11 +324,12 @@ export class PregelRunner {
         });
       }
 
-      const settledTask = await Promise.race([
-        ...Object.values(executingTasksMap),
-        ...(abortPromise ? [abortPromise] : []),
-        barrier.wait,
-      ]);
+      // Build promises array once for Promise.race instead of spreading
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const promises: Promise<any>[] = Object.values(executingTasksMap);
+      if (abortPromise) promises.push(abortPromise);
+      promises.push(barrier.wait);
+      const settledTask = await Promise.race(promises);
 
       if (settledTask === PROMISE_ADDED_SYMBOL) {
         continue;

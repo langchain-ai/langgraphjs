@@ -8,9 +8,14 @@ import {
   CONFIG_KEY_SCRATCHPAD,
 } from "../../constants.js";
 
-const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
+const COPIABLE_KEYS = new Set([
+  "tags",
+  "metadata",
+  "callbacks",
+  "configurable",
+]);
 
-const CONFIG_KEYS = [
+const CONFIG_KEYS = new Set([
   "tags",
   "metadata",
   "callbacks",
@@ -30,7 +35,7 @@ const CONFIG_KEYS = [
   "checkpointDuring",
   "durability",
   "signal",
-];
+]);
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -48,9 +53,11 @@ export function ensureLangGraphConfig(
   const implicitConfig: RunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (implicitConfig !== undefined) {
-    for (const [k, v] of Object.entries(implicitConfig)) {
+    for (const k in implicitConfig) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const v = (implicitConfig as Record<string, any>)[k];
       if (v !== undefined) {
-        if (COPIABLE_KEYS.includes(k)) {
+        if (COPIABLE_KEYS.has(k)) {
           let copiedValue;
           if (Array.isArray(v)) {
             copiedValue = [...v];
@@ -67,9 +74,11 @@ export function ensureLangGraphConfig(
           } else {
             copiedValue = v;
           }
-          empty[k as keyof RunnableConfig] = copiedValue;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (empty as Record<string, any>)[k] = copiedValue;
         } else {
-          empty[k as keyof RunnableConfig] = v;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (empty as Record<string, any>)[k] = v;
         }
       }
     }
@@ -80,14 +89,18 @@ export function ensureLangGraphConfig(
       continue;
     }
 
-    for (const [k, v] of Object.entries(config)) {
-      if (v !== undefined && CONFIG_KEYS.includes(k)) {
-        empty[k as keyof LangGraphRunnableConfig] = v;
+    for (const k in config) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const v = (config as Record<string, any>)[k];
+      if (v !== undefined && CONFIG_KEYS.has(k)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (empty as Record<string, any>)[k] = v;
       }
     }
   }
 
-  for (const [key, value] of Object.entries(empty.configurable!)) {
+  for (const key in empty.configurable!) {
+    const value = empty.configurable![key];
     empty.metadata = empty.metadata ?? {};
     if (
       !key.startsWith("__") &&

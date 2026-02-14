@@ -22,6 +22,7 @@
     "lint": "pnpm lint:eslint && pnpm lint:dpdm",
     "lint:fix": "pnpm lint:eslint --fix && pnpm lint:dpdm",
     "prepublish": "pnpm build",
+    "perf:analyze": "ENABLE_PERFORMANCE_ANALYSIS=true vitest run",
     "test": "vitest run",
     "test:browser": "vitest run --mode browser",
     "test:watch": "vitest watch",
@@ -83,6 +84,7 @@
     "typescript": "^4.9.5 || ^5.4.5",
     "vite-plugin-node-polyfills": "^0.23.0",
     "vitest": "^3.2.4",
+    "zeitzeuge": "^0.3.5",
     "zod-to-json-schema": "^3.22.4"
   },
   "publishConfig": {

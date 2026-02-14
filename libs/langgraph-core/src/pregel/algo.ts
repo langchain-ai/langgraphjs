@@ -74,6 +74,9 @@ import { IterableReadableWritableStream } from "./stream.js";
 import { XXH3 } from "../hash.js";
 import { Topic } from "../channels/topic.js";
 
+// O(1) lookup set for RESERVED, used in hot paths instead of Array.includes
+const RESERVED_SET: ReadonlySet<string> = new Set(RESERVED);
+
 /**
  * Construct a type with a set of properties K of type T
  */
@@ -250,11 +253,18 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   getNextVersion: ((version: any) => any) | undefined,
   triggerToNodes: Record<string, string[]> | undefined
 ): Set<string> {
+  // Pre-compute paths once before sorting to avoid repeated .slice() allocations
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pathCache = new Map<WritesProtocol<keyof Cc>, any[]>();
+  for (const task of tasks) {
+    pathCache.set(task, task.path?.slice(0, 3) || []);
+  }
+
   // Sort tasks by first 3 path elements for deterministic order
   // Later path parts (like task IDs) are ignored for sorting
   tasks.sort((a, b) => {
-    const aPath = a.path?.slice(0, 3) || [];
-    const bPath = b.path?.slice(0, 3) || [];
+    const aPath = pathCache.get(a)!;
+    const bPath = pathCache.get(b)!;
 
     // Compare each path element
     for (let i = 0; i < Math.min(aPath.length, bPath.length); i += 1) {
@@ -266,33 +276,28 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     return aPath.length - bPath.length;
   });
 
-  // if no task has triggers this is applying writes from the null task only
-  // so we don't do anything other than update the channels written to
-  const bumpStep = tasks.some((task) => task.triggers.length > 0);
-
   // Filter out non instances of BaseChannel
   const onlyChannels = getOnlyChannels(channels);
 
-  // Update seen versions
+  // Single pass: update seen versions, check for triggers, collect channels to consume
+  let bumpStep = false;
+  const channelsToConsume = new Set<string>();
   for (const task of tasks) {
+    if (task.triggers.length > 0) bumpStep = true;
     checkpoint.versions_seen[task.name] ??= {};
     for (const chan of task.triggers) {
       if (chan in checkpoint.channel_versions) {
         checkpoint.versions_seen[task.name][chan] =
           checkpoint.channel_versions[chan];
       }
+      if (!RESERVED_SET.has(chan)) {
+        channelsToConsume.add(chan);
+      }
     }
   }
 
   // Find the highest version of all channels
   let maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
-
-  // Consume all channels that were read
-  const channelsToConsume = new Set(
-    tasks
-      .flatMap((task) => task.triggers)
-      .filter((chan) => !RESERVED.includes(chan))
-  );
 
   let usedNewVersion = false;
   for (const chan of channelsToConsume) {

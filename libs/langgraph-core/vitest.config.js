@@ -1,5 +1,9 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+import { zeitzeuge } from "zeitzeuge/vitest";
+
+const enablePerformanceAnalysis = Boolean(process.env.ENABLE_PERFORMANCE_ANALYSIS);
+const plugins = enablePerformanceAnalysis ? [zeitzeuge()] : [];
 
 export default defineConfig((env) => {
   /** @type {import("vitest/config").UserConfigExport} */
@@ -63,5 +67,6 @@ export default defineConfig((env) => {
       include: ["**/*.test-d.ts", ...configDefaults.include],
       typecheck: { enabled: true },
     },
+    plugins
   };
 });
