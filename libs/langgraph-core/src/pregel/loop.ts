@@ -810,8 +810,7 @@ export class PregelLoop {
       // expensive debug objects when no consumer is listening
       if (
         this.checkpointer &&
-        (this.stream.modes.has("checkpoints") ||
-          this.stream.modes.has("debug"))
+        (this.stream.modes.has("checkpoints") || this.stream.modes.has("debug"))
       ) {
         this._emit(
           await gatherIterator(
@@ -859,18 +858,13 @@ export class PregelLoop {
       }
 
       // Before execution, check if we should interrupt
-      if (
-        shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)
-      ) {
+      if (shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)) {
         this.status = "interrupt_before";
         throw new GraphInterrupt();
       }
 
       // Produce debug output — gate on stream mode
-      if (
-        this.stream.modes.has("tasks") ||
-        this.stream.modes.has("debug")
-      ) {
+      if (this.stream.modes.has("tasks") || this.stream.modes.has("debug")) {
         const debugOutput = await gatherIterator(
           prefixGenerator(mapDebugTasks(newTaskList), "tasks")
         );
