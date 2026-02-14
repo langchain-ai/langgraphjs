@@ -437,6 +437,46 @@ function* candidateNodes(
   }
 }
 
+/**
+ * Pre-indexed pending writes for O(1) lookups, avoiding repeated
+ * linear scans in _prepareSingleTask and _scratchpad.
+ */
+export type PendingWritesIndex = {
+  nullResume: unknown | undefined;
+  resumeByTaskId: Map<string, unknown[]>;
+  successfulWriteTaskIds: Set<string>;
+};
+
+/**
+ * Build an index over pendingWrites for O(1) lookups.
+ */
+function _indexPendingWrites(
+  pendingWrites: [string, string, unknown][] | undefined
+): PendingWritesIndex {
+  let nullResume: unknown | undefined;
+  const resumeByTaskId = new Map<string, unknown[]>();
+  const successfulWriteTaskIds = new Set<string>();
+  if (pendingWrites) {
+    for (const [tid, chan, val] of pendingWrites) {
+      if (tid === NULL_TASK_ID && chan === RESUME && nullResume === undefined) {
+        nullResume = val;
+      }
+      if (chan === RESUME && tid !== NULL_TASK_ID) {
+        let arr = resumeByTaskId.get(tid);
+        if (!arr) {
+          arr = [];
+          resumeByTaskId.set(tid, arr);
+        }
+        arr.push(val);
+      }
+      if (chan !== ERROR) {
+        successfulWriteTaskIds.add(tid);
+      }
+    }
+  }
+  return { nullResume, resumeByTaskId, successfulWriteTaskIds };
+}
+
 export type NextTaskExtraFields = {
   step: number;
   isResuming?: boolean;
@@ -446,6 +486,7 @@ export type NextTaskExtraFields = {
   stream?: IterableReadableWritableStream;
   triggerToNodes?: Record<string, string[]>;
   updatedChannels?: Set<string>;
+  pendingWritesIndex?: PendingWritesIndex;
 };
 
 export type NextTaskExtraFieldsWithStore = NextTaskExtraFields & {
@@ -505,6 +546,11 @@ export function _prepareNextTasks<
     | Record<string, PregelExecutableTask<keyof Nn, keyof Cc>>
     | Record<string, PregelTaskDescription> = {};
 
+  // Pre-index pendingWrites once for O(1) lookups in _prepareSingleTask/_scratchpad
+  const indexedExtra: typeof extra = extra.pendingWritesIndex
+    ? extra
+    : { ...extra, pendingWritesIndex: _indexPendingWrites(pendingWrites) };
+
   // Consume pending tasks
   const tasksChannel = channels[TASKS] as Topic<SendProtocol> | undefined;
 
@@ -519,7 +565,7 @@ export function _prepareNextTasks<
         channels,
         config,
         forExecution,
-        extra
+        indexedExtra
       );
       if (task !== undefined) {
         tasks[task.id] = task;
@@ -529,7 +575,7 @@ export function _prepareNextTasks<
 
   // Check if any processes should be run in next step
   // If so, prepare the values to be passed to them
-  for (const name of candidateNodes(checkpoint, processes, extra)) {
+  for (const name of candidateNodes(checkpoint, processes, indexedExtra)) {
     const task = _prepareSingleTask(
       [PULL, name],
       checkpoint,
@@ -538,7 +584,7 @@ export function _prepareNextTasks<
       channels,
       config,
       forExecution,
-      extra
+      indexedExtra
     );
     if (task !== undefined) {
       tasks[task.id] = task;
@@ -696,6 +742,7 @@ export function _prepareSingleTask<
                 currentTaskInput: call.input,
                 resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
                 namespaceHash: XXH3(taskCheckpointNamespace),
+                pendingWritesIndex: extra.pendingWritesIndex,
               }),
               [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
               checkpoint_id: undefined,
@@ -840,6 +887,7 @@ export function _prepareSingleTask<
                   currentTaskInput: packet.args,
                   resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
                   namespaceHash: XXH3(taskCheckpointNamespace),
+                  pendingWritesIndex: extra.pendingWritesIndex,
                 }),
                 [CONFIG_KEY_PREVIOUS_STATE]:
                   checkpoint.channel_values[PREVIOUS],
@@ -879,14 +927,14 @@ export function _prepareSingleTask<
       return undefined;
     }
 
+    // Hoist checkpointNamespace — used by both early-exit check and main path
+    const checkpointNamespace =
+      parentNamespace === ""
+        ? name
+        : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
+
     // Check if this task already has successful writes in the pending writes
     if (pendingWrites?.length) {
-      // Find the task ID for this node/path
-      const checkpointNamespace =
-        parentNamespace === ""
-          ? name
-          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
-
       const taskId = uuid5(
         JSON.stringify([
           checkpointNamespace,
@@ -898,10 +946,10 @@ export function _prepareSingleTask<
         checkpoint.id
       );
 
-      // Check if there are successful writes (not ERROR) for this task ID
-      const hasSuccessfulWrites = pendingWrites.some(
-        (w) => w[0] === taskId && w[1] !== ERROR
-      );
+      // Use pre-indexed set for O(1) lookup when available, fall back to scan
+      const hasSuccessfulWrites = extra.pendingWritesIndex
+        ? extra.pendingWritesIndex.successfulWriteTaskIds.has(taskId)
+        : pendingWrites.some((w) => w[0] === taskId && w[1] !== ERROR);
 
       // If task completed successfully, don't include it in next tasks
       if (hasSuccessfulWrites) {
@@ -931,10 +979,6 @@ export function _prepareSingleTask<
       if (val === undefined) {
         return undefined;
       }
-      const checkpointNamespace =
-        parentNamespace === ""
-          ? name
-          : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
       const taskId = uuid5(
         JSON.stringify([
           checkpointNamespace,
@@ -1014,6 +1058,7 @@ export function _prepareSingleTask<
                     currentTaskInput: val,
                     resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
                     namespaceHash: XXH3(taskCheckpointNamespace),
+                    pendingWritesIndex: extra.pendingWritesIndex,
                   }),
                   [CONFIG_KEY_PREVIOUS_STATE]:
                     checkpoint.channel_values[PREVIOUS],
@@ -1163,23 +1208,32 @@ function _scratchpad({
   currentTaskInput,
   resumeMap,
   namespaceHash,
+  pendingWritesIndex,
 }: {
   pendingWrites: CheckpointPendingWrite[];
   taskId: string;
   currentTaskInput: unknown;
   resumeMap: Record<string, unknown> | undefined;
   namespaceHash: string;
+  pendingWritesIndex?: PendingWritesIndex;
 }): PregelScratchpad {
-  const nullResume = pendingWrites.find(
-    ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
-  )?.[2];
+  // Use pre-indexed values when available, fall back to scanning
+  const nullResume = pendingWritesIndex
+    ? pendingWritesIndex.nullResume
+    : pendingWrites.find(
+        ([writeTaskId, chan]) => writeTaskId === NULL_TASK_ID && chan === RESUME
+      )?.[2];
 
   const resume = (() => {
-    const result = pendingWrites
-      .filter(
-        ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
-      )
-      .flatMap(([_writeTaskId, _chan, resume]) => resume);
+    // Note: the original flatMap flattens array resume values one level,
+    // so we must also flatten when using the pre-indexed values
+    const result: unknown[] = pendingWritesIndex
+      ? (pendingWritesIndex.resumeByTaskId.get(taskId) ?? []).flat()
+      : pendingWrites
+          .filter(
+            ([writeTaskId, chan]) => writeTaskId === taskId && chan === RESUME
+          )
+          .flatMap(([_writeTaskId, _chan, resume]) => resume);
 
     if (resumeMap != null && namespaceHash in resumeMap) {
       const mappedResume = resumeMap[namespaceHash];

@@ -733,134 +733,152 @@ export class PregelLoop {
         `Cannot tick when status is no longer "pending". Current status: "${this.status}"`
       );
     }
-    if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
-      await this._first(inputKeys);
-    } else if (this.toInterrupt.length > 0) {
-      this.status = "interrupt_before";
-      throw new GraphInterrupt();
-    } else {
-      const taskList = Object.values(this.tasks);
-      if (!taskList.every((task) => task.writes.length > 0)) {
+
+    // Use a while loop instead of recursive this.tick() call to avoid
+    // async state machine re-entry overhead and potential stack overflow
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (![INPUT_DONE, INPUT_RESUMING].includes(this.input)) {
+        await this._first(inputKeys);
+      } else if (this.toInterrupt.length > 0) {
+        this.status = "interrupt_before";
+        throw new GraphInterrupt();
+      } else {
+        const taskList = Object.values(this.tasks);
+        if (!taskList.every((task) => task.writes.length > 0)) {
+          return false;
+        }
+        // finish superstep
+        const writes = taskList.flatMap((t) => t.writes);
+        // All tasks have finished
+        this.updatedChannels = _applyWrites(
+          this.checkpoint,
+          this.channels,
+          taskList,
+          this.checkpointerGetNextVersion,
+          this.triggerToNodes
+        );
+        // produce values output
+        const valuesOutput = await gatherIterator(
+          prefixGenerator(
+            mapOutputValues(this.outputKeys, writes, this.channels),
+            "values"
+          )
+        );
+        this._emit(valuesOutput);
+        // clear pending writes
+        this.checkpointPendingWrites = [];
+        await this._putCheckpoint({ source: "loop" });
+        // after execution, check if we should interrupt
+        if (shouldInterrupt(this.checkpoint, this.interruptAfter, taskList)) {
+          this.status = "interrupt_after";
+          throw new GraphInterrupt();
+        }
+
+        // unset resuming flag
+        if (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) {
+          delete this.config.configurable?.[CONFIG_KEY_RESUMING];
+        }
+      }
+      if (this.step > this.stop) {
+        this.status = "out_of_steps";
         return false;
       }
-      // finish superstep
-      const writes = taskList.flatMap((t) => t.writes);
-      // All tasks have finished
-      this.updatedChannels = _applyWrites(
+
+      const nextTasks = _prepareNextTasks(
         this.checkpoint,
+        this.checkpointPendingWrites,
+        this.nodes,
         this.channels,
-        taskList,
-        this.checkpointerGetNextVersion,
-        this.triggerToNodes
+        this.config,
+        true,
+        {
+          step: this.step,
+          checkpointer: this.checkpointer,
+          isResuming: this.isResuming,
+          manager: this.manager,
+          store: this.store,
+          stream: this.stream,
+          triggerToNodes: this.triggerToNodes,
+          updatedChannels: this.updatedChannels,
+        }
       );
-      // produce values output
-      const valuesOutput = await gatherIterator(
-        prefixGenerator(
-          mapOutputValues(this.outputKeys, writes, this.channels),
-          "values"
-        )
-      );
-      this._emit(valuesOutput);
-      // clear pending writes
-      this.checkpointPendingWrites = [];
-      await this._putCheckpoint({ source: "loop" });
-      // after execution, check if we should interrupt
-      if (shouldInterrupt(this.checkpoint, this.interruptAfter, taskList)) {
-        this.status = "interrupt_after";
+      this.tasks = nextTasks;
+      const newTaskList = Object.values(this.tasks);
+
+      // Produce debug output — gate on stream mode to avoid building
+      // expensive debug objects when no consumer is listening
+      if (
+        this.checkpointer &&
+        (this.stream.modes.has("checkpoints") ||
+          this.stream.modes.has("debug"))
+      ) {
+        this._emit(
+          await gatherIterator(
+            prefixGenerator(
+              mapDebugCheckpoint(
+                this.checkpointConfig,
+                this.channels,
+                this.streamKeys,
+                this.checkpointMetadata,
+                newTaskList,
+                this.checkpointPendingWrites,
+                this.prevCheckpointConfig,
+                this.outputKeys
+              ),
+              "checkpoints"
+            )
+          )
+        );
+      }
+
+      if (newTaskList.length === 0) {
+        this.status = "done";
+        return false;
+      }
+      // if there are pending writes from a previous loop, apply them
+      if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
+        for (const [tid, k, v] of this.checkpointPendingWrites) {
+          if (k === ERROR || k === INTERRUPT || k === RESUME) {
+            continue;
+          }
+          const task = newTaskList.find((t) => t.id === tid);
+          if (task) {
+            task.writes.push([k, v]);
+          }
+        }
+        for (const task of newTaskList) {
+          if (task.writes.length > 0) {
+            this._outputWrites(task.id, task.writes, true);
+          }
+        }
+      }
+      // if all tasks have finished, re-tick via loop continuation
+      if (newTaskList.every((task) => task.writes.length > 0)) {
+        continue;
+      }
+
+      // Before execution, check if we should interrupt
+      if (
+        shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)
+      ) {
+        this.status = "interrupt_before";
         throw new GraphInterrupt();
       }
 
-      // unset resuming flag
-      if (this.config.configurable?.[CONFIG_KEY_RESUMING] !== undefined) {
-        delete this.config.configurable?.[CONFIG_KEY_RESUMING];
+      // Produce debug output — gate on stream mode
+      if (
+        this.stream.modes.has("tasks") ||
+        this.stream.modes.has("debug")
+      ) {
+        const debugOutput = await gatherIterator(
+          prefixGenerator(mapDebugTasks(newTaskList), "tasks")
+        );
+        this._emit(debugOutput);
       }
-    }
-    if (this.step > this.stop) {
-      this.status = "out_of_steps";
-      return false;
-    }
 
-    const nextTasks = _prepareNextTasks(
-      this.checkpoint,
-      this.checkpointPendingWrites,
-      this.nodes,
-      this.channels,
-      this.config,
-      true,
-      {
-        step: this.step,
-        checkpointer: this.checkpointer,
-        isResuming: this.isResuming,
-        manager: this.manager,
-        store: this.store,
-        stream: this.stream,
-        triggerToNodes: this.triggerToNodes,
-        updatedChannels: this.updatedChannels,
-      }
-    );
-    this.tasks = nextTasks;
-    const newTaskList = Object.values(this.tasks);
-
-    // Produce debug output
-    if (this.checkpointer) {
-      this._emit(
-        await gatherIterator(
-          prefixGenerator(
-            mapDebugCheckpoint(
-              this.checkpointConfig,
-              this.channels,
-              this.streamKeys,
-              this.checkpointMetadata,
-              newTaskList,
-              this.checkpointPendingWrites,
-              this.prevCheckpointConfig,
-              this.outputKeys
-            ),
-            "checkpoints"
-          )
-        )
-      );
+      return true;
     }
-
-    if (newTaskList.length === 0) {
-      this.status = "done";
-      return false;
-    }
-    // if there are pending writes from a previous loop, apply them
-    if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
-      for (const [tid, k, v] of this.checkpointPendingWrites) {
-        if (k === ERROR || k === INTERRUPT || k === RESUME) {
-          continue;
-        }
-        const task = newTaskList.find((t) => t.id === tid);
-        if (task) {
-          task.writes.push([k, v]);
-        }
-      }
-      for (const task of newTaskList) {
-        if (task.writes.length > 0) {
-          this._outputWrites(task.id, task.writes, true);
-        }
-      }
-    }
-    // if all tasks have finished, re-tick
-    if (newTaskList.every((task) => task.writes.length > 0)) {
-      return this.tick({ inputKeys });
-    }
-
-    // Before execution, check if we should interrupt
-    if (shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)) {
-      this.status = "interrupt_before";
-      throw new GraphInterrupt();
-    }
-
-    // Produce debug output
-    const debugOutput = await gatherIterator(
-      prefixGenerator(mapDebugTasks(newTaskList), "tasks")
-    );
-    this._emit(debugOutput);
-
-    return true;
   }
 
   async finishAndHandleError(error?: Error) {
@@ -1061,18 +1079,25 @@ export class PregelLoop {
     }
     const isCommandUpdateOrGoto =
       isCommand(this.input) && nullWrites.length > 0;
-    if (this.isResuming || isCommandUpdateOrGoto) {
+    // Cache isResuming — the getter is non-trivial (iterates channel_versions,
+    // checks config, metadata) and is used twice below
+    const cachedIsResuming = this.isResuming;
+    if (cachedIsResuming || isCommandUpdateOrGoto) {
+      // Create a single new object (O(N)) instead of O(N²) spread-per-iteration.
+      // Must be a new object because copyCheckpoint does shallow copies of
+      // versions_seen — in-place mutation would leak through shared references.
+      const interruptSeen: Record<string, string | number> = {
+        ...this.checkpoint.versions_seen[INTERRUPT],
+      };
       for (const channelName in this.channels) {
         if (!Object.prototype.hasOwnProperty.call(this.channels, channelName))
           continue;
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
-          const version = this.checkpoint.channel_versions[channelName];
-          this.checkpoint.versions_seen[INTERRUPT] = {
-            ...this.checkpoint.versions_seen[INTERRUPT],
-            [channelName]: version,
-          };
+          interruptSeen[channelName] =
+            this.checkpoint.channel_versions[channelName];
         }
       }
+      this.checkpoint.versions_seen[INTERRUPT] = interruptSeen;
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -1082,7 +1107,7 @@ export class PregelLoop {
       );
       this._emit(valuesOutput);
     }
-    if (this.isResuming) {
+    if (cachedIsResuming) {
       this.input = INPUT_RESUMING;
     } else if (isCommandUpdateOrGoto) {
       // we need to create a new checkpoint for Command(update=...) or Command(goto=...)
@@ -1130,6 +1155,7 @@ export class PregelLoop {
       }
     }
     if (!this.isNested) {
+      // Use fresh isResuming here — state may have changed during _first
       this.config = patchConfigurable(this.config, {
         [CONFIG_KEY_RESUMING]: this.isResuming,
       });
