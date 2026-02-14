@@ -304,7 +304,8 @@ export class PregelRunner {
         for (
           ;
           Object.keys(executingTasksMap).length <
-            (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
+            (maxConcurrency ?? tasks.length) &&
+          startedTasksCount < tasks.length;
           startedTasksCount += 1
         ) {
           const task = tasks[startedTasksCount];
