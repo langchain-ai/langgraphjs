@@ -261,8 +261,13 @@ export class PregelRunner {
       }>
     > = {};
 
+    // Shared counter to track executing tasks across both the main loop and
+    // dynamically added tasks from call(). Avoids Object.keys() allocations.
+    const executingCounter = { count: 0 };
+
     const thisCall = {
       executingTasksMap,
+      executingCounter,
       barrier,
       retryPolicy,
       scheduleTask: async (
@@ -280,31 +285,53 @@ export class PregelRunner {
 
     let startedTasksCount = 0;
 
-    let listener: (() => void) | undefined;
-    const timeoutOrCancelSignal = combineAbortSignals(
-      signals?.externalAbortSignal,
-      signals?.timeoutAbortSignal
-    );
+    // Listen directly on individual signals instead of creating a second
+    // combineAbortSignals call, which would stack additional listeners on the
+    // shared externalAbortSignal across ticks.
+    let externalAbortListener: (() => void) | undefined;
+    let timeoutAbortListener: (() => void) | undefined;
 
-    const abortPromise = timeoutOrCancelSignal.signal
+    const hasAbortableSignal =
+      signals?.externalAbortSignal || signals?.timeoutAbortSignal;
+    const abortPromise = hasAbortableSignal
       ? new Promise<never>((_resolve, reject) => {
-          listener = () => reject(new Error("Abort"));
-          timeoutOrCancelSignal.signal?.addEventListener("abort", listener, {
-            once: true,
-          });
+          const onAbort = () => reject(new Error("Abort"));
+          if (
+            signals?.externalAbortSignal &&
+            !signals.externalAbortSignal.aborted
+          ) {
+            externalAbortListener = onAbort;
+            signals.externalAbortSignal.addEventListener("abort", onAbort, {
+              once: true,
+            });
+          }
+          if (
+            signals?.timeoutAbortSignal &&
+            !signals.timeoutAbortSignal.aborted
+          ) {
+            timeoutAbortListener = onAbort;
+            signals.timeoutAbortSignal.addEventListener("abort", onAbort, {
+              once: true,
+            });
+          }
+          // If already aborted, reject immediately
+          if (
+            signals?.externalAbortSignal?.aborted ||
+            signals?.timeoutAbortSignal?.aborted
+          ) {
+            onAbort();
+          }
         })
       : undefined;
 
     try {
       while (
-        (startedTasksCount === 0 ||
-          Object.keys(executingTasksMap).length > 0) &&
+        (startedTasksCount === 0 || executingCounter.count > 0) &&
         tasks.length
       ) {
         for (
           ;
-          Object.keys(executingTasksMap).length <
-            (maxConcurrency ?? tasks.length) &&
+          executingCounter.count < (maxConcurrency ?? tasks.length) &&
           startedTasksCount < tasks.length;
           startedTasksCount += 1
         ) {
@@ -322,6 +349,7 @@ export class PregelRunner {
               signalAborted: signals?.composedAbortSignal?.aborted,
             };
           });
+          executingCounter.count += 1;
         }
 
         // Build promises array once for Promise.race instead of spreading
@@ -338,15 +366,22 @@ export class PregelRunner {
         yield settledTask as SettledPregelTask;
 
         delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
+        executingCounter.count -= 1;
       }
     } finally {
-      // Clean up abort listener and combined signal when generator finishes
-      // (moved from inside the while loop to prevent premature cleanup that
-      // would break abort handling for subsequent tasks)
-      if (listener != null) {
-        timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
+      // Clean up abort listeners when generator finishes
+      if (externalAbortListener != null) {
+        signals?.externalAbortSignal?.removeEventListener(
+          "abort",
+          externalAbortListener
+        );
       }
-      timeoutOrCancelSignal.dispose?.();
+      if (timeoutAbortListener != null) {
+        signals?.timeoutAbortSignal?.removeEventListener(
+          "abort",
+          timeoutAbortListener
+        );
+      }
     }
   }
 
@@ -407,6 +442,8 @@ async function call(
         error?: Error;
       }>
     >;
+
+    executingCounter: { count: number };
 
     barrier: {
       next: () => void;
@@ -508,6 +545,7 @@ async function call(
     });
 
     this.executingTasksMap[nextTask.id] = prom;
+    this.executingCounter.count += 1;
     this.barrier.next();
 
     return prom.then(({ result, error }) => {

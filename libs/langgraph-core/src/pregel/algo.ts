@@ -935,19 +935,25 @@ export function _prepareSingleTask<
         ? name
         : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
 
+    // Pre-compute the shared JSON prefix for uuid5 calls (reused by
+    // early-exit check and main-path task ID to avoid double-serializing
+    // the same 4-element array)
+    const taskIdPrefixJson = JSON.stringify([
+      checkpointNamespace,
+      step.toString(),
+      name,
+      PULL,
+    ]);
+    // Remove trailing ']' to allow appending the differing last element
+    const taskIdPrefixBase = `${taskIdPrefixJson.slice(0, -1)},`;
+
     // Check if this task already has successful writes in the pending writes.
     // Only compute the early-exit taskId when the index is available for O(1)
     // lookup. Without the index, the uuid5+JSON.stringify cost exceeds the
     // benefit of the linear scan it replaces.
     if (pendingWrites?.length && extra.pendingWritesIndex) {
       const taskId = uuid5(
-        JSON.stringify([
-          checkpointNamespace,
-          step.toString(),
-          name,
-          PULL,
-          name,
-        ]),
+        `${taskIdPrefixBase}${JSON.stringify(name)}]`,
         checkpoint.id
       );
 
@@ -979,13 +985,7 @@ export function _prepareSingleTask<
         return undefined;
       }
       const taskId = uuid5(
-        JSON.stringify([
-          checkpointNamespace,
-          step.toString(),
-          name,
-          PULL,
-          [trigger],
-        ]),
+        `${taskIdPrefixBase}${JSON.stringify([trigger])}]`,
         checkpoint.id
       );
       const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;

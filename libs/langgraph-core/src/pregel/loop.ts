@@ -295,6 +295,10 @@ export class PregelLoop {
 
   triggerToNodes: Record<string, string[]>;
 
+  // Lazy-initialized cache for UntrackedValue channel check.
+  // Channel types don't change during execution, so this is computed once.
+  private _hasUntrackedChannels: boolean | undefined;
+
   get isResuming() {
     let hasChannelVersions = false;
     if (START in this.checkpoint.channel_versions) {
@@ -545,17 +549,16 @@ export class PregelLoop {
       );
     }
 
-    // Check if any channels are UntrackedValue (manual loop for perf)
-    let hasUntrackedChannels = false;
-    for (const key in this.channels) {
-      if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
-        const channel = this.channels[key];
-        if (channel.lc_graph_name === "UntrackedValue") {
-          hasUntrackedChannels = true;
-          break;
+    // Use cached check — channel types don't change during execution
+    const hasUntrackedChannels = (this._hasUntrackedChannels ??= (() => {
+      for (const key in this.channels) {
+        if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
+          if (this.channels[key].lc_graph_name === "UntrackedValue")
+            return true;
         }
       }
-    }
+      return false;
+    })());
 
     // Sanitize writes for checkpointing: remove UntrackedValue writes and sanitize Send packets
     let writesToSave = writesCopy;
@@ -578,10 +581,16 @@ export class PregelLoop {
         });
     }
 
-    // remove existing writes for this task
-    this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
-      (w) => w[0] !== taskId
-    );
+    // Remove existing writes for this task (in-place compaction to avoid
+    // allocating a new array on every putWrites call)
+    let writeIdx = 0;
+    for (let i = 0; i < this.checkpointPendingWrites.length; i++) {
+      if (this.checkpointPendingWrites[i][0] !== taskId) {
+        this.checkpointPendingWrites[writeIdx++] =
+          this.checkpointPendingWrites[i];
+      }
+    }
+    this.checkpointPendingWrites.length = writeIdx;
 
     // save writes
     for (const [c, v] of writesToSave) {
