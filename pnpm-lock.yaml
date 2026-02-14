@@ -896,9 +896,6 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@18.19.130)(@vitest/browser@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.2)
-      zeitzeuge:
-        specifier: ^0.3.5
-        version: 0.3.5(openai@6.21.0(ws@8.19.0)(zod@4.3.5))(vitest@3.2.4)(ws@8.19.0)(zod-to-json-schema@3.25.1(zod@4.3.5))
 
   internal/build:
     dependencies:
@@ -14985,7 +14982,7 @@ snapshots:
       ora: 9.3.0
       picocolors: 1.1.1
       puppeteer-core: 24.37.3
-      vitest: 3.2.4(@types/node@18.19.130)(@vitest/browser@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.2)
+      vitest: 3.2.4(@types/node@20.19.30)(@vitest/browser@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@20.19.30)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.2)
       webdriverio: 9.24.0(puppeteer-core@24.37.3)
       yargs: 18.0.0
       zod: 4.3.5
