@@ -550,6 +550,7 @@ export class PregelLoop {
     }
 
     // Use cached check — channel types don't change during execution
+    // eslint-disable-next-line no-multi-assign
     const hasUntrackedChannels = (this._hasUntrackedChannels ??= (() => {
       for (const key in this.channels) {
         if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
@@ -584,8 +585,9 @@ export class PregelLoop {
     // Remove existing writes for this task (in-place compaction to avoid
     // allocating a new array on every putWrites call)
     let writeIdx = 0;
-    for (let i = 0; i < this.checkpointPendingWrites.length; i++) {
+    for (let i = 0; i < this.checkpointPendingWrites.length; i += 1) {
       if (this.checkpointPendingWrites[i][0] !== taskId) {
+        // eslint-disable-next-line no-plusplus
         this.checkpointPendingWrites[writeIdx++] =
           this.checkpointPendingWrites[i];
       }
