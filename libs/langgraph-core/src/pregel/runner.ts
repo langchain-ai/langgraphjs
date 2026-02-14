@@ -295,51 +295,57 @@ export class PregelRunner {
         })
       : undefined;
 
-    while (
-      (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
-      tasks.length
-    ) {
-      for (
-        ;
-        Object.keys(executingTasksMap).length <
-          (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
-        startedTasksCount += 1
+    try {
+      while (
+        (startedTasksCount === 0 ||
+          Object.keys(executingTasksMap).length > 0) &&
+        tasks.length
       ) {
-        const task = tasks[startedTasksCount];
+        for (
+          ;
+          Object.keys(executingTasksMap).length <
+            (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
+          startedTasksCount += 1
+        ) {
+          const task = tasks[startedTasksCount];
 
-        executingTasksMap[task.id] = _runWithRetry(
-          task,
-          retryPolicy,
-          { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
-          signals?.composedAbortSignal
-        ).catch((error) => {
-          return {
+          executingTasksMap[task.id] = _runWithRetry(
             task,
-            error,
-            signalAborted: signals?.composedAbortSignal?.aborted,
-          };
-        });
+            retryPolicy,
+            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
+            signals?.composedAbortSignal
+          ).catch((error) => {
+            return {
+              task,
+              error,
+              signalAborted: signals?.composedAbortSignal?.aborted,
+            };
+          });
+        }
+
+        // Build promises array once for Promise.race instead of spreading
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const promises: Promise<any>[] = Object.values(executingTasksMap);
+        if (abortPromise) promises.push(abortPromise);
+        promises.push(barrier.wait);
+        const settledTask = await Promise.race(promises);
+
+        if (settledTask === PROMISE_ADDED_SYMBOL) {
+          continue;
+        }
+
+        yield settledTask as SettledPregelTask;
+
+        delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
       }
-
-      // Build promises array once for Promise.race instead of spreading
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const promises: Promise<any>[] = Object.values(executingTasksMap);
-      if (abortPromise) promises.push(abortPromise);
-      promises.push(barrier.wait);
-      const settledTask = await Promise.race(promises);
-
-      if (settledTask === PROMISE_ADDED_SYMBOL) {
-        continue;
-      }
-
-      yield settledTask as SettledPregelTask;
-
+    } finally {
+      // Clean up abort listener and combined signal when generator finishes
+      // (moved from inside the while loop to prevent premature cleanup that
+      // would break abort handling for subsequent tasks)
       if (listener != null) {
         timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
-        timeoutOrCancelSignal.dispose?.();
       }
-
-      delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
+      timeoutOrCancelSignal.dispose?.();
     }
   }
 

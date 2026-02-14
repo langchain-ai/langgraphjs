@@ -417,7 +417,9 @@ function* candidateNodes(
     }
 
     // Sort the nodes to ensure deterministic order
-    yield* [...triggeredNodes].sort();
+    // Use Array.from + explicit loop to avoid intermediate spread allocation
+    const sorted = Array.from(triggeredNodes).sort();
+    for (let i = 0; i < sorted.length; i += 1) yield sorted[i];
     return;
   }
 
@@ -933,8 +935,11 @@ export function _prepareSingleTask<
         ? name
         : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${name}`;
 
-    // Check if this task already has successful writes in the pending writes
-    if (pendingWrites?.length) {
+    // Check if this task already has successful writes in the pending writes.
+    // Only compute the early-exit taskId when the index is available for O(1)
+    // lookup. Without the index, the uuid5+JSON.stringify cost exceeds the
+    // benefit of the linear scan it replaces.
+    if (pendingWrites?.length && extra.pendingWritesIndex) {
       const taskId = uuid5(
         JSON.stringify([
           checkpointNamespace,
@@ -946,13 +951,7 @@ export function _prepareSingleTask<
         checkpoint.id
       );
 
-      // Use pre-indexed set for O(1) lookup when available, fall back to scan
-      const hasSuccessfulWrites = extra.pendingWritesIndex
-        ? extra.pendingWritesIndex.successfulWriteTaskIds.has(taskId)
-        : pendingWrites.some((w) => w[0] === taskId && w[1] !== ERROR);
-
-      // If task completed successfully, don't include it in next tasks
-      if (hasSuccessfulWrites) {
+      if (extra.pendingWritesIndex.successfulWriteTaskIds.has(taskId)) {
         return undefined;
       }
     }
