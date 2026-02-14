@@ -765,9 +765,7 @@ export class PregelLoop {
       this.checkpointPendingWrites = [];
       await this._putCheckpoint({ source: "loop" });
       // after execution, check if we should interrupt
-      if (
-        shouldInterrupt(this.checkpoint, this.interruptAfter, taskList)
-      ) {
+      if (shouldInterrupt(this.checkpoint, this.interruptAfter, taskList)) {
         this.status = "interrupt_after";
         throw new GraphInterrupt();
       }
@@ -851,9 +849,7 @@ export class PregelLoop {
     }
 
     // Before execution, check if we should interrupt
-    if (
-      shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)
-    ) {
+    if (shouldInterrupt(this.checkpoint, this.interruptBefore, newTaskList)) {
       this.status = "interrupt_before";
       throw new GraphInterrupt();
     }
