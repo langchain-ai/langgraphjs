@@ -1527,3 +1527,100 @@ describe("PostgresStore Migration System", () => {
     }
   });
 });
+
+describe("PostgresStore Pool Sharing", () => {
+  let sharedPool: pg.Pool;
+  let dbName: string;
+  let dbConnectionString: string;
+
+  beforeEach(async () => {
+    dbName = `pool_share_test_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    const adminPool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await adminPool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await adminPool.end();
+    }
+    dbConnectionString = `${TEST_POSTGRES_URL!
+      .split("/")
+      .slice(0, -1)
+      .join("/")}/${dbName}`;
+    sharedPool = new Pool({ connectionString: dbConnectionString });
+  });
+
+  afterEach(async () => {
+    try {
+      await sharedPool.end();
+    } catch {
+      // Pool may already be ended; ignore.
+    }
+    const adminPool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await adminPool.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
+    } finally {
+      await adminPool.end();
+    }
+  }, 30_000);
+
+  it("should accept a pg.Pool via the constructor", async () => {
+    const store = new PostgresStore({ pool: sharedPool });
+    await store.setup();
+
+    await store.put(["pool-test"], "key1", { data: "hello" });
+    const item = await store.get(["pool-test"], "key1");
+    expect(item).toBeDefined();
+    expect(item?.value).toEqual({ data: "hello" });
+
+    await store.stop();
+  });
+
+  it("should accept a pg.Pool via fromPool factory", async () => {
+    const store = PostgresStore.fromPool(sharedPool);
+    await store.setup();
+
+    await store.put(["pool-test"], "key1", { data: "fromPool" });
+    const item = await store.get(["pool-test"], "key1");
+    expect(item).toBeDefined();
+    expect(item?.value).toEqual({ data: "fromPool" });
+
+    await store.stop();
+  });
+
+  it("should not close an externally-provided pool on stop()", async () => {
+    const store = PostgresStore.fromPool(sharedPool);
+    await store.setup();
+
+    await store.put(["pool-test"], "key1", { data: "before-stop" });
+    await store.stop();
+
+    // The shared pool should still be usable after the store is stopped
+    const result = await sharedPool.query("SELECT 1 AS val");
+    expect(result.rows[0].val).toBe(1);
+  });
+
+  it("should allow a shared pool between two PostgresStore instances", async () => {
+    const store1 = PostgresStore.fromPool(sharedPool, { schema: "shared_a" });
+    const store2 = PostgresStore.fromPool(sharedPool, { schema: "shared_b" });
+
+    await store1.setup();
+    await store2.setup();
+
+    await store1.put(["ns"], "k1", { from: "store1" });
+    await store2.put(["ns"], "k1", { from: "store2" });
+
+    const item1 = await store1.get(["ns"], "k1");
+    const item2 = await store2.get(["ns"], "k1");
+
+    expect(item1?.value).toEqual({ from: "store1" });
+    expect(item2?.value).toEqual({ from: "store2" });
+
+    // Stop both stores -- the shared pool should remain open
+    await store1.stop();
+    await store2.stop();
+
+    const result = await sharedPool.query("SELECT 1 AS val");
+    expect(result.rows[0].val).toBe(1);
+  });
+});
