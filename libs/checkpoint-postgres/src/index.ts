@@ -174,12 +174,19 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   protected async _loadCheckpoint(
-    checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">,
+    checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values"> & {
+      channel_values?: Record<string, unknown>;
+    },
     channelValues: [Uint8Array, Uint8Array, Uint8Array][]
   ): Promise<Checkpoint> {
     return {
       ...checkpoint,
-      channel_values: await this._loadBlobs(channelValues),
+      channel_values: {
+        // Merge inline primitives from checkpoint JSONB (supports Python-written checkpoints)
+        ...(checkpoint.channel_values || {}),
+        // Blob values override inline primitives
+        ...(await this._loadBlobs(channelValues)),
+      },
     };
   }
 
@@ -270,9 +277,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
     checkpointNs: string,
     checkpointId: string,
     taskId: string,
-    writes: [string, unknown][]
+    writes: [string, unknown][],
+    taskPath: string = ""
   ): Promise<
-    [string, string, string, string, number, string, string, Uint8Array][]
+    [string, string, string, string, number, string, string, Uint8Array, string][]
   > {
     return Promise.all(
       writes.map(async ([channel, value], idx) => {
@@ -286,6 +294,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
           channel,
           type,
           new Uint8Array(serializedValue),
+          taskPath,
         ];
       })
     );
@@ -618,7 +627,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath: string = ""
   ): Promise<void> {
     const query = writes.every((w) => w[0] in WRITES_IDX_MAP)
       ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
@@ -629,7 +639,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
       config.configurable?.checkpoint_ns,
       config.configurable?.checkpoint_id,
       taskId,
-      writes
+      writes,
+      taskPath
     );
     const client = await this.pool.connect();
     try {

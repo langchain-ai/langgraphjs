@@ -313,6 +313,12 @@ describe.each([
           is_nullable: "NO",
           column_default: null,
         },
+        {
+          column_name: "task_path",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "''::text",
+        },
       ]);
 
       // Verify migrations table has correct number of entries
@@ -451,6 +457,118 @@ describe.each([
 
     expect(await postgresSaver.getTuple(thread1)).toBeUndefined();
     expect(await postgresSaver.getTuple(thread2)).toBeDefined();
+  });
+
+  it("should verify migrations 5-9 run successfully", async () => {
+    const pool = new Pool({
+      connectionString: currentDbConnectionString,
+    });
+    const client = await pool.connect();
+    const currentSchema = schema ?? "public";
+    try {
+      // Verify migrations 0-9 are all present
+      const migrationsResult = await client.query(`
+        SELECT v FROM ${currentSchema}.checkpoint_migrations ORDER BY v
+      `);
+      const MIGRATIONS = getMigrations(currentSchema);
+      expect(migrationsResult.rows.length).toBe(MIGRATIONS.length);
+      expect(migrationsResult.rows.map((r: { v: number }) => r.v)).toEqual(
+        Array.from({ length: MIGRATIONS.length }, (_, i) => i)
+      );
+
+      // Verify task_path column exists on checkpoint_writes
+      const columnsResult = await client.query(
+        `
+        SELECT column_name, data_type, column_default
+        FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'checkpoint_writes' AND column_name = 'task_path'
+      `,
+        [currentSchema]
+      );
+      expect(columnsResult.rows.length).toBe(1);
+      expect(columnsResult.rows[0].data_type).toBe("text");
+      expect(columnsResult.rows[0].column_default).toBe("''::text");
+
+      // Verify thread_id indexes exist
+      const indexResult = await client.query(
+        `
+        SELECT indexname FROM pg_indexes
+        WHERE schemaname = $1
+        AND indexname IN ('checkpoints_thread_id_idx', 'checkpoint_blobs_thread_id_idx', 'checkpoint_writes_thread_id_idx')
+        ORDER BY indexname
+      `,
+        [currentSchema]
+      );
+      expect(indexResult.rows.length).toBe(3);
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  });
+
+  it("should support putWrites with taskPath parameter", async () => {
+    const config: RunnableConfig = {
+      configurable: { thread_id: "thread-path-1", checkpoint_ns: "" },
+    };
+
+    const checkpoint0: Checkpoint = {
+      v: 4,
+      id: uuid6(0),
+      ts: "2024-04-19T17:19:07.952Z",
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
+    };
+
+    const savedConfig = await postgresSaver.put(
+      config,
+      checkpoint0,
+      { source: "loop", parents: {}, step: 0 },
+      {}
+    );
+
+    // Write with task_path
+    await postgresSaver.putWrites(
+      savedConfig,
+      [["channel1", "value1"]],
+      "task-1",
+      "root|subgraph:abc"
+    );
+
+    // Write without task_path (should default to "")
+    await postgresSaver.putWrites(
+      savedConfig,
+      [["channel2", "value2"]],
+      "task-2"
+    );
+
+    // Verify writes are stored and retrievable
+    const tuple = await postgresSaver.getTuple(savedConfig);
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites?.length).toBe(2);
+
+    // Verify task_path is stored in the database
+    const pool = new Pool({
+      connectionString: currentDbConnectionString,
+    });
+    const client = await pool.connect();
+    const currentSchema = schema ?? "public";
+    try {
+      const result = await client.query(
+        `SELECT task_id, task_path FROM ${currentSchema}.checkpoint_writes WHERE thread_id = $1 ORDER BY task_path, task_id`,
+        ["thread-path-1"]
+      );
+      expect(result.rows.length).toBe(2);
+      // task-2 has empty task_path, should come first
+      expect(result.rows[0].task_id).toBe("task-2");
+      expect(result.rows[0].task_path).toBe("");
+      // task-1 has "root|subgraph:abc" task_path, should come second
+      expect(result.rows[1].task_id).toBe("task-1");
+      expect(result.rows[1].task_path).toBe("root|subgraph:abc");
+    } finally {
+      client.release();
+      await pool.end();
+    }
   });
 
   it("pending sends migration", async () => {

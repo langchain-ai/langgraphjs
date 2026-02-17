@@ -41,5 +41,15 @@ export const getMigrations = (schema: string) => {
     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
   );`,
     `ALTER TABLE ${SCHEMA_TABLES.checkpoint_blobs} ALTER COLUMN blob DROP not null;`,
+    // Migration 5: no-op (version alignment with Python)
+    `SELECT 1;`,
+    // Migration 6: index on checkpoints.thread_id
+    `CREATE INDEX IF NOT EXISTS checkpoints_thread_id_idx ON ${SCHEMA_TABLES.checkpoints}(thread_id);`,
+    // Migration 7: index on checkpoint_blobs.thread_id
+    `CREATE INDEX IF NOT EXISTS checkpoint_blobs_thread_id_idx ON ${SCHEMA_TABLES.checkpoint_blobs}(thread_id);`,
+    // Migration 8: index on checkpoint_writes.thread_id
+    `CREATE INDEX IF NOT EXISTS checkpoint_writes_thread_id_idx ON ${SCHEMA_TABLES.checkpoint_writes}(thread_id);`,
+    // Migration 9: add task_path column
+    `ALTER TABLE ${SCHEMA_TABLES.checkpoint_writes} ADD COLUMN IF NOT EXISTS task_path TEXT NOT NULL DEFAULT '';`,
   ];
 };
