@@ -12415,6 +12415,33 @@ graph TD;
     expect(result.collect).toEqual(["one", "two"]);
   });
 
+  it("runtime.store is accessible in nodes", async () => {
+    const store = new InMemoryStore();
+    let storeAccessed = false;
+    
+    const graph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<BaseMessage[]>({
+          default: () => [],
+          reducer: (a, b) => a.concat(b),
+        }),
+      })
+    )
+      .addNode("checkStore", (_, runtime) => {
+        // Verify that runtime.store is defined
+        expect(runtime.store).toBeDefined();
+        storeAccessed = true;
+        return { messages: [] };
+      })
+      .addEdge(START, "checkStore")
+      .compile({ store });
+
+    await graph.invoke({ messages: [] });
+    
+    // Verify the store was accessed
+    expect(storeAccessed).toBe(true);
+  });
+
   it("multiple writes to the same channel from same node", async () => {
     const checkpointer = await createCheckpointer();
     const state = Annotation.Root({
