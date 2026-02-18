@@ -118,10 +118,9 @@ export class PregelRunner {
       ? AbortSignal.timeout(timeout)
       : undefined;
 
-    // Start task execution
-    const pendingTasks = Object.values(this.loop.tasks).filter(
-      (t) => t.writes.length === 0
-    );
+    // Start task execution (cache Object.values once)
+    const allTasks = Object.values(this.loop.tasks);
+    const pendingTasks = allTasks.filter((t) => t.writes.length === 0);
 
     const { signals, disposeCombinedSignal } = this._initializeAbortSignals({
       exceptionSignal,
@@ -163,12 +162,7 @@ export class PregelRunner {
 
     disposeCombinedSignal?.();
 
-    onStepWrite?.(
-      this.loop.step,
-      Object.values(this.loop.tasks)
-        .map((task) => task.writes)
-        .flat()
-    );
+    onStepWrite?.(this.loop.step, allTasks.map((task) => task.writes).flat());
 
     if (nodeErrors.size === 1) {
       throw Array.from(nodeErrors)[0];
@@ -267,8 +261,13 @@ export class PregelRunner {
       }>
     > = {};
 
+    // Shared counter to track executing tasks across both the main loop and
+    // dynamically added tasks from call(). Avoids Object.keys() allocations.
+    const executingCounter = { count: 0 };
+
     const thisCall = {
       executingTasksMap,
+      executingCounter,
       barrier,
       retryPolicy,
       scheduleTask: async (
@@ -286,65 +285,94 @@ export class PregelRunner {
 
     let startedTasksCount = 0;
 
-    let listener: (() => void) | undefined;
-    const timeoutOrCancelSignal = combineAbortSignals(
-      signals?.externalAbortSignal,
-      signals?.timeoutAbortSignal
-    );
-
-    const abortPromise = timeoutOrCancelSignal.signal
+    // Listen on the per-tick composedAbortSignal instead of the shared
+    // externalAbortSignal/timeoutAbortSignal. composedAbortSignal is created
+    // fresh each tick by combineAbortSignals(), so listeners don't accumulate
+    // across concurrent ticks/subgraphs on the shared signals.
+    let composedAbortListener: (() => void) | undefined;
+    const abortPromise = signals?.composedAbortSignal
       ? new Promise<never>((_resolve, reject) => {
-          listener = () => reject(new Error("Abort"));
-          timeoutOrCancelSignal.signal?.addEventListener("abort", listener, {
-            once: true,
-          });
+          const onAbort = () => {
+            // Only reject for timeout/cancel aborts, not for node-exception
+            // aborts. This preserves the error collection flow: when a node
+            // throws, tick() fires the exception signal which triggers
+            // composedAbortSignal, but we still need the generator to continue
+            // yielding remaining task results so tick() can collect all errors.
+            if (
+              signals?.externalAbortSignal?.aborted ||
+              signals?.timeoutAbortSignal?.aborted
+            ) {
+              reject(new Error("Abort"));
+            }
+          };
+          if (!signals.composedAbortSignal!.aborted) {
+            composedAbortListener = onAbort;
+            signals.composedAbortSignal!.addEventListener("abort", onAbort, {
+              once: true,
+            });
+          }
+          // If already aborted by timeout/cancel, reject immediately
+          if (
+            signals?.externalAbortSignal?.aborted ||
+            signals?.timeoutAbortSignal?.aborted
+          ) {
+            onAbort();
+          }
         })
       : undefined;
 
-    while (
-      (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
-      tasks.length
-    ) {
-      for (
-        ;
-        Object.values(executingTasksMap).length <
-          (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
-        startedTasksCount += 1
+    try {
+      while (
+        (startedTasksCount === 0 || executingCounter.count > 0) &&
+        tasks.length
       ) {
-        const task = tasks[startedTasksCount];
+        for (
+          ;
+          executingCounter.count < (maxConcurrency ?? tasks.length) &&
+          startedTasksCount < tasks.length;
+          startedTasksCount += 1
+        ) {
+          const task = tasks[startedTasksCount];
 
-        executingTasksMap[task.id] = _runWithRetry(
-          task,
-          retryPolicy,
-          { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
-          signals?.composedAbortSignal
-        ).catch((error) => {
-          return {
+          executingTasksMap[task.id] = _runWithRetry(
             task,
-            error,
-            signalAborted: signals?.composedAbortSignal?.aborted,
-          };
-        });
+            retryPolicy,
+            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
+            signals?.composedAbortSignal
+          ).catch((error) => {
+            return {
+              task,
+              error,
+              signalAborted: signals?.composedAbortSignal?.aborted,
+            };
+          });
+          executingCounter.count += 1;
+        }
+
+        // Build promises array once for Promise.race instead of spreading
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const promises: Promise<any>[] = Object.values(executingTasksMap);
+        if (abortPromise) promises.push(abortPromise);
+        promises.push(barrier.wait);
+        const settledTask = await Promise.race(promises);
+
+        if (settledTask === PROMISE_ADDED_SYMBOL) {
+          continue;
+        }
+
+        yield settledTask as SettledPregelTask;
+
+        delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
+        executingCounter.count -= 1;
       }
-
-      const settledTask = await Promise.race([
-        ...Object.values(executingTasksMap),
-        ...(abortPromise ? [abortPromise] : []),
-        barrier.wait,
-      ]);
-
-      if (settledTask === PROMISE_ADDED_SYMBOL) {
-        continue;
+    } finally {
+      // Clean up the single composed listener when generator finishes
+      if (composedAbortListener != null) {
+        signals?.composedAbortSignal?.removeEventListener(
+          "abort",
+          composedAbortListener
+        );
       }
-
-      yield settledTask as SettledPregelTask;
-
-      if (listener != null) {
-        timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
-        timeoutOrCancelSignal.dispose?.();
-      }
-
-      delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
     }
   }
 
@@ -405,6 +433,8 @@ async function call(
         error?: Error;
       }>
     >;
+
+    executingCounter: { count: number };
 
     barrier: {
       next: () => void;
@@ -506,6 +536,7 @@ async function call(
     });
 
     this.executingTasksMap[nextTask.id] = prom;
+    this.executingCounter.count += 1;
     this.barrier.next();
 
     return prom.then(({ result, error }) => {

@@ -11,11 +11,14 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
+    "@langchain/core": "^1.1.24",
     "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "prettier": "^2.8.3",
     "typescript": "^4.9.5 || ^5.4.5",
+    "uuid": "^13.0.0",
     "vitest": "^3.2.4"
   }
 }

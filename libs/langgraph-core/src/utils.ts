@@ -73,7 +73,11 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
     const config = ensureLangGraphConfig(options);
-    const mergedConfig = mergeConfigs(this.config, config);
+    // Skip mergeConfigs when this.config is undefined (common case for
+    // RunnableCallable instances without tags) to avoid creating a new object
+    const mergedConfig = this.config
+      ? mergeConfigs(this.config, config)
+      : config;
 
     if (this.trace) {
       returnValue = await this._callWithConfig(
