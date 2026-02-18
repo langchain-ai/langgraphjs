@@ -1,5 +1,12 @@
 # langgraph
 
+## 1.0.21
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph@1.1.5
+
 ## 1.0.20
 
 ### Patch Changes

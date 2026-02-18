@@ -200,6 +200,9 @@ export interface Thread<ValuesType = DefaultValues, TInterruptValue = unknown> {
   /** The last time the thread was updated. */
   updated_at: string;
 
+  /** The last time the thread state was updated. */
+  state_updated_at: string;
+
   /** The thread metadata. */
   metadata: Metadata;
 
@@ -378,7 +381,12 @@ export type AssistantSortBy =
   | "created_at"
   | "updated_at";
 
-export type ThreadSortBy = "thread_id" | "status" | "created_at" | "updated_at";
+export type ThreadSortBy =
+  | "thread_id"
+  | "status"
+  | "created_at"
+  | "updated_at"
+  | "state_updated_at";
 
 export type CronSortBy =
   | "cron_id"
@@ -409,6 +417,7 @@ export type ThreadSelectField =
   | "thread_id"
   | "created_at"
   | "updated_at"
+  | "state_updated_at"
   | "metadata"
   | "config"
   | "context"
