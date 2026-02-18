@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 2.0.1
+
+### Patch Changes
+
+- [#1975](https://github.com/langchain-ai/langgraphjs/pull/1975) [`31a3d0d`](https://github.com/langchain-ai/langgraphjs/commit/31a3d0db5de34aaaf2f51de78c82aa7e99fab63f) Thanks [@hntrl](https://github.com/hntrl)! - add 'state_updated_at' field to threads
+
 ## 2.0.0
 
 ### Major Changes
