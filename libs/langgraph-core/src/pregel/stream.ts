@@ -183,7 +183,8 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     _parentRunId?: string,
     tags?: string[],
     metadata?: Record<string, unknown>,
-    runName?: string
+    runName?: string,
+    toolCallId?: string,
   ) {
     if (!metadata || (tags && tags.includes(TAG_HIDDEN))) return;
 
@@ -191,7 +192,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     const info: ToolRunInfo = {
       ns,
       metadata: { tags, ...metadata },
-      toolCallId: metadata.toolCallId as string | undefined,
+      toolCallId,
       toolName: runName ?? "unknown",
       input,
     };
@@ -209,12 +210,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     ]);
   }
 
-  handleToolStream(
-    chunk: unknown,
-    runId: string,
-    _parentRunId?: string,
-    _tags?: string[]
-  ) {
+  handleToolStream(chunk: unknown, runId: string) {
     const info = this.runs[runId];
     if (!info) return;
 
