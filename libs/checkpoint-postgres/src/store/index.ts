@@ -217,7 +217,7 @@ export class PostgresStore extends BaseStore {
     const STORE_TABLES = getStoreTablesWithSchema(this.core.schema);
 
     try {
-      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.core.schema}`);
+      await client.query(`CREATE SCHEMA IF NOT EXISTS "${this.core.schema}"`);
 
       let version = -1;
 
@@ -319,7 +319,7 @@ export class PostgresStore extends BaseStore {
 
     let sqlQuery = `
       SELECT DISTINCT namespace_path
-      FROM ${this.core.schema}.store
+      FROM "${this.core.schema}".store
     `;
 
     const params: unknown[] = [];
@@ -427,7 +427,7 @@ export class PostgresStore extends BaseStore {
           COUNT(DISTINCT namespace_path) as namespace_count,
           MIN(created_at) as oldest_item,
           MAX(created_at) as newest_item
-        FROM ${this.core.schema}.store
+        FROM "${this.core.schema}".store
       `);
 
       const row = result.rows[0];

@@ -58,7 +58,7 @@ export class DatabaseCore {
     if (expiresAt) {
       await client.query(
         `
-        UPDATE ${this.schema}.store 
+        UPDATE "${this.schema}".store 
         SET expires_at = $3, updated_at = CURRENT_TIMESTAMP
         WHERE namespace_path = $1 AND key = $2
       `,

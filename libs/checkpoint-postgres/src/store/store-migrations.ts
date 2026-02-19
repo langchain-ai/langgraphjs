@@ -56,7 +56,7 @@ export const getStoreMigrations = (config: StoreMigrationConfig): string[] => {
 
   // Migration 4: Create update trigger
   migrations.push(`
-    CREATE OR REPLACE FUNCTION ${schema}.update_updated_at_column()
+    CREATE OR REPLACE FUNCTION "${schema}".update_updated_at_column()
     RETURNS TRIGGER AS $$
     BEGIN
       NEW.updated_at = CURRENT_TIMESTAMP;
@@ -68,7 +68,7 @@ export const getStoreMigrations = (config: StoreMigrationConfig): string[] => {
 
     CREATE TRIGGER update_store_updated_at
     BEFORE UPDATE ON ${STORE_TABLES.store}
-    FOR EACH ROW EXECUTE FUNCTION ${schema}.update_updated_at_column();
+    FOR EACH ROW EXECUTE FUNCTION "${schema}".update_updated_at_column();
   `);
 
   // Vector-related migrations (only if indexConfig is provided)
