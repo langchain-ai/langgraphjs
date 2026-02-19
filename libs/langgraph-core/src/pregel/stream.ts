@@ -210,7 +210,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     ]);
   }
 
-  handleToolStream(chunk: unknown, runId: string) {
+  handleToolEvent(chunk: unknown, runId: string) {
     const info = this.runs[runId];
     if (!info) return;
 
