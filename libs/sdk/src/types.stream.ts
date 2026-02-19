@@ -247,21 +247,35 @@ export type FeedbackStreamEvent = {
   data: { [feedbackKey: string]: string };
 };
 
+export type ToolStreamEventData =
+  | {
+      event: "on_tool_start";
+      toolCallId?: string;
+      name: string;
+      input: unknown;
+    }
+  | {
+      event: "on_tool_partial";
+      toolCallId?: string;
+      name: string;
+      data: unknown;
+    }
+  | {
+      event: "on_tool_end";
+      toolCallId?: string;
+      name: string;
+      output: unknown;
+    }
+  | {
+      event: "on_tool_error";
+      toolCallId?: string;
+      name: string;
+      error: unknown;
+    };
+
 export type ToolsStreamEvent = {
   event: "tools";
-  data: {
-    event:
-      | "on_tool_start"
-      | "on_tool_partial"
-      | "on_tool_end"
-      | "on_tool_error";
-    toolCallId?: string;
-    name: string;
-    input?: unknown;
-    data?: unknown;
-    output?: unknown;
-    error?: unknown;
-  };
+  data: ToolStreamEventData;
 };
 
 export type ToolProgress = {
