@@ -87,6 +87,7 @@ afterAll(async () => {
 describe.each([
   { schema: undefined, description: "the default schema" },
   { schema: "custom_schema", description: "a custom schema" },
+  { schema: "custom-schema", description: "a schema with dashes" },
 ])("PostgresSaver with $description", ({ schema }) => {
   let postgresSaver: PostgresSaver;
   let currentDbConnectionString: string;
@@ -318,7 +319,7 @@ describe.each([
       // Verify migrations table has correct number of entries
       const migrationsResult = await client.query(`
         SELECT COUNT(*) as count
-        FROM ${schema ? `${schema}.` : ""}checkpoint_migrations
+        FROM ${schema ? `"${schema}".` : ""}checkpoint_migrations
       `);
       const MIGRATIONS = getMigrations(currentSchema);
       expect(Number.parseInt(migrationsResult.rows[0].count, 10)).toBe(

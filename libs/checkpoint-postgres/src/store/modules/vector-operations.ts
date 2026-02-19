@@ -21,7 +21,7 @@ export class VectorOperations {
     // Delete existing vectors for this item
     await client.query(
       `
-      DELETE FROM ${this.core.schema}.store_vectors 
+      DELETE FROM "${this.core.schema}".store_vectors 
       WHERE namespace_path = $1 AND key = $2
     `,
       [namespacePath, key]
@@ -58,7 +58,7 @@ export class VectorOperations {
       if (embedding?.length === this.core.indexConfig.dims) {
         await client.query(
           `
-          INSERT INTO ${this.core.schema}.store_vectors 
+          INSERT INTO "${this.core.schema}".store_vectors 
           (namespace_path, key, field_path, text_content, embedding)
           VALUES ($1, $2, $3, $4, $5)
         `,
