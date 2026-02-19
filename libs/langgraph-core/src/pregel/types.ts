@@ -75,8 +75,8 @@ type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
 
 type StreamToolsOutput = {
   event: "on_tool_start" | "on_tool_partial" | "on_tool_end" | "on_tool_error";
-  toolCallId: string;
   name: string;
+  toolCallId?: string;
   input?: unknown;
   data?: unknown;
   output?: unknown;

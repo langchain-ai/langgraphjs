@@ -81,7 +81,7 @@ describe("StreamToolsHandler", () => {
       "my_tool",
       "call_1"
     );
-    handler.handleToolStream({ partial: "data" }, "run-1");
+    handler.handleToolEvent({ partial: "data" }, "run-1");
 
     expect(chunks).toHaveLength(2);
     expect(chunks[1]).toEqual([
@@ -123,7 +123,7 @@ describe("StreamToolsHandler", () => {
         output: { result: 42 },
       },
     ]);
-    handler.handleToolStream("no-op", "run-1");
+    handler.handleToolEvent("no-op", "run-1");
     expect(chunks).toHaveLength(2);
   });
 
