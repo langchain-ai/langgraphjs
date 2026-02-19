@@ -9,7 +9,7 @@
 
 import type { Client } from "../../client.js";
 import type { ThreadState, Interrupt } from "../../schema.js";
-import type { StreamMode } from "../../types.stream.js";
+import type { StreamMode, ToolProgress } from "../../types.stream.js";
 import type { StreamEvent } from "../../types.js";
 import type { Message, DefaultToolCall } from "../../types.messages.js";
 import type { BagTemplate } from "../../types.template.js";
@@ -151,6 +151,12 @@ export interface BaseStream<
     message: Message<ToolCall>,
     index?: number
   ) => MessageMetadata<StateType> | undefined;
+
+  /**
+   * Progress of tool executions during streaming. Populated when stream mode includes "tools"
+   * and tools yield or report progress.
+   */
+  toolProgress: ToolProgress[];
 
   /**
    * LangGraph SDK client used to send requests and receive responses.

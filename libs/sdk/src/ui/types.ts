@@ -24,6 +24,7 @@ import type {
   CheckpointsStreamEvent,
   TasksStreamEvent,
   StreamMode,
+  ToolsStreamEvent,
 } from "../types.stream.js";
 import type {
   DefaultToolCall,
@@ -1067,6 +1068,19 @@ export interface UseStreamOptions<
   onTaskEvent?: (
     data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
     options: { namespace: string[] | undefined }
+  ) => void;
+
+  /**
+   * Callback that is called when a tool lifecycle event is received.
+   */
+  onToolEvent?: (
+    data: ToolsStreamEvent["data"],
+    options: {
+      namespace: string[] | undefined;
+      mutate: (
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+      ) => void;
+    }
   ) => void;
 
   /**

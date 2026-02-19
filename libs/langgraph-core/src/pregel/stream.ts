@@ -1,6 +1,9 @@
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { StreamMode, StreamOutputMap } from "./types.js";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import { Serialized } from "@langchain/core/load/serializable";
+import { TAG_HIDDEN } from "../constants.js";
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
@@ -26,6 +29,14 @@ type AnyStreamOutput = StreamOutputMap<
   unknown,
   undefined
 >;
+
+type ToolRunInfo = {
+  ns: string[];
+  metadata: Record<string, any>;
+  toolCallId?: string;
+  toolName: string;
+  input: any;
+};
 
 /**
  * A wrapper around an IterableReadableStream that allows for aborting the stream when
@@ -146,6 +157,111 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(e: any) {
     this.controller.error(e);
+  }
+}
+
+/**
+ * A callback handler that implements stream_mode=tools.
+ * Emits on_tool_start, on_tool_partial, on_tool_end, on_tool_error events.
+ */
+export class StreamToolsHandler extends BaseCallbackHandler {
+  name = "StreamToolsHandler";
+
+  streamFn: (streamChunk: StreamChunk) => void;
+
+  runs: Record<string, ToolRunInfo | undefined> = {};
+
+  constructor(streamFn: (streamChunk: StreamChunk) => void) {
+    super();
+    this.streamFn = streamFn;
+  }
+
+  handleToolStart(
+    _tool: Serialized,
+    input: string,
+    runId: string,
+    _parentRunId?: string,
+    tags?: string[],
+    metadata?: Record<string, unknown>,
+    runName?: string
+  ) {
+    if (!metadata || (tags && tags.includes(TAG_HIDDEN))) return;
+
+    const ns = (metadata.langgraph_checkpoint_ns as string)?.split("|") ?? [];
+    const info: ToolRunInfo = {
+      ns,
+      metadata: { tags, ...metadata },
+      toolCallId: metadata.toolCallId as string | undefined,
+      toolName: runName ?? "unknown",
+      input,
+    };
+    this.runs[runId] = info;
+
+    this.streamFn([
+      ns,
+      "tools",
+      {
+        event: "on_tool_start",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        input,
+      },
+    ]);
+  }
+
+  handleToolStream(
+    chunk: unknown,
+    runId: string,
+    _parentRunId?: string,
+    _tags?: string[]
+  ) {
+    const info = this.runs[runId];
+    if (!info) return;
+
+    this.streamFn([
+      info.ns,
+      "tools",
+      {
+        event: "on_tool_partial",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        data: chunk,
+      },
+    ]);
+  }
+
+  handleToolEnd(output: any, runId: string) {
+    const info = this.runs[runId];
+    delete this.runs[runId];
+    if (!info) return;
+
+    this.streamFn([
+      info.ns,
+      "tools",
+      {
+        event: "on_tool_end",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        output,
+      },
+    ]);
+  }
+
+  handleToolError(err: any, runId: string) {
+    const info = this.runs[runId];
+    delete this.runs[runId];
+    if (!info) return;
+
+    this.streamFn([
+      info.ns,
+      "tools",
+      {
+        event: "on_tool_error",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        error: err,
+      },
+    ]);
   }
 }
 

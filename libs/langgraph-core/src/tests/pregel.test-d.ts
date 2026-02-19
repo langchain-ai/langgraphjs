@@ -197,6 +197,7 @@ it("state graph annotation", async () => {
             | { result: [string, unknown][] }
           )
         ]
+      | ["tools", Record<string, unknown>]
     )[]
   >();
 
@@ -493,6 +494,7 @@ it("state graph zod", async () => {
             | { result: [string, unknown][] }
           )
         ]
+      | ["tools", Record<string, unknown>]
     )[]
   >();
 
@@ -530,6 +532,7 @@ it("state graph zod", async () => {
             | { result: [string, unknown][] }
           )
         ]
+      | [string[], "tools", Record<string, unknown>]
     )[]
   >();
 });

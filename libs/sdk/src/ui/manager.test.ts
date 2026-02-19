@@ -213,6 +213,73 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("tools stream events", () => {
+    it("calls onToolEvent when tools event is received", async () => {
+      const onToolEvent = vi.fn();
+
+      const events = [
+        {
+          event: "tools" as const,
+          data: {
+            event: "on_tool_start" as const,
+            name: "weather",
+            toolCallId: "call_1234",
+            input: '{"query":"SF"}',
+          },
+        },
+        {
+          event: "tools" as const,
+          data: {
+            event: "on_tool_end" as const,
+            name: "weather",
+            toolCallId: "call_1234",
+            output: "60 degrees",
+          },
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onSuccess = vi.fn(() => null);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: { onToolEvent },
+        onSuccess,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(onToolEvent).toHaveBeenCalledTimes(2);
+      expect(onToolEvent).toHaveBeenNthCalledWith(
+        1,
+        {
+          event: "on_tool_start",
+          name: "weather",
+          toolCallId: "call_1234",
+          input: '{"query":"SF"}',
+        },
+        { namespace: undefined, mutate: expect.any(Function) }
+      );
+      expect(onToolEvent).toHaveBeenNthCalledWith(
+        2,
+        {
+          event: "on_tool_end",
+          name: "weather",
+          toolCallId: "call_1234",
+          output: "60 degrees",
+        },
+        { namespace: undefined, mutate: expect.any(Function) }
+      );
+    });
+  });
+
   describe("multiple interrupts", () => {
     it("should preserve all interrupts in __interrupt__ array", async () => {
       const interrupts = [

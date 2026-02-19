@@ -20,7 +20,8 @@ export type StreamMode =
   | "tasks"
   | "checkpoints"
   | "custom"
-  | "messages-tuple";
+  | "messages-tuple"
+  | "tools";
 
 export type ThreadStreamMode = "run_modes" | "lifecycle" | "state_update";
 
@@ -246,6 +247,36 @@ export type FeedbackStreamEvent = {
   data: { [feedbackKey: string]: string };
 };
 
+export type ToolsStreamEvent = {
+  event: "tools";
+  data: {
+    event:
+      | "on_tool_start"
+      | "on_tool_partial"
+      | "on_tool_end"
+      | "on_tool_error";
+    toolCallId?: string;
+    name: string;
+    input?: unknown;
+    data?: unknown;
+    output?: unknown;
+    error?: unknown;
+  };
+};
+
+export type ToolProgress = {
+  toolCallId?: string;
+  name: string;
+  state: "starting" | "running" | "completed" | "error";
+  input?: unknown;
+  data?: unknown;
+  result?: unknown;
+  error?: unknown;
+};
+
+/** @internal */
+export type SubgraphToolsStreamEvent = AsSubgraph<ToolsStreamEvent>;
+
 type GetStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],
   TStateType = unknown,
@@ -262,6 +293,7 @@ type GetStreamModeMap<
       tasks: TasksStreamEvent<TStateType, TUpdateType>;
       checkpoints: CheckpointsStreamEvent<TStateType>;
       events: EventsStreamEvent;
+      tools: ToolsStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | ErrorStreamEvent
   | MetadataStreamEvent
@@ -283,6 +315,7 @@ type GetSubgraphsStreamModeMap<
       events: SubgraphEventsStreamEvent;
       tasks: SubgraphTasksStreamEvent<TStateType, TUpdateType>;
       checkpoints: SubgraphCheckpointsStreamEvent<TStateType>;
+      tools: SubgraphToolsStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | SubgraphErrorStreamEvent
   | MetadataStreamEvent
