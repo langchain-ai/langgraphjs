@@ -33,7 +33,7 @@ import {
   END,
 } from "./fixtures/langgraph-mocks.js";
 
-import { useStream } from "../react/stream.js";
+import { useStream } from "@langchain/react";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {

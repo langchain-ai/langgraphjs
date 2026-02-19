@@ -35,8 +35,6 @@
     "langchain": "^1.2.11",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
-    "@types/react": "^19.0.8",
-    "@types/react-dom": "^19.0.3",
     "@types/uuid": "^9.0.1",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
@@ -46,10 +44,7 @@
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-prettier": "^4.2.1",
-    "eslint-plugin-react-hooks": "^5.2.0",
     "prettier": "^2.8.3",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "svelte": "^5.43.6",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",
@@ -59,8 +54,7 @@
   "peerDependencies": {
     "@angular/core": "^18.0.0 || ^19.0.0 || ^20.0.0",
     "@langchain/core": "^1.1.16",
-    "react": "^18 || ^19",
-    "react-dom": "^18 || ^19",
+    "@langchain/react": "workspace:^",
     "svelte": "^4.0.0 || ^5.0.0",
     "vue": "^3.0.0"
   },
@@ -71,10 +65,7 @@
     "@langchain/core": {
       "optional": true
     },
-    "react": {
-      "optional": true
-    },
-    "react-dom": {
+    "@langchain/react": {
       "optional": true
     },
     "svelte": {
@@ -169,6 +160,18 @@
       "require": {
         "types": "./dist/react-ui/index.d.cts",
         "default": "./dist/react-ui/index.cjs"
+      }
+    },
+    "./utils": {
+      "input": "./src/utils/index.ts",
+      "typedoc": "./src/utils/index.ts",
+      "import": {
+        "types": "./dist/utils/index.d.ts",
+        "default": "./dist/utils/index.js"
+      },
+      "require": {
+        "types": "./dist/utils/index.d.cts",
+        "default": "./dist/utils/index.cjs"
       }
     },
     "./react-ui/server": {

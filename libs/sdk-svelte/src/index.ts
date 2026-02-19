@@ -9,7 +9,6 @@ import {
   StreamError,
   extractInterrupts,
   type UseStreamThread,
-  type BagTemplate,
   type GetConfigurableType,
   type GetCustomEventType,
   type GetInterruptType,
@@ -21,6 +20,7 @@ import {
 } from "@langchain/langgraph-sdk/ui";
 import {
   Client,
+  type BagTemplate,
   type StreamMode,
   type Message,
 } from "@langchain/langgraph-sdk";
@@ -65,7 +65,9 @@ export function useStream<
   );
 
   const messageManager = new MessageTupleManager();
-  const stream = new StreamManager<StateType, Bag>(messageManager);
+  const stream = new StreamManager<StateType, Bag>(messageManager, {
+    throttle: options.throttle ?? false,
+  });
   const client = new Client({ apiUrl: options.apiUrl });
 
   const historyValues = derived(

@@ -3,10 +3,10 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
+import type { BagTemplate } from "@langchain/langgraph-sdk";
+import { useStream } from "../index.js";
 import type { UIMessage } from "./types.js";
-import { useStream } from "../react/index.js";
-import type { UseStream } from "../react/types.js";
-import type { BagTemplate } from "../types.template.js";
+import type { UseStream } from "../types.js";
 
 const UseStreamContext = React.createContext<{
   stream: ReturnType<typeof useStream>;
