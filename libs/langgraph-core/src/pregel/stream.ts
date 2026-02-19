@@ -32,7 +32,6 @@ type AnyStreamOutput = StreamOutputMap<
 
 type ToolRunInfo = {
   ns: string[];
-  metadata: Record<string, unknown>;
   toolCallId?: string;
   toolName: string;
   input: unknown;
@@ -191,7 +190,6 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     const ns = (metadata.langgraph_checkpoint_ns as string)?.split("|") ?? [];
     const info: ToolRunInfo = {
       ns,
-      metadata: { tags, ...metadata },
       toolCallId,
       toolName: runName ?? "unknown",
       input,
