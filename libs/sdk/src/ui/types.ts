@@ -1277,6 +1277,7 @@ export type UseStreamCustomOptions<
   | "onStop"
   | "initialValues"
   | "throttle"
+  | "onToolEvent"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 /**
