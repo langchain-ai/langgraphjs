@@ -1,11 +1,14 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-import type { Client } from "../client.js";
-
-import type { ThreadState } from "../schema.js";
-import type { Message } from "../types.messages.js";
-import type { StreamMode } from "../types.stream.js";
-import type { Sequence } from "../ui/branching.js";
 import type {
+  Client,
+  ThreadState,
+  Message,
+  StreamMode,
+  BagTemplate,
+  StreamEvent,
+} from "@langchain/langgraph-sdk";
+import type {
+  Sequence,
   GetUpdateType,
   GetConfigurableType,
   GetInterruptType,
@@ -22,7 +25,6 @@ import type {
   SubagentStreamInterface,
   StreamBase,
   DefaultSubagentStates,
-  // DeepAgent type helpers for subagent inference
   SubAgentLike,
   CompiledSubAgentLike,
   DeepAgentTypeConfigLike,
@@ -35,9 +37,7 @@ import type {
   InferSubagentNames,
   SubagentStateMap,
   BaseSubagentState,
-} from "../ui/types.js";
-import type { BagTemplate } from "../types.template.js";
-import type { StreamEvent } from "../types.js";
+} from "@langchain/langgraph-sdk/ui";
 
 // Re-export types from ui/types.ts
 export type {

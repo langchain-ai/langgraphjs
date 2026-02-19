@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { useStreamLGP } from "./stream.lgp.js";
-import { useStreamCustom } from "./stream.custom.js";
-import type { UseStreamOptions } from "../ui/types.js";
-import type { BagTemplate } from "../types.template.js";
-import type { UseStreamCustomOptions } from "./types.js";
+import type { BagTemplate } from "@langchain/langgraph-sdk";
 import type {
+  UseStreamOptions,
   ResolveStreamInterface,
   ResolveStreamOptions,
   InferBag,
   InferStateType,
-} from "../ui/stream/index.js";
+} from "@langchain/langgraph-sdk/ui";
+import { useStreamLGP } from "./stream.lgp.js";
+import { useStreamCustom } from "./stream.custom.js";
+import type { UseStreamCustomOptions } from "./types.js";
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,

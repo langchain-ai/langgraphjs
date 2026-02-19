@@ -1,16 +1,23 @@
-export { useStream, FetchStreamTransport } from "@langchain/react";
+export { useStream } from "./stream.js";
+export { FetchStreamTransport } from "./stream.custom.js";
+// Legacy exports - kept for backward compatibility
 export type {
   UseStream,
   UseStreamCustom,
   SubagentStream,
   SubagentStreamInterface,
-} from "@langchain/react";
+} from "./types.js";
+// New stream interface types
 export type {
+  // Base stream types
   BaseStream,
+  // Agent stream types (for createAgent)
   UseAgentStream,
   UseAgentStreamOptions,
+  // DeepAgent stream types (for createDeepAgent)
   UseDeepAgentStream,
   UseDeepAgentStreamOptions,
+  // Type resolvers
   ResolveStreamInterface,
   ResolveStreamOptions,
   InferStateType,
@@ -18,7 +25,7 @@ export type {
   InferSubagentStates,
   InferNodeNames,
   InferBag,
-} from "@langchain/react";
+} from "@langchain/langgraph-sdk/ui";
 export type {
   MessageMetadata,
   UseStreamOptions,
@@ -26,12 +33,15 @@ export type {
   UseStreamTransport,
   UseStreamThread,
   GetToolCallsType,
+  // Agent type extraction helpers
   AgentTypeConfigLike,
   IsAgentLike,
   ExtractAgentConfig,
   InferAgentToolCalls,
+  // Subagent types
   SubagentToolCall,
   SubagentStatus,
+  // DeepAgent type helpers for subagent inference
   SubAgentLike,
   CompiledSubAgentLike,
   DeepAgentTypeConfigLike,
@@ -45,18 +55,18 @@ export type {
   SubagentStateMap,
   DefaultSubagentStates,
   BaseSubagentState,
-} from "@langchain/react";
+} from "@langchain/langgraph-sdk/ui";
 export type {
   ToolCallWithResult,
   ToolCallState,
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
-} from "@langchain/react";
+} from "@langchain/langgraph-sdk";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
   calculateDepthFromNamespace,
   extractParentIdFromNamespace,
   isSubagentNamespace,
-} from "@langchain/react";
+} from "@langchain/langgraph-sdk/ui";
