@@ -54,7 +54,9 @@ async function agentNode(state: typeof MessagesAnnotation.State) {
   return { messages: [aiWithToolCall] };
 }
 
-function shouldContinue(state: typeof MessagesAnnotation.State): "tools" | typeof END {
+function shouldContinue(
+  state: typeof MessagesAnnotation.State
+): "tools" | typeof END {
   const lastMessage = state.messages[state.messages.length - 1];
   if (!isAIMessage(lastMessage)) return END;
   if ((lastMessage.tool_calls?.length ?? 0) > 0) return "tools";
