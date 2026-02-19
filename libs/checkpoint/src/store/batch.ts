@@ -7,7 +7,10 @@ import {
   type PutOperation,
   type GetOperation,
   type Operation,
+  type ListNamespacesOperation,
+  type MatchCondition,
   OperationResults,
+  validateNamespace,
 } from "./base.js";
 
 /**
@@ -51,20 +54,13 @@ export class AsyncBatchedStore extends BaseStore {
     return this.running;
   }
 
-  /**
-   * @ignore
-   * Batch is not implemented here as we're only extending `BaseStore`
-   * to allow it to be passed where `BaseStore` is expected, and implement
-   * the convenience methods (get, search, put, delete).
-   */
   async batch<Op extends Operation[]>(
-    _operations: Op
+    operations: Op
   ): Promise<OperationResults<Op>> {
-    throw new Error(
-      "The `batch` method is not implemented on `AsyncBatchedStore`." +
-        "\n Instead, it calls the `batch` method on the wrapped store." +
-        "\n If you are seeing this error, something is wrong."
+    const promises = operations.map((operation) =>
+      this.enqueueOperation(operation)
     );
+    return Promise.all(promises) as Promise<OperationResults<Op>>;
   }
 
   async get(namespace: string[], key: string): Promise<Item | null> {
@@ -95,6 +91,7 @@ export class AsyncBatchedStore extends BaseStore {
     key: string,
     value: Record<string, any>
   ): Promise<void> {
+    validateNamespace(namespace);
     return this.enqueueOperation({ namespace, key, value } as PutOperation);
   }
 
@@ -104,6 +101,32 @@ export class AsyncBatchedStore extends BaseStore {
       key,
       value: null,
     } as PutOperation);
+  }
+
+  async listNamespaces(
+    options: {
+      prefix?: string[];
+      suffix?: string[];
+      maxDepth?: number;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ): Promise<string[][]> {
+    const { prefix, suffix, maxDepth, limit = 100, offset = 0 } = options;
+    const matchConditions: MatchCondition[] = [];
+    if (prefix) {
+      matchConditions.push({ matchType: "prefix", path: prefix });
+    }
+    if (suffix) {
+      matchConditions.push({ matchType: "suffix", path: suffix });
+    }
+
+    return this.enqueueOperation({
+      matchConditions: matchConditions.length ? matchConditions : undefined,
+      maxDepth,
+      limit,
+      offset,
+    } as ListNamespacesOperation);
   }
 
   start(): void {
