@@ -184,7 +184,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     tags?: string[],
     metadata?: Record<string, unknown>,
     runName?: string,
-    toolCallId?: string,
+    toolCallId?: string
   ) {
     if (!metadata || (tags && tags.includes(TAG_HIDDEN))) return;
 
