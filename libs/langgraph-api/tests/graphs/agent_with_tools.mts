@@ -10,7 +10,11 @@ import {
 } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
-import { AIMessage, isAIMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  isAIMessage,
+  isToolMessage,
+} from "@langchain/core/messages";
 import { z } from "zod/v3";
 
 const weatherTool = tool(
@@ -48,7 +52,7 @@ const aiDone = new AIMessage({ content: "Done." });
 
 async function agentNode(state: typeof MessagesAnnotation.State) {
   const last = state.messages[state.messages.length - 1];
-  if (last && isAIMessage(last) && (last.tool_calls?.length ?? 0) > 0) {
+  if (last && isToolMessage(last)) {
     return { messages: [aiDone] };
   }
   return { messages: [aiWithToolCall] };
