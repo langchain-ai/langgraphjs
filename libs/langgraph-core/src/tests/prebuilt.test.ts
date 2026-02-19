@@ -2674,33 +2674,47 @@ describe("ToolNode", () => {
     );
   });
 
-  it("passes toolCallId in config.metadata when invoking a tool", async () => {
+  it("passes toolCallId to handleToolStart when invoking a tool", async () => {
     let capturedToolCallId: string | undefined;
-    const recordingTool = tool(
-      async (_args: { x: number }, config) => {
-        capturedToolCallId = config?.metadata?.toolCallId as string | undefined;
-        return "ok";
-      },
-      {
-        name: "recorder",
-        description: "Records config",
-        schema: z.object({ x: z.number() }),
-      }
-    );
+    const recordingTool = tool(async (_args: { x: number }) => "ok", {
+      name: "recorder",
+      description: "Records config",
+      schema: z.object({ x: z.number() }),
+    });
     const toolNode = new ToolNode([recordingTool]);
-    await toolNode.invoke([
-      new AIMessage({
-        content: "",
-        tool_calls: [
+    await toolNode.invoke(
+      [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "recorder",
+              args: { x: 1 },
+              id: "call_abc123",
+              type: "tool_call",
+            },
+          ],
+        }),
+      ],
+      {
+        callbacks: [
           {
-            name: "recorder",
-            args: { x: 1 },
-            id: "call_abc123",
-            type: "tool_call",
+            handleToolStart(
+              _tool: unknown,
+              _input: string,
+              _runId: string,
+              _parentRunId?: string,
+              _tags?: string[],
+              _metadata?: Record<string, unknown>,
+              _runName?: string,
+              toolCallId?: string
+            ) {
+              capturedToolCallId = toolCallId;
+            },
           },
         ],
-      }),
-    ]);
+      }
+    );
     expect(capturedToolCallId).toBe("call_abc123");
   });
 

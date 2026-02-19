@@ -177,10 +177,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       if (tool === undefined) {
         throw new Error(`Tool "${call.name}" not found.`);
       }
-      const output = await tool.invoke(
-        { ...call, type: "tool_call" },
-        { ...config, metadata: { ...config.metadata, toolCallId: call.id } }
-      );
+      const output = await tool.invoke({ ...call, type: "tool_call" }, config);
 
       if (
         (isBaseMessage(output) && output.getType() === "tool") ||

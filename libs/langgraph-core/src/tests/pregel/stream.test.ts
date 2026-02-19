@@ -4,7 +4,7 @@ import { StreamToolsHandler } from "../../pregel/stream.js";
 import { TAG_HIDDEN } from "../../constants.js";
 
 describe("StreamToolsHandler", () => {
-  it("emits on_tool_start with namespace and toolCallId from metadata", () => {
+  it("emits on_tool_start with namespace and toolCallId", () => {
     const chunks: unknown[] = [];
     const handler = new StreamToolsHandler((chunk) => chunks.push(chunk));
 
@@ -14,11 +14,9 @@ describe("StreamToolsHandler", () => {
       "run-1",
       undefined,
       [],
-      {
-        langgraph_checkpoint_ns: "a|b",
-        toolCallId: "call_1234",
-      },
-      "weather"
+      { langgraph_checkpoint_ns: "a|b" },
+      "weather",
+      "call_1234"
     );
 
     expect(chunks).toHaveLength(1);
@@ -61,8 +59,9 @@ describe("StreamToolsHandler", () => {
       "run-1",
       undefined,
       [TAG_HIDDEN],
-      { toolCallId: "call_1" },
-      "tool"
+      {},
+      "tool",
+      "call_1"
     );
 
     expect(chunks).toHaveLength(0);
@@ -78,8 +77,9 @@ describe("StreamToolsHandler", () => {
       "run-1",
       undefined,
       [],
-      { toolCallId: "call_1" },
-      "my_tool"
+      {},
+      "my_tool",
+      "call_1"
     );
     handler.handleToolStream({ partial: "data" }, "run-1");
 
@@ -106,8 +106,9 @@ describe("StreamToolsHandler", () => {
       "run-1",
       undefined,
       [],
-      { toolCallId: "call_1" },
-      "my_tool"
+      {},
+      "my_tool",
+      "call_1"
     );
     handler.handleToolEnd({ result: 42 }, "run-1");
 
@@ -137,8 +138,9 @@ describe("StreamToolsHandler", () => {
       "run-1",
       undefined,
       [],
-      { toolCallId: "call_1" },
-      "my_tool"
+      {},
+      "my_tool",
+      "call_1"
     );
     handler.handleToolError(err, "run-1");
 
