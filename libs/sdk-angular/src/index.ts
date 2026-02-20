@@ -144,6 +144,14 @@ export function useStream<
           "values",
           "messages-tuple",
         ]);
+        if (options.onUpdateEvent) streamMode.add("updates");
+        if (options.onCustomEvent) streamMode.add("custom");
+        if (options.onCheckpointEvent) streamMode.add("checkpoints");
+        if (options.onTaskEvent) streamMode.add("tasks");
+        if ("onDebugEvent" in options && options.onDebugEvent)
+          streamMode.add("debug");
+        if ("onLangChainEvent" in options && options.onLangChainEvent)
+          streamMode.add("events");
 
         stream.setStreamValues(() => {
           const prev = { ...historyValues(), ...stream.values };

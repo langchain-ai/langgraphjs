@@ -63,10 +63,13 @@ module.exports = {
     "func-names": 0,
     "no-lonely-if": 0,
     "prefer-rest-params": 0,
-    "prefer-const": ["error", {
-      "destructuring": "all",
-      "ignoreReadBeforeAssign": false
-    }],
+    "prefer-const": [
+      "error",
+      {
+        destructuring: "all",
+        ignoreReadBeforeAssign: false,
+      },
+    ],
     "new-cap": ["error", { properties: false, capIsNew: false }],
   },
   overrides: [
@@ -75,6 +78,7 @@ module.exports = {
       rules: {
         "no-instanceof/no-instanceof": 0,
         "@typescript-eslint/no-explicit-any": 0,
+        "import/no-extraneous-dependencies": 0,
       },
     },
   ],
