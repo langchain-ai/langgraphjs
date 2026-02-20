@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 1.0.1
+
+### Patch Changes
+
+- [#1979](https://github.com/langchain-ai/langgraphjs/pull/1979) [`d65f5a7`](https://github.com/langchain-ai/langgraphjs/commit/d65f5a75e58e282fea831d8f126391823f241a78) Thanks [@Siretu](https://github.com/Siretu)! - fix: quote PostgreSQL schema identifiers to support schemas with dashes
+
 ## 1.0.0
 
 ### Major Changes
