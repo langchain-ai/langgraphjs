@@ -32,6 +32,7 @@ import {
   BaseMessage,
   FunctionMessage,
   HumanMessage,
+  isAIMessage,
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
@@ -84,7 +85,11 @@ import {
   increment,
   shouldInterrupt,
 } from "../pregel/algo.js";
-import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
+import {
+  ToolExecutor,
+  ToolNode,
+  createAgentExecutor,
+} from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
@@ -12487,6 +12492,170 @@ graph TD;
           values: { foo: "" },
         },
       ]);
+  });
+
+  it("streamMode tools emits on_tool_start and on_tool_end for ToolNode runs", async () => {
+    const AgentAnnotation = Annotation.Root({
+      messages: Annotation<BaseMessage[]>({
+        reducer: messagesStateReducer,
+        default: () => [],
+      }),
+    });
+
+    const weatherTool = tool(
+      async ({ query }: { query: string }) => {
+        if (
+          query.toLowerCase().includes("sf") ||
+          query.toLowerCase().includes("san francisco")
+        ) {
+          return "It's 60 degrees and foggy.";
+        }
+        return "It's 90 degrees and sunny.";
+      },
+      {
+        name: "weather",
+        description: "Call to get the current weather for a location.",
+        schema: z3.object({
+          query: z3.string().describe("The query to use in your search."),
+        }),
+      }
+    );
+
+    const aiMessage = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "call_1234",
+          args: { query: "SF" },
+          name: "weather",
+          type: "tool_call",
+        },
+      ],
+    });
+
+    const aiMessage2 = new AIMessage({ content: "Done." });
+
+    async function callModel(state: typeof AgentAnnotation.State) {
+      const last = state.messages[state.messages.length - 1];
+      if (last && isAIMessage(last) && last.tool_calls?.length) {
+        return { messages: [aiMessage2] };
+      }
+      return { messages: [aiMessage] };
+    }
+
+    function shouldContinue({
+      messages,
+    }: typeof AgentAnnotation.State): "tools" | "__end__" {
+      const lastMessage = messages[messages.length - 1];
+      if (!isAIMessage(lastMessage)) return "__end__";
+      if ((lastMessage.tool_calls?.length ?? 0) > 0) return "tools";
+      return "__end__";
+    }
+
+    const graph = new StateGraph(AgentAnnotation)
+      .addNode("agent", callModel)
+      .addNode("tools", new ToolNode([weatherTool]))
+      .addEdge("__start__", "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent")
+      .compile();
+
+    const streamChunks = await gatherIterator(
+      graph.stream({ messages: [] }, { streamMode: ["updates", "tools"] })
+    );
+
+    const toolsChunks = streamChunks.filter(
+      (chunk): chunk is [string, { event: string; name: string }] =>
+        Array.isArray(chunk) &&
+        chunk.length >= 2 &&
+        chunk[0] === "tools" &&
+        typeof chunk[1] === "object" &&
+        chunk[1] != null &&
+        "event" in chunk[1]
+    );
+
+    expect(toolsChunks.length).toBeGreaterThanOrEqual(2);
+    expect(toolsChunks.some(([, p]) => p.event === "on_tool_start")).toBe(true);
+    expect(toolsChunks.some(([, p]) => p.event === "on_tool_end")).toBe(true);
+
+    const startPayload = toolsChunks.find(
+      ([, p]) => p.event === "on_tool_start"
+    )?.[1];
+    expect(startPayload).toMatchObject({
+      event: "on_tool_start",
+      name: "weather",
+      toolCallId: "call_1234",
+    });
+
+    const endPayload = toolsChunks.find(
+      ([, p]) => p.event === "on_tool_end"
+    )?.[1];
+    expect(endPayload).toMatchObject({
+      event: "on_tool_end",
+      name: "weather",
+      toolCallId: "call_1234",
+    });
+    expect((endPayload as { output?: unknown }).output).toBeDefined();
+  });
+
+  it("streamMode without tools does not emit tools chunks", async () => {
+    const AgentAnnotation = Annotation.Root({
+      messages: Annotation<BaseMessage[]>({
+        reducer: messagesStateReducer,
+        default: () => [],
+      }),
+    });
+
+    const weatherTool = tool(
+      async ({ query }: { query: string }) => String(query),
+      {
+        name: "weather",
+        schema: z3.object({ query: z3.string() }),
+      }
+    );
+
+    const aiMessage = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "call_1",
+          args: { query: "x" },
+          name: "weather",
+          type: "tool_call",
+        },
+      ],
+    });
+
+    async function callModel(state: typeof AgentAnnotation.State) {
+      if (state.messages.length === 0) return { messages: [aiMessage] };
+      return { messages: [new AIMessage({ content: "done" })] };
+    }
+
+    function shouldContinue({
+      messages,
+    }: typeof AgentAnnotation.State): "tools" | "__end__" {
+      const last = messages[messages.length - 1];
+      if (!isAIMessage(last) || (last.tool_calls?.length ?? 0) === 0)
+        return "__end__";
+      return "tools";
+    }
+
+    const graph = new StateGraph(AgentAnnotation)
+      .addNode("agent", callModel)
+      .addNode("tools", new ToolNode([weatherTool]))
+      .addEdge("__start__", "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent")
+      .compile();
+
+    const streamChunks = await gatherIterator(
+      graph.stream({ messages: [] }, { streamMode: ["updates"] })
+    );
+
+    const toolsChunks = streamChunks.filter(
+      (chunk) => Array.isArray(chunk) && chunk[0] === "tools"
+    );
+    expect(toolsChunks.length).toBe(0);
   });
 }
 

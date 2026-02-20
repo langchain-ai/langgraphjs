@@ -8,6 +8,7 @@ import type {
   MessagesTupleStreamEvent,
   MetadataStreamEvent,
   TasksStreamEvent,
+  ToolsStreamEvent,
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "../types.stream.js";
@@ -53,6 +54,7 @@ type EventStreamMap<StateType, UpdateType, CustomType> = {
   tasks: TasksStreamEvent<StateType, UpdateType>;
   error: ErrorStreamEvent;
   feedback: FeedbackStreamEvent;
+  tools: ToolsStreamEvent;
 };
 
 export type EventStreamEvent<StateType, UpdateType, CustomType> =
@@ -97,6 +99,15 @@ interface StreamManagerEventCallbacks<
   onTaskEvent?: (
     data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
     options: { namespace: string[] | undefined }
+  ) => void;
+  onToolEvent?: (
+    data: ToolsStreamEvent["data"],
+    options: {
+      namespace: string[] | undefined;
+      mutate: (
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+      ) => void;
+    }
   ) => void;
 }
 
@@ -524,6 +535,10 @@ export class StreamManager<
 
         if (this.matchEventType("debug", event, data)) {
           options.callbacks.onDebugEvent?.(data, { namespace });
+        }
+
+        if (this.matchEventType("tools", event, data)) {
+          options.callbacks.onToolEvent?.(data, { namespace, mutate });
         }
 
         // Handle values events - use startsWith to match both "values" and "values|tools:xxx"

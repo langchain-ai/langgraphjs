@@ -52,6 +52,7 @@ export type {
   MessagesTupleStreamEvent,
   MetadataStreamEvent,
   StreamMode,
+  ToolProgress,
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "./types.stream.js";

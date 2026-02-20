@@ -2674,6 +2674,36 @@ describe("ToolNode", () => {
     );
   });
 
+  it("passes toolCallId in config.metadata when invoking a tool", async () => {
+    let capturedToolCallId: string | undefined;
+    const recordingTool = tool(
+      async (_args: { x: number }, config) => {
+        capturedToolCallId = config?.metadata?.toolCallId as string | undefined;
+        return "ok";
+      },
+      {
+        name: "recorder",
+        description: "Records config",
+        schema: z.object({ x: z.number() }),
+      }
+    );
+    const toolNode = new ToolNode([recordingTool]);
+    await toolNode.invoke([
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            name: "recorder",
+            args: { x: 1 },
+            id: "call_abc123",
+            type: "tool_call",
+          },
+        ],
+      }),
+    ]);
+    expect(capturedToolCallId).toBe("call_abc123");
+  });
+
   it("Should work when nested with a callback manager passed", async () => {
     const toolNode = new ToolNode([new SearchAPI()]);
     const wrapper = RunnableLambda.from(async (_) => {
