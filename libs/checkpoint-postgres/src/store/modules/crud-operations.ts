@@ -29,7 +29,7 @@ export class CrudOperations {
     const result = await client.query(
       `
       SELECT namespace_path, key, value, created_at, updated_at
-      FROM ${this.core.schema}.store
+      FROM "${this.core.schema}".store
       WHERE namespace_path = $1 AND key = $2
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
     `,
@@ -67,7 +67,7 @@ export class CrudOperations {
       // Delete operation
       await client.query(
         `
-        DELETE FROM ${this.core.schema}.store
+        DELETE FROM "${this.core.schema}".store
         WHERE namespace_path = $1 AND key = $2
       `,
         [namespacePath, key]
@@ -77,7 +77,7 @@ export class CrudOperations {
 
       await client.query(
         `
-        INSERT INTO ${this.core.schema}.store (namespace_path, key, value, expires_at)
+        INSERT INTO "${this.core.schema}".store (namespace_path, key, value, expires_at)
         VALUES ($1, $2, $3, $4)
         ON CONFLICT (namespace_path, key)
         DO UPDATE SET 

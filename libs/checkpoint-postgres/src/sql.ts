@@ -51,7 +51,7 @@ export const getTablesWithSchema = (schema: string): TABLES => {
     "checkpoint_writes",
   ];
   return tables.reduce((acc, table) => {
-    acc[table as keyof TABLES] = `${schema}.${table}`;
+    acc[table as keyof TABLES] = `"${schema}".${table}`;
     return acc;
   }, {} as TABLES);
 };

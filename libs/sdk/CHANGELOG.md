@@ -1,5 +1,21 @@
 # @langchain/langgraph-sdk
 
+## 1.6.4
+
+### Patch Changes
+
+- [#1958](https://github.com/langchain-ai/langgraphjs/pull/1958) [`fc6505b`](https://github.com/langchain-ai/langgraphjs/commit/fc6505b5c380713ac769786825613f5c68ac9ea8) Thanks [@hieusmiths](https://github.com/hieusmiths)! - Export stream error class
+
+- [#1978](https://github.com/langchain-ai/langgraphjs/pull/1978) [`d7828d0`](https://github.com/langchain-ai/langgraphjs/commit/d7828d0e1a8a05e703bf9783037b8b97a475ff10) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resolve UseStream type incompatibility with useStream return type
+
+- [#1977](https://github.com/langchain-ai/langgraphjs/pull/1977) [`33eb707`](https://github.com/langchain-ai/langgraphjs/commit/33eb70747b0446f109a445d14d8cfcdd8a14a93c) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): abort previous stream in useStream when using interrupt/rollback multitask strategy
+
+## 1.6.3
+
+### Patch Changes
+
+- [#1972](https://github.com/langchain-ai/langgraphjs/pull/1972) [`242cfbb`](https://github.com/langchain-ai/langgraphjs/commit/242cfbbb6ab375c91bd021f64ec652840af591a9) Thanks [@rx5ad](https://github.com/rx5ad)! - add 'state_updated_at' field to threads
+
 ## 1.6.2
 
 ### Patch Changes

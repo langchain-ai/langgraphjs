@@ -1,5 +1,7 @@
 # @langchain/langgraph-ui
 
+## 2.0.0
+
 ## 1.1.13
 
 ## 1.1.12

@@ -666,9 +666,14 @@ export class StreamManager<
 
       if (streamError != null) throw streamError;
 
-      const values = await options.onSuccess?.();
-      if (typeof values !== "undefined" && this.queueSize === 0) {
-        this.setStreamValues(values);
+      // Skip onSuccess when the stream was aborted (e.g., by multitask interrupt).
+      // This avoids unnecessary HTTP calls (like history fetching) that would
+      // delay the next queued stream from starting.
+      if (!this.abortRef.signal.aborted) {
+        const values = await options.onSuccess?.();
+        if (typeof values !== "undefined" && this.queueSize === 0) {
+          this.setStreamValues(values);
+        }
       }
     } catch (error) {
       if (
@@ -719,8 +724,19 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+    },
+    startOptions?: {
+      /**
+       * If true, abort any currently running stream before starting this one.
+       * Used for multitask_strategy: "interrupt" and "rollback" to unblock
+       * the queue so the new run request can proceed immediately.
+       */
+      abortPrevious?: boolean;
     }
   ): Promise<void> => {
+    if (startOptions?.abortPrevious) {
+      this.abortRef.abort();
+    }
     this.queueSize += 1;
     this.queue = this.queue.then(() => this.enqueue(action, options));
   };
