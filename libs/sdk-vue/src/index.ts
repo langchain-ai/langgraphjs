@@ -93,9 +93,9 @@ export function useStream<
   const streamError = shallowRef<unknown>(stream.error);
   const isLoading = shallowRef(stream.isLoading);
 
-  const values = computed(() => stream.values ?? historyValues.value);
+  const values = computed(() => streamValues.value ?? historyValues.value);
   const error = computed(
-    () => stream.error ?? historyError.value ?? history.value.error
+    () => streamError.value ?? historyError.value ?? history.value.error
   );
 
   const messageMetadata = computed(() =>
@@ -135,7 +135,31 @@ export function useStream<
           threadId.value = thread.thread_id;
         }
 
-        const streamMode = ["values", "messages-tuple"] as StreamMode[];
+        const streamMode: StreamMode[] = [
+          "values",
+          "messages-tuple",
+          ...(submitOptions?.streamMode ?? []),
+        ];
+        if (options.onUpdateEvent && !streamMode.includes("updates"))
+          streamMode.push("updates");
+        if (options.onCustomEvent && !streamMode.includes("custom"))
+          streamMode.push("custom");
+        if (options.onCheckpointEvent && !streamMode.includes("checkpoints"))
+          streamMode.push("checkpoints");
+        if (options.onTaskEvent && !streamMode.includes("tasks"))
+          streamMode.push("tasks");
+        if (
+          "onDebugEvent" in options &&
+          options.onDebugEvent &&
+          !streamMode.includes("debug")
+        )
+          streamMode.push("debug");
+        if (
+          "onLangChainEvent" in options &&
+          options.onLangChainEvent &&
+          !streamMode.includes("events")
+        )
+          streamMode.push("events");
 
         stream.setStreamValues(() => {
           const prev = { ...historyValues.value, ...stream.values };
@@ -198,7 +222,7 @@ export function useStream<
     branch,
 
     messages: computed(() =>
-      getMessages(streamValues.value ?? ({} as StateType))
+      getMessages(streamValues.value ?? historyValues.value)
     ),
 
     interrupt: computed(() =>
