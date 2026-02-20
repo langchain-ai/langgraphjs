@@ -54,7 +54,7 @@ export class SearchOperations {
     // Basic metadata search without query
     let sqlQuery = `
       SELECT namespace_path, key, value, created_at, updated_at
-      FROM ${this.core.schema}.store
+      FROM "${this.core.schema}".store
       WHERE namespace_path LIKE $1
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
     `;
@@ -119,8 +119,8 @@ export class SearchOperations {
         s.created_at, 
         s.updated_at,
         MIN(v.embedding <=> $2) as similarity_score
-      FROM ${this.core.schema}.store s
-      JOIN ${this.core.schema}.store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
+      FROM "${this.core.schema}".store s
+      JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
       WHERE s.namespace_path LIKE $1
         AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
     `;
@@ -189,7 +189,7 @@ export class SearchOperations {
               ts_rank(to_tsvector($3::regconfig, value::text), plainto_tsquery($3::regconfig, $2::text))
             ELSE 0
           END as score
-        FROM ${this.core.schema}.store
+        FROM "${this.core.schema}".store
         WHERE namespace_path LIKE $1
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
@@ -324,8 +324,8 @@ export class SearchOperations {
           s.created_at, 
           s.updated_at,
           ${scoreTransform} as similarity_score
-        FROM ${this.core.schema}.store s
-        JOIN ${this.core.schema}.store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
+        FROM "${this.core.schema}".store s
+        JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
         WHERE s.namespace_path LIKE $1
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
       `;
@@ -436,8 +436,8 @@ export class SearchOperations {
             $3 * (1 - MIN(v.embedding <=> $2)) + 
             (1 - $3) * ts_rank(to_tsvector($6::regconfig, s.value::text), plainto_tsquery($6::regconfig, $4))
           ) as hybrid_score
-        FROM ${this.core.schema}.store s
-        JOIN ${this.core.schema}.store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
+        FROM "${this.core.schema}".store s
+        JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
         WHERE s.namespace_path LIKE $1
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
           AND (

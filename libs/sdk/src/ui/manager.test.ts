@@ -377,4 +377,185 @@ describe("StreamManager", () => {
       }
     });
   });
+
+  describe("abortPrevious (multitask interrupt)", () => {
+    it("should abort the current stream and allow the next one to proceed", async () => {
+      let resolveStream1: (() => void) | undefined;
+      const stream1Started = new Promise<void>((resolve) => {
+        resolveStream1 = resolve;
+      });
+
+      const stream2Events = [
+        { event: "values" as const, data: { messages: [], count: 2 } },
+      ];
+
+      // Action 1: yields one event, signals ready, then waits for abort
+      const action1 = async (signal: AbortSignal) => {
+        async function* gen(): AsyncGenerator<{
+          event: "values";
+          data: TestState;
+        }> {
+          yield {
+            event: "values" as const,
+            data: { messages: [], count: 1 },
+          };
+          resolveStream1?.();
+          // Wait for the abort signal (simulates a long-running SSE stream)
+          await new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        }
+        return gen();
+      };
+
+      const action2 = async () => createMockStream(stream2Events);
+
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError: vi.fn(),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mgr = streamManager as any;
+
+      // Start stream 1 (will block after yielding)
+      mgr.start(action1, {
+        ...baseOptions,
+        onSuccess: vi.fn(() => undefined),
+      });
+
+      // Wait for stream 1 to start processing
+      await stream1Started;
+      expect(streamManager.isLoading).toBe(true);
+      expect(streamManager.values).toEqual({ messages: [], count: 1 });
+
+      // Start stream 2 with abortPrevious to interrupt stream 1
+      mgr.start(
+        action2,
+        {
+          ...baseOptions,
+          onSuccess: vi.fn(() => undefined),
+        },
+        { abortPrevious: true }
+      );
+
+      // Wait for the queue to fully drain
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).queue;
+
+      expect(streamManager.isLoading).toBe(false);
+      expect(streamManager.values).toEqual({ messages: [], count: 2 });
+    });
+
+    it("should skip onSuccess when stream is aborted", async () => {
+      let resolveStream1: (() => void) | undefined;
+      const stream1Started = new Promise<void>((resolve) => {
+        resolveStream1 = resolve;
+      });
+
+      const action1 = async (signal: AbortSignal) => {
+        async function* gen(): AsyncGenerator<{
+          event: "values";
+          data: TestState;
+        }> {
+          yield {
+            event: "values" as const,
+            data: { messages: [], count: 1 },
+          };
+          resolveStream1?.();
+          await new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        }
+        return gen();
+      };
+
+      const action2 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: { messages: [], count: 2 },
+          },
+        ]);
+
+      const onSuccess1 = vi.fn(() => undefined);
+      const onSuccess2 = vi.fn(() => undefined);
+
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError: vi.fn(),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mgr = streamManager as any;
+
+      mgr.start(action1, {
+        ...baseOptions,
+        onSuccess: onSuccess1,
+      });
+
+      await stream1Started;
+
+      mgr.start(
+        action2,
+        { ...baseOptions, onSuccess: onSuccess2 },
+        { abortPrevious: true }
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).queue;
+
+      expect(onSuccess1).not.toHaveBeenCalled();
+      expect(onSuccess2).toHaveBeenCalled();
+    });
+
+    it("should be a no-op when no stream is running", async () => {
+      const events = [
+        {
+          event: "values" as const,
+          data: { messages: [], count: 42 },
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onSuccess = vi.fn(() => undefined);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (streamManager as any).start(
+        action,
+        {
+          getMessages: (values: TestState) => values.messages ?? [],
+          setMessages: (
+            current: TestState,
+            messages: TestState["messages"]
+          ) => ({ ...current, messages }),
+          initialValues: { messages: [] } as TestState,
+          callbacks: {},
+          onSuccess,
+          onError,
+        },
+        { abortPrevious: true }
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).queue;
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(onSuccess).toHaveBeenCalled();
+      expect(streamManager.values).toEqual({ messages: [], count: 42 });
+    });
+  });
 });

@@ -410,6 +410,11 @@ export function useStreamLGP<
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId = threadId;
 
+    const shouldAbortPrevious =
+      (submitOptions?.multitaskStrategy === "interrupt" ||
+        submitOptions?.multitaskStrategy === "rollback") &&
+      stream.isLoading;
+
     await stream.start(
       async (signal: AbortSignal) => {
         stream.setStreamValues((values) => {
@@ -540,7 +545,8 @@ export function useStreamLGP<
         onFinish() {
           threadIdStreamingRef.current = null;
         },
-      }
+      },
+      { abortPrevious: shouldAbortPrevious }
     );
   };
 
