@@ -2063,6 +2063,9 @@ export class Pregel<
 
     config.interrupt ??= (this.userInterrupt as typeof interrupt) ?? interrupt;
 
+    // Ensure store is explicitly set on config for runtime access
+    config.store ??= store;
+
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(), // chain
