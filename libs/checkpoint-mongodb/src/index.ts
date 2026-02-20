@@ -16,6 +16,8 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+  /** Time-to-live in milliseconds. When set, an `expires_at` BSON date is written to documents for use with a MongoDB TTL index. */
+  ttlMs?: number;
 };
 
 /**
@@ -30,12 +32,21 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   checkpointWritesCollectionName = "checkpoint_writes";
 
+  protected ttlMs?: number;
+
+  private get ttlFields(): { expires_at: Date } | Record<string, never> {
+    return this.ttlMs != null
+      ? { expires_at: new Date(Date.now() + this.ttlMs) }
+      : {};
+  }
+
   constructor(
     {
       client,
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      ttlMs,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
@@ -49,6 +60,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
+    this.ttlMs = ttlMs;
   }
 
   /**
@@ -243,6 +255,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      ...this.ttlFields,
     };
     const upsertQuery = {
       thread_id,
@@ -298,7 +311,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         return {
           updateOne: {
             filter: upsertQuery,
-            update: { $set: { channel, type, value: serializedValue } },
+            update: {
+              $set: {
+                channel,
+                type,
+                value: serializedValue,
+                ...this.ttlFields,
+              },
+            },
             upsert: true,
           },
         };

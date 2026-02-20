@@ -33,6 +33,49 @@ describe("MongoDBSaver", () => {
     });
   });
 
+  describe("ttlFields", () => {
+    it("should return empty object when ttlMs is not set", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fields = (saver as any).ttlFields;
+      expect(fields).toEqual({});
+    });
+
+    it("should return expires_at Date when ttlMs is set", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttlMs: 60_000,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fields = (saver as any).ttlFields;
+      expect(fields).toHaveProperty("expires_at");
+      expect(fields.expires_at).toBeInstanceOf(Date);
+    });
+
+    it("should set expires_at to approximately Date.now() + ttlMs", () => {
+      const ttlMs = 3_600_000;
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttlMs,
+      });
+
+      const before = Date.now() + ttlMs;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { expires_at } = (saver as any).ttlFields;
+      const after = Date.now() + ttlMs;
+
+      expect(expires_at.getTime()).toBeGreaterThanOrEqual(before);
+      expect(expires_at.getTime()).toBeLessThanOrEqual(after);
+    });
+  });
+
   describe("filter validation", () => {
     it("should reject object values in filter to prevent MongoDB operator injection", async () => {
       const client = createMockClient();
