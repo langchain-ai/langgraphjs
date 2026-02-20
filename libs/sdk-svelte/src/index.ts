@@ -146,7 +146,31 @@ export function useStream<
           threadId.set(thread.thread_id);
         }
 
-        const streamMode = ["values", "messages-tuple"] as StreamMode[];
+        const streamMode: StreamMode[] = [
+          "values",
+          "messages-tuple",
+          ...(submitOptions?.streamMode ?? []),
+        ];
+        if (options.onUpdateEvent && !streamMode.includes("updates"))
+          streamMode.push("updates");
+        if (options.onCustomEvent && !streamMode.includes("custom"))
+          streamMode.push("custom");
+        if (options.onCheckpointEvent && !streamMode.includes("checkpoints"))
+          streamMode.push("checkpoints");
+        if (options.onTaskEvent && !streamMode.includes("tasks"))
+          streamMode.push("tasks");
+        if (
+          "onDebugEvent" in options &&
+          options.onDebugEvent &&
+          !streamMode.includes("debug")
+        )
+          streamMode.push("debug");
+        if (
+          "onLangChainEvent" in options &&
+          options.onLangChainEvent &&
+          !streamMode.includes("events")
+        )
+          streamMode.push("events");
 
         stream.setStreamValues(() => {
           const prev = { ...get(historyValues), ...stream.values };
@@ -199,8 +223,10 @@ export function useStream<
     );
   }
 
-  const messages = derived([streamValues], ([$streamValues]) =>
-    getMessages($streamValues ?? ({} as StateType))
+  const messages = derived(
+    [streamValues, historyValues],
+    ([$streamValues, $historyValues]) =>
+      getMessages($streamValues ?? $historyValues)
   );
 
   const interrupt = derived(

@@ -2434,12 +2434,27 @@ importers:
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
+      '@hono/node-server':
+        specifier: ^1.14.1
+        version: 1.19.9(hono@4.11.7)
       '@langchain/core':
         specifier: ^1.0.1
         version: 1.1.16(openai@6.16.0(ws@8.19.0)(zod@4.3.5))
+      '@langchain/langgraph':
+        specifier: workspace:^
+        version: link:../langgraph-core
+      '@langchain/langgraph-api':
+        specifier: workspace:^
+        version: link:../langgraph-api
+      '@langchain/langgraph-checkpoint':
+        specifier: workspace:*
+        version: link:../checkpoint
       '@langchain/scripts':
         specifier: ^0.1.4
         version: 0.1.4
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^6.2.4
+        version: 6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))
       '@tsconfig/recommended':
         specifier: ^1.0.2
         version: 1.0.13
@@ -2455,6 +2470,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^6.12.0
         version: 6.21.0(eslint@8.57.1)(typescript@5.9.3)
+      '@vitest/browser':
+        specifier: ^3.2.4
+        version: 3.2.4(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(playwright@1.57.0)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))(vitest@3.2.4)(webdriverio@9.24.0)
       eslint:
         specifier: ^8.33.0
         version: 8.57.1
@@ -2473,6 +2491,9 @@ importers:
       eslint-plugin-prettier:
         specifier: ^4.2.1
         version: 4.2.5(eslint-config-prettier@8.10.2(eslint@8.57.1))(eslint@8.57.1)(prettier@2.8.8)
+      hono:
+        specifier: ^4.7.10
+        version: 4.11.7
       prettier:
         specifier: ^2.8.3
         version: 2.8.8
@@ -2485,6 +2506,12 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@18.19.130)(@vitest/browser@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
+      vitest-browser-svelte:
+        specifier: ^1.1.0
+        version: 1.1.0(@vitest/browser@3.2.4)(svelte@5.51.3)(vitest@3.2.4)
+      webdriverio:
+        specifier: ^9.15.0
+        version: 9.24.0
 
   libs/sdk-validation:
     dependencies:
@@ -10077,6 +10104,14 @@ packages:
       vite:
         optional: true
 
+  vitest-browser-svelte@1.1.0:
+    resolution: {integrity: sha512-o98mCzKkWBjvmaGzi69rvyBd1IJ7zFPGI0jcID9vI4F5DmdG//YxkIbeQ7TS27hAVR+MULnBZNja2DUiuUBZyA==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    peerDependencies:
+      '@vitest/browser': ^2.1.0 || ^3.0.0 || ^4.0.0-0
+      svelte: ^3 || ^4 || ^5 || ^5.0.0-next.0
+      vitest: ^2.1.0 || ^3.0.0 || ^4.0.0-0
+
   vitest-browser-vue@0.1.0:
     resolution: {integrity: sha512-S+OKXYEwWFIB+YqotLsMy20948ldYrplXbmehqXS26YmholbsGN/EMb6ztgiBgWMZR+j0uTbdJfqupZauSHvbg==}
     engines: {node: ^18.0.0 || >=20.0.0}
@@ -12510,12 +12545,29 @@ snapshots:
     dependencies:
       acorn: 8.15.0
 
+  '@sveltejs/vite-plugin-svelte-inspector@5.0.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))':
+    dependencies:
+      '@sveltejs/vite-plugin-svelte': 6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))
+      obug: 2.1.1
+      svelte: 5.51.3
+      vite: 7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
+
   '@sveltejs/vite-plugin-svelte-inspector@5.0.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.51.3)(vite@7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@sveltejs/vite-plugin-svelte': 6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))
       obug: 2.1.1
       svelte: 5.51.3
       vite: 7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  '@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))':
+    dependencies:
+      '@sveltejs/vite-plugin-svelte-inspector': 5.0.2(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.51.3)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))
+      deepmerge: 4.3.1
+      magic-string: 0.30.21
+      obug: 2.1.1
+      svelte: 5.51.3
+      vite: 7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
+      vitefu: 1.1.1(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))
 
   '@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.51.3)(vite@7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
@@ -18555,9 +18607,19 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.2
 
+  vitefu@1.1.1(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)):
+    optionalDependencies:
+      vite: 7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
+
   vitefu@1.1.1(vite@7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)):
     optionalDependencies:
       vite: 7.3.1(@types/node@20.19.30)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  vitest-browser-svelte@1.1.0(@vitest/browser@3.2.4)(svelte@5.51.3)(vitest@3.2.4):
+    dependencies:
+      '@vitest/browser': 3.2.4(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(playwright@1.57.0)(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))(vitest@3.2.4)(webdriverio@9.24.0)
+      svelte: 5.51.3
+      vitest: 3.2.4(@types/node@18.19.130)(@vitest/browser@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@18.19.130)(typescript@5.9.3))(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
 
   vitest-browser-vue@0.1.0(@vitest/browser@3.2.4)(vitest@3.2.4)(vue@3.5.28(typescript@5.9.3)):
     dependencies:

@@ -20,23 +20,32 @@
     "@langchain/langgraph-sdk": "workspace:^"
   },
   "devDependencies": {
+    "@hono/node-server": "^1.14.1",
     "@langchain/core": "^1.0.1",
+    "@langchain/langgraph": "workspace:^",
+    "@langchain/langgraph-api": "workspace:^",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/scripts": "^0.1.4",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "@types/uuid": "^9.0.1",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
+    "@vitest/browser": "^3.2.4",
     "eslint": "^8.33.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.6.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-prettier": "^4.2.1",
+    "hono": "^4.7.10",
     "prettier": "^2.8.3",
     "svelte": "^5.43.6",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "vitest-browser-svelte": "^1.1.0",
+    "webdriverio": "^9.15.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
