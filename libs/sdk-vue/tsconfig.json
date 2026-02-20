@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist"
+    "outDir": "dist",
+    "jsx": "preserve",
+    "jsxImportSource": "vue"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "coverage"],
