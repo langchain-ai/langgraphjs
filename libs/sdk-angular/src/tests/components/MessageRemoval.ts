@@ -1,5 +1,4 @@
 import { Component, input } from "@angular/core";
-import type { Message } from "@langchain/langgraph-sdk";
 import { inject } from "vitest";
 import { useStream } from "../../index.js";
 
@@ -34,7 +33,7 @@ export class MessageRemovalComponent {
 
   fmtMessages() {
     const msgs = this.stream.messages().map(
-      (msg: Message) =>
+      (msg) =>
         `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`
     );
     this.onRender()?.(msgs);

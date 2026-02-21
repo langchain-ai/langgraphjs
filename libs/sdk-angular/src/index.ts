@@ -7,6 +7,7 @@ import {
   getMessagesMetadataMap,
   StreamError,
   extractInterrupts,
+  toMessageClass,
   type UseStreamThread,
   type GetConfigurableType,
   type GetCustomEventType,
@@ -35,8 +36,17 @@ import {
 } from "@langchain/langgraph-sdk";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
+import type { BaseMessage } from "@langchain/core/messages";
 
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
+
+type WithClassMessages<T> = Omit<T, "messages" | "getMessagesMetadata"> & {
+  messages: BaseMessage[];
+  getMessagesMetadata: (
+    message: BaseMessage,
+    index?: number
+  ) => MessageMetadata<Record<string, unknown>> | undefined;
+};
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -59,14 +69,14 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: ResolveStreamOptions<T, InferBag<T, Bag>>
-): ResolveStreamInterface<T, InferBag<T, Bag>>;
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): ResolveStreamInterface<T, InferBag<T, Bag>>;
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
@@ -169,6 +179,7 @@ export function useStreamLGP<
     throttle: options.throttle ?? false,
     subagentToolNames: options.subagentToolNames,
     filterSubagentMessages: options.filterSubagentMessages,
+    toMessage: toMessageClass,
   });
 
   const historyValues = computed(

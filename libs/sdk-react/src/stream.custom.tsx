@@ -8,6 +8,7 @@ import {
   MessageTupleManager,
   extractInterrupts,
   FetchStreamTransport,
+  toMessageClass,
   type EventStreamEvent,
   type GetUpdateType,
   type GetCustomEventType,
@@ -18,6 +19,7 @@ import {
   type CustomSubmitOptions,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
+import type { BaseMessage } from "@langchain/core/messages";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStreamCustom } from "./types.js";
@@ -43,6 +45,7 @@ export function useStreamCustom<
         throttle: options.throttle ?? false,
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
+        toMessage: options.toMessage ?? toMessageClass,
       })
   );
 
@@ -192,9 +195,9 @@ export function useStreamCustom<
       return extractInterrupts<InterruptType>(stream.values);
     },
 
-    get messages(): Message<ToolCallType>[] {
+    get messages(): BaseMessage[] {
       if (!stream.values) return [];
-      return getMessages(stream.values);
+      return getMessages(stream.values) as unknown as BaseMessage[];
     },
 
     get toolCalls() {

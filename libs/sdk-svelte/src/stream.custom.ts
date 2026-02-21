@@ -4,6 +4,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
+  toMessageClass,
   type EventStreamEvent,
   type GetUpdateType,
   type GetCustomEventType,
@@ -31,6 +32,7 @@ export function useStreamCustom<
     throttle: options.throttle ?? false,
     subagentToolNames: options.subagentToolNames,
     filterSubagentMessages: options.filterSubagentMessages,
+    toMessage: toMessageClass,
   });
 
   let threadId: string | null = options.threadId ?? null;

@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { BaseMessage } from "@langchain/core/messages";
 import type {
   Message,
   ThreadState,
@@ -32,6 +33,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
+  toMessageClass,
   type EventStreamEvent,
   type AnyStreamOptions,
   type UseStreamOptions,
@@ -258,6 +260,7 @@ export function useStreamLGP<
         throttle: options.throttle ?? false,
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
+        toMessage: options.toMessage ?? toMessageClass,
       })
   );
 
@@ -705,9 +708,9 @@ export function useStreamLGP<
       });
     },
 
-    get messages(): Message<ToolCallType>[] {
+    get messages(): BaseMessage[] {
       trackStreamMode("messages-tuple", "values");
-      return getMessages(values);
+      return getMessages(values) as unknown as BaseMessage[];
     },
 
     get toolCalls() {
@@ -724,7 +727,7 @@ export function useStreamLGP<
     },
 
     getMessagesMetadata(
-      message: Message<ToolCallType>,
+      message: BaseMessage,
       index?: number
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("values");

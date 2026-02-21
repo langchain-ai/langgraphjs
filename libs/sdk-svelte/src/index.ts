@@ -10,6 +10,7 @@ import {
   extractInterrupts,
   filterStream,
   FetchStreamTransport,
+  toMessageClass,
   type UseStreamThread,
   type GetConfigurableType,
   type GetCustomEventType,
@@ -151,6 +152,7 @@ function useStreamLGP<
     throttle: options.throttle ?? false,
     subagentToolNames: options.subagentToolNames,
     filterSubagentMessages: options.filterSubagentMessages,
+    toMessage: toMessageClass,
   });
 
   const historyValues = derived(

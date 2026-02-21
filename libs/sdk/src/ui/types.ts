@@ -1,4 +1,5 @@
 import type { InferInteropZodInput } from "@langchain/core/utils/types";
+import type { BaseMessage } from "@langchain/core/messages";
 
 import type { Client, ClientConfig } from "../client.js";
 import type {
@@ -1162,6 +1163,7 @@ export type AnyStreamOptions<
   // Agent-specific options (optional, only present for agent types)
   subagentToolNames?: string[];
   filterSubagentMessages?: boolean;
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 };
 
 interface RunMetadataStorage {
@@ -1281,6 +1283,7 @@ export type AnyStreamCustomOptions<
   // Agent-specific options (optional, only present for agent types)
   subagentToolNames?: string[];
   filterSubagentMessages?: boolean;
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 };
 
 export type CustomSubmitOptions<

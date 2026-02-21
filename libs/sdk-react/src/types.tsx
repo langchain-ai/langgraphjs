@@ -1,8 +1,8 @@
 /* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
+import type { BaseMessage } from "@langchain/core/messages";
 import type {
   Client,
   ThreadState,
-  Message,
   StreamMode,
   BagTemplate,
   StreamEvent,
@@ -76,12 +76,20 @@ export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
   SubagentStates extends Record<string, unknown> = DefaultSubagentStates
-> extends StreamBase<
-    StateType,
-    GetToolCallsType<StateType>,
-    GetInterruptType<Bag>,
-    SubagentStates
+> extends Omit<
+    StreamBase<
+      StateType,
+      GetToolCallsType<StateType>,
+      GetInterruptType<Bag>,
+      SubagentStates
+    >,
+    "messages"
   > {
+  /**
+   * Messages accumulated during the stream as @langchain/core class instances.
+   */
+  messages: BaseMessage[];
+
   /**
    * Whether the thread is currently being loaded.
    */
@@ -130,7 +138,7 @@ export interface UseStream<
    * @returns The metadata for the message.
    */
   getMessagesMetadata: (
-    message: Message<GetToolCallsType<StateType>>,
+    message: BaseMessage,
     index?: number
   ) => MessageMetadata<StateType> | undefined;
 
