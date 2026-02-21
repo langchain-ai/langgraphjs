@@ -13,6 +13,9 @@ import MultiSubmit from "./components/MultiSubmit.svelte";
 import NewThreadId from "./components/NewThreadId.svelte";
 import Branching from "./components/Branching.svelte";
 import OnRequestComponent from "./components/OnRequest.svelte";
+import SubgraphStream from "./components/SubgraphStream.svelte";
+import ToolCallsStream from "./components/ToolCallsStream.svelte";
+import InterruptsArray from "./components/InterruptsArray.svelte";
 
 const serverUrl = inject("serverUrl");
 
@@ -666,4 +669,77 @@ it("interrupts (fetchStateHistory: true)", async () => {
   await expect
     .element(screen.getByTestId("message-3"))
     .toHaveTextContent("After interrupt");
+});
+
+it("handles subgraph streaming with event callbacks", async () => {
+  const onCheckpointEvent = vi.fn();
+  const onUpdateEvent = vi.fn();
+  const onCustomEvent = vi.fn();
+
+  const screen = render(SubgraphStream, {
+    apiUrl: serverUrl,
+    onCheckpointEvent,
+    onUpdateEvent,
+    onCustomEvent,
+  });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .poll(() => onCheckpointEvent.mock.calls.length)
+    .toBeGreaterThanOrEqual(6);
+
+  expect(
+    onCheckpointEvent.mock.calls.some(
+      (call: any[]) => call[1]?.namespace !== undefined
+    )
+  ).toBe(true);
+
+  expect(onUpdateEvent.mock.calls.length).toBeGreaterThanOrEqual(1);
+  expect(onCustomEvent.mock.calls.length).toBeGreaterThanOrEqual(1);
+});
+
+it("exposes toolCalls property", async () => {
+  const screen = render(ToolCallsStream, {
+    apiUrl: serverUrl,
+  });
+
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+});
+
+it("exposes interrupts array", async () => {
+  const screen = render(InterruptsArray, {
+    apiUrl: serverUrl,
+  });
+
+  await expect
+    .element(screen.getByTestId("interrupts-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .poll(() => screen.getByTestId("interrupts-count").element().textContent)
+    .toBe("1");
 });

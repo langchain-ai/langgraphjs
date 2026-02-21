@@ -1,5 +1,5 @@
 import { writable, derived, get } from "svelte/store";
-import { onDestroy } from "svelte";
+import { onDestroy, onMount } from "svelte";
 
 import {
   StreamManager,
@@ -8,23 +8,31 @@ import {
   getMessagesMetadataMap,
   StreamError,
   extractInterrupts,
+  filterStream,
+  FetchStreamTransport,
   type UseStreamThread,
   type GetConfigurableType,
   type GetCustomEventType,
   type GetInterruptType,
   type GetUpdateType,
   type MessageMetadata,
-  type UseStreamOptions,
+  type AnyStreamOptions,
   type SubmitOptions,
   type EventStreamEvent,
+  type RunCallbackMeta,
 } from "@langchain/langgraph-sdk/ui";
 import {
   Client,
   type BagTemplate,
   type StreamMode,
+  type StreamEvent,
   type Message,
   type ThreadState,
 } from "@langchain/langgraph-sdk";
+import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
+import { useStreamCustom } from "./stream.custom.js";
+
+export { FetchStreamTransport };
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -43,6 +51,19 @@ function fetchHistory<StateType extends Record<string, unknown>>(
 }
 
 export function useStream<
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _T = Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _Bag extends BagTemplate = BagTemplate
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+>(options: any): any {
+  if ("transport" in options) {
+    return useStreamCustom(options);
+  }
+  return useStreamLGP(options);
+}
+
+function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends {
     ConfigurableType?: Record<string, unknown>;
@@ -50,11 +71,19 @@ export function useStream<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate
->(options: UseStreamOptions<StateType, Bag>) {
+>(options: AnyStreamOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+
+  const runMetadataStorage = (() => {
+    if (typeof window === "undefined") return null;
+    const storage = options.reconnectOnMount;
+    if (storage === true) return window.sessionStorage;
+    if (typeof storage === "function") return storage();
+    return null;
+  })();
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -120,6 +149,8 @@ export function useStream<
   const messageManager = new MessageTupleManager();
   const stream = new StreamManager<StateType, Bag>(messageManager, {
     throttle: options.throttle ?? false,
+    subagentToolNames: options.subagentToolNames,
+    filterSubagentMessages: options.filterSubagentMessages,
   });
 
   const historyValues = derived(
@@ -175,10 +206,41 @@ export function useStream<
     isLoading.set(stream.isLoading);
   });
 
-  onDestroy(() => unsubscribe());
+  const shouldReconstructSubagents = derived(
+    [isLoading, history],
+    ([$isLoading, $history]) => {
+      if (!options.filterSubagentMessages) return false;
+      if ($isLoading || $history.isLoading) return false;
+      const hvMessages = getMessages(get(historyValues));
+      return hvMessages.length > 0;
+    }
+  );
+
+  const unsubReconstruct = shouldReconstructSubagents.subscribe(($should) => {
+    if ($should) {
+      const hvMessages = getMessages(get(historyValues));
+      stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+    }
+  });
+
+  onDestroy(() => {
+    unsubscribe();
+    unsubReconstruct();
+  });
 
   function stop() {
-    return stream.stop(get(historyValues), { onStop: options.onStop });
+    return stream.stop(get(historyValues), {
+      onStop: (args) => {
+        const tid = get(threadId);
+        if (runMetadataStorage && tid) {
+          const runId = runMetadataStorage.getItem(`lg:stream:${tid}`);
+          if (runId) void client.runs.cancel(tid, runId);
+          runMetadataStorage.removeItem(`lg:stream:${tid}`);
+        }
+
+        options.onStop?.(args);
+      },
+    });
   }
 
   function setBranch(value: string) {
@@ -216,6 +278,8 @@ export function useStream<
     // @ts-expect-error
     if (checkpoint != null) delete checkpoint.thread_id;
 
+    let callbackMeta: RunCallbackMeta | undefined;
+    let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId: string | undefined;
 
     return stream.start(
@@ -273,6 +337,9 @@ export function useStream<
           return { ...prev };
         });
 
+        const streamResumable =
+          submitOptions?.streamResumable ?? !!runMetadataStorage;
+
         return client.runs.stream(usableThreadId!, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
@@ -284,14 +351,30 @@ export function useStream<
           metadata: submitOptions?.metadata,
           multitaskStrategy: submitOptions?.multitaskStrategy,
           onCompletion: submitOptions?.onCompletion,
-          onDisconnect: submitOptions?.onDisconnect,
+          onDisconnect:
+            submitOptions?.onDisconnect ??
+            (streamResumable ? "continue" : "cancel"),
 
           signal,
 
           checkpoint,
           streamMode,
           streamSubgraphs: submitOptions?.streamSubgraphs,
+          streamResumable,
           durability: submitOptions?.durability,
+          onRunCreated(params) {
+            callbackMeta = {
+              run_id: params.run_id,
+              thread_id: params.thread_id ?? usableThreadId!,
+            };
+
+            if (runMetadataStorage) {
+              rejoinKey = `lg:stream:${usableThreadId}`;
+              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+            }
+
+            options.onCreated?.(callbackMeta);
+          },
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
@@ -304,21 +387,94 @@ export function useStream<
         callbacks: options,
 
         async onSuccess() {
+          if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
+
           if (shouldRefetch && usableThreadId) {
             const newHistory = await mutate(usableThreadId);
             const lastHead = newHistory?.at(0);
             if (lastHead) {
-              options.onFinish?.(lastHead, undefined);
+              options.onFinish?.(lastHead, callbackMeta);
               return null;
             }
           }
           return undefined;
         },
-        onError: (error) => options.onError?.(error, undefined),
+        onError(error) {
+          options.onError?.(error, callbackMeta);
+        },
         onFinish: () => {},
       }
     );
   }
+
+  async function joinStream(
+    runId: string,
+    lastEventId?: string,
+    joinOptions?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    }
+  ) {
+    // eslint-disable-next-line no-param-reassign
+    lastEventId ??= "-1";
+    const tid = get(threadId);
+    if (!tid) return;
+
+    const callbackMeta: RunCallbackMeta = {
+      thread_id: tid,
+      run_id: runId,
+    };
+
+    await stream.start(
+      async (signal: AbortSignal) => {
+        const rawStream = client.runs.joinStream(tid, runId, {
+          signal,
+          lastEventId,
+          streamMode: joinOptions?.streamMode,
+        }) as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
+        >;
+
+        return joinOptions?.filter != null
+          ? filterStream(rawStream, joinOptions.filter)
+          : rawStream;
+      },
+      {
+        getMessages,
+        setMessages,
+
+        initialValues: get(historyValues),
+        callbacks: options,
+        async onSuccess() {
+          runMetadataStorage?.removeItem(`lg:stream:${tid}`);
+          const newHistory = await mutate(tid);
+          const lastHead = newHistory?.at(0);
+          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+        },
+        onError(error) {
+          options.onError?.(error, callbackMeta);
+        },
+        onFinish: () => {},
+      }
+    );
+  }
+
+  let shouldReconnect = !!runMetadataStorage;
+
+  onMount(() => {
+    const tid = get(threadId);
+    if (shouldReconnect && runMetadataStorage && tid) {
+      const runId = runMetadataStorage.getItem(`lg:stream:${tid}`);
+      if (runId) {
+        shouldReconnect = false;
+        void joinStream(runId);
+      }
+    }
+  });
 
   const messages = derived(
     [streamValues, historyValues],
@@ -334,6 +490,70 @@ export function useStream<
         threadState: $branchContext.threadHead,
         error: $streamError,
       });
+    }
+  );
+
+  const interrupts = derived(
+    [streamValues, streamError, branchContext, isLoading],
+    ([$streamValues, $streamError, $branchContext, $isLoading]) => {
+      const vals = $streamValues ?? get(historyValues);
+      if (
+        vals != null &&
+        "__interrupt__" in vals &&
+        Array.isArray(vals.__interrupt__)
+      ) {
+        const valueInterrupts = vals.__interrupt__;
+        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+        return valueInterrupts;
+      }
+
+      if ($isLoading) return [];
+
+      const allTasks = $branchContext.threadHead?.tasks ?? [];
+      const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
+      if (allInterrupts.length > 0) return allInterrupts;
+
+      const next = $branchContext.threadHead?.next ?? [];
+      if (!next.length || $streamError != null) return [];
+      return [{ when: "breakpoint" }];
+    }
+  );
+
+  const toolCalls = derived(
+    [streamValues, historyValues],
+    ([$streamValues, $historyValues]) =>
+      getToolCallsWithResults(getMessages($streamValues ?? $historyValues))
+  );
+
+  function getToolCalls(message: Message) {
+    const currentValues = get(streamValues) ?? get(historyValues);
+    const allToolCalls = getToolCallsWithResults(getMessages(currentValues));
+    return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+  }
+
+  const historyList = derived([branchContext], ([$branchContext]) => {
+    if (historyLimit === false) {
+      throw new Error(
+        "`fetchStateHistory` must be set to `true` to use `history`"
+      );
+    }
+    return $branchContext.flatHistory;
+  });
+
+  const isThreadLoading = derived(
+    [history],
+    ([$history]) => $history.isLoading && $history.data == null
+  );
+
+  const experimentalBranchTree = derived(
+    [branchContext],
+    ([$branchContext]) => {
+      if (historyLimit === false) {
+        throw new Error(
+          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+        );
+      }
+      return $branchContext.branchTree;
     }
   );
 
@@ -358,21 +578,102 @@ export function useStream<
 
   return {
     assistantId: options.assistantId,
+    client,
 
     values,
     error,
     isLoading,
+    isThreadLoading,
 
     branch,
     setBranch,
 
     messages,
+    toolCalls,
+    getToolCalls,
 
     interrupt,
+    interrupts,
+
+    history: historyList,
+    experimental_branchTree: experimentalBranchTree,
 
     getMessagesMetadata,
 
     submit,
     stop,
+    joinStream,
+
+    get subagents() {
+      return stream.getSubagents();
+    },
+    get activeSubagents() {
+      return stream.getActiveSubagents();
+    },
+    getSubagent(toolCallId: string) {
+      return stream.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return stream.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return stream.getSubagentsByMessage(messageId);
+    },
   };
 }
+
+export type {
+  BaseStream,
+  UseAgentStream,
+  UseAgentStreamOptions,
+  UseDeepAgentStream,
+  UseDeepAgentStreamOptions,
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  InferStateType,
+  InferToolCalls,
+  InferSubagentStates,
+  InferNodeNames,
+  InferBag,
+  MessageMetadata,
+  UseStreamOptions,
+  UseStreamCustomOptions,
+  UseStreamTransport,
+  UseStreamThread,
+  GetToolCallsType,
+  AgentTypeConfigLike,
+  IsAgentLike,
+  ExtractAgentConfig,
+  InferAgentToolCalls,
+  SubagentToolCall,
+  SubagentStatus,
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  DefaultSubagentStates,
+  BaseSubagentState,
+} from "@langchain/langgraph-sdk/ui";
+
+export type {
+  ToolCallWithResult,
+  ToolCallState,
+  DefaultToolCall,
+  ToolCallFromTool,
+  ToolCallsFromTools,
+} from "@langchain/langgraph-sdk";
+
+export {
+  SubagentManager,
+  extractToolCallIdFromNamespace,
+  calculateDepthFromNamespace,
+  extractParentIdFromNamespace,
+  isSubagentNamespace,
+} from "@langchain/langgraph-sdk/ui";

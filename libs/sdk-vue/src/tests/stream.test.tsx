@@ -840,7 +840,11 @@ it("handle message removal", async () => {
           }`,
         }));
 
-        messagesValues.add(rawMessages.map((msg) => msg.content).join("\n"));
+        messagesValues.add(
+          rawMessages
+            .map((msg: { content: string }) => msg.content)
+            .join("\n")
+        );
 
         return (
           <div>
@@ -918,7 +922,11 @@ it("enqueue multiple .submit() calls", async () => {
           }`,
         }));
 
-        messagesValues.add(rawMessages.map((msg) => msg.content).join("\n"));
+        messagesValues.add(
+          rawMessages
+            .map((msg: { content: string }) => msg.content)
+            .join("\n")
+        );
 
         return (
           <div>
@@ -1427,4 +1435,102 @@ it("interrupts (fetchStateHistory: true)", async () => {
   await expect
     .element(screen.getByTestId("message-3"))
     .toHaveTextContent("After interrupt");
+});
+
+it("exposes toolCalls property", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const stream = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="tool-calls-count">
+            {stream.toolCalls.value.length}
+          </div>
+          <div data-testid="loading">
+            {stream.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void stream.submit({
+                messages: [{ content: "Hello", type: "human" }],
+              })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+});
+
+it("exposes interrupts array", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const stream = useStream<
+        { messages: Message[] },
+        { InterruptType: { nodeName: string } }
+      >({
+        assistantId: "interruptAgent",
+        apiUrl: serverUrl,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="interrupts-count">
+            {stream.interrupts.value.length}
+          </div>
+          <div data-testid="loading">
+            {stream.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void stream.submit(
+                { messages: [{ content: "Hello", type: "human" }] },
+                { interruptBefore: ["beforeInterrupt"] }
+              )
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("interrupts-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("interrupts-count"))
+    .toHaveTextContent("1");
 });

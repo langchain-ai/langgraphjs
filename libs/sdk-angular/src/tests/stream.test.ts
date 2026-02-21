@@ -28,6 +28,8 @@ import {
 } from "./components/OnRequest.js";
 import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHistory.js";
 import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
+import { ToolCallsComponent } from "./components/ToolCallsStream.js";
+import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -631,4 +633,30 @@ it("interrupts (fetchStateHistory: true)", async () => {
   await expect
     .element(screen.getByTestId("message-3"))
     .toHaveTextContent("After interrupt");
+});
+
+it("exposes toolCalls property", async () => {
+  const screen = await render(ToolCallsComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+});
+
+it("exposes interrupts array", async () => {
+  const screen = await render(InterruptsArrayComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("interrupts-count"))
+    .toHaveTextContent("1");
 });

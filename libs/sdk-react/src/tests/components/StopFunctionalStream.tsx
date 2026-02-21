@@ -1,9 +1,14 @@
 import { useStream } from "../../index.js";
 
+interface StreamState extends Record<string, unknown> {
+  counter: number;
+  items: string[];
+}
+
 interface Props {
   apiUrl: string;
   assistantId?: string;
-  onStopMutate: (prev: Record<string, unknown>) => Record<string, unknown>;
+  onStopMutate: (prev: StreamState) => Partial<StreamState>;
 }
 
 export function StopFunctionalStream({
@@ -11,7 +16,7 @@ export function StopFunctionalStream({
   assistantId = "agent",
   onStopMutate,
 }: Props) {
-  const { values, isLoading, submit, stop } = useStream({
+  const { values, isLoading, submit, stop } = useStream<StreamState>({
     assistantId,
     apiUrl,
     initialValues: {
@@ -28,8 +33,8 @@ export function StopFunctionalStream({
       <div data-testid="loading">
         {isLoading ? "Loading..." : "Not loading"}
       </div>
-      <div data-testid="counter">{(values).counter}</div>
-      <div data-testid="items">{(values).items?.join(", ")}</div>
+      <div data-testid="counter">{values.counter}</div>
+      <div data-testid="items">{values.items?.join(", ")}</div>
       <button
         data-testid="submit"
         onClick={() => void submit({})}
