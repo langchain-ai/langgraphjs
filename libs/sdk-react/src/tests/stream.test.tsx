@@ -1,25 +1,23 @@
 import { Client } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
-import { render } from "vitest-browser-svelte";
-import BasicStream from "./components/BasicStream.svelte";
-import InitialValuesStream from "./components/InitialValuesStream.svelte";
-import StopMutateStream from "./components/StopMutateStream.svelte";
-import StopFunctionalStream from "./components/StopFunctionalStream.svelte";
-import OnStopCallback from "./components/OnStopCallback.svelte";
-import StreamMetadataComponent from "./components/StreamMetadata.svelte";
-import InterruptStream from "./components/InterruptStream.svelte";
-import MessageRemoval from "./components/MessageRemoval.svelte";
-import MultiSubmit from "./components/MultiSubmit.svelte";
-import NewThreadId from "./components/NewThreadId.svelte";
-import Branching from "./components/Branching.svelte";
-import OnRequestComponent from "./components/OnRequest.svelte";
+import { render } from "vitest-browser-react";
+import { BasicStream } from "./components/BasicStream.js";
+import { InitialValuesStream } from "./components/InitialValuesStream.js";
+import { StopMutateStream } from "./components/StopMutateStream.js";
+import { StopFunctionalStream } from "./components/StopFunctionalStream.js";
+import { OnStopCallback } from "./components/OnStopCallback.js";
+import { StreamMetadata } from "./components/StreamMetadata.js";
+import { InterruptStream } from "./components/InterruptStream.js";
+import { MessageRemoval } from "./components/MessageRemoval.js";
+import { MultiSubmit } from "./components/MultiSubmit.js";
+import { NewThreadId } from "./components/NewThreadId.js";
+import { Branching } from "./components/Branching.js";
+import { OnRequest } from "./components/OnRequest.js";
 
 const serverUrl = inject("serverUrl");
 
 it("renders initial state correctly", async () => {
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -33,9 +31,7 @@ it("renders initial state correctly", async () => {
 });
 
 it("handles message submission and streaming", async () => {
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
   await expect
@@ -55,9 +51,7 @@ it("handles message submission and streaming", async () => {
 });
 
 it("handles stop functionality", async () => {
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
   await screen.getByTestId("stop").click();
@@ -68,18 +62,20 @@ it("handles stop functionality", async () => {
 });
 
 it("displays initial values immediately and clears them when submitting", async () => {
-  const screen = render(InitialValuesStream, {
-    options: {
-      assistantId: "agent",
-      apiUrl: serverUrl,
-      initialValues: {
-        messages: [
-          { id: "cached-1", type: "human", content: "Cached user message" },
-          { id: "cached-2", type: "ai", content: "Cached AI response" },
-        ],
-      },
-    },
-  });
+  const screen = await render(
+    <InitialValuesStream
+      options={{
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        initialValues: {
+          messages: [
+            { id: "cached-1", type: "human", content: "Cached user message" },
+            { id: "cached-2", type: "ai", content: "Cached AI response" },
+          ],
+        },
+      }}
+    />
+  );
 
   await expect
     .element(screen.getByTestId("message-cached-0"))
@@ -103,9 +99,7 @@ it("displays initial values immediately and clears them when submitting", async 
 });
 
 it("onStop does not clear stream values", async () => {
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
 
@@ -130,9 +124,7 @@ it("onStop does not clear stream values", async () => {
 });
 
 it("onStop callback is called when stop is called", async () => {
-  const screen = render(OnStopCallback, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<OnStopCallback apiUrl={serverUrl} />);
 
   await expect
     .element(screen.getByTestId("onstop-called"))
@@ -150,13 +142,15 @@ it("onStop callback is called when stop is called", async () => {
 });
 
 it("onStop mutate function updates stream values immediately", async () => {
-  const screen = render(StopMutateStream, {
-    apiUrl: serverUrl,
-    onStopMutate: (prev: Record<string, unknown>) => ({
-      ...prev,
-      messages: [{ type: "ai", content: "Stream stopped" }],
-    }),
-  });
+  const screen = await render(
+    <StopMutateStream
+      apiUrl={serverUrl}
+      onStopMutate={(prev: Record<string, unknown>) => ({
+        ...prev,
+        messages: [{ type: "ai", content: "Stream stopped" }],
+      })}
+    />
+  );
 
   await expect
     .element(screen.getByTestId("stopped-status"))
@@ -182,14 +176,16 @@ it("onStop mutate function updates stream values immediately", async () => {
 });
 
 it("onStop handles functional updates correctly", async () => {
-  const screen = render(StopFunctionalStream, {
-    apiUrl: serverUrl,
-    onStopMutate: (prev: any) => ({
-      ...prev,
-      counter: (prev.counter || 0) + 10,
-      items: [...(prev.items || []), "stopped"],
-    }),
-  });
+  const screen = await render(
+    <StopFunctionalStream
+      apiUrl={serverUrl}
+      onStopMutate={(prev: any) => ({
+        ...prev,
+        counter: (prev.counter || 0) + 10,
+        items: [...(prev.items || []), "stopped"],
+      })}
+    />
+  );
 
   await expect
     .element(screen.getByTestId("counter"))
@@ -218,9 +214,7 @@ it("onStop handles functional updates correctly", async () => {
 });
 
 it("onStop is not called when stream completes naturally", async () => {
-  const screen = render(OnStopCallback, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<OnStopCallback apiUrl={serverUrl} />);
 
   await expect
     .element(screen.getByTestId("onstop-called"))
@@ -228,8 +222,9 @@ it("onStop is not called when stream completes naturally", async () => {
 
   await screen.getByTestId("submit").click();
 
-  // Wait for stream to start and complete naturally
-  await new Promise((r) => { setTimeout(r, 1500) });
+  await new Promise((r) => {
+    setTimeout(r, 1500);
+  });
 
   await expect
     .element(screen.getByTestId("onstop-called"))
@@ -239,10 +234,12 @@ it("onStop is not called when stream completes naturally", async () => {
 it("make sure to pass metadata to the thread", async () => {
   const threadId = crypto.randomUUID();
 
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-    submitOptions: { metadata: { random: "123" }, threadId },
-  });
+  const screen = await render(
+    <BasicStream
+      apiUrl={serverUrl}
+      submitOptions={{ metadata: { random: "123" }, threadId }}
+    />
+  );
 
   await screen.getByTestId("submit").click();
 
@@ -264,15 +261,17 @@ it("streamSubgraphs: true", async () => {
   const onUpdateEvent = vi.fn();
   const onCustomEvent = vi.fn();
 
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-    assistantId: "parentAgent",
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    submitOptions: { streamSubgraphs: true },
-  });
+  const screen = await render(
+    <BasicStream
+      apiUrl={serverUrl}
+      assistantId="parentAgent"
+      onCheckpointEvent={onCheckpointEvent}
+      onTaskEvent={onTaskEvent}
+      onUpdateEvent={onUpdateEvent}
+      onCustomEvent={onCustomEvent}
+      submitOptions={{ streamSubgraphs: true }}
+    />
+  );
 
   await screen.getByTestId("submit").click();
 
@@ -332,9 +331,7 @@ it("streamSubgraphs: true", async () => {
 });
 
 it("streamMetadata", async () => {
-  const screen = render(StreamMetadataComponent, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<StreamMetadata apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
 
@@ -350,9 +347,7 @@ it("streamMetadata", async () => {
 });
 
 it("interrupts (fetchStateHistory: false)", async () => {
-  const screen = render(InterruptStream, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<InterruptStream apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
 
@@ -394,12 +389,14 @@ it("interrupts (fetchStateHistory: false)", async () => {
 it("handle message removal", async () => {
   const messagesValues = new Set<string>();
 
-  const screen = render(MessageRemoval, {
-    apiUrl: serverUrl,
-    onRender: (msgs: string[]) => {
-      messagesValues.add(msgs.join("\n"));
-    },
-  });
+  const screen = await render(
+    <MessageRemoval
+      apiUrl={serverUrl}
+      onRender={(msgs: string[]) => {
+        messagesValues.add(msgs.join("\n"));
+      }}
+    />
+  );
 
   await screen.getByTestId("submit").click();
 
@@ -430,12 +427,14 @@ it("handle message removal", async () => {
 it("enqueue multiple .submit() calls", async () => {
   const messagesValues = new Set<string>();
 
-  const screen = render(MultiSubmit, {
-    apiUrl: serverUrl,
-    onRender: (msgs: string[]) => {
-      messagesValues.add(msgs.join("\n"));
-    },
-  });
+  const screen = await render(
+    <MultiSubmit
+      apiUrl={serverUrl}
+      onRender={(msgs: string[]) => {
+        messagesValues.add(msgs.join("\n"));
+      }}
+    />
+  );
 
   await screen.getByTestId("submit-first").click();
 
@@ -460,11 +459,13 @@ it("accepts newThreadId option without errors", async () => {
   const spy = vi.fn();
   const predeterminedThreadId = crypto.randomUUID();
 
-  const screen = render(NewThreadId, {
-    apiUrl: serverUrl,
-    onThreadId: spy,
-    submitThreadId: predeterminedThreadId,
-  });
+  const screen = await render(
+    <NewThreadId
+      apiUrl={serverUrl}
+      onThreadId={spy}
+      submitThreadId={predeterminedThreadId}
+    />
+  );
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -486,9 +487,7 @@ it("accepts newThreadId option without errors", async () => {
 });
 
 it("branching", async () => {
-  const screen = render(Branching, {
-    apiUrl: serverUrl,
-  });
+  const screen = await render(<Branching apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
 
@@ -561,10 +560,9 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-    fetchStateHistory: { limit: 2 },
-  });
+  const screen = await render(
+    <BasicStream apiUrl={serverUrl} fetchStateHistory={{ limit: 2 }} />
+  );
 
   await screen.getByTestId("submit").click();
   await expect
@@ -596,10 +594,9 @@ it("onRequest gets called when a request is made", async () => {
     },
   });
 
-  const screen = render(OnRequestComponent, {
-    apiUrl: serverUrl,
-    client,
-  });
+  const screen = await render(
+    <OnRequest apiUrl={serverUrl} client={client} />
+  );
 
   await screen.getByTestId("submit").click();
 
@@ -626,10 +623,9 @@ it("onRequest gets called when a request is made", async () => {
 });
 
 it("interrupts (fetchStateHistory: true)", async () => {
-  const screen = render(InterruptStream, {
-    apiUrl: serverUrl,
-    fetchStateHistory: true,
-  });
+  const screen = await render(
+    <InterruptStream apiUrl={serverUrl} fetchStateHistory={true} />
+  );
 
   await screen.getByTestId("submit").click();
 

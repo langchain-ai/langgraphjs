@@ -11,6 +11,7 @@
     onTaskEvent?: (...args: any[]) => void;
     onUpdateEvent?: (...args: any[]) => void;
     onCustomEvent?: (...args: any[]) => void;
+    fetchStateHistory?: boolean | { limit: number };
   }
 
   const {
@@ -22,6 +23,7 @@
     onTaskEvent,
     onUpdateEvent,
     onCustomEvent,
+    fetchStateHistory,
   }: Props = $props();
 
   const { messages, isLoading, error, submit, stop } = useStream({
@@ -31,6 +33,7 @@
     onTaskEvent,
     onUpdateEvent,
     onCustomEvent,
+    fetchStateHistory,
   });
 </script>
 

@@ -1,6 +1,6 @@
 import type { LocatorSelectors } from "@vitest/browser/context";
 import { Client } from "@langchain/langgraph-sdk";
-import { it, expect, inject } from "vitest";
+import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-angular";
 import { BasicStreamComponent } from "./components/BasicStream.js";
 import { InitialValuesComponent } from "./components/InitialValuesStream.js";
@@ -19,6 +19,15 @@ import {
 import { InterruptComponent } from "./components/InterruptStream.js";
 import { MessageRemovalComponent } from "./components/MessageRemoval.js";
 import { MultiSubmitComponent } from "./components/MultiSubmit.js";
+import { NewThreadIdComponent } from "./components/NewThreadId.js";
+import { BranchingComponent } from "./components/Branching.js";
+import {
+  OnRequestComponent,
+  onRequestCalls,
+  resetOnRequestCalls,
+} from "./components/OnRequest.js";
+import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHistory.js";
+import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -431,4 +440,195 @@ it("enqueue multiple .submit() calls", async () => {
   await expect
     .element(screen.getByTestId("message-3"))
     .toHaveTextContent("Hey");
+});
+
+it("accepts newThreadId option without errors", async () => {
+  const spy = vi.fn();
+  const predeterminedThreadId = crypto.randomUUID();
+
+  const screen = await render(NewThreadIdComponent, {
+    inputs: {
+      onThreadIdCb: spy,
+      submitThreadId: predeterminedThreadId,
+    },
+  });
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("thread-id"))
+    .toHaveTextContent("Client ready");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.poll(() => spy).toHaveBeenCalledWith(predeterminedThreadId);
+
+  const client = new Client({ apiUrl: serverUrl });
+  const thread = await client.threads.get(predeterminedThreadId);
+  expect(thread.metadata).toMatchObject({
+    graph_id: "agent",
+    assistant_id: "agent",
+  });
+});
+
+it("branching", async () => {
+  const screen = await render(BranchingComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-nav-0"))
+    .not.toBeInTheDocument();
+
+  await screen.getByTestId("regenerate-1").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("fork-0").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 2");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-nav-1"))
+    .not.toBeInTheDocument();
+
+  await screen.getByTestId("prev-0").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 2");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("prev-1").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 2");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"))
+    .toHaveTextContent("1 / 2");
+});
+
+it("fetchStateHistory: { limit: 2 }", async () => {
+  const screen = await render(BasicStreamWithHistoryComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("onRequest gets called when a request is made", async () => {
+  resetOnRequestCalls();
+
+  const screen = await render(OnRequestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  expect(onRequestCalls).toMatchObject([
+    [expect.stringContaining("/threads"), { method: "POST" }],
+    [
+      expect.stringContaining("/runs/stream"),
+      {
+        method: "POST",
+        body: {
+          input: { messages: [{ content: "Hello", type: "human" }] },
+          assistant_id: "agent",
+        },
+      },
+    ],
+  ]);
+});
+
+it("interrupts (fetchStateHistory: true)", async () => {
+  const screen = await render(InterruptWithHistoryComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("interrupt"))
+    .toHaveTextContent("breakpoint");
+
+  await screen.getByTestId("resume").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Before interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt"))
+    .toHaveTextContent("agent");
+
+  await screen.getByTestId("resume").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Before interrupt");
+  await expect
+    .element(screen.getByTestId("message-2"))
+    .toHaveTextContent("Hey: Resuming");
+  await expect
+    .element(screen.getByTestId("message-3"))
+    .toHaveTextContent("After interrupt");
 });

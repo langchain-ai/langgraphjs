@@ -63,7 +63,7 @@ it("renders initial state correctly", async () => {
 it("handles message submission and streaming", async () => {
   const TestComponent = defineComponent({
     setup() {
-      const { messages, isLoading, error, submit, stop } = useStream({
+      const { messages, isLoading, submit } = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
       });
@@ -82,9 +82,6 @@ it("handles message submission and streaming", async () => {
           <div data-testid="loading">
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
-          {error.value ? (
-            <div data-testid="error">{String(error.value)}</div>
-          ) : null}
           <button
             data-testid="submit"
             onClick={() =>
@@ -92,9 +89,6 @@ it("handles message submission and streaming", async () => {
             }
           >
             Send
-          </button>
-          <button data-testid="stop" onClick={() => void stop()}>
-            Stop
           </button>
         </div>
       );
@@ -123,28 +117,16 @@ it("handles message submission and streaming", async () => {
 it("handles stop functionality", async () => {
   const TestComponent = defineComponent({
     setup() {
-      const { messages, isLoading, error, submit, stop } = useStream({
+      const { isLoading, submit, stop } = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
       });
 
       return () => (
         <div>
-          <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
-              <div key={msg.id ?? i} data-testid={`message-${i}`}>
-                {typeof msg.content === "string"
-                  ? msg.content
-                  : JSON.stringify(msg.content)}
-              </div>
-            ))}
-          </div>
           <div data-testid="loading">
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
-          {error.value ? (
-            <div data-testid="error">{String(error.value)}</div>
-          ) : null}
           <button
             data-testid="submit"
             onClick={() =>
@@ -406,8 +388,6 @@ it("onStop mutate function updates stream values immediately", async () => {
 
   await screen.getByTestId("submit").click();
 
-  // Wait for the stream to fully complete so no pending events
-  // can overwrite the mutated values after stop is clicked.
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");
@@ -480,7 +460,6 @@ it("onStop handles functional updates correctly", async () => {
 
   await screen.getByTestId("submit").click();
 
-  // Wait for stream to fully complete before stopping
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");
@@ -1000,4 +979,452 @@ it("enqueue multiple .submit() calls", async () => {
   await expect
     .element(screen.getByTestId("message-3"))
     .toHaveTextContent("Hey");
+});
+
+it("accepts newThreadId option without errors", async () => {
+  const spy = vi.fn();
+  const predeterminedThreadId = crypto.randomUUID();
+
+  const TestComponent = defineComponent({
+    setup() {
+      const stream = useStream<{ messages: Message[] }>({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        threadId: null,
+        onThreadId: spy,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {stream.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="thread-id">Client ready</div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void stream.submit({} as any, { threadId: predeterminedThreadId })
+            }
+          >
+            Submit
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("thread-id"))
+    .toHaveTextContent("Client ready");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.poll(() => spy).toHaveBeenCalledWith(predeterminedThreadId);
+
+  const client = new Client({ apiUrl: serverUrl });
+  const thread = await client.threads.get(predeterminedThreadId);
+  expect(thread.metadata).toMatchObject({
+    graph_id: "agent",
+    assistant_id: "agent",
+  });
+});
+
+it("branching", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const { submit, messages, getMessagesMetadata, setBranch } = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        fetchStateHistory: true,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {messages.value.map((msg: Message, i: number) => {
+              const metadata = getMessagesMetadata(msg, i);
+              const checkpoint =
+                metadata?.firstSeenState?.parent_checkpoint ?? undefined;
+              const text =
+                typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content);
+              const branchOptions = metadata?.branchOptions;
+              const branch = metadata?.branch;
+              const branchIndex =
+                branchOptions && branch
+                  ? branchOptions.indexOf(branch)
+                  : -1;
+
+              return (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  <div data-testid={`content-${i}`}>{text}</div>
+
+                  {branchOptions && branch && (
+                    <div data-testid={`branch-nav-${i}`}>
+                      <button
+                        data-testid={`prev-${i}`}
+                        onClick={() => {
+                          const prevBranch = branchOptions[branchIndex - 1];
+                          if (prevBranch) setBranch(prevBranch);
+                        }}
+                      >
+                        Previous
+                      </button>
+                      <span data-testid={`branch-info-${i}`}>
+                        {branchIndex + 1} / {branchOptions.length}
+                      </span>
+                      <button
+                        data-testid={`next-${i}`}
+                        onClick={() => {
+                          const nextBranch = branchOptions[branchIndex + 1];
+                          if (nextBranch) setBranch(nextBranch);
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+
+                  {msg.type === "human" && (
+                    <button
+                      data-testid={`fork-${i}`}
+                      onClick={() =>
+                        void submit(
+                          {
+                            messages: [
+                              { type: "human", content: `Fork: ${text}` },
+                            ],
+                          } as any,
+                          { checkpoint }
+                        )
+                      }
+                    >
+                      Fork
+                    </button>
+                  )}
+
+                  {msg.type === "ai" && (
+                    <button
+                      data-testid={`regenerate-${i}`}
+                      onClick={() =>
+                        void submit(undefined as any, { checkpoint })
+                      }
+                    >
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({
+                messages: [{ content: "Hello", type: "human" }],
+              } as any)
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-nav-0"))
+    .not.toBeInTheDocument();
+
+  await screen.getByTestId("regenerate-1").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("fork-0").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 2");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-nav-1"))
+    .not.toBeInTheDocument();
+
+  await screen.getByTestId("prev-0").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 2");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("prev-1").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 2");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"))
+    .toHaveTextContent("1 / 2");
+});
+
+it("fetchStateHistory: { limit: 2 }", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const { messages, isLoading, submit } = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        fetchStateHistory: { limit: 2 },
+      });
+
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="messages">
+            {messages.value.map((msg: Message, i: number) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("onRequest gets called when a request is made", async () => {
+  const onRequestCallback = vi.fn();
+
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url: any, init: any) => {
+      onRequestCallback(url.toString(), {
+        ...init,
+        body: init.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return init;
+    },
+  });
+
+  const TestComponent = defineComponent({
+    setup() {
+      const { submit, messages } = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        client,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {messages.value.map((msg: Message, i: number) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  expect(onRequestCallback.mock.calls).toMatchObject([
+    [expect.stringContaining("/threads"), { method: "POST" }],
+    [
+      expect.stringContaining("/runs/stream"),
+      {
+        method: "POST",
+        body: {
+          input: { messages: [{ content: "Hello", type: "human" }] },
+          assistant_id: "agent",
+        },
+      },
+    ],
+  ]);
+});
+
+it("interrupts (fetchStateHistory: true)", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const { submit, interrupt, messages } = useStream<
+        { messages: Message[] },
+        { InterruptType: { nodeName: string } }
+      >({
+        assistantId: "interruptAgent",
+        apiUrl: serverUrl,
+        fetchStateHistory: true,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {messages.value.map((msg: Message, i: number) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          {interrupt.value ? (
+            <div>
+              <div data-testid="interrupt">
+                {interrupt.value.when ?? interrupt.value.value?.nodeName}
+              </div>
+              <button
+                data-testid="resume"
+                onClick={() =>
+                  void submit(null as any, { command: { resume: "Resuming" } })
+                }
+              >
+                Resume
+              </button>
+            </div>
+          ) : null}
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit(
+                { messages: [{ content: "Hello", type: "human" }] },
+                { interruptBefore: ["beforeInterrupt"] }
+              )
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("interrupt"))
+    .toHaveTextContent("breakpoint");
+
+  await screen.getByTestId("resume").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Before interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt"))
+    .toHaveTextContent("agent");
+
+  await screen.getByTestId("resume").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Before interrupt");
+  await expect
+    .element(screen.getByTestId("message-2"))
+    .toHaveTextContent("Hey: Resuming");
+  await expect
+    .element(screen.getByTestId("message-3"))
+    .toHaveTextContent("After interrupt");
 });
