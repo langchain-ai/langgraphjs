@@ -1,3 +1,4 @@
+import type { BaseMessage } from "@langchain/core/messages";
 import type {
   Message,
   DefaultToolCall,
@@ -114,6 +115,12 @@ export interface SubagentManagerOptions {
    * Callback when subagent state changes.
    */
   onSubagentChange?: () => void;
+
+  /**
+   * Converts a @langchain/core BaseMessage to the desired output format.
+   * Defaults to `toMessageDict` which produces plain Message objects.
+   */
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 }
 
 /**
@@ -174,11 +181,14 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
   private onSubagentChange?: () => void;
 
+  private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
+
   constructor(options?: SubagentManagerOptions) {
     this.subagentToolNames = new Set(
       options?.subagentToolNames ?? DEFAULT_SUBAGENT_TOOL_NAMES
     );
     this.onSubagentChange = options?.onSubagentChange;
+    this.toMessage = options?.toMessage ?? toMessageDict;
   }
 
   /**
@@ -201,11 +211,10 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     const manager = this.messageManagers.get(toolCallId);
     if (!manager) return [];
 
-    // Convert chunks to messages in order
     const messages: Message<ToolCall>[] = [];
     for (const entry of Object.values(manager.chunks)) {
       if (entry.chunk) {
-        messages.push(toMessageDict(entry.chunk) as Message<ToolCall>);
+        messages.push(this.toMessage(entry.chunk) as Message<ToolCall>);
       }
     }
     return messages;

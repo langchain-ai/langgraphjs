@@ -24,6 +24,8 @@ import { z } from "zod/v4";
 import { createAgent, tool, createMiddleware } from "langchain";
 import { createDeepAgent } from "deepagents";
 
+import { useStream } from "@langchain/react";
+
 // Mocked LangGraph StateGraph types (see fixtures/langgraph-mocks.ts for details)
 import {
   MockStateGraph as StateGraph,
@@ -32,8 +34,6 @@ import {
   START,
   END,
 } from "./fixtures/langgraph-mocks.js";
-
-import { useStream } from "@langchain/react";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import type { Message } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
 
 interface Props {
@@ -24,7 +23,7 @@ export function MessageRemoval({
 
   useEffect(() => {
     const rawMessages = messages.map(
-      (msg: Message) =>
+      (msg) =>
         `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`
     );
     onRenderRef.current?.(rawMessages);

@@ -121,3 +121,9 @@ export const toMessageDict = (chunk: BaseMessage): Message => {
   const { type, data } = chunk.toDict();
   return { ...data, type } as Message;
 };
+
+/**
+ * Identity converter that keeps @langchain/core class instances.
+ * Used by framework SDKs to expose BaseMessage instances instead of plain dicts.
+ */
+export const toMessageClass = (chunk: BaseMessage): BaseMessage => chunk;

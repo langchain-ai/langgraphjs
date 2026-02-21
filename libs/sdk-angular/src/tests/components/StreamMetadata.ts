@@ -1,5 +1,5 @@
 import { Component } from "@angular/core";
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
 import { useStream } from "../../index.js";
 
@@ -30,7 +30,7 @@ export class StreamMetadataComponent {
     return typeof v === "string" ? v : JSON.stringify(v);
   }
 
-  getMetadata(msg: Message, index: number) {
+  getMetadata(msg: BaseMessage, index: number) {
     return this.stream.getMessagesMetadata(msg, index);
   }
 

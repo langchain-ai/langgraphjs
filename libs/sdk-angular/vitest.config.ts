@@ -42,5 +42,10 @@ export default defineConfig({
       instances: [{ browser: "chrome", headless: true }],
     },
     include: ["src/**/*.test.ts"],
+    exclude: ["**/*.test-d.ts"],
+    typecheck: {
+      enabled: true,
+      include: ["**/*.test-d.ts"],
+    },
   },
 });

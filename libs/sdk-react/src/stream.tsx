@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { BaseMessage } from "@langchain/core/messages";
 import type { BagTemplate } from "@langchain/langgraph-sdk";
 import type {
   UseStreamOptions,
@@ -6,6 +7,7 @@ import type {
   ResolveStreamOptions,
   InferBag,
   InferStateType,
+  MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
@@ -21,6 +23,18 @@ function isCustomOptions<
 ): options is UseStreamCustomOptions<StateType, Bag> {
   return "transport" in options;
 }
+
+/**
+ * Maps a stream interface to use @langchain/core BaseMessage class instances
+ * instead of plain Message objects for the `messages` property.
+ */
+type WithClassMessages<T> = Omit<T, "messages" | "getMessagesMetadata"> & {
+  messages: BaseMessage[];
+  getMessagesMetadata: (
+    message: BaseMessage,
+    index?: number
+  ) => MessageMetadata<Record<string, unknown>> | undefined;
+};
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -175,7 +189,7 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: ResolveStreamOptions<T, InferBag<T, Bag>>
-): ResolveStreamInterface<T, InferBag<T, Bag>>;
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 /**
  * A React hook that provides seamless integration with LangGraph streaming capabilities.
@@ -198,7 +212,7 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): ResolveStreamInterface<T, InferBag<T, Bag>>;
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {

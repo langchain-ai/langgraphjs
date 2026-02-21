@@ -3,6 +3,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
+  toMessageClass,
   type EventStreamEvent,
   type GetUpdateType,
   type GetCustomEventType,
@@ -30,6 +31,7 @@ export function useStreamCustom<
     throttle: options.throttle ?? false,
     subagentToolNames: options.subagentToolNames,
     filterSubagentMessages: options.filterSubagentMessages,
+    toMessage: toMessageClass,
   });
 
   const streamValues = signal<StateType | null>(stream.values);
