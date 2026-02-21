@@ -5,9 +5,14 @@
   interface Props {
     apiUrl: string;
     assistantId?: string;
+    fetchStateHistory?: boolean;
   }
 
-  const { apiUrl, assistantId = "interruptAgent" }: Props = $props();
+  const {
+    apiUrl,
+    assistantId = "interruptAgent",
+    fetchStateHistory = false,
+  }: Props = $props();
 
   const { messages, interrupt, submit } = useStream<
     { messages: Message[] },
@@ -15,6 +20,7 @@
   >({
     assistantId,
     apiUrl,
+    fetchStateHistory,
   });
 </script>
 

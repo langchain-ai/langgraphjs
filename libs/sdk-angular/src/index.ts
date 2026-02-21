@@ -22,7 +22,24 @@ import {
   type StreamMode,
   type Message,
   type BagTemplate,
+  type ThreadState,
 } from "@langchain/langgraph-sdk";
+
+function fetchHistory<StateType extends Record<string, unknown>>(
+  client: Client,
+  threadId: string,
+  options?: { limit?: boolean | number }
+) {
+  if (options?.limit === false) {
+    return client.threads.getState<StateType>(threadId).then((state) => {
+      if (state.checkpoint == null) return [];
+      return [state];
+    });
+  }
+
+  const limit = typeof options?.limit === "number" ? options.limit : 10;
+  return client.threads.getHistory<StateType>(threadId, { limit });
+}
 
 export function useStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -48,7 +65,16 @@ export function useStream<
     return { ...current, [messagesKey]: messages };
   };
 
-  // TODO: add history fetching
+  const historyLimit =
+    typeof options.fetchStateHistory === "object" &&
+    options.fetchStateHistory != null
+      ? options.fetchStateHistory.limit ?? false
+      : options.fetchStateHistory ?? false;
+
+  const threadId = signal<string | undefined>(undefined);
+
+  const client = options.client ?? new Client({ apiUrl: options.apiUrl });
+
   const history = signal<UseStreamThread<StateType>>({
     data: undefined,
     error: undefined,
@@ -56,7 +82,34 @@ export function useStream<
     mutate: async () => undefined,
   });
 
-  const threadId = signal<string | undefined>(undefined);
+  async function mutate(
+    mutateId?: string
+  ): Promise<ThreadState<StateType>[] | undefined> {
+    const tid = mutateId ?? threadId();
+    if (!tid) return undefined;
+    try {
+      const data = await fetchHistory<StateType>(client, tid, {
+        limit: historyLimit,
+      });
+      history.set({
+        data,
+        error: undefined,
+        isLoading: false,
+        mutate,
+      });
+      return data;
+    } catch (err) {
+      history.update((prev) => ({
+        ...prev,
+        error: err,
+        isLoading: false,
+      }));
+      options.onError?.(err, undefined);
+      return undefined;
+    }
+  }
+
+  history.update((prev) => ({ ...prev, mutate }));
 
   const branch = signal<string>("");
   const branchContext = computed(() =>
@@ -67,7 +120,6 @@ export function useStream<
   const stream = new StreamManager<StateType, Bag>(messageManager, {
     throttle: options.throttle ?? false,
   });
-  const client = new Client({ apiUrl: options.apiUrl });
 
   const historyValues = computed(
     () =>
@@ -121,22 +173,55 @@ export function useStream<
     return stream.stop(historyValues(), { onStop: options.onStop });
   }
 
+  function setBranch(value: string) {
+    branch.set(value);
+  }
+
   function submit(
     values: StateType,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>
   ) {
+    const currentBranchContext = branchContext();
+
+    const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
+    branch.set(
+      checkpointId != null
+        ? currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+        : ""
+    );
+
+    const includeImplicitBranch =
+      historyLimit === true || typeof historyLimit === "number";
+
+    const shouldRefetch =
+      options.onFinish != null || includeImplicitBranch;
+
+    let checkpoint =
+      submitOptions?.checkpoint ??
+      (includeImplicitBranch
+        ? currentBranchContext.threadHead?.checkpoint
+        : undefined) ??
+      undefined;
+
+    if (submitOptions?.checkpoint === null) checkpoint = undefined;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
+    if (checkpoint != null) delete checkpoint.thread_id;
+
+    let usableThreadId: string | undefined;
+
     return stream.start(
       async (signal) => {
-        let currentThreadId = threadId();
-        if (!currentThreadId) {
-          // generate random thread id
+        usableThreadId = threadId();
+        if (!usableThreadId) {
           const thread = await client.threads.create({
             threadId: submitOptions?.threadId,
             metadata: submitOptions?.metadata,
           });
 
-          currentThreadId = thread.thread_id;
-          threadId.set(currentThreadId);
+          usableThreadId = thread.thread_id;
+          threadId.set(usableThreadId);
+          options.onThreadId?.(usableThreadId);
         }
 
         const streamMode = new Set<StreamMode>([
@@ -168,7 +253,7 @@ export function useStream<
           return { ...prev };
         });
 
-        return client.runs.stream(currentThreadId, options.assistantId, {
+        return client.runs.stream(usableThreadId!, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
           context: submitOptions?.context,
@@ -183,6 +268,7 @@ export function useStream<
 
           signal,
 
+          checkpoint,
           streamMode: [...streamMode],
           streamSubgraphs: submitOptions?.streamSubgraphs,
           durability: submitOptions?.durability,
@@ -194,10 +280,20 @@ export function useStream<
         getMessages,
         setMessages,
 
-        initialValues: {} as StateType,
+        initialValues: historyValues(),
         callbacks: options,
 
-        onSuccess: () => undefined,
+        async onSuccess() {
+          if (shouldRefetch && usableThreadId) {
+            const newHistory = await mutate(usableThreadId);
+            const lastHead = newHistory?.at(0);
+            if (lastHead) {
+              options.onFinish?.(lastHead, undefined);
+              return null;
+            }
+          }
+          return undefined;
+        },
         onError: (error) => options.onError?.(error, undefined),
         onFinish: () => {},
       }
@@ -241,6 +337,7 @@ export function useStream<
     isLoading,
 
     branch,
+    setBranch,
 
     messages,
 

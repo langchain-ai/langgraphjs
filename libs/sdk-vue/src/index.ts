@@ -22,7 +22,24 @@ import {
   type StreamMode,
   type Message,
   type BagTemplate,
+  type ThreadState,
 } from "@langchain/langgraph-sdk";
+
+function fetchHistory<StateType extends Record<string, unknown>>(
+  client: Client,
+  threadId: string,
+  options?: { limit?: boolean | number }
+) {
+  if (options?.limit === false) {
+    return client.threads.getState<StateType>(threadId).then((state) => {
+      if (state.checkpoint == null) return [];
+      return [state];
+    });
+  }
+
+  const limit = typeof options?.limit === "number" ? options.limit : 10;
+  return client.threads.getHistory<StateType>(threadId, { limit });
+}
 
 export function useStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -38,14 +55,6 @@ export function useStream<
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
 
-  // TODO: add history fetching
-  const history = shallowRef<UseStreamThread<StateType>>({
-    data: undefined,
-    error: undefined,
-    isLoading: false,
-    mutate: async () => undefined,
-  });
-
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
     return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
@@ -56,7 +65,51 @@ export function useStream<
     return { ...current, [messagesKey]: messages };
   };
 
+  const historyLimit =
+    typeof options.fetchStateHistory === "object" &&
+    options.fetchStateHistory != null
+      ? options.fetchStateHistory.limit ?? false
+      : options.fetchStateHistory ?? false;
+
   const threadId = ref<string | undefined>(undefined);
+
+  const client = options.client ?? new Client({ apiUrl: options.apiUrl });
+
+  const history = shallowRef<UseStreamThread<StateType>>({
+    data: undefined,
+    error: undefined,
+    isLoading: false,
+    mutate: async () => undefined,
+  });
+
+  async function mutate(
+    mutateId?: string
+  ): Promise<ThreadState<StateType>[] | undefined> {
+    const tid = mutateId ?? threadId.value;
+    if (!tid) return undefined;
+    try {
+      const data = await fetchHistory<StateType>(client, tid, {
+        limit: historyLimit,
+      });
+      history.value = {
+        data,
+        error: undefined,
+        isLoading: false,
+        mutate,
+      };
+      return data;
+    } catch (err) {
+      history.value = {
+        ...history.value,
+        error: err,
+        isLoading: false,
+      };
+      options.onError?.(err, undefined);
+      return undefined;
+    }
+  }
+
+  history.value = { ...history.value, mutate };
 
   const branch = ref<string>("");
   const branchContext = computed(() =>
@@ -67,7 +120,6 @@ export function useStream<
   const stream = new StreamManager<StateType, Bag>(messageManager, {
     throttle: options.throttle ?? false,
   });
-  const client = new Client({ apiUrl: options.apiUrl });
 
   const historyValues = computed(
     () =>
@@ -119,20 +171,54 @@ export function useStream<
     return stream.stop(historyValues.value, { onStop: options.onStop });
   }
 
+  function setBranch(value: string) {
+    branch.value = value;
+  }
+
   function submit(
     values: StateType,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>
   ) {
+    const currentBranchContext = branchContext.value;
+
+    const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
+    branch.value =
+      checkpointId != null
+        ? currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+        : "";
+
+    const includeImplicitBranch =
+      historyLimit === true || typeof historyLimit === "number";
+
+    const shouldRefetch =
+      options.onFinish != null || includeImplicitBranch;
+
+    let checkpoint =
+      submitOptions?.checkpoint ??
+      (includeImplicitBranch
+        ? currentBranchContext.threadHead?.checkpoint
+        : undefined) ??
+      undefined;
+
+    if (submitOptions?.checkpoint === null) checkpoint = undefined;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
+    if (checkpoint != null) delete checkpoint.thread_id;
+
+    let usableThreadId: string | undefined;
+
     return stream.start(
       async (signal) => {
-        if (!threadId.value) {
-          // generate random thread id
+        usableThreadId = threadId.value;
+        if (!usableThreadId) {
           const thread = await client.threads.create({
             threadId: submitOptions?.threadId,
             metadata: submitOptions?.metadata,
           });
 
-          threadId.value = thread.thread_id;
+          usableThreadId = thread.thread_id;
+          threadId.value = usableThreadId;
+          options.onThreadId?.(usableThreadId);
         }
 
         const streamMode: StreamMode[] = [
@@ -176,7 +262,7 @@ export function useStream<
           return { ...prev };
         });
 
-        return client.runs.stream(threadId.value, options.assistantId, {
+        return client.runs.stream(usableThreadId!, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
           context: submitOptions?.context,
@@ -191,6 +277,7 @@ export function useStream<
 
           signal,
 
+          checkpoint,
           streamMode,
           streamSubgraphs: submitOptions?.streamSubgraphs,
           durability: submitOptions?.durability,
@@ -202,10 +289,20 @@ export function useStream<
         getMessages,
         setMessages,
 
-        initialValues: {} as StateType,
+        initialValues: historyValues.value,
         callbacks: options,
 
-        onSuccess: () => undefined,
+        async onSuccess() {
+          if (shouldRefetch && usableThreadId) {
+            const newHistory = await mutate(usableThreadId);
+            const lastHead = newHistory?.at(0);
+            if (lastHead) {
+              options.onFinish?.(lastHead, undefined);
+              return null;
+            }
+          }
+          return undefined;
+        },
         onError: (error) => options.onError?.(error, undefined),
         onFinish: () => {},
       }
@@ -220,6 +317,7 @@ export function useStream<
     isLoading,
 
     branch,
+    setBranch,
 
     messages: computed(() =>
       getMessages(streamValues.value ?? historyValues.value)
