@@ -179,10 +179,10 @@ it("onStop handles functional updates correctly", async () => {
   const screen = await render(
     <StopFunctionalStream
       apiUrl={serverUrl}
-      onStopMutate={(prev: any) => ({
+      onStopMutate={(prev) => ({
         ...prev,
-        counter: (prev.counter || 0) + 10,
-        items: [...(prev.items || []), "stopped"],
+        counter: prev.counter + 10,
+        items: [...prev.items, "stopped"],
       })}
     />
   );
@@ -585,7 +585,7 @@ it("onRequest gets called when a request is made", async () => {
 
   const client = new Client({
     apiUrl: serverUrl,
-    onRequest: (url: any, init: any) => {
+    onRequest: (url, init) => {
       onRequestCallback(url.toString(), {
         ...init,
         body: init.body ? JSON.parse(init.body as string) : undefined,

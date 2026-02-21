@@ -1,29 +1,40 @@
-import { computed, onUnmounted, ref, shallowRef } from "vue";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import {
   StreamManager,
   MessageTupleManager,
+  filterStream,
+  unique,
   getBranchContext,
   getMessagesMetadataMap,
   StreamError,
   extractInterrupts,
+  FetchStreamTransport,
   type UseStreamThread,
   type GetConfigurableType,
   type GetCustomEventType,
   type GetInterruptType,
   type GetUpdateType,
   type MessageMetadata,
-  type UseStreamOptions,
+  type AnyStreamOptions,
   type SubmitOptions,
   type EventStreamEvent,
+  type RunCallbackMeta,
 } from "@langchain/langgraph-sdk/ui";
+import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 
 import {
   Client,
   type StreamMode,
+  type StreamEvent,
   type Message,
+  type Interrupt,
   type BagTemplate,
   type ThreadState,
 } from "@langchain/langgraph-sdk";
+
+import { useStreamCustom } from "./stream.custom.js";
+
+export { FetchStreamTransport };
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -41,7 +52,7 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
-export function useStream<
+function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends {
     ConfigurableType?: Record<string, unknown>;
@@ -49,11 +60,19 @@ export function useStream<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate
->(options: UseStreamOptions<StateType, Bag>) {
+>(options: AnyStreamOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+
+  const runMetadataStorage = (() => {
+    if (typeof window === "undefined") return null;
+    const storage = options.reconnectOnMount;
+    if (storage === true) return window.sessionStorage;
+    if (typeof storage === "function") return storage();
+    return null;
+  })();
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -119,6 +138,8 @@ export function useStream<
   const messageManager = new MessageTupleManager();
   const stream = new StreamManager<StateType, Bag>(messageManager, {
     throttle: options.throttle ?? false,
+    subagentToolNames: options.subagentToolNames,
+    filterSubagentMessages: options.filterSubagentMessages,
   });
 
   const historyValues = computed(
@@ -167,12 +188,103 @@ export function useStream<
 
   onUnmounted(() => unsubscribe());
 
+  watch(
+    () => {
+      const hvMessages = getMessages(historyValues.value);
+      return {
+        should:
+          options.filterSubagentMessages &&
+          !isLoading.value &&
+          !history.value.isLoading &&
+          hvMessages.length > 0,
+        len: hvMessages.length,
+      };
+    },
+    ({ should }) => {
+      if (should) {
+        const hvMessages = getMessages(historyValues.value);
+        stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+      }
+    },
+    { immediate: true }
+  );
+
   function stop() {
-    return stream.stop(historyValues.value, { onStop: options.onStop });
+    return stream.stop(historyValues.value, {
+      onStop: (args) => {
+        if (runMetadataStorage && threadId.value) {
+          const runId = runMetadataStorage.getItem(
+            `lg:stream:${threadId.value}`
+          );
+          if (runId) void client.runs.cancel(threadId.value, runId);
+          runMetadataStorage.removeItem(`lg:stream:${threadId.value}`);
+        }
+
+        options.onStop?.(args);
+      },
+    });
   }
 
   function setBranch(value: string) {
     branch.value = value;
+  }
+
+  async function joinStream(
+    runId: string,
+    lastEventId?: string,
+    joinOptions?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    }
+  ) {
+    // eslint-disable-next-line no-param-reassign
+    lastEventId ??= "-1";
+    if (!threadId.value) return;
+
+    const callbackMeta: RunCallbackMeta = {
+      thread_id: threadId.value,
+      run_id: runId,
+    };
+
+    await stream.start(
+      async (signal: AbortSignal) => {
+        const rawStream = client.runs.joinStream(
+          threadId.value!,
+          runId,
+          {
+            signal,
+            lastEventId,
+            streamMode: joinOptions?.streamMode,
+          }
+        ) as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
+        >;
+
+        return joinOptions?.filter != null
+          ? filterStream(rawStream, joinOptions.filter)
+          : rawStream;
+      },
+      {
+        getMessages,
+        setMessages,
+
+        initialValues: historyValues.value,
+        callbacks: options,
+        async onSuccess() {
+          runMetadataStorage?.removeItem(`lg:stream:${threadId.value}`);
+          const newHistory = await mutate(threadId.value);
+          const lastHead = newHistory?.at(0);
+          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+        },
+        onError(error) {
+          options.onError?.(error, callbackMeta);
+        },
+      }
+    );
   }
 
   function submit(
@@ -190,8 +302,7 @@ export function useStream<
     const includeImplicitBranch =
       historyLimit === true || typeof historyLimit === "number";
 
-    const shouldRefetch =
-      options.onFinish != null || includeImplicitBranch;
+    const shouldRefetch = options.onFinish != null || includeImplicitBranch;
 
     let checkpoint =
       submitOptions?.checkpoint ??
@@ -205,6 +316,8 @@ export function useStream<
     // @ts-expect-error
     if (checkpoint != null) delete checkpoint.thread_id;
 
+    let callbackMeta: RunCallbackMeta | undefined;
+    let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId: string | undefined;
 
     return stream.start(
@@ -221,11 +334,12 @@ export function useStream<
           options.onThreadId?.(usableThreadId);
         }
 
-        const streamMode: StreamMode[] = [
-          "values",
-          "messages-tuple",
+        const streamMode = unique([
           ...(submitOptions?.streamMode ?? []),
-        ];
+          "values" as StreamMode,
+          "messages-tuple" as StreamMode,
+        ]);
+
         if (options.onUpdateEvent && !streamMode.includes("updates"))
           streamMode.push("updates");
         if (options.onCustomEvent && !streamMode.includes("custom"))
@@ -262,6 +376,9 @@ export function useStream<
           return { ...prev };
         });
 
+        const streamResumable =
+          submitOptions?.streamResumable ?? !!runMetadataStorage;
+
         return client.runs.stream(usableThreadId!, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
@@ -273,14 +390,30 @@ export function useStream<
           metadata: submitOptions?.metadata,
           multitaskStrategy: submitOptions?.multitaskStrategy,
           onCompletion: submitOptions?.onCompletion,
-          onDisconnect: submitOptions?.onDisconnect,
+          onDisconnect:
+            submitOptions?.onDisconnect ??
+            (streamResumable ? "continue" : "cancel"),
 
           signal,
 
           checkpoint,
           streamMode,
           streamSubgraphs: submitOptions?.streamSubgraphs,
+          streamResumable,
           durability: submitOptions?.durability,
+          onRunCreated(params) {
+            callbackMeta = {
+              run_id: params.run_id,
+              thread_id: params.thread_id ?? usableThreadId!,
+            };
+
+            if (runMetadataStorage) {
+              rejoinKey = `lg:stream:${usableThreadId}`;
+              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+            }
+
+            options.onCreated?.(callbackMeta);
+          },
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
@@ -293,24 +426,106 @@ export function useStream<
         callbacks: options,
 
         async onSuccess() {
+          if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
+
           if (shouldRefetch && usableThreadId) {
             const newHistory = await mutate(usableThreadId);
             const lastHead = newHistory?.at(0);
             if (lastHead) {
-              options.onFinish?.(lastHead, undefined);
+              options.onFinish?.(lastHead, callbackMeta);
               return null;
             }
           }
           return undefined;
         },
-        onError: (error) => options.onError?.(error, undefined),
+        onError: (error) => options.onError?.(error, callbackMeta),
         onFinish: () => {},
       }
     );
   }
 
+  // --- Auto-reconnect on mount ---
+  let shouldReconnect = !!runMetadataStorage;
+
+  onMounted(() => {
+    if (shouldReconnect && runMetadataStorage && threadId.value) {
+      const runId = runMetadataStorage.getItem(
+        `lg:stream:${threadId.value}`
+      );
+      if (runId) {
+        shouldReconnect = false;
+        void joinStream(runId);
+      }
+    }
+  });
+
+  watch(
+    () => threadId.value,
+    () => {
+      shouldReconnect = !!runMetadataStorage;
+    }
+  );
+
+  const toolCalls = computed(() =>
+    getToolCallsWithResults(getMessages(values.value))
+  );
+
+  function getToolCalls(message: Message) {
+    const allToolCalls = getToolCallsWithResults(getMessages(values.value));
+    return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+  }
+
+  const interrupts = computed((): Interrupt<InterruptType>[] => {
+    const v = values.value;
+    if (
+      v != null &&
+      "__interrupt__" in v &&
+      Array.isArray(v.__interrupt__)
+    ) {
+      const valueInterrupts = v.__interrupt__;
+      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+      return valueInterrupts;
+    }
+
+    if (isLoading.value) return [];
+
+    const allTasks = branchContext.value.threadHead?.tasks ?? [];
+    const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
+
+    if (allInterrupts.length > 0) {
+      return allInterrupts as Interrupt<InterruptType>[];
+    }
+
+    const next = branchContext.value.threadHead?.next ?? [];
+    if (!next.length || error.value != null) return [];
+    return [{ when: "breakpoint" }];
+  });
+
+  const flatHistory = computed(() => {
+    if (historyLimit === false) {
+      throw new Error(
+        "`fetchStateHistory` must be set to `true` to use `history`"
+      );
+    }
+    return branchContext.value.flatHistory;
+  });
+
+  const isThreadLoading = computed(
+    () => history.value.isLoading && history.value.data == null
+  );
+
+  const experimentalBranchTree = computed(() => {
+    if (historyLimit === false) {
+      throw new Error(
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+      );
+    }
+    return branchContext.value.branchTree;
+  });
+
   return {
     assistantId: options.assistantId,
+    client,
 
     values,
     error,
@@ -323,6 +538,9 @@ export function useStream<
       getMessages(streamValues.value ?? historyValues.value)
     ),
 
+    toolCalls,
+    getToolCalls,
+
     interrupt: computed(() =>
       extractInterrupts<InterruptType>(streamValues.value, {
         isLoading: isLoading.value,
@@ -330,6 +548,11 @@ export function useStream<
         error: streamError.value,
       })
     ),
+
+    interrupts,
+    history: flatHistory,
+    isThreadLoading,
+    experimental_branchTree: experimentalBranchTree,
 
     getMessagesMetadata: (
       message: Message,
@@ -352,5 +575,91 @@ export function useStream<
 
     submit,
     stop,
+    joinStream,
+
+    get subagents() {
+      return stream.getSubagents();
+    },
+    get activeSubagents() {
+      return stream.getActiveSubagents();
+    },
+    getSubagent(toolCallId: string) {
+      return stream.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return stream.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return stream.getSubagentsByMessage(messageId);
+    },
   };
 }
+
+export function useStream<
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _T = Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _Bag extends BagTemplate = BagTemplate
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+>(options: any): any {
+  if ("transport" in options) {
+    return useStreamCustom(options);
+  }
+  return useStreamLGP(options);
+}
+
+export type {
+  BaseStream,
+  UseAgentStream,
+  UseAgentStreamOptions,
+  UseDeepAgentStream,
+  UseDeepAgentStreamOptions,
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  InferStateType,
+  InferToolCalls,
+  InferSubagentStates,
+  InferNodeNames,
+  InferBag,
+  MessageMetadata,
+  UseStreamOptions,
+  UseStreamCustomOptions,
+  UseStreamTransport,
+  UseStreamThread,
+  GetToolCallsType,
+  AgentTypeConfigLike,
+  IsAgentLike,
+  ExtractAgentConfig,
+  InferAgentToolCalls,
+  SubagentToolCall,
+  SubagentStatus,
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  DefaultSubagentStates,
+  BaseSubagentState,
+} from "@langchain/langgraph-sdk/ui";
+
+export type {
+  ToolCallWithResult,
+  ToolCallState,
+  DefaultToolCall,
+  ToolCallFromTool,
+  ToolCallsFromTools,
+} from "@langchain/langgraph-sdk";
+
+export {
+  SubagentManager,
+  extractToolCallIdFromNamespace,
+  calculateDepthFromNamespace,
+  extractParentIdFromNamespace,
+  isSubagentNamespace,
+} from "@langchain/langgraph-sdk/ui";
