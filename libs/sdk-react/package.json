@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@hono/node-server": "^1.14.1",
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.27",
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
     "@langchain/langgraph-checkpoint": "workspace:^",
@@ -35,6 +35,7 @@
     "@typescript-eslint/parser": "^6.12.0",
     "@vitejs/plugin-react": "^4.5.2",
     "@vitest/browser": "^3.2.4",
+    "deepagents": "^1.8.0",
     "eslint": "^8.33.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.6.0",
@@ -43,16 +44,18 @@
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "hono": "^4.7.10",
+    "langchain": "^1.2.25",
     "prettier": "^2.8.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^4.9.5 || ^5.4.5",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "vitest-browser-react": "^0.3.0",
-    "webdriverio": "^9.15.0"
+    "webdriverio": "^9.15.0",
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.27",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },

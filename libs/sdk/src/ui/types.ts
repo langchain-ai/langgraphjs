@@ -412,17 +412,23 @@ export interface AgentMiddlewareLike<
  * Uses structural matching against AgentMiddleware to extract the state schema
  * type parameter, similar to how langchain's InferMiddlewareState works.
  */
+type SafeInferInteropZodInput<T> =
+  InferInteropZodInput<T> extends never
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : InferInteropZodInput<T>;
+
 type InferMiddlewareState<T> =
   // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema
   T extends AgentMiddlewareLike<infer TSchema, unknown, unknown, unknown>
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
       TSchema extends Record<string, any>
-      ? InferInteropZodInput<TSchema>
+      ? SafeInferInteropZodInput<TSchema>
       : // eslint-disable-next-line @typescript-eslint/ban-types
         {}
     : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
     T extends { stateSchema: infer S }
-    ? InferInteropZodInput<S>
+    ? SafeInferInteropZodInput<S>
     : // eslint-disable-next-line @typescript-eslint/ban-types
       {};
 
@@ -511,7 +517,7 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
         (ExtractAgentConfig<T>["State"] extends undefined
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
-          : InferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
+          : SafeInferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
         InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
   : T extends { "~RunOutput": infer RunOutput }
   ? RunOutput
