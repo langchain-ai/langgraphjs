@@ -54,14 +54,27 @@ export class PostgresStore extends BaseStore {
 
   private ensureTables: boolean;
 
+  private poolOwned: boolean;
+
   constructor(config: PostgresStoreConfig) {
     super();
 
-    // Create connection pool
-    const pool =
-      typeof config.connectionOptions === "string"
-        ? new Pool({ connectionString: config.connectionOptions })
-        : new Pool(config.connectionOptions);
+    // Use the provided pool directly, or create one from connectionOptions.
+    let pool: pg.Pool;
+    if (config.pool) {
+      pool = config.pool;
+      this.poolOwned = false;
+    } else if (config.connectionOptions) {
+      pool =
+        typeof config.connectionOptions === "string"
+          ? new Pool({ connectionString: config.connectionOptions })
+          : new Pool(config.connectionOptions);
+      this.poolOwned = true;
+    } else {
+      throw new Error(
+        'PostgresStoreConfig requires either "pool" or "connectionOptions".'
+      );
+    }
 
     // Initialize core and modules
     this.core = new DatabaseCore(
@@ -186,10 +199,47 @@ export class PostgresStore extends BaseStore {
    */
   static fromConnString(
     connectionString: string,
-    options?: Omit<PostgresStoreConfig, "connectionOptions">
+    options?: Omit<PostgresStoreConfig, "pool" | "connectionOptions">
   ): PostgresStore {
     return new PostgresStore({
       connectionOptions: connectionString,
+      ...options,
+    });
+  }
+
+  /**
+   * Creates a PostgresStore instance from a preconfigured pg.Pool.
+   *
+   * This enables sharing a single connection pool between PostgresSaver and
+   * PostgresStore for better resource management.
+   *
+   * The pool will NOT be closed when the store is stopped -- the caller
+   * retains ownership of the pool lifecycle.
+   *
+   * @param pool - A preconfigured pg.Pool instance.
+   * @param options - Optional configuration (schema, TTL, index, etc.).
+   * @returns A new PostgresStore instance backed by the provided pool.
+   *
+   * @example
+   * ```typescript
+   * import pg from "pg";
+   * import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+   * import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
+   *
+   * const pool = new pg.Pool({ connectionString: "postgresql://..." });
+   * const saver = new PostgresSaver(pool);
+   * const store = PostgresStore.fromPool(pool);
+   *
+   * await saver.setup();
+   * await store.setup();
+   * ```
+   */
+  static fromPool(
+    pool: pg.Pool,
+    options?: Omit<PostgresStoreConfig, "pool" | "connectionOptions">
+  ): PostgresStore {
+    return new PostgresStore({
+      pool,
       ...options,
     });
   }
@@ -374,13 +424,19 @@ export class PostgresStore extends BaseStore {
   }
 
   /**
-   * Stop the store and close all database connections.
+   * Stop the store and close database connections.
+   *
+   * If the pool was provided externally (e.g. via a pg.Pool instance in
+   * connectionOptions or via {@link fromPool}), the pool will NOT be closed
+   * because the caller retains ownership of the pool lifecycle.
    */
   async stop(): Promise<void> {
     if (this.isClosed) return;
 
     this.ttlManager.stop();
-    await this.core.pool.end();
+    if (this.poolOwned) {
+      await this.core.pool.end();
+    }
     this.isClosed = true;
   }
 
