@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { getBranchSequence } from "./branching.js";
+import { getBranchSequence, getBranchView } from "./branching.js";
 import { ThreadState } from "../schema.js";
 
 const history = [
@@ -424,4 +424,95 @@ it("partial tree", async () => {
       )
     ),
   });
+});
+
+// Helper to create minimal ThreadState for getBranchView tests
+function makeState(
+  checkpointId: string,
+  parentCheckpointId: string | null
+): ThreadState<Record<string, unknown>> {
+  return {
+    values: { messages: [] },
+    next: [],
+    tasks: [],
+    metadata: { source: "loop", step: 0, parents: {}, thread_id: "t1" },
+    created_at: "2025-01-01T00:00:00.000Z",
+    checkpoint: {
+      thread_id: "t1",
+      checkpoint_ns: "",
+      checkpoint_id: checkpointId,
+      checkpoint_map: null,
+    },
+    parent_checkpoint: parentCheckpointId
+      ? {
+          thread_id: "t1",
+          checkpoint_ns: "",
+          checkpoint_id: parentCheckpointId,
+          checkpoint_map: null,
+        }
+      : null,
+  };
+}
+
+it("getBranchView with branch='' selects the fork with the newest checkpoint", () => {
+  // Build a simple fork: root -> fork with 2 branches
+  // Branch A (older): checkpoint "aaa"
+  // Branch B (newer): checkpoint "zzz"
+  // Due to unshift ordering, items = [B, A]
+  // at(-1) would pick A (oldest), but findLatestForkIndex should pick B (newest)
+  const states = [
+    makeState("root", null),
+    makeState("aaa", "root"), // older branch
+    makeState("zzz", "root"), // newer branch
+  ];
+
+  const { rootSequence, paths } = getBranchSequence(states);
+  const { history: flatHistory } = getBranchView(rootSequence, paths, "");
+
+  // Should include root + the newest branch (zzz)
+  expect(flatHistory).toHaveLength(2);
+  const checkpointIds = flatHistory.map((s) => s.checkpoint?.checkpoint_id);
+  expect(checkpointIds).toContain("root");
+  expect(checkpointIds).toContain("zzz");
+  expect(checkpointIds).not.toContain("aaa");
+});
+
+it("getBranchView with branch='' picks a continued older branch over a newer-created fork", () => {
+  // Root -> fork with 2 branches
+  // Branch A: created first (checkpoint "bbb"), then continued (checkpoint "zzz" - newest overall)
+  // Branch B: created second (checkpoint "ccc")
+  // findLatestForkIndex should pick Branch A because it has the newest checkpoint "zzz"
+  const states = [
+    makeState("root", null),
+    makeState("bbb", "root"), // branch A start (older)
+    makeState("ccc", "root"), // branch B start (newer fork)
+    makeState("zzz", "bbb"), // branch A continuation (newest checkpoint)
+  ];
+
+  const { rootSequence, paths } = getBranchSequence(states);
+  const { history: flatHistory } = getBranchView(rootSequence, paths, "");
+
+  const checkpointIds = flatHistory.map((s) => s.checkpoint?.checkpoint_id);
+  expect(checkpointIds).toContain("root");
+  expect(checkpointIds).toContain("bbb");
+  expect(checkpointIds).toContain("zzz");
+  expect(checkpointIds).not.toContain("ccc");
+});
+
+it("getBranchView with explicit branch path still works correctly", () => {
+  const states = [
+    makeState("root", null),
+    makeState("aaa", "root"), // older branch
+    makeState("zzz", "root"), // newer branch
+  ];
+
+  const { rootSequence, paths } = getBranchSequence(states);
+
+  // Explicitly select the older branch
+  const { history: flatHistory } = getBranchView(rootSequence, paths, "aaa");
+
+  const checkpointIds = flatHistory.map((s) => s.checkpoint?.checkpoint_id);
+  expect(checkpointIds).toContain("root");
+  expect(checkpointIds).toContain("aaa");
+  expect(checkpointIds).not.toContain("zzz");
 });

@@ -31,6 +31,44 @@ interface ValidSequence<StateType = any> {
   items: [Node<StateType>, ...(Node<StateType> | ValidFork<StateType>)[]];
 }
 
+/**
+ * Find the fork branch index with the most recent checkpoint.
+ * Traverses all nodes in each fork branch, comparing checkpoint_ids
+ * (UUID v1 strings are time-sortable via localeCompare).
+ */
+function findLatestForkIndex<StateType>(
+  items: Array<Sequence<StateType>>
+): number {
+  let bestIndex = 0;
+  let bestCheckpointId = "";
+
+  for (let i = 0; i < items.length; i += 1) {
+    const maxId = getMaxCheckpointId(items[i]);
+    if (maxId > bestCheckpointId) {
+      bestCheckpointId = maxId;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+function getMaxCheckpointId<StateType>(sequence: Sequence<StateType>): string {
+  let max = "";
+  for (const item of sequence.items) {
+    if (item.type === "node") {
+      const id = item.value.checkpoint?.checkpoint_id ?? "";
+      if (id > max) max = id;
+    } else if (item.type === "fork") {
+      for (const sub of item.items) {
+        const id = getMaxCheckpointId(sub);
+        if (id > max) max = id;
+      }
+    }
+  }
+  return max;
+}
+
 export function getBranchSequence<StateType extends Record<string, unknown>>(
   history: ThreadState<StateType>[]
 ) {
@@ -200,7 +238,9 @@ export function getBranchView<StateType extends Record<string, unknown>>(
             })
           : -1;
 
-      const nextItems = item.items.at(index)?.items ?? [];
+      const resolvedIndex =
+        index === -1 ? findLatestForkIndex(item.items) : index;
+      const nextItems = item.items.at(resolvedIndex)?.items ?? [];
       queue.push(...nextItems);
     }
   }
