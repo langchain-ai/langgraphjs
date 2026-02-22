@@ -14,6 +14,7 @@ module.exports = {
   plugins: ["@typescript-eslint", "no-instanceof"],
   ignorePatterns: [
     ".eslintrc.cjs",
+    "vitest.config.ts",
     "scripts",
     "node_modules",
     "dist",

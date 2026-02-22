@@ -15,5 +15,8 @@ export default defineConfig({
       headless: true,
     },
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    typecheck: {
+      enabled: true,
+    },
   },
 });

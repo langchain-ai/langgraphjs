@@ -17,7 +17,7 @@ it("renders initial state correctly", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -71,7 +71,7 @@ it("handles message submission and streaming", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -172,7 +172,7 @@ it("displays initial values immediately and clears them when submitting", async 
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div
                 key={msg.id ?? i}
                 data-testid={
@@ -238,7 +238,7 @@ it("onStop does not clear stream values", async () => {
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -354,7 +354,7 @@ it("onStop mutate function updates stream values immediately", async () => {
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -528,7 +528,7 @@ it("make sure to pass metadata to the thread", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -588,7 +588,7 @@ it("streamSubgraphs: true", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -682,7 +682,7 @@ it("streamMetadata", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => {
+            {messages.value.map((msg, i: number) => {
               const metadata = getMessagesMetadata(msg, i);
               return (
                 <div key={msg.id ?? i} data-testid={`message-${i}`}>
@@ -741,7 +741,7 @@ it("interrupts (fetchStateHistory: false)", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -752,7 +752,7 @@ it("interrupts (fetchStateHistory: false)", async () => {
           {interrupt.value ? (
             <div>
               <div data-testid="interrupt">
-                {interrupt.value.when ?? interrupt.value.value?.nodeName}
+                {interrupt.value?.when ?? interrupt.value?.value?.nodeName}
               </div>
               <button
                 data-testid="resume"
@@ -831,7 +831,7 @@ it("handle message removal", async () => {
       });
 
       return () => {
-        const rawMessages = messages.value.map((msg: Message, i: number) => ({
+        const rawMessages = messages.value.map((msg, i: number) => ({
           id: msg.id ?? i,
           content: `${msg.type}: ${
             typeof msg.content === "string"
@@ -913,7 +913,7 @@ it("enqueue multiple .submit() calls", async () => {
       });
 
       return () => {
-        const rawMessages = messages.value.map((msg: Message, i: number) => ({
+        const rawMessages = messages.value.map((msg, i: number) => ({
           id: msg.id ?? i,
           content: `${msg.type}: ${
             typeof msg.content === "string"
@@ -1054,7 +1054,7 @@ it("branching", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => {
+            {messages.value.map((msg, i: number) => {
               const metadata = getMessagesMetadata(msg, i);
               const checkpoint =
                 metadata?.firstSeenState?.parent_checkpoint ?? undefined;
@@ -1233,7 +1233,7 @@ it("fetchStateHistory: { limit: 2 }", async () => {
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -1297,7 +1297,7 @@ it("onRequest gets called when a request is made", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -1359,7 +1359,7 @@ it("interrupts (fetchStateHistory: true)", async () => {
       return () => (
         <div>
           <div data-testid="messages">
-            {messages.value.map((msg: Message, i: number) => (
+            {messages.value.map((msg, i: number) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
                 {typeof msg.content === "string"
                   ? msg.content
@@ -1370,7 +1370,7 @@ it("interrupts (fetchStateHistory: true)", async () => {
           {interrupt.value ? (
             <div>
               <div data-testid="interrupt">
-                {interrupt.value.when ?? interrupt.value.value?.nodeName}
+                {interrupt.value?.when ?? interrupt.value?.value?.nodeName}
               </div>
               <button
                 data-testid="resume"
@@ -1440,10 +1440,11 @@ it("interrupts (fetchStateHistory: true)", async () => {
 it("exposes toolCalls property", async () => {
   const TestComponent = defineComponent({
     setup() {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
-      });
+      }) as any;
 
       return () => (
         <div>

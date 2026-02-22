@@ -72,6 +72,8 @@ export function useStreamCustom<
   const historyValues = options.initialValues ?? ({} as StateType);
 
   const historyMessages = getMessages(historyValues);
+  // @ts-expect-error used in watch callback below
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const shouldReconstructSubagents =
     options.filterSubagentMessages &&
     !stream.isLoading &&

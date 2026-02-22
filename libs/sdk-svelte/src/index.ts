@@ -1,6 +1,7 @@
 import { writable, derived, get } from "svelte/store";
 import { onDestroy, onMount } from "svelte";
 
+import type { BaseMessage } from "@langchain/core/messages";
 import {
   StreamManager,
   MessageTupleManager,
@@ -21,6 +22,11 @@ import {
   type SubmitOptions,
   type EventStreamEvent,
   type RunCallbackMeta,
+  type ResolveStreamInterface,
+  type ResolveStreamOptions,
+  type InferBag,
+  type InferStateType,
+  type UseStreamCustomOptions,
 } from "@langchain/langgraph-sdk/ui";
 import {
   Client,
@@ -51,13 +57,30 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
+type WithClassMessages<T> = Omit<T, "messages" | "getMessagesMetadata"> & {
+  messages: BaseMessage[];
+  getMessagesMetadata: (
+    message: BaseMessage,
+    index?: number
+  ) => MessageMetadata<Record<string, unknown>> | undefined;
+};
+
 export function useStream<
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _T = Record<string, unknown>,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _Bag extends BagTemplate = BagTemplate
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
->(options: any): any {
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+
+export function useStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useStream(options: any): any {
   if ("transport" in options) {
     return useStreamCustom(options);
   }

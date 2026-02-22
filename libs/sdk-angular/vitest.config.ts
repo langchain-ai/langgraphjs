@@ -16,6 +16,7 @@ export default defineConfig({
         }
       },
     },
+    // @ts-expect-error - Angular plugin is not correctly typed
     angular({
       tsconfig: "tsconfig.spec.json",
       transformFilter(_code: string, id: string) {
@@ -42,10 +43,9 @@ export default defineConfig({
       instances: [{ browser: "chrome", headless: true }],
     },
     include: ["src/**/*.test.ts"],
-    exclude: ["**/*.test-d.ts"],
     typecheck: {
       enabled: true,
-      include: ["**/*.test-d.ts"],
+      tsconfig: "tsconfig.typecheck.json",
     },
   },
 });

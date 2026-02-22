@@ -25,6 +25,7 @@ import { createAgent, tool, createMiddleware } from "langchain";
 import { createDeepAgent } from "deepagents";
 
 import { useStream } from "@langchain/react";
+import { useStream as useStreamLegacy } from "../react/index.js";
 
 // Mocked LangGraph StateGraph types (see fixtures/langgraph-mocks.ts for details)
 import {
@@ -691,5 +692,58 @@ describe("useStream type inference integration", () => {
       "light" | "dark"
     >();
     expectTypeOf(stream.values.preferences.language).toEqualTypeOf<string>();
+  });
+});
+
+// ============================================================================
+// Backward Compatibility: @langchain/langgraph-sdk/react returns Message[]
+// ============================================================================
+
+interface BackwardCompatState {
+  messages: Message[];
+}
+
+describe("@langchain/langgraph-sdk/react backward compatibility", () => {
+  test("useStream from legacy path returns plain Message[], not BaseMessage[]", () => {
+    const stream = useStreamLegacy<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.messages).toEqualTypeOf<Message[]>();
+  });
+
+  test("individual messages are plain Message objects", () => {
+    const stream = useStreamLegacy<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    expectTypeOf(msg).toEqualTypeOf<Message>();
+    expectTypeOf(msg.type).toEqualTypeOf<string>();
+    expectTypeOf(msg.content).not.toBeNever();
+  });
+
+  test("core stream properties still work via legacy path", () => {
+    const stream = useStreamLegacy<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
+    expectTypeOf(stream.error).toEqualTypeOf<unknown>();
+    expectTypeOf(stream.stop()).toEqualTypeOf<Promise<void>>();
+    expectTypeOf(stream.branch).toEqualTypeOf<string>();
+  });
+
+  test("getMessagesMetadata accepts plain Message", () => {
+    const stream = useStreamLegacy<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    const metadata = stream.getMessagesMetadata(msg, 0);
+
+    if (metadata) {
+      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
+    }
   });
 });

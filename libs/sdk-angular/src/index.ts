@@ -1,4 +1,5 @@
 import { signal, computed, effect } from "@angular/core";
+import type { BaseMessage } from "@langchain/core/messages";
 import {
   StreamManager,
   MessageTupleManager,
@@ -36,7 +37,6 @@ import {
 } from "@langchain/langgraph-sdk";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
-import type { BaseMessage } from "@langchain/core/messages";
 
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
 
