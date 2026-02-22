@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.1.6
+
+### Patch Changes
+
+- [#1992](https://github.com/langchain-ai/langgraphjs/pull/1992) [`937f780`](https://github.com/langchain-ai/langgraphjs/commit/937f78030f1360251361c6096bbd0ff287662a2b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(core): don't trace channel read/writes
+
 ## 1.1.5
 
 ### Patch Changes
