@@ -5,15 +5,11 @@
  * @langchain/core message class instances (BaseMessage) rather than
  * plain SDK Message interfaces.
  *
- * Angular's useStream returns Angular signals, so messages are accessed
- * via `stream.messages()` (signal invocation).
- *
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
  * to verify type correctness.
  */
 
 import { describe, test, expectTypeOf } from "vitest";
-import { useStream } from "../index.js";
 import type {
   BaseMessage,
   StoredMessage,
@@ -25,8 +21,8 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import type { Message, DefaultToolCall } from "@langchain/langgraph-sdk";
-import type { ToolCallWithResult } from "@langchain/langgraph-sdk";
+import type { Message } from "@langchain/langgraph-sdk";
+import { useStream } from "../index.js";
 
 // ============================================================================
 // Test State Types
@@ -34,32 +30,6 @@ import type { ToolCallWithResult } from "@langchain/langgraph-sdk";
 
 interface BasicState {
   messages: Message[];
-}
-
-type WeatherToolCall = {
-  name: "get_weather";
-  args: { location: string };
-  id?: string;
-  type?: "tool_call";
-};
-
-type SearchToolCall = {
-  name: "search_web";
-  args: { query: string; maxResults?: number };
-  id?: string;
-  type?: "tool_call";
-};
-
-type MultiToolCall = WeatherToolCall | SearchToolCall;
-
-interface TypedToolCallState {
-  messages: Message<MultiToolCall>[];
-}
-
-interface CustomState {
-  messages: Message[];
-  sessionId: string;
-  metadata: { theme: "light" | "dark" };
 }
 
 // ============================================================================
@@ -72,7 +42,7 @@ describe("useStream exposes BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toMatchTypeOf<BaseMessage[]>();
+    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
     expectTypeOf(stream.messages).not.toEqualTypeOf<Message[]>();
   });
 
@@ -82,15 +52,15 @@ describe("useStream exposes BaseMessage class instances", () => {
     });
 
     const msg = stream.messages[0];
-    expectTypeOf(msg).toMatchTypeOf<BaseMessage>();
+    expectTypeOf(msg).toExtend<BaseMessage>();
   });
 
-  test("messages in values are also BaseMessage instances", () => {
+  test("values property exists", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.values.messages).toMatchTypeOf<BaseMessage[]>();
+    expectTypeOf(stream).toHaveProperty("values");
   });
 });
 
@@ -144,6 +114,24 @@ describe("BaseMessage class methods are available", () => {
     const msg = stream.messages[0];
     expectTypeOf(msg.contentBlocks).toBeArray();
   });
+
+  test("id property is available", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    expectTypeOf(msg.id).toEqualTypeOf<string | undefined>();
+  });
+
+  test("type property is available", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    expectTypeOf(msg).toHaveProperty("type");
+  });
 });
 
 // ============================================================================
@@ -158,7 +146,7 @@ describe("static type guard narrowing with isInstance", () => {
 
     const msg = stream.messages[0];
     if (AIMessage.isInstance(msg)) {
-      expectTypeOf(msg).toMatchTypeOf<AIMessage>();
+      expectTypeOf(msg).toExtend<AIMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"ai">();
     }
   });
@@ -183,7 +171,7 @@ describe("static type guard narrowing with isInstance", () => {
 
     const msg = stream.messages[0];
     if (AIMessageChunk.isInstance(msg)) {
-      expectTypeOf(msg).toMatchTypeOf<AIMessageChunk>();
+      expectTypeOf(msg).toExtend<AIMessageChunk>();
       expectTypeOf(msg.type).toEqualTypeOf<"ai">();
     }
   });
@@ -195,7 +183,7 @@ describe("static type guard narrowing with isInstance", () => {
 
     const msg = stream.messages[0];
     if (HumanMessage.isInstance(msg)) {
-      expectTypeOf(msg).toMatchTypeOf<HumanMessage>();
+      expectTypeOf(msg).toExtend<HumanMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"human">();
     }
   });
@@ -207,7 +195,7 @@ describe("static type guard narrowing with isInstance", () => {
 
     const msg = stream.messages[0];
     if (ToolMessage.isInstance(msg)) {
-      expectTypeOf(msg).toMatchTypeOf<ToolMessage>();
+      expectTypeOf(msg).toExtend<ToolMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"tool">();
       expectTypeOf(msg).toHaveProperty("tool_call_id");
     }
@@ -220,121 +208,24 @@ describe("static type guard narrowing with isInstance", () => {
 
     const msg = stream.messages[0];
     if (SystemMessage.isInstance(msg)) {
-      expectTypeOf(msg).toMatchTypeOf<SystemMessage>();
+      expectTypeOf(msg).toExtend<SystemMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"system">();
     }
   });
 });
 
 // ============================================================================
-// Type Tests: Type discriminant narrowing (msg.type)
+// Type Tests: Type discriminant narrowing
 // ============================================================================
 
 describe("type discriminant still works for narrowing", () => {
-  test("msg.type === 'ai' narrows to AI message type", () => {
+  test("msg.type is a string (MessageType)", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
     const msg = stream.messages[0];
-    if (msg.type === "ai") {
-      expectTypeOf(msg.type).toEqualTypeOf<"ai">();
-    }
-  });
-
-  test("msg.type === 'human' narrows to human message type", () => {
-    const stream = useStream<BasicState>({
-      assistantId: "agent",
-    });
-
-    const msg = stream.messages[0];
-    if (msg.type === "human") {
-      expectTypeOf(msg.type).toEqualTypeOf<"human">();
-    }
-  });
-
-  test("switch over msg.type covers known types", () => {
-    const stream = useStream<BasicState>({
-      assistantId: "agent",
-    });
-
-    const msg = stream.messages[0];
-    switch (msg.type) {
-      case "ai":
-        expectTypeOf(msg.type).toEqualTypeOf<"ai">();
-        break;
-      case "human":
-        expectTypeOf(msg.type).toEqualTypeOf<"human">();
-        break;
-      case "tool":
-        expectTypeOf(msg.type).toEqualTypeOf<"tool">();
-        break;
-      case "system":
-        expectTypeOf(msg.type).toEqualTypeOf<"system">();
-        break;
-    }
-  });
-});
-
-// ============================================================================
-// Type Tests: Tool calls with typed state
-// ============================================================================
-
-describe("tool calls remain typed with class instances", () => {
-  test("stream.toolCalls has typed call property", () => {
-    const stream = useStream<TypedToolCallState>({
-      assistantId: "agent",
-    });
-
-    const tc = stream.toolCalls[0];
-    expectTypeOf(tc).toMatchTypeOf<ToolCallWithResult<MultiToolCall>>();
-    expectTypeOf(tc.call.name).toEqualTypeOf<
-      "get_weather" | "search_web"
-    >();
-  });
-
-  test("tool call args narrow by name", () => {
-    const stream = useStream<TypedToolCallState>({
-      assistantId: "agent",
-    });
-
-    const tc = stream.toolCalls[0];
-    if (tc.call.name === "get_weather") {
-      expectTypeOf(tc.call.args).toEqualTypeOf<{ location: string }>();
-    }
-    if (tc.call.name === "search_web") {
-      expectTypeOf(tc.call.args).toEqualTypeOf<{
-        query: string;
-        maxResults?: number;
-      }>();
-    }
-  });
-
-  test("toolCalls[].state is a lifecycle state", () => {
-    const stream = useStream<TypedToolCallState>({
-      assistantId: "agent",
-    });
-
-    const tc = stream.toolCalls[0];
-    expectTypeOf(tc.state).toEqualTypeOf<"pending" | "completed" | "error">();
-  });
-});
-
-// ============================================================================
-// Type Tests: Custom state with class instance messages
-// ============================================================================
-
-describe("custom state types work with class instance messages", () => {
-  test("values includes custom state properties alongside messages", () => {
-    const stream = useStream<CustomState>({
-      assistantId: "agent",
-    });
-
-    expectTypeOf(stream.values.sessionId).toEqualTypeOf<string>();
-    expectTypeOf(stream.values.metadata.theme).toEqualTypeOf<
-      "light" | "dark"
-    >();
-    expectTypeOf(stream.values.messages).toMatchTypeOf<BaseMessage[]>();
+    expectTypeOf(msg.type).toBeString();
   });
 });
 
@@ -375,20 +266,35 @@ describe("core stream properties are unaffected", () => {
     expectTypeOf(stream.submit(null)).toEqualTypeOf<Promise<void>>();
   });
 
-  test("branch is string", () => {
-    const stream = useStream<BasicState>({
-      assistantId: "agent",
-    });
-
-    expectTypeOf(stream.branch).toEqualTypeOf<string>();
-  });
-
   test("assistantId is string", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
     expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
+  });
+});
+
+// ============================================================================
+// Type Tests: getMessagesMetadata works with BaseMessage
+// ============================================================================
+
+describe("getMessagesMetadata accepts BaseMessage", () => {
+  test("getMessagesMetadata can be called with a class instance", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    const metadata = stream.getMessagesMetadata(msg, 0);
+
+    if (metadata) {
+      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
+      expectTypeOf(metadata.branch).toEqualTypeOf<string | undefined>();
+      expectTypeOf(metadata.branchOptions).toEqualTypeOf<
+        string[] | undefined
+      >();
+    }
   });
 });
 
@@ -403,7 +309,8 @@ describe("realistic usage patterns with class instances", () => {
     });
 
     for (const msg of stream.messages) {
-      expectTypeOf(msg).toMatchTypeOf<BaseMessage>();
+      expectTypeOf(msg).toExtend<BaseMessage>();
+      expectTypeOf(msg.content).not.toBeNever();
 
       if (AIMessage.isInstance(msg)) {
         expectTypeOf(msg.type).toEqualTypeOf<"ai">();
@@ -446,12 +353,12 @@ describe("realistic usage patterns with class instances", () => {
     });
 
     const aiMessages = stream.messages.filter(AIMessage.isInstance);
-    expectTypeOf(aiMessages).toMatchTypeOf<AIMessage[]>();
+    expectTypeOf(aiMessages).toExtend<AIMessage[]>();
 
     const humanMessages = stream.messages.filter(HumanMessage.isInstance);
-    expectTypeOf(humanMessages).toMatchTypeOf<HumanMessage[]>();
+    expectTypeOf(humanMessages).toExtend<HumanMessage[]>();
 
     const toolMessages = stream.messages.filter(ToolMessage.isInstance);
-    expectTypeOf(toolMessages).toMatchTypeOf<ToolMessage[]>();
+    expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
   });
 });

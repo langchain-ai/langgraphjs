@@ -15,6 +15,7 @@ module.exports = {
   ignorePatterns: [
     ".eslintrc.cjs",
     "scripts",
+    "vitest.config.ts",
     "node_modules",
     "dist",
     "dist-cjs",

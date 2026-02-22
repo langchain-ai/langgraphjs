@@ -18,6 +18,7 @@ const serverUrl = inject("serverUrl");
 })
 export class NewThreadIdComponent {
   submitThreadId = input<string | undefined>(undefined);
+
   onThreadIdCb = input<((threadId: string) => void) | undefined>(undefined);
 
   stream = useStream({

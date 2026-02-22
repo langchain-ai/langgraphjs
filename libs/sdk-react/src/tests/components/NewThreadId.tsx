@@ -1,5 +1,5 @@
-import { useStream } from "../../index.js";
 import type { Message } from "@langchain/langgraph-sdk";
+import { useStream } from "../../index.js";
 
 interface Props {
   apiUrl: string;
@@ -34,7 +34,7 @@ export function NewThreadId({
       <button
         data-testid="submit"
         onClick={() =>
-          void stream.submit({} as any, { threadId: submitThreadId })
+          void stream.submit({}, { threadId: submitThreadId })
         }
       >
         Submit

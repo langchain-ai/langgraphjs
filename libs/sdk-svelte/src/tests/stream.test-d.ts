@@ -1,7 +1,7 @@
 /**
- * Type tests for message class instances in @langchain/react.
+ * Type tests for message class instances in @langchain/svelte.
  *
- * These tests validate that `useStream` from @langchain/react exposes
+ * These tests validate that `useStream` from @langchain/svelte exposes
  * @langchain/core message class instances (BaseMessage) rather than
  * plain SDK Message interfaces.
  *
@@ -221,7 +221,7 @@ describe("static type guard narrowing with isInstance", () => {
 });
 
 // ============================================================================
-// Type Tests: Type discriminant narrowing (msg.type)
+// Type Tests: Type discriminant narrowing
 // ============================================================================
 
 describe("type discriminant still works for narrowing", () => {

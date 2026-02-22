@@ -1,4 +1,5 @@
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch, type ComputedRef, type Ref } from "vue";
+import type { BaseMessage } from "@langchain/core/messages";
 import {
   StreamManager,
   MessageTupleManager,
@@ -20,6 +21,11 @@ import {
   type SubmitOptions,
   type EventStreamEvent,
   type RunCallbackMeta,
+  type ResolveStreamInterface,
+  type ResolveStreamOptions,
+  type InferBag,
+  type InferStateType,
+  type UseStreamCustomOptions,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 
@@ -597,13 +603,42 @@ function useStreamLGP<
   };
 }
 
+/**
+ * Maps a stream interface to Vue-reactive types:
+ * - `messages` becomes `ComputedRef<BaseMessage[]>`
+ * - `getMessagesMetadata` accepts `BaseMessage`
+ * - Functions remain unchanged
+ * - All other properties are wrapped in `Ref<T>` to match Vue's reactivity
+ */
+type WithClassMessages<T> = {
+  [K in keyof T]: K extends "messages"
+    ? ComputedRef<BaseMessage[]>
+    : K extends "getMessagesMetadata"
+      ? (
+          message: BaseMessage,
+          index?: number
+        ) => MessageMetadata<Record<string, unknown>> | undefined
+      : T[K] extends (...args: infer A) => infer R
+        ? (...args: A) => R
+        : Ref<T[K]>;
+};
+
 export function useStream<
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _T = Record<string, unknown>,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _Bag extends BagTemplate = BagTemplate
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
->(options: any): any {
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+
+export function useStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+>(
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useStream(options: any): any {
   if ("transport" in options) {
     return useStreamCustom(options);
   }
