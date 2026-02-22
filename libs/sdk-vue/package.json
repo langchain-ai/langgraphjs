@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@hono/node-server": "^1.14.1",
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.27",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-api": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
@@ -34,6 +34,7 @@
     "@vitejs/plugin-vue": "^6.0.4",
     "@vitejs/plugin-vue-jsx": "^5.1.4",
     "@vitest/browser": "^3.2.4",
+    "deepagents": "^1.8.0",
     "eslint": "^8.33.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.6.0",
@@ -41,6 +42,7 @@
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-prettier": "^4.2.1",
     "hono": "^4.8.2",
+    "langchain": "^1.2.25",
     "prettier": "^2.8.3",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",
@@ -49,7 +51,7 @@
     "webdriverio": "^9.14.2"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.27",
     "vue": "^3.0.0"
   },
   "main": "./dist/index.js",

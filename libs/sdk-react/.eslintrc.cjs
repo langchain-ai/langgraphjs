@@ -40,7 +40,14 @@ module.exports = {
     "import/extensions": [2, "ignorePackages"],
     "import/no-extraneous-dependencies": [
       "error",
-      { devDependencies: ["**/*.test.ts", "**/*.test.tsx", "**/*.test-d.ts", "src/tests/**"] },
+      {
+        devDependencies: [
+          "**/*.test.ts",
+          "**/*.test.tsx",
+          "**/*.test-d.ts",
+          "src/tests/**"
+        ]
+      },
     ],
     "import/no-unresolved": 0,
     "import/prefer-default-export": 0,
@@ -76,6 +83,7 @@ module.exports = {
       rules: {
         "no-instanceof/no-instanceof": 0,
         "@typescript-eslint/no-explicit-any": 0,
+        "import/no-extraneous-dependencies": 0,
       },
     },
   ],
