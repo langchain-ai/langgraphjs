@@ -73,25 +73,17 @@ export class Branch<
   N extends string,
   CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
 > {
-  path: Runnable<IO, BranchPathReturnValue, CallOptions>;
+  path: Runnable<IO, BranchPathReturnValue>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
     if (Runnable.isRunnable(options.path)) {
-      this.path = options.path as Runnable<
-        IO,
-        BranchPathReturnValue,
-        CallOptions
-      >;
+      this.path = options.path as Runnable<IO, BranchPathReturnValue>;
     } else {
       this.path = _coerceToRunnable(
-        options.path as LangChainRunnableLike<
-          IO,
-          BranchPathReturnValue,
-          CallOptions
-        >
-      ).withConfig({ runName: `Branch` } as CallOptions);
+        options.path as LangChainRunnableLike<IO, BranchPathReturnValue>
+      );
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce((acc, n) => {
@@ -388,20 +380,9 @@ export class Graph<
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
     if (!Runnable.isRunnable(options.path)) {
-      const pathDisplayValues = Array.isArray(options.pathMap)
-        ? options.pathMap.join(",")
-        : Object.keys(options.pathMap ?? {}).join(",");
       options.path = _coerceToRunnable(
-        options.path as LangChainRunnableLike<
-          RunInput,
-          BranchPathReturnValue,
-          LangGraphRunnableConfig<StateType<C>>
-        >
-      ).withConfig({
-        runName: `Branch<${options.source}${
-          pathDisplayValues !== "" ? `,${pathDisplayValues}` : ""
-        }>`.slice(0, 63),
-      });
+        options.path as LangChainRunnableLike<RunInput, BranchPathReturnValue>
+      );
     }
     // find a name for condition
     const name =

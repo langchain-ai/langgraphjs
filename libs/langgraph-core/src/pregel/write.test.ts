@@ -217,6 +217,13 @@ describe("ChannelWrite", () => {
   });
 });
 
+describe("ChannelWrite tracing", () => {
+  it("should have trace disabled to avoid cluttering trace views", () => {
+    const write = new ChannelWrite([{ channel: "output", value: "value" }]);
+    expect(write.trace).toBe(false);
+  });
+});
+
 describe("ChannelWrite static methods", () => {
   it("isWriter should identify ChannelWrite instances", () => {
     const write = new ChannelWrite([{ channel: "output", value: "value" }]);
