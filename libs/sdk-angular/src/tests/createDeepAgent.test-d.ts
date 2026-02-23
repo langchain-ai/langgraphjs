@@ -13,7 +13,7 @@
  * to verify type correctness.
  */
 
-import { z } from "zod/v3";
+import { z } from "zod/v4";
 import { describe, test, expectTypeOf } from "vitest";
 import { tool, createMiddleware, AIMessage, ToolMessage, type BaseMessage, type ContentBlock } from "langchain";
 import { createDeepAgent } from "deepagents";

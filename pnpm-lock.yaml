@@ -2330,7 +2330,7 @@ importers:
         specifier: ^1.14.1
         version: 1.19.9(hono@4.11.7)
       '@langchain/core':
-        specifier: ^1.0.1
+        specifier: ^1.1.27
         version: 1.1.27(openai@6.16.0(ws@8.19.0)(zod@4.3.5))
       '@langchain/langgraph':
         specifier: workspace:^
