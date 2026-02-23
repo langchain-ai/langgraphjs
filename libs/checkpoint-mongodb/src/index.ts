@@ -16,7 +16,7 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
-  /** When true, writes an `updated_at` BSON date to documents on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging. */
+  /** When true, writes an `upserted_at` BSON date to documents on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging. */
   enableTimestamps?: boolean;
 };
 
@@ -34,8 +34,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   protected enableTimestamps: boolean;
 
-  private get timestampFields(): { updated_at: Date } | Record<string, never> {
-    return this.enableTimestamps ? { updated_at: new Date() } : {};
+  private get timestampFields(): { upserted_at: Date } | Record<string, never> {
+    return this.enableTimestamps ? { upserted_at: new Date() } : {};
   }
 
   constructor(

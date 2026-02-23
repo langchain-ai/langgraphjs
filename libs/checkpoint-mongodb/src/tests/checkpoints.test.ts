@@ -45,7 +45,7 @@ describe("MongoDBSaver", () => {
       expect(fields).toEqual({});
     });
 
-    it("should return updated_at Date when enableTimestamps is true", () => {
+    it("should return upserted_at Date when enableTimestamps is true", () => {
       const client = createMockClient();
       const saver = new MongoDBSaver({
         client: client as unknown as MongoClient,
@@ -57,9 +57,9 @@ describe("MongoDBSaver", () => {
       const fields = (saver as any).timestampFields;
       const after = Date.now();
 
-      expect(fields.updated_at).toBeInstanceOf(Date);
-      expect(fields.updated_at.getTime()).toBeGreaterThanOrEqual(before);
-      expect(fields.updated_at.getTime()).toBeLessThanOrEqual(after);
+      expect(fields.upserted_at).toBeInstanceOf(Date);
+      expect(fields.upserted_at.getTime()).toBeGreaterThanOrEqual(before);
+      expect(fields.upserted_at.getTime()).toBeLessThanOrEqual(after);
     });
   });
 
