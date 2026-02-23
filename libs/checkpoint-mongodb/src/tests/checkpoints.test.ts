@@ -33,6 +33,36 @@ describe("MongoDBSaver", () => {
     });
   });
 
+  describe("timestampFields", () => {
+    it("should return empty object when enableTimestamps is not set", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fields = (saver as any).timestampFields;
+      expect(fields).toEqual({});
+    });
+
+    it("should return updated_at Date when enableTimestamps is true", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        enableTimestamps: true,
+      });
+
+      const before = Date.now();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fields = (saver as any).timestampFields;
+      const after = Date.now();
+
+      expect(fields.updated_at).toBeInstanceOf(Date);
+      expect(fields.updated_at.getTime()).toBeGreaterThanOrEqual(before);
+      expect(fields.updated_at.getTime()).toBeLessThanOrEqual(after);
+    });
+  });
+
   describe("filter validation", () => {
     it("should reject object values in filter to prevent MongoDB operator injection", async () => {
       const client = createMockClient();
