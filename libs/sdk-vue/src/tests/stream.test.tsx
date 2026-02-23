@@ -52,12 +52,8 @@ it("renders initial state correctly", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .not.toBeInTheDocument();
-  await expect
-    .element(screen.getByTestId("error"))
-    .not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("error")).not.toBeInTheDocument();
 });
 
 it("handles message submission and streaming", async () => {
@@ -274,18 +270,14 @@ it("onStop does not clear stream values", async () => {
   await expect
     .element(screen.getByTestId("message-0"))
     .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 
   await screen.getByTestId("stop").click();
 
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 });
 
 it("onStop callback is called when stop is called", async () => {
@@ -317,13 +309,11 @@ it("onStop callback is called when stop is called", async () => {
   await screen.getByTestId("submit").click();
   await screen.getByTestId("stop").click();
 
-  await expect
-    .poll(() => onStopCallback.mock.calls.length)
-    .toBe(1);
+  await expect.poll(() => onStopCallback.mock.calls.length).toBe(1);
   expect(onStopCallback).toHaveBeenCalledWith(
     expect.objectContaining({
       mutate: expect.any(Function),
-    })
+    }),
   );
 });
 
@@ -429,16 +419,11 @@ it("onStop handles functional updates correctly", async () => {
           <div data-testid="loading">
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
-          <div data-testid="counter">
-            {(values.value as any).counter}
-          </div>
+          <div data-testid="counter">{(values.value as any).counter}</div>
           <div data-testid="items">
             {(values.value as any).items?.join(", ")}
           </div>
-          <button
-            data-testid="submit"
-            onClick={() => void submit({} as any)}
-          >
+          <button data-testid="submit" onClick={() => void submit({} as any)}>
             Send
           </button>
           <button data-testid="stop" onClick={() => void stop()}>
@@ -451,9 +436,7 @@ it("onStop handles functional updates correctly", async () => {
 
   const screen = render(TestComponent);
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("5");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("5");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2");
@@ -469,9 +452,7 @@ it("onStop handles functional updates correctly", async () => {
 
   await screen.getByTestId("stop").click();
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("15");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("15");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2, stopped");
@@ -541,7 +522,7 @@ it("make sure to pass metadata to the thread", async () => {
             onClick={() =>
               void submit(
                 { messages: [{ content: "Hello", type: "human" }] },
-                { metadata: { random: "123" }, threadId }
+                { metadata: { random: "123" }, threadId },
               )
             }
           >
@@ -601,7 +582,7 @@ it("streamSubgraphs: true", async () => {
             onClick={() =>
               void submit(
                 { messages: [{ content: "Hello", type: "human" }] },
-                { streamSubgraphs: true }
+                { streamSubgraphs: true },
               )
             }
           >
@@ -769,7 +750,7 @@ it("interrupts (fetchStateHistory: false)", async () => {
             onClick={() =>
               void submit(
                 { messages: [{ content: "Hello", type: "human" }] },
-                { interruptBefore: ["beforeInterrupt"] }
+                { interruptBefore: ["beforeInterrupt"] },
               )
             }
           >
@@ -841,9 +822,7 @@ it("handle message removal", async () => {
         }));
 
         messagesValues.add(
-          rawMessages
-            .map((msg: { content: string }) => msg.content)
-            .join("\n")
+          rawMessages.map((msg: { content: string }) => msg.content).join("\n"),
         );
 
         return (
@@ -857,7 +836,7 @@ it("handle message removal", async () => {
                   <div key={msg.id} data-testid={`message-${i}`}>
                     <span>{msg.content}</span>
                   </div>
-                )
+                ),
               )}
             </div>
             <button
@@ -898,7 +877,7 @@ it("handle message removal", async () => {
       ["human: Hello", "ai: Step 1: To Remove"],
       ["human: Hello", "ai: Step 2: To Keep"],
       ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
-    ].map((msgs: string[]) => msgs.join("\n"))
+    ].map((msgs: string[]) => msgs.join("\n")),
   );
 });
 
@@ -923,9 +902,7 @@ it("enqueue multiple .submit() calls", async () => {
         }));
 
         messagesValues.add(
-          rawMessages
-            .map((msg: { content: string }) => msg.content)
-            .join("\n")
+          rawMessages.map((msg: { content: string }) => msg.content).join("\n"),
         );
 
         return (
@@ -939,7 +916,7 @@ it("enqueue multiple .submit() calls", async () => {
                   <div key={msg.id} data-testid={`message-${i}`}>
                     <span>{msg.content}</span>
                   </div>
-                )
+                ),
               )}
             </div>
             <button
@@ -1065,9 +1042,7 @@ it("branching", async () => {
               const branchOptions = metadata?.branchOptions;
               const branch = metadata?.branch;
               const branchIndex =
-                branchOptions && branch
-                  ? branchOptions.indexOf(branch)
-                  : -1;
+                branchOptions && branch ? branchOptions.indexOf(branch) : -1;
 
               return (
                 <div key={msg.id ?? i} data-testid={`message-${i}`}>
@@ -1109,7 +1084,7 @@ it("branching", async () => {
                               { type: "human", content: `Fork: ${text}` },
                             ],
                           } as any,
-                          { checkpoint }
+                          { checkpoint },
                         )
                       }
                     >
@@ -1387,7 +1362,7 @@ it("interrupts (fetchStateHistory: true)", async () => {
             onClick={() =>
               void submit(
                 { messages: [{ content: "Hello", type: "human" }] },
-                { interruptBefore: ["beforeInterrupt"] }
+                { interruptBefore: ["beforeInterrupt"] },
               )
             }
           >
@@ -1509,7 +1484,7 @@ it("exposes interrupts array", async () => {
             onClick={() =>
               void stream.submit(
                 { messages: [{ content: "Hello", type: "human" }] },
-                { interruptBefore: ["beforeInterrupt"] }
+                { interruptBefore: ["beforeInterrupt"] },
               )
             }
           >

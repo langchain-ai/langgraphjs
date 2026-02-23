@@ -33,9 +33,7 @@ export function NewThreadId({
       </div>
       <button
         data-testid="submit"
-        onClick={() =>
-          void stream.submit({}, { threadId: submitThreadId })
-        }
+        onClick={() => void stream.submit({}, { threadId: submitThreadId })}
       >
         Submit
       </button>

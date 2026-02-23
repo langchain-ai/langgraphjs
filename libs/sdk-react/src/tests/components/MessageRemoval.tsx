@@ -24,7 +24,11 @@ export function MessageRemoval({
   useEffect(() => {
     const rawMessages = messages.map(
       (msg) =>
-        `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`
+        `${msg.type}: ${
+          typeof msg.content === "string"
+            ? msg.content
+            : JSON.stringify(msg.content)
+        }`,
     );
     onRenderRef.current?.(rawMessages);
   }, [messages]);
@@ -36,7 +40,11 @@ export function MessageRemoval({
       </div>
       <div data-testid="messages">
         {messages.map((msg, i) => {
-          const content = `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`;
+          const content = `${msg.type}: ${
+            typeof msg.content === "string"
+              ? msg.content
+              : JSON.stringify(msg.content)
+          }`;
           return (
             <div key={msg.id ?? i} data-testid={`message-${i}`}>
               <span>{content}</span>

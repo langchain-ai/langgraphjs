@@ -11,13 +11,18 @@ const serverUrl = inject("serverUrl");
     <div>
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
-          <div [attr.data-testid]="'message-' + $index">{{ str(msg.content) }}</div>
+          <div [attr.data-testid]="'message-' + $index">
+            {{ str(msg.content) }}
+          </div>
         }
       </div>
       @if (stream.interrupt()) {
         <div>
           <div data-testid="interrupt">
-            {{ stream.interrupt()!.when ?? asAny(stream.interrupt()!.value)?.nodeName }}
+            {{
+              stream.interrupt()!.when ??
+                asAny(stream.interrupt()!.value)?.nodeName
+            }}
           </div>
           <button data-testid="resume" (click)="onResume()">Resume</button>
         </div>
@@ -47,7 +52,7 @@ export class InterruptWithHistoryComponent {
   onSubmit() {
     void this.stream.submit(
       { messages: [{ content: "Hello", type: "human" }] } as any,
-      { interruptBefore: ["beforeInterrupt"] }
+      { interruptBefore: ["beforeInterrupt"] },
     );
   }
 

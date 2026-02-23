@@ -10,10 +10,7 @@
  */
 
 import { describe, test, expectTypeOf } from "vitest";
-import type {
-  BaseMessage,
-  StoredMessage,
-} from "@langchain/core/messages";
+import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
   AIMessage,
   AIMessageChunk,
@@ -263,7 +260,7 @@ describe("custom state types work with class instance messages", () => {
 
     expectTypeOf(stream.submit).toBeCallableWith(
       { messages: [{ type: "human", content: "hello" }] },
-      undefined
+      undefined,
     );
   });
 });

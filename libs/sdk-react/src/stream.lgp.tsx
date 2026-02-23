@@ -20,10 +20,7 @@ import type {
   StreamEvent,
   BagTemplate,
 } from "@langchain/langgraph-sdk";
-import {
-  Client,
-  getClientConfigHash,
-} from "@langchain/langgraph-sdk/client";
+import { Client, getClientConfigHash } from "@langchain/langgraph-sdk/client";
 import {
   filterStream,
   unique,
@@ -53,7 +50,7 @@ import type { UseStream, SubmitOptions } from "./types.js";
 function getFetchHistoryKey(
   client: Client,
   threadId: string | undefined | null,
-  limit: boolean | number
+  limit: boolean | number,
 ) {
   return [getClientConfigHash(client), threadId, limit].join(":");
 }
@@ -61,7 +58,7 @@ function getFetchHistoryKey(
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number }
+  options?: { limit?: boolean | number },
 ) {
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
@@ -82,7 +79,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     passthrough: boolean;
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
-  }
+  },
 ): UseStreamThread<StateType> {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
@@ -106,7 +103,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
-      limit: boolean | number
+      limit: boolean | number,
     ): Promise<ThreadState<StateType>[]> => {
       // If only passthrough is enabled, don't fetch history
       if (options.passthrough) return Promise.resolve([]);
@@ -134,14 +131,14 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
             });
             onErrorRef.current?.(error);
             return Promise.reject(error);
-          }
+          },
         );
       }
 
       setState({ key, data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
-    [options.passthrough]
+    [options.passthrough],
   );
 
   useEffect(() => {
@@ -177,18 +174,18 @@ function useTrackStreamMode() {
         if (!ref.includes(m)) ref.push(m);
       }
     },
-    []
+    [],
   );
 
   return [trackStreamModeRef, trackStreamMode] as [
     typeof trackStreamModeRef,
-    typeof trackStreamMode
+    typeof trackStreamMode,
   ];
 }
 
 function useCallbackStreamMode<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(options: UseStreamOptions<StateType, Bag>) {
   const hasUpdateListener = options.onUpdateEvent != null;
   const hasCustomListener = options.onCustomEvent != null;
@@ -218,7 +215,7 @@ function useCallbackStreamMode<
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -250,7 +247,7 @@ export function useStreamLGP<
       options.apiUrl,
       options.callerOptions,
       options.defaultHeaders,
-    ]
+    ],
   );
 
   const [messageManager] = useState(() => new MessageTupleManager());
@@ -261,7 +258,7 @@ export function useStreamLGP<
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
         toMessage: options.toMessage ?? toMessageClass,
-      })
+      }),
   );
 
   const [trackStreamModeRef, trackStreamMode] = useTrackStreamMode();
@@ -280,7 +277,7 @@ export function useStreamLGP<
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
-    stream.getSnapshot
+    stream.getSnapshot,
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -298,9 +295,9 @@ export function useStreamLGP<
 
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
-      options.fetchStateHistory != null
-      ? options.fetchStateHistory.limit ?? false
-      : options.fetchStateHistory ?? false;
+    options.fetchStateHistory != null
+      ? (options.fetchStateHistory.limit ?? false)
+      : (options.fetchStateHistory ?? false);
 
   const builtInHistory = useThreadHistory<StateType>(
     client,
@@ -310,10 +307,9 @@ export function useStreamLGP<
       passthrough: options.thread != null,
       submittingRef: threadIdStreamingRef,
       onError: options.onError,
-    }
+    },
   );
   const history = options.thread ?? builtInHistory;
-
 
   const [branch, setBranch] = useState<string>("");
   const branchContext = getBranchContext(branch, history.data ?? undefined);
@@ -381,14 +377,14 @@ export function useStreamLGP<
   // --- TRANSPORT ---
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) => {
     // Unbranch things
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
     setBranch(
       checkpointId != null
-        ? branchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
-        : ""
+        ? (branchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
+        : "",
     );
 
     // When `fetchStateHistory` is requested, thus we assume that branching
@@ -543,7 +539,7 @@ export function useStreamLGP<
           threadIdStreamingRef.current = null;
         },
       },
-      { abortPrevious: shouldAbortPrevious }
+      { abortPrevious: shouldAbortPrevious },
     );
   };
 
@@ -557,7 +553,7 @@ export function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) => {
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
@@ -601,7 +597,7 @@ export function useStreamLGP<
         onFinish() {
           threadIdStreamingRef.current = null;
         },
-      }
+      },
     );
   };
 
@@ -659,7 +655,7 @@ export function useStreamLGP<
     get history() {
       if (historyLimit === false) {
         throw new Error(
-          "`fetchStateHistory` must be set to `true` to use `history`"
+          "`fetchStateHistory` must be set to `true` to use `history`",
         );
       }
 
@@ -671,7 +667,7 @@ export function useStreamLGP<
     get experimental_branchTree() {
       if (historyLimit === false) {
         throw new Error(
-          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
         );
       }
 
@@ -734,13 +730,13 @@ export function useStreamLGP<
 
     getMessagesMetadata(
       message: BaseMessage,
-      index?: number
+      index?: number,
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("values");
 
       const streamMetadata = messageManager.get(message.id)?.metadata;
       const historyMetadata = messageMetadata?.find(
-        (m) => m.messageId === (message.id ?? index)
+        (m) => m.messageId === (message.id ?? index),
       );
 
       if (streamMetadata != null || historyMetadata != null) {

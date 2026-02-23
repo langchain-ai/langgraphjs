@@ -35,10 +35,7 @@ export function StopFunctionalStream({
       </div>
       <div data-testid="counter">{values.counter}</div>
       <div data-testid="items">{values.items?.join(", ")}</div>
-      <button
-        data-testid="submit"
-        onClick={() => void submit({})}
-      >
+      <button data-testid="submit" onClick={() => void submit({})}>
         Send
       </button>
       <button data-testid="stop" onClick={() => void stop()}>

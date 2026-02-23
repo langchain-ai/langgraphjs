@@ -9,7 +9,7 @@ const serverUrl = inject("serverUrl");
   template: `
     <div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="messages">
         @for (msg of fmtMessages(); track $index) {
@@ -32,10 +32,16 @@ export class MessageRemovalComponent {
   });
 
   fmtMessages() {
-    const msgs = this.stream.messages().map(
-      (msg) =>
-        `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`
-    );
+    const msgs = this.stream
+      .messages()
+      .map(
+        (msg) =>
+          `${msg.type}: ${
+            typeof msg.content === "string"
+              ? msg.content
+              : JSON.stringify(msg.content)
+          }`,
+      );
     this.onRender()?.(msgs);
     return msgs;
   }

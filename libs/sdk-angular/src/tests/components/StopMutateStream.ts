@@ -10,14 +10,16 @@ const serverUrl = inject("serverUrl");
   template: `
     <div>
       <div data-testid="stopped-status">
-        {{ stopped ? 'Stopped' : 'Not stopped' }}
+        {{ stopped ? "Stopped" : "Not stopped" }}
       </div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
-          <div [attr.data-testid]="'message-' + $index">{{ str(msg.content) }}</div>
+          <div [attr.data-testid]="'message-' + $index">
+            {{ str(msg.content) }}
+          </div>
         }
       </div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>

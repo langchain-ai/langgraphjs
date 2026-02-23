@@ -44,14 +44,14 @@ type WithClassMessages<T> = Omit<T, "messages" | "getMessagesMetadata"> & {
   messages: BaseMessage[];
   getMessagesMetadata: (
     message: BaseMessage,
-    index?: number
+    index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
 };
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number }
+  options?: { limit?: boolean | number },
 ) {
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
@@ -66,16 +66,16 @@ function fetchHistory<StateType extends Record<string, unknown>>(
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,7 +87,7 @@ export function useStream(options: any): any {
 }
 
 function resolveRunMetadataStorage(
-  reconnectOnMount: AnyStreamOptions["reconnectOnMount"]
+  reconnectOnMount: AnyStreamOptions["reconnectOnMount"],
 ) {
   if (typeof globalThis.window === "undefined") return null;
   if (reconnectOnMount === true) return globalThis.window.sessionStorage;
@@ -102,7 +102,7 @@ export function useStreamLGP<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-  } = BagTemplate
+  } = BagTemplate,
 >(options: AnyStreamOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -110,7 +110,7 @@ export function useStreamLGP<
   type ConfigurableType = GetConfigurableType<Bag>;
 
   const runMetadataStorage = resolveRunMetadataStorage(
-    options.reconnectOnMount
+    options.reconnectOnMount,
   );
 
   const getMessages = (value: StateType): Message[] => {
@@ -126,8 +126,8 @@ export function useStreamLGP<
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
     options.fetchStateHistory != null
-      ? options.fetchStateHistory.limit ?? false
-      : options.fetchStateHistory ?? false;
+      ? (options.fetchStateHistory.limit ?? false)
+      : (options.fetchStateHistory ?? false);
 
   const threadId = signal<string | undefined>(undefined);
 
@@ -141,7 +141,7 @@ export function useStreamLGP<
   });
 
   async function mutate(
-    mutateId?: string
+    mutateId?: string,
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? threadId();
     if (!tid) return undefined;
@@ -171,7 +171,7 @@ export function useStreamLGP<
 
   const branch = signal<string>("");
   const branchContext = computed(() =>
-    getBranchContext(branch(), history().data ?? undefined)
+    getBranchContext(branch(), history().data ?? undefined),
   );
 
   const messageManager = new MessageTupleManager();
@@ -186,7 +186,7 @@ export function useStreamLGP<
     () =>
       branchContext().threadHead?.values ??
       options.initialValues ??
-      ({} as StateType)
+      ({} as StateType),
   );
 
   const historyError = computed(() => {
@@ -208,7 +208,7 @@ export function useStreamLGP<
 
   const values = computed(() => streamValues() ?? historyValues());
   const error = computed(
-    () => streamError() ?? historyError() ?? history().error
+    () => streamError() ?? historyError() ?? history().error,
   );
 
   const messageMetadata = computed(() =>
@@ -217,7 +217,7 @@ export function useStreamLGP<
       history: history().data,
       getMessages,
       branchContext: branchContext(),
-    })
+    }),
   );
 
   effect((onCleanup) => {
@@ -263,22 +263,21 @@ export function useStreamLGP<
 
   function submit(
     values: StateType,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) {
     const currentBranchContext = branchContext();
 
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
     branch.set(
       checkpointId != null
-        ? currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
-        : ""
+        ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
+        : "",
     );
 
     const includeImplicitBranch =
       historyLimit === true || typeof historyLimit === "number";
 
-    const shouldRefetch =
-      options.onFinish != null || includeImplicitBranch;
+    const shouldRefetch = options.onFinish != null || includeImplicitBranch;
 
     let checkpoint =
       submitOptions?.checkpoint ??
@@ -403,7 +402,7 @@ export function useStreamLGP<
         },
         onError: (error) => options.onError?.(error, callbackMeta),
         onFinish: () => {},
-      }
+      },
     );
   }
 
@@ -417,7 +416,7 @@ export function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) {
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
@@ -459,7 +458,7 @@ export function useStreamLGP<
           options.onError?.(error, callbackMeta);
         },
         onFinish() {},
-      }
+      },
     );
   }
 
@@ -485,7 +484,9 @@ export function useStreamLGP<
 
   const messages = computed(() => getMessages(values()));
 
-  const toolCalls = computed(() => getToolCallsWithResults(getMessages(values())));
+  const toolCalls = computed(() =>
+    getToolCallsWithResults(getMessages(values())),
+  );
 
   function getToolCalls(message: Message) {
     const allToolCalls = getToolCallsWithResults(getMessages(values()));
@@ -497,7 +498,7 @@ export function useStreamLGP<
       isLoading: isLoading(),
       threadState: branchContext().threadHead,
       error: error(),
-    })
+    }),
   );
 
   const interrupts = computed((): Interrupt<InterruptType>[] => {
@@ -529,20 +530,20 @@ export function useStreamLGP<
   const historyList = computed(() => {
     if (historyLimit === false) {
       throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `history`"
+        "`fetchStateHistory` must be set to `true` to use `history`",
       );
     }
     return branchContext().flatHistory;
   });
 
   const isThreadLoading = computed(
-    () => history().isLoading && history().data == null
+    () => history().isLoading && history().data == null,
   );
 
   const experimentalBranchTree = computed(() => {
     if (historyLimit === false) {
       throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
       );
     }
     return branchContext().branchTree;
@@ -550,11 +551,11 @@ export function useStreamLGP<
 
   function getMessagesMetadata(
     message: Message,
-    index?: number
+    index?: number,
   ): MessageMetadata<StateType> | undefined {
     const streamMetadata = messageManager.get(message.id)?.metadata;
     const historyMetadata = messageMetadata().find(
-      (m) => m.messageId === (message.id ?? index)
+      (m) => m.messageId === (message.id ?? index),
     );
 
     if (streamMetadata != null || historyMetadata != null) {

@@ -9,7 +9,7 @@ const serverUrl = inject("serverUrl");
   template: `
     <div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="thread-id">Client ready</div>
       <button data-testid="submit" (click)="onSubmit()">Submit</button>
@@ -31,9 +31,6 @@ export class NewThreadIdComponent {
   });
 
   onSubmit() {
-    void this.stream.submit(
-      {} as any,
-      { threadId: this.submitThreadId() }
-    );
+    void this.stream.submit({} as any, { threadId: this.submitThreadId() });
   }
 }

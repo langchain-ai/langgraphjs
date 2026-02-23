@@ -27,12 +27,8 @@ it("renders initial state correctly", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .not.toBeInTheDocument();
-  await expect
-    .element(screen.getByTestId("error"))
-    .not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("error")).not.toBeInTheDocument();
 });
 
 it("handles message submission and streaming", async () => {
@@ -118,18 +114,14 @@ it("onStop does not clear stream values", async () => {
   await expect
     .element(screen.getByTestId("message-0"))
     .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 
   await screen.getByTestId("stop").click();
 
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 });
 
 it("onStop callback is called when stop is called", async () => {
@@ -194,9 +186,7 @@ it("onStop handles functional updates correctly", async () => {
     }),
   });
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("5");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("5");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2");
@@ -212,9 +202,7 @@ it("onStop handles functional updates correctly", async () => {
 
   await screen.getByTestId("stop").click();
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("15");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("15");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2, stopped");
@@ -232,7 +220,9 @@ it("onStop is not called when stream completes naturally", async () => {
   await screen.getByTestId("submit").click();
 
   // Wait for stream to start and complete naturally
-  await new Promise((r) => { setTimeout(r, 1500) });
+  await new Promise((r) => {
+    setTimeout(r, 1500);
+  });
 
   await expect
     .element(screen.getByTestId("onstop-called"))
@@ -426,7 +416,7 @@ it("handle message removal", async () => {
       ["human: Hello", "ai: Step 1: To Remove"],
       ["human: Hello", "ai: Step 2: To Keep"],
       ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
-    ].map((msgs: string[]) => msgs.join("\n"))
+    ].map((msgs: string[]) => msgs.join("\n")),
   );
 });
 
@@ -698,8 +688,8 @@ it("handles subgraph streaming with event callbacks", async () => {
 
   expect(
     onCheckpointEvent.mock.calls.some(
-      (call: any[]) => call[1]?.namespace !== undefined
-    )
+      (call: any[]) => call[1]?.namespace !== undefined,
+    ),
   ).toBe(true);
 
   expect(onUpdateEvent.mock.calls.length).toBeGreaterThanOrEqual(1);

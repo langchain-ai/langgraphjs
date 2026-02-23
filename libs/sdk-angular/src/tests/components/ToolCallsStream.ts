@@ -10,7 +10,7 @@ const serverUrl = inject("serverUrl");
     <div>
       <div data-testid="tool-calls-count">{{ stream.toolCalls().length }}</div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>
     </div>
@@ -23,8 +23,8 @@ export class ToolCallsComponent {
   });
 
   onSubmit() {
-    void this.stream.submit(
-      { messages: [{ content: "Hello", type: "human" }] } as any
-    );
+    void this.stream.submit({
+      messages: [{ content: "Hello", type: "human" }],
+    } as any);
   }
 }

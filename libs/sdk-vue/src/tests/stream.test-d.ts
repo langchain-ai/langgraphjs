@@ -14,10 +14,7 @@
 
 import { describe, test, expectTypeOf } from "vitest";
 import type { ComputedRef, Ref } from "vue";
-import type {
-  BaseMessage,
-  StoredMessage,
-} from "@langchain/core/messages";
+import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
   AIMessage,
   AIMessageChunk,
@@ -342,9 +339,7 @@ describe("realistic usage patterns with class instances", () => {
     const aiMessages = stream.messages.value.filter(AIMessage.isInstance);
     expectTypeOf(aiMessages).toExtend<AIMessage[]>();
 
-    const humanMessages = stream.messages.value.filter(
-      HumanMessage.isInstance
-    );
+    const humanMessages = stream.messages.value.filter(HumanMessage.isInstance);
     expectTypeOf(humanMessages).toExtend<HumanMessage[]>();
 
     const toolMessages = stream.messages.value.filter(ToolMessage.isInstance);

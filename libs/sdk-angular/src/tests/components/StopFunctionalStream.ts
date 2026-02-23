@@ -9,11 +9,11 @@ const serverUrl = inject("serverUrl");
   template: `
     <div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="counter">{{ asAny(stream.values()).counter }}</div>
       <div data-testid="items">
-        {{ asAny(stream.values()).items?.join(', ') }}
+        {{ asAny(stream.values()).items?.join(", ") }}
       </div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>
       <button data-testid="stop" (click)="onStopClick()">Stop</button>

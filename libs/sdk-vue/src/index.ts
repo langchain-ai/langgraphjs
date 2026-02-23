@@ -1,4 +1,13 @@
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch, type ComputedRef, type Ref } from "vue";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+  shallowRef,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from "vue";
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   StreamManager,
@@ -46,7 +55,7 @@ export { FetchStreamTransport };
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number }
+  options?: { limit?: boolean | number },
 ) {
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
@@ -66,7 +75,7 @@ function useStreamLGP<
     InterruptType?: unknown;
     CustomEventType?: unknown;
     UpdateType?: unknown;
-  } = BagTemplate
+  } = BagTemplate,
 >(options: AnyStreamOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -94,8 +103,8 @@ function useStreamLGP<
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
     options.fetchStateHistory != null
-      ? options.fetchStateHistory.limit ?? false
-      : options.fetchStateHistory ?? false;
+      ? (options.fetchStateHistory.limit ?? false)
+      : (options.fetchStateHistory ?? false);
 
   const threadId = ref<string | undefined>(undefined);
 
@@ -109,7 +118,7 @@ function useStreamLGP<
   });
 
   async function mutate(
-    mutateId?: string
+    mutateId?: string,
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? threadId.value;
     if (!tid) return undefined;
@@ -139,7 +148,7 @@ function useStreamLGP<
 
   const branch = ref<string>("");
   const branchContext = computed(() =>
-    getBranchContext(branch.value, history.value.data ?? undefined)
+    getBranchContext(branch.value, history.value.data ?? undefined),
   );
 
   const messageManager = new MessageTupleManager();
@@ -154,7 +163,7 @@ function useStreamLGP<
     () =>
       branchContext.value.threadHead?.values ??
       options.initialValues ??
-      ({} as StateType)
+      ({} as StateType),
   );
 
   const historyError = computed(() => {
@@ -176,7 +185,7 @@ function useStreamLGP<
 
   const values = computed(() => streamValues.value ?? historyValues.value);
   const error = computed(
-    () => streamError.value ?? historyError.value ?? history.value.error
+    () => streamError.value ?? historyError.value ?? history.value.error,
   );
 
   const messageMetadata = computed(() =>
@@ -185,7 +194,7 @@ function useStreamLGP<
       history: history.value.data,
       getMessages,
       branchContext: branchContext.value,
-    })
+    }),
   );
 
   const unsubscribe = stream.subscribe(() => {
@@ -214,7 +223,7 @@ function useStreamLGP<
         stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
       }
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   function stop() {
@@ -222,7 +231,7 @@ function useStreamLGP<
       onStop: (args) => {
         if (runMetadataStorage && threadId.value) {
           const runId = runMetadataStorage.getItem(
-            `lg:stream:${threadId.value}`
+            `lg:stream:${threadId.value}`,
           );
           if (runId) void client.runs.cancel(threadId.value, runId);
           runMetadataStorage.removeItem(`lg:stream:${threadId.value}`);
@@ -247,7 +256,7 @@ function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) {
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
@@ -260,15 +269,11 @@ function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
-        const rawStream = client.runs.joinStream(
-          threadId.value!,
-          runId,
-          {
-            signal,
-            lastEventId,
-            streamMode: joinOptions?.streamMode,
-          }
-        ) as AsyncGenerator<
+        const rawStream = client.runs.joinStream(threadId.value!, runId, {
+          signal,
+          lastEventId,
+          streamMode: joinOptions?.streamMode,
+        }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
 
@@ -291,20 +296,20 @@ function useStreamLGP<
         onError(error) {
           options.onError?.(error, callbackMeta);
         },
-      }
+      },
     );
   }
 
   function submit(
     values: StateType,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) {
     const currentBranchContext = branchContext.value;
 
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
     branch.value =
       checkpointId != null
-        ? currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+        ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
         : "";
 
     const includeImplicitBranch =
@@ -448,7 +453,7 @@ function useStreamLGP<
         },
         onError: (error) => options.onError?.(error, callbackMeta),
         onFinish: () => {},
-      }
+      },
     );
   }
 
@@ -457,9 +462,7 @@ function useStreamLGP<
 
   onMounted(() => {
     if (shouldReconnect && runMetadataStorage && threadId.value) {
-      const runId = runMetadataStorage.getItem(
-        `lg:stream:${threadId.value}`
-      );
+      const runId = runMetadataStorage.getItem(`lg:stream:${threadId.value}`);
       if (runId) {
         shouldReconnect = false;
         void joinStream(runId);
@@ -471,11 +474,11 @@ function useStreamLGP<
     () => threadId.value,
     () => {
       shouldReconnect = !!runMetadataStorage;
-    }
+    },
   );
 
   const toolCalls = computed(() =>
-    getToolCallsWithResults(getMessages(values.value))
+    getToolCallsWithResults(getMessages(values.value)),
   );
 
   function getToolCalls(message: Message) {
@@ -485,11 +488,7 @@ function useStreamLGP<
 
   const interrupts = computed((): Interrupt<InterruptType>[] => {
     const v = values.value;
-    if (
-      v != null &&
-      "__interrupt__" in v &&
-      Array.isArray(v.__interrupt__)
-    ) {
+    if (v != null && "__interrupt__" in v && Array.isArray(v.__interrupt__)) {
       const valueInterrupts = v.__interrupt__;
       if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
       return valueInterrupts;
@@ -512,20 +511,20 @@ function useStreamLGP<
   const flatHistory = computed(() => {
     if (historyLimit === false) {
       throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `history`"
+        "`fetchStateHistory` must be set to `true` to use `history`",
       );
     }
     return branchContext.value.flatHistory;
   });
 
   const isThreadLoading = computed(
-    () => history.value.isLoading && history.value.data == null
+    () => history.value.isLoading && history.value.data == null,
   );
 
   const experimentalBranchTree = computed(() => {
     if (historyLimit === false) {
       throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
       );
     }
     return branchContext.value.branchTree;
@@ -543,7 +542,7 @@ function useStreamLGP<
     setBranch,
 
     messages: computed(() =>
-      getMessages(streamValues.value ?? historyValues.value)
+      getMessages(streamValues.value ?? historyValues.value),
     ),
 
     toolCalls,
@@ -554,7 +553,7 @@ function useStreamLGP<
         isLoading: isLoading.value,
         threadState: branchContext.value.threadHead,
         error: streamError.value,
-      })
+      }),
     ),
 
     interrupts,
@@ -564,11 +563,11 @@ function useStreamLGP<
 
     getMessagesMetadata: (
       message: Message,
-      index?: number
+      index?: number,
     ): MessageMetadata<StateType> | undefined => {
       const streamMetadata = messageManager.get(message.id)?.metadata;
       const historyMetadata = messageMetadata.value?.find(
-        (m) => m.messageId === (message.id ?? index)
+        (m) => m.messageId === (message.id ?? index),
       );
 
       if (streamMetadata != null || historyMetadata != null) {
@@ -616,7 +615,7 @@ type WithClassMessages<T> = {
     : K extends "getMessagesMetadata"
       ? (
           message: BaseMessage,
-          index?: number
+          index?: number,
         ) => MessageMetadata<Record<string, unknown>> | undefined
       : T[K] extends (...args: infer A) => infer R
         ? (...args: A) => R
@@ -625,16 +624,16 @@ type WithClassMessages<T> = {
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

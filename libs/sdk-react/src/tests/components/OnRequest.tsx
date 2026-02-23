@@ -7,11 +7,7 @@ interface Props {
   client: Client;
 }
 
-export function OnRequest({
-  apiUrl,
-  assistantId = "agent",
-  client,
-}: Props) {
+export function OnRequest({ apiUrl, assistantId = "agent", client }: Props) {
   const { submit, messages } = useStream({
     assistantId,
     apiUrl,
@@ -32,9 +28,7 @@ export function OnRequest({
       <button
         data-testid="submit"
         onClick={() =>
-          void submit(
-            { messages: [{ content: "Hello", type: "human" }] }
-          )
+          void submit({ messages: [{ content: "Hello", type: "human" }] })
         }
       >
         Send

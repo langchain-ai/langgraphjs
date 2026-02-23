@@ -22,12 +22,8 @@ it("renders initial state correctly", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .not.toBeInTheDocument();
-  await expect
-    .element(screen.getByTestId("error"))
-    .not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("error")).not.toBeInTheDocument();
 });
 
 it("handles message submission and streaming", async () => {
@@ -74,7 +70,7 @@ it("displays initial values immediately and clears them when submitting", async 
           ],
         },
       }}
-    />
+    />,
   );
 
   await expect
@@ -109,18 +105,14 @@ it("onStop does not clear stream values", async () => {
   await expect
     .element(screen.getByTestId("message-0"))
     .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 
   await screen.getByTestId("stop").click();
 
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 });
 
 it("onStop callback is called when stop is called", async () => {
@@ -149,7 +141,7 @@ it("onStop mutate function updates stream values immediately", async () => {
         ...prev,
         messages: [{ type: "ai", content: "Stream stopped" }],
       })}
-    />
+    />,
   );
 
   await expect
@@ -184,12 +176,10 @@ it("onStop handles functional updates correctly", async () => {
         counter: prev.counter + 10,
         items: [...prev.items, "stopped"],
       })}
-    />
+    />,
   );
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("5");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("5");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2");
@@ -205,9 +195,7 @@ it("onStop handles functional updates correctly", async () => {
 
   await screen.getByTestId("stop").click();
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("15");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("15");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2, stopped");
@@ -238,7 +226,7 @@ it("make sure to pass metadata to the thread", async () => {
     <BasicStream
       apiUrl={serverUrl}
       submitOptions={{ metadata: { random: "123" }, threadId }}
-    />
+    />,
   );
 
   await screen.getByTestId("submit").click();
@@ -270,7 +258,7 @@ it("streamSubgraphs: true", async () => {
       onUpdateEvent={onUpdateEvent}
       onCustomEvent={onCustomEvent}
       submitOptions={{ streamSubgraphs: true }}
-    />
+    />,
   );
 
   await screen.getByTestId("submit").click();
@@ -395,7 +383,7 @@ it("handle message removal", async () => {
       onRender={(msgs: string[]) => {
         messagesValues.add(msgs.join("\n"));
       }}
-    />
+    />,
   );
 
   await screen.getByTestId("submit").click();
@@ -420,7 +408,7 @@ it("handle message removal", async () => {
       ["human: Hello", "ai: Step 1: To Remove"],
       ["human: Hello", "ai: Step 2: To Keep"],
       ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
-    ].map((msgs: string[]) => msgs.join("\n"))
+    ].map((msgs: string[]) => msgs.join("\n")),
   );
 });
 
@@ -433,7 +421,7 @@ it("enqueue multiple .submit() calls", async () => {
       onRender={(msgs: string[]) => {
         messagesValues.add(msgs.join("\n"));
       }}
-    />
+    />,
   );
 
   await screen.getByTestId("submit-first").click();
@@ -464,7 +452,7 @@ it("accepts newThreadId option without errors", async () => {
       apiUrl={serverUrl}
       onThreadId={spy}
       submitThreadId={predeterminedThreadId}
-    />
+    />,
   );
 
   await expect
@@ -561,7 +549,7 @@ it("branching", async () => {
 
 it("fetchStateHistory: { limit: 2 }", async () => {
   const screen = await render(
-    <BasicStream apiUrl={serverUrl} fetchStateHistory={{ limit: 2 }} />
+    <BasicStream apiUrl={serverUrl} fetchStateHistory={{ limit: 2 }} />,
   );
 
   await screen.getByTestId("submit").click();
@@ -594,9 +582,7 @@ it("onRequest gets called when a request is made", async () => {
     },
   });
 
-  const screen = await render(
-    <OnRequest apiUrl={serverUrl} client={client} />
-  );
+  const screen = await render(<OnRequest apiUrl={serverUrl} client={client} />);
 
   await screen.getByTestId("submit").click();
 
@@ -624,7 +610,7 @@ it("onRequest gets called when a request is made", async () => {
 
 it("interrupts (fetchStateHistory: true)", async () => {
   const screen = await render(
-    <InterruptStream apiUrl={serverUrl} fetchStateHistory={true} />
+    <InterruptStream apiUrl={serverUrl} fetchStateHistory={true} />,
   );
 
   await screen.getByTestId("submit").click();

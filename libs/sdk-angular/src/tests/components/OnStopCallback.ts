@@ -8,8 +8,8 @@ const serverUrl = inject("serverUrl");
   standalone: true,
   template: `
     <div>
-      <div data-testid="onstop-called">{{ onStopCalled ? 'Yes' : 'No' }}</div>
-      <div data-testid="has-mutate">{{ hasMutate ? 'Yes' : 'No' }}</div>
+      <div data-testid="onstop-called">{{ onStopCalled ? "Yes" : "No" }}</div>
+      <div data-testid="has-mutate">{{ hasMutate ? "Yes" : "No" }}</div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>
       <button data-testid="stop" (click)="onStopClick()">Stop</button>
     </div>

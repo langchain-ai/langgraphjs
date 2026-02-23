@@ -75,16 +75,16 @@ export type {
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > extends Omit<
-    StreamBase<
-      StateType,
-      GetToolCallsType<StateType>,
-      GetInterruptType<Bag>,
-      SubagentStates
-    >,
-    "messages"
-  > {
+  StreamBase<
+    StateType,
+    GetToolCallsType<StateType>,
+    GetInterruptType<Bag>,
+    SubagentStates
+  >,
+  "messages"
+> {
   /**
    * Messages accumulated during the stream as @langchain/core class instances.
    */
@@ -105,7 +105,7 @@ export interface UseStream<
    */
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
   ) => Promise<void>;
 
   /**
@@ -139,7 +139,7 @@ export interface UseStream<
    */
   getMessagesMetadata: (
     message: BaseMessage,
-    index?: number
+    index?: number,
   ) => MessageMetadata<StateType> | undefined;
 
   /**
@@ -165,14 +165,14 @@ export interface UseStream<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) => Promise<void>;
 }
 
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > = Pick<
   UseStream<StateType, Bag, SubagentStates>,
   | "values"
@@ -192,6 +192,6 @@ export type UseStreamCustom<
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+    options?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
   ) => Promise<void>;
 };

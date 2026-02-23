@@ -10,10 +10,7 @@
  */
 
 import { describe, test, expectTypeOf } from "vitest";
-import type {
-  BaseMessage,
-  StoredMessage,
-} from "@langchain/core/messages";
+import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
   AIMessage,
   AIMessageChunk,

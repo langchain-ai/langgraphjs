@@ -16,7 +16,7 @@ const serverUrl = inject("serverUrl");
         }
       </div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       @if (stream.error()) {
         <div data-testid="error">{{ stream.error() }}</div>
@@ -45,7 +45,7 @@ export class BasicStreamComponent {
   onSubmit() {
     void this.stream.submit(
       this.submitInput() as any,
-      this.submitOptions() as any
+      this.submitOptions() as any,
     );
   }
 

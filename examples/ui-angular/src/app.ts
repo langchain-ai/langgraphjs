@@ -10,7 +10,7 @@ import type { Message } from '@langchain/langgraph-sdk';
     <main class="main">
       <div>
         @for (message of stream.messages(); track message.id) {
-        <div>{{ message.content }}</div>
+          <div>{{ message.content }}</div>
         }
       </div>
 
@@ -38,7 +38,7 @@ export class App {
           ...prev,
           messages: [...((prev['messages'] ?? []) as Message[]), newMessage],
         }),
-      }
+      },
     );
 
     // reset form

@@ -19,7 +19,7 @@ import type { Message } from "@langchain/langgraph-sdk";
 export interface MockCompiledGraph<
   TState extends Record<string, unknown>,
   TNodeNames extends string,
-  TNodeReturnTypes extends Record<string, Record<string, unknown>>
+  TNodeReturnTypes extends Record<string, Record<string, unknown>>,
 > {
   "~RunOutput": TState;
   "~NodeType": TNodeNames;
@@ -32,13 +32,13 @@ export class MockStateGraph<
   TNodeReturnTypes extends Record<string, Record<string, unknown>> = Record<
     string,
     never
-  >
+  >,
 > {
   constructor(_schema: { State: TState }) {}
 
   addNode<K extends string, TReturn extends Partial<TState>>(
     _name: K,
-    _fn: (state: TState) => Promise<TReturn>
+    _fn: (state: TState) => Promise<TReturn>,
   ): MockStateGraph<
     TState,
     TNodeNames | K,
@@ -78,8 +78,8 @@ export class MockStateSchema<TFields extends Record<string, unknown>> {
     [K in keyof TFields]: TFields[K] extends MockReducedValue<infer V>
       ? V
       : TFields[K] extends z.ZodType
-      ? z.infer<TFields[K]>
-      : TFields[K];
+        ? z.infer<TFields[K]>
+        : TFields[K];
   };
 
   constructor(_fields: TFields) {}

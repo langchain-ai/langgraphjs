@@ -45,7 +45,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "hono": "^4.7.10",
     "langchain": "^1.2.25",
-    "prettier": "^2.8.3",
+    "prettier": "^3.8.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.9.3",

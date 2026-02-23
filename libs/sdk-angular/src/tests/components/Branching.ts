@@ -11,7 +11,9 @@ const serverUrl = inject("serverUrl");
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
-            <div [attr.data-testid]="'content-' + $index">{{ str(msg.content) }}</div>
+            <div [attr.data-testid]="'content-' + $index">
+              {{ str(msg.content) }}
+            </div>
 
             @if (getBranchOptions(msg, $index); as nav) {
               <div [attr.data-testid]="'branch-nav-' + $index">
@@ -32,8 +34,7 @@ const serverUrl = inject("serverUrl");
                 </button>
               </div>
             }
-
-            @if (msg.type === 'human') {
+            @if (msg.type === "human") {
               <button
                 [attr.data-testid]="'fork-' + $index"
                 (click)="onFork(msg, $index)"
@@ -41,8 +42,7 @@ const serverUrl = inject("serverUrl");
                 Fork
               </button>
             }
-
-            @if (msg.type === 'ai') {
+            @if (msg.type === "ai") {
               <button
                 [attr.data-testid]="'regenerate-' + $index"
                 (click)="onRegenerate(msg, $index)"
@@ -89,8 +89,7 @@ export class BranchingComponent {
 
   onFork(msg: any, index: number) {
     const metadata = this.stream.getMessagesMetadata(msg, index);
-    const checkpoint =
-      metadata?.firstSeenState?.parent_checkpoint ?? undefined;
+    const checkpoint = metadata?.firstSeenState?.parent_checkpoint ?? undefined;
     const text =
       typeof msg.content === "string"
         ? msg.content
@@ -99,14 +98,13 @@ export class BranchingComponent {
       {
         messages: [{ type: "human", content: `Fork: ${text}` }],
       } as any,
-      { checkpoint }
+      { checkpoint },
     );
   }
 
   onRegenerate(msg: any, index: number) {
     const metadata = this.stream.getMessagesMetadata(msg, index);
-    const checkpoint =
-      metadata?.firstSeenState?.parent_checkpoint ?? undefined;
+    const checkpoint = metadata?.firstSeenState?.parent_checkpoint ?? undefined;
     void this.stream.submit(undefined as any, { checkpoint });
   }
 

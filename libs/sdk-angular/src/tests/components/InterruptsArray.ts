@@ -10,7 +10,7 @@ const serverUrl = inject("serverUrl");
     <div>
       <div data-testid="interrupts-count">{{ stream.interrupts().length }}</div>
       <div data-testid="loading">
-        {{ stream.isLoading() ? 'Loading...' : 'Not loading' }}
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>
     </div>
@@ -26,7 +26,7 @@ export class InterruptsArrayComponent {
   onSubmit() {
     void this.stream.submit(
       { messages: [{ content: "Hello", type: "human" }] } as any,
-      { interruptBefore: ["beforeInterrupt"] }
+      { interruptBefore: ["beforeInterrupt"] },
     );
   }
 }

@@ -70,7 +70,7 @@ const agent = new StateGraph(MessagesAnnotation)
       runtime.writer?.("Custom events");
       const response = await model.invoke(state.messages);
       return { messages: [response] };
-    }
+    },
   )
   .addEdge(START, "agent")
   .compile();

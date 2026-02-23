@@ -28,9 +28,9 @@ export { FetchStreamTransport };
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: AnyStreamCustomOptions<StateType, Bag>
+  options: AnyStreamCustomOptions<StateType, Bag>,
 ): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -46,13 +46,13 @@ export function useStreamCustom<
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
         toMessage: options.toMessage ?? toMessageClass,
-      })
+      }),
   );
 
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
-    stream.getSnapshot
+    stream.getSnapshot,
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -105,7 +105,7 @@ export function useStreamCustom<
 
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) => {
     let usableThreadId = threadId;
 
@@ -162,7 +162,7 @@ export function useStreamCustom<
         onError(error) {
           options.onError?.(error, undefined);
         },
-      }
+      },
     );
   };
 

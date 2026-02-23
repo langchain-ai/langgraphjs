@@ -23,10 +23,7 @@ export function OnStopCallback({ apiUrl, assistantId = "agent" }: Props) {
     <div>
       <div data-testid="onstop-called">{onStopCalled ? "Yes" : "No"}</div>
       <div data-testid="has-mutate">{hasMutate ? "Yes" : "No"}</div>
-      <button
-        data-testid="submit"
-        onClick={() => void submit({})}
-      >
+      <button data-testid="submit" onClick={() => void submit({})}>
         Send
       </button>
       <button data-testid="stop" onClick={() => void stop()}>

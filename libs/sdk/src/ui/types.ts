@@ -412,11 +412,10 @@ export interface AgentMiddlewareLike<
  * Uses structural matching against AgentMiddleware to extract the state schema
  * type parameter, similar to how langchain's InferMiddlewareState works.
  */
-type SafeInferInteropZodInput<T> =
-  InferInteropZodInput<T> extends never
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : InferInteropZodInput<T>;
+type SafeInferInteropZodInput<T> = InferInteropZodInput<T> extends never
+  ? // eslint-disable-next-line @typescript-eslint/ban-types
+    {}
+  : InferInteropZodInput<T>;
 
 type InferMiddlewareState<T> =
   // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema

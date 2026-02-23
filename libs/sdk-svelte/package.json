@@ -42,7 +42,7 @@
     "eslint-plugin-prettier": "^4.2.1",
     "hono": "^4.7.10",
     "langchain": "^1.2.25",
-    "prettier": "^2.8.3",
+    "prettier": "^3.8.1",
     "svelte": "^5.43.6",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",

@@ -52,7 +52,7 @@ export function InterruptStream({
         onClick={() =>
           void submit(
             { messages: [{ content: "Hello", type: "human" }] },
-            { interruptBefore: ["beforeInterrupt"] }
+            { interruptBefore: ["beforeInterrupt"] },
           )
         }
       >

@@ -16,7 +16,7 @@ const getWeather = tool(
     schema: z.object({
       location: z.string().describe("The city to get weather for"),
     }),
-  }
+  },
 );
 
 const searchWeb = tool(
@@ -30,7 +30,7 @@ const searchWeb = tool(
       query: z.string().describe("The search query"),
       maxResults: z.number().default(10).describe("Maximum results to return"),
     }),
-  }
+  },
 );
 
 const sendEmail = tool(
@@ -45,17 +45,11 @@ const sendEmail = tool(
       subject: z.string().describe("Email subject"),
       body: z.string().describe("Email body"),
     }),
-  }
+  },
 );
 
 const createFile = tool(
-  async ({
-    path,
-  }: {
-    path: string;
-    content: string;
-    overwrite: boolean;
-  }) => {
+  async ({ path }: { path: string; content: string; overwrite: boolean }) => {
     return `Created ${path}`;
   },
   {
@@ -66,7 +60,7 @@ const createFile = tool(
       content: z.string(),
       overwrite: z.boolean().default(false),
     }),
-  }
+  },
 );
 
 const todoSchema = z.object({
@@ -91,7 +85,7 @@ const filesMiddleware = createMiddleware({
       z.object({
         path: z.string(),
         content: z.string(),
-      })
+      }),
     ),
   }),
 });
@@ -301,9 +295,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
     });
 
     const tc = stream.toolCalls.value[0];
-    expectTypeOf(tc.state).toEqualTypeOf<
-      "pending" | "completed" | "error"
-    >();
+    expectTypeOf(tc.state).toEqualTypeOf<"pending" | "completed" | "error">();
   });
 
   test("toolCall.call has optional id and type", () => {
@@ -342,9 +334,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
     });
 
     const tc = stream.toolCalls.value[0];
-    expectTypeOf(tc.call.name).toEqualTypeOf<
-      "search_web" | "create_file"
-    >();
+    expectTypeOf(tc.call.name).toEqualTypeOf<"search_web" | "create_file">();
   });
 });
 
@@ -407,7 +397,9 @@ describe("stream.values contains the expected agent state", () => {
     expectTypeOf(stream.values.value.preferences.theme).toEqualTypeOf<
       "light" | "dark"
     >();
-    expectTypeOf(stream.values.value.preferences.language).toEqualTypeOf<string>();
+    expectTypeOf(
+      stream.values.value.preferences.language,
+    ).toEqualTypeOf<string>();
   });
 
   test("agent with custom state + middleware: both are merged", () => {
@@ -581,7 +573,7 @@ describe("realistic usage patterns with createAgent", () => {
     });
 
     const pendingTodos = stream.values.value.todos.filter(
-      (t) => t.status === "pending"
+      (t) => t.status === "pending",
     );
     expectTypeOf(pendingTodos).toMatchTypeOf<Todo[]>();
 
@@ -599,7 +591,7 @@ describe("realistic usage patterns with createAgent", () => {
 
     expectTypeOf(stream.submit).toBeCallableWith(
       { messages: [{ type: "human", content: "Hello" }] },
-      undefined
+      undefined,
     );
   });
 });

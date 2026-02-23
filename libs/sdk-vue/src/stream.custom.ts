@@ -17,7 +17,7 @@ import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamCustomOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -54,7 +54,7 @@ export function useStreamCustom<
         threadId = resolved;
         stream.clear();
       }
-    }
+    },
   );
 
   const getMessages = (value: StateType): Message[] => {
@@ -94,7 +94,7 @@ export function useStreamCustom<
         });
       }
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   function stop() {
@@ -103,7 +103,7 @@ export function useStreamCustom<
 
   async function submit(
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
@@ -156,7 +156,7 @@ export function useStreamCustom<
         onError(error) {
           options.onError?.(error, undefined);
         },
-      }
+      },
     );
   }
 
@@ -202,7 +202,7 @@ export function useStreamCustom<
     getToolCalls(message: Message) {
       if (!streamValues.value) return [];
       const allToolCalls = getToolCallsWithResults(
-        getMessages(streamValues.value)
+        getMessages(streamValues.value),
       );
       return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
     },

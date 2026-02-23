@@ -18,7 +18,7 @@ import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamCustomOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -90,7 +90,7 @@ export function useStreamCustom<
 
   async function submit(
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
     let usableThreadId = threadId;
 
@@ -146,7 +146,7 @@ export function useStreamCustom<
         onError(error) {
           options.onError?.(error, undefined);
         },
-      }
+      },
     );
   }
 

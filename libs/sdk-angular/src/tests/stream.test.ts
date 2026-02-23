@@ -44,12 +44,8 @@ it("renders initial state correctly", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .not.toBeInTheDocument();
-  await expect
-    .element(screen.getByTestId("error"))
-    .not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("error")).not.toBeInTheDocument();
 });
 
 it("handles message submission and streaming", async () => {
@@ -118,18 +114,14 @@ it("onStop does not clear stream values", async () => {
   await expect
     .element(screen.getByTestId("message-0"))
     .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 
   await screen.getByTestId("stop").click();
 
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("H");
+  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
 });
 
 it("onStop callback is called when stop is called", async () => {
@@ -194,9 +186,7 @@ it("onStop handles functional updates correctly", async () => {
     },
   });
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("5");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("5");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2");
@@ -212,9 +202,7 @@ it("onStop handles functional updates correctly", async () => {
 
   await screen.getByTestId("stop").click();
 
-  await expect
-    .element(screen.getByTestId("counter"))
-    .toHaveTextContent("15");
+  await expect.element(screen.getByTestId("counter")).toHaveTextContent("15");
   await expect
     .element(screen.getByTestId("items"))
     .toHaveTextContent("item1, item2, stopped");
@@ -275,9 +263,7 @@ it("streamSubgraphs: true", async () => {
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
 
-  await expect
-    .poll(() => checkpointCalls.length)
-    .toBeGreaterThanOrEqual(6);
+  await expect.poll(() => checkpointCalls.length).toBeGreaterThanOrEqual(6);
 
   expect(checkpointCalls).toMatchObject([
     [{ metadata: { source: "input", step: -1 } }, { namespace: undefined }],
