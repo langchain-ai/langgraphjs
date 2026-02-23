@@ -3515,7 +3515,7 @@ graph TD;
       ).rejects.toThrow(/No checkpointer set/);
 
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
-      expect(tracer.runs.length).toBe(2);
+      expect(tracer.runs.length).toBe(1);
 
       const run = tracer.runs.at(-1);
       expect(run?.end_time).toBeDefined();

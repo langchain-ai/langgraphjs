@@ -34,6 +34,7 @@ export class ChannelRead<
     fresh: boolean = false
   ) {
     super({
+      trace: false,
       func: (_: RunInput, config: RunnableConfig) =>
         ChannelRead.doRead(config, this.channel, this.fresh, this.mapper),
     });

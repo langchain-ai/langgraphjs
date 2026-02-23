@@ -93,6 +93,11 @@ describe("ChannelRead", () => {
     expect(result).toBe("mapped_test_value");
   });
 
+  it("should have trace disabled to avoid cluttering trace views", () => {
+    const channelRead = new ChannelRead("test_channel");
+    expect(channelRead.trace).toBe(false);
+  });
+
   it("should throw an error if no read function is configured", async () => {
     // Create channel read without configuring a read function
     const channelRead = new ChannelRead("test_channel");
