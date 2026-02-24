@@ -37,10 +37,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   protected enableTimestamps: boolean;
 
-  private get timestampOp():
-    | { $currentDate: { upserted_at: true } }
-    | Record<string, never> {
-    return this.enableTimestamps ? { $currentDate: { upserted_at: true } } : {};
+  private get timestampOp() {
+    return this.enableTimestamps
+      ? ({ $currentDate: { upserted_at: true } } as const)
+      : {};
   }
 
   constructor(
