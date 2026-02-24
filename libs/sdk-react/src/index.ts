@@ -56,8 +56,18 @@ export type {
   DefaultSubagentStates,
   BaseSubagentState,
 } from "@langchain/langgraph-sdk/ui";
+import type {
+  ToolMessage as CoreToolMessage,
+  AIMessage as CoreAIMessage,
+} from "@langchain/core/messages";
+import type {
+  ToolCallWithResult as _ToolCallWithResult,
+  DefaultToolCall,
+} from "@langchain/langgraph-sdk";
+
+export type ToolCallWithResult<ToolCall = DefaultToolCall> =
+  _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
 export type {
-  ToolCallWithResult,
   ToolCallState,
   DefaultToolCall,
   ToolCallFromTool,

@@ -746,4 +746,34 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
       expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
     }
   });
+
+  test("ToolCallWithResult from @langchain/langgraph-sdk uses plain SDK types", () => {
+    const stream = useStreamLegacy<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    const tc = stream.toolCalls[0];
+    if (tc.result) {
+      expectTypeOf(tc.result.type).toEqualTypeOf<"tool">();
+      expectTypeOf(tc.result.tool_call_id).toEqualTypeOf<string>();
+    }
+    expectTypeOf(tc.aiMessage.type).toEqualTypeOf<"ai">();
+  });
+
+  test("ToolCallWithResult with single generic still works (backward compat)", () => {
+    type TC = import("../types.messages.js").ToolCallWithResult<{
+      name: "test";
+      args: { x: number };
+      id?: string;
+      type?: "tool_call";
+    }>;
+
+    expectTypeOf<TC["call"]["name"]>().toEqualTypeOf<"test">();
+    expectTypeOf<TC["call"]["args"]>().toEqualTypeOf<{ x: number }>();
+    if (undefined as TC["result"] | undefined) {
+      expectTypeOf(
+        (undefined as unknown as TC["result"])!.type
+      ).toEqualTypeOf<"tool">();
+    }
+  });
 });

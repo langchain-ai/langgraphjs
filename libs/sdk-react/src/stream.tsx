@@ -1,6 +1,10 @@
 import { useState } from "react";
-import type { BaseMessage } from "@langchain/core/messages";
-import type { BagTemplate } from "@langchain/langgraph-sdk";
+import type {
+  BaseMessage,
+  ToolMessage as CoreToolMessage,
+  AIMessage as CoreAIMessage,
+} from "@langchain/core/messages";
+import type { BagTemplate, ToolCallWithResult } from "@langchain/langgraph-sdk";
 import type {
   UseStreamOptions,
   ResolveStreamInterface,
@@ -24,16 +28,33 @@ function isCustomOptions<
   return "transport" in options;
 }
 
+type ClassToolCallWithResult<T> =
+  T extends ToolCallWithResult<infer TC, unknown, unknown>
+    ? ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+    : T;
+
 /**
  * Maps a stream interface to use @langchain/core BaseMessage class instances
- * instead of plain Message objects for the `messages` property.
+ * instead of plain Message objects for the `messages` property, and remaps
+ * tool call types to use @langchain/core message classes.
  */
-type WithClassMessages<T> = Omit<T, "messages" | "getMessagesMetadata"> & {
+type WithClassMessages<T> = Omit<
+  T,
+  "messages" | "getMessagesMetadata" | "toolCalls" | "getToolCalls"
+> & {
   messages: BaseMessage[];
   getMessagesMetadata: (
     message: BaseMessage,
     index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
+  toolCalls: T extends { toolCalls: (infer TC)[] }
+    ? ClassToolCallWithResult<TC>[]
+    : never;
+  getToolCalls: T extends {
+    getToolCalls: (message: infer _M) => (infer TC)[];
+  }
+    ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+    : never;
 };
 
 /**

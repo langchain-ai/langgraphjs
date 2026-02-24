@@ -253,8 +253,14 @@ export type ToolCallState = "pending" | "completed" | "error";
  * Useful for rendering tool invocations and their outputs together.
  *
  * @template ToolCall The type of the tool call.
+ * @template TToolMessage The type of the tool result message. Defaults to the SDK's plain ToolMessage interface.
+ * @template TAIMessage The type of the AI message. Defaults to the SDK's plain AIMessage interface.
  */
-export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
+export type ToolCallWithResult<
+  ToolCall = DefaultToolCall,
+  TToolMessage = ToolMessage,
+  TAIMessage = AIMessage<ToolCall>
+> = {
   /**
    * Unique identifier for this tool call.
    * Uses the tool call's id if available, otherwise generates one from aiMessage.id and index.
@@ -270,12 +276,12 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
    * The result message from tool execution.
    * `undefined` if the tool is still being executed or no result was received.
    */
-  result: ToolMessage | undefined;
+  result: TToolMessage | undefined;
 
   /**
    * The AI message that initiated this tool call.
    */
-  aiMessage: AIMessage<ToolCall>;
+  aiMessage: TAIMessage;
 
   /**
    * Index of this tool call within the AI message's tool_calls array.

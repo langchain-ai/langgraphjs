@@ -8,7 +8,11 @@ import {
   type ComputedRef,
   type Ref,
 } from "vue";
-import type { BaseMessage } from "@langchain/core/messages";
+import type {
+  BaseMessage,
+  ToolMessage as CoreToolMessage,
+  AIMessage as CoreAIMessage,
+} from "@langchain/core/messages";
 import {
   StreamManager,
   MessageTupleManager,
@@ -47,6 +51,8 @@ import {
   type Interrupt,
   type BagTemplate,
   type ThreadState,
+  type ToolCallWithResult as _ToolCallWithResult,
+  type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 
 import { useStreamCustom } from "./stream.custom.js";
@@ -682,10 +688,17 @@ function useStreamLGP<
   };
 }
 
+type ClassToolCallWithResult<T> =
+  T extends _ToolCallWithResult<infer TC, unknown, unknown>
+    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+    : T;
+
 /**
  * Maps a stream interface to Vue-reactive types:
  * - `messages` becomes `ComputedRef<BaseMessage[]>`
  * - `getMessagesMetadata` accepts `BaseMessage`
+ * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Ref`
+ * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
  * - Functions remain unchanged
  * - All other properties are wrapped in `Ref<T>` to match Vue's reactivity
  */
@@ -697,9 +710,17 @@ type WithClassMessages<T> = {
           message: BaseMessage,
           index?: number,
         ) => MessageMetadata<Record<string, unknown>> | undefined
-      : T[K] extends (...args: infer A) => infer R
-        ? (...args: A) => R
-        : Ref<T[K]>;
+      : K extends "toolCalls"
+        ? T[K] extends (infer TC)[]
+          ? Ref<ClassToolCallWithResult<TC>[]>
+          : Ref<T[K]>
+        : K extends "getToolCalls"
+          ? T[K] extends (message: infer _M) => (infer TC)[]
+            ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+            : T[K]
+          : T[K] extends (...args: infer A) => infer R
+            ? (...args: A) => R
+            : Ref<T[K]>;
 };
 
 export function useStream<
@@ -766,8 +787,9 @@ export type {
   QueueInterface,
 } from "@langchain/langgraph-sdk/ui";
 
+export type ToolCallWithResult<ToolCall = DefaultToolCall> =
+  _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
 export type {
-  ToolCallWithResult,
   ToolCallState,
   DefaultToolCall,
   ToolCallFromTool,

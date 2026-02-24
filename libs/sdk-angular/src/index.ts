@@ -1,5 +1,9 @@
 import { signal, computed, effect } from "@angular/core";
-import type { BaseMessage } from "@langchain/core/messages";
+import type {
+  BaseMessage,
+  ToolMessage as CoreToolMessage,
+  AIMessage as CoreAIMessage,
+} from "@langchain/core/messages";
 import {
   StreamManager,
   MessageTupleManager,
@@ -35,18 +39,36 @@ import {
   type Interrupt,
   type BagTemplate,
   type ThreadState,
+  type ToolCallWithResult as _ToolCallWithResult,
+  type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
 
-type WithClassMessages<T> = Omit<T, "messages" | "getMessagesMetadata"> & {
+type ClassToolCallWithResult<T> =
+  T extends _ToolCallWithResult<infer TC, unknown, unknown>
+    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+    : T;
+
+type WithClassMessages<T> = Omit<
+  T,
+  "messages" | "getMessagesMetadata" | "toolCalls" | "getToolCalls"
+> & {
   messages: BaseMessage[];
   getMessagesMetadata: (
     message: BaseMessage,
     index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
+  toolCalls: T extends { toolCalls: (infer TC)[] }
+    ? ClassToolCallWithResult<TC>[]
+    : never;
+  getToolCalls: T extends {
+    getToolCalls: (message: infer _M) => (infer TC)[];
+  }
+    ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+    : never;
 };
 
 function fetchHistory<StateType extends Record<string, unknown>>(
@@ -726,8 +748,9 @@ export type {
   QueueInterface,
 } from "@langchain/langgraph-sdk/ui";
 
+export type ToolCallWithResult<ToolCall = DefaultToolCall> =
+  _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
 export type {
-  ToolCallWithResult,
   ToolCallState,
   DefaultToolCall,
   ToolCallFromTool,

@@ -594,4 +594,35 @@ describe("realistic usage patterns with createAgent", () => {
       undefined,
     );
   });
+
+  test("toolCalls[].result is @langchain/core ToolMessage class type", () => {
+    const stream = useStream<typeof multiToolAgent>({
+      assistantId: "agent",
+    });
+
+    const tc = stream.toolCalls.value[0];
+    if (tc.result) {
+      expectTypeOf(tc.result.tool_call_id).toEqualTypeOf<string>();
+      expectTypeOf(tc.result.toDict()).toHaveProperty("type");
+    }
+  });
+
+  test("toolCalls[].aiMessage is @langchain/core AIMessage class type", () => {
+    const stream = useStream<typeof multiToolAgent>({
+      assistantId: "agent",
+    });
+
+    const tc = stream.toolCalls.value[0];
+    expectTypeOf(tc.aiMessage.toDict()).toHaveProperty("type");
+  });
+
+  test("getToolCalls accepts @langchain/core AIMessage", () => {
+    const stream = useStream<typeof multiToolAgent>({
+      assistantId: "agent",
+    });
+
+    const aiMsg = new AIMessage({ content: "hello" });
+    const calls = stream.getToolCalls(aiMsg);
+    expectTypeOf(calls).toBeArray();
+  });
 });

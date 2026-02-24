@@ -94,7 +94,7 @@ export type {
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
-} from "@langchain/react";
+} from "@langchain/langgraph-sdk";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
