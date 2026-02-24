@@ -78,15 +78,22 @@ type WithClassMessages<T> = Omit<
     message: BaseMessage,
     index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
-  toolCalls: T extends { toolCalls: (infer TC)[] }
-    ? ClassToolCallWithResult<TC>[]
-    : never;
-  getToolCalls: T extends {
-    getToolCalls: (message: infer _M) => (infer TC)[];
-  }
-    ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
-    : never;
-};
+} & ("toolCalls" extends keyof T
+    ? {
+        toolCalls: T extends { toolCalls: (infer TC)[] }
+          ? ClassToolCallWithResult<TC>[]
+          : never;
+      }
+    : unknown) &
+  ("getToolCalls" extends keyof T
+    ? {
+        getToolCalls: T extends {
+          getToolCalls: (message: infer _M) => (infer TC)[];
+        }
+          ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+          : never;
+      }
+    : unknown);
 
 export function useStream<
   T = Record<string, unknown>,

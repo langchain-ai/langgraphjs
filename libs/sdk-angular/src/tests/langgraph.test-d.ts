@@ -2,13 +2,10 @@
  * Type tests for `useStream` with `StateGraph` from `@langchain/langgraph`.
  *
  * Validates that:
- * - stream.messages is BaseMessage[] (React-specific class instances)
+ * - stream.messages is BaseMessage[] (Angular-specific class instances)
  * - stream.values contains the expected graph state
  * - Compiled graph streams use BaseStream (no toolCalls, no subagents)
  * - Direct state types work as fallback
- *
- * Uses mocked StateGraph types to avoid circular dependencies between
- * @langchain/langgraph-sdk and @langchain/langgraph.
  *
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
  * to verify type correctness.
@@ -25,14 +22,14 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "../index.js";
 import {
-  MockStateGraph as StateGraph,
-  MockStateSchema as StateSchema,
+  StateGraph,
+  StateSchema,
   MessagesValue,
   START,
   END,
-} from "./fixtures/langgraph-mocks.js";
+} from "@langchain/langgraph";
+import { useStream } from "../index.js";
 
 const SimpleGraphSchema = new StateSchema({
   messages: MessagesValue,
@@ -595,7 +592,7 @@ describe("realistic StateGraph usage patterns", () => {
     });
 
     expectTypeOf(stream.submit).toBeCallableWith(
-      { messages: [{ type: "human", content: "Research AI" }] },
+      { messages: [new HumanMessage("Research AI")] },
       undefined,
     );
   });
