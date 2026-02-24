@@ -181,11 +181,12 @@ export class PostgresSaver extends BaseCheckpointSaver<string | number> {
    * Uses zero-padded string versions with random suffix for compatibility
    * with the Python checkpoint-postgres implementation.
    */
-  getNextVersion(
-    current: string | number | undefined
-  ): string | number {
+  getNextVersion(current: string | number | undefined): string | number {
     if (current === undefined) {
-      return `${"0".repeat(31)}1.${Math.random().toString().slice(2, 18).padEnd(16, "0")}`;
+      return `${"0".repeat(31)}1.${Math.random()
+        .toString()
+        .slice(2, 18)
+        .padEnd(16, "0")}`;
     }
     const currentStr = String(current);
     const currentV = parseInt(currentStr.split(".")[0], 10) || 0;
@@ -261,7 +262,14 @@ export class PostgresSaver extends BaseCheckpointSaver<string | number> {
       return [];
     }
 
-    const results: [string, string, string, string, string, Uint8Array | undefined][] = [];
+    const results: [
+      string,
+      string,
+      string,
+      string,
+      string,
+      Uint8Array | undefined
+    ][] = [];
     for (const [k, ver] of Object.entries(versions)) {
       // Skip primitive values — they are stored inline in the checkpoint JSONB
       if (k in values) {
@@ -276,9 +284,7 @@ export class PostgresSaver extends BaseCheckpointSaver<string | number> {
         }
       }
       const [type, value] =
-        k in values
-          ? await this.serde.dumpsTyped(values[k])
-          : ["empty", null];
+        k in values ? await this.serde.dumpsTyped(values[k]) : ["empty", null];
       results.push([
         threadId,
         checkpointNs,
