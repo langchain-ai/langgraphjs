@@ -38,11 +38,19 @@ mkdir -p ./libs/langgraph/
 mkdir -p ./libs/langgraph-core/
 mkdir -p ./libs/checkpoint/
 mkdir -p ./libs/sdk/
+mkdir -p ./libs/sdk-react/
+mkdir -p ./libs/sdk-vue/
+mkdir -p ./libs/sdk-svelte/
+mkdir -p ./libs/sdk-angular/
 
 cp -r ../langgraph ./libs/
 cp -r ../langgraph-core ./libs/
 cp -r ../checkpoint ./libs/
 cp -r ../sdk ./libs/
+cp -r ../sdk-react ./libs/
+cp -r ../sdk-vue ./libs/
+cp -r ../sdk-svelte ./libs/
+cp -r ../sdk-angular ./libs/
 
 # Debug: show workspace structure
 echo "=== Workspace packages ==="
@@ -60,6 +68,7 @@ for pkg in libs/*/; do
     # Remove devDependencies that reference workspace packages not in our limited set
     sed -i 's/"@langchain\/langgraph-checkpoint-postgres": "workspace:\*",*//g' "$pkg/package.json"
     sed -i 's/"@langchain\/langgraph-checkpoint-sqlite": "workspace:\*",*//g' "$pkg/package.json"
+    sed -i 's/"@langchain\/langgraph-api": "workspace:[^"]*",*//g' "$pkg/package.json"
   fi
 done
 
