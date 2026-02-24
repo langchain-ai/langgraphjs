@@ -33,7 +33,7 @@ describe("MongoDBSaver", () => {
     });
   });
 
-  describe("timestampFields", () => {
+  describe("timestampOp", () => {
     it("should return empty object when enableTimestamps is not set", () => {
       const client = createMockClient();
       const saver = new MongoDBSaver({
@@ -41,25 +41,20 @@ describe("MongoDBSaver", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fields = (saver as any).timestampFields;
-      expect(fields).toEqual({});
+      const op = (saver as any).timestampOp;
+      expect(op).toEqual({});
     });
 
-    it("should return upserted_at Date when enableTimestamps is true", () => {
+    it("should return $currentDate operator when enableTimestamps is true", () => {
       const client = createMockClient();
       const saver = new MongoDBSaver({
         client: client as unknown as MongoClient,
         enableTimestamps: true,
       });
 
-      const before = Date.now();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fields = (saver as any).timestampFields;
-      const after = Date.now();
-
-      expect(fields.upserted_at).toBeInstanceOf(Date);
-      expect(fields.upserted_at.getTime()).toBeGreaterThanOrEqual(before);
-      expect(fields.upserted_at.getTime()).toBeLessThanOrEqual(after);
+      const op = (saver as any).timestampOp;
+      expect(op).toEqual({ $currentDate: { upserted_at: true } });
     });
   });
 

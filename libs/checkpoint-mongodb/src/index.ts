@@ -16,7 +16,7 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
-  /** When true, writes an `upserted_at` BSON date to documents on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging. */
+  /** When true, sets `upserted_at` to the current date via MongoDB's `$currentDate` operator on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging. */
   enableTimestamps?: boolean;
 };
 
@@ -34,8 +34,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   protected enableTimestamps: boolean;
 
-  private get timestampFields(): { upserted_at: Date } | Record<string, never> {
-    return this.enableTimestamps ? { upserted_at: new Date() } : {};
+  private get timestampOp():
+    | { $currentDate: { upserted_at: true } }
+    | Record<string, never> {
+    return this.enableTimestamps ? { $currentDate: { upserted_at: true } } : {};
   }
 
   constructor(
@@ -253,7 +255,6 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
-      ...this.timestampFields,
     };
     const upsertQuery = {
       thread_id,
@@ -262,7 +263,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     };
     await this.db
       .collection(this.checkpointCollectionName)
-      .updateOne(upsertQuery, { $set: doc }, { upsert: true });
+      .updateOne(
+        upsertQuery,
+        { $set: doc, ...this.timestampOp },
+        { upsert: true }
+      );
 
     return {
       configurable: {
@@ -310,12 +315,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           updateOne: {
             filter: upsertQuery,
             update: {
-              $set: {
-                channel,
-                type,
-                value: serializedValue,
-                ...this.timestampFields,
-              },
+              $set: { channel, type, value: serializedValue },
+              ...this.timestampOp,
             },
             upsert: true,
           },
