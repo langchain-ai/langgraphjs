@@ -450,6 +450,7 @@ export class Pregel<
    * - "updates": Streams state updates after each step
    * - "messages": Streams messages from within nodes
    * - "custom": Streams custom events from within nodes
+   * - "tools": Streams tool-call lifecycle events (on_tool_start, on_tool_event, on_tool_end, on_tool_error) from LLM tool execution
    * - "debug": Streams events related to the execution of the graph - useful for tracing & debugging graph execution
    */
   streamMode: StreamMode[] = ["values"];
