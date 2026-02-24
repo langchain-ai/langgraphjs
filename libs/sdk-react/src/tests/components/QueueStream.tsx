@@ -102,10 +102,7 @@ export function QueueStream() {
       >
         Cancel First
       </button>
-      <button
-        data-testid="clear-queue"
-        onClick={() => thread.queue.clear()}
-      >
+      <button data-testid="clear-queue" onClick={() => thread.queue.clear()}>
         Clear Queue
       </button>
       <button

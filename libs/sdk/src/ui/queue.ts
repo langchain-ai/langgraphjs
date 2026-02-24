@@ -6,7 +6,7 @@ import type { SubmitOptions, CustomSubmitOptions } from "./types.js";
  */
 export interface QueueEntry<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>,
+  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
 > {
   /** Unique identifier for this queue entry, used for cancellation */
   id: string;
@@ -27,7 +27,7 @@ export interface QueueEntry<
  */
 export interface QueueInterface<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>,
+  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
 > {
   /** Read-only array of pending queue entries */
   readonly entries: ReadonlyArray<QueueEntry<StateType, OptionsType>>;
@@ -51,7 +51,7 @@ export interface QueueInterface<
  */
 export class SubmitQueue<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>,
+  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
 > {
   private pending: QueueEntry<StateType, OptionsType>[] = [];
 
@@ -67,7 +67,7 @@ export class SubmitQueue<
 
   /** Register the function that processes a dequeued entry. */
   setDrainHandler(
-    fn: (entry: QueueEntry<StateType, OptionsType>) => Promise<void>,
+    fn: (entry: QueueEntry<StateType, OptionsType>) => Promise<void>
   ): void {
     this.drainFn = fn;
   }
@@ -78,7 +78,7 @@ export class SubmitQueue<
    */
   enqueue(
     values: Partial<StateType> | null | undefined,
-    options?: OptionsType,
+    options?: OptionsType
   ): string {
     const id = crypto.randomUUID();
     this.pending.push({ id, values, options, createdAt: new Date() });

@@ -264,10 +264,7 @@ export function useStreamLGP<
 
   const [submitQueue] = useState(
     () =>
-      new SubmitQueue<
-        StateType,
-        SubmitOptions<StateType, ConfigurableType>
-      >(),
+      new SubmitQueue<StateType, SubmitOptions<StateType, ConfigurableType>>(),
   );
 
   useSyncExternalStore(

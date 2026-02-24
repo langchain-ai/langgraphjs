@@ -128,9 +128,7 @@ describe("SubmitQueue", () => {
 
       // Handler should be called with the first entry
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(
-        handler.mock.calls[0][0].values?.messages?.[0].content,
-      ).toBe("a");
+      expect(handler.mock.calls[0][0].values?.messages?.[0].content).toBe("a");
 
       // First entry should be removed
       expect(queue.size).toBe(1);
@@ -158,7 +156,7 @@ describe("SubmitQueue", () => {
         () =>
           new Promise<void>((resolve) => {
             resolveHandler = resolve;
-          }),
+          })
       );
       queue.setDrainHandler(handler);
 

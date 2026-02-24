@@ -720,23 +720,17 @@ it("switchThread to null clears messages", async () => {
 it("queue: submitting three times rapidly queues the latter two", async () => {
   const screen = await render(QueueStreamComponent);
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("0");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("0");
 
   await screen.getByTestId("submit-three").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("2");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("2");
 
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("0");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -752,15 +746,11 @@ it("queue: cancel removes a queued entry", async () => {
 
   await screen.getByTestId("submit-three").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("2");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("2");
 
   await screen.getByTestId("cancel-first").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("0");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -772,15 +762,11 @@ it("queue: clear empties the queue", async () => {
 
   await screen.getByTestId("submit-three").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("2");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("2");
 
   await screen.getByTestId("clear-queue").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("0");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -792,15 +778,11 @@ it("queue: switchThread clears the queue", async () => {
 
   await screen.getByTestId("submit-three").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("2");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("2");
 
   await screen.getByTestId("switch-thread").click();
 
-  await expect
-    .element(screen.getByTestId("queue-size"))
-    .toHaveTextContent("0");
+  await expect.element(screen.getByTestId("queue-size")).toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("message-count"))
