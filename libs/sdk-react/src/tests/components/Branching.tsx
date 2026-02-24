@@ -65,7 +65,7 @@ export function Branching({ apiUrl, assistantId = "agent" }: Props) {
                     void submit(
                       {
                         messages: [{ type: "human", content: `Fork: ${text}` }],
-                      } as any,
+                      },
                       { checkpoint },
                     )
                   }
@@ -77,7 +77,7 @@ export function Branching({ apiUrl, assistantId = "agent" }: Props) {
               {msg.type === "ai" && (
                 <button
                   data-testid={`regenerate-${i}`}
-                  onClick={() => void submit(undefined as any, { checkpoint })}
+                  onClick={() => void submit(undefined, { checkpoint })}
                 >
                   Regenerate
                 </button>
@@ -91,7 +91,7 @@ export function Branching({ apiUrl, assistantId = "agent" }: Props) {
         onClick={() =>
           void submit({
             messages: [{ content: "Hello", type: "human" }],
-          } as any)
+          })
         }
       >
         Send

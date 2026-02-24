@@ -1,18 +1,21 @@
+import type { BaseMessage } from "langchain";
 import { Component } from "@angular/core";
 import { useStreamCustom } from "../../stream.custom.js";
-import type { Message } from "@langchain/langgraph-sdk";
 
 let callCount = 0;
 
 const transport = {
   async stream(payload: any) {
     const threadId = payload.config?.configurable?.thread_id ?? "unknown";
-    const idx = ++callCount;
+    // eslint-disable-next-line no-plusplus
+    const idx = callCount++;
     async function* generate(): AsyncGenerator<{
       event: string;
       data: unknown;
     }> {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
       yield {
         event: "values",
         data: {
@@ -69,7 +72,7 @@ const transport = {
   `,
 })
 export class QueueStreamComponent {
-  stream = useStreamCustom<{ messages: Message[] }>({
+  stream = useStreamCustom<{ messages: BaseMessage[] }>({
     transport: transport as any,
     threadId: null,
     onThreadId: () => {},

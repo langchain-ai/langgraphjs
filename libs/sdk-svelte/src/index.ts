@@ -509,7 +509,7 @@ function useStreamLGP<
     submitting = true;
     try {
       const promise = submitDirect(values, submitOptions);
-      promise.finally(() => {
+      void promise.finally(() => {
         submitting = false;
       });
       return promise;

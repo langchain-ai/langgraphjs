@@ -1258,6 +1258,22 @@ export interface SubmitOptions<
 }
 
 /**
+ * Payload for the `stream` method of the `UseStreamTransport` interface.
+ * @template StateType - The type of the stream's state values.
+ * @template Bag - The type of the stream's bag values.
+ */
+export interface UseStreamTransportPayload<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> {
+  input: GetUpdateType<Bag, StateType> | null | undefined;
+  context: GetConfigurableType<Bag> | undefined;
+  command: Command | undefined;
+  config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
+  signal: AbortSignal;
+}
+
+/**
  * Transport used to stream the thread.
  * Only applicable for custom endpoints using `toLangGraphEventStream` or `toLangGraphEventStreamResponse`.
  */
@@ -1265,13 +1281,9 @@ export interface UseStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > {
-  stream: (payload: {
-    input: GetUpdateType<Bag, StateType> | null | undefined;
-    context: GetConfigurableType<Bag> | undefined;
-    command: Command | undefined;
-    config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
-    signal: AbortSignal;
-  }) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
+  stream: (
+    payload: UseStreamTransportPayload<StateType, Bag>
+  ) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
 }
 
 export type UseStreamCustomOptions<

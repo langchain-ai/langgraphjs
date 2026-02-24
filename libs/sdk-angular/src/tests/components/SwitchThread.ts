@@ -1,6 +1,6 @@
+import type { BaseMessage } from "langchain";
 import { Component } from "@angular/core";
 import { useStreamCustom } from "../../stream.custom.js";
-import type { Message } from "@langchain/langgraph-sdk";
 
 const transport = {
   async stream(payload: any) {
@@ -57,7 +57,7 @@ const transport = {
   `,
 })
 export class SwitchThreadComponent {
-  stream = useStreamCustom<{ messages: Message[] }>({
+  stream = useStreamCustom<{ messages: BaseMessage[] }>({
     transport: transport as any,
     threadId: null,
     onThreadId: () => {},

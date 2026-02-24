@@ -1729,12 +1729,15 @@ function createQueueComponent() {
   const transport = {
     async stream(payload: any) {
       const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+      // eslint-disable-next-line no-plusplus
       const idx = ++callCount;
       async function* generate(): AsyncGenerator<{
         event: string;
         data: unknown;
       }> {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 100);
+        });
         yield {
           event: "values",
           data: {
