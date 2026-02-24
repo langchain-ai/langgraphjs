@@ -161,7 +161,7 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 
 /**
  * A callback handler that implements stream_mode=tools.
- * Emits on_tool_start, on_tool_partial, on_tool_end, on_tool_error events.
+ * Emits on_tool_start, on_tool_event, on_tool_end, on_tool_error events.
  */
 export class StreamToolsHandler extends BaseCallbackHandler {
   name = "StreamToolsHandler";
@@ -216,7 +216,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
       info.ns,
       "tools",
       {
-        event: "on_tool_partial",
+        event: "on_tool_event",
         toolCallId: info.toolCallId,
         name: info.toolName,
         data: chunk,

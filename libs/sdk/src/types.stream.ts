@@ -255,7 +255,7 @@ export type ToolStreamEventData =
       input: unknown;
     }
   | {
-      event: "on_tool_partial";
+      event: "on_tool_event";
       toolCallId?: string;
       name: string;
       data: unknown;

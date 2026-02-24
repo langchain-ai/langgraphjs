@@ -317,7 +317,7 @@ export function useStreamLGP<
           });
           break;
         }
-        case "on_tool_partial": {
+        case "on_tool_event": {
           if (existing) {
             next.set(key, { ...existing, state: "running", data: data.data });
           }

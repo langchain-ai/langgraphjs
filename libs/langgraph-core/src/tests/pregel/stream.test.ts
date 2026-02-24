@@ -67,7 +67,7 @@ describe("StreamToolsHandler", () => {
     expect(chunks).toHaveLength(0);
   });
 
-  it("emits on_tool_partial when run is known", () => {
+  it("emits on_tool_event when run is known", () => {
     const chunks: unknown[] = [];
     const handler = new StreamToolsHandler((chunk) => chunks.push(chunk));
 
@@ -88,7 +88,7 @@ describe("StreamToolsHandler", () => {
       [],
       "tools",
       {
-        event: "on_tool_partial",
+        event: "on_tool_event",
         toolCallId: "call_1",
         name: "my_tool",
         data: { partial: "data" },
