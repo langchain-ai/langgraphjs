@@ -16,7 +16,10 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
-  /** When true, sets `upserted_at` to the current date via MongoDB's `$currentDate` operator on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging. */
+  /**
+   * When true, writes an `upserted_at` BSON date to documents on every upsert.
+   * Useful for MongoDB TTL indexes, auditing, or debugging.
+   */
   enableTimestamps?: boolean;
 };
 
