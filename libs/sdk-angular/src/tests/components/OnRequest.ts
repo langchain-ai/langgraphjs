@@ -5,6 +5,7 @@ import { useStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
+// eslint-disable-next-line import/no-mutable-exports
 export let onRequestCalls: any[][] = [];
 
 export function resetOnRequestCalls() {

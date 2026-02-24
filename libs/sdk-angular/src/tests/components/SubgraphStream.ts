@@ -4,9 +4,13 @@ import { useStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
+// eslint-disable-next-line import/no-mutable-exports
 export let checkpointCalls: any[][] = [];
+// eslint-disable-next-line import/no-mutable-exports
 export let taskCalls: any[][] = [];
+// eslint-disable-next-line import/no-mutable-exports
 export let updateCalls: any[][] = [];
+// eslint-disable-next-line import/no-mutable-exports
 export let customCalls: any[][] = [];
 
 export function resetSubgraphCalls() {
