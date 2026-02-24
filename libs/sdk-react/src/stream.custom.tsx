@@ -15,6 +15,7 @@ import {
   extractInterrupts,
   FetchStreamTransport,
   toMessageClass,
+  SubmitQueue,
   type EventStreamEvent,
   type GetUpdateType,
   type GetCustomEventType,
@@ -55,10 +56,24 @@ export function useStreamCustom<
       }),
   );
 
+  const [submitQueue] = useState(
+    () =>
+      new SubmitQueue<
+        StateType,
+        CustomSubmitOptions<StateType, ConfigurableType>
+      >(),
+  );
+
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
     stream.getSnapshot,
+  );
+
+  useSyncExternalStore(
+    submitQueue.subscribe,
+    submitQueue.getSnapshot,
+    submitQueue.getSnapshot,
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -77,9 +92,10 @@ export function useStreamCustom<
       if (newThreadId !== threadIdRef.current) {
         threadIdRef.current = newThreadId;
         stream.clear();
+        submitQueue.clear();
       }
     },
-    [stream],
+    [stream, submitQueue],
   );
 
   const getMessages = (value: StateType): Message[] => {
@@ -119,7 +135,7 @@ export function useStreamCustom<
 
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
-  const submit = async (
+  const submitDirect = async (
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) => {
@@ -146,7 +162,6 @@ export function useStreamCustom<
     await stream.start(
       async (signal: AbortSignal) => {
         if (!usableThreadId) {
-          // generate random thread id
           usableThreadId = crypto.randomUUID();
           threadIdRef.current = usableThreadId;
           onThreadId(usableThreadId);
@@ -185,6 +200,51 @@ export function useStreamCustom<
         },
       },
     );
+  };
+
+  const submitDirectRef = useRef(submitDirect);
+  submitDirectRef.current = submitDirect;
+
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    submitQueue.setDrainHandler(async (entry) => {
+      submittingRef.current = true;
+      try {
+        await submitDirectRef.current(
+          entry.values as UpdateType | null | undefined,
+          entry.options,
+        );
+      } finally {
+        submittingRef.current = false;
+      }
+    });
+  }, [submitQueue]);
+
+  useEffect(() => {
+    if (!stream.isLoading && !submittingRef.current && submitQueue.size > 0) {
+      submitQueue.drain(options.onQueueError);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.isLoading, submitQueue.size]);
+
+  const submit = async (
+    values: UpdateType | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+  ) => {
+    if (options.queue && (stream.isLoading || submittingRef.current)) {
+      submitQueue.enqueue(
+        values as Partial<StateType> | null | undefined,
+        submitOptions,
+      );
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      await submitDirect(values, submitOptions);
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   return {
@@ -253,6 +313,17 @@ export function useStreamCustom<
 
     getSubagentsByMessage(messageId: string) {
       return stream.getSubagentsByMessage(messageId);
+    },
+
+    queue: {
+      get entries() {
+        return submitQueue.entries;
+      },
+      get size() {
+        return submitQueue.size;
+      },
+      cancel: submitQueue.cancel,
+      clear: submitQueue.clear,
     },
   };
 }

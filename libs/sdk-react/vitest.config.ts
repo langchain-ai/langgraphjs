@@ -6,7 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     testTimeout: 30_000,
-    globalSetup: ["./src/tests/mock-server.ts"],
+    globalSetup: ["./src/tests/fixtures/mock-server.ts"],
     browser: {
       enabled: true,
       provider: "webdriverio",

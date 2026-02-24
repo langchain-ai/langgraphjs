@@ -3,6 +3,7 @@ import { onDestroy } from "svelte";
 import {
   StreamManager,
   MessageTupleManager,
+  SubmitQueue,
   extractInterrupts,
   toMessageClass,
   type EventStreamEvent,
@@ -35,11 +36,19 @@ export function useStreamCustom<
     toMessage: toMessageClass,
   });
 
+  const submitQueue = new SubmitQueue<
+    StateType,
+    CustomSubmitOptions<StateType, ConfigurableType>
+  >();
+
   let threadId: string | null = options.threadId ?? null;
 
   const streamValues = writable<StateType | null>(stream.values);
   const streamError = writable<unknown>(stream.error);
   const isLoading = writable(stream.isLoading);
+
+  const queueEntries = writable(submitQueue.entries);
+  const queueSize = writable(submitQueue.size);
 
   const unsubscribe = stream.subscribe(() => {
     streamValues.set(stream.values);
@@ -47,7 +56,15 @@ export function useStreamCustom<
     isLoading.set(stream.isLoading);
   });
 
-  onDestroy(() => unsubscribe());
+  const unsubQueue = submitQueue.subscribe(() => {
+    queueEntries.set(submitQueue.entries);
+    queueSize.set(submitQueue.size);
+  });
+
+  onDestroy(() => {
+    unsubscribe();
+    unsubQueue();
+  });
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -77,6 +94,7 @@ export function useStreamCustom<
     if (newThreadId !== threadId) {
       threadId = newThreadId;
       stream.clear();
+      submitQueue.clear();
     }
   }
 
@@ -84,7 +102,7 @@ export function useStreamCustom<
     return stream.stop(historyValues, { onStop: options.onStop });
   }
 
-  async function submit(
+  async function submitDirect(
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
@@ -152,6 +170,50 @@ export function useStreamCustom<
     );
   }
 
+  let submitting = false;
+
+  submitQueue.setDrainHandler(async (entry) => {
+    submitting = true;
+    try {
+      await submitDirect(
+        entry.values as UpdateType | null | undefined,
+        entry.options as CustomSubmitOptions<StateType, ConfigurableType>,
+      );
+    } finally {
+      submitting = false;
+    }
+  });
+
+  isLoading.subscribe(($isLoading) => {
+    if (!$isLoading && !submitting && submitQueue.size > 0) {
+      submitQueue.drain(options.onQueueError);
+    }
+  });
+
+  function submit(
+    values: UpdateType | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+  ) {
+    if (options.queue && (stream.isLoading || submitting)) {
+      submitQueue.enqueue(
+        values as Partial<StateType> | null | undefined,
+        submitOptions,
+      );
+      return;
+    }
+    submitting = true;
+    try {
+      const promise = submitDirect(values, submitOptions);
+      promise.finally(() => {
+        submitting = false;
+      });
+      return promise;
+    } catch (e) {
+      submitting = false;
+      throw e;
+    }
+  }
+
   const values = derived(
     [streamValues],
     ([$streamValues]) => $streamValues ?? ({} as StateType),
@@ -205,6 +267,13 @@ export function useStreamCustom<
     stop,
     submit,
     switchThread,
+
+    queue: {
+      entries: queueEntries,
+      size: queueSize,
+      cancel: submitQueue.cancel,
+      clear: submitQueue.clear,
+    },
 
     interrupt,
     interrupts,

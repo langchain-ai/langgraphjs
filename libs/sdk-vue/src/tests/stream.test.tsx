@@ -1722,3 +1722,213 @@ it("switchThread to null clears messages", async () => {
     .element(screen.getByTestId("message-count"))
     .toHaveTextContent("0");
 });
+
+function createQueueComponent() {
+  let callCount = 0;
+
+  const transport = {
+    async stream(payload: any) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+      const idx = ++callCount;
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human-${idx}`,
+                type: "human",
+                content: `Question ${idx}`,
+              },
+              {
+                id: `${threadId}-ai-${idx}`,
+                type: "ai",
+                content: `Answer ${idx}`,
+              },
+            ],
+          },
+        };
+      }
+      return generate();
+    },
+  };
+
+  return defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+        queue: true,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {thread.messages.map((msg, i: number) => (
+              <div key={(msg as any).id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <div data-testid="loading">
+            {thread.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="message-count">{thread.messages.length}</div>
+          <div data-testid="queue-size">{thread.queue.size.value}</div>
+          <div data-testid="queue-entries">
+            {thread.queue.entries.value
+              .map((e: any) => {
+                const msgs = e.values?.messages;
+                return msgs?.[0]?.content ?? "?";
+              })
+              .join(",")}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ type: "human", content: "Hi" }],
+              } as any)
+            }
+          >
+            Submit
+          </button>
+          <button
+            data-testid="submit-three"
+            onClick={() => {
+              void thread.submit({
+                messages: [{ type: "human", content: "Msg1" }],
+              } as any);
+              void thread.submit({
+                messages: [{ type: "human", content: "Msg2" }],
+              } as any);
+              void thread.submit({
+                messages: [{ type: "human", content: "Msg3" }],
+              } as any);
+            }}
+          >
+            Submit Three
+          </button>
+          <button
+            data-testid="cancel-first"
+            onClick={() => {
+              const first = thread.queue.entries.value[0];
+              if (first) thread.queue.cancel(first.id);
+            }}
+          >
+            Cancel First
+          </button>
+          <button
+            data-testid="clear-queue"
+            onClick={() => thread.queue.clear()}
+          >
+            Clear Queue
+          </button>
+          <button
+            data-testid="switch-thread"
+            onClick={() => thread.switchThread(crypto.randomUUID())}
+          >
+            Switch Thread
+          </button>
+        </div>
+      );
+    },
+  });
+}
+
+it("queue: submitting three times rapidly queues the latter two", async () => {
+  const screen = render(createQueueComponent());
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+});
+
+it("queue: cancel removes a queued entry", async () => {
+  const screen = render(createQueueComponent());
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("cancel-first").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("queue: clear empties the queue", async () => {
+  const screen = render(createQueueComponent());
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("clear-queue").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("queue: switchThread clears the queue", async () => {
+  const screen = render(createQueueComponent());
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("switch-thread").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+});

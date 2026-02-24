@@ -35,7 +35,7 @@ export default defineConfig({
   test: {
     globals: true,
     testTimeout: 30_000,
-    globalSetup: ["./src/tests/mock-server.ts"],
+    globalSetup: ["./src/tests/fixtures/mock-server.ts"],
     setupFiles: ["./src/tests/setup.ts"],
     browser: {
       enabled: true,

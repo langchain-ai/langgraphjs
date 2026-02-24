@@ -19,3 +19,4 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "./subagents.js";
+export { SubmitQueue, type QueueEntry, type QueueInterface } from "./queue.js";

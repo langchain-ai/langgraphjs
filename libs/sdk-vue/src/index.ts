@@ -12,6 +12,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import {
   StreamManager,
   MessageTupleManager,
+  SubmitQueue,
   filterStream,
   unique,
   getBranchContext,
@@ -159,6 +160,13 @@ function useStreamLGP<
     toMessage: toMessageClass,
   });
 
+  const submitQueue = new SubmitQueue<
+    StateType,
+    SubmitOptions<StateType, ConfigurableType>
+  >();
+  const queueEntries = shallowRef(submitQueue.entries);
+  const queueSize = ref(submitQueue.size);
+
   const historyValues = computed(
     () =>
       branchContext.value.threadHead?.values ??
@@ -203,7 +211,15 @@ function useStreamLGP<
     isLoading.value = stream.isLoading;
   });
 
-  onUnmounted(() => unsubscribe());
+  const unsubQueue = submitQueue.subscribe(() => {
+    queueEntries.value = submitQueue.entries;
+    queueSize.value = submitQueue.size;
+  });
+
+  onUnmounted(() => {
+    unsubscribe();
+    unsubQueue();
+  });
 
   watch(
     () => {
@@ -300,7 +316,7 @@ function useStreamLGP<
     );
   }
 
-  function submit(
+  function submitDirect(
     values: StateType,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) {
@@ -457,6 +473,51 @@ function useStreamLGP<
     );
   }
 
+  const submitting = ref(false);
+  submitQueue.setDrainHandler(async (entry) => {
+    submitting.value = true;
+    try {
+      await submitDirect(
+        entry.values as StateType,
+        entry.options as SubmitOptions<StateType, ConfigurableType>,
+      );
+    } finally {
+      submitting.value = false;
+    }
+  });
+
+  watch(
+    () => ({
+      loading: isLoading.value,
+      submitting: submitting.value,
+      size: submitQueue.size,
+    }),
+    ({ loading, submitting: s, size }) => {
+      if (!loading && !s && size > 0) {
+        submitQueue.drain(options.onQueueError);
+      }
+    },
+  );
+
+  function submit(
+    values: StateType,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+  ) {
+    if (options.queue && (stream.isLoading || submitting.value)) {
+      submitQueue.enqueue(
+        values as Partial<StateType> | null | undefined,
+        submitOptions,
+      );
+      return;
+    }
+    submitting.value = true;
+    const result = submitDirect(values, submitOptions);
+    void Promise.resolve(result).finally(() => {
+      submitting.value = false;
+    });
+    return result;
+  }
+
   // --- Auto-reconnect on mount ---
   let shouldReconnect = !!runMetadataStorage;
 
@@ -584,11 +645,19 @@ function useStreamLGP<
     stop,
     joinStream,
 
+    queue: {
+      entries: queueEntries,
+      size: queueSize,
+      cancel: submitQueue.cancel,
+      clear: submitQueue.clear,
+    },
+
     switchThread(newThreadId: string | null) {
       const current = threadId.value ?? null;
       if (newThreadId !== current) {
         threadId.value = newThreadId ?? undefined;
         stream.clear();
+        submitQueue.clear();
         if (newThreadId != null) {
           options.onThreadId?.(newThreadId);
         }
@@ -693,6 +762,8 @@ export type {
   SubagentStateMap,
   DefaultSubagentStates,
   BaseSubagentState,
+  QueueEntry,
+  QueueInterface,
 } from "@langchain/langgraph-sdk/ui";
 
 export type {

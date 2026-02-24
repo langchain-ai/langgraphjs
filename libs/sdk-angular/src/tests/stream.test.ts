@@ -31,6 +31,7 @@ import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithH
 import { ToolCallsComponent } from "./components/ToolCallsStream.js";
 import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
 import { SwitchThreadComponent } from "./components/SwitchThread.js";
+import { QueueStreamComponent } from "./components/QueueStream.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -710,6 +711,96 @@ it("switchThread to null clears messages", async () => {
     .toHaveTextContent("2");
 
   await screen.getByTestId("switch-thread-null").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+});
+
+it("queue: submitting three times rapidly queues the latter two", async () => {
+  const screen = await render(QueueStreamComponent);
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+});
+
+it("queue: cancel removes a queued entry", async () => {
+  const screen = await render(QueueStreamComponent);
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("cancel-first").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("queue: clear empties the queue", async () => {
+  const screen = await render(QueueStreamComponent);
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("clear-queue").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("queue: switchThread clears the queue", async () => {
+  const screen = await render(QueueStreamComponent);
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("switch-thread").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("message-count"))

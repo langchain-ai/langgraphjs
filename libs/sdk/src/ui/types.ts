@@ -1154,6 +1154,22 @@ export interface UseStreamOptions<
    */
   throttle?: number | boolean;
 
+  /**
+   * Enable client-side message queuing. When true, calls to `submit()`
+   * while the agent is busy will be queued and processed sequentially
+   * once the current stream completes.
+   * @default false
+   */
+  queue?: boolean;
+
+  /**
+   * Behavior when a queued submission fails.
+   * - `"continue"`: Skip the failed entry and process the next (default).
+   * - `"stop"`: Halt the queue. Remaining entries stay in `queue.entries`.
+   * @default "continue"
+   */
+  onQueueError?: "continue" | "stop";
+
   // Note: Agent-specific options are defined in their respective option interfaces:
   // - UseAgentStreamOptions: subagentToolNames
   // - UseDeepAgentStreamOptions: filterSubagentMessages
@@ -1278,6 +1294,8 @@ export type UseStreamCustomOptions<
   | "onStop"
   | "initialValues"
   | "throttle"
+  | "queue"
+  | "onQueueError"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 /**

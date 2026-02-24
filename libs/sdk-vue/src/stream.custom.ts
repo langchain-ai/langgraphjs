@@ -1,7 +1,8 @@
-import { onUnmounted, shallowRef, watch } from "vue";
+import { onUnmounted, ref, shallowRef, watch } from "vue";
 import {
   StreamManager,
   MessageTupleManager,
+  SubmitQueue,
   extractInterrupts,
   toMessageClass,
   type EventStreamEvent,
@@ -32,6 +33,13 @@ export function useStreamCustom<
     toMessage: toMessageClass,
   });
 
+  const submitQueue = new SubmitQueue<
+    StateType,
+    CustomSubmitOptions<StateType, ConfigurableType>
+  >();
+  const queueEntries = shallowRef(submitQueue.entries);
+  const queueSize = ref(submitQueue.size);
+
   const streamValues = shallowRef<StateType | null>(stream.values);
   const streamError = shallowRef<unknown>(stream.error);
   const isLoading = shallowRef(stream.isLoading);
@@ -42,7 +50,15 @@ export function useStreamCustom<
     isLoading.value = stream.isLoading;
   });
 
-  onUnmounted(() => unsubscribe());
+  const unsubQueue = submitQueue.subscribe(() => {
+    queueEntries.value = submitQueue.entries;
+    queueSize.value = submitQueue.size;
+  });
+
+  onUnmounted(() => {
+    unsubscribe();
+    unsubQueue();
+  });
 
   let threadId: string | null = options.threadId ?? null;
 
@@ -101,6 +117,7 @@ export function useStreamCustom<
     if (newThreadId !== threadId) {
       threadId = newThreadId;
       stream.clear();
+      submitQueue.clear();
     }
   }
 
@@ -108,7 +125,7 @@ export function useStreamCustom<
     return stream.stop(historyValues, { onStop: options.onStop });
   }
 
-  async function submit(
+  async function submitDirect(
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
@@ -173,6 +190,51 @@ export function useStreamCustom<
     );
   }
 
+  const submitting = ref(false);
+  submitQueue.setDrainHandler(async (entry) => {
+    submitting.value = true;
+    try {
+      await submitDirect(
+        entry.values as UpdateType | null | undefined,
+        entry.options as CustomSubmitOptions<StateType, ConfigurableType>,
+      );
+    } finally {
+      submitting.value = false;
+    }
+  });
+
+  watch(
+    () => ({
+      loading: isLoading.value,
+      submitting: submitting.value,
+      size: submitQueue.size,
+    }),
+    ({ loading, submitting: s, size }) => {
+      if (!loading && !s && size > 0) {
+        submitQueue.drain(options.onQueueError);
+      }
+    },
+  );
+
+  function submit(
+    values: UpdateType | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+  ) {
+    if (options.queue && (stream.isLoading || submitting.value)) {
+      submitQueue.enqueue(
+        values as Partial<StateType> | null | undefined,
+        submitOptions,
+      );
+      return;
+    }
+    submitting.value = true;
+    const result = submitDirect(values, submitOptions);
+    void Promise.resolve(result).finally(() => {
+      submitting.value = false;
+    });
+    return result;
+  }
+
   return {
     get values() {
       return streamValues.value ?? ({} as StateType);
@@ -184,6 +246,13 @@ export function useStreamCustom<
     stop,
     submit,
     switchThread,
+
+    queue: {
+      entries: queueEntries,
+      size: queueSize,
+      cancel: submitQueue.cancel,
+      clear: submitQueue.clear,
+    },
 
     get interrupts(): Interrupt<InterruptType>[] {
       if (

@@ -37,6 +37,8 @@ import type {
   InferSubagentNames,
   SubagentStateMap,
   BaseSubagentState,
+  QueueEntry,
+  QueueInterface,
 } from "@langchain/langgraph-sdk/ui";
 
 // Re-export types from ui/types.ts
@@ -70,6 +72,9 @@ export type {
   InferSubagentNames,
   SubagentStateMap,
   BaseSubagentState,
+  // Queue types
+  QueueEntry,
+  QueueInterface,
 };
 
 export interface UseStream<
@@ -173,6 +178,15 @@ export interface UseStream<
    * Pass `null` to reset to no thread (a new thread will be created on next submit).
    */
   switchThread: (newThreadId: string | null) => void;
+
+  /**
+   * Client-side submission queue. Pending state updates waiting to be submitted.
+   * Only populated when `queue: true` is set in options.
+   */
+  queue: QueueInterface<
+    StateType,
+    SubmitOptions<StateType, GetConfigurableType<Bag>>
+  >;
 }
 
 export type UseStreamCustom<
@@ -202,4 +216,13 @@ export type UseStreamCustom<
   ) => Promise<void>;
 
   switchThread: (newThreadId: string | null) => void;
+
+  /**
+   * Client-side submission queue. Pending state updates waiting to be submitted.
+   * Only populated when `queue: true` is set in options.
+   */
+  queue: QueueInterface<
+    StateType,
+    CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+  >;
 };

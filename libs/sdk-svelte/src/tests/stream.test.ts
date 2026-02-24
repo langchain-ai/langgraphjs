@@ -17,6 +17,7 @@ import SubgraphStream from "./components/SubgraphStream.svelte";
 import ToolCallsStream from "./components/ToolCallsStream.svelte";
 import InterruptsArray from "./components/InterruptsArray.svelte";
 import SwitchThread from "./components/SwitchThread.svelte";
+import QueueStream from "./components/QueueStream.svelte";
 
 const serverUrl = inject("serverUrl");
 
@@ -801,6 +802,104 @@ it("switchThread to null clears messages", async () => {
     .toHaveTextContent("2");
 
   await screen.getByTestId("switch-thread-null").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+});
+
+it("queue: submitting three times rapidly queues the latter two", async () => {
+  const screen = render(QueueStream, {
+    props: { apiUrl: serverUrl },
+  });
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+});
+
+it("queue: cancel removes a queued entry", async () => {
+  const screen = render(QueueStream, {
+    props: { apiUrl: serverUrl },
+  });
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("cancel-first").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("queue: clear empties the queue", async () => {
+  const screen = render(QueueStream, {
+    props: { apiUrl: serverUrl },
+  });
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("clear-queue").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("queue: switchThread clears the queue", async () => {
+  const screen = render(QueueStream, {
+    props: { apiUrl: serverUrl },
+  });
+
+  await screen.getByTestId("submit-three").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("switch-thread").click();
+
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("message-count"))

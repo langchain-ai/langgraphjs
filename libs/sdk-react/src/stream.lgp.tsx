@@ -31,6 +31,7 @@ import {
   MessageTupleManager,
   extractInterrupts,
   toMessageClass,
+  SubmitQueue,
   type EventStreamEvent,
   type AnyStreamOptions,
   type UseStreamOptions,
@@ -261,6 +262,20 @@ export function useStreamLGP<
       }),
   );
 
+  const [submitQueue] = useState(
+    () =>
+      new SubmitQueue<
+        StateType,
+        SubmitOptions<StateType, ConfigurableType>
+      >(),
+  );
+
+  useSyncExternalStore(
+    submitQueue.subscribe,
+    submitQueue.getSnapshot,
+    submitQueue.getSnapshot,
+  );
+
   const [trackStreamModeRef, trackStreamMode] = useTrackStreamMode();
   const callbackStreamMode = useCallbackStreamMode(options);
 
@@ -298,10 +313,11 @@ export function useStreamLGP<
       if (newThreadId !== threadIdRef.current) {
         threadIdRef.current = newThreadId;
         stream.clear();
+        submitQueue.clear();
         onThreadId(newThreadId);
       }
     },
-    [stream, onThreadId],
+    [stream, submitQueue, onThreadId],
   );
 
   const historyLimit =
@@ -386,7 +402,7 @@ export function useStreamLGP<
     });
 
   // --- TRANSPORT ---
-  const submit = async (
+  const submitDirect = async (
     values: UpdateType | null | undefined,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) => {
@@ -552,6 +568,52 @@ export function useStreamLGP<
       },
       { abortPrevious: shouldAbortPrevious },
     );
+  };
+
+  const submitDirectRef = useRef(submitDirect);
+  submitDirectRef.current = submitDirect;
+
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    submitQueue.setDrainHandler(async (entry) => {
+      submittingRef.current = true;
+      try {
+        await submitDirectRef.current(
+          entry.values as UpdateType | null | undefined,
+          entry.options,
+        );
+      } finally {
+        submittingRef.current = false;
+      }
+    });
+  }, [submitQueue]);
+
+  // Drain the queue when the stream finishes
+  useEffect(() => {
+    if (!stream.isLoading && !submittingRef.current && submitQueue.size > 0) {
+      submitQueue.drain(options.onQueueError);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.isLoading, submitQueue.size]);
+
+  const submit = async (
+    values: UpdateType | null | undefined,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+  ) => {
+    if (options.queue && (stream.isLoading || submittingRef.current)) {
+      submitQueue.enqueue(
+        values as Partial<StateType> | null | undefined,
+        submitOptions,
+      );
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      await submitDirect(values, submitOptions);
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   const joinStream = async (
@@ -784,6 +846,17 @@ export function useStreamLGP<
     getSubagentsByMessage(messageId: string) {
       trackStreamMode("updates", "messages-tuple");
       return stream.getSubagentsByMessage(messageId);
+    },
+
+    queue: {
+      get entries() {
+        return submitQueue.entries;
+      },
+      get size() {
+        return submitQueue.size;
+      },
+      cancel: submitQueue.cancel,
+      clear: submitQueue.clear,
     },
   };
 }
