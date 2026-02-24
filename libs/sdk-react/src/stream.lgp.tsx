@@ -293,6 +293,17 @@ export function useStreamLGP<
     }
   }, [threadId, stream]);
 
+  const switchThread = useCallback(
+    (newThreadId: string | null) => {
+      if (newThreadId !== threadIdRef.current) {
+        threadIdRef.current = newThreadId;
+        stream.clear();
+        onThreadId(newThreadId);
+      }
+    },
+    [stream, onThreadId],
+  );
+
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
     options.fetchStateHistory != null
@@ -646,6 +657,7 @@ export function useStreamLGP<
 
     stop,
     submit,
+    switchThread,
 
     joinStream,
 

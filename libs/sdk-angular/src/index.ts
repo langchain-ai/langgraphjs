@@ -596,6 +596,17 @@ export function useStreamLGP<
     stop,
     joinStream,
 
+    switchThread(newThreadId: string | null) {
+      const current = threadId() ?? null;
+      if (newThreadId !== current) {
+        threadId.set(newThreadId ?? undefined);
+        stream.clear();
+        if (newThreadId != null) {
+          options.onThreadId?.(newThreadId);
+        }
+      }
+    },
+
     get subagents() {
       return stream.getSubagents();
     },

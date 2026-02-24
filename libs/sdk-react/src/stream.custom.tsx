@@ -2,7 +2,13 @@
 
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   StreamManager,
   MessageTupleManager,
@@ -66,6 +72,16 @@ export function useStreamCustom<
     }
   }, [threadId, stream]);
 
+  const switchThread = useCallback(
+    (newThreadId: string | null) => {
+      if (newThreadId !== threadIdRef.current) {
+        threadIdRef.current = newThreadId;
+        stream.clear();
+      }
+    },
+    [stream],
+  );
+
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
     return Array.isArray(value[messagesKey])
@@ -107,7 +123,12 @@ export function useStreamCustom<
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) => {
-    let usableThreadId = threadId;
+    if (threadId !== threadIdRef.current) {
+      threadIdRef.current = threadId;
+      stream.clear();
+    }
+
+    let usableThreadId = threadIdRef.current;
 
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
@@ -176,6 +197,7 @@ export function useStreamCustom<
 
     stop,
     submit,
+    switchThread,
 
     get interrupts(): Interrupt<InterruptType>[] {
       if (

@@ -167,6 +167,12 @@ export interface UseStream<
       }) => boolean;
     },
   ) => Promise<void>;
+
+  /**
+   * Switch to a different thread, clearing the current stream state.
+   * Pass `null` to reset to no thread (a new thread will be created on next submit).
+   */
+  switchThread: (newThreadId: string | null) => void;
 }
 
 export type UseStreamCustom<
@@ -194,4 +200,6 @@ export type UseStreamCustom<
     values: GetUpdateType<Bag, StateType> | null | undefined,
     options?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
   ) => Promise<void>;
+
+  switchThread: (newThreadId: string | null) => void;
 };

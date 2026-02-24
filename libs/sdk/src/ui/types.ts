@@ -245,6 +245,14 @@ export interface StreamBase<
     ToolCall,
     keyof SubagentStates & string
   >[];
+
+  /**
+   * Switch to a different thread, clearing the current stream state.
+   * Pass `null` to reset to no thread (a new thread will be created on next submit).
+   *
+   * @param newThreadId - The thread ID to switch to, or `null` to start fresh.
+   */
+  switchThread: (newThreadId: string | null) => void;
 }
 
 /**

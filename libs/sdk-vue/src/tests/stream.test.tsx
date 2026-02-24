@@ -3,6 +3,7 @@ import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
 import { defineComponent, ref } from "vue";
 import { useStream } from "../index.js";
+import { useStreamCustom } from "../stream.custom.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1509,4 +1510,215 @@ it("exposes interrupts array", async () => {
   await expect
     .element(screen.getByTestId("interrupts-count"))
     .toHaveTextContent("1");
+});
+
+it("switchThread clears messages and starts fresh", async () => {
+  const transport = {
+    async stream(payload: any) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human`,
+                type: "human",
+                content: `Hello from ${threadId.slice(0, 8)}`,
+              },
+              {
+                id: `${threadId}-ai`,
+                type: "ai",
+                content: `Reply on ${threadId.slice(0, 8)}`,
+              },
+            ],
+          },
+        };
+      }
+      return generate();
+    },
+  };
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {thread.messages.map((msg, i: number) => (
+              <div key={(msg as any).id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <div data-testid="loading">
+            {thread.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="message-count">{thread.messages.length}</div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ type: "human", content: "Hi" }],
+              } as any)
+            }
+          >
+            Submit
+          </button>
+          <button
+            data-testid="switch-thread"
+            onClick={() => thread.switchThread(crypto.randomUUID())}
+          >
+            Switch Thread
+          </button>
+          <button
+            data-testid="switch-thread-null"
+            onClick={() => thread.switchThread(null)}
+          >
+            Switch to Null Thread
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello from");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Reply on");
+
+  const firstMessage = screen
+    .getByTestId("message-0")
+    .element()
+    .textContent?.trim();
+
+  await screen.getByTestId("switch-thread").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+
+  const secondMessage = screen
+    .getByTestId("message-0")
+    .element()
+    .textContent?.trim();
+  expect(secondMessage).not.toBe(firstMessage);
+});
+
+it("switchThread to null clears messages", async () => {
+  const transport = {
+    async stream(payload: any) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human`,
+                type: "human",
+                content: `Hello from ${threadId.slice(0, 8)}`,
+              },
+              {
+                id: `${threadId}-ai`,
+                type: "ai",
+                content: `Reply on ${threadId.slice(0, 8)}`,
+              },
+            ],
+          },
+        };
+      }
+      return generate();
+    },
+  };
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+      });
+
+      return () => (
+        <div>
+          <div data-testid="message-count">{thread.messages.length}</div>
+          <div data-testid="loading">
+            {thread.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ type: "human", content: "Hi" }],
+              } as any)
+            }
+          >
+            Submit
+          </button>
+          <button
+            data-testid="switch-thread-null"
+            onClick={() => thread.switchThread(null)}
+          >
+            Switch to Null Thread
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("switch-thread-null").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
 });

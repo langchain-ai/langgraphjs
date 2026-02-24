@@ -30,6 +30,7 @@ import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHis
 import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
 import { ToolCallsComponent } from "./components/ToolCallsStream.js";
 import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
+import { SwitchThreadComponent } from "./components/SwitchThread.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -645,4 +646,72 @@ it("exposes interrupts array", async () => {
   await expect
     .element(screen.getByTestId("interrupts-count"))
     .toHaveTextContent("1");
+});
+
+it("switchThread clears messages and starts fresh", async () => {
+  const screen = await render(SwitchThreadComponent);
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello from");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Reply on");
+
+  const firstMessage = screen
+    .getByTestId("message-0")
+    .element()
+    .textContent?.trim();
+
+  await screen.getByTestId("switch-thread").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+
+  const secondMessage = screen
+    .getByTestId("message-0")
+    .element()
+    .textContent?.trim();
+  expect(secondMessage).not.toBe(firstMessage);
+});
+
+it("switchThread to null clears messages", async () => {
+  const screen = await render(SwitchThreadComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("switch-thread-null").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
 });

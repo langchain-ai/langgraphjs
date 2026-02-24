@@ -73,6 +73,13 @@ export function useStreamCustom<
     stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
   }
 
+  function switchThread(newThreadId: string | null) {
+    if (newThreadId !== threadId) {
+      threadId = newThreadId;
+      stream.clear();
+    }
+  }
+
   function stop() {
     return stream.stop(historyValues, { onStop: options.onStop });
   }
@@ -81,6 +88,12 @@ export function useStreamCustom<
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
+    const currentThreadId = options.threadId ?? null;
+    if (currentThreadId !== threadId) {
+      threadId = currentThreadId;
+      stream.clear();
+    }
+
     let usableThreadId = threadId;
 
     stream.setStreamValues(() => {
@@ -191,6 +204,7 @@ export function useStreamCustom<
 
     stop,
     submit,
+    switchThread,
 
     interrupt,
     interrupts,

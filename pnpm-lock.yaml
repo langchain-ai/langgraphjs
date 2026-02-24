@@ -893,12 +893,12 @@ importers:
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../../libs/langgraph-core
-      '@langchain/langgraph-sdk':
-        specifier: workspace:*
-        version: link:../../libs/sdk
       '@langchain/openai':
         specifier: ^1.0.0
         version: 1.2.3(@langchain/core@1.1.27(openai@6.16.0(ws@8.19.0)(zod@4.3.5)))(ws@8.19.0)
+      '@langchain/react':
+        specifier: workspace:*
+        version: link:../../libs/sdk-react
       hono:
         specifier: ^4.8.2
         version: 4.11.7

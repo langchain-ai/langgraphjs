@@ -13,6 +13,7 @@ import { MultiSubmit } from "./components/MultiSubmit.js";
 import { NewThreadId } from "./components/NewThreadId.js";
 import { Branching } from "./components/Branching.js";
 import { OnRequest } from "./components/OnRequest.js";
+import { SwitchThread } from "./components/SwitchThread.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -648,4 +649,72 @@ it("interrupts (fetchStateHistory: true)", async () => {
   await expect
     .element(screen.getByTestId("message-3"))
     .toHaveTextContent("After interrupt");
+});
+
+it("switchThread clears messages and starts fresh", async () => {
+  const screen = await render(<SwitchThread />);
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello from");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Reply on");
+
+  const firstMessage = screen
+    .getByTestId("message-0")
+    .element()
+    .textContent?.trim();
+
+  await screen.getByTestId("switch-thread").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+
+  const secondMessage = screen
+    .getByTestId("message-0")
+    .element()
+    .textContent?.trim();
+  expect(secondMessage).not.toBe(firstMessage);
+});
+
+it("switchThread to null clears messages", async () => {
+  const screen = await render(<SwitchThread />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("switch-thread-null").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("0");
 });
