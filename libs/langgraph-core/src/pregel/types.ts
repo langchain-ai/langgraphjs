@@ -73,7 +73,7 @@ type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
   | StreamTasksCreateOutput<StreamValues>
   | StreamTasksResultOutput<Nodes, StreamUpdates>;
 
-type StreamToolsOutput =
+export type StreamToolsOutput =
   | {
       event: "on_tool_start";
       toolCallId?: string;

@@ -78,6 +78,7 @@ import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, Pregel, PregelOptions } from "../pregel/index.js";
+import type { StreamToolsOutput } from "../pregel/types.js";
 import {
   _applyWrites,
   _localRead,
@@ -12564,18 +12565,7 @@ graph TD;
       graph.stream({ messages: [] }, { streamMode: ["updates", "tools"] })
     );
 
-    type ToolsStreamChunk = [
-      "tools",
-      {
-        event:
-          | "on_tool_start"
-          | "on_tool_partial"
-          | "on_tool_end"
-          | "on_tool_error";
-        toolCallId: string;
-        name: string;
-      }
-    ];
+    type ToolsStreamChunk = ["tools", StreamToolsOutput];
     const toolsChunks = streamChunks.filter(
       (chunk): chunk is ToolsStreamChunk =>
         Array.isArray(chunk) &&
@@ -12592,30 +12582,34 @@ graph TD;
 
     const startPayload = toolsChunks.find(
       ([, p]) => p.event === "on_tool_start"
-    )?.[1] as
-      | { event?: string; name?: string; toolCallId?: string }
-      | undefined;
-    expect(startPayload).toMatchObject({
-      event: "on_tool_start",
-      name: "weather",
-    });
-    if (startPayload?.toolCallId != null) {
-      expect(startPayload.toolCallId).toBe("call_1234");
+    )?.[1];
+    expect(startPayload).toBeDefined();
+    if (startPayload) {
+      expect(startPayload).toMatchObject({
+        event: "on_tool_start",
+        name: "weather",
+      });
+      if (startPayload.event === "on_tool_start" && startPayload.toolCallId) {
+        expect(startPayload.toolCallId).toBe("call_1234");
+      }
     }
 
     const endPayload = toolsChunks.find(
       ([, p]) => p.event === "on_tool_end"
-    )?.[1] as
-      | { event?: string; name?: string; toolCallId?: string; output?: unknown }
-      | undefined;
-    expect(endPayload).toMatchObject({
-      event: "on_tool_end",
-      name: "weather",
-    });
-    if (endPayload?.toolCallId != null) {
-      expect(endPayload.toolCallId).toBe("call_1234");
+    )?.[1];
+    expect(endPayload).toBeDefined();
+    if (endPayload) {
+      expect(endPayload).toMatchObject({
+        event: "on_tool_end",
+        name: "weather",
+      });
+      if (endPayload.event === "on_tool_end") {
+        if (endPayload.toolCallId) {
+          expect(endPayload.toolCallId).toBe("call_1234");
+        }
+        expect(endPayload.output).toBeDefined();
+      }
     }
-    expect(endPayload?.output).toBeDefined();
   });
 
   it("streamMode without tools does not emit tools chunks", async () => {
