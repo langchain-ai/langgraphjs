@@ -7,6 +7,7 @@ import { EXAMPLES, getExample } from "../examples/registry";
  * Import all examples to register them
  */
 import "../examples/tool-calling-agent";
+import "../examples/tool-streaming";
 import "../examples/human-in-the-loop";
 import "../examples/summarization-agent";
 import "../examples/parallel-research";
