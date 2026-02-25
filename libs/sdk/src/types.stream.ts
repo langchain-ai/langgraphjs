@@ -1,5 +1,6 @@
 import type { Message } from "./types.messages.js";
 import type { Interrupt, Metadata, Config, ThreadTask } from "./schema.js";
+import { BagTemplate } from "./types.template.js";
 /**
 import type { SubgraphCheckpointsStreamEvent } from "./types.stream.subgraph.js";
  * Stream modes
@@ -278,18 +279,54 @@ export type ToolsStreamEvent = {
   data: ToolStreamEventData;
 };
 
-export type ToolProgress = {
-  toolCallId?: string;
-  name: string;
-  state: "starting" | "running" | "completed" | "error";
-  input?: unknown;
-  data?: unknown;
-  result?: unknown;
-  error?: unknown;
-};
-
 /** @internal */
 export type SubgraphToolsStreamEvent = AsSubgraph<ToolsStreamEvent>;
+
+export type ToolTypes = { input?: unknown; data?: unknown; result?: unknown };
+
+/** Derives a discriminated union of `ToolProgress` types from a ToolMap. */
+export type DeriveToolProgress<T extends Record<string, ToolTypes>> = {
+  [K in keyof T & string]: ToolProgress<
+    T[K]["data"],
+    T[K]["input"],
+    T[K]["result"],
+    K
+  >;
+}[keyof T & string];
+
+/** Derives a discriminated union of tool stream event data types from a ToolMap. */
+export type ToolStreamEventDataForMap<T extends Record<string, ToolTypes>> = {
+  [K in keyof T & string]: 
+    | { event: "on_tool_start"; toolCallId?: string; name: K; input: T[K]["input"] }
+    | { event: "on_tool_event"; toolCallId?: string; name: K; data: T[K]["data"] }
+    | { event: "on_tool_end";   toolCallId?: string; name: K; output: T[K]["result"] }
+    | { event: "on_tool_error"; toolCallId?: string; name: K; error: unknown };
+}[keyof T & string];
+
+export type ToolProgress<
+  TData = unknown,
+  TInput = unknown,
+  TResult = unknown,
+  TName extends string = string,
+> = {
+  toolCallId?: string;
+  name: TName;
+} & (
+  | { state: "starting"; input: TInput; data?: undefined; result?: undefined; error?: undefined }
+  | { state: "running"; data: TData; input?: TInput; result?: undefined; error?: undefined }
+  | { state: "completed"; result: TResult; input?: TInput; data?: TData; error?: undefined }
+  | { state: "error"; error: Error | unknown; input?: TInput; data?: TData; result?: undefined }
+);
+
+export type GetToolProgressType<Bag extends BagTemplate> =
+  Bag["ToolMap"] extends Record<string, ToolTypes>
+    ? DeriveToolProgress<Bag["ToolMap"]>
+    : ToolProgress;
+
+export type GetToolStreamEventData<Bag extends BagTemplate> =
+  Bag["ToolMap"] extends Record<string, ToolTypes>
+    ? ToolStreamEventDataForMap<Bag["ToolMap"]>
+    : ToolStreamEventData;
 
 type GetStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],

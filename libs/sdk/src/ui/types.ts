@@ -24,7 +24,7 @@ import type {
   CheckpointsStreamEvent,
   TasksStreamEvent,
   StreamMode,
-  ToolsStreamEvent,
+  GetToolStreamEventData,
 } from "../types.stream.js";
 import type {
   DefaultToolCall,
@@ -521,19 +521,52 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
     {};
 
 /**
- * Helper type to extract the input type from a DynamicStructuredTool's _call method.
- * This is more reliable than trying to infer from the schema directly because
- * DynamicStructuredTool has the input type baked into its _call signature.
+ * Extracts the input type from a tool by matching against its public `func`
+ * property, falling back to `schema` if `func` is not present.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferToolInput<T> = T extends {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _call: (arg: infer Args, ...rest: any[]) => any;
+  func: (arg: infer Args, ...rest: any[]) => any;
 }
   ? Args
   : T extends { schema: infer S }
   ? InferInteropZodInput<S>
   : never;
+
+/**
+ * Infers the yield type (streaming data) from a tool's `func` return type.
+ * Extracts the `AsyncGenerator` member from the return union before inferring `Y`.
+ * Returns `unknown` for non-generator tools.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolYield<T> = T extends { func: (...args: any[]) => infer R }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ? [Extract<R, AsyncGenerator<any, any, any>>] extends [never]
+    ? unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    : Extract<R, AsyncGenerator<any, any, any>> extends AsyncGenerator<infer Y, any, any>
+    ? Y
+    : unknown
+  : unknown;
+
+/**
+ * Infers the return/result type from a tool's `func` return type.
+ * Extracts the `AsyncGenerator` member first; for non-generator tools falls back
+ * to unwrapping `Promise<P>`. Returns `unknown` when neither matches.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolOutput<T> = T extends { func: (...args: any[]) => infer R }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ? [Extract<R, AsyncGenerator<any, any, any>>] extends [never]
+    ? R extends Promise<infer P>
+      ? P
+      : R
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    : Extract<R, AsyncGenerator<any, any, any>> extends AsyncGenerator<any, infer Out, any>
+    ? Out
+    : unknown
+  : unknown;
 
 /**
  * Helper type to check if a type is a literal string (not generic `string`).
@@ -546,15 +579,11 @@ type IsLiteralString<T> = string extends T
   : false;
 
 /**
- * Extract a tool call type from a single tool.
- * Works with tools created via `tool()` from `@langchain/core/tools`.
+ * Extracts a tool call type from a single tool created via `tool()`.
  *
- * This extracts the literal name type from DynamicStructuredTool's NameT parameter
- * and the args type from the _call method or schema's input property.
- *
- * Note: Only tools with literal string names (e.g., "get_weather") are included.
- * Tools with generic `name: string` are filtered out to ensure discriminated
- * union narrowing works correctly in TypeScript.
+ * Picks the literal name from `DynamicStructuredTool`'s `NameT` parameter and
+ * the args type from the tool's `func` or `schema`. Tools with generic
+ * `name: string` are filtered out so discriminated union narrowing works.
  */
 type ToolCallFromAgentTool<T> = T extends { name: infer N }
   ? N extends string
@@ -595,9 +624,65 @@ export type InferAgentToolCalls<T> =
       : ToolCallFromAgentTool<Tool>
     : DefaultToolCall;
 
+/**
+ * Extends tool call types with yield (data) and return (result) types from the
+ * tool's `func`. Used by `InferToolMapFromAgent` to build a fully-typed ToolMap.
+ */
+type InferAgentToolCallsWithStreaming<T> =
+  ExtractAgentConfig<T>["Tools"] extends readonly (infer Tool)[]
+    ? ToolCallFromAgentTool<Tool> extends infer TC
+      ? TC extends never
+        ? DefaultToolCall
+        : TC extends { name: infer N; args: infer A }
+        ? N extends string
+          ? { name: N; args: A; data?: InferToolYield<Tool>; result?: InferToolOutput<Tool> }
+          : DefaultToolCall
+        : DefaultToolCall
+      : DefaultToolCall
+    : DefaultToolCall;
+
 // ============================================================================
-// DeepAgent Type Extraction Helpers
+// Tool map inference from agent tools
 // ============================================================================
+
+/**
+ * Converts a union of object types into an intersection.
+ * Used to merge per-tool map entries into a single ToolMap object.
+ */
+type UnionToIntersection<U> =
+  (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void
+    ? I
+    : never;
+
+/**
+ * Maps a single tool call type to a one-key ToolMap entry.
+ * `D` and `R` default to `unknown` for non-generator tools.
+ */
+type ToolCallToMapEntry<TC> = TC extends {
+  name: infer N;
+  args: infer A;
+  data?: infer D;
+  result?: infer R;
+}
+  ? N extends string
+    ? { [K in N]: { input: A; data?: D; result?: R } }
+    : never
+  : never;
+
+/**
+ * Infers a complete ToolMap from an agent's tools, including input, data (yield),
+ * and result (return) types. Used by `InferBag` so `useStream<typeof agent>()`
+ * gets full type inference without a manual ToolMap.
+ *
+ * @example
+ * ```ts
+ * type Map = InferToolMapFromAgent<typeof agent>;
+ * // { search_flights: { input: { ... }; data?: StreamData; result?: string }; ... }
+ * ```
+ */
+export type InferToolMapFromAgent<T> = UnionToIntersection<
+  ToolCallToMapEntry<InferAgentToolCallsWithStreaming<T>>
+>;
 // These types enable extracting subagent type information from a DeepAgent instance
 // created with `createDeepAgent` from the deepagents package.
 // They are copied here to avoid circular dependencies (deepagents depends on this SDK).
@@ -1074,7 +1159,7 @@ export interface UseStreamOptions<
    * Callback that is called when a tool lifecycle event is received.
    */
   onToolEvent?: (
-    data: ToolsStreamEvent["data"],
+    data: GetToolStreamEventData<Bag>,
     options: {
       namespace: string[] | undefined;
       mutate: (

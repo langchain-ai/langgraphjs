@@ -162,8 +162,14 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 /**
  * A callback handler that implements stream_mode=tools.
  * Emits on_tool_start, on_tool_event, on_tool_end, on_tool_error events.
+ *
+ * @typeParam ChunkT - Type of chunks passed to handleToolEvent (e.g. ToolYieldT when tools use AsyncGenerator). Defaults to unknown.
+ * @typeParam OutputT - Type of the tool output passed to handleToolEnd (e.g. ToolOutputT). Defaults to unknown.
  */
-export class StreamToolsHandler extends BaseCallbackHandler {
+export class StreamToolsHandler<
+  ChunkT = unknown,
+  OutputT = unknown,
+> extends BaseCallbackHandler {
   name = "StreamToolsHandler";
 
   streamFn: (streamChunk: StreamChunk) => void;
@@ -208,7 +214,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     ]);
   }
 
-  handleToolEvent(chunk: unknown, runId: string) {
+  handleToolEvent(chunk: ChunkT, runId: string) {
     const info = this.runs[runId];
     if (!info) return;
 
@@ -224,7 +230,7 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     ]);
   }
 
-  handleToolEnd(output: unknown, runId: string) {
+  handleToolEnd(output: OutputT, runId: string) {
     const info = this.runs[runId];
     delete this.runs[runId];
     if (!info) return;

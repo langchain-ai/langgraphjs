@@ -11,6 +11,7 @@ import type {
   ToolsStreamEvent,
   UpdatesStreamEvent,
   ValuesStreamEvent,
+  GetToolStreamEventData,
 } from "../types.stream.js";
 import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
@@ -101,7 +102,7 @@ interface StreamManagerEventCallbacks<
     options: { namespace: string[] | undefined }
   ) => void;
   onToolEvent?: (
-    data: ToolsStreamEvent["data"],
+    data: GetToolStreamEventData<Bag>,
     options: {
       namespace: string[] | undefined;
       mutate: (
@@ -538,7 +539,10 @@ export class StreamManager<
         }
 
         if (this.matchEventType("tools", event, data)) {
-          options.callbacks.onToolEvent?.(data, { namespace, mutate });
+          options.callbacks.onToolEvent?.(
+            data as GetToolStreamEventData<Bag>,
+            { namespace, mutate }
+          );
         }
 
         // Handle values events - use startsWith to match both "values" and "values|tools:xxx"

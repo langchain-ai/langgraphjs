@@ -319,7 +319,13 @@ export function useStreamLGP<
         }
         case "on_tool_event": {
           if (existing) {
-            next.set(key, { ...existing, state: "running", data: data.data });
+            next.set(key, {
+              ...existing,
+              state: "running",
+              data: data.data,
+              result: undefined,
+              error: undefined,
+            });
           }
           break;
         }
@@ -329,13 +335,19 @@ export function useStreamLGP<
               ...existing,
               state: "completed",
               result: data.output,
+              error: undefined,
             });
           }
           break;
         }
         case "on_tool_error": {
           if (existing) {
-            next.set(key, { ...existing, state: "error", error: data.error });
+            next.set(key, {
+              ...existing,
+              state: "error",
+              error: data.error,
+              result: undefined,
+            });
           }
           break;
         }

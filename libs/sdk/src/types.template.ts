@@ -5,6 +5,7 @@
  * @template CustomEventType - Type for custom events
  * @template UpdateType - Type for the submit function updates
  * @template MetaType - Type for the meta property
+ * @template ToolMap - 
  */
 export type BagTemplate = {
   ConfigurableType?: Record<string, unknown>;
@@ -12,4 +13,9 @@ export type BagTemplate = {
   CustomEventType?: unknown;
   UpdateType?: unknown;
   MetaType?: unknown;
+  ToolMap?: Record<string, {
+    input?: unknown;
+    data?: unknown;
+    result?: unknown;
+  }>;
 };

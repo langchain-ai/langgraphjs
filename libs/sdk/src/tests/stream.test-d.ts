@@ -44,6 +44,7 @@ import type {
   InferSubagentState,
   InferSubagentNames,
   SubagentStateMap,
+  InferToolMapFromAgent,
 } from "../ui/types.js";
 import type { ResolveStreamOptions } from "../ui/stream/index.js";
 
@@ -691,5 +692,136 @@ describe("useStream type inference integration", () => {
       "light" | "dark"
     >();
     expectTypeOf(stream.values.preferences.language).toEqualTypeOf<string>();
+  });
+});
+
+// ============================================================================
+// Type Tests: InferToolMapFromAgent (full tool type inference)
+// ============================================================================
+
+describe("InferToolMapFromAgent", () => {
+  test("backward compat: existing agent infers input; data/result unknown when tool has no generator", () => {
+    type Map = InferToolMapFromAgent<typeof simpleAgent>;
+
+    expectTypeOf<Map>().toHaveProperty("get_weather");
+    expectTypeOf<Map["get_weather"]>().toHaveProperty("input");
+    expectTypeOf<Map["get_weather"]["input"]>().toEqualTypeOf<{
+      location: string;
+    }>();
+    // Without upstream ToolYieldT/ToolOutputT, data and result stay unknown
+    expectTypeOf<Map["get_weather"]>().toHaveProperty("data");
+    expectTypeOf<Map["get_weather"]>().toHaveProperty("result");
+  });
+
+  test("multi-tool agent infers all tool entries with input", () => {
+    type Map = InferToolMapFromAgent<typeof multiToolAgent>;
+
+    expectTypeOf<Map>().toHaveProperty("get_weather");
+    expectTypeOf<Map>().toHaveProperty("search_web");
+    expectTypeOf<Map>().toHaveProperty("send_email");
+    expectTypeOf<Map["get_weather"]["input"]>().toEqualTypeOf<{
+      location: string;
+    }>();
+    expectTypeOf<Map["search_web"]["input"]>().toMatchTypeOf<{
+      query: string;
+      maxResults?: number;
+    }>();
+    expectTypeOf<Map["send_email"]["input"]>().toEqualTypeOf<{
+      to: string;
+      subject: string;
+      body: string;
+    }>();
+  });
+
+  test("useStream with agent has toolProgress typed from inferred ToolMap", () => {
+    const stream = useStream<typeof simpleAgent>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream).toHaveProperty("toolProgress");
+    const progress = stream.toolProgress[0];
+
+    // name must be a literal union, not generic `string`
+    if (progress) {
+      expectTypeOf(progress.name).toEqualTypeOf<"get_weather">();
+    }
+
+    if (progress && progress.name === "get_weather" && progress.state === "running") {
+      expectTypeOf(progress.data).toMatchTypeOf<unknown>();
+    }
+    if (progress && progress.name === "get_weather" && progress.state === "completed") {
+      expectTypeOf(progress.result).toMatchTypeOf<unknown>();
+    }
+  });
+
+  test("when tool func returns AsyncGenerator<Y, R>, inferred map has data and result types", () => {
+    type MockStreamingTool = {
+      name: "streaming_tool";
+      func: (arg: { query: string }) => AsyncGenerator<
+        { progress: number },
+        string
+      >;
+    };
+    type MockAgentWithStreamingTool = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [MockStreamingTool];
+      };
+    };
+
+    type Map = InferToolMapFromAgent<MockAgentWithStreamingTool>;
+
+    expectTypeOf<Map>().toHaveProperty("streaming_tool");
+    expectTypeOf<Map["streaming_tool"]["input"]>().toMatchTypeOf<{
+      query: string;
+    }>();
+    expectTypeOf<Map["streaming_tool"]["data"]>().toMatchTypeOf<
+      { progress: number } | undefined
+    >();
+    expectTypeOf<Map["streaming_tool"]["result"]>().toMatchTypeOf<
+      string | undefined
+    >();
+  });
+
+  test("useStream with streaming-tool agent narrows data and result by name", () => {
+    type MockStreamingTool = {
+      name: "live_search";
+      func: (arg: { query: string }) => AsyncGenerator<
+        { progress: number; partial: string[] },
+        string
+      >;
+    };
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: undefined;
+        Context: unknown;
+        Middleware: readonly [];
+        Tools: readonly [MockStreamingTool];
+      };
+    };
+
+    const stream = useStream<MockAgent>({
+      assistantId: "agent",
+    });
+
+    const tp = stream.toolProgress[0];
+
+    if (tp) {
+      expectTypeOf(tp.name).toEqualTypeOf<"live_search">();
+    }
+
+    if (tp && tp.name === "live_search" && tp.state === "running") {
+      expectTypeOf(tp.data).toEqualTypeOf<
+        { progress: number; partial: string[] } | undefined
+      >();
+    }
+
+    if (tp && tp.name === "live_search" && tp.state === "completed") {
+      expectTypeOf(tp.result).toEqualTypeOf<string | undefined>();
+    }
   });
 });

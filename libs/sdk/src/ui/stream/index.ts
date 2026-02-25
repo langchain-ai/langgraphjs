@@ -12,10 +12,12 @@
  */
 
 import type { DefaultToolCall } from "../../types.messages.js";
+import type { ToolTypes } from "../../types.stream.js";
 import type { BagTemplate } from "../../types.template.js";
 import type {
   InferAgentState,
   InferAgentToolCalls,
+  InferToolMapFromAgent,
   SubagentStateMap,
   DefaultSubagentStates,
   AgentTypeConfigLike,
@@ -249,14 +251,33 @@ export type ResolveStreamOptions<
 // Convenience Type Aliases
 // ============================================================================
 
+/** Narrows `InferToolMapFromAgent<T>` to a valid `Record<string, ToolTypes>`. */
+type SafeToolMap<T> = Extract<InferToolMapFromAgent<T>, Record<string, ToolTypes>>;
+
 /**
- * Infer the Bag type from an agent, defaulting to the provided Bag.
+ * Merges the inferred ToolMap from an agent with the user-provided Bag.
+ * User-supplied ToolMap entries take precedence.
  *
- * Currently returns the provided Bag for all types.
- * Can be extended in the future to extract Bag from agent types.
+ * Uses indexed access `B["ToolMap"]` rather than `B extends { ToolMap: infer BM }`
+ * to avoid intersecting with the optional `Record<string, ToolTypes> | undefined`
+ * from `BagTemplate`, which would widen literal keys to `string`.
+ */
+type MergeBag<T, B extends BagTemplate> =
+  B["ToolMap"] extends Record<string, ToolTypes>
+    ? Omit<B, "ToolMap"> & { ToolMap: SafeToolMap<T> & B["ToolMap"] }
+    : Omit<B, "ToolMap"> & { ToolMap: SafeToolMap<T> };
+
+/**
+ * Infers the Bag type from an agent, defaulting to the provided Bag.
+ *
+ * When `T` is an agent, merges in a ToolMap inferred from the agent's tools
+ * (input, data, and result types). The user's Bag is preserved and can
+ * override entries. When `T` has no typed tools or is not an agent, returns `B` as-is.
  */
 export type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
   "~agentTypes": unknown;
 }
-  ? BagTemplate
+  ? keyof InferToolMapFromAgent<T> extends never
+    ? B
+    : MergeBag<T, B>
   : B;
