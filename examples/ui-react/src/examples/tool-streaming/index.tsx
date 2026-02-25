@@ -53,6 +53,12 @@ export function ToolStreaming() {
     (tp) => tp.state === "starting" || tp.state === "running"
   );
 
+  const lastMessage = stream.messages[stream.messages.length - 1];
+  const waitingForResponse = lastMessage?.type === "human";
+  const showLoading =
+    (stream.isLoading || waitingForResponse) &&
+    activeProgress.length === 0;
+
   return (
     <div className="h-full flex flex-col">
       <main ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -78,11 +84,7 @@ export function ToolStreaming() {
                 />
               ))}
 
-              {stream.isLoading &&
-                !stream.messages.some(
-                  (m) => m.type === "ai" && hasContent(m)
-                ) &&
-                activeProgress.length === 0 && <LoadingIndicator />}
+              {showLoading && <LoadingIndicator />}
             </div>
           )}
         </div>
