@@ -86,6 +86,7 @@ import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
+  StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
 import type {
@@ -449,6 +450,7 @@ export class Pregel<
    * - "updates": Streams state updates after each step
    * - "messages": Streams messages from within nodes
    * - "custom": Streams custom events from within nodes
+   * - "tools": Streams tool-call lifecycle events (on_tool_start, on_tool_event, on_tool_end, on_tool_error) from LLM tool execution
    * - "debug": Streams events related to the execution of the graph - useful for tracing & debugging graph execution
    */
   streamMode: StreamMode[] = ["values"];
@@ -2044,6 +2046,23 @@ export class Pregel<
       } else {
         const copiedCallbacks = callbacks.copy();
         copiedCallbacks.addHandler(messageStreamer, true);
+        config.callbacks = copiedCallbacks;
+      }
+    }
+
+    // set up tools stream mode
+    if (streamMode.includes("tools")) {
+      const toolStreamer = new StreamToolsHandler((chunk) =>
+        stream.push(chunk)
+      );
+      const { callbacks } = config;
+      if (callbacks === undefined) {
+        config.callbacks = [toolStreamer];
+      } else if (Array.isArray(callbacks)) {
+        config.callbacks = callbacks.concat(toolStreamer);
+      } else {
+        const copiedCallbacks = callbacks.copy();
+        copiedCallbacks.addHandler(toolStreamer, true);
         config.callbacks = copiedCallbacks;
       }
     }

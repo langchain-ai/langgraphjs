@@ -94,6 +94,9 @@ const threads = (() => {
 const server = createEmbedServer({
   graph: {
     agent: await import("./graphs/agent.mjs").then((m) => m.graph),
+    agent_with_tools: await import("./graphs/agent_with_tools.mjs").then(
+      (m) => m.graph
+    ),
     nested: await import("./graphs/nested.mjs").then((m) => m.graph),
     weather: await import("./graphs/weather.mjs").then((m) => m.graph),
     error: await import("./graphs/error.mjs").then((m) => m.graph),
@@ -1327,6 +1330,31 @@ it("tasks / checkpoints stream mode", async () => {
       },
     },
   ]);
+});
+
+it("tools stream mode emits tool lifecycle events", async () => {
+  const thread = await client.threads.create();
+
+  const stream = await gatherIterator(
+    client.runs.stream(thread.thread_id, "agent_with_tools", {
+      input: { messages: [{ role: "human", content: "input" }] },
+      streamMode: ["values", "tools"],
+      config: globalConfig,
+    })
+  );
+
+  const toolsEvents = stream.filter(
+    (e) =>
+      (e.event === "tools" || String(e.event).startsWith("tools|")) &&
+      typeof e.data === "object" &&
+      e.data != null &&
+      "event" in e.data
+  );
+
+  expect(toolsEvents.length).toBeGreaterThanOrEqual(1);
+  const events = toolsEvents.map((e) => (e.data as { event: string }).event);
+  expect(events).toContain("on_tool_start");
+  expect(events).toContain("on_tool_end");
 });
 
 describe("runtime API", () => {

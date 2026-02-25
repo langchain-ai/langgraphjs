@@ -96,7 +96,7 @@
     }
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.16",
+    "@langchain/core": "^1.1.28",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",

@@ -2674,6 +2674,51 @@ describe("ToolNode", () => {
     );
   });
 
+  // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)
+  it.skip("passes toolCallId to handleToolStart when invoking a tool", async () => {
+    let capturedToolCallId: string | undefined;
+    const recordingTool = tool(async (_args: { x: number }) => "ok", {
+      name: "recorder",
+      description: "Records config",
+      schema: z.object({ x: z.number() }),
+    });
+    const toolNode = new ToolNode([recordingTool]);
+    await toolNode.invoke(
+      [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "recorder",
+              args: { x: 1 },
+              id: "call_abc123",
+              type: "tool_call",
+            },
+          ],
+        }),
+      ],
+      {
+        callbacks: [
+          {
+            handleToolStart(
+              _tool: unknown,
+              _input: string,
+              _runId: string,
+              _parentRunId?: string,
+              _tags?: string[],
+              _metadata?: Record<string, unknown>,
+              _runName?: string,
+              toolCallId?: string
+            ) {
+              capturedToolCallId = toolCallId;
+            },
+          },
+        ],
+      }
+    );
+    expect(capturedToolCallId).toBe("call_abc123");
+  });
+
   it("Should work when nested with a callback manager passed", async () => {
     const toolNode = new ToolNode([new SearchAPI()]);
     const wrapper = RunnableLambda.from(async (_) => {

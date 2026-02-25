@@ -41,6 +41,7 @@
   },
   "pnpm": {
     "overrides": {
+      "@langchain/core": "^1.1.28",
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",
