@@ -47,16 +47,33 @@ const DEFAULT_CONFIG = {
   bgColor: "bg-neutral-500/20",
 };
 
+/** Shape of streamed progress data yielded by the tool-streaming agent tools */
+export interface ToolProgressStreamData {
+  message?: string;
+  progress?: number;
+  completed?: string[];
+}
+
 interface ToolProgressCardProps {
   toolProgress: ToolProgress;
+}
+
+function getProgressData(data: unknown): ToolProgressStreamData | undefined {
+  if (data == null || typeof data !== "object") return undefined;
+  const d = data as Record<string, unknown>;
+  return {
+    message: typeof d.message === "string" ? d.message : undefined,
+    progress: typeof d.progress === "number" ? d.progress : undefined,
+    completed: Array.isArray(d.completed)
+      ? (d.completed as string[])
+      : undefined,
+  };
 }
 
 export function ToolProgressCard({ toolProgress }: ToolProgressCardProps) {
   const config = TOOL_CONFIG[toolProgress.name] ?? DEFAULT_CONFIG;
   const Icon = config.icon;
-  const data = toolProgress.data as
-    | { message?: string; progress?: number; completed?: string[] }
-    | undefined;
+  const data = getProgressData(toolProgress.data);
   const progress = Math.min(
     100,
     Math.max(0, Math.round((data?.progress ?? 0) * 100))
