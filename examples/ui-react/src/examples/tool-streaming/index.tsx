@@ -54,10 +54,14 @@ export function ToolStreaming() {
   );
 
   const lastMessage = stream.messages[stream.messages.length - 1];
-  const waitingForResponse = lastMessage?.type === "human";
+  const waitingForFirstResponse = lastMessage?.type === "human";
+  const hasAiContent = stream.messages.some(
+    (m) => m.type === "ai" && hasContent(m)
+  );
   const showLoading =
-    (stream.isLoading || waitingForResponse) &&
-    activeProgress.length === 0;
+    (stream.isLoading || waitingForFirstResponse) &&
+    activeProgress.length === 0 &&
+    !hasAiContent;
 
   return (
     <div className="h-full flex flex-col">
