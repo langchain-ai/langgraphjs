@@ -61,6 +61,7 @@ export {
   type CommandParams,
   isCommand,
   Overwrite,
+  type OverwriteValue,
   START,
   END,
   INTERRUPT,
