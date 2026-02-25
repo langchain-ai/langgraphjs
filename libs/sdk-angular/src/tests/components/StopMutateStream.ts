@@ -6,7 +6,6 @@ import { useStream } from "../../index.js";
 const serverUrl = inject("serverUrl");
 
 @Component({
-  standalone: true,
   template: `
     <div>
       <div data-testid="stopped-status">

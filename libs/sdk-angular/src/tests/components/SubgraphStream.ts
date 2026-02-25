@@ -21,7 +21,6 @@ export function resetSubgraphCalls() {
 }
 
 @Component({
-  standalone: true,
   template: `
     <div>
       <div data-testid="messages">

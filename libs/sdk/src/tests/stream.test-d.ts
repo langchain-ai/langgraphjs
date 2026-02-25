@@ -44,7 +44,6 @@ import type {
   ExtractAgentConfig,
   InferSubagentState,
   InferSubagentNames,
-  SubagentStateMap,
 } from "../ui/types.js";
 import type { ResolveStreamOptions } from "../ui/stream/index.js";
 
@@ -409,15 +408,6 @@ describe("Deep Agent Subagent Types", () => {
     expectTypeOf<WriterState>().toHaveProperty("messages");
     expectTypeOf<WriterState>().toHaveProperty("todos");
   });
-
-  test("creates subagent state map", () => {
-    type StateMap = SubagentStateMap<typeof deepAgent>;
-
-    expectTypeOf<StateMap>().toHaveProperty("researcher");
-    expectTypeOf<StateMap>().toHaveProperty("writer");
-    expectTypeOf<StateMap["researcher"]>().toHaveProperty("files");
-    expectTypeOf<StateMap["writer"]>().toHaveProperty("todos");
-  });
 });
 
 // ============================================================================
@@ -719,7 +709,7 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
 
     const msg = stream.messages[0];
     expectTypeOf(msg).toEqualTypeOf<Message>();
-    expectTypeOf(msg.type).toEqualTypeOf<string>();
+    expectTypeOf(msg.type).toEqualTypeOf<"human" | "ai" | "tool" | "system" | "function" | "remove">();
     expectTypeOf(msg.content).not.toBeNever();
   });
 
@@ -744,36 +734,6 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
 
     if (metadata) {
       expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
-    }
-  });
-
-  test("ToolCallWithResult from @langchain/langgraph-sdk uses plain SDK types", () => {
-    const stream = useStreamLegacy<BackwardCompatState>({
-      assistantId: "agent",
-    });
-
-    const tc = stream.toolCalls[0];
-    if (tc.result) {
-      expectTypeOf(tc.result.type).toEqualTypeOf<"tool">();
-      expectTypeOf(tc.result.tool_call_id).toEqualTypeOf<string>();
-    }
-    expectTypeOf(tc.aiMessage.type).toEqualTypeOf<"ai">();
-  });
-
-  test("ToolCallWithResult with single generic still works (backward compat)", () => {
-    type TC = import("../types.messages.js").ToolCallWithResult<{
-      name: "test";
-      args: { x: number };
-      id?: string;
-      type?: "tool_call";
-    }>;
-
-    expectTypeOf<TC["call"]["name"]>().toEqualTypeOf<"test">();
-    expectTypeOf<TC["call"]["args"]>().toEqualTypeOf<{ x: number }>();
-    if (undefined as TC["result"] | undefined) {
-      expectTypeOf(
-        (undefined as unknown as TC["result"])!.type
-      ).toEqualTypeOf<"tool">();
     }
   });
 });

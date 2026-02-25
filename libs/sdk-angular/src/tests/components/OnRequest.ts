@@ -27,7 +27,6 @@ const client = new Client({
 });
 
 @Component({
-  standalone: true,
   template: `
     <div>
       <div data-testid="messages">
