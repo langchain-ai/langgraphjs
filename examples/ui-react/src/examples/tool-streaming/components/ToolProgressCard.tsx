@@ -78,9 +78,7 @@ export function ToolProgressCard({ toolProgress }: ToolProgressCardProps) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium text-white">
-                {config.label}
-              </h4>
+              <h4 className="text-sm font-medium text-white">{config.label}</h4>
               <Loader2
                 className={`w-3.5 h-3.5 ${config.accentColor} animate-spin`}
               />

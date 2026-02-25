@@ -44,7 +44,9 @@ const searchFlightsTool = tool(
       departure: departureDate,
       destination,
       price: Math.floor(Math.random() * 400) + 200,
-      duration: `${Math.floor(Math.random() * 8) + 3}h ${Math.floor(Math.random() * 50) + 10}m`,
+      duration: `${Math.floor(Math.random() * 8) + 3}h ${
+        Math.floor(Math.random() * 50) + 10
+      }m`,
       stops: Math.random() > 0.5 ? 1 : 0,
     }));
 
@@ -165,9 +167,7 @@ const planItineraryTool = tool(
         meals: {
           lunch: `Local ${destination} restaurant`,
           dinner: `${
-            ["Traditional", "Modern", "Fusion"][
-              Math.floor(Math.random() * 3)
-            ]
+            ["Traditional", "Modern", "Fusion"][Math.floor(Math.random() * 3)]
           } dining`,
         },
       });
@@ -187,11 +187,7 @@ const planItineraryTool = tool(
 
 export const agent = createAgent({
   model,
-  tools: [
-    searchFlightsTool,
-    checkHotelAvailabilityTool,
-    planItineraryTool,
-  ],
+  tools: [searchFlightsTool, checkHotelAvailabilityTool, planItineraryTool],
   checkpointer: new MemorySaver(),
   systemPrompt: `You are a helpful travel planning assistant. When users ask about travel, use the available tools to search for flights, check hotel availability, and plan itineraries. Always use the tools rather than making up information. Provide a helpful summary after receiving tool results.`,
 });
