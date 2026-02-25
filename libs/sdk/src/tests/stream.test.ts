@@ -164,6 +164,29 @@ describe("Client streaming with retry", () => {
       expect(body.assistant_id).toBe("assistant-1");
     });
 
+    test("passes streamMode including tools in request body", async () => {
+      const chunks = [{ id: "1", event: "values", data: {} }];
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(createSSEResponseBody(chunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      );
+
+      const stream = client.runs.stream("thread-1", "assistant-1", {
+        input: { message: "test" },
+        streamMode: ["values", "tools"],
+      });
+
+      await gatherStream(stream);
+
+      const [, init] = mockFetch.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.stream_mode).toContain("tools");
+      expect(body.stream_mode).toContain("values");
+    });
+
     test("calls onRunCreated callback", async () => {
       const chunks = [{ id: "1", event: "values", data: {} }];
 

@@ -28,7 +28,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.16",
+    "@langchain/core": "^1.1.28",
     "@langchain/scripts": "^0.1.4",
     "deepagents": "^1.5.0",
     "langchain": "^1.2.11",
