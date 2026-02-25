@@ -4,7 +4,7 @@ import { ReducedValue } from "./reduced.js";
 import { UntrackedValue } from "./untracked.js";
 import { StateGraph } from "../../graph/state.js";
 import { StateSchema } from "../schema.js";
-import { END, START } from "../../constants.js";
+import { END, START, type OverwriteValue } from "../../constants.js";
 
 describe("ReducedValue", () => {
   it("should store value and input schemas", () => {
@@ -122,7 +122,9 @@ describe("ReducedValue", () => {
       expectTypeOf<State["count"]>().toEqualTypeOf<number>();
 
       // Verify Update type has items as string | undefined (the input type, optional)
-      expectTypeOf<Update["items"]>().toEqualTypeOf<string | undefined>();
+      expectTypeOf<Update["items"]>().toEqualTypeOf<
+        string | OverwriteValue<string[]> | undefined
+      >();
       expectTypeOf<Update["count"]>().toEqualTypeOf<
         number | undefined | undefined
       >();

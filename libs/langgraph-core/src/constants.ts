@@ -198,6 +198,112 @@ export function _isSend(x: unknown): x is Send {
   return x instanceof Send;
 }
 
+export const OVERWRITE = "__overwrite__";
+
+/**
+ * An object representing a direct overwrite of a value for a channel.
+ * Used to signal that the channel value should be replaced with the given value,
+ * bypassing any reducer or binary operator logic.
+ *
+ * @template ValueType - The type of the value being overwritten.
+ * @property {ValueType} [OVERWRITE] - The value to directly set.
+ *
+ * @example
+ * const overwriteObj: OverwriteValue<number> = { __overwrite__: 123 };
+ */
+export interface OverwriteValue<ValueType> {
+  [OVERWRITE]: ValueType;
+}
+
+/**
+ * Bypass a reducer and write the wrapped value directly to a
+ * {@link BinaryOperatorAggregate} channel.
+ *
+ * Receiving multiple `Overwrite` values for the same channel in a single
+ * super-step will raise an {@link InvalidUpdateError}.
+ *
+ * @example
+ * ```typescript
+ * import { Annotation, StateGraph, Overwrite } from "@langchain/langgraph";
+ *
+ * const State = Annotation.Root({
+ *   messages: Annotation<string[]>({
+ *     reducer: (a, b) => a.concat(b),
+ *     default: () => [],
+ *   }),
+ * });
+ *
+ * const replaceMessages = (_state: typeof State.State) => {
+ *   return { messages: new Overwrite(["replacement"]) };
+ * };
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Overwrite<ValueType = any> implements OverwriteValue<ValueType> {
+  lg_name = "Overwrite";
+
+  readonly [OVERWRITE]: ValueType;
+
+  constructor(value: ValueType) {
+    this[OVERWRITE] = value;
+  }
+
+  get value(): ValueType {
+    return this[OVERWRITE];
+  }
+
+  toJSON() {
+    return { [OVERWRITE]: this[OVERWRITE] };
+  }
+
+  static isInstance<ValueType>(value: unknown): value is Overwrite<ValueType> {
+    if (!value || typeof value !== "object") return false;
+    if (OVERWRITE in value) return true;
+    if ("lg_name" in value && value.lg_name === "Overwrite") return true;
+    return false;
+  }
+}
+
+/**
+ * Helper function to detect and extract the value from an Overwrite wrapper,
+ * supporting both the Overwrite class instance and the serialized object format.
+ *
+ * Use to check if a provided value represents an Overwrite: returns the
+ * unwrapped value if so, or undefined otherwise.
+ *
+ * - If the value is an Overwrite instance (preferred API), return its `.value`.
+ * - If the value is a wire-format object ({ [OVERWRITE]: value }), extract it.
+ * - Otherwise, returns undefined.
+ *
+ * @template ValueType - The expected type of the Overwrite value.
+ * @param value - The value to check (may be anything).
+ * @returns The unwrapped value if value is an Overwrite, or undefined otherwise.
+ * @internal
+ */
+export function _getOverwriteValue<ValueType>(
+  value: unknown
+): [true, ValueType] | [false, undefined] {
+  if (typeof value === "object" && value !== null && OVERWRITE in value) {
+    return [true, (value as Record<string, ValueType>)[OVERWRITE]];
+  }
+  return [false, undefined];
+}
+
+/**
+ * Type guard to check if a value is an Overwrite value -- either the class
+ * instance or the wire format object.
+ *
+ * @template ValueType - The expected type of the Overwrite value.
+ * @param value - The value to check (may be anything).
+ * @returns `true` if the value is an Overwrite value, `false` otherwise.
+ * @internal
+ */
+export function _isOverwriteValue<ValueType>(
+  value: unknown
+): value is OverwriteValue<ValueType> {
+  return _getOverwriteValue<ValueType>(value)[0];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Interrupt<Value = any> = {
   id?: string;

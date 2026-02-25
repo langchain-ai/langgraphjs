@@ -60,6 +60,7 @@ export {
   Command,
   type CommandParams,
   isCommand,
+  Overwrite,
   START,
   END,
   INTERRUPT,
