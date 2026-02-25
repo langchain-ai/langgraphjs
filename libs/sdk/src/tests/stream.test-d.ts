@@ -709,7 +709,9 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
 
     const msg = stream.messages[0];
     expectTypeOf(msg).toEqualTypeOf<Message>();
-    expectTypeOf(msg.type).toEqualTypeOf<"human" | "ai" | "tool" | "system" | "function" | "remove">();
+    expectTypeOf(msg.type).toEqualTypeOf<
+      "human" | "ai" | "tool" | "system" | "function" | "remove"
+    >();
     expectTypeOf(msg.content).not.toBeNever();
   });
 
