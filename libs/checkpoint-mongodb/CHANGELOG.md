@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.2.0
+
+### Minor Changes
+
+- [#1991](https://github.com/langchain-ai/langgraphjs/pull/1991) [`38db67f`](https://github.com/langchain-ai/langgraphjs/commit/38db67f3599daffcbec5d04f16f36e69abe22e08) Thanks [@vanb](https://github.com/vanb)! - Add optional `enableTimestamps` parameter to `MongoDBSaver` that sets an `upserted_at` date via MongoDB's `$currentDate` operator on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging.
+
 ## 1.1.7
 
 ### Patch Changes
