@@ -1307,11 +1307,11 @@ export type CustomSubmitOptions<
 >;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable @typescript-eslint/no-explicit-any */
 type ExtractAsyncGenTypes<T> = T extends AsyncGenerator<infer Y, infer R, any>
   ? { data: Y | undefined; result: R | undefined }
   : { data: unknown; result: unknown };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ExtractToolStreamTypes<T> = T extends { func: (...args: any[]) => infer R }
   ? ExtractAsyncGenTypes<
       Extract<R, AsyncGenerator<any, any, any>>
@@ -1321,6 +1321,7 @@ type ExtractToolStreamTypes<T> = T extends { func: (...args: any[]) => infer R }
       : G
     : { data: unknown; result: unknown }
   : { data: unknown; result: unknown };
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 type ToolMapEntryFromTool<T> = T extends { name: infer N }
   ? N extends string
