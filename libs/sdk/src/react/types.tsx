@@ -3,7 +3,7 @@ import type { Client } from "../client.js";
 
 import type { ThreadState } from "../schema.js";
 import type { Message } from "../types.messages.js";
-import type { StreamMode, ToolProgress } from "../types.stream.js";
+import type { GetToolProgressType, StreamMode } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
 import type {
   GetUpdateType,
@@ -137,7 +137,7 @@ export interface UseStream<
   /**
    * Progress of tool executions during streaming.
    */
-  toolProgress: ToolProgress[];
+  toolProgress: GetToolProgressType<Bag>[];
 
   /**
    * LangGraph SDK client used to send request and receive responses.

@@ -21,6 +21,7 @@ import type {
   AgentTypeConfigLike,
   DeepAgentTypeConfigLike,
   UseStreamOptions,
+  InferToolMapFromAgent,
 } from "../types.js";
 
 // Import for internal use
@@ -258,5 +259,5 @@ export type ResolveStreamOptions<
 export type InferBag<T, B extends BagTemplate = BagTemplate> = T extends {
   "~agentTypes": unknown;
 }
-  ? BagTemplate
+  ? Omit<BagTemplate, "ToolMap"> & { ToolMap: InferToolMapFromAgent<T> }
   : B;
