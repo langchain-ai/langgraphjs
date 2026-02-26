@@ -44,9 +44,15 @@ type Inspect<T, TDepth extends Array<0> = []> = TDepth extends [0, 0, 0]
   ? {
       [K in keyof T]: 0 extends 1 & T[K]
         ? T[K]
-        : Equals<MatchBaseMessageArray<StripOverwrite<T[K]>>, BaseMessage[]> extends true
+        : Equals<
+            MatchBaseMessageArray<StripOverwrite<T[K]>>,
+            BaseMessage[]
+          > extends true
         ? BaseMessage[]
-        : Equals<MatchBaseMessage<StripOverwrite<T[K]>>, BaseMessage> extends true
+        : Equals<
+            MatchBaseMessage<StripOverwrite<T[K]>>,
+            BaseMessage
+          > extends true
         ? BaseMessage
         : Inspect<StripOverwrite<T[K]>, [0, ...TDepth]>;
     }
