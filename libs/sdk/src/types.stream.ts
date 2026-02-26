@@ -292,28 +292,28 @@ export type ToolProgress<
 } & (
   | {
       state: "starting";
-      input: TInput;
+      input?: TInput;
       data?: undefined;
       result?: undefined;
       error?: undefined;
     }
   | {
       state: "running";
-      data: TData;
+      data?: TData;
       input?: TInput;
       result?: undefined;
       error?: undefined;
     }
   | {
       state: "completed";
-      result: TResult;
+      result?: TResult;
       input?: TInput;
       data?: TData;
       error?: undefined;
     }
   | {
       state: "error";
-      error: Error | unknown;
+      error?: Error | unknown;
       input?: TInput;
       data?: TData;
       result?: undefined;
