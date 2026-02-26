@@ -1,5 +1,14 @@
-import { EmptyChannelError } from "../errors.js";
+import {
+  _getOverwriteValue,
+  _isOverwriteValue,
+  type OverwriteValue,
+} from "../constants.js";
+import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { BaseChannel } from "./base.js";
+
+type OverwriteOrValue<ValueType, UpdateType> =
+  | OverwriteValue<ValueType>
+  | UpdateType;
 
 export type BinaryOperator<ValueType, UpdateType> = (
   a: ValueType,
@@ -18,7 +27,11 @@ const isBinaryOperatorAggregate = (
 export class BinaryOperatorAggregate<
   ValueType,
   UpdateType = ValueType
-> extends BaseChannel<ValueType, UpdateType, ValueType> {
+> extends BaseChannel<
+  ValueType,
+  OverwriteOrValue<ValueType, UpdateType>,
+  ValueType
+> {
   lc_graph_name = "BinaryOperatorAggregate";
 
   value: ValueType | undefined;
@@ -49,18 +62,35 @@ export class BinaryOperatorAggregate<
     return empty as this;
   }
 
-  public update(values: UpdateType[]): boolean {
+  public update(values: OverwriteOrValue<ValueType, UpdateType>[]): boolean {
     let newValues = values;
     if (!newValues.length) return false;
 
     if (this.value === undefined) {
-      [this.value as UpdateType] = newValues;
+      const first = newValues[0];
+      const [isOverwrite, overwriteVal] = _getOverwriteValue<ValueType>(first);
+      if (isOverwrite) {
+        this.value = overwriteVal;
+      } else {
+        this.value = first as ValueType;
+      }
       newValues = newValues.slice(1);
     }
 
-    for (const value of newValues) {
-      if (this.value !== undefined) {
-        this.value = this.operator(this.value, value);
+    let seenOverwrite = false;
+    for (const incoming of newValues) {
+      if (_isOverwriteValue<ValueType>(incoming)) {
+        if (seenOverwrite) {
+          throw new InvalidUpdateError(
+            "Can receive only one Overwrite value per step."
+          );
+        }
+        const [, val] = _getOverwriteValue<ValueType>(incoming);
+        this.value = val;
+        seenOverwrite = true;
+        continue;
+      } else if (!seenOverwrite && this.value !== undefined) {
+        this.value = this.operator(this.value, incoming);
       }
     }
     return true;

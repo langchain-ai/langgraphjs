@@ -449,4 +449,32 @@ describe("StateGraph with Zod schemas", () => {
       }).toThrow('Channel "numbers" already exists with a different type');
     });
   });
+
+  describe("Zod v4 schema with registry reducer", () => {
+    it("should use reducer defined via zod v4 registry", async () => {
+      const itemsReducer = (a: string[], b: string[]) => a.concat(b);
+
+      const stateSchema = z4.object({
+        items: z4.array(z4.string()).register(registry, {
+          default: () => [],
+          reducer: {
+            fn: itemsReducer,
+          },
+        }),
+        name: z4.string(),
+      });
+
+      const graph = new StateGraph(stateSchema)
+        .addNode("add", () => ({ items: ["a", "b"] }))
+        .addNode("append", () => ({ items: ["c", "d"] }))
+        .addEdge(START, "add")
+        .addEdge("add", "append")
+        .addEdge("append", END)
+        .compile();
+
+      const result = await graph.invoke({ name: "test" });
+      expect(result.items).toEqual(["a", "b", "c", "d"]);
+      expect(result.name).toBe("test");
+    });
+  });
 });

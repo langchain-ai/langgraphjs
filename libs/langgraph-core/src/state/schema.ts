@@ -13,6 +13,7 @@ import { UntrackedValueChannel } from "../channels/untracked_value.js";
 import type { SerializableSchema } from "./types.js";
 import { isStandardSchema } from "./types.js";
 import { getJsonSchemaFromSchema, getSchemaDefaultGetter } from "./adapter.js";
+import type { OverwriteValue } from "../constants.js";
 import { ReducedValue } from "./values/reduced.js";
 import { UntrackedValue } from "./values/untracked.js";
 
@@ -45,7 +46,7 @@ export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
   infer V,
   infer I
 >
-  ? BaseChannel<V, I>
+  ? BaseChannel<V, OverwriteValue<V> | I>
   : F extends UntrackedValue<infer V>
   ? BaseChannel<V, V>
   : F extends SerializableSchema<infer I, infer O>
@@ -131,8 +132,8 @@ export type InferStateSchemaValue<TFields extends StateSchemaFields> = {
  * - SerializableSchema<Input, Output> → Input (what you provide)
  */
 export type InferStateSchemaUpdate<TFields extends StateSchemaFields> = {
-  [K in keyof TFields]?: TFields[K] extends ReducedValue<any, any>
-    ? TFields[K]["InputType"]
+  [K in keyof TFields]?: TFields[K] extends ReducedValue<infer V, infer I>
+    ? OverwriteValue<V> | I
     : TFields[K] extends UntrackedValue<any>
     ? TFields[K]["ValueType"]
     : TFields[K] extends SerializableSchema<infer TInput, any>

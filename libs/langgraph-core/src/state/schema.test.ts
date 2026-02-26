@@ -10,7 +10,13 @@ import {
   UntrackedValueChannel,
 } from "../channels/index.js";
 import { StateGraph } from "../graph/index.js";
-import { Command, END, Send, START } from "../constants.js";
+import {
+  Command,
+  END,
+  Send,
+  START,
+  type OverwriteValue,
+} from "../constants.js";
 
 describe("StateSchema", () => {
   describe("type inference", () => {
@@ -54,7 +60,7 @@ describe("StateSchema", () => {
         }>();
 
         expectTypeOf<typeof state.Update>().toEqualTypeOf<{
-          items?: string;
+          items?: string | OverwriteValue<string[]>;
         }>();
       });
 
@@ -71,7 +77,7 @@ describe("StateSchema", () => {
 
         // Input type is number | undefined due to .default() on value schema
         expectTypeOf<typeof state.Update>().toEqualTypeOf<{
-          count?: number | undefined;
+          count?: number | OverwriteValue<number> | undefined;
         }>();
       });
 
@@ -97,7 +103,7 @@ describe("StateSchema", () => {
         }>();
 
         expectTypeOf<typeof state.Update>().toEqualTypeOf<{
-          totals?: number;
+          totals?: number | OverwriteValue<{ sum: number; count: number }>;
         }>();
       });
     });
@@ -150,7 +156,7 @@ describe("StateSchema", () => {
         expectTypeOf<typeof ComplexState.Update>().toEqualTypeOf<{
           query?: string;
           retryCount?: number;
-          history?: string;
+          history?: string | OverwriteValue<string[]>;
           cacheKey?: string | undefined;
         }>();
       });
@@ -178,7 +184,7 @@ describe("StateSchema", () => {
       expectTypeOf<typeof AgentState.Update>().toEqualTypeOf<{
         count?: number;
         name?: string;
-        items?: string;
+        items?: string | OverwriteValue<string[]>;
       }>();
 
       const graph = new StateGraph(AgentState)

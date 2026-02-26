@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { AnyValue } from "../channels/any_value.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { LastValue } from "../channels/last_value.js";
@@ -6,6 +6,7 @@ import { UntrackedValueChannel } from "../channels/untracked_value.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { Topic } from "../channels/topic.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
+import { Overwrite, OVERWRITE as OVERWRITE_CONSTANT } from "../constants.js";
 
 describe("LastValue", () => {
   it("should handle last value correctly", () => {
@@ -287,6 +288,129 @@ describe("BinaryOperatorAggregate", () => {
     );
     const channel2 = restoredChannel.fromCheckpoint(checkpoint);
     expect(channel2.get()).toBe(10);
+  });
+
+  describe("with Overwrite", () => {
+    it("should bypass the reducer when Overwrite is used", () => {
+      const reducer = vi.fn((a: string[], b: string[]) => a.concat(b));
+      const channel = new BinaryOperatorAggregate<string[]>(reducer, () => []);
+
+      channel.update([["a", "b"]]);
+      expect(channel.get()).toEqual(["a", "b"]);
+      expect(reducer).toHaveBeenCalledTimes(1);
+
+      reducer.mockClear();
+      channel.update([new Overwrite(["replaced"])]);
+      expect(channel.get()).toEqual(["replaced"]);
+      expect(reducer).not.toHaveBeenCalled();
+    });
+
+    it("should bypass the reducer with dict wire format", () => {
+      const channel = new BinaryOperatorAggregate<string[]>(
+        (a, b) => a.concat(b),
+        () => []
+      );
+
+      channel.update([["a", "b"]]);
+      expect(channel.get()).toEqual(["a", "b"]);
+
+      channel.update([{ [OVERWRITE_CONSTANT]: ["replaced"] }]);
+      expect(channel.get()).toEqual(["replaced"]);
+    });
+
+    it("should throw on multiple Overwrite values in the same step", () => {
+      const channel = new BinaryOperatorAggregate<number>(
+        (a, b) => a + b,
+        () => 0
+      );
+
+      expect(() => {
+        channel.update([new Overwrite(10), new Overwrite(20)]);
+      }).toThrow(InvalidUpdateError);
+    });
+
+    it("should ignore normal values after an Overwrite in the same step", () => {
+      const channel = new BinaryOperatorAggregate<number>(
+        (a, b) => a + b,
+        () => 0
+      );
+
+      channel.update([5]);
+      expect(channel.get()).toBe(5);
+
+      channel.update([new Overwrite(100), 50]);
+      expect(channel.get()).toBe(100);
+    });
+
+    it("should apply normal values before an Overwrite, then overwrite wins", () => {
+      const channel = new BinaryOperatorAggregate<number>(
+        (a, b) => a + b,
+        () => 0
+      );
+
+      channel.update([10, new Overwrite(42)]);
+      expect(channel.get()).toBe(42);
+    });
+
+    it("should allow Overwrite to set value to empty array", () => {
+      const channel = new BinaryOperatorAggregate<string[]>(
+        (a, b) => a.concat(b),
+        () => []
+      );
+
+      channel.update([["a", "b", "c"]]);
+      expect(channel.get()).toEqual(["a", "b", "c"]);
+
+      channel.update([new Overwrite([])]);
+      expect(channel.get()).toEqual([]);
+    });
+
+    it("should checkpoint correctly after Overwrite", () => {
+      const channel = new BinaryOperatorAggregate<number>(
+        (a, b) => a + b,
+        () => 0
+      );
+
+      channel.update([1, 2, 3]);
+      expect(channel.get()).toBe(6);
+
+      channel.update([new Overwrite(100)]);
+      expect(channel.get()).toBe(100);
+      expect(channel.checkpoint()).toBe(100);
+
+      const restored = channel.fromCheckpoint(channel.checkpoint());
+      expect(restored.get()).toBe(100);
+
+      restored.update([5]);
+      expect(restored.get()).toBe(105);
+    });
+
+    it("should handle Overwrite as the very first value (no prior state)", () => {
+      const channel = new BinaryOperatorAggregate<number>(
+        (a, b) => a + b,
+        () => 0
+      );
+
+      const fresh = channel.fromCheckpoint(undefined);
+      fresh.update([new Overwrite(42)]);
+      expect(fresh.get()).toBe(42);
+    });
+
+    it("should allow Overwrite with different value and update types", () => {
+      const channel = new BinaryOperatorAggregate<string[], string>(
+        (a, b) => [...a, b],
+        () => []
+      );
+
+      channel.update(["hello"]);
+      expect(channel.get()).toEqual(["hello"]);
+
+      channel.update(["world"]);
+      expect(channel.get()).toEqual(["hello", "world"]);
+
+      channel.update([new Overwrite(["replaced"])]);
+      expect(channel.get()).toEqual(["replaced"]);
+    });
   });
 });
 

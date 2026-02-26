@@ -10,7 +10,8 @@
     "reasoning-agent": "./src/examples/reasoning-agent/agent.ts:agent",
     "session-persistence": "./src/examples/session-persistence/agent.ts:agent",
     "summarization-agent": "./src/examples/summarization-agent/agent.ts:agent",
-    "tool-calling-agent": "./src/examples/tool-calling-agent/agent.ts:agent"
+    "tool-calling-agent": "./src/examples/tool-calling-agent/agent.ts:agent",
+    "tool-streaming": "./src/examples/tool-streaming/agent.ts:agent"
   },
   "env": ".env"
 }
