@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import {
   _addInlineAgentName,
   _removeInlineAgentName,
+  _addSystemPromptAgentName,
 } from "../../prebuilt/agentName.js";
 
 describe("_addInlineAgentName", () => {
@@ -149,5 +150,61 @@ message</content>`;
     });
     const result = _removeInlineAgentName(aiMessage);
     expect(result.content).toEqual("This is\na multiline\nmessage");
+  });
+});
+
+describe("_addSystemPromptAgentName", () => {
+  it("prepends a SystemMessage when no system message exists", () => {
+    const messages = [new HumanMessage("Hello")];
+    const result = _addSystemPromptAgentName(messages, "researcher");
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBeInstanceOf(SystemMessage);
+    const sysContent = (result[0] as SystemMessage).content as string;
+    expect(sysContent).toContain("researcher");
+    expect(sysContent).toContain("<name>researcher</name>");
+    expect(result[1]).toEqual(messages[0]);
+  });
+
+  it("appends instruction to an existing string SystemMessage", () => {
+    const messages = [
+      new SystemMessage("You are a helpful assistant."),
+      new HumanMessage("Hello"),
+    ];
+    const result = _addSystemPromptAgentName(messages, "researcher");
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBeInstanceOf(SystemMessage);
+    const sysContent = (result[0] as SystemMessage).content as string;
+    expect(sysContent).toContain("You are a helpful assistant.");
+    expect(sysContent).toContain("<name>researcher</name>");
+    // Rest of messages unchanged
+    expect(result[1]).toEqual(messages[1]);
+  });
+
+  it("does not modify past AIMessages", () => {
+    const aiMsg = new AIMessage({ content: "I did some research", name: "researcher" });
+    const messages = [
+      new SystemMessage("You are a supervisor."),
+      new HumanMessage("What did you find?"),
+      aiMsg,
+    ];
+    const result = _addSystemPromptAgentName(messages, "supervisor");
+    // Past AIMessage must be the same object, untouched
+    expect(result[2]).toBe(aiMsg);
+    expect((result[2] as AIMessage).content).toEqual("I did some research");
+  });
+
+  it("prepends a new SystemMessage when existing system message has non-string content", () => {
+    const existingSystem = new SystemMessage({
+      content: [{ type: "text", text: "You are helpful." }],
+    });
+    const messages = [existingSystem, new HumanMessage("Hello")];
+    const result = _addSystemPromptAgentName(messages, "researcher");
+    // Should prepend a new SystemMessage before the existing one
+    expect(result).toHaveLength(3);
+    expect(result[0]).toBeInstanceOf(SystemMessage);
+    const sysContent = (result[0] as SystemMessage).content as string;
+    expect(sysContent).toContain("<name>researcher</name>");
+    // Original system message preserved
+    expect(result[1]).toBe(existingSystem);
   });
 });
