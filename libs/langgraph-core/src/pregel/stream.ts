@@ -136,29 +136,11 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
       return;
     }
 
-    try {
-      // Forward chunk to passthrough function if provided
-      this.passthroughFn?.(chunk);
+    // Forward chunk to passthrough function if provided
+    this.passthroughFn?.(chunk);
 
-      // Attempt to enqueue the chunk to the underlying stream
-      this.controller.enqueue(chunk);
-    } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "message" in error &&
-        typeof (error as { message?: unknown }).message === "string" &&
-        (error as { message: string }).message.includes(
-          "Controller is already closed"
-        )
-      ) {
-        // Silently ignore - this is expected during stream closure with concurrent pushes
-        return;
-      }
-
-      // Re-throw any other unexpected errors to maintain proper error reporting
-      throw error;
-    }
+    // Attempt to enqueue the chunk to the underlying stream
+    this.controller.enqueue(chunk);
   }
 
   close() {

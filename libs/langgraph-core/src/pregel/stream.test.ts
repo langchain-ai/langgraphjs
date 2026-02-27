@@ -78,7 +78,7 @@ describe("IterableReadableWritableStream", () => {
     ];
 
     // Simulate multiple concurrent pushes happening at the same time as closure
-    // This tests the try-catch mechanism in the push method
+    // The guard check (this._closed || !this.controller) should prevent errors
     const promises = chunks.map((chunk) =>
       Promise.resolve().then(() => stream.push(chunk))
     );
@@ -145,6 +145,13 @@ describe("IterableReadableWritableStream", () => {
       "messages",
       { content: "Test" },
     ];
+
+    // Wait for the controller to be initialized before pushing
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve();
+      }, 10);
+    });
 
     // Push a chunk while stream is open
     streamWithPassthrough.push(chunk);
