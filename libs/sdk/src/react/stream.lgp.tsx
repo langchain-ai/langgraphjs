@@ -672,7 +672,13 @@ export function useStreamLGP<
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
           const newHistory = await history.mutate(threadId);
           const lastHead = newHistory?.at(0);
-          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+          if (lastHead) {
+            // We now have the latest update from /history.
+            // Clear local stream state so hook values fall back to fresh history.
+            options.onFinish?.(lastHead, callbackMeta);
+            return null;
+          }
+          return undefined;
         },
         onError(error) {
           options.onError?.(error, callbackMeta);

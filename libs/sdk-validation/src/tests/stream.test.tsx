@@ -492,6 +492,132 @@ it(
 );
 
 it(
+  "joinStream clears stale values when history is refetched",
+  server.boundary(async () => {
+    const user = userEvent.setup();
+    const threadId = randomUUID();
+
+    type TestState = {
+      messages: Message[];
+      generating: boolean;
+    };
+
+    const freshValues: TestState = {
+      messages: [
+        { type: "human", content: "Hello" },
+        { type: "ai", content: "Slow response" },
+      ],
+      generating: false,
+    };
+    const staleValues: TestState = {
+      messages: [{ type: "human", content: "Hello" }],
+      generating: true,
+    };
+
+    const toThreadState = (values: TestState) =>
+      ({
+        values,
+        next: [],
+        checkpoint: {
+          thread_id: threadId,
+          checkpoint_ns: "",
+          checkpoint_id: null,
+          checkpoint_map: null,
+        },
+        metadata: {},
+        created_at: new Date().toISOString(),
+        parent_checkpoint: null,
+        tasks: [],
+      } as any);
+
+    async function* emptyStream() {
+      // Intentionally empty: reproduces the case where join succeeds but no
+      // final `values` event is delivered to update stream state.
+    }
+
+    const thread = {
+      data: [toThreadState(freshValues)],
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(async () => [toThreadState(freshValues)]),
+    } as any;
+
+    const client = {
+      runs: {
+        stream: vi.fn(async function* () {
+          yield { event: "values" as const, data: staleValues };
+        }),
+        joinStream: vi.fn(() => emptyStream()),
+      },
+      threads: {
+        create: vi.fn(async () => ({ thread_id: threadId })),
+      },
+    } as unknown as Client;
+
+    function TestComponent() {
+      const { submit, joinStream, messages, values } = useStream<TestState>({
+        assistantId: "slowAgent",
+        apiKey: "test-api-key",
+        threadId,
+        client,
+        thread,
+      });
+
+      return (
+        <div>
+          <div data-testid="generating">{String(values?.generating)}</div>
+          <div data-testid="message-count">{messages.length}</div>
+
+          <button
+            data-testid="submit"
+            onClick={() =>
+              submit({
+                messages: [{ content: "Hello", type: "human" }],
+                generating: true,
+              })
+            }
+          >
+            Send
+          </button>
+
+          <button
+            data-testid="join"
+            onClick={() =>
+              joinStream("run-1", undefined, {
+                filter: (event) => event.event !== "values",
+              })
+            }
+          >
+            Join
+          </button>
+        </div>
+      );
+    }
+
+    render(<TestComponent />);
+
+    expect(screen.getByTestId("generating")).toHaveTextContent("false");
+    expect(screen.getByTestId("message-count")).toHaveTextContent("2");
+
+    await user.click(screen.getByTestId("submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("generating")).toHaveTextContent("true");
+      expect(screen.getByTestId("message-count")).toHaveTextContent("1");
+    });
+
+    await user.click(screen.getByTestId("join"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("generating")).toHaveTextContent("false");
+      expect(screen.getByTestId("message-count")).toHaveTextContent("2");
+      expect(thread.mutate).toHaveBeenCalled();
+    });
+  }),
+  15_000
+);
+
+it(
   "onStop mutate function updates stream values immediately",
   server.boundary(async () => {
     server.use(getHttpHandler({ agent }));
