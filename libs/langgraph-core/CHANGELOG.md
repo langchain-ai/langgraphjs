@@ -1,5 +1,26 @@
 # @langchain/langgraph
 
+## 1.2.0
+
+### Minor Changes
+
+- [#2002](https://github.com/langchain-ai/langgraphjs/pull/2002) [`fce9d38`](https://github.com/langchain-ai/langgraphjs/commit/fce9d38267e7d99029646cfcf7abb78c7b937e34) Thanks [@hntrl](https://github.com/hntrl)! - feat(langgraph): add Overwrite class for bypassing channel reducers
+
+  Adds an `Overwrite` class and `OverwriteValue` type that allow nodes to bypass reducers in `BinaryOperatorAggregate` channels, writing values directly instead of passing them through the reducer function. This is useful when a node needs to replace accumulated state rather than append to it.
+
+  - New `Overwrite` class exported from `@langchain/langgraph`
+  - `BinaryOperatorAggregate` channel detects `OverwriteValue` and sets the value directly
+  - `Annotation`, `StateSchema`, and zod schema type mappings updated to include `OverwriteValue` in update types
+
+### Patch Changes
+
+- [#1992](https://github.com/langchain-ai/langgraphjs/pull/1992) [`937f780`](https://github.com/langchain-ai/langgraphjs/commit/937f78030f1360251361c6096bbd0ff287662a2b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(core): don't trace channel read/writes
+
+- [#1984](https://github.com/langchain-ai/langgraphjs/pull/1984) [`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123) Thanks [@colifran](https://github.com/colifran)! - feat: add tools stream mode for tool lifecycle events
+
+- Updated dependencies [[`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123), [`1b088e5`](https://github.com/langchain-ai/langgraphjs/commit/1b088e578aaef7d231f37885b94bfd763f99a775)]:
+  - @langchain/langgraph-sdk@1.6.5
+
 ## 1.1.5
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @langchain/langgraph-api
 
+## 1.1.14
+
+### Patch Changes
+
+- [#1984](https://github.com/langchain-ai/langgraphjs/pull/1984) [`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123) Thanks [@colifran](https://github.com/colifran)! - feat: add tools stream mode for tool lifecycle events
+
+- Updated dependencies [[`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123), [`1b088e5`](https://github.com/langchain-ai/langgraphjs/commit/1b088e578aaef7d231f37885b94bfd763f99a775)]:
+  - @langchain/langgraph-sdk@1.6.5
+  - @langchain/langgraph-ui@1.1.14
+
 ## 2.0.0
 
 ### Patch Changes
