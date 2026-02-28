@@ -39,7 +39,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
@@ -68,7 +68,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
@@ -97,7 +97,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
@@ -126,7 +126,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
@@ -155,7 +155,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
@@ -184,7 +184,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
@@ -213,7 +213,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
         if: inputs.artifact-name != ''
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: ${{ inputs.artifact-name }}
       - name: Extract build artifacts
