@@ -1303,5 +1303,5 @@ export type CustomSubmitOptions<
   ConfigurableType extends Record<string, unknown> = Record<string, unknown>
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
-  "optimisticValues" | "context" | "command" | "config"
+  "optimisticValues" | "context" | "command" | "config" | "threadId"
 >;
