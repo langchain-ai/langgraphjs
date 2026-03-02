@@ -88,7 +88,7 @@ export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
 /** @internal */
-const COMMAND_SYMBOL = Symbol.for("langgraph.command");
+const COMMAND_SYMBOL: symbol = Symbol.for("langgraph.command");
 
 /**
  * Instance of a {@link Command} class.
