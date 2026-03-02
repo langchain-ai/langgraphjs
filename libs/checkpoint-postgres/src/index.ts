@@ -81,7 +81,7 @@ const { Pool } = pg;
  * }, config);
  * ```
  */
-export class PostgresSaver extends BaseCheckpointSaver {
+export class PostgresSaver extends BaseCheckpointSaver<string | number> {
   private readonly pool: pg.Pool;
 
   private readonly options: PostgresSaverOptions;
@@ -175,13 +175,39 @@ export class PostgresSaver extends BaseCheckpointSaver {
     }
   }
 
+  /**
+   * Generate the next version ID for a channel.
+   *
+   * Uses zero-padded string versions with random suffix for compatibility
+   * with the Python checkpoint-postgres implementation.
+   */
+  getNextVersion(
+    current: string | number | undefined
+  ): string | number {
+    if (current === undefined) {
+      return `${"0".repeat(31)}1.${Math.random().toString().slice(2, 18).padEnd(16, "0")}`;
+    }
+    const currentStr = String(current);
+    const currentV = parseInt(currentStr.split(".")[0], 10) || 0;
+    const nextV = currentV + 1;
+    const nextH = Math.random().toString().slice(2, 18).padEnd(16, "0");
+    return `${String(nextV).padStart(32, "0")}.${nextH}`;
+  }
+
   protected async _loadCheckpoint(
-    checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values">,
+    checkpoint: Omit<Checkpoint, "pending_sends" | "channel_values"> & {
+      channel_values?: Record<string, unknown>;
+    },
     channelValues: [Uint8Array, Uint8Array, Uint8Array][]
   ): Promise<Checkpoint> {
     return {
       ...checkpoint,
-      channel_values: await this._loadBlobs(channelValues),
+      channel_values: {
+        // Merge inline primitives from checkpoint JSONB
+        ...(checkpoint.channel_values || {}),
+        // Blob values override inline primitives
+        ...(await this._loadBlobs(channelValues)),
+      },
     };
   }
 
@@ -235,27 +261,55 @@ export class PostgresSaver extends BaseCheckpointSaver {
       return [];
     }
 
-    return Promise.all(
-      Object.entries(versions).map(async ([k, ver]) => {
-        const [type, value] =
-          k in values
-            ? await this.serde.dumpsTyped(values[k])
-            : ["empty", null];
-        return [
-          threadId,
-          checkpointNs,
-          k,
-          ver.toString(),
-          type,
-          value ? new Uint8Array(value) : undefined,
-        ];
-      })
-    );
+    const results: [string, string, string, string, string, Uint8Array | undefined][] = [];
+    for (const [k, ver] of Object.entries(versions)) {
+      // Skip primitive values — they are stored inline in the checkpoint JSONB
+      if (k in values) {
+        const v = values[k];
+        if (
+          v === null ||
+          typeof v === "string" ||
+          typeof v === "number" ||
+          typeof v === "boolean"
+        ) {
+          continue;
+        }
+      }
+      const [type, value] =
+        k in values
+          ? await this.serde.dumpsTyped(values[k])
+          : ["empty", null];
+      results.push([
+        threadId,
+        checkpointNs,
+        k,
+        ver.toString(),
+        type,
+        value ? new Uint8Array(value) : undefined,
+      ]);
+    }
+    return results;
   }
 
   protected _dumpCheckpoint(checkpoint: Checkpoint) {
     const serialized: Record<string, unknown> = { ...checkpoint };
-    if ("channel_values" in serialized) delete serialized.channel_values;
+    // Extract inline primitives from channel_values and store them
+    // in the checkpoint JSONB column. Complex values are stored in
+    // checkpoint_blobs table separately.
+    const inlinePrimitives: Record<string, unknown> = {};
+    if (checkpoint.channel_values) {
+      for (const [key, value] of Object.entries(checkpoint.channel_values)) {
+        if (
+          value === null ||
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+        ) {
+          inlinePrimitives[key] = value;
+        }
+      }
+    }
+    serialized.channel_values = inlinePrimitives;
     return serialized;
   }
 
