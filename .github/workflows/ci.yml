@@ -109,7 +109,7 @@ jobs:
   # ============================================
   test:
     name: Unit Tests
-    needs: [lint, format, check-readmes-synced, build]
+    needs: [lint, format, build]
     strategy:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
