@@ -20,9 +20,13 @@ const processNode: GraphNode<typeof AgentState> = (state) => {
   };
 };
 
-const workflow = new StateGraph(AgentState)
-  .addNode("process", processNode)
-  .addEdge(START, "process")
-  .addEdge("process", END);
+const buildGraph = () =>
+  new StateGraph(AgentState)
+    .addNode("process", processNode)
+    .addEdge(START, "process")
+    .addEdge("process", END)
+    .compile();
 
-export const graph = workflow.compile();
+// Type annotation needed to avoid TS2742 error with symbol types.
+// Using any here because the full Pregel type is complex and auto-inferred correctly at usage sites.
+export const graph: any = buildGraph();
