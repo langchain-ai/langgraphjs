@@ -68,7 +68,7 @@ export const logger = createLogger({
 
 // Expose the logger to be consumed by `getLogger`
 export function registerSdkLogger() {
-  const GLOBAL_LOGGER: symbol = Symbol.for("langgraph.api.sdk-logger");
+  const GLOBAL_LOGGER = Symbol.for("langgraph.api.sdk-logger");
   type GLOBAL_LOGGER = typeof GLOBAL_LOGGER;
 
   const maybeGlobal = globalThis as unknown as { [GLOBAL_LOGGER]: Logger };
