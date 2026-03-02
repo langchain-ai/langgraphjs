@@ -92,7 +92,7 @@ export const CHECKPOINT_NAMESPACE_END = ":";
  * Exported to support cross-version type compatibility.
  * @internal
  */
-export const COMMAND_SYMBOL: symbol = Symbol.for("langgraph.command");
+export const COMMAND_SYMBOL = Symbol.for("langgraph.command");
 
 /**
  * Instance of a {@link Command} class.
