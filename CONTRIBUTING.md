@@ -23,7 +23,7 @@ We aim to keep the same core APIs between the Python and JS versions of LangGrap
 ### 🚩 GitHub Issues
 
 Our [issues](https://github.com/langchain-ai/langgraphjs/issues) page contains
-with bugs, improvements, and feature requests.
+bugs, improvements, and feature requests.
 
 If you start working on an issue, please comment and a maintainer can assign it to you.
 
@@ -49,7 +49,7 @@ good code into the codebase.
 ### 🏭 Release process
 
 As of now, LangGraph has an ad hoc release process: releases are cut with high frequency via by
-a developer and published to [npm](https://www.npmjs.com/package/@angchain/langgraph).
+a developer and published to [npm](https://www.npmjs.com/package/@langchain/langgraph).
 
 LangChain follows the [semver](https://semver.org/) versioning standard. However, as pre-1.0 software,
 even patch releases may contain [non-backwards-compatible changes](https://semver.org/#spec-item-4).
