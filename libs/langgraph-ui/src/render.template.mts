@@ -1,6 +1,6 @@
 import type { ComponentClass, FunctionComponent } from "react";
 
-const STORE_SYMBOL = Symbol.for("LGUI_EXT_STORE");
+const STORE_SYMBOL: symbol = Symbol.for("LGUI_EXT_STORE");
 
 declare global {
   interface Window {

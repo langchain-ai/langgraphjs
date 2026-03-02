@@ -219,8 +219,8 @@ class BaseClient {
       typeof globalThis === "object" &&
       globalThis != null
     ) {
-      const fetchSmb = Symbol.for("langgraph_api:fetch");
-      const urlSmb = Symbol.for("langgraph_api:url");
+      const fetchSmb: symbol = Symbol.for("langgraph_api:fetch");
+      const urlSmb: symbol = Symbol.for("langgraph_api:url");
 
       const global = globalThis as unknown as {
         [fetchSmb]?: typeof fetch;

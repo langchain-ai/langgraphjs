@@ -26,7 +26,7 @@ import { GraphBubbleUp, isGraphBubbleUp, isGraphInterrupt } from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
 
-const PROMISE_ADDED_SYMBOL = Symbol.for("promiseAdded");
+const PROMISE_ADDED_SYMBOL: symbol = Symbol.for("promiseAdded");
 
 function createPromiseBarrier() {
   const barrier: {

@@ -95,9 +95,9 @@ class ComponentStore {
 }
 
 const COMPONENT_STORE = new ComponentStore();
-const EXT_STORE_SYMBOL = Symbol.for("LGUI_EXT_STORE");
-const REQUIRE_SYMBOL = Symbol.for("LGUI_REQUIRE");
-const REQUIRE_EXTRA_SYMBOL = Symbol.for("LGUI_REQUIRE_EXTRA");
+const EXT_STORE_SYMBOL: symbol = Symbol.for("LGUI_EXT_STORE");
+const REQUIRE_SYMBOL: symbol = Symbol.for("LGUI_REQUIRE");
+const REQUIRE_EXTRA_SYMBOL: symbol = Symbol.for("LGUI_REQUIRE_EXTRA");
 
 interface LoadExternalComponentProps
   extends Pick<React.HTMLAttributes<HTMLDivElement>, "style" | "className"> {

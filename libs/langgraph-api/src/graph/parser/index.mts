@@ -89,7 +89,7 @@ export async function getStaticGraphSchema(
 }
 
 // Symbol used when input inherits from state schema but as partial
-const PartialStateSchema = Symbol.for("langgraph.state.partial");
+const PartialStateSchema: symbol = Symbol.for("langgraph.state.partial");
 
 /**
  * Type for graph builder internal properties.

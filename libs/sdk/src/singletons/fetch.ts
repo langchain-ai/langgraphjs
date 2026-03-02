@@ -5,7 +5,7 @@
 // @ts-expect-error Broad typing to support a range of fetch implementations
 const DEFAULT_FETCH_IMPLEMENTATION = (...args: any[]) => fetch(...args);
 
-const LANGSMITH_FETCH_IMPLEMENTATION_KEY = Symbol.for(
+const LANGSMITH_FETCH_IMPLEMENTATION_KEY: symbol = Symbol.for(
   "lg:fetch_implementation"
 );
 

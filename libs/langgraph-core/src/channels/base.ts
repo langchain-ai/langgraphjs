@@ -120,7 +120,7 @@ export abstract class BaseChannel<
   }
 }
 
-const IS_ONLY_BASE_CHANNEL = Symbol.for("LG_IS_ONLY_BASE_CHANNEL");
+const IS_ONLY_BASE_CHANNEL: symbol = Symbol.for("LG_IS_ONLY_BASE_CHANNEL");
 export function getOnlyChannels(
   channels: Record<string, BaseChannel>
 ): Record<string, BaseChannel> {

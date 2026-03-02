@@ -9,7 +9,7 @@ import {
   schemaMetaRegistry,
 } from "./meta.js";
 
-const PartialStateSchema = Symbol.for("langgraph.state.partial");
+const PartialStateSchema: symbol = Symbol.for("langgraph.state.partial");
 type PartialStateSchema = typeof PartialStateSchema;
 
 interface GraphWithZodLike {

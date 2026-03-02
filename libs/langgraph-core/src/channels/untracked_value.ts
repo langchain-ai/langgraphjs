@@ -2,7 +2,7 @@ import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { BaseChannel } from "./base.js";
 
 // Sentinel value for missing/unset
-const MISSING = Symbol.for("langgraph.channel.missing");
+const MISSING: symbol = Symbol.for("langgraph.channel.missing");
 
 /**
  * Stores the last value received, never checkpointed.

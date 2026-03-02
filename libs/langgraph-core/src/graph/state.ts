@@ -185,7 +185,7 @@ type StrictNodeAction<
   Runtime<StateType<ToStateDefinition<C>>, InterruptType, WriterType>
 >;
 
-const PartialStateSchema = Symbol.for("langgraph.state.partial");
+const PartialStateSchema: symbol = Symbol.for("langgraph.state.partial");
 type PartialStateSchema = typeof PartialStateSchema;
 
 type MergeReturnType<Prev, Curr> = Prev & Curr extends infer T

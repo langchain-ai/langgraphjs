@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { StorageEnv } from "./storage/types.mjs";
 
-const fetchSmb = Symbol.for("langgraph_api:fetch");
+const fetchSmb: symbol = Symbol.for("langgraph_api:fetch");
 const global = globalThis as unknown as {
   [fetchSmb]?: (url: string, init?: RequestInit) => Promise<Response>;
 };

@@ -19,7 +19,7 @@ interface Logger {
   silly: LeveledLogMethod;
 }
 
-const GLOBAL_LOGGER = Symbol.for("langgraph.api.sdk-logger");
+const GLOBAL_LOGGER: symbol = Symbol.for("langgraph.api.sdk-logger");
 type GLOBAL_LOGGER = typeof GLOBAL_LOGGER;
 
 /**

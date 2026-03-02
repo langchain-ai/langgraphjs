@@ -93,8 +93,8 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 import { IterableReadableWritableStream, StreamChunk } from "./stream.js";
 import { isXXH3 } from "../hash.js";
 
-const INPUT_DONE = Symbol.for("INPUT_DONE");
-const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
+const INPUT_DONE: symbol = Symbol.for("INPUT_DONE");
+const INPUT_RESUMING: symbol = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 
 export type PregelLoopInitializeParams = {

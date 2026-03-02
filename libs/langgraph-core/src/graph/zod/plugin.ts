@@ -6,7 +6,7 @@ import {
 } from "@langchain/core/utils/types";
 import { SchemaMeta, withLangGraph } from "./meta.js";
 
-const metaSymbol = Symbol.for("langgraph-zod");
+const metaSymbol: symbol = Symbol.for("langgraph-zod");
 
 interface ZodLangGraphTypesV3<T extends z3.ZodTypeAny, Output> {
   reducer<Input = z3.output<T>>(

@@ -17,7 +17,7 @@ import type { OverwriteValue } from "../constants.js";
 import { ReducedValue } from "./values/reduced.js";
 import { UntrackedValue } from "./values/untracked.js";
 
-const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
+const STATE_SCHEMA_SYMBOL: symbol = Symbol.for("langgraph.state.state_schema");
 
 /**
  * Maps a single StateSchema field definition to its corresponding Channel type.
