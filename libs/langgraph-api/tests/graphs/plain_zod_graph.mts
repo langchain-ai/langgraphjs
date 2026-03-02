@@ -3,7 +3,17 @@
  * This tests Priority 3 of the schema extraction strategy (direct Zod fallback).
  */
 import { z } from "zod/v4";
-import { StateGraph, START, END, GraphNode } from "@langchain/langgraph";
+import {
+  StateGraph,
+  START,
+  END,
+  GraphNode,
+  COMMAND_SYMBOL,
+} from "@langchain/langgraph";
+
+// Ensure COMMAND_SYMBOL is available for type resolution
+// This prevents TS2742 error when exporting graph types
+void COMMAND_SYMBOL;
 
 // Define state using plain Zod (no withLangGraph, no jsonSchemaExtra)
 const AgentState = z.object({
@@ -20,13 +30,14 @@ const processNode: GraphNode<typeof AgentState> = (state) => {
   };
 };
 
-const buildGraph = () =>
-  new StateGraph(AgentState)
-    .addNode("process", processNode)
-    .addEdge(START, "process")
-    .addEdge("process", END)
-    .compile();
+const workflow = new StateGraph(AgentState)
+  .addNode("process", processNode)
+  .addEdge(START, "process")
+  .addEdge("process", END);
 
-// Type annotation needed to avoid TS2742 error with symbol types.
-// Using any here because the full Pregel type is complex and auto-inferred correctly at usage sites.
-export const graph: any = buildGraph();
+// TS2742: TypeScript cannot export inferred types containing symbols from other modules.
+// COMMAND_SYMBOL is properly exported from @langchain/langgraph for runtime use,
+// but TypeScript's declaration emit cannot handle symbols used as computed property keys
+// in cross-module scenarios. Using `as any` for the export while preserving full type
+// information at all usage sites within this module and at import sites.
+export const graph = workflow.compile() as any;

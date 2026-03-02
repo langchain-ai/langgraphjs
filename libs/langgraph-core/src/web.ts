@@ -67,6 +67,7 @@ export {
   INTERRUPT,
   isInterrupted,
   type Interrupt,
+  COMMAND_SYMBOL,
 } from "./constants.js";
 export {
   MemorySaver,
