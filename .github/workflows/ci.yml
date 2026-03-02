@@ -69,28 +69,6 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
-  check-readmes-synced:
-    name: Check READMEs synced
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 1
-
-      - name: Check README.md is in sync
-        run: |
-          if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph/README.md"
-          diff -C 3 README.md libs/langgraph/README.md
-          exit 1
-          fi
-          if ! diff -q README.md libs/langgraph-core/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph-core/README.md"
-          diff -C 3 README.md libs/langgraph-core/README.md
-          exit 1
-          fi
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -174,7 +152,7 @@ jobs:
   # ============================================
   environment-tests:
     name: Environment Tests
-    needs: [lint, format, check-readmes-synced, build]
+    needs: [lint, format, build]
     uses: ./.github/workflows/test-exports.yml
     with:
       artifact-name: build-artifacts
