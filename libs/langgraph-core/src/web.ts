@@ -58,6 +58,7 @@ export { type RetryPolicy } from "./pregel/utils/index.js";
 export {
   Send,
   Command,
+  CommandInstance,
   type CommandParams,
   isCommand,
   Overwrite,
