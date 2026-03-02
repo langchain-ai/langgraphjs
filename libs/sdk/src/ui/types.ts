@@ -1238,6 +1238,11 @@ export interface SubmitOptions<
    * before the thread is actually created.
    */
   threadId?: string;
+
+  /**
+   * Callback that is called when an error occurs during submission.
+   */
+  onError?: (error: unknown, run: RunCallbackMeta | undefined) => void;
 }
 
 /**
@@ -1303,5 +1308,5 @@ export type CustomSubmitOptions<
   ConfigurableType extends Record<string, unknown> = Record<string, unknown>
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
-  "optimisticValues" | "context" | "command" | "config"
+  "optimisticValues" | "context" | "command" | "config" | "onError"
 >;

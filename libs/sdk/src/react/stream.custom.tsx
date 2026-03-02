@@ -231,6 +231,7 @@ export function useStreamCustom<
 
         onSuccess: () => undefined,
         onError(error) {
+          submitOptions?.onError?.(error, undefined);
           options.onError?.(error, undefined);
         },
       }

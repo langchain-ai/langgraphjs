@@ -608,6 +608,7 @@ export function useStreamLGP<
           return undefined;
         },
         onError(error) {
+          submitOptions?.onError?.(error, callbackMeta);
           options.onError?.(error, callbackMeta);
         },
         onFinish() {
