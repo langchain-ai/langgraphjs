@@ -1,4 +1,8 @@
-# 🦜🕸️LangGraph.js
+<picture class="github-only">
+  <source media="(prefers-color-scheme: light)" srcset=".github/images/logo-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset=".github/images/logo-dark.svg">
+  <img alt="LangGraph Logo" src=".github/images/logo-dark.svg" width="50%">
+</picture>
 
 [![Docs](https://img.shields.io/badge/docs-latest-blue)](https://langchain-ai.github.io/langgraphjs/)
 ![Version](https://img.shields.io/npm/v/@langchain/langgraph?logo=npm)  

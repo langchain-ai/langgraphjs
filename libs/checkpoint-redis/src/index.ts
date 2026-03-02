@@ -264,9 +264,8 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       // Add thread_id constraint if provided
       if (config?.configurable?.thread_id) {
-        const threadId = config.configurable.thread_id.replace(
-          /[-.@]/g,
-          "\\$&"
+        const threadId = escapeRediSearchTagValue(
+          config.configurable.thread_id
         );
         queryParts.push(`(@thread_id:{${threadId}})`);
       }
@@ -279,7 +278,7 @@ export class RedisSaver extends BaseCheckpointSaver {
           // We'll store it as "__empty__" in the index
           queryParts.push(`(@checkpoint_ns:{__empty__})`);
         } else {
-          const escapedNs = checkpointNs.replace(/[-.@]/g, "\\$&");
+          const escapedNs = escapeRediSearchTagValue(checkpointNs);
           queryParts.push(`(@checkpoint_ns:{${escapedNs}})`);
         }
       }
