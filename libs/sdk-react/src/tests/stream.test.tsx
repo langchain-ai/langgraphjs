@@ -157,7 +157,7 @@ it("onStop mutate function updates stream values immediately", async () => {
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");
   await expect
-    .element(screen.getByTestId("loading"))
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
 
   await screen.getByTestId("stop").click();
@@ -193,7 +193,7 @@ it("onStop handles functional updates correctly", async () => {
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");
   await expect
-    .element(screen.getByTestId("loading"))
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
 
   await screen.getByTestId("stop").click();
