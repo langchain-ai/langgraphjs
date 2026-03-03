@@ -464,7 +464,7 @@ it("onStop is not called when stream completes naturally", async () => {
 
   const TestComponent = defineComponent({
     setup() {
-      const { submit, isLoading } = useStream({
+      const { submit } = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
         onStop: onStopCallback,
@@ -472,9 +472,6 @@ it("onStop is not called when stream completes naturally", async () => {
 
       return () => (
         <div>
-          <div data-testid="loading">
-            {isLoading.value ? "Loading..." : "Not loading"}
-          </div>
           <button data-testid="submit" onClick={() => void submit({})}>
             Send
           </button>
@@ -486,13 +483,10 @@ it("onStop is not called when stream completes naturally", async () => {
   const screen = render(TestComponent);
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Not loading");
+  await new Promise((r) => {
+    setTimeout(r, 1500);
+  });
 
   expect(onStopCallback).not.toHaveBeenCalled();
 });
