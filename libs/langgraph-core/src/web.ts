@@ -58,6 +58,7 @@ export { type RetryPolicy } from "./pregel/utils/index.js";
 export {
   Send,
   Command,
+  CommandInstance,
   type CommandParams,
   isCommand,
   Overwrite,
@@ -67,6 +68,7 @@ export {
   INTERRUPT,
   isInterrupted,
   type Interrupt,
+  COMMAND_SYMBOL,
 } from "./constants.js";
 export {
   MemorySaver,

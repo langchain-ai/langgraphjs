@@ -87,8 +87,12 @@ export const RESERVED = [
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
-/** @internal */
-const COMMAND_SYMBOL = Symbol.for("langgraph.command");
+/**
+ * Symbol used internally to identify Command instances.
+ * Exported to support cross-version type compatibility.
+ * @internal
+ */
+export const COMMAND_SYMBOL = Symbol.for("langgraph.command");
 
 /**
  * Instance of a {@link Command} class.
