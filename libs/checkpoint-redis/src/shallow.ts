@@ -154,6 +154,10 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       channel_blobs: undefined,
     };
 
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writesExist = await this.client.exists(zsetKey);
+
     // Structure matching Python implementation
     const jsonDoc: any = {
       thread_id: threadId,
@@ -163,7 +167,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       checkpoint: checkpointCopy,
       metadata: this.sanitizeMetadata(metadata),
       checkpoint_ts: Date.now(),
-      has_writes: "false",
+      has_writes: writesExist ? "true" : "false",
     };
 
     // Store metadata fields at top-level for searching

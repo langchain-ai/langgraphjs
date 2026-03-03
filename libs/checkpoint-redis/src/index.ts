@@ -213,6 +213,10 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
     // If newVersions is undefined, keep all channel_values as-is (for backward compatibility)
 
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writesExist = await this.client.exists(zsetKey);
+
     // Structure matching Python implementation
     const jsonDoc: CheckpointDocument = {
       thread_id: threadId,
@@ -223,7 +227,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       checkpoint: storedCheckpoint,
       metadata: metadata,
       checkpoint_ts: Date.now(),
-      has_writes: "false",
+      has_writes: writesExist ? "true" : "false",
     };
 
     // Store metadata fields at top-level for searching
