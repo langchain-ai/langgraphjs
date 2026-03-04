@@ -364,6 +364,147 @@ describe("InferAgentToolCalls", () => {
 });
 
 // ============================================================================
+// Type Tests: Schema-based Tool Call Inference (cross-package resilience)
+// ============================================================================
+
+describe("InferAgentToolCalls schema fallback", () => {
+  // When tools cross package boundaries, the `protected _call` method on
+  // DynamicStructuredTool cannot be matched by `T extends { _call: ... }`.
+  // InferToolInput must fall back to the `schema` property. These tests
+  // verify that InferToolSchemaInput correctly handles Zod v3 and v4 schemas
+  // via structural checks, without depending on @langchain/core types.
+
+  test("infers tool calls from Zod v3 schema (_input)", () => {
+    type MockTool = {
+      name: "search";
+      schema: { _input: { query: string } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [MockTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"search">();
+    expectTypeOf<ToolCalls["args"]>().toEqualTypeOf<{ query: string }>();
+  });
+
+  test("infers tool calls from Zod v4 schema (_zod.input)", () => {
+    type MockTool = {
+      name: "get_weather";
+      schema: {
+        _zod: { input: { location: string; units?: "celsius" | "fahrenheit" } };
+      };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [MockTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"get_weather">();
+    expectTypeOf<ToolCalls["args"]>().toEqualTypeOf<{
+      location: string;
+      units?: "celsius" | "fahrenheit";
+    }>();
+  });
+
+  test("infers union from multiple schema-only tools", () => {
+    type SearchTool = {
+      name: "search";
+      schema: { _input: { query: string } };
+    };
+
+    type CalcTool = {
+      name: "calculate";
+      schema: { _input: { expression: string } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [SearchTool, CalcTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<
+      "search" | "calculate"
+    >();
+  });
+
+  test("filters out tools with generic string name", () => {
+    type TypedTool = {
+      name: "search";
+      schema: { _input: { query: string } };
+    };
+
+    type GenericTool = {
+      name: string;
+      schema: { _input: { data: unknown } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [TypedTool, GenericTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    // Only the typed tool should be included
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"search">();
+  });
+
+  test("prefers _call over schema when _call is public", () => {
+    type ToolWithPublicCall = {
+      name: "tool_a";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      _call: (arg: { fromCall: boolean }, ...rest: any[]) => any;
+      schema: { _input: { fromSchema: string } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [ToolWithPublicCall];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"tool_a">();
+    // _call takes priority, so args come from _call, not schema
+    expectTypeOf<ToolCalls["args"]>().toEqualTypeOf<{ fromCall: boolean }>();
+  });
+});
+
+// ============================================================================
 // Type Tests: Agent Config Extraction
 // ============================================================================
 

@@ -535,9 +535,25 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
     {};
 
 /**
- * Helper type to extract the input type from a DynamicStructuredTool's _call method.
- * This is more reliable than trying to infer from the schema directly because
- * DynamicStructuredTool has the input type baked into its _call signature.
+ * Helper type to infer schema input type, supporting both Zod v3 and v4.
+ * Self-contained to avoid cross-package type resolution issues with
+ * InferInteropZodInput from @langchain/core.
+ * - Zod v4 uses `_zod.input` property
+ * - Zod v3 uses `_input` property
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolSchemaInput<S> = S extends { _zod: { input: infer Args } }
+  ? Args
+  : S extends { _input: infer Args }
+  ? Args
+  : never;
+
+/**
+ * Helper type to extract the input type from a DynamicStructuredTool.
+ *
+ * Tries the following in order:
+ * 1. `_call` method signature (may fail when `_call` is `protected`)
+ * 2. `schema` property with self-contained Zod v3/v4 inference
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferToolInput<T> = T extends {
@@ -546,7 +562,7 @@ type InferToolInput<T> = T extends {
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferInteropZodInput<S>
+  ? InferToolSchemaInput<S>
   : never;
 
 /**
