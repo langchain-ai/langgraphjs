@@ -517,6 +517,25 @@ type BaseAgentState<ToolCall = DefaultToolCall> = {
   messages: Message<ToolCall>[];
 };
 
+/**
+ * Conditionally adds `structuredResponse` to the agent state when
+ * `responseFormat` is provided to `createAgent`.
+ *
+ * The sentinel type `ResponseFormatUndefined` (from langchain) has a
+ * `__responseFormatUndefined` brand property. When the Response type
+ * carries that brand, no `structuredResponse` key is added.
+ */
+type InferStructuredResponse<Response> = Response extends {
+  __responseFormatUndefined: true;
+}
+  ? // eslint-disable-next-line @typescript-eslint/ban-types
+    {}
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Response extends Record<string, any>
+    ? { structuredResponse: Response }
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {};
+
 export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? ExtractAgentConfig<T> extends never
     ? // eslint-disable-next-line @typescript-eslint/ban-types
@@ -526,7 +545,8 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
           : SafeInferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
-        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
+        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]> &
+        InferStructuredResponse<ExtractAgentConfig<T>["Response"]>
   : T extends { "~RunOutput": infer RunOutput }
   ? RunOutput
   : T extends { messages: unknown }

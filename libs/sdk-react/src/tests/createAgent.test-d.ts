@@ -155,6 +155,40 @@ const agentWithCustomStateAndMiddleware = createAgent({
   systemPrompt: "Project assistant.",
 });
 
+const weatherResponseSchema = z.object({
+  conditions: z.string(),
+  temperature: z.number(),
+  humidity: z.number(),
+});
+
+const agentWithResponseFormat = createAgent({
+  model: "gpt-4o-mini",
+  tools: [getWeather],
+  responseFormat: weatherResponseSchema,
+  systemPrompt: "You are a weather assistant that returns structured data.",
+});
+
+const agentWithResponseFormatAndMiddleware = createAgent({
+  model: "gpt-4o-mini",
+  tools: [getWeather],
+  responseFormat: weatherResponseSchema,
+  middleware: [todoListMiddleware],
+  systemPrompt: "Weather assistant with todos.",
+});
+
+const agentWithResponseFormatAndCustomState = createAgent({
+  model: "gpt-4o-mini",
+  tools: [searchWeb],
+  responseFormat: z.object({
+    summary: z.string(),
+    confidence: z.number(),
+  }),
+  stateSchema: z.object({
+    sessionId: z.string(),
+  }),
+  systemPrompt: "Search assistant with structured output.",
+});
+
 describe("stream.messages contains BaseMessage class instances", () => {
   test("simple agent: messages is BaseMessage[]", () => {
     const stream = useStream<typeof simpleAgent>({
@@ -622,5 +656,67 @@ describe("realistic usage patterns with createAgent", () => {
     const aiMsg = new AIMessage({ content: "hello" });
     const calls = stream.getToolCalls(aiMsg);
     expectTypeOf(calls).toBeArray();
+  });
+});
+
+describe("stream.values.structuredResponse with responseFormat", () => {
+  test("agent with responseFormat: structuredResponse is typed", () => {
+    const stream = useStream<typeof agentWithResponseFormat>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.values).toHaveProperty("structuredResponse");
+    expectTypeOf(stream.values.structuredResponse).toEqualTypeOf<{
+      conditions: string;
+      temperature: number;
+      humidity: number;
+    }>();
+  });
+
+  test("agent without responseFormat: no structuredResponse in values", () => {
+    const stream = useStream<typeof simpleAgent>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.values).not.toHaveProperty("structuredResponse");
+  });
+
+  test("agent with responseFormat + middleware: both are present", () => {
+    const stream = useStream<typeof agentWithResponseFormatAndMiddleware>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.values).toHaveProperty("structuredResponse");
+    expectTypeOf(stream.values.structuredResponse).toEqualTypeOf<{
+      conditions: string;
+      temperature: number;
+      humidity: number;
+    }>();
+    expectTypeOf(stream.values).toHaveProperty("todos");
+    expectTypeOf(stream.values).toHaveProperty("messages");
+  });
+
+  test("agent with responseFormat + custom state: both are present", () => {
+    const stream = useStream<typeof agentWithResponseFormatAndCustomState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.values).toHaveProperty("structuredResponse");
+    expectTypeOf(stream.values.structuredResponse).toEqualTypeOf<{
+      summary: string;
+      confidence: number;
+    }>();
+    expectTypeOf(stream.values).toHaveProperty("sessionId");
+    expectTypeOf(stream.values.sessionId).toEqualTypeOf<string>();
+  });
+
+  test("agent with responseFormat: toolCalls still typed", () => {
+    const stream = useStream<typeof agentWithResponseFormat>({
+      assistantId: "agent",
+    });
+
+    const tc = stream.toolCalls[0];
+    expectTypeOf(tc.call.name).toEqualTypeOf<"get_weather">();
+    expectTypeOf(tc.call.args).toEqualTypeOf<{ location: string }>();
   });
 });
