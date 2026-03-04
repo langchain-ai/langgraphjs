@@ -446,9 +446,7 @@ describe("InferAgentToolCalls schema fallback", () => {
 
     type ToolCalls = InferAgentToolCalls<MockAgent>;
 
-    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<
-      "search" | "calculate"
-    >();
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"search" | "calculate">();
   });
 
   test("filters out tools with generic string name", () => {
