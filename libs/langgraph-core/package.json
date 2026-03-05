@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@langchain/anthropic": "^1.0.0",
-    "@langchain/core": "^1.1.16",
+    "@langchain/core": "^1.1.28",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/openai": "^1.0.0",

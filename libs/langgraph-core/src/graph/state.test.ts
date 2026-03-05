@@ -1,10 +1,14 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { z } from "zod";
+import { z as z3 } from "zod/v3";
+import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { Annotation } from "./annotation.js";
 import { StateGraph } from "./state.js";
+import { MessagesAnnotation, MessagesZodState } from "./messages_annotation.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
-import { Command, END, START } from "../constants.js";
+import { Command, END, Overwrite, START } from "../constants.js";
+import { messagesStateReducer } from "./messages_reducer.js";
 
 describe("StateGraph", () => {
   describe("constructor", () => {
@@ -1011,6 +1015,275 @@ describe("StateGraph", () => {
       const result = await graph.invoke({ messages: ["hello"], count: 1 });
       expect(result.messages).toEqual(["hello", "processed"]);
       expect(result.count).toBe(1);
+    });
+  });
+
+  describe("Overwrite end-to-end", () => {
+    describe("Annotation.Root", () => {
+      it("should overwrite a reducer field with Overwrite class", async () => {
+        const StateAnnotation = Annotation.Root({
+          items: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("add", () => ({ items: ["a", "b"] }))
+          .addNode("replace", () => ({ items: new Overwrite(["replaced"]) }))
+          .addEdge(START, "add")
+          .addEdge("add", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.items).toEqual(["replaced"]);
+      });
+
+      it("should overwrite with wire format object", async () => {
+        const StateAnnotation = Annotation.Root({
+          items: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("add", () => ({ items: ["a", "b"] }))
+          .addNode("replace", () => ({
+            items: { __overwrite__: ["replaced"] },
+          }))
+          .addEdge(START, "add")
+          .addEdge("add", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.items).toEqual(["replaced"]);
+      });
+
+      it("should overwrite a numeric reducer field", async () => {
+        const StateAnnotation = Annotation.Root({
+          count: Annotation<number>({
+            reducer: (a, b) => a + b,
+            default: () => 0,
+          }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("add", () => ({ count: 5 }))
+          .addNode("reset", () => ({ count: new Overwrite(0) }))
+          .addNode("addMore", () => ({ count: 3 }))
+          .addEdge(START, "add")
+          .addEdge("add", "reset")
+          .addEdge("reset", "addMore")
+          .addEdge("addMore", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.count).toBe(3);
+      });
+
+      it("should overwrite to empty array", async () => {
+        const StateAnnotation = Annotation.Root({
+          items: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("add", () => ({ items: ["a", "b", "c"] }))
+          .addNode("clear", () => ({ items: new Overwrite([]) }))
+          .addEdge(START, "add")
+          .addEdge("add", "clear")
+          .addEdge("clear", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.items).toEqual([]);
+      });
+
+      it("should continue accumulating after overwrite", async () => {
+        const StateAnnotation = Annotation.Root({
+          items: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("add", () => ({ items: ["a"] }))
+          .addNode("replace", () => ({ items: new Overwrite(["x"]) }))
+          .addNode("addMore", () => ({ items: ["y"] }))
+          .addEdge(START, "add")
+          .addEdge("add", "replace")
+          .addEdge("replace", "addMore")
+          .addEdge("addMore", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.items).toEqual(["x", "y"]);
+      });
+    });
+
+    describe("Annotation.Root with messagesStateReducer", () => {
+      it("should overwrite messages", async () => {
+        const StateAnnotation = Annotation.Root({
+          messages: Annotation<BaseMessage[]>({
+            reducer: messagesStateReducer,
+            default: () => [],
+          }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("agent", () => ({
+            messages: [new AIMessage("first response")],
+          }))
+          .addNode("replace", () => ({
+            messages: new Overwrite([new AIMessage("only this")]),
+          }))
+          .addEdge(START, "agent")
+          .addEdge("agent", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({
+          messages: [new HumanMessage("hello")],
+        });
+        expect(result.messages).toHaveLength(1);
+        expect(result.messages[0].content).toBe("only this");
+      });
+    });
+
+    describe("MessagesAnnotation", () => {
+      it("should overwrite messages in MessagesAnnotation", async () => {
+        const graph = new StateGraph(MessagesAnnotation)
+          .addNode("agent", () => ({
+            messages: [new AIMessage("first")],
+          }))
+          .addNode("replace", () => ({
+            messages: new Overwrite([new HumanMessage("fresh start")]),
+          }))
+          .addEdge(START, "agent")
+          .addEdge("agent", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({
+          messages: [new HumanMessage("hello")],
+        });
+        expect(result.messages).toHaveLength(1);
+        expect(result.messages[0].content).toBe("fresh start");
+      });
+    });
+
+    describe("Zod v3 schema", () => {
+      it("should overwrite a reducer field defined via Zod v3 meta", async () => {
+        const StateAnnotation = Annotation.Root({
+          items: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+          name: Annotation<string>,
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("add", () => ({ items: ["a"] }))
+          .addNode("replace", () => ({ items: new Overwrite(["z"]) }))
+          .addEdge(START, "add")
+          .addEdge("add", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({ name: "test" });
+        expect(result.items).toEqual(["z"]);
+        expect(result.name).toBe("test");
+      });
+    });
+
+    describe("MessagesZodState", () => {
+      it("should overwrite messages in MessagesZodState", async () => {
+        const schema = MessagesZodState.extend({ count: z3.number() });
+
+        const graph = new StateGraph(schema)
+          .addNode("agent", () => ({
+            messages: [new AIMessage("agent")],
+          }))
+          .addNode("replace", () => ({
+            messages: new Overwrite([new AIMessage("replaced")]),
+          }))
+          .addEdge(START, "agent")
+          .addEdge("agent", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({
+          messages: [new HumanMessage("hello")],
+          count: 1,
+        });
+        expect(result.messages).toHaveLength(1);
+        expect(result.messages[0]).toMatchObject({
+          type: "ai",
+          content: "replaced",
+        });
+      });
+    });
+
+    describe("StateSchema with ReducedValue", () => {
+      it("should overwrite a ReducedValue field", async () => {
+        const AgentState = new StateSchema({
+          items: new ReducedValue(
+            z.array(z.string()).default(() => []),
+            {
+              reducer: (current: string[], next: string[]) => [
+                ...current,
+                ...next,
+              ],
+            }
+          ),
+          count: z.number().default(0),
+        });
+
+        const graph = new StateGraph(AgentState)
+          .addNode("add", () => ({ items: ["a", "b"] }))
+          .addNode("replace", () => ({
+            items: new Overwrite(["only-this"]),
+          }))
+          .addEdge(START, "add")
+          .addEdge("add", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.items).toEqual(["only-this"]);
+        expect(result.count).toBe(0);
+      });
+
+      it("should overwrite a ReducedValue field with separate input schema", async () => {
+        const AgentState = new StateSchema({
+          items: new ReducedValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.string(),
+              reducer: (current: string[], next: string) => [...current, next],
+            }
+          ),
+        });
+
+        const graph = new StateGraph(AgentState)
+          .addNode("add", () => ({ items: "item1" }))
+          .addNode("replace", () => ({
+            items: new Overwrite(["replaced"]),
+          }))
+          .addEdge(START, "add")
+          .addEdge("add", "replace")
+          .addEdge("replace", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result.items).toEqual(["replaced"]);
+      });
     });
   });
 });

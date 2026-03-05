@@ -24,6 +24,7 @@ import type {
   CheckpointsStreamEvent,
   TasksStreamEvent,
   StreamMode,
+  ToolsStreamEvent,
 } from "../types.stream.js";
 import type {
   DefaultToolCall,
@@ -1070,6 +1071,19 @@ export interface UseStreamOptions<
   ) => void;
 
   /**
+   * Callback that is called when a tool lifecycle event is received.
+   */
+  onToolEvent?: (
+    data: ToolsStreamEvent["data"],
+    options: {
+      namespace: string[] | undefined;
+      mutate: (
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+      ) => void;
+    }
+  ) => void;
+
+  /**
    * Callback that is called when the stream is stopped by the user.
    * Provides a mutate function to update the stream state immediately
    * without requiring a server roundtrip.
@@ -1263,6 +1277,7 @@ export type UseStreamCustomOptions<
   | "onStop"
   | "initialValues"
   | "throttle"
+  | "onToolEvent"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 /**

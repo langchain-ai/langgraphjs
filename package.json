@@ -41,13 +41,18 @@
   },
   "pnpm": {
     "overrides": {
+      "@langchain/core": "^1.1.28",
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",
       "semver": "^7.0.0",
       "zod": "^4.3.5",
       "axios": ">=1.13.5",
-      "qs": ">=6.14.2"
+      "qs": ">=6.14.2",
+      "minimatch@<4": ">=3.1.4 <4",
+      "minimatch@>=5 <6": ">=5.1.8 <6",
+      "minimatch@>=9": ">=9.0.7",
+      "rollup@2": ">=4.59.0"
     },
     "onlyBuiltDependencies": [
       "@swc/core",

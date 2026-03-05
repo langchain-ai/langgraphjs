@@ -3,7 +3,7 @@ import type { SerializableSchema } from "../types.js";
 /**
  * Symbol for runtime identification of UntrackedValue instances.
  */
-export const UNTRACKED_VALUE_SYMBOL = Symbol.for(
+export const UNTRACKED_VALUE_SYMBOL: symbol = Symbol.for(
   "langgraph.state.untracked_value"
 );
 

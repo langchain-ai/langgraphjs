@@ -27,7 +27,8 @@ export type StreamMode =
   | "messages"
   | "checkpoints"
   | "tasks"
-  | "custom";
+  | "custom"
+  | "tools";
 
 export type Durability = "exit" | "async" | "sync";
 
@@ -71,6 +72,32 @@ interface StreamTasksResultOutput<Keys, StreamUpdates>
 type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
   | StreamTasksCreateOutput<StreamValues>
   | StreamTasksResultOutput<Nodes, StreamUpdates>;
+
+export type StreamToolsOutput =
+  | {
+      event: "on_tool_start";
+      toolCallId?: string;
+      name: string;
+      input: unknown;
+    }
+  | {
+      event: "on_tool_event";
+      toolCallId?: string;
+      name: string;
+      data: unknown;
+    }
+  | {
+      event: "on_tool_end";
+      toolCallId?: string;
+      name: string;
+      output: unknown;
+    }
+  | {
+      event: "on_tool_error";
+      toolCallId?: string;
+      name: string;
+      error: unknown;
+    };
 
 type DefaultStreamMode = "updates";
 
@@ -124,6 +151,7 @@ export type StreamOutputMap<
           "tasks",
           StreamTasksOutput<StreamUpdates, StreamValues>
         ];
+        tools: [string[], "tools", StreamToolsOutput];
         debug: [string[], "debug", StreamDebugOutput];
       }[Multiple]
     : {
@@ -138,6 +166,7 @@ export type StreamOutputMap<
         custom: ["custom", StreamCustom];
         checkpoints: ["checkpoints", StreamCheckpointsOutput<StreamValues>];
         tasks: ["tasks", StreamTasksOutput<StreamUpdates, StreamValues, Nodes>];
+        tools: ["tools", StreamToolsOutput];
         debug: ["debug", StreamDebugOutput];
       }[Multiple]
   : (
@@ -159,6 +188,7 @@ export type StreamOutputMap<
           string[],
           StreamTasksOutput<StreamUpdates, StreamValues, Nodes>
         ];
+        tools: [string[], StreamToolsOutput];
         debug: [string[], StreamDebugOutput];
       }[Single]
     : {
@@ -170,6 +200,7 @@ export type StreamOutputMap<
         custom: StreamCustom;
         checkpoints: StreamCheckpointsOutput<StreamValues>;
         tasks: StreamTasksOutput<StreamUpdates, StreamValues, Nodes>;
+        tools: StreamToolsOutput;
         debug: StreamDebugOutput;
       }[Single]
   : never;

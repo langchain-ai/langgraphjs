@@ -35,6 +35,8 @@ type Defactorify<T> = T extends (...args: any[]) => infer R
   ? Awaited<R>
   : Awaited<T>;
 
+type StripOverwrite<T> = Exclude<T, { __overwrite__: any }>;
+
 // @ts-ignore
 type Inspect<T, TDepth extends Array<0> = []> = TDepth extends [0, 0, 0]
   ? any
@@ -42,11 +44,17 @@ type Inspect<T, TDepth extends Array<0> = []> = TDepth extends [0, 0, 0]
   ? {
       [K in keyof T]: 0 extends 1 & T[K]
         ? T[K]
-        : Equals<MatchBaseMessageArray<T[K]>, BaseMessage[]> extends true
+        : Equals<
+            MatchBaseMessageArray<StripOverwrite<T[K]>>,
+            BaseMessage[]
+          > extends true
         ? BaseMessage[]
-        : Equals<MatchBaseMessage<T[K]>, BaseMessage> extends true
+        : Equals<
+            MatchBaseMessage<StripOverwrite<T[K]>>,
+            BaseMessage
+          > extends true
         ? BaseMessage
-        : Inspect<T[K], [0, ...TDepth]>;
+        : Inspect<StripOverwrite<T[K]>, [0, ...TDepth]>;
     }
   : never;
 

@@ -69,28 +69,6 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
-  check-readmes-synced:
-    name: Check READMEs synced
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 1
-
-      - name: Check README.md is in sync
-        run: |
-          if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph/README.md"
-          diff -C 3 README.md libs/langgraph/README.md
-          exit 1
-          fi
-          if ! diff -q README.md libs/langgraph-core/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph-core/README.md"
-          diff -C 3 README.md libs/langgraph-core/README.md
-          exit 1
-          fi
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -120,7 +98,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
         with:
           name: build-artifacts
           path: build-artifacts.tar.gz
@@ -131,7 +109,7 @@ jobs:
   # ============================================
   test:
     name: Unit Tests
-    needs: [lint, format, check-readmes-synced, build]
+    needs: [lint, format, build]
     strategy:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
@@ -158,7 +136,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
         with:
           name: build-artifacts
       - name: Extract build artifacts
@@ -174,7 +152,7 @@ jobs:
   # ============================================
   environment-tests:
     name: Environment Tests
-    needs: [lint, format, check-readmes-synced, build]
+    needs: [lint, format, build]
     uses: ./.github/workflows/test-exports.yml
     with:
       artifact-name: build-artifacts

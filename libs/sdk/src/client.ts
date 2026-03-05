@@ -1142,6 +1142,14 @@ export class ThreadsClient<
     values?: ThreadValuesFilter;
 
     /**
+     * Dictionary mapping aliases to JSONB paths to extract from thread data.
+     * Paths use dot notation for nested keys and bracket notation for array
+     * indices (e.g., `{"last_msg": "values.messages[-1]"}`). Extracted values
+     * are returned in an `extracted` field on each thread. Maximum 10 paths.
+     */
+    extract?: Record<string, string>;
+
+    /**
      * Signal to abort the request.
      */
     signal?: AbortSignal;
@@ -1158,6 +1166,7 @@ export class ThreadsClient<
         sort_order: query?.sortOrder,
         select: query?.select ?? undefined,
         values: query?.values ?? undefined,
+        extract: query?.extract ?? undefined,
       },
       signal: query?.signal,
     });

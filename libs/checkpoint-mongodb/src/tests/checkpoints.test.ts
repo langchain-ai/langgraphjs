@@ -33,6 +33,31 @@ describe("MongoDBSaver", () => {
     });
   });
 
+  describe("timestampOp", () => {
+    it("should return empty object when enableTimestamps is not set", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const op = (saver as any).timestampOp;
+      expect(op).toEqual({});
+    });
+
+    it("should return $currentDate operator when enableTimestamps is true", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        enableTimestamps: true,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const op = (saver as any).timestampOp;
+      expect(op).toEqual({ $currentDate: { upserted_at: true } });
+    });
+  });
+
   describe("filter validation", () => {
     it("should reject object values in filter to prevent MongoDB operator injection", async () => {
       const client = createMockClient();

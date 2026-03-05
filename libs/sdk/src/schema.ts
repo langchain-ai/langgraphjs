@@ -220,6 +220,9 @@ export interface Thread<ValuesType = DefaultValues, TInterruptValue = unknown> {
 
   /** The error for the thread (if status == "error") */
   error?: Optional<string | Record<string, unknown>>;
+
+  /** Extracted values from thread data. Only present when `extract` is used in search. */
+  extracted?: Record<string, unknown>;
 }
 
 export interface Cron {

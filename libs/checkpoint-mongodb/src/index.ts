@@ -16,6 +16,11 @@ export type MongoDBSaverParams = {
   dbName?: string;
   checkpointCollectionName?: string;
   checkpointWritesCollectionName?: string;
+  /**
+   * When true, writes an `upserted_at` BSON date to documents on every upsert.
+   * Useful for MongoDB TTL indexes, auditing, or debugging.
+   */
+  enableTimestamps?: boolean;
 };
 
 /**
@@ -30,12 +35,21 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   checkpointWritesCollectionName = "checkpoint_writes";
 
+  protected enableTimestamps: boolean;
+
+  private get timestampOp() {
+    return this.enableTimestamps
+      ? ({ $currentDate: { upserted_at: true } } as const)
+      : {};
+  }
+
   constructor(
     {
       client,
       dbName,
       checkpointCollectionName,
       checkpointWritesCollectionName,
+      enableTimestamps,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
@@ -49,6 +63,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
+    this.enableTimestamps = enableTimestamps ?? false;
   }
 
   /**
@@ -251,7 +266,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     };
     await this.db
       .collection(this.checkpointCollectionName)
-      .updateOne(upsertQuery, { $set: doc }, { upsert: true });
+      .updateOne(
+        upsertQuery,
+        { $set: doc, ...this.timestampOp },
+        { upsert: true }
+      );
 
     return {
       configurable: {
@@ -298,7 +317,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         return {
           updateOne: {
             filter: upsertQuery,
-            update: { $set: { channel, type, value: serializedValue } },
+            update: {
+              $set: { channel, type, value: serializedValue },
+              ...this.timestampOp,
+            },
             upsert: true,
           },
         };

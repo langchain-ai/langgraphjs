@@ -13,6 +13,7 @@ import {
 import { BaseChannel } from "../../channels/base.js";
 import { BinaryOperatorAggregate } from "../../channels/binop.js";
 import { LastValue } from "../../channels/last_value.js";
+import type { OverwriteValue } from "../../constants.js";
 
 export const META_EXTRAS_DESCRIPTION_PREFIX = "lg:";
 
@@ -35,7 +36,7 @@ export type InteropZodToStateDefinition<
   >
     ? Schema extends InteropZodType<infer V>
       ? ReducerSchema extends InteropZodType<infer U>
-        ? BaseChannel<V, U>
+        ? BaseChannel<V, OverwriteValue<V> | U>
         : never
       : never
     : TShape[key] extends InteropZodType<infer V, infer U>
@@ -51,9 +52,9 @@ export type UpdateType<
     infer Schema,
     infer ReducerSchema
   >
-    ? Schema extends InteropZodType<unknown>
+    ? Schema extends InteropZodType<infer V>
       ? ReducerSchema extends InteropZodType<infer U>
-        ? U
+        ? OverwriteValue<V> | U
         : never
       : never
     : TShape[key] extends InteropZodType<unknown, infer U>
