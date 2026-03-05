@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
+import { SubagentManager } from "./subagents.js";
+import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
@@ -698,6 +700,116 @@ describe("StreamManager", () => {
       });
 
       expect(onError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("subagent message conversion via toMessage", () => {
+    function createSubagentManager(
+      toMessage?: (chunk: CoreBaseMessage) => CoreBaseMessage
+    ) {
+      return new SubagentManager({
+        subagentToolNames: ["task"],
+        toMessage,
+      });
+    }
+
+    const historyMessages = [
+      {
+        type: "ai" as const,
+        id: "ai-1",
+        content: "Delegating task",
+        tool_calls: [
+          {
+            id: "call_1",
+            name: "task",
+            args: {
+              subagent_type: "researcher",
+              description: "Research AI trends",
+            },
+          },
+        ],
+      },
+      {
+        type: "tool" as const,
+        id: "tool-1",
+        content: "Done researching",
+        tool_call_id: "call_1",
+      },
+    ];
+
+    it("should produce class instances when toMessage is identity (like framework adapters)", () => {
+      const mgr = createSubagentManager((chunk) => chunk);
+      mgr.reconstructFromMessages(historyMessages);
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+      expect(subagent!.status).toBe("complete");
+      expect(subagent!.result).toBe("Done researching");
+    });
+
+    it("should produce plain objects by default (SDK behaviour)", () => {
+      const mgr = createSubagentManager();
+      mgr.reconstructFromMessages(historyMessages);
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+      expect(subagent!.status).toBe("complete");
+      expect(subagent!.result).toBe("Done researching");
+    });
+
+    it("should call toMessage when building subagent messages from addMessageToSubagent", () => {
+      const toMessage = vi.fn((chunk: CoreBaseMessage) => chunk);
+      const mgr = createSubagentManager(toMessage);
+
+      mgr.reconstructFromMessages(historyMessages);
+
+      mgr.addMessageToSubagent("call_1", {
+        type: "ai",
+        id: "sub-ai-1",
+        content: "Researching...",
+      });
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+      expect(subagent!.messages.length).toBeGreaterThan(0);
+      expect(toMessage).toHaveBeenCalled();
+    });
+
+    it("subagent messages are BaseMessage class instances when using identity toMessage", () => {
+      const mgr = createSubagentManager((chunk) => chunk);
+
+      mgr.reconstructFromMessages(historyMessages);
+      mgr.addMessageToSubagent("call_1", {
+        type: "ai",
+        id: "sub-ai-1",
+        content: "Researching...",
+      });
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+
+      for (const msg of subagent!.messages) {
+        expect(typeof (msg as CoreBaseMessage).getType).toBe("function");
+      }
+    });
+
+    it("subagent messages are plain dicts when using default toMessage", () => {
+      const mgr = createSubagentManager();
+
+      mgr.reconstructFromMessages(historyMessages);
+      mgr.addMessageToSubagent("call_1", {
+        type: "ai",
+        id: "sub-ai-1",
+        content: "Researching...",
+      });
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+
+      for (const msg of subagent!.messages) {
+        expect(typeof (msg as CoreBaseMessage).getType).toBe("undefined");
+        expect(msg.type).toBeDefined();
+      }
     });
   });
 });

@@ -341,7 +341,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
     expectTypeOf(tc.call).toHaveProperty("id");
     expectTypeOf(tc.call).toHaveProperty("type");
     type IdType = (typeof tc.call)["id"];
-    expectTypeOf<string | undefined>().toMatchTypeOf<IdType>();
+    expectTypeOf<string | undefined>().toExtend<IdType>();
   });
 
   test("getToolCalls returns typed ToolCallWithResult array", () => {
@@ -388,7 +388,7 @@ describe("stream.values contains the expected agent state", () => {
 
     expectTypeOf(stream.values).toHaveProperty("messages");
     expectTypeOf(stream.values).toHaveProperty("todos");
-    expectTypeOf(stream.values.todos).toMatchTypeOf<Todo[]>();
+    expectTypeOf(stream.values.todos).toExtend<Todo[]>();
   });
 
   test("agent with middleware: todo items have correct shape", () => {
@@ -414,7 +414,7 @@ describe("stream.values contains the expected agent state", () => {
     expectTypeOf(stream.values).toHaveProperty("files");
     expectTypeOf(stream.values).toHaveProperty("count");
     expectTypeOf(stream.values.count).toEqualTypeOf<number>();
-    expectTypeOf(stream.values.files).toMatchTypeOf<
+    expectTypeOf(stream.values.files).toExtend<
       { path: string; content: string }[]
     >();
   });
@@ -451,46 +451,25 @@ describe("stream.values contains the expected agent state", () => {
   });
 });
 
-describe("agent streams exclude deep agent features", () => {
-  test("simple agent does not have getSubagentsByType", () => {
-    const stream = useStream<typeof simpleAgent>({
-      assistantId: "agent",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
-  });
-
-  test("simple agent does not have subagents map", () => {
+describe("agent streams do not have deep agent features", () => {
+  test("simple agent does not have subagent properties", () => {
     const stream = useStream<typeof simpleAgent>({
       assistantId: "agent",
     });
 
     expectTypeOf(stream).not.toHaveProperty("subagents");
-  });
-
-  test("simple agent does not have activeSubagents", () => {
-    const stream = useStream<typeof simpleAgent>({
-      assistantId: "agent",
-    });
-
     expectTypeOf(stream).not.toHaveProperty("activeSubagents");
-  });
-
-  test("simple agent does not have getSubagent", () => {
-    const stream = useStream<typeof simpleAgent>({
-      assistantId: "agent",
-    });
-
     expectTypeOf(stream).not.toHaveProperty("getSubagent");
+    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
   });
 
-  test("agent with middleware does not have subagent features", () => {
+  test("agent with middleware does not have subagent properties", () => {
     const stream = useStream<typeof agentWithMultipleMiddleware>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
     expectTypeOf(stream).not.toHaveProperty("subagents");
+    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
   });
 });
 
@@ -607,7 +586,7 @@ describe("realistic usage patterns with createAgent", () => {
     const pendingTodos = stream.values.todos.filter(
       (t) => t.status === "pending",
     );
-    expectTypeOf(pendingTodos).toMatchTypeOf<Todo[]>();
+    expectTypeOf(pendingTodos).toExtend<Todo[]>();
 
     const fileCount = stream.values.files.length;
     expectTypeOf(fileCount).toEqualTypeOf<number>();

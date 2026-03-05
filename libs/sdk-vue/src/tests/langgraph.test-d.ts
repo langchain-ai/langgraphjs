@@ -21,7 +21,6 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import type { Message } from "@langchain/langgraph-sdk";
 import {
   StateGraph,
   StateSchema,
@@ -120,17 +119,17 @@ const pipelineGraph = new StateGraph(PipelineGraphSchema)
   .compile();
 
 interface BasicDirectState {
-  messages: Message[];
+  messages: BaseMessage[];
 }
 
 interface CustomDirectState {
-  messages: Message[];
+  messages: BaseMessage[];
   sessionId: string;
   metadata: { theme: "light" | "dark" };
 }
 
 interface ComplexDirectState {
-  messages: Message[];
+  messages: BaseMessage[];
   settings: {
     temperature: number;
     maxTokens: number;
@@ -148,14 +147,6 @@ describe("graph: stream.messages is BaseMessage[]", () => {
 
     expectTypeOf(stream.messages.value).toExtend<BaseMessage[]>();
     expectTypeOf(stream.messages.value[0]).toExtend<BaseMessage>();
-  });
-
-  test("graph messages are NOT plain Message[]", () => {
-    const stream = useStream<typeof simpleGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.messages.value).not.toEqualTypeOf<Message[]>();
   });
 
   test("graph messages can be narrowed with type guards", () => {
@@ -337,7 +328,6 @@ describe("direct state types work without StateGraph", () => {
     });
 
     expectTypeOf(stream.messages.value).toExtend<BaseMessage[]>();
-    expectTypeOf(stream.messages.value).not.toEqualTypeOf<Message[]>();
   });
 });
 
@@ -463,7 +453,7 @@ describe("graph: core stream properties", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.assistantId.value).toEqualTypeOf<string>();
+    expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
   });
 
   test("joinStream is a function", () => {

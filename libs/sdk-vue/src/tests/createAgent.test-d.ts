@@ -508,7 +508,7 @@ describe("core stream properties are correctly typed", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.assistantId.value).toEqualTypeOf<string>();
+    expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
   });
 
   test("setBranch accepts string", () => {

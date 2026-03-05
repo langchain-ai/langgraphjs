@@ -4,7 +4,11 @@ import type {
   ToolMessage as CoreToolMessage,
   AIMessage as CoreAIMessage,
 } from "@langchain/core/messages";
-import type { BagTemplate, ToolCallWithResult } from "@langchain/langgraph-sdk";
+import type {
+  BagTemplate,
+  ToolCallWithResult,
+  DefaultToolCall,
+} from "@langchain/langgraph-sdk";
 import type {
   UseStreamOptions,
   ResolveStreamInterface,
@@ -12,6 +16,7 @@ import type {
   InferBag,
   InferStateType,
   MessageMetadata,
+  SubagentStreamInterface,
 } from "@langchain/langgraph-sdk/ui";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
@@ -33,6 +38,17 @@ type ClassToolCallWithResult<T> =
     ? ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
     : T;
 
+export type ClassSubagentStreamInterface<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string,
+> = Omit<
+  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
+  "messages"
+> & {
+  messages: BaseMessage[];
+};
+
 /**
  * Maps a stream interface to use @langchain/core BaseMessage class instances
  * instead of plain Message objects for the `messages` property, and remaps
@@ -40,7 +56,15 @@ type ClassToolCallWithResult<T> =
  */
 type WithClassMessages<T> = Omit<
   T,
-  "messages" | "getMessagesMetadata" | "toolCalls" | "getToolCalls"
+  | "messages"
+  | "getMessagesMetadata"
+  | "toolCalls"
+  | "getToolCalls"
+  | "subagents"
+  | "activeSubagents"
+  | "getSubagent"
+  | "getSubagentsByType"
+  | "getSubagentsByMessage"
 > & {
   messages: BaseMessage[];
   getMessagesMetadata: (
@@ -60,6 +84,50 @@ type WithClassMessages<T> = Omit<
           getToolCalls: (message: infer _M) => (infer TC)[];
         }
           ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+          : never;
+      }
+    : unknown) &
+  ("subagents" extends keyof T
+    ? {
+        subagents: T extends {
+          subagents: Map<
+            string,
+            SubagentStreamInterface<infer S, infer TC, infer N>
+          >;
+        }
+          ? Map<string, ClassSubagentStreamInterface<S, TC, N>>
+          : never;
+        activeSubagents: T extends {
+          activeSubagents: SubagentStreamInterface<
+            infer S,
+            infer TC,
+            infer N
+          >[];
+        }
+          ? ClassSubagentStreamInterface<S, TC, N>[]
+          : never;
+        getSubagent: T extends {
+          getSubagent: (
+            id: string,
+          ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
+        }
+          ? (
+              toolCallId: string,
+            ) => ClassSubagentStreamInterface<S, TC, N> | undefined
+          : never;
+        getSubagentsByType: T extends {
+          getSubagentsByType: (
+            type: string,
+          ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+        }
+          ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
+          : never;
+        getSubagentsByMessage: T extends {
+          getSubagentsByMessage: (
+            id: string,
+          ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+        }
+          ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
           : never;
       }
     : unknown);

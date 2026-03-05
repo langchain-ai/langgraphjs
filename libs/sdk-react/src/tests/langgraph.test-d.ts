@@ -21,7 +21,6 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import type { Message } from "@langchain/langgraph-sdk";
 import {
   StateGraph,
   StateSchema,
@@ -120,17 +119,17 @@ const pipelineGraph = new StateGraph(PipelineGraphSchema)
   .compile();
 
 interface BasicDirectState {
-  messages: Message[];
+  messages: BaseMessage[];
 }
 
 interface CustomDirectState {
-  messages: Message[];
+  messages: BaseMessage[];
   sessionId: string;
   metadata: { theme: "light" | "dark" };
 }
 
 interface ComplexDirectState {
-  messages: Message[];
+  messages: BaseMessage[];
   settings: {
     temperature: number;
     maxTokens: number;
@@ -148,14 +147,6 @@ describe("graph: stream.messages is BaseMessage[]", () => {
 
     expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
     expectTypeOf(stream.messages[0]).toExtend<BaseMessage>();
-  });
-
-  test("graph messages are NOT plain Message[]", () => {
-    const stream = useStream<typeof simpleGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.messages).not.toEqualTypeOf<Message[]>();
   });
 
   test("graph messages can be narrowed with type guards", () => {
@@ -330,8 +321,7 @@ describe("direct state types work without StateGraph", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
-    expectTypeOf(stream.messages).not.toEqualTypeOf<Message[]>();
+    expectTypeOf(stream.messages).toEqualTypeOf<BaseMessage[]>();
   });
 });
 
@@ -358,33 +348,12 @@ describe("graph streams do not have agent-specific features", () => {
     });
 
     expectTypeOf(stream).not.toHaveProperty("subagents");
-  });
-
-  test("compiled graph does not have getSubagentsByType", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
     expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
-  });
-
-  test("compiled graph does not have activeSubagents", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
     expectTypeOf(stream).not.toHaveProperty("activeSubagents");
-  });
-
-  test("compiled graph does not have getSubagent", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
     expectTypeOf(stream).not.toHaveProperty("getSubagent");
   });
 
-  test("direct state type also does not have agent features", () => {
+  test("direct state type does not have agent features", () => {
     const stream = useStream<BasicDirectState>({
       assistantId: "direct",
     });

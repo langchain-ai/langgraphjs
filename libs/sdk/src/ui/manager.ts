@@ -767,7 +767,9 @@ export class StreamManager<
       this.abortRef.abort();
     }
     this.queueSize += 1;
-    this.queue = this.queue.then(() => this.enqueue(action, options));
+    const queued = this.queue.then(() => this.enqueue(action, options));
+    this.queue = queued;
+    await queued;
   };
 
   stop = async (

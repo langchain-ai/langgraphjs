@@ -5,6 +5,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import { useStream, type ToolCallState } from "../index.js";
+import { get } from "svelte/store";
 
 const getWeather = tool(
   async ({ location }: { location: string }) => {
@@ -161,8 +162,8 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
-    expectTypeOf(stream.messages[0]).toExtend<BaseMessage>();
+    expectTypeOf(get(stream.messages)).toExtend<BaseMessage[]>();
+    expectTypeOf(get(stream.messages)[0]).toExtend<BaseMessage>();
   });
 
   test("multi-tool agent: messages is BaseMessage[]", () => {
@@ -170,7 +171,7 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
+    expectTypeOf(get(stream.messages)).toExtend<BaseMessage[]>();
   });
 
   test("agent with middleware: messages is BaseMessage[]", () => {
@@ -178,7 +179,7 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
+    expectTypeOf(get(stream.messages)).toExtend<BaseMessage[]>();
   });
 
   test("messages can be narrowed with type guards", () => {
@@ -186,7 +187,7 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = get(stream.messages)[0];
     if (AIMessage.isInstance(msg)) {
       expectTypeOf(msg).toExtend<AIMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"ai">();
@@ -203,10 +204,10 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    const aiMessages = stream.messages.filter(AIMessage.isInstance);
+    const aiMessages = get(stream.messages).filter(AIMessage.isInstance);
     expectTypeOf(aiMessages).toExtend<AIMessage[]>();
 
-    const humanMessages = stream.messages.filter(HumanMessage.isInstance);
+    const humanMessages = get(stream.messages).filter(HumanMessage.isInstance);
     expectTypeOf(humanMessages).toExtend<HumanMessage[]>();
   });
 
@@ -215,7 +216,7 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = get(stream.messages)[0];
     expectTypeOf(msg.text).toEqualTypeOf<string>();
     expectTypeOf(msg.id).toEqualTypeOf<string | undefined>();
     expectTypeOf(msg.type).toBeString();
@@ -227,7 +228,7 @@ describe("stream.messages contains BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = get(stream.messages)[0];
     const metadata = stream.getMessagesMetadata(msg, 0);
     if (metadata) {
       expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
@@ -241,7 +242,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call.name).toEqualTypeOf<"get_weather">();
   });
 
@@ -250,7 +251,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call.args).toEqualTypeOf<{ location: string }>();
   });
 
@@ -259,7 +260,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call.name).toEqualTypeOf<
       "get_weather" | "search_web" | "send_email"
     >();
@@ -270,7 +271,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call.name).toEqualTypeOf<
       "get_weather" | "search_web" | "send_email" | "create_file"
     >();
@@ -281,7 +282,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.id).toEqualTypeOf<string>();
     expectTypeOf(tc.call).not.toBeNever();
     expectTypeOf(tc.result).toBeNullable();
@@ -294,7 +295,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.state).toEqualTypeOf<"pending" | "completed" | "error">();
   });
 
@@ -303,7 +304,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call).toHaveProperty("id");
     expectTypeOf(tc.call).toHaveProperty("type");
     type IdType = (typeof tc.call)["id"];
@@ -323,7 +324,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call.name).toEqualTypeOf<"get_weather">();
     expectTypeOf(tc.call.args).toEqualTypeOf<{ location: string }>();
   });
@@ -333,7 +334,7 @@ describe("stream.toolCalls has correct types from agent tools", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.call.name).toEqualTypeOf<"search_web" | "create_file">();
   });
 });
@@ -344,7 +345,7 @@ describe("stream.values contains the expected agent state", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(get(stream.values)).toHaveProperty("messages");
   });
 
   test("agent with middleware: values includes middleware state", () => {
@@ -352,9 +353,9 @@ describe("stream.values contains the expected agent state", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.values).toHaveProperty("messages");
-    expectTypeOf(stream.values).toHaveProperty("todos");
-    expectTypeOf(stream.values.todos).toMatchTypeOf<Todo[]>();
+    expectTypeOf(get(stream.values)).toHaveProperty("messages");
+    expectTypeOf(get(stream.values)).toHaveProperty("todos");
+    expectTypeOf(get(stream.values).todos).toMatchTypeOf<Todo[]>();
   });
 
   test("agent with middleware: todo items have correct shape", () => {
@@ -362,7 +363,7 @@ describe("stream.values contains the expected agent state", () => {
       assistantId: "agent",
     });
 
-    const todo = stream.values.todos[0];
+    const todo = get(stream.values).todos[0];
     expectTypeOf(todo.id).toEqualTypeOf<string>();
     expectTypeOf(todo.content).toEqualTypeOf<string>();
     expectTypeOf(todo.status).toEqualTypeOf<
@@ -375,12 +376,12 @@ describe("stream.values contains the expected agent state", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.values).toHaveProperty("messages");
-    expectTypeOf(stream.values).toHaveProperty("todos");
-    expectTypeOf(stream.values).toHaveProperty("files");
-    expectTypeOf(stream.values).toHaveProperty("count");
-    expectTypeOf(stream.values.count).toEqualTypeOf<number>();
-    expectTypeOf(stream.values.files).toMatchTypeOf<
+    expectTypeOf(get(stream.values)).toHaveProperty("messages");
+    expectTypeOf(get(stream.values)).toHaveProperty("todos");
+    expectTypeOf(get(stream.values)).toHaveProperty("files");
+    expectTypeOf(get(stream.values)).toHaveProperty("count");
+    expectTypeOf(get(stream.values).count).toEqualTypeOf<number>();
+    expectTypeOf(get(stream.values).files).toMatchTypeOf<
       { path: string; content: string }[]
     >();
   });
@@ -390,14 +391,16 @@ describe("stream.values contains the expected agent state", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.values).toHaveProperty("messages");
-    expectTypeOf(stream.values).toHaveProperty("sessionId");
-    expectTypeOf(stream.values).toHaveProperty("preferences");
-    expectTypeOf(stream.values.sessionId).toEqualTypeOf<string>();
-    expectTypeOf(stream.values.preferences.theme).toEqualTypeOf<
+    expectTypeOf(get(stream.values)).toHaveProperty("messages");
+    expectTypeOf(get(stream.values)).toHaveProperty("sessionId");
+    expectTypeOf(get(stream.values)).toHaveProperty("preferences");
+    expectTypeOf(get(stream.values).sessionId).toEqualTypeOf<string>();
+    expectTypeOf(get(stream.values).preferences.theme).toEqualTypeOf<
       "light" | "dark"
     >();
-    expectTypeOf(stream.values.preferences.language).toEqualTypeOf<string>();
+    expectTypeOf(
+      get(stream.values).preferences.language,
+    ).toEqualTypeOf<string>();
   });
 
   test("agent with custom state + middleware: both are merged", () => {
@@ -405,13 +408,13 @@ describe("stream.values contains the expected agent state", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.values).toHaveProperty("messages");
-    expectTypeOf(stream.values).toHaveProperty("projectName");
-    expectTypeOf(stream.values).toHaveProperty("priority");
-    expectTypeOf(stream.values).toHaveProperty("todos");
-    expectTypeOf(stream.values).toHaveProperty("files");
-    expectTypeOf(stream.values.projectName).toEqualTypeOf<string>();
-    expectTypeOf(stream.values.priority).toEqualTypeOf<
+    expectTypeOf(get(stream.values)).toHaveProperty("messages");
+    expectTypeOf(get(stream.values)).toHaveProperty("projectName");
+    expectTypeOf(get(stream.values)).toHaveProperty("priority");
+    expectTypeOf(get(stream.values)).toHaveProperty("todos");
+    expectTypeOf(get(stream.values)).toHaveProperty("files");
+    expectTypeOf(get(stream.values).projectName).toEqualTypeOf<string>();
+    expectTypeOf(get(stream.values).priority).toEqualTypeOf<
       "low" | "medium" | "high"
     >();
   });
@@ -466,7 +469,7 @@ describe("core stream properties are correctly typed", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
+    expectTypeOf(get(stream.isLoading)).toEqualTypeOf<boolean>();
   });
 
   test("error is unknown", () => {
@@ -474,7 +477,7 @@ describe("core stream properties are correctly typed", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.error).toEqualTypeOf<unknown>();
+    expectTypeOf(get(stream.error)).toEqualTypeOf<unknown>();
   });
 
   test("stop returns Promise<void>", () => {
@@ -498,7 +501,7 @@ describe("core stream properties are correctly typed", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.branch).toEqualTypeOf<string>();
+    expectTypeOf(get(stream.branch)).toEqualTypeOf<string>();
   });
 
   test("assistantId is string", () => {
@@ -522,7 +525,7 @@ describe("core stream properties are correctly typed", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.isThreadLoading).toEqualTypeOf<boolean>();
+    expectTypeOf(get(stream.isThreadLoading)).toEqualTypeOf<boolean>();
   });
 });
 
@@ -532,7 +535,7 @@ describe("realistic usage patterns with createAgent", () => {
       assistantId: "agent",
     });
 
-    for (const tc of stream.toolCalls) {
+    for (const tc of get(stream.toolCalls)) {
       if (tc.call.name === "get_weather") {
         expectTypeOf(tc.call.args).toEqualTypeOf<{ location: string }>();
       }
@@ -561,7 +564,7 @@ describe("realistic usage patterns with createAgent", () => {
       assistantId: "agent",
     });
 
-    const texts = stream.messages.map((m) => m.text);
+    const texts = get(stream.messages).map((m) => m.text);
     expectTypeOf(texts).toEqualTypeOf<string[]>();
   });
 
@@ -570,15 +573,15 @@ describe("realistic usage patterns with createAgent", () => {
       assistantId: "agent",
     });
 
-    const pendingTodos = stream.values.todos.filter(
+    const pendingTodos = get(stream.values).todos.filter(
       (t) => t.status === "pending",
     );
     expectTypeOf(pendingTodos).toMatchTypeOf<Todo[]>();
 
-    const fileCount = stream.values.files.length;
+    const fileCount = get(stream.values).files.length;
     expectTypeOf(fileCount).toEqualTypeOf<number>();
 
-    const currentCount = stream.values.count;
+    const currentCount = get(stream.values).count;
     expectTypeOf(currentCount).toEqualTypeOf<number>();
   });
 
@@ -598,7 +601,7 @@ describe("realistic usage patterns with createAgent", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     if (tc.result) {
       expectTypeOf(tc.call.args).toEqualTypeOf<
         | {
@@ -624,7 +627,7 @@ describe("realistic usage patterns with createAgent", () => {
       assistantId: "agent",
     });
 
-    const tc = stream.toolCalls[0];
+    const tc = get(stream.toolCalls)[0];
     expectTypeOf(tc.aiMessage.toDict()).toHaveProperty("type");
   });
 

@@ -192,7 +192,7 @@ export function useStreamCustom<
       async clear() {},
     },
 
-    get interrupts(): Interrupt<InterruptType>[] {
+    interrupts: computed((): Interrupt<InterruptType>[] => {
       const vals = streamValues();
       if (
         vals != null &&
@@ -205,24 +205,24 @@ export function useStreamCustom<
       }
 
       return [];
-    },
+    }),
 
-    get interrupt(): Interrupt<InterruptType> | undefined {
+    interrupt: computed((): Interrupt<InterruptType> | undefined => {
       return extractInterrupts<InterruptType>(streamValues());
-    },
+    }),
 
-    get messages() {
+    messages: computed(() => {
       const vals = streamValues();
       if (!vals) return [];
       return ensureMessageInstances(getMessages(vals));
-    },
+    }),
 
-    get toolCalls() {
+    toolCalls: computed(() => {
       const vals = streamValues();
       if (!vals) return [];
       const msgs = getMessages(vals);
       return getToolCallsWithResults<ToolCallType>(msgs);
-    },
+    }),
 
     getToolCalls(message: Message<ToolCallType>) {
       const vals = streamValues();

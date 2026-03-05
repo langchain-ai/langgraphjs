@@ -257,6 +257,27 @@ export interface StreamBase<
 }
 
 /**
+ * Subagent API surface parameterised by the subagent interface type.
+ *
+ * Framework adapters supply a class-message variant of
+ * `SubagentStreamInterface` (where `messages` is `BaseMessage[]`
+ * from `@langchain/core`) so that consumers always work with class
+ * instances.  The default parameter keeps the SDK's plain `Message`
+ * interface for direct SDK usage.
+ *
+ * @template Iface - The subagent stream interface to expose.
+ *   Defaults to {@link SubagentStreamInterface} with default generic
+ *   parameters.
+ */
+export interface SubagentApi<Iface = SubagentStreamInterface> {
+  subagents: Map<string, Iface>;
+  activeSubagents: Iface[];
+  getSubagent: (toolCallId: string) => Iface | undefined;
+  getSubagentsByType: (type: string) => Iface[];
+  getSubagentsByMessage: (messageId: string) => Iface[];
+}
+
+/**
  * Base interface for a single subagent stream.
  * Tracks the lifecycle of a subagent from invocation to completion.
  *
@@ -531,10 +552,10 @@ type InferStructuredResponse<Response> = Response extends {
   ? // eslint-disable-next-line @typescript-eslint/ban-types
     {}
   : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Response extends Record<string, any>
-    ? { structuredResponse: Response }
-    : // eslint-disable-next-line @typescript-eslint/ban-types
-      {};
+  Response extends Record<string, any>
+  ? { structuredResponse: Response }
+  : // eslint-disable-next-line @typescript-eslint/ban-types
+    {};
 
 export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? ExtractAgentConfig<T> extends never

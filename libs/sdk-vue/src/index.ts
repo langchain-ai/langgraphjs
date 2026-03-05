@@ -41,6 +41,7 @@ import {
   type InferBag,
   type InferStateType,
   type UseStreamCustomOptions,
+  type SubagentStreamInterface,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 
@@ -766,17 +767,35 @@ type ClassToolCallWithResult<T> =
     ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
     : T;
 
+export type ClassSubagentStreamInterface<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string,
+> = Omit<
+  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
+  "messages"
+> & {
+  messages: BaseMessage[];
+};
+
 /**
  * Maps a stream interface to Vue-reactive types:
  * - `messages` becomes `ComputedRef<BaseMessage[]>`
  * - `getMessagesMetadata` accepts `BaseMessage`
  * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Ref`
  * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
+ * - `queue` properties are individually mapped (reactive → `Ref`, functions unchanged)
+ * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
  * - Functions remain unchanged
  * - All other properties are wrapped in `Ref<T>` to match Vue's reactivity
  */
 type WithClassMessages<T> = {
-  [K in keyof T]: K extends "messages"
+  [K in keyof T as K extends
+    | "getSubagent"
+    | "getSubagentsByType"
+    | "getSubagentsByMessage"
+    ? never
+    : K]: K extends "messages"
     ? ComputedRef<BaseMessage[]>
     : K extends "getMessagesMetadata"
       ? (
@@ -791,10 +810,61 @@ type WithClassMessages<T> = {
           ? T[K] extends (message: infer _M) => (infer TC)[]
             ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
             : T[K]
-          : T[K] extends (...args: infer A) => infer R
-            ? (...args: A) => R
-            : Ref<T[K]>;
-};
+          : K extends "queue"
+            ? {
+                [QK in keyof T[K]]: T[K][QK] extends (
+                  ...args: infer A
+                ) => infer R
+                  ? (...args: A) => R
+                  : Ref<T[K][QK]>;
+              }
+            : K extends "client" | "assistantId"
+              ? T[K]
+              : K extends "subagents"
+                ? T[K] extends Map<
+                    string,
+                    SubagentStreamInterface<infer S, infer TC, infer N>
+                  >
+                  ? Map<string, ClassSubagentStreamInterface<S, TC, N>>
+                  : T[K]
+                : K extends "activeSubagents"
+                  ? T[K] extends SubagentStreamInterface<
+                      infer S,
+                      infer TC,
+                      infer N
+                    >[]
+                    ? ClassSubagentStreamInterface<S, TC, N>[]
+                    : T[K]
+                  : T[K] extends (...args: infer A) => infer R
+                    ? (...args: A) => R
+                    : Ref<T[K]>;
+} & ("subagents" extends keyof T
+  ? {
+      getSubagent: T extends {
+        getSubagent: (
+          id: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
+      }
+        ? (
+            toolCallId: string,
+          ) => ClassSubagentStreamInterface<S, TC, N> | undefined
+        : never;
+      getSubagentsByType: T extends {
+        getSubagentsByType: (
+          type: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+      }
+        ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
+        : never;
+      getSubagentsByMessage: T extends {
+        getSubagentsByMessage: (
+          id: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+      }
+        ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
+        : never;
+    }
+  : unknown);
 
 export function useStream<
   T = Record<string, unknown>,
@@ -844,6 +914,7 @@ export type {
   SubagentToolCall,
   SubagentStatus,
   SubagentStream,
+  SubagentApi,
   SubagentStreamInterface,
   SubAgentLike,
   CompiledSubAgentLike,

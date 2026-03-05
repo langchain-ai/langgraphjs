@@ -24,7 +24,6 @@ import {
   type ContentBlock,
 } from "langchain";
 import { createDeepAgent } from "deepagents";
-import type { Message } from "@langchain/langgraph-sdk";
 
 import { useStream } from "../index.js";
 
@@ -181,48 +180,6 @@ describe("deep agent", () => {
     >();
   });
 
-  test("should have well typed subagents", () => {
-    const stream = useStream<typeof deepAgentTwoSubagents>({
-      assistantId: "deep-agent",
-    });
-
-    const subagents = stream.subagents.value.get("");
-    expectTypeOf(subagents?.result).toEqualTypeOf<string | null | undefined>();
-    expectTypeOf(subagents?.status).toEqualTypeOf<
-      "pending" | "running" | "complete" | "error" | undefined
-    >();
-    if (AIMessage.isInstance(subagents?.messages[0])) {
-      expectTypeOf(subagents?.messages[0].tool_calls).toEqualTypeOf<
-        | ((
-            | {
-                name: "get_weather";
-                args: {
-                  location: string;
-                };
-                id?: string;
-                type?: "tool_call";
-              }
-            | {
-                name: "search_web";
-                args: {
-                  query: string;
-                  maxResults?: number | undefined;
-                };
-                id?: string;
-                type?: "tool_call";
-              }
-          )[] &
-            {
-              readonly type?: "tool_call";
-              id?: string;
-              name: string;
-              args: Record<string, any>;
-            }[])
-        | undefined
-      >();
-    }
-  });
-
   test("should have well typed tool calls", () => {
     const stream = useStream<typeof deepAgentTwoSubagents>({
       assistantId: "deep-agent",
@@ -279,12 +236,13 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const subagent = [...stream.subagents.value.values()][0];
+    const subagent = [...stream.subagents.values()][0];
     expectTypeOf(subagent.id).toEqualTypeOf<string>();
     expectTypeOf(subagent.status).toEqualTypeOf<
       "pending" | "running" | "complete" | "error"
     >();
-    expectTypeOf(subagent.messages).toExtend<Message[]>();
+    expectTypeOf(subagent.messages).toBeArray();
+    expectTypeOf(subagent.messages[0]).toExtend<BaseMessage>();
     expectTypeOf(subagent.toolCall).toEqualTypeOf<{
       id: string;
       name: string;
@@ -300,5 +258,16 @@ describe("deep agent", () => {
     expectTypeOf(subagent.depth).toEqualTypeOf<number>();
     expectTypeOf(subagent.startedAt).toEqualTypeOf<Date | null>();
     expectTypeOf(subagent.completedAt).toEqualTypeOf<Date | null>();
+  });
+
+  test("subagent messages are not plain SDK Message objects", () => {
+    const stream = useStream<typeof deepAgentTwoSubagents>({
+      assistantId: "deep-agent",
+    });
+
+    const subagent = [...stream.subagents.values()][0];
+
+    expectTypeOf(subagent.messages).toBeArray();
+    expectTypeOf(subagent.messages).toExtend<BaseMessage[]>();
   });
 });

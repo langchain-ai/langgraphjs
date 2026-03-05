@@ -1,4 +1,5 @@
 import { writable, derived, get } from "svelte/store";
+import type { Readable } from "svelte/store";
 import { onDestroy, onMount } from "svelte";
 
 import type {
@@ -33,6 +34,7 @@ import {
   type InferBag,
   type InferStateType,
   type UseStreamCustomOptions,
+  type SubagentStreamInterface,
 } from "@langchain/langgraph-sdk/ui";
 import {
   Client,
@@ -70,31 +72,104 @@ type ClassToolCallWithResult<T> =
     ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
     : T;
 
-type WithClassMessages<T> = Omit<
-  T,
-  "messages" | "getMessagesMetadata" | "toolCalls" | "getToolCalls"
+export type ClassSubagentStreamInterface<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string,
+> = Omit<
+  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
+  "messages"
 > & {
   messages: BaseMessage[];
-  getMessagesMetadata: (
-    message: BaseMessage,
-    index?: number,
-  ) => MessageMetadata<Record<string, unknown>> | undefined;
-} & ("toolCalls" extends keyof T
-    ? {
-        toolCalls: T extends { toolCalls: (infer TC)[] }
-          ? ClassToolCallWithResult<TC>[]
-          : never;
+};
+
+/**
+ * Maps a stream interface to Svelte-reactive types:
+ * - `messages` becomes `Readable<BaseMessage[]>`
+ * - `getMessagesMetadata` accepts `BaseMessage`
+ * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Readable`
+ * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
+ * - `queue` properties are individually mapped (stores → `Readable`, functions unchanged)
+ * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
+ * - Functions remain unchanged
+ * - All other properties are wrapped in `Readable<T>` to match Svelte's store system
+ */
+type WithClassMessages<T> = {
+  [K in keyof T as K extends
+    | "getSubagent"
+    | "getSubagentsByType"
+    | "getSubagentsByMessage"
+    ? never
+    : K]: K extends "messages"
+    ? Readable<BaseMessage[]>
+    : K extends "getMessagesMetadata"
+      ? (
+          message: BaseMessage,
+          index?: number,
+        ) => MessageMetadata<Record<string, unknown>> | undefined
+      : K extends "toolCalls"
+        ? T[K] extends (infer TC)[]
+          ? Readable<ClassToolCallWithResult<TC>[]>
+          : Readable<T[K]>
+        : K extends "getToolCalls"
+          ? T[K] extends (message: infer _M) => (infer TC)[]
+            ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+            : T[K]
+          : K extends "queue"
+            ? {
+                [QK in keyof T[K]]: T[K][QK] extends (
+                  ...args: infer A
+                ) => infer R
+                  ? (...args: A) => R
+                  : Readable<T[K][QK]>;
+              }
+            : K extends "client" | "assistantId"
+              ? T[K]
+              : K extends "subagents"
+                ? T[K] extends Map<
+                    string,
+                    SubagentStreamInterface<infer S, infer TC, infer N>
+                  >
+                  ? Map<string, ClassSubagentStreamInterface<S, TC, N>>
+                  : T[K]
+                : K extends "activeSubagents"
+                  ? T[K] extends SubagentStreamInterface<
+                      infer S,
+                      infer TC,
+                      infer N
+                    >[]
+                    ? ClassSubagentStreamInterface<S, TC, N>[]
+                    : T[K]
+                  : T[K] extends (...args: infer A) => infer R
+                    ? (...args: A) => R
+                    : Readable<T[K]>;
+} & ("subagents" extends keyof T
+  ? {
+      getSubagent: T extends {
+        getSubagent: (
+          id: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
       }
-    : unknown) &
-  ("getToolCalls" extends keyof T
-    ? {
-        getToolCalls: T extends {
-          getToolCalls: (message: infer _M) => (infer TC)[];
-        }
-          ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
-          : never;
+        ? (
+            toolCallId: string,
+          ) => ClassSubagentStreamInterface<S, TC, N> | undefined
+        : never;
+      getSubagentsByType: T extends {
+        getSubagentsByType: (
+          type: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
       }
-    : unknown);
+        ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
+        : never;
+      getSubagentsByMessage: T extends {
+        getSubagentsByMessage: (
+          id: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+      }
+        ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
+        : never;
+    }
+  : unknown);
 
 export function useStream<
   T = Record<string, unknown>,
@@ -841,6 +916,7 @@ export type {
   InferAgentToolCalls,
   SubagentToolCall,
   SubagentStatus,
+  SubagentApi,
   SubagentStream,
   SubagentStreamInterface,
   SubAgentLike,

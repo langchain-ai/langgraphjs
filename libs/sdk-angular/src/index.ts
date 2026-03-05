@@ -1,4 +1,5 @@
 import { signal, computed, effect } from "@angular/core";
+import type { Signal, WritableSignal } from "@angular/core";
 import type {
   BaseMessage,
   ToolMessage as CoreToolMessage,
@@ -30,6 +31,7 @@ import {
   type InferBag,
   type InferStateType,
   type UseStreamCustomOptions,
+  type SubagentStreamInterface,
 } from "@langchain/langgraph-sdk/ui";
 
 import {
@@ -53,9 +55,28 @@ type ClassToolCallWithResult<T> =
     ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
     : T;
 
+export type ClassSubagentStreamInterface<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string,
+> = Omit<
+  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
+  "messages"
+> & {
+  messages: BaseMessage[];
+};
+
 type WithClassMessages<T> = Omit<
   T,
-  "messages" | "getMessagesMetadata" | "toolCalls" | "getToolCalls"
+  | "messages"
+  | "getMessagesMetadata"
+  | "toolCalls"
+  | "getToolCalls"
+  | "subagents"
+  | "activeSubagents"
+  | "getSubagent"
+  | "getSubagentsByType"
+  | "getSubagentsByMessage"
 > & {
   messages: BaseMessage[];
   getMessagesMetadata: (
@@ -77,7 +98,93 @@ type WithClassMessages<T> = Omit<
           ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
           : never;
       }
+    : unknown) &
+  ("subagents" extends keyof T
+    ? {
+        subagents: T extends {
+          subagents: Map<
+            string,
+            SubagentStreamInterface<infer S, infer TC, infer N>
+          >;
+        }
+          ? Map<string, ClassSubagentStreamInterface<S, TC, N>>
+          : never;
+        activeSubagents: T extends {
+          activeSubagents: SubagentStreamInterface<
+            infer S,
+            infer TC,
+            infer N
+          >[];
+        }
+          ? ClassSubagentStreamInterface<S, TC, N>[]
+          : never;
+        getSubagent: T extends {
+          getSubagent: (
+            id: string,
+          ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
+        }
+          ? (
+              toolCallId: string,
+            ) => ClassSubagentStreamInterface<S, TC, N> | undefined
+          : never;
+        getSubagentsByType: T extends {
+          getSubagentsByType: (
+            type: string,
+          ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+        }
+          ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
+          : never;
+        getSubagentsByMessage: T extends {
+          getSubagentsByMessage: (
+            id: string,
+          ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+        }
+          ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
+          : never;
+      }
     : unknown);
+
+type AngularWritableKeys = "isLoading" | "branch";
+
+type AngularPlainKeys =
+  | "submit"
+  | "stop"
+  | "joinStream"
+  | "switchThread"
+  | "setBranch"
+  | "getMessagesMetadata"
+  | "getToolCalls"
+  | "getSubagent"
+  | "getSubagentsByType"
+  | "getSubagentsByMessage"
+  | "subagents"
+  | "activeSubagents"
+  | "client"
+  | "assistantId";
+
+type AngularQueueInterface<T> = T extends {
+  entries: infer E;
+  size: infer S;
+  cancel: infer C;
+  clear: infer Cl;
+}
+  ? {
+      entries: WritableSignal<E>;
+      size: WritableSignal<S>;
+      cancel: C;
+      clear: Cl;
+    }
+  : T;
+
+type AngularSignalWrap<T> = {
+  [K in keyof T]: K extends AngularPlainKeys
+    ? T[K]
+    : K extends AngularWritableKeys
+      ? WritableSignal<T[K]>
+      : K extends "queue"
+        ? AngularQueueInterface<T[K]>
+        : Signal<T[K]>;
+};
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -100,14 +207,18 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate,
 >(
   options: ResolveStreamOptions<T, InferBag<T, Bag>>,
-): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+): AngularSignalWrap<
+  WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
+>;
 
 export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
-): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+): AngularSignalWrap<
+  WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
+>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
@@ -811,6 +922,7 @@ export type {
   InferAgentToolCalls,
   SubagentToolCall,
   SubagentStatus,
+  SubagentApi,
   SubagentStream,
   SubagentStreamInterface,
   SubAgentLike,

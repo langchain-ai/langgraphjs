@@ -7,7 +7,7 @@ import type {
   DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 
-export { useStream } from "./stream.js";
+export { useStream, type ClassSubagentStreamInterface } from "./stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
 // Legacy exports - kept for backward compatibility
 export type {

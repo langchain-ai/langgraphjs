@@ -39,8 +39,8 @@ describe("useStream exposes BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
-    expectTypeOf(stream.messages).not.toEqualTypeOf<Message[]>();
+    expectTypeOf(stream.messages()).toExtend<BaseMessage[]>();
+    expectTypeOf(stream.messages()).not.toEqualTypeOf<Message[]>();
   });
 
   test("individual messages are BaseMessage instances", () => {
@@ -48,7 +48,7 @@ describe("useStream exposes BaseMessage class instances", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg).toExtend<BaseMessage>();
   });
 
@@ -71,7 +71,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg.toDict()).toEqualTypeOf<StoredMessage>();
   });
 
@@ -80,7 +80,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     const msgType = msg.getType();
     expectTypeOf(msgType).toBeString();
   });
@@ -90,7 +90,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg.toFormattedString()).toEqualTypeOf<string>();
   });
 
@@ -99,7 +99,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg.text).toEqualTypeOf<string>();
   });
 
@@ -108,7 +108,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg.contentBlocks).toBeArray();
   });
 
@@ -117,7 +117,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg.id).toEqualTypeOf<string | undefined>();
   });
 
@@ -126,7 +126,7 @@ describe("BaseMessage class methods are available", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg).toHaveProperty("type");
   });
 });
@@ -141,7 +141,7 @@ describe("static type guard narrowing with isInstance", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     if (AIMessage.isInstance(msg)) {
       expectTypeOf(msg).toExtend<AIMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"ai">();
@@ -153,7 +153,7 @@ describe("static type guard narrowing with isInstance", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     if (AIMessage.isInstance(msg)) {
       expectTypeOf(msg).toHaveProperty("tool_calls");
       expectTypeOf(msg).toHaveProperty("invalid_tool_calls");
@@ -166,7 +166,7 @@ describe("static type guard narrowing with isInstance", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     if (AIMessageChunk.isInstance(msg)) {
       expectTypeOf(msg).toExtend<AIMessageChunk>();
       expectTypeOf(msg.type).toEqualTypeOf<"ai">();
@@ -178,7 +178,7 @@ describe("static type guard narrowing with isInstance", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     if (HumanMessage.isInstance(msg)) {
       expectTypeOf(msg).toExtend<HumanMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"human">();
@@ -190,7 +190,7 @@ describe("static type guard narrowing with isInstance", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     if (ToolMessage.isInstance(msg)) {
       expectTypeOf(msg).toExtend<ToolMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"tool">();
@@ -203,7 +203,7 @@ describe("static type guard narrowing with isInstance", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     if (SystemMessage.isInstance(msg)) {
       expectTypeOf(msg).toExtend<SystemMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"system">();
@@ -221,30 +221,30 @@ describe("type discriminant still works for narrowing", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     expectTypeOf(msg.type).toBeString();
   });
 });
 
 // ============================================================================
-// Type Tests: Core stream properties unaffected
+// Type Tests: Core stream properties
 // ============================================================================
 
-describe("core stream properties are unaffected", () => {
-  test("isLoading is boolean", () => {
+describe("core stream properties", () => {
+  test("isLoading() returns boolean", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
+    expectTypeOf(stream.isLoading()).toEqualTypeOf<boolean>();
   });
 
-  test("error is unknown", () => {
+  test("error() returns unknown", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.error).toEqualTypeOf<unknown>();
+    expectTypeOf(stream.error()).toEqualTypeOf<unknown>();
   });
 
   test("stop returns Promise<void>", () => {
@@ -282,7 +282,7 @@ describe("getMessagesMetadata accepts BaseMessage", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     const metadata = stream.getMessagesMetadata(msg, 0);
 
     if (metadata) {
@@ -305,7 +305,7 @@ describe("realistic usage patterns with class instances", () => {
       assistantId: "agent",
     });
 
-    for (const msg of stream.messages) {
+    for (const msg of stream.messages()) {
       expectTypeOf(msg).toExtend<BaseMessage>();
       expectTypeOf(msg.content).not.toBeNever();
 
@@ -329,7 +329,7 @@ describe("realistic usage patterns with class instances", () => {
       assistantId: "agent",
     });
 
-    const msg = stream.messages[0];
+    const msg = stream.messages()[0];
     const dict = msg.toDict();
     expectTypeOf(dict.type).toEqualTypeOf<string>();
     expectTypeOf(dict.data).toHaveProperty("content");
@@ -340,7 +340,7 @@ describe("realistic usage patterns with class instances", () => {
       assistantId: "agent",
     });
 
-    const texts = stream.messages.map((m) => m.text);
+    const texts = stream.messages().map((m) => m.text);
     expectTypeOf(texts).toEqualTypeOf<string[]>();
   });
 
@@ -349,13 +349,13 @@ describe("realistic usage patterns with class instances", () => {
       assistantId: "agent",
     });
 
-    const aiMessages = stream.messages.filter(AIMessage.isInstance);
+    const aiMessages = stream.messages().filter(AIMessage.isInstance);
     expectTypeOf(aiMessages).toExtend<AIMessage[]>();
 
-    const humanMessages = stream.messages.filter(HumanMessage.isInstance);
+    const humanMessages = stream.messages().filter(HumanMessage.isInstance);
     expectTypeOf(humanMessages).toExtend<HumanMessage[]>();
 
-    const toolMessages = stream.messages.filter(ToolMessage.isInstance);
+    const toolMessages = stream.messages().filter(ToolMessage.isInstance);
     expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
   });
 });
