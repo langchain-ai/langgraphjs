@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
+
 import { StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
 import { SubagentManager } from "./subagents.js";
-import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
