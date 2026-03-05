@@ -108,6 +108,7 @@ describe("RedisSaver Basic", () => {
     let savedData: any;
 
     const mockClient = {
+      exists: async () => 0,
       json: {
         set: async (key: string, _path: string, data: any) => {
           savedKey = key;
@@ -942,7 +943,7 @@ describe("test_sync_redis_checkpointer", () => {
     }
     expect(allCps).toHaveLength(5);
 
-    // List checkpoints before the 3rd one
+    // List checkpoints before the 3rd one (checkpoint at index 2)
     const beforeCps = [];
     for await (const cp of saver.list(config, {
       before: {
@@ -961,6 +962,141 @@ describe("test_sync_redis_checkpointer", () => {
     expect(beforeCps[1].checkpoint.id).toBe(checkpoints[0].id);
 
     await saver.end();
+  });
+
+  it("should preserve pendingWrites when putWrites is called before put (interrupt flow)", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "interrupt-flow-test",
+        checkpoint_ns: "",
+        checkpoint_id: checkpointId,
+      },
+    };
+
+    // putWrites BEFORE put - this is the interrupt flow
+    await saver.putWrites(
+      config,
+      [["__interrupt__", { value: "interrupted!", resumable: true }]],
+      "task-interrupt"
+    );
+
+    // Now put the checkpoint (this used to clobber has_writes to "false")
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+    };
+    await saver.put(
+      { configurable: { thread_id: "interrupt-flow-test", checkpoint_ns: "" } },
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify pendingWrites are present
+    const tuple = await saver.getTuple(config);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][0]).toBe("task-interrupt");
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "interrupted!",
+      resumable: true,
+    });
+  });
+
+  it("should preserve pendingWrites when putWrites is called after put (normal flow)", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "normal-flow-test",
+        checkpoint_ns: "",
+      },
+    };
+
+    // put first
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites after put
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "after-put", resumable: true }]],
+      "task-after"
+    );
+
+    // Retrieve and verify
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+  });
+
+  it("should preserve pendingWrites across put-putWrites-put (double-put)", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "double-put-test",
+        checkpoint_ns: "",
+      },
+    };
+
+    // First put
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "survive-double-put", resumable: true }]],
+      "task-double"
+    );
+
+    // Second put for the same checkpoint ID (should NOT clobber has_writes)
+    await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify writes survived
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "survive-double-put",
+      resumable: true,
+    });
   });
 });
 
@@ -1464,5 +1600,146 @@ describe("ShallowRedisSaver", () => {
     checkpointData = await client.json.get(checkpointKeys[0]);
     expect(checkpointData.checkpoint_id).toBe(checkpoint2.id);
     expect(checkpointData.checkpoint_id).not.toBe(checkpoint1.id);
+  });
+
+  it("should preserve pendingWrites when putWrites is called before put (interrupt flow)", async () => {
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "shallow-interrupt-flow",
+        checkpoint_ns: "",
+        checkpoint_id: checkpointId,
+      },
+    };
+
+    // putWrites BEFORE put - this is the interrupt flow
+    await saver.putWrites(
+      config,
+      [["__interrupt__", { value: "interrupted!", resumable: true }]],
+      "task-interrupt"
+    );
+
+    // Now put the checkpoint
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: new Date().toISOString(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+      channel_versions: {},
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        configurable: {
+          thread_id: "shallow-interrupt-flow",
+          checkpoint_ns: "",
+        },
+      },
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify pendingWrites are present
+    const tuple = await saver.getTuple(config);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][0]).toBe("task-interrupt");
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "interrupted!",
+      resumable: true,
+    });
+  });
+
+  it("should preserve pendingWrites when putWrites is called after put (normal flow)", async () => {
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "shallow-normal-flow",
+        checkpoint_ns: "",
+      },
+    };
+
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: new Date().toISOString(),
+      id: uuid6(0),
+      channel_values: { messages: ["hello"] },
+      channel_versions: {},
+      versions_seen: {},
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites after put
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "after-put", resumable: true }]],
+      "task-after"
+    );
+
+    // Retrieve and verify
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+  });
+
+  it("should preserve pendingWrites across put-putWrites-put (double-put)", async () => {
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "shallow-double-put",
+        checkpoint_ns: "",
+      },
+    };
+
+    // First put
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: new Date().toISOString(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+      channel_versions: {},
+      versions_seen: {},
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "survive-double-put", resumable: true }]],
+      "task-double"
+    );
+
+    // Second put for the same checkpoint ID
+    await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify writes survived
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "survive-double-put",
+      resumable: true,
+    });
   });
 });

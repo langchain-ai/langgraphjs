@@ -11,6 +11,7 @@ import {
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient } from "redis";
 import { escapeRediSearchTagValue } from "./utils.js";
+import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 export interface TTLConfig {
   defaultTTL?: number; // TTL in minutes
@@ -154,6 +155,10 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       channel_blobs: undefined,
     };
 
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writesExist = await this.client.exists(zsetKey);
+
     // Structure matching Python implementation
     const jsonDoc: any = {
       thread_id: threadId,
@@ -163,7 +168,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       checkpoint: checkpointCopy,
       metadata: this.sanitizeMetadata(metadata),
       checkpoint_ts: Date.now(),
-      has_writes: "false",
+      has_writes: writesExist ? "true" : "false",
     };
 
     // Store metadata fields at top-level for searching
@@ -426,7 +431,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
 
     // Register write keys in sorted set for efficient retrieval
     if (writeKeys.length > 0) {
-      const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+      const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
 
       // Clear existing entries for this task and add new ones
       const zaddArgs: Record<string, number> = {};
@@ -474,7 +479,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     }
 
     // Delete write registries
-    const zsetPattern = `write_keys_zset:${threadId}:*`;
+    const zsetPattern = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:*`;
     const zsetKeys = await this.client.keys(zsetPattern);
 
     if (zsetKeys.length > 0) {
@@ -573,7 +578,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     checkpointNs: string,
     checkpointId: string
   ): Promise<Array<[string, string, any]> | undefined> {
-    const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
     const writeKeys = await this.client.zRange(zsetKey, 0, -1);
 
     if (writeKeys.length === 0) {
@@ -642,7 +647,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     }
 
     // Clean up write registry
-    const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${oldCheckpointId}`;
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${oldCheckpointId}`;
     await this.client.del(zsetKey);
 
     // Note: We don't clean up blob keys in shallow mode since we store inline
