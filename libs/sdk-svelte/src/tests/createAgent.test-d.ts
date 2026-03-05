@@ -3,9 +3,9 @@ import { describe, test, expectTypeOf } from "vitest";
 import { createAgent, tool, createMiddleware } from "langchain";
 import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { get } from "svelte/store";
 
 import { useStream, type ToolCallState } from "../index.js";
-import { get } from "svelte/store";
 
 const getWeather = tool(
   async ({ location }: { location: string }) => {
