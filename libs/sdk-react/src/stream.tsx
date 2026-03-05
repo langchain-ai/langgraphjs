@@ -11,6 +11,7 @@ import type {
 } from "@langchain/langgraph-sdk";
 import type {
   UseStreamOptions,
+  AcceptBaseMessages,
   ResolveStreamInterface,
   ResolveStreamOptions,
   InferBag,
@@ -60,6 +61,7 @@ type WithClassMessages<T> = Omit<
   | "getMessagesMetadata"
   | "toolCalls"
   | "getToolCalls"
+  | "submit"
   | "subagents"
   | "activeSubagents"
   | "getSubagent"
@@ -71,7 +73,22 @@ type WithClassMessages<T> = Omit<
     message: BaseMessage,
     index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
-} & ("toolCalls" extends keyof T
+} & ("submit" extends keyof T
+    ? {
+        submit: T extends {
+          submit: (values: infer V, options?: infer O) => infer Ret;
+        }
+          ? (
+              values:
+                | AcceptBaseMessages<Exclude<V, null | undefined>>
+                | null
+                | undefined,
+              options?: O,
+            ) => Ret
+          : never;
+      }
+    : unknown) &
+  ("toolCalls" extends keyof T
     ? {
         toolCalls: T extends { toolCalls: (infer TC)[] }
           ? ClassToolCallWithResult<TC>[]

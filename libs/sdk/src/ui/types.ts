@@ -961,6 +961,24 @@ export type GetUpdateType<
   ? Bag["UpdateType"]
   : Partial<StateType>;
 
+/**
+ * Widens an update type so that its `messages` field also accepts
+ * `@langchain/core` {@link BaseMessage} class instances (single or array).
+ *
+ * Framework SDKs apply this to `submit` so callers can write:
+ * ```ts
+ * stream.submit({ messages: new HumanMessage("hello") });
+ * stream.submit({ messages: [new HumanMessage("hello")] });
+ * ```
+ */
+export type AcceptBaseMessages<T> = T extends Record<string, unknown>
+  ? {
+      [K in keyof T]: K extends "messages"
+        ? T[K] | BaseMessage | BaseMessage[]
+        : T[K];
+    }
+  : T;
+
 export type GetConfigurableType<Bag extends BagTemplate> = Bag extends {
   ConfigurableType: Record<string, unknown>;
 }

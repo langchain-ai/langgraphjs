@@ -33,6 +33,7 @@ import {
   type ResolveStreamOptions,
   type InferBag,
   type InferStateType,
+  type AcceptBaseMessages,
   type UseStreamCustomOptions,
   type SubagentStreamInterface,
 } from "@langchain/langgraph-sdk/ui";
@@ -140,9 +141,22 @@ type WithClassMessages<T> = {
                     >[]
                     ? ClassSubagentStreamInterface<S, TC, N>[]
                     : T[K]
-                  : T[K] extends (...args: infer A) => infer R
-                    ? (...args: A) => R
-                    : Readable<T[K]>;
+                  : K extends "submit"
+                    ? T[K] extends (
+                        values: infer V,
+                        options?: infer O,
+                      ) => infer Ret
+                      ? (
+                          values:
+                            | AcceptBaseMessages<Exclude<V, null | undefined>>
+                            | null
+                            | undefined,
+                          options?: O,
+                        ) => Ret
+                      : T[K]
+                    : T[K] extends (...args: infer A) => infer R
+                      ? (...args: A) => R
+                      : Readable<T[K]>;
 } & ("subagents" extends keyof T
   ? {
       getSubagent: T extends {

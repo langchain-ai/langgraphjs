@@ -22,6 +22,7 @@
 import { describe, test, expectTypeOf } from "vitest";
 import { z } from "zod/v4";
 import { createAgent, tool, createMiddleware } from "langchain";
+import { HumanMessage } from "@langchain/core/messages";
 import { createDeepAgent } from "deepagents";
 
 import { useStream } from "@langchain/react";
@@ -876,5 +877,28 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
     if (metadata) {
       expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
     }
+  });
+
+  test("submit accepts @langchain/core HumanMessage instances", () => {
+    const stream = useStream<typeof simpleAgent>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      { messages: [{ type: "human", content: "Hello" }] },
+      undefined,
+    );
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      // @ts-expect-error - ensuring we remain backward compatible
+      { messages: [new HumanMessage("Hello")] },
+      undefined,
+    );
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      // @ts-expect-error - ensuring we remain backward compatible
+      { messages: new HumanMessage("Hello") },
+      undefined,
+    );
   });
 });

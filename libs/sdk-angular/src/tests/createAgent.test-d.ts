@@ -593,6 +593,22 @@ describe("realistic usage patterns with createAgent", () => {
     );
   });
 
+  test("submit accepts @langchain/core HumanMessage instances", () => {
+    const stream = useStream<typeof simpleAgent>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      { messages: [new HumanMessage("Hello")] },
+      undefined,
+    );
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      { messages: new HumanMessage("Hello") },
+      undefined,
+    );
+  });
+
   test("toolCalls[].result is @langchain/core ToolMessage class type", () => {
     const stream = useStream<typeof multiToolAgent>({
       assistantId: "agent",
