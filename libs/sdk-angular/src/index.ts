@@ -811,6 +811,8 @@ export type {
   InferAgentToolCalls,
   SubagentToolCall,
   SubagentStatus,
+  SubagentStream,
+  SubagentStreamInterface,
   SubAgentLike,
   CompiledSubAgentLike,
   DeepAgentTypeConfigLike,

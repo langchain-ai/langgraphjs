@@ -64,6 +64,8 @@ export type {
   SubagentStateMap,
   DefaultSubagentStates,
   BaseSubagentState,
+  QueueEntry,
+  QueueInterface,
 } from "@langchain/langgraph-sdk/ui";
 
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
