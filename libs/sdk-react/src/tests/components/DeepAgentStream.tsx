@@ -1,6 +1,9 @@
 import { useRef } from "react";
-import type { BaseMessage } from "@langchain/core/messages";
-import { AIMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  ToolMessage,
+  type BaseMessage,
+} from "@langchain/core/messages";
 
 import type { DeepAgentGraph } from "../fixtures/mock-server.js";
 import { useStream } from "../../index.js";
@@ -51,7 +54,7 @@ export function DeepAgentStream({ apiUrl }: Props) {
       <div data-testid="messages">
         {thread.messages.map((msg, i) => (
           <div key={msg.id ?? i} data-testid={`message-${i}`}>
-            [{msg._getType()}] {formatMessage(msg)}
+            [{msg.type}] {formatMessage(msg)}
           </div>
         ))}
       </div>
@@ -117,8 +120,6 @@ export function DeepAgentStream({ apiUrl }: Props) {
 }
 
 function formatMessage(msg: BaseMessage): string {
-  const type = msg._getType();
-
   if (
     AIMessage.isInstance(msg) &&
     "tool_calls" in msg &&
@@ -130,7 +131,7 @@ function formatMessage(msg: BaseMessage): string {
       .join(",");
   }
 
-  if (type === "tool") {
+  if (ToolMessage.isInstance(msg)) {
     const content =
       typeof msg.content === "string"
         ? msg.content

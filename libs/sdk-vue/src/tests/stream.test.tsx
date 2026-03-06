@@ -2104,9 +2104,7 @@ it("deep agent: subagents call tools and render args/results", async () => {
                     {sub.toolCalls.length}
                   </div>
                   <div data-testid={`subagent-${subType}-toolcall-names`}>
-                    {sub.toolCalls
-                      .map((tc: any) => tc.call.name)
-                      .join(",")}
+                    {sub.toolCalls.map((tc: any) => tc.call.name).join(",")}
                   </div>
                 </div>
               );
@@ -2174,10 +2172,9 @@ it("deep agent: subagents call tools and render args/results", async () => {
 
   // Verify subagent internal messages are populated (requires streamSubgraphs + filterSubagentMessages)
   await expect
-    .element(
-      screen.getByTestId("subagent-researcher-messages-count"),
-      { timeout: 5_000 },
-    )
+    .element(screen.getByTestId("subagent-researcher-messages-count"), {
+      timeout: 5_000,
+    })
     .not.toHaveTextContent("0");
   await expect
     .element(screen.getByTestId("subagent-data-analyst-messages-count"))

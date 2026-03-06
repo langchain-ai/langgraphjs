@@ -1,10 +1,11 @@
 import { Component } from "@angular/core";
 import { inject } from "vitest";
-import { AIMessage, type BaseMessage, ToolMessage } from "@langchain/core/messages";
 import {
-  useStream,
-  type ClassSubagentStreamInterface,
-} from "../../index.js";
+  AIMessage,
+  type BaseMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import { useStream, type ClassSubagentStreamInterface } from "../../index.js";
 import type { DeepAgentGraph } from "../fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");
@@ -30,7 +31,7 @@ const serverUrl = inject("serverUrl");
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
-            [{{ msg._getType() }}] {{ formatMessage(msg) }}
+            [{{ msg.type }}] {{ formatMessage(msg) }}
           </div>
         }
       </div>
@@ -59,13 +60,25 @@ const serverUrl = inject("serverUrl");
           <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-result'">
             Result: {{ sub.result ?? "" }}
           </div>
-          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-messages-count'">
+          <div
+            [attr.data-testid]="
+              'subagent-' + getSubType(sub) + '-messages-count'
+            "
+          >
             {{ sub.messages.length }}
           </div>
-          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-toolcalls-count'">
+          <div
+            [attr.data-testid]="
+              'subagent-' + getSubType(sub) + '-toolcalls-count'
+            "
+          >
             {{ sub.toolCalls.length }}
           </div>
-          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-toolcall-names'">
+          <div
+            [attr.data-testid]="
+              'subagent-' + getSubType(sub) + '-toolcall-names'
+            "
+          >
             {{ getToolCallNames(sub) }}
           </div>
         </div>
@@ -114,9 +127,7 @@ export class DeepAgentStreamComponent {
   }
 
   getToolCallNames(sub: ClassSubagentStreamInterface): string {
-    return sub.toolCalls
-      .map((tc) => tc.call.name)
-      .join(",");
+    return sub.toolCalls.map((tc) => tc.call.name).join(",");
   }
 
   formatMessage(msg: BaseMessage): string {

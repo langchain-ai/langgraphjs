@@ -10,6 +10,7 @@ import {
   AIMessageChunk,
   BaseMessage,
   RemoveMessage,
+  ToolMessage,
 } from "@langchain/core/messages";
 import {
   BaseChatModel,
@@ -163,7 +164,7 @@ class FakeToolCallingModel extends BaseChatModel {
       return base;
 
     const toolOutputs = messages
-      .filter((m) => m._getType() === "tool")
+      .filter(ToolMessage.isInstance)
       .map((m) =>
         typeof m.content === "string" ? m.content : JSON.stringify(m.content),
       );
