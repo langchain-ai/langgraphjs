@@ -133,7 +133,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       setState({ key, data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
-    [options.passthrough]
+    [options.passthrough, key]
   );
 
   useEffect(() => {
