@@ -9,13 +9,14 @@ import {
   isBaseMessage,
   isBaseMessageChunk,
   MessageContent,
+  SystemMessage,
 } from "@langchain/core/messages";
 import { RunnableLambda, RunnableSequence } from "@langchain/core/runnables";
 
 const NAME_PATTERN = /<name>(.*?)<\/name>/s;
 const CONTENT_PATTERN = /<content>(.*?)<\/content>/s;
 
-export type AgentNameMode = "inline";
+export type AgentNameMode = "inline" | "system-prompt";
 
 /**
  * Attach formatted agent names to the messages passed to and from a language model.
@@ -96,6 +97,45 @@ export function _addInlineAgentName<T extends BaseMessageLike>(
     content: updatedContent as MessageContent,
     name: undefined,
   });
+}
+
+/**
+ * Modify the system message to instruct the model to format its output with agent name XML tags.
+ *
+ * Unlike `_addInlineAgentName`, this function does NOT modify past AIMessages.
+ * Instead, it appends an instruction to the system prompt (or creates one if absent)
+ * telling the model to generate its own output in the format:
+ * `<name>agentName</name><content>response</content>`
+ *
+ * This is safe to use with providers that disallow editing message history
+ * (e.g. OpenAI Responses API, Anthropic thinking blocks).
+ *
+ * @param messages - The full message array passed to the model
+ * @param agentName - The name of the current agent
+ * @returns Updated message array with system prompt instruction injected
+ */
+export function _addSystemPromptAgentName(
+  messages: BaseMessageLike[],
+  agentName: string
+): BaseMessageLike[] {
+  const instruction =
+    `\n\nIMPORTANT: Your name is "${agentName}". ` +
+    `Always format your response using these XML tags:\n` +
+    `<name>${agentName}</name><content>your response here</content>`;
+
+  const firstMsg = messages[0];
+  const isSystemMsg =
+    isBaseMessage(firstMsg) && firstMsg._getType() === "system";
+
+  if (isSystemMsg && typeof firstMsg.content === "string") {
+    return [
+      new SystemMessage(firstMsg.content + instruction),
+      ...messages.slice(1),
+    ];
+  }
+
+  // No (string-content) system message found — prepend a new one
+  return [new SystemMessage(instruction.trimStart()), ...messages];
 }
 
 /**
@@ -200,32 +240,46 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
  * @param agentNameMode - How to expose the agent name to the LLM
  *   - "inline": Add the agent name directly into the content field of the AI message using XML-style tags.
  *     Example: "How can I help you" -> "<name>agent_name</name><content>How can I help you?</content>".
+ *     NOTE: This mutates past AIMessage history and will break with providers that disallow it
+ *     (e.g. OpenAI Responses API, Anthropic thinking blocks). Use "system-prompt" in those cases.
+ *   - "system-prompt": Inject an instruction into the system prompt telling the model to format
+ *     its own output with XML tags. Does NOT modify past messages. Requires `agentName` to be set.
+ * @param agentName - The name of the current agent. Required when `agentNameMode` is "system-prompt".
  */
 export function withAgentName(
   model: LanguageModelLike,
-  agentNameMode: AgentNameMode
+  agentNameMode: AgentNameMode,
+  agentName?: string
 ): LanguageModelLike {
-  let processInputMessage: (message: BaseMessageLike) => BaseMessageLike;
-  let processOutputMessage: (message: BaseMessage) => BaseMessage;
-
   if (agentNameMode === "inline") {
-    processInputMessage = _addInlineAgentName;
-    processOutputMessage = _removeInlineAgentName;
+    function processInputMessages(
+      messages: BaseMessageLike[]
+    ): BaseMessageLike[] {
+      return messages.map(_addInlineAgentName);
+    }
+
+    return RunnableSequence.from([
+      RunnableLambda.from(processInputMessages),
+      model,
+      RunnableLambda.from(_removeInlineAgentName),
+    ]);
+  } else if (agentNameMode === "system-prompt") {
+    if (!agentName) {
+      throw new Error(
+        `"system-prompt" agent name mode requires an "agentName" to be provided to withAgentName().`
+      );
+    }
+    const resolvedAgentName = agentName;
+    return RunnableSequence.from([
+      RunnableLambda.from((messages: BaseMessageLike[]) =>
+        _addSystemPromptAgentName(messages, resolvedAgentName)
+      ),
+      model,
+      RunnableLambda.from(_removeInlineAgentName),
+    ]);
   } else {
     throw new Error(
-      `Invalid agent name mode: ${agentNameMode}. Needs to be one of: "inline"`
+      `Invalid agent name mode: ${agentNameMode}. Must be one of: "inline", "system-prompt"`
     );
   }
-
-  function processInputMessages(
-    messages: BaseMessageLike[]
-  ): BaseMessageLike[] {
-    return messages.map(processInputMessage);
-  }
-
-  return RunnableSequence.from([
-    RunnableLambda.from(processInputMessages),
-    model,
-    RunnableLambda.from(processOutputMessage),
-  ]);
 }
