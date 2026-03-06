@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
-import { v4 as uuid4 } from "uuid";
+import { v7 as uuid7 } from "uuid";
 import { z } from "zod/v3";
 import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
@@ -29,7 +29,7 @@ const createValidRun = async (
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
   const { auth, headers } = kwargs ?? {};
-  const runId = uuid4();
+  const runId = uuid7();
 
   const streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
