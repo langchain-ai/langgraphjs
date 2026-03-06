@@ -3,6 +3,7 @@ index.cjs
 index.js
 index.d.ts
 *.d.ts
+!vite-env.d.ts
 *.d.cts
 *.d.mts
 node_modules

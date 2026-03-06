@@ -33,6 +33,7 @@ import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
 import { SwitchThreadComponent } from "./components/SwitchThread.js";
 import { QueueStreamComponent } from "./components/QueueStream.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
+import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -868,4 +869,33 @@ it("calls per-submit onError when stream fails", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+});
+
+it("deep agent: subagents call tools and render args/results", async () => {
+  const screen = await render(DeepAgentStreamComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 30_000 })
+    .toHaveTextContent("Not loading");
+
+  const messages = screen.getByTestId("messages");
+  await expect.element(messages).toHaveTextContent(/Run analysis/);
+  await expect.element(messages).toHaveTextContent(/tool_call:task/);
+  await expect.element(messages).toHaveTextContent(/researcher/);
+  await expect.element(messages).toHaveTextContent(/data-analyst/);
+  await expect.element(messages).toHaveTextContent(/tool_result:/);
+  await expect
+    .element(messages)
+    .toHaveTextContent(/Result for: test research query/);
+  await expect.element(messages).toHaveTextContent(/Record A/);
+  await expect.element(messages).toHaveTextContent(/Record B/);
+  await expect
+    .element(messages)
+    .toHaveTextContent(/Both agents completed their tasks/);
 });

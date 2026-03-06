@@ -1,9 +1,10 @@
 import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
-import { defineComponent, ref } from "vue";
+import { computed, defineComponent, ref } from "vue";
 import { useStream } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
+import type { DeepAgentGraph } from "./fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1992,4 +1993,125 @@ it("calls per-submit onError when stream fails", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+});
+
+it("deep agent: subagents call tools and render args/results", async () => {
+  function formatMessage(msg: Record<string, any>): string {
+    if (
+      msg.type === "ai" &&
+      Array.isArray(msg.tool_calls) &&
+      msg.tool_calls.length > 0
+    ) {
+      return msg.tool_calls
+        .map(
+          (tc: { name: string; args: Record<string, unknown> }) =>
+            `tool_call:${tc.name}:${JSON.stringify(tc.args)}`,
+        )
+        .join(",");
+    }
+
+    if (msg.type === "tool") {
+      const content =
+        typeof msg.content === "string"
+          ? msg.content
+          : JSON.stringify(msg.content);
+      return `tool_result:${content}`;
+    }
+
+    return typeof msg.content === "string"
+      ? msg.content
+      : JSON.stringify(msg.content);
+  }
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStream<DeepAgentGraph>({
+        assistantId: "deepAgent",
+        apiUrl: serverUrl,
+      });
+
+      const subagents = computed(() => {
+        void thread.messages.value;
+        void thread.isLoading.value;
+        return [...thread.subagents.values()].sort(
+          (a: any, b: any) =>
+            (a.toolCall?.args?.subagent_type ?? "").localeCompare(
+              b.toolCall?.args?.subagent_type ?? "",
+            ),
+        );
+      });
+
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {thread.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          {thread.error.value ? (
+            <div data-testid="error">{String(thread.error.value)}</div>
+          ) : null}
+          <div data-testid="messages">
+            {thread.messages.value.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {formatMessage(msg)}
+              </div>
+            ))}
+          </div>
+          <div data-testid="subagent-count">{subagents.value.length}</div>
+          {subagents.value.map((sub: any) => {
+            const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+            return (
+              <div key={sub.id} data-testid={`subagent-${subType}`}>
+                <div data-testid={`subagent-${subType}-status`}>
+                  SubAgent ({subType}) status: {sub.status}
+                </div>
+                <div data-testid={`subagent-${subType}-task-description`}>
+                  {sub.toolCall?.args?.description ?? ""}
+                </div>
+                <div data-testid={`subagent-${subType}-result`}>
+                  {sub.result ?? ""}
+                </div>
+              </div>
+            );
+          })}
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ content: "Run analysis", type: "human" }],
+              })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 30_000 })
+    .toHaveTextContent("Not loading");
+
+  const messages = screen.getByTestId("messages");
+  await expect.element(messages).toHaveTextContent(/Run analysis/);
+  await expect.element(messages).toHaveTextContent(/tool_call:task/);
+  await expect.element(messages).toHaveTextContent(/researcher/);
+  await expect.element(messages).toHaveTextContent(/data-analyst/);
+  await expect.element(messages).toHaveTextContent(/tool_result:/);
+  await expect
+    .element(messages)
+    .toHaveTextContent(/Result for: test research query/);
+  await expect.element(messages).toHaveTextContent(/Record A/);
+  await expect.element(messages).toHaveTextContent(/Record B/);
+  await expect
+    .element(messages)
+    .toHaveTextContent(/Both agents completed their tasks/);
 });

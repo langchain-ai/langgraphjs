@@ -16,6 +16,7 @@ import { OnRequest } from "./components/OnRequest.js";
 import { SwitchThread } from "./components/SwitchThread.js";
 import { QueueStream } from "./components/QueueStream.js";
 import { SubmitOnError } from "./components/SubmitOnError.js";
+import { DeepAgentStream } from "./components/DeepAgentStream.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -870,4 +871,68 @@ it("calls per-submit onError when stream fails", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+});
+
+it("deep agent: subagents call tools and render args/results", async () => {
+  const screen = await render(<DeepAgentStream apiUrl={serverUrl} />);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await screen.getByTestId("submit").click();
+
+  // Wait for the deep agent to complete
+  await expect
+    .element(screen.getByTestId("subagent-count"), { timeout: 30_000 })
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst"))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByTestId("subagent-researcher"))
+    .toBeInTheDocument();
+
+  // Verify subagent statuses
+  await expect
+    .element(screen.getByTestId("subagent-researcher-status"))
+    .toHaveTextContent("complete");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-status"))
+    .toHaveTextContent("complete");
+
+  // Verify task tool call args (description sent to each subagent)
+  await expect
+    .element(screen.getByTestId("subagent-researcher-task-description"))
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-task-description"))
+    .toHaveTextContent("Query the database for test data");
+
+  // Verify subagent results contain the actual tool return values
+  await expect
+    .element(screen.getByTestId("subagent-researcher-result"))
+    .toHaveTextContent(/Result for: test research query/);
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-result"))
+    .toHaveTextContent(/Record A/);
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-result"))
+    .toHaveTextContent(/Record B/);
+
+  // Verify main messages include the orchestrator's task tool calls and results
+  const messages = screen.getByTestId("messages");
+  await expect.element(messages).toHaveTextContent(/Run analysis/);
+  await expect.element(messages).toHaveTextContent(/tool_call:task/);
+  await expect.element(messages).toHaveTextContent(/researcher/);
+  await expect.element(messages).toHaveTextContent(/data-analyst/);
+  await expect.element(messages).toHaveTextContent(/tool_result:/);
+  await expect
+    .element(messages)
+    .toHaveTextContent(/Both agents completed their tasks/);
 });

@@ -1,6 +1,25 @@
-import { serve } from "@hono/node-server";
+/* eslint-disable import/no-extraneous-dependencies */
+import { randomUUID } from "node:crypto";
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serve } from "@hono/node-server";
+import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
+import {
+  AIMessage,
+  AIMessageChunk,
+  BaseMessage,
+  RemoveMessage,
+} from "@langchain/core/messages";
+import {
+  BaseChatModel,
+  type BaseChatModelParams,
+} from "@langchain/core/language_models/chat_models";
+import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
+import {
+  createEmbedServer,
+  type ThreadSaver,
+} from "@langchain/langgraph-api/experimental/embed";
 import {
   StateGraph,
   MessagesAnnotation,
@@ -12,18 +31,11 @@ import {
   type Pregel,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
-import {
-  AIMessage,
-  BaseMessage,
-  RemoveMessage,
-} from "@langchain/core/messages";
-import {
-  createEmbedServer,
-  type ThreadSaver,
-} from "@langchain/langgraph-api/experimental/embed";
+import { tool } from "langchain";
+import { z } from "zod/v4";
+import { createDeepAgent, type DeepAgent } from "deepagents";
+
 import type { Message } from "@langchain/langgraph-sdk";
-import { randomUUID } from "node:crypto";
 import type { TestProject } from "vitest/node";
 
 declare module "vitest" {
@@ -45,7 +57,7 @@ const threads: ThreadSaver = (() => {
     set: async (threadId, { metadata }) => {
       THREADS[threadId] = {
         thread_id: threadId,
-        metadata: { ...(THREADS[threadId]?.metadata ?? {}), ...metadata },
+        metadata: { ...THREADS[threadId]?.metadata, ...metadata },
       };
       return THREADS[threadId];
     },
@@ -123,12 +135,231 @@ const errorAgent = new StateGraph(MessagesAnnotation)
   .addEdge(START, "agent")
   .compile();
 
+// --- Fake Model for Tool-Calling Agents ---
+class FakeToolCallingModel extends BaseChatModel {
+  responses: BaseMessage[];
+
+  callCount = 0;
+
+  constructor(fields: { responses: BaseMessage[] } & BaseChatModelParams) {
+    super(fields);
+    this.responses = fields.responses;
+  }
+
+  _llmType() {
+    return "fake-tool-calling";
+  }
+
+  _combineLLMOutput() {
+    return [];
+  }
+
+  private _resolveContent(
+    baseMsg: BaseMessage,
+    messages?: BaseMessage[]
+  ): string {
+    const base = (baseMsg.content as string) || "";
+    if ((baseMsg as AIMessage).tool_calls?.length || !messages?.length)
+      return base;
+
+    const toolOutputs = messages
+      .filter((m) => m._getType() === "tool")
+      .map((m) =>
+        typeof m.content === "string" ? m.content : JSON.stringify(m.content)
+      );
+    return toolOutputs.length > 0
+      ? `${base} Tool output: ${toolOutputs.join("; ")}`
+      : base;
+  }
+
+  async _generate(
+    messages?: BaseMessage[]
+  ): Promise<ChatResult> {
+    const baseMsg = this.responses[this.callCount % this.responses.length];
+    this.callCount += 1;
+    const content = this._resolveContent(baseMsg, messages);
+    const msg = content !== ((baseMsg.content as string) || "")
+      ? new AIMessage(content)
+      : baseMsg;
+    return {
+      generations: [
+        { text: (msg.content as string) || "", message: msg },
+      ],
+    };
+  }
+
+  async *_streamResponseChunks(
+    messages?: BaseMessage[]
+  ) {
+    const baseMsg = this.responses[this.callCount % this.responses.length];
+    const content = this._resolveContent(baseMsg, messages);
+
+    const chunkFields: Record<string, unknown> = { content };
+
+    const toolCalls = (baseMsg as AIMessage).tool_calls;
+    if (toolCalls?.length) {
+      chunkFields.tool_call_chunks = toolCalls.map(
+        (tc: { name: string; args: Record<string, unknown>; id?: string }, index: number) => ({
+          name: tc.name,
+          args: JSON.stringify(tc.args),
+          id: tc.id,
+          index,
+          type: "tool_call_chunk" as const,
+        })
+      );
+    }
+
+    yield new ChatGenerationChunk({
+      message: new AIMessageChunk(chunkFields),
+      text: content,
+    });
+
+    this.callCount += 1;
+  }
+
+  bindTools() {
+    return this;
+  }
+}
+
+// --- Deep Agent with 2 Subagents and Custom Tools ---
+
+const searchWebTool = tool(
+  async ({ query }: { query: string }) => {
+    return JSON.stringify({
+      status: "success",
+      query,
+      results: [
+        { title: `Result for: ${query}`, url: "https://example.com/1" },
+        { title: `More on: ${query}`, url: "https://example.com/2" },
+      ],
+    });
+  },
+  {
+    name: "search_web",
+    description: "Search the web for information on a topic",
+    schema: z.object({
+      query: z.string().describe("The search query"),
+    }),
+  }
+);
+
+const queryDatabaseTool = tool(
+  async ({ table }: { table: string }) => {
+    return JSON.stringify({
+      status: "success",
+      table,
+      records: [
+        { id: 1, name: "Record A", value: 42 },
+        { id: 2, name: "Record B", value: 87 },
+      ],
+      count: 2,
+    });
+  },
+  {
+    name: "query_database",
+    description: "Query a database table with optional filters",
+    schema: z.object({
+      table: z.string().describe("The table name to query"),
+    }),
+  }
+);
+
+const deepOrchestratorModel = new FakeToolCallingModel({
+  responses: [
+    new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          name: "task",
+          args: {
+            description: "Search the web for test research query",
+            subagent_type: "researcher",
+          },
+          id: "task-1",
+          type: "tool_call",
+        },
+        {
+          name: "task",
+          args: {
+            description: "Query the database for test data",
+            subagent_type: "data-analyst",
+          },
+          id: "task-2",
+          type: "tool_call",
+        },
+      ],
+    }),
+    new AIMessage("Both agents completed their tasks successfully."),
+  ],
+});
+
+const deepResearcherModel = new FakeToolCallingModel({
+  responses: [
+    new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          name: "search_web",
+          args: { query: "test research query" },
+          id: "search-1",
+          type: "tool_call",
+        },
+      ],
+    }),
+    new AIMessage("Research completed: found relevant results."),
+  ],
+});
+
+const deepAnalystModel = new FakeToolCallingModel({
+  responses: [
+    new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          name: "query_database",
+          args: { table: "test_data" },
+          id: "query-1",
+          type: "tool_call",
+        },
+      ],
+    }),
+    new AIMessage("Analysis completed: found 2 records."),
+  ],
+});
+
+export type DeepAgentGraph = DeepAgent;
+
+const deepAgentGraph: DeepAgent = createDeepAgent({
+  model: deepOrchestratorModel,
+  subagents: [
+    {
+      name: "researcher",
+      description:
+        "Research specialist that searches the web for information.",
+      systemPrompt: "You are a research specialist.",
+      tools: [searchWebTool],
+      model: deepResearcherModel,
+    },
+    {
+      name: "data-analyst",
+      description:
+        "Data analysis expert that queries databases for insights.",
+      systemPrompt: "You are a data analysis expert.",
+      tools: [queryDatabaseTool],
+      model: deepAnalystModel,
+    },
+  ],
+  systemPrompt: "You are an AI coordinator that delegates tasks.",
+});
+
 const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
   parentAgent,
   removeMessageAgent,
   errorAgent,
+  deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 
 let httpServer: { close: () => void } | null = null;
