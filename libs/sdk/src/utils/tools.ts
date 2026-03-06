@@ -27,9 +27,13 @@ import type {
 /**
  * Computes the lifecycle state of a tool call based on its result.
  */
-function computeToolCallState(result: ToolMessage | undefined): ToolCallState {
-  if (!result) return "pending";
-  return result.status === "error" ? "error" : "completed";
+function computeToolCallState(
+  result: ToolMessage | undefined,
+  impliedCompleted: boolean
+): ToolCallState {
+  if (result) return result.status === "error" ? "error" : "completed";
+  if (impliedCompleted) return "completed";
+  return "pending";
 }
 
 export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
@@ -42,6 +46,33 @@ export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
   for (const msg of messages) {
     if (msg.type === "tool") {
       toolResultsById.set(msg.tool_call_id, msg);
+    }
+  }
+
+  // Build a set of AI message IDs that have tool calls, so we can
+  // detect when the model continued after a tool call (implying
+  // the tool completed even if the ToolMessage wasn't streamed).
+  // This handles tools that return Commands where the ToolMessage
+  // is embedded in the state update rather than streamed.
+  const aiToolCallMsgIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.type === "ai" && msg.tool_calls && msg.tool_calls.length > 0) {
+      if (msg.id) aiToolCallMsgIds.add(msg.id);
+    }
+  }
+
+  // Check if there's an AI message AFTER the tool-calling messages
+  // that doesn't have tool calls (the model's response after tools ran)
+  let hasSubsequentAiResponse = false;
+  if (aiToolCallMsgIds.size > 0) {
+    let seenAllToolCallMsgs = false;
+    for (const msg of messages) {
+      if (msg.type === "ai" && msg.id && aiToolCallMsgIds.has(msg.id)) {
+        seenAllToolCallMsgs = true;
+      } else if (seenAllToolCallMsgs && msg.type === "ai") {
+        hasSubsequentAiResponse = true;
+        break;
+      }
     }
   }
 
@@ -60,7 +91,7 @@ export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
           result,
           aiMessage,
           index: i,
-          state: computeToolCallState(result),
+          state: computeToolCallState(result, hasSubsequentAiResponse),
         });
       }
     }

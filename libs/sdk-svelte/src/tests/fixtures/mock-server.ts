@@ -10,7 +10,6 @@ import {
   AIMessageChunk,
   BaseMessage,
   RemoveMessage,
-  ToolMessage,
 } from "@langchain/core/messages";
 import {
   BaseChatModel,
@@ -24,6 +23,7 @@ import {
 import {
   StateGraph,
   MessagesAnnotation,
+  Command,
   interrupt,
   pushMessage,
   START,
@@ -32,7 +32,7 @@ import {
   type Pregel,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { tool } from "langchain";
+import { tool, ToolMessage } from "langchain";
 import { z } from "zod/v4";
 import { createDeepAgent, type DeepAgent } from "deepagents";
 
@@ -246,12 +246,14 @@ const searchWebTool = tool(
   },
 );
 
+// Returns a Command with state update (like deepagents' write_file/edit_file)
+// to test that ToolMessages embedded in Commands are properly routed
 const queryDatabaseTool = tool(
-  async ({ table }: { table: string }) => {
+  async ({ table }: { table: string }, config) => {
     await new Promise((r) => {
       setTimeout(r, 100);
     });
-    return JSON.stringify({
+    const content = JSON.stringify({
       status: "success",
       table,
       records: [
@@ -259,6 +261,17 @@ const queryDatabaseTool = tool(
         { id: 2, name: "Record B", value: 87 },
       ],
       count: 2,
+    });
+    return new Command({
+      update: {
+        messages: [
+          new ToolMessage({
+            content,
+            tool_call_id: config.toolCall?.id as string,
+            name: "query_database",
+          }),
+        ],
+      },
     });
   },
   {
