@@ -2039,54 +2039,70 @@ it("deep agent: subagents call tools and render args/results", async () => {
         );
 
         return (
-        <div data-testid="deep-agent-root" style={{ fontFamily: "monospace", fontSize: "13px" }}>
-          <div data-testid="loading">
-            <b>Status:</b> {thread.isLoading.value ? "Loading..." : "Not loading"}
-          </div>
-          {thread.error.value ? (
-            <div data-testid="error">{String(thread.error.value)}</div>
-          ) : null}
-          <hr />
-          <div><b>Messages ({thread.messages.value.length})</b></div>
-          <div data-testid="messages">
-            {thread.messages.value.map((msg, i) => (
-              <div key={msg.id ?? i} data-testid={`message-${i}`}>
-                [{msg.type}] {formatMessage(msg)}
-              </div>
-            ))}
-          </div>
-          <hr />
-          <div><b>Subagents</b> (<span data-testid="subagent-count">{subagents.length}</span>)</div>
-          {subagents.map((sub: any) => {
-            const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
-            return (
-              <div key={sub.id} data-testid={`subagent-${subType}`}
-                style={{ margin: "8px 0", paddingLeft: "12px", borderLeft: "2px solid #999" }}>
-                <div data-testid={`subagent-${subType}-status`}>
-                  SubAgent ({subType}) status: {sub.status}
-                </div>
-                <div data-testid={`subagent-${subType}-task-description`}>
-                  Task: {sub.toolCall?.args?.description ?? ""}
-                </div>
-                <div data-testid={`subagent-${subType}-result`}>
-                  Result: {sub.result ?? ""}
-                </div>
-              </div>
-            );
-          })}
-          <hr />
-          <button
-            data-testid="submit"
-            onClick={() =>
-              void thread.submit({
-                messages: [{ content: "Run analysis", type: "human" }],
-              })
-            }
+          <div
+            data-testid="deep-agent-root"
+            style={{ fontFamily: "monospace", fontSize: "13px" }}
           >
-            Send
-          </button>
-        </div>
-      );
+            <div data-testid="loading">
+              <b>Status:</b>{" "}
+              {thread.isLoading.value ? "Loading..." : "Not loading"}
+            </div>
+            {thread.error.value ? (
+              <div data-testid="error">{String(thread.error.value)}</div>
+            ) : null}
+            <hr />
+            <div>
+              <b>Messages ({thread.messages.value.length})</b>
+            </div>
+            <div data-testid="messages">
+              {thread.messages.value.map((msg, i) => (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  [{msg.type}] {formatMessage(msg)}
+                </div>
+              ))}
+            </div>
+            <hr />
+            <div>
+              <b>Subagents</b> (
+              <span data-testid="subagent-count">{subagents.length}</span>)
+            </div>
+            {subagents.map((sub: any) => {
+              const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+              return (
+                <div
+                  key={sub.id}
+                  data-testid={`subagent-${subType}`}
+                  style={{
+                    margin: "8px 0",
+                    paddingLeft: "12px",
+                    borderLeft: "2px solid #999",
+                  }}
+                >
+                  <div data-testid={`subagent-${subType}-status`}>
+                    SubAgent ({subType}) status: {sub.status}
+                  </div>
+                  <div data-testid={`subagent-${subType}-task-description`}>
+                    Task: {sub.toolCall?.args?.description ?? ""}
+                  </div>
+                  <div data-testid={`subagent-${subType}-result`}>
+                    Result: {sub.result ?? ""}
+                  </div>
+                </div>
+              );
+            })}
+            <hr />
+            <button
+              data-testid="submit"
+              onClick={() =>
+                void thread.submit({
+                  messages: [{ content: "Run analysis", type: "human" }],
+                })
+              }
+            >
+              Send
+            </button>
+          </div>
+        );
       };
     },
   });
@@ -2140,5 +2156,4 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
-
 });

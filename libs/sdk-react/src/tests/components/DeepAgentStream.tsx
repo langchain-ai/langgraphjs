@@ -21,7 +21,10 @@ export function DeepAgentStream({ apiUrl }: Props) {
   });
 
   return (
-    <div data-testid="deep-agent-root" style={{ fontFamily: "monospace", fontSize: 13 }}>
+    <div
+      data-testid="deep-agent-root"
+      style={{ fontFamily: "monospace", fontSize: 13 }}
+    >
       <div data-testid="loading">
         <b>Status:</b> {thread.isLoading ? "Loading..." : "Not loading"}
       </div>
@@ -54,7 +57,11 @@ export function DeepAgentStream({ apiUrl }: Props) {
           <div
             key={sub.id}
             data-testid={`subagent-${subType}`}
-            style={{ margin: "8px 0", paddingLeft: 12, borderLeft: "2px solid #999" }}
+            style={{
+              margin: "8px 0",
+              paddingLeft: 12,
+              borderLeft: "2px solid #999",
+            }}
           >
             <div data-testid={`subagent-${subType}-status`}>
               SubAgent ({subType}) status: {sub.status}

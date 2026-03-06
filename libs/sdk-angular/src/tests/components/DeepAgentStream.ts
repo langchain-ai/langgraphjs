@@ -7,7 +7,10 @@ const serverUrl = inject("serverUrl");
 
 @Component({
   template: `
-    <div data-testid="deep-agent-root" style="font-family: monospace; font-size: 13px">
+    <div
+      data-testid="deep-agent-root"
+      style="font-family: monospace; font-size: 13px"
+    >
       <div data-testid="loading">
         <b>Status:</b>
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
@@ -17,7 +20,9 @@ const serverUrl = inject("serverUrl");
       }
 
       <hr />
-      <div><b>Messages ({{ stream.messages().length }})</b></div>
+      <div>
+        <b>Messages ({{ stream.messages().length }})</b>
+      </div>
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
@@ -29,9 +34,7 @@ const serverUrl = inject("serverUrl");
       <hr />
       <div>
         <b>Subagents</b>
-        (<span data-testid="subagent-count">{{
-          sortedSubagents().length
-        }}</span
+        (<span data-testid="subagent-count">{{ sortedSubagents().length }}</span
         >)
       </div>
       @for (sub of sortedSubagents(); track sub.id) {
@@ -39,9 +42,7 @@ const serverUrl = inject("serverUrl");
           [attr.data-testid]="'subagent-' + getSubType(sub)"
           style="margin: 8px 0; padding-left: 12px; border-left: 2px solid #999"
         >
-          <div
-            [attr.data-testid]="'subagent-' + getSubType(sub) + '-status'"
-          >
+          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-status'">
             SubAgent ({{ getSubType(sub) }}) status: {{ sub.status }}
           </div>
           <div
@@ -51,9 +52,7 @@ const serverUrl = inject("serverUrl");
           >
             Task: {{ sub.toolCall?.args?.description ?? "" }}
           </div>
-          <div
-            [attr.data-testid]="'subagent-' + getSubType(sub) + '-result'"
-          >
+          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-result'">
             Result: {{ sub.result ?? "" }}
           </div>
         </div>
@@ -71,11 +70,10 @@ export class DeepAgentStreamComponent {
   });
 
   sortedSubagents() {
-    return [...this.stream.subagents.values()].sort(
-      (a: any, b: any) =>
-        (a.toolCall?.args?.subagent_type ?? "").localeCompare(
-          b.toolCall?.args?.subagent_type ?? "",
-        ),
+    return [...this.stream.subagents.values()].sort((a: any, b: any) =>
+      (a.toolCall?.args?.subagent_type ?? "").localeCompare(
+        b.toolCall?.args?.subagent_type ?? "",
+      ),
     );
   }
 
@@ -86,10 +84,7 @@ export class DeepAgentStreamComponent {
   formatMessage(msg: any): string {
     if (msg.type === "ai" && msg.tool_calls?.length) {
       return msg.tool_calls
-        .map(
-          (tc: any) =>
-            `tool_call:${tc.name}:${JSON.stringify(tc.args)}`,
-        )
+        .map((tc: any) => `tool_call:${tc.name}:${JSON.stringify(tc.args)}`)
         .join(",");
     }
     if (msg.type === "tool") {

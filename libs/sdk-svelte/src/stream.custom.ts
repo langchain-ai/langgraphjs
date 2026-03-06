@@ -239,7 +239,7 @@ export function useStreamCustom<
     subagents: derived(subagentVersion, () => stream.getSubagents()),
 
     activeSubagents: derived(subagentVersion, () =>
-      stream.getActiveSubagents()
+      stream.getActiveSubagents(),
     ),
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);

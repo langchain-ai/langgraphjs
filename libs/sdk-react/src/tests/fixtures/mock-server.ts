@@ -156,7 +156,7 @@ class FakeToolCallingModel extends BaseChatModel {
 
   private _resolveContent(
     baseMsg: BaseMessage,
-    messages?: BaseMessage[]
+    messages?: BaseMessage[],
   ): string {
     const base = (baseMsg.content as string) || "";
     if ((baseMsg as AIMessage).tool_calls?.length || !messages?.length)
@@ -165,32 +165,27 @@ class FakeToolCallingModel extends BaseChatModel {
     const toolOutputs = messages
       .filter((m) => m.type === "tool")
       .map((m) =>
-        typeof m.content === "string" ? m.content : JSON.stringify(m.content)
+        typeof m.content === "string" ? m.content : JSON.stringify(m.content),
       );
     return toolOutputs.length > 0
       ? `${base} Tool output: ${toolOutputs.join("; ")}`
       : base;
   }
 
-  async _generate(
-    messages?: BaseMessage[]
-  ): Promise<ChatResult> {
+  async _generate(messages?: BaseMessage[]): Promise<ChatResult> {
     const baseMsg = this.responses[this.callCount % this.responses.length];
     this.callCount += 1;
     const content = this._resolveContent(baseMsg, messages);
-    const msg = content !== ((baseMsg.content as string) || "")
-      ? new AIMessage(content)
-      : baseMsg;
+    const msg =
+      content !== ((baseMsg.content as string) || "")
+        ? new AIMessage(content)
+        : baseMsg;
     return {
-      generations: [
-        { text: (msg.content as string) || "", message: msg },
-      ],
+      generations: [{ text: (msg.content as string) || "", message: msg }],
     };
   }
 
-  async *_streamResponseChunks(
-    messages?: BaseMessage[]
-  ) {
+  async *_streamResponseChunks(messages?: BaseMessage[]) {
     const baseMsg = this.responses[this.callCount % this.responses.length];
     const content = this._resolveContent(baseMsg, messages);
 
@@ -199,13 +194,16 @@ class FakeToolCallingModel extends BaseChatModel {
     const toolCalls = (baseMsg as AIMessage).tool_calls;
     if (toolCalls?.length) {
       chunkFields.tool_call_chunks = toolCalls.map(
-        (tc: { name: string; args: Record<string, unknown>; id?: string }, index: number) => ({
+        (
+          tc: { name: string; args: Record<string, unknown>; id?: string },
+          index: number,
+        ) => ({
           name: tc.name,
           args: JSON.stringify(tc.args),
           id: tc.id,
           index,
           type: "tool_call_chunk" as const,
-        })
+        }),
       );
     }
 
@@ -241,7 +239,7 @@ const searchWebTool = tool(
     schema: z.object({
       query: z.string().describe("The search query"),
     }),
-  }
+  },
 );
 
 const queryDatabaseTool = tool(
@@ -262,7 +260,7 @@ const queryDatabaseTool = tool(
     schema: z.object({
       table: z.string().describe("The table name to query"),
     }),
-  }
+  },
 );
 
 const deepOrchestratorModel = new FakeToolCallingModel({
@@ -335,16 +333,14 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   subagents: [
     {
       name: "researcher",
-      description:
-        "Research specialist that searches the web for information.",
+      description: "Research specialist that searches the web for information.",
       systemPrompt: "You are a research specialist.",
       tools: [searchWebTool],
       model: deepResearcherModel,
     },
     {
       name: "data-analyst",
-      description:
-        "Data analysis expert that queries databases for insights.",
+      description: "Data analysis expert that queries databases for insights.",
       systemPrompt: "You are a data analysis expert.",
       tools: [queryDatabaseTool],
       model: deepAnalystModel,
