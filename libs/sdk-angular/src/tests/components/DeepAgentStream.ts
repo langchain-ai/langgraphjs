@@ -71,6 +71,10 @@ const serverUrl = inject("serverUrl");
         </div>
       }
 
+      <div data-testid="observed-toolcall-states">
+        {{ observedToolCallStates() }}
+      </div>
+
       <hr />
       <button data-testid="submit" (click)="onSubmit()">Send</button>
     </div>
@@ -83,13 +87,26 @@ export class DeepAgentStreamComponent {
     filterSubagentMessages: true,
   });
 
+  toolCallStates = new Set<string>();
+
   sortedSubagents() {
-    return [...this.stream.subagents.values()].sort(
+    const sorted = [...this.stream.subagents.values()].sort(
       (a: ClassSubagentStreamInterface, b: ClassSubagentStreamInterface) =>
         (a.toolCall?.args?.subagent_type ?? "").localeCompare(
           b.toolCall?.args?.subagent_type ?? "",
         ),
     );
+    for (const sub of sorted) {
+      const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+      for (const tc of sub.toolCalls) {
+        this.toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
+      }
+    }
+    return sorted;
+  }
+
+  observedToolCallStates(): string {
+    return [...this.toolCallStates].sort().join(",");
   }
 
   getSubType(sub: ClassSubagentStreamInterface): string {

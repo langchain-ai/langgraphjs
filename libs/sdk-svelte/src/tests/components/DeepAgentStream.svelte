@@ -15,6 +15,9 @@
     filterSubagentMessages: true,
   });
 
+  const toolCallStates = new Set<string>();
+  let observedToolCallStates = $state("");
+
   const sortedSubagents = $derived(
     [...$subagents.values()].sort((a: any, b: any) => {
       const typeA = a.toolCall?.args?.subagent_type ?? "";
@@ -22,6 +25,16 @@
       return typeA.localeCompare(typeB);
     })
   );
+
+  $effect(() => {
+    for (const sub of sortedSubagents) {
+      const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+      for (const tc of sub.toolCalls) {
+        toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
+      }
+    }
+    observedToolCallStates = [...toolCallStates].sort().join(",");
+  });
 
   function formatMessage(msg: any): string {
     if (msg.type === "ai" && msg.tool_calls?.length) {
@@ -82,6 +95,10 @@
       </div>
     </div>
   {/each}
+
+  <div data-testid="observed-toolcall-states">
+    {observedToolCallStates}
+  </div>
 
   <hr />
   <button

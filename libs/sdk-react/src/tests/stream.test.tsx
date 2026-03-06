@@ -952,6 +952,15 @@ it("deep agent: subagents call tools and render args/results", async () => {
     .element(screen.getByTestId("subagent-data-analyst-toolcall-names"))
     .toHaveTextContent("query_database");
 
+  // Verify tool call state transitions (pending → completed)
+  const observedStates = screen.getByTestId("observed-toolcall-states");
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/data-analyst:query_database:completed/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/researcher:search_web:completed/);
+
   // Verify main messages include the orchestrator's task tool calls and results
   const messages = screen.getByTestId("messages");
   await expect.element(messages).toHaveTextContent(/Run analysis/);

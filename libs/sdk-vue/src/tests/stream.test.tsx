@@ -2023,6 +2023,8 @@ it("deep agent: subagents call tools and render args/results", async () => {
       : JSON.stringify(msg.content);
   }
 
+  const toolCallStates = new Set<string>();
+
   const TestComponent = defineComponent({
     setup() {
       const thread = useStream<DeepAgentGraph>({
@@ -2038,6 +2040,13 @@ it("deep agent: subagents call tools and render args/results", async () => {
               b.toolCall?.args?.subagent_type ?? "",
             ),
         );
+
+        for (const sub of subagents) {
+          const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+          for (const tc of sub.toolCalls) {
+            toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
+          }
+        }
 
         return (
           <div
@@ -2102,6 +2111,9 @@ it("deep agent: subagents call tools and render args/results", async () => {
                 </div>
               );
             })}
+            <div data-testid="observed-toolcall-states">
+              {[...toolCallStates].sort().join(",")}
+            </div>
             <hr />
             <button
               data-testid="submit"
@@ -2186,6 +2198,15 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(screen.getByTestId("subagent-data-analyst-toolcall-names"))
     .toHaveTextContent("query_database");
+
+  // Verify tool call state transitions (pending → completed)
+  const observedStates = screen.getByTestId("observed-toolcall-states");
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/data-analyst:query_database:completed/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/researcher:search_web:completed/);
 
   const messages = screen.getByTestId("messages");
   await expect.element(messages).toHaveTextContent(/Run analysis/);

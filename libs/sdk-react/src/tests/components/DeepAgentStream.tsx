@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage } from "@langchain/core/messages";
 
@@ -15,11 +16,20 @@ export function DeepAgentStream({ apiUrl }: Props) {
     filterSubagentMessages: true,
   });
 
+  const toolCallStatesRef = useRef(new Set<string>());
+
   const subagents = [...thread.subagents.values()].sort((a, b) => {
     const typeA = a.toolCall?.args?.subagent_type ?? "";
     const typeB = b.toolCall?.args?.subagent_type ?? "";
     return typeA.localeCompare(typeB);
   });
+
+  for (const sub of subagents) {
+    const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+    for (const tc of sub.toolCalls) {
+      toolCallStatesRef.current.add(`${subType}:${tc.call.name}:${tc.state}`);
+    }
+  }
 
   return (
     <div
@@ -85,6 +95,10 @@ export function DeepAgentStream({ apiUrl }: Props) {
           </div>
         );
       })}
+
+      <div data-testid="observed-toolcall-states">
+        {[...toolCallStatesRef.current].sort().join(",")}
+      </div>
 
       <hr />
       <button
