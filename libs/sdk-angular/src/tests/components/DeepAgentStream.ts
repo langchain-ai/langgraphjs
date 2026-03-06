@@ -1,6 +1,10 @@
 import { Component } from "@angular/core";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { AIMessage, type BaseMessage, ToolMessage } from "@langchain/core/messages";
+import {
+  useStream,
+  type ClassSubagentStreamInterface,
+} from "../../index.js";
 import type { DeepAgentGraph } from "../fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");
@@ -26,7 +30,7 @@ const serverUrl = inject("serverUrl");
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
-            [{{ msg.type }}] {{ formatMessage(msg) }}
+            [{{ msg._getType() }}] {{ formatMessage(msg) }}
           </div>
         }
       </div>
@@ -55,6 +59,15 @@ const serverUrl = inject("serverUrl");
           <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-result'">
             Result: {{ sub.result ?? "" }}
           </div>
+          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-messages-count'">
+            {{ sub.messages.length }}
+          </div>
+          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-toolcalls-count'">
+            {{ sub.toolCalls.length }}
+          </div>
+          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-toolcall-names'">
+            {{ getToolCallNames(sub) }}
+          </div>
         </div>
       }
 
@@ -67,41 +80,56 @@ export class DeepAgentStreamComponent {
   stream = useStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl: serverUrl,
+    filterSubagentMessages: true,
   });
 
   sortedSubagents() {
-    return [...this.stream.subagents.values()].sort((a: any, b: any) =>
-      (a.toolCall?.args?.subagent_type ?? "").localeCompare(
-        b.toolCall?.args?.subagent_type ?? "",
-      ),
+    return [...this.stream.subagents.values()].sort(
+      (a: ClassSubagentStreamInterface, b: ClassSubagentStreamInterface) =>
+        (a.toolCall?.args?.subagent_type ?? "").localeCompare(
+          b.toolCall?.args?.subagent_type ?? "",
+        ),
     );
   }
 
-  getSubType(sub: any): string {
+  getSubType(sub: ClassSubagentStreamInterface): string {
     return sub.toolCall?.args?.subagent_type ?? "unknown";
   }
 
-  formatMessage(msg: any): string {
-    if (msg.type === "ai" && msg.tool_calls?.length) {
+  getToolCallNames(sub: ClassSubagentStreamInterface): string {
+    return sub.toolCalls
+      .map((tc) => tc.call.name)
+      .join(",");
+  }
+
+  formatMessage(msg: BaseMessage): string {
+    if (
+      AIMessage.isInstance(msg) &&
+      msg.tool_calls &&
+      msg.tool_calls.length > 0
+    ) {
       return msg.tool_calls
-        .map((tc: any) => `tool_call:${tc.name}:${JSON.stringify(tc.args)}`)
+        .map((tc) => `tool_call:${tc.name}:${JSON.stringify(tc.args)}`)
         .join(",");
     }
-    if (msg.type === "tool") {
+
+    if (ToolMessage.isInstance(msg)) {
       const content =
         typeof msg.content === "string"
           ? msg.content
           : JSON.stringify(msg.content);
       return `tool_result:${content}`;
     }
+
     return typeof msg.content === "string"
       ? msg.content
       : JSON.stringify(msg.content);
   }
 
   onSubmit() {
-    void this.stream.submit({
-      messages: [{ content: "Run analysis", type: "human" }],
-    });
+    void this.stream.submit(
+      { messages: [{ content: "Run analysis", type: "human" }] },
+      { streamSubgraphs: true },
+    );
   }
 }

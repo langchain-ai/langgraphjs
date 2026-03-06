@@ -12,6 +12,7 @@ export function DeepAgentStream({ apiUrl }: Props) {
   const thread = useStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl,
+    filterSubagentMessages: true,
   });
 
   const subagents = [...thread.subagents.values()].sort((a, b) => {
@@ -72,6 +73,15 @@ export function DeepAgentStream({ apiUrl }: Props) {
             <div data-testid={`subagent-${subType}-result`}>
               Result: {sub.result ?? ""}
             </div>
+            <div data-testid={`subagent-${subType}-messages-count`}>
+              {sub.messages.length}
+            </div>
+            <div data-testid={`subagent-${subType}-toolcalls-count`}>
+              {sub.toolCalls.length}
+            </div>
+            <div data-testid={`subagent-${subType}-toolcall-names`}>
+              {sub.toolCalls.map((tc) => tc.call.name).join(",")}
+            </div>
           </div>
         );
       })}
@@ -80,9 +90,10 @@ export function DeepAgentStream({ apiUrl }: Props) {
       <button
         data-testid="submit"
         onClick={() =>
-          void thread.submit({
-            messages: [{ content: "Run analysis", type: "human" }],
-          })
+          void thread.submit(
+            { messages: [{ content: "Run analysis", type: "human" }] },
+            { streamSubgraphs: true },
+          )
         }
       >
         Send

@@ -912,6 +912,33 @@ it("deep agent: subagents call tools and render args/results", async () => {
     .element(screen.getByTestId("subagent-data-analyst-result"))
     .toHaveTextContent(/Record B/);
 
+  // Verify subagent internal messages are populated (requires streamSubgraphs + filterSubagentMessages)
+  await expect
+    .element(
+      screen.getByTestId("subagent-researcher-messages-count"),
+      { timeout: 5_000 },
+    )
+    .not.toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-messages-count"))
+    .not.toHaveTextContent("0");
+
+  // Verify subagent tool calls are captured
+  await expect
+    .element(screen.getByTestId("subagent-researcher-toolcalls-count"))
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-toolcalls-count"))
+    .toHaveTextContent("1");
+
+  // Verify the correct tools were called within each subagent
+  await expect
+    .element(screen.getByTestId("subagent-researcher-toolcall-names"))
+    .toHaveTextContent("search_web");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-toolcall-names"))
+    .toHaveTextContent("query_database");
+
   const messages = screen.getByTestId("messages");
   await expect.element(messages).toHaveTextContent(/Run analysis/);
   await expect.element(messages).toHaveTextContent(/tool_call:task/);

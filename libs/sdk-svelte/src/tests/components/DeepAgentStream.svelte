@@ -12,6 +12,7 @@
   const { messages, isLoading, error, submit, subagents } = useStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl,
+    filterSubagentMessages: true,
   });
 
   const sortedSubagents = $derived(
@@ -70,13 +71,22 @@
       <div data-testid={`subagent-${subType}-result`}>
         Result: {sub.result ?? ""}
       </div>
+      <div data-testid={`subagent-${subType}-messages-count`}>
+        {sub.messages.length}
+      </div>
+      <div data-testid={`subagent-${subType}-toolcalls-count`}>
+        {sub.toolCalls.length}
+      </div>
+      <div data-testid={`subagent-${subType}-toolcall-names`}>
+        {sub.toolCalls.map((tc) => tc.call.name).join(",")}
+      </div>
     </div>
   {/each}
 
   <hr />
   <button
     data-testid="submit"
-    onclick={() => void submit({ messages: [{ content: "Run analysis", type: "human" }] })}
+    onclick={() => void submit({ messages: [{ content: "Run analysis", type: "human" }] }, { streamSubgraphs: true })}
   >
     Send
   </button>
