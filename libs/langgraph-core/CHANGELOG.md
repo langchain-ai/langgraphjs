@@ -1,5 +1,20 @@
 # @langchain/langgraph
 
+## 1.2.1
+
+### Patch Changes
+
+- [#2024](https://github.com/langchain-ai/langgraphjs/pull/2024) [`b1272bd`](https://github.com/langchain-ai/langgraphjs/commit/b1272bd43ab6fad2b162de13f62ceb1be234aa6f) Thanks [@hntrl](https://github.com/hntrl)! - fix: add explicit `: symbol` type annotations for cross-version compatibility
+
+  TypeScript infers `unique symbol` type when Symbol.for() is used without an explicit type annotation, causing type incompatibility when multiple versions of the same package are present in a dependency tree. By adding explicit `: symbol` annotations, all declarations now use the general symbol type, making them compatible across versions while maintaining identical runtime behavior.
+
+  Changes:
+
+  - Added `: symbol` to `COMMAND_SYMBOL` (used on CommandInstance class)
+  - Added `: symbol` to `REDUCED_VALUE_SYMBOL` (exported, used on ReducedValue class)
+  - Added `: symbol` to `UNTRACKED_VALUE_SYMBOL` (exported, used on UntrackedValue class)
+  - Fixed TypeScript indexing error by using `Record<symbol, unknown>` type assertion in ReducedValue.isInstance()
+
 ## 1.2.0
 
 ### Minor Changes
