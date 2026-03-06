@@ -886,19 +886,19 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
 
     expectTypeOf(stream.submit).toBeCallableWith(
       { messages: [{ type: "human", content: "Hello" }] },
-      undefined,
+      undefined
     );
 
     expectTypeOf(stream.submit).toBeCallableWith(
       // @ts-expect-error - ensuring we remain backward compatible
       { messages: [new HumanMessage("Hello")] },
-      undefined,
+      undefined
     );
 
     expectTypeOf(stream.submit).toBeCallableWith(
       // @ts-expect-error - ensuring we remain backward compatible
       { messages: new HumanMessage("Hello") },
-      undefined,
+      undefined
     );
   });
 });
