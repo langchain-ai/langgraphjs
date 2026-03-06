@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 
 import { Hono } from "hono";
-import { v4 as uuid4 } from "uuid";
+import { v7 as uuid7 } from "uuid";
 
 import { z } from "zod/v3";
 import * as schemas from "../schemas.mjs";
@@ -17,7 +17,7 @@ api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
   // Create Thread
   const payload = c.req.valid("json");
   const thread = await threads().put(
-    payload.thread_id || uuid4(),
+    payload.thread_id || uuid7(),
     { metadata: payload.metadata, if_exists: payload.if_exists ?? "raise" },
     c.var.auth
   );

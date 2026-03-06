@@ -1,6 +1,6 @@
 import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
-import { v4 as uuid4, v5 as uuid5 } from "uuid";
+import { v7 as uuid7, v5 as uuid5 } from "uuid";
 import { handleAuthEvent, isAuthMatching } from "../auth/index.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 import { getLangGraphCommand, type RunCommand } from "../command.mjs";
@@ -956,7 +956,7 @@ export class FileSystemThreads implements ThreadsRepo {
       return thread;
     });
 
-    const newThreadId = uuid4();
+    const newThreadId = uuid7();
     const now = new Date();
     const newMetadata = { ...fromThread.metadata, thread_id: newThreadId };
     await handleAuthEvent(auth, "threads:create", {
@@ -1408,7 +1408,7 @@ export class FileSystemRuns implements RunsRepo {
       const now = new Date();
 
       if (!existingThread && (threadId == null || ifNotExists === "create")) {
-        threadId ??= uuid4();
+        threadId ??= uuid7();
         const thread: Thread = {
           thread_id: threadId,
           status: "busy",

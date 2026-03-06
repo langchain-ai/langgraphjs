@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
-import { v4 as uuid } from "uuid";
+import { v7 as uuid } from "uuid";
 import { z } from "zod/v3";
 
 import {
