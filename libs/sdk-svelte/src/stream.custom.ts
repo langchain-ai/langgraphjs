@@ -42,10 +42,13 @@ export function useStreamCustom<
   const streamError = writable<unknown>(stream.error);
   const isLoading = writable(stream.isLoading);
 
+  const subagentVersion = writable(0);
+
   const unsubscribe = stream.subscribe(() => {
     streamValues.set(stream.values);
     streamError.set(stream.error);
     isLoading.set(stream.isLoading);
+    subagentVersion.update((v) => v + 1);
   });
 
   onDestroy(() => {
@@ -233,12 +236,11 @@ export function useStreamCustom<
     toolCalls,
     getToolCalls,
 
-    get subagents() {
-      return stream.getSubagents();
-    },
-    get activeSubagents() {
-      return stream.getActiveSubagents();
-    },
+    subagents: derived(subagentVersion, () => stream.getSubagents()),
+
+    activeSubagents: derived(subagentVersion, () =>
+      stream.getActiveSubagents()
+    ),
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);
     },

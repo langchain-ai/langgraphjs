@@ -39,11 +39,14 @@ export function useStreamCustom<
   const streamError = signal<unknown>(stream.error);
   const isLoading = signal(stream.isLoading);
 
+  const subagentVersion = signal(0);
+
   effect((onCleanup) => {
     const unsubscribe = stream.subscribe(() => {
       streamValues.set(stream.values);
       streamError.set(stream.error);
       isLoading.set(stream.isLoading);
+      subagentVersion.update((v) => v + 1);
     });
 
     onCleanup(() => unsubscribe());
@@ -233,10 +236,12 @@ export function useStreamCustom<
     },
 
     get subagents() {
+      void subagentVersion();
       return stream.getSubagents();
     },
 
     get activeSubagents() {
+      void subagentVersion();
       return stream.getActiveSubagents();
     },
 

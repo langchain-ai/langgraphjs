@@ -37,10 +37,13 @@ export function useStreamCustom<
   const streamError = shallowRef<unknown>(stream.error);
   const isLoading = shallowRef(stream.isLoading);
 
+  const subagentVersion = shallowRef(0);
+
   const unsubscribe = stream.subscribe(() => {
     streamValues.value = stream.values;
     streamError.value = stream.error;
     isLoading.value = stream.isLoading;
+    subagentVersion.value += 1;
   });
 
   onUnmounted(() => {
@@ -242,10 +245,12 @@ export function useStreamCustom<
     },
 
     get subagents() {
+      void subagentVersion.value;
       return stream.getSubagents();
     },
 
     get activeSubagents() {
+      void subagentVersion.value;
       return stream.getActiveSubagents();
     },
 

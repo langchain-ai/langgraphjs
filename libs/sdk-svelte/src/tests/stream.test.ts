@@ -972,8 +972,36 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await screen.getByTestId("submit").click();
 
   await expect
-    .element(screen.getByTestId("loading"), { timeout: 30_000 })
+    .element(screen.getByTestId("subagent-count"), { timeout: 30_000 })
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
     .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-status"))
+    .toHaveTextContent("complete");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-status"))
+    .toHaveTextContent("complete");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-task-description"))
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-task-description"))
+    .toHaveTextContent("Query the database for test data");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-result"))
+    .toHaveTextContent(/Result for: test research query/);
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-result"))
+    .toHaveTextContent(/Record A/);
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-result"))
+    .toHaveTextContent(/Record B/);
 
   const messages = screen.getByTestId("messages");
   await expect.element(messages).toHaveTextContent(/Run analysis/);
@@ -983,10 +1011,6 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect.element(messages).toHaveTextContent(/tool_result:/);
   await expect
     .element(messages)
-    .toHaveTextContent(/Result for: test research query/);
-  await expect.element(messages).toHaveTextContent(/Record A/);
-  await expect.element(messages).toHaveTextContent(/Record B/);
-  await expect
-    .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+
 });

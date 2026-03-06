@@ -1,7 +1,7 @@
 import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
-import { computed, defineComponent, ref } from "vue";
+import { defineComponent, ref } from "vue";
 import { useStream } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import type { DeepAgentGraph } from "./fixtures/mock-server.js";
@@ -2030,49 +2030,51 @@ it("deep agent: subagents call tools and render args/results", async () => {
         apiUrl: serverUrl,
       });
 
-      const subagents = computed(() => {
-        void thread.messages.value;
-        void thread.isLoading.value;
-        return [...thread.subagents.values()].sort(
+      return () => {
+        const subagents = [...thread.subagents.values()].sort(
           (a: any, b: any) =>
             (a.toolCall?.args?.subagent_type ?? "").localeCompare(
               b.toolCall?.args?.subagent_type ?? "",
             ),
         );
-      });
 
-      return () => (
-        <div>
+        return (
+        <div data-testid="deep-agent-root" style={{ fontFamily: "monospace", fontSize: "13px" }}>
           <div data-testid="loading">
-            {thread.isLoading.value ? "Loading..." : "Not loading"}
+            <b>Status:</b> {thread.isLoading.value ? "Loading..." : "Not loading"}
           </div>
           {thread.error.value ? (
             <div data-testid="error">{String(thread.error.value)}</div>
           ) : null}
+          <hr />
+          <div><b>Messages ({thread.messages.value.length})</b></div>
           <div data-testid="messages">
             {thread.messages.value.map((msg, i) => (
               <div key={msg.id ?? i} data-testid={`message-${i}`}>
-                {formatMessage(msg)}
+                [{msg.type}] {formatMessage(msg)}
               </div>
             ))}
           </div>
-          <div data-testid="subagent-count">{subagents.value.length}</div>
-          {subagents.value.map((sub: any) => {
+          <hr />
+          <div><b>Subagents</b> (<span data-testid="subagent-count">{subagents.length}</span>)</div>
+          {subagents.map((sub: any) => {
             const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
             return (
-              <div key={sub.id} data-testid={`subagent-${subType}`}>
+              <div key={sub.id} data-testid={`subagent-${subType}`}
+                style={{ margin: "8px 0", paddingLeft: "12px", borderLeft: "2px solid #999" }}>
                 <div data-testid={`subagent-${subType}-status`}>
                   SubAgent ({subType}) status: {sub.status}
                 </div>
                 <div data-testid={`subagent-${subType}-task-description`}>
-                  {sub.toolCall?.args?.description ?? ""}
+                  Task: {sub.toolCall?.args?.description ?? ""}
                 </div>
                 <div data-testid={`subagent-${subType}-result`}>
-                  {sub.result ?? ""}
+                  Result: {sub.result ?? ""}
                 </div>
               </div>
             );
           })}
+          <hr />
           <button
             data-testid="submit"
             onClick={() =>
@@ -2085,6 +2087,7 @@ it("deep agent: subagents call tools and render args/results", async () => {
           </button>
         </div>
       );
+      };
     },
   });
 
@@ -2097,8 +2100,36 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await screen.getByTestId("submit").click();
 
   await expect
-    .element(screen.getByTestId("loading"), { timeout: 30_000 })
+    .element(screen.getByTestId("subagent-count"), { timeout: 30_000 })
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
     .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-status"))
+    .toHaveTextContent("complete");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-status"))
+    .toHaveTextContent("complete");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-task-description"))
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-task-description"))
+    .toHaveTextContent("Query the database for test data");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-result"))
+    .toHaveTextContent(/Result for: test research query/);
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-result"))
+    .toHaveTextContent(/Record A/);
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-result"))
+    .toHaveTextContent(/Record B/);
 
   const messages = screen.getByTestId("messages");
   await expect.element(messages).toHaveTextContent(/Run analysis/);
@@ -2108,10 +2139,6 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect.element(messages).toHaveTextContent(/tool_result:/);
   await expect
     .element(messages)
-    .toHaveTextContent(/Result for: test research query/);
-  await expect.element(messages).toHaveTextContent(/Record A/);
-  await expect.element(messages).toHaveTextContent(/Record B/);
-  await expect
-    .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+
 });

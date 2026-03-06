@@ -21,52 +21,55 @@ export function DeepAgentStream({ apiUrl }: Props) {
   });
 
   return (
-    <div>
+    <div data-testid="deep-agent-root" style={{ fontFamily: "monospace", fontSize: 13 }}>
       <div data-testid="loading">
-        {thread.isLoading ? "Loading..." : "Not loading"}
+        <b>Status:</b> {thread.isLoading ? "Loading..." : "Not loading"}
       </div>
 
       {thread.error ? (
         <div data-testid="error">{String(thread.error)}</div>
       ) : null}
 
+      <hr />
+      <div>
+        <b>Messages ({thread.messages.length})</b>
+      </div>
       <div data-testid="messages">
         {thread.messages.map((msg, i) => (
           <div key={msg.id ?? i} data-testid={`message-${i}`}>
-            {formatMessage(msg)}
+            [{msg._getType()}] {formatMessage(msg)}
           </div>
         ))}
       </div>
 
-      <div data-testid="subagent-count">{subagents.length}</div>
+      <hr />
+      <div>
+        <b>Subagents</b> (
+        <span data-testid="subagent-count">{subagents.length}</span>)
+      </div>
 
       {subagents.map((sub) => {
         const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
         return (
-          <div key={sub.id} data-testid={`subagent-${subType}`}>
+          <div
+            key={sub.id}
+            data-testid={`subagent-${subType}`}
+            style={{ margin: "8px 0", paddingLeft: 12, borderLeft: "2px solid #999" }}
+          >
             <div data-testid={`subagent-${subType}-status`}>
               SubAgent ({subType}) status: {sub.status}
             </div>
             <div data-testid={`subagent-${subType}-task-description`}>
-              {sub.toolCall?.args?.description ?? ""}
+              Task: {sub.toolCall?.args?.description ?? ""}
             </div>
             <div data-testid={`subagent-${subType}-result`}>
-              {sub.result ?? ""}
-            </div>
-            <div data-testid={`subagent-${subType}-messages`}>
-              {sub.messages.map((msg, j) => (
-                <div
-                  key={msg.id ?? j}
-                  data-testid={`subagent-${subType}-msg-${j}`}
-                >
-                  {formatMessage(msg)}
-                </div>
-              ))}
+              Result: {sub.result ?? ""}
             </div>
           </div>
         );
       })}
 
+      <hr />
       <button
         data-testid="submit"
         onClick={() =>
@@ -90,8 +93,7 @@ function formatMessage(msg: BaseMessage): string {
     msg.tool_calls &&
     msg.tool_calls.length > 0
   ) {
-    const toolCalls = msg.tool_calls;
-    return toolCalls
+    return msg.tool_calls
       .map((tc) => `tool_call:${tc.name}:${JSON.stringify(tc.args)}`)
       .join(",");
   }

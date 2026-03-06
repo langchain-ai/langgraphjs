@@ -1,7 +1,7 @@
-import { resolve } from "path";
 import { transformWithEsbuild } from "vite";
 import { defineConfig } from "vitest/config";
 import angular from "@analogjs/vite-plugin-angular";
+import { webdriverio } from "@vitest/browser-webdriverio";
 
 const nonAngularFiles = [/mock-server\.ts/, /vitest-browser-shim\.ts/];
 
@@ -16,7 +16,6 @@ export default defineConfig({
         }
       },
     },
-    // @ts-expect-error - Angular plugin is not correctly typed
     angular({
       tsconfig: "tsconfig.spec.json",
       transformFilter(_code: string, id: string) {
@@ -24,14 +23,7 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: {
-    alias: {
-      "vitest/browser": resolve(
-        __dirname,
-        "src/tests/vitest-browser-shim.ts"
-      ),
-    },
-  },
+  resolve: {},
   test: {
     globals: true,
     testTimeout: 30_000,
@@ -39,7 +31,7 @@ export default defineConfig({
     setupFiles: ["./src/tests/setup.ts"],
     browser: {
       enabled: true,
-      provider: "webdriverio",
+      provider: webdriverio(),
       instances: [{ browser: "chrome", headless: true }],
     },
     include: ["src/**/*.test.ts"],

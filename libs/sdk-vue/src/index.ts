@@ -215,10 +215,13 @@ function useStreamLGP<
     }),
   );
 
+  const subagentVersion = shallowRef(0);
+
   const unsubscribe = stream.subscribe(() => {
     streamValues.value = stream.values;
     streamError.value = stream.error;
     isLoading.value = stream.isLoading;
+    subagentVersion.value += 1;
   });
 
   const unsubQueue = pendingRuns.subscribe(() => {
@@ -381,6 +384,7 @@ function useStreamLGP<
           ...(submitOptions?.streamMode ?? []),
           "values" as StreamMode,
           "messages-tuple" as StreamMode,
+          "updates" as StreamMode,
         ]);
 
         if (options.onUpdateEvent && !streamMode.includes("updates"))
@@ -746,9 +750,11 @@ function useStreamLGP<
     },
 
     get subagents() {
+      void subagentVersion.value;
       return stream.getSubagents();
     },
     get activeSubagents() {
+      void subagentVersion.value;
       return stream.getActiveSubagents();
     },
     getSubagent(toolCallId: string) {

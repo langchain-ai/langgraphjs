@@ -935,4 +935,5 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+
 });

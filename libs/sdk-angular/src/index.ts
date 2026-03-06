@@ -387,11 +387,14 @@ export function useStreamLGP<
     }),
   );
 
+  const subagentVersion = signal(0);
+
   effect((onCleanup) => {
     const unsubscribe = stream.subscribe(() => {
       streamValues.set(stream.values);
       streamError.set(stream.error);
       isLoading.set(stream.isLoading);
+      subagentVersion.update((v) => v + 1);
     });
 
     onCleanup(() => unsubscribe());
@@ -492,6 +495,7 @@ export function useStreamLGP<
           ...(submitOptions?.streamMode ?? []),
           "values",
           "messages-tuple",
+          "updates",
         ]);
         if (options.onUpdateEvent) streamMode.add("updates");
         if (options.onCustomEvent) streamMode.add("custom");
@@ -897,9 +901,11 @@ export function useStreamLGP<
     },
 
     get subagents() {
+      void subagentVersion();
       return stream.getSubagents();
     },
     get activeSubagents() {
+      void subagentVersion();
       return stream.getActiveSubagents();
     },
     getSubagent(toolCallId: string) {

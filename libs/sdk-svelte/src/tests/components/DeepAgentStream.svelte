@@ -14,15 +14,13 @@
     apiUrl,
   });
 
-  const sortedSubagents = $derived.by(() => {
-    void $messages;
-    void $isLoading;
-    return [...subagents.values()].sort((a: any, b: any) => {
+  const sortedSubagents = $derived(
+    [...$subagents.values()].sort((a: any, b: any) => {
       const typeA = a.toolCall?.args?.subagent_type ?? "";
       const typeB = b.toolCall?.args?.subagent_type ?? "";
       return typeA.localeCompare(typeB);
-    });
-  });
+    })
+  );
 
   function formatMessage(msg: any): string {
     if (msg.type === "ai" && msg.tool_calls?.length) {
@@ -37,40 +35,45 @@
   }
 </script>
 
-<div>
+<div data-testid="deep-agent-root" style="font-family: monospace; font-size: 13px">
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    <b>Status:</b> {$isLoading ? "Loading..." : "Not loading"}
   </div>
 
   {#if $error}
     <div data-testid="error">{String($error)}</div>
   {/if}
 
+  <hr />
+  <div><b>Messages ({$messages.length})</b></div>
   <div data-testid="messages">
     {#each $messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
-        {formatMessage(msg)}
+        [{msg.type}] {formatMessage(msg)}
       </div>
     {/each}
   </div>
 
-  <div data-testid="subagent-count">{sortedSubagents.length}</div>
+  <hr />
+  <div><b>Subagents</b> (<span data-testid="subagent-count">{sortedSubagents.length}</span>)</div>
 
   {#each sortedSubagents as sub (sub.id)}
     {@const subType = sub.toolCall?.args?.subagent_type ?? "unknown"}
-    <div data-testid={`subagent-${subType}`}>
+    <div data-testid={`subagent-${subType}`}
+      style="margin: 8px 0; padding-left: 12px; border-left: 2px solid #999">
       <div data-testid={`subagent-${subType}-status`}>
         SubAgent ({subType}) status: {sub.status}
       </div>
       <div data-testid={`subagent-${subType}-task-description`}>
-        {sub.toolCall?.args?.description ?? ""}
+        Task: {sub.toolCall?.args?.description ?? ""}
       </div>
       <div data-testid={`subagent-${subType}-result`}>
-        {sub.result ?? ""}
+        Result: {sub.result ?? ""}
       </div>
     </div>
   {/each}
 
+  <hr />
   <button
     data-testid="submit"
     onclick={() => void submit({ messages: [{ content: "Run analysis", type: "human" }] })}

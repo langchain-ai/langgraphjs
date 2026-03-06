@@ -31,4 +31,5 @@ tsconfig.vitest-temp.json
 .pnpm-store
 .idea
 .claude
+.vitest-attachments
 agent-os/
