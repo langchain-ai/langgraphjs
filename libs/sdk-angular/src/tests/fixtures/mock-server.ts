@@ -225,7 +225,9 @@ class FakeToolCallingModel extends BaseChatModel {
 
 const searchWebTool = tool(
   async ({ query }: { query: string }) => {
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => {
+      setTimeout(r, 100);
+    });
     return JSON.stringify({
       status: "success",
       query,

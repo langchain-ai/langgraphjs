@@ -264,9 +264,7 @@ describe("getToolCallsWithResults", () => {
       type: "ai",
       id: "ai2",
       content: "",
-      tool_calls: [
-        { name: "write_file", args: { path: "c.txt" }, id: "tc3" },
-      ],
+      tool_calls: [{ name: "write_file", args: { path: "c.txt" }, id: "tc3" }],
     };
     const messages: Message[] = [aiMessage1, aiMessage2];
 
@@ -283,9 +281,7 @@ describe("getToolCallsWithResults", () => {
       type: "ai",
       id: "ai1",
       content: "",
-      tool_calls: [
-        { name: "write_file", args: { path: "a.txt" }, id: "tc1" },
-      ],
+      tool_calls: [{ name: "write_file", args: { path: "a.txt" }, id: "tc1" }],
     };
     const aiMessage2: AIMessage = {
       type: "ai",
