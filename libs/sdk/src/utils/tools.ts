@@ -49,37 +49,23 @@ export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
     }
   }
 
-  // Build a set of AI message IDs that have tool calls, so we can
-  // detect when the model continued after a tool call (implying
-  // the tool completed even if the ToolMessage wasn't streamed).
-  // This handles tools that return Commands where the ToolMessage
-  // is embedded in the state update rather than streamed.
-  const aiToolCallMsgIds = new Set<string>();
-  for (const msg of messages) {
-    if (msg.type === "ai" && msg.tool_calls && msg.tool_calls.length > 0) {
-      if (msg.id) aiToolCallMsgIds.add(msg.id);
-    }
-  }
-
-  // Check if there's an AI message AFTER the tool-calling messages
-  // that doesn't have tool calls (the model's response after tools ran)
-  let hasSubsequentAiResponse = false;
-  if (aiToolCallMsgIds.size > 0) {
-    let seenAllToolCallMsgs = false;
-    for (const msg of messages) {
-      if (msg.type === "ai" && msg.id && aiToolCallMsgIds.has(msg.id)) {
-        seenAllToolCallMsgs = true;
-      } else if (seenAllToolCallMsgs && msg.type === "ai") {
-        hasSubsequentAiResponse = true;
-        break;
-      }
-    }
-  }
-
-  // Find all AI messages with tool calls and pair them with results
-  for (const msg of messages) {
+  // Find all AI messages with tool calls and pair them with results.
+  // For each, independently check if there's a subsequent AI message,
+  // which implies the tools completed (handles tools returning Commands
+  // where ToolMessages are embedded in the state update rather than streamed).
+  for (let msgIdx = 0; msgIdx < messages.length; msgIdx += 1) {
+    const msg = messages[msgIdx];
     if (msg.type === "ai" && msg.tool_calls && msg.tool_calls.length > 0) {
       const aiMessage = msg as AIMessage<ToolCall>;
+
+      let impliedCompleted = false;
+      for (let j = msgIdx + 1; j < messages.length; j += 1) {
+        if (messages[j].type === "ai") {
+          impliedCompleted = true;
+          break;
+        }
+      }
+
       for (let i = 0; i < aiMessage.tool_calls!.length; i += 1) {
         const call = aiMessage.tool_calls![i] as ToolCall & { id?: string };
         const callId = call.id as string | undefined;
@@ -91,7 +77,7 @@ export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
           result,
           aiMessage,
           index: i,
-          state: computeToolCallState(result, hasSubsequentAiResponse),
+          state: computeToolCallState(result, impliedCompleted),
         });
       }
     }

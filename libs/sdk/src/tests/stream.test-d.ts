@@ -7,16 +7,6 @@
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
  * to verify type correctness. This allows us to test the type inference
  * system without needing working LLM integrations.
- *
- * ⚠️ CIRCULAR DEPENDENCY NOTE:
- * We use mocked StateGraph types from ./fixtures/langgraph-mocks.ts because
- * @langchain/langgraph-sdk is a dependency of @langchain/langgraph. Importing
- * from @langchain/langgraph here would create a circular dependency.
- *
- * This will be resolved once we separate the SDK into:
- * - @langchain/langgraph-sdk (BaseClient, API types)
- * - @langchain/react (useStream, React hooks)
- *
  */
 
 import { describe, test, expectTypeOf } from "vitest";
@@ -25,8 +15,7 @@ import { createAgent, tool, createMiddleware } from "langchain";
 import { HumanMessage } from "@langchain/core/messages";
 import { createDeepAgent } from "deepagents";
 
-import { useStream } from "@langchain/react";
-import { useStream as useStreamLegacy } from "../react/index.js";
+import { useStream } from "../react/index.js";
 
 // Mocked LangGraph StateGraph types (see fixtures/langgraph-mocks.ts for details)
 import {
@@ -835,7 +824,7 @@ interface BackwardCompatState {
 
 describe("@langchain/langgraph-sdk/react backward compatibility", () => {
   test("useStream from legacy path returns plain Message[], not BaseMessage[]", () => {
-    const stream = useStreamLegacy<BackwardCompatState>({
+    const stream = useStream<BackwardCompatState>({
       assistantId: "agent",
     });
 
@@ -843,7 +832,7 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
   });
 
   test("individual messages are plain Message objects", () => {
-    const stream = useStreamLegacy<BackwardCompatState>({
+    const stream = useStream<BackwardCompatState>({
       assistantId: "agent",
     });
 
@@ -856,7 +845,7 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
   });
 
   test("core stream properties still work via legacy path", () => {
-    const stream = useStreamLegacy<BackwardCompatState>({
+    const stream = useStream<BackwardCompatState>({
       assistantId: "agent",
     });
 
@@ -867,7 +856,7 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
   });
 
   test("getMessagesMetadata accepts plain Message", () => {
-    const stream = useStreamLegacy<BackwardCompatState>({
+    const stream = useStream<BackwardCompatState>({
       assistantId: "agent",
     });
 

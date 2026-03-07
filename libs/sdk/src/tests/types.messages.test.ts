@@ -250,6 +250,61 @@ describe("getToolCallsWithResults", () => {
     expect(result[0].call.name).toBe("greet");
   });
 
+  test("marks first-round Command tool calls completed while second-round stays pending", () => {
+    const aiMessage1: AIMessage = {
+      type: "ai",
+      id: "ai1",
+      content: "",
+      tool_calls: [
+        { name: "write_file", args: { path: "a.txt" }, id: "tc1" },
+        { name: "write_file", args: { path: "b.txt" }, id: "tc2" },
+      ],
+    };
+    const aiMessage2: AIMessage = {
+      type: "ai",
+      id: "ai2",
+      content: "",
+      tool_calls: [
+        { name: "write_file", args: { path: "c.txt" }, id: "tc3" },
+      ],
+    };
+    const messages: Message[] = [aiMessage1, aiMessage2];
+
+    const result = getToolCallsWithResults(messages);
+
+    expect(result).toHaveLength(3);
+    expect(result[0].state).toBe("completed");
+    expect(result[1].state).toBe("completed");
+    expect(result[2].state).toBe("pending");
+  });
+
+  test("implied completed is stable when new AI message gains tool calls", () => {
+    const aiMessage1: AIMessage = {
+      type: "ai",
+      id: "ai1",
+      content: "",
+      tool_calls: [
+        { name: "write_file", args: { path: "a.txt" }, id: "tc1" },
+      ],
+    };
+    const aiMessage2: AIMessage = {
+      type: "ai",
+      id: "ai2",
+      content: "",
+      tool_calls: [
+        { name: "write_file", args: { path: "b.txt" }, id: "tc2" },
+        { name: "write_file", args: { path: "c.txt" }, id: "tc3" },
+      ],
+    };
+    const messages: Message[] = [aiMessage1, aiMessage2];
+
+    const result = getToolCallsWithResults(messages);
+
+    expect(result[0].state).toBe("completed");
+    expect(result[1].state).toBe("pending");
+    expect(result[2].state).toBe("pending");
+  });
+
   test("handles partial results (some tool calls with results, some without)", () => {
     const aiMessage: AIMessage = {
       type: "ai",
