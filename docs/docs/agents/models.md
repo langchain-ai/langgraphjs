@@ -52,6 +52,21 @@ const agent = createReactAgent({
 
     The example above uses `ChatAnthropic`, which is already supported by `initChatModel`. This pattern is shown to illustrate how to manually instantiate a model not available through `initChatModel`.
 
+## Using Novita AI
+
+Novita AI provides an OpenAI-compatible API that can be used with the `ChatOpenAI` model by configuring the `baseURL`.
+
+```ts
+import { ChatOpenAI } from "@langchain/openai";
+
+const llm = new ChatOpenAI({
+  apiKey: process.env.NOVITA_API_KEY,
+  configuration: {
+    baseURL: "https://api.novita.ai/openai"
+  }
+});
+```
+
 ## Additional resources
 
 - [Model integration directory](https://js.langchain.com/docs/integrations/chat/)
