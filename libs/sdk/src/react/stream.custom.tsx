@@ -178,7 +178,7 @@ export function useStreamCustom<
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
-    let usableThreadId = threadId;
+    let usableThreadId = threadId ?? submitOptions?.threadId;
 
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
