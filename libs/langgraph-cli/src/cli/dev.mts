@@ -113,6 +113,14 @@ builder
           }
         }
 
+        // Add Novita-as-OpenAI fallback
+        if (env.NOVITA_API_KEY && !env.OPENAI_API_KEY) {
+          env.OPENAI_API_KEY = env.NOVITA_API_KEY;
+          if (!env.OPENAI_BASE_URL) {
+            env.OPENAI_BASE_URL = "https://api.novita.ai/openai";
+          }
+        }
+
         const oldWatch = Object.entries(watcher.getWatched()).flatMap(
           ([dir, files]) =>
             files.map((file) => path.resolve(projectCwd, dir, file))
