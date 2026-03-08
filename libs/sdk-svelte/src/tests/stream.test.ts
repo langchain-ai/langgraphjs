@@ -20,6 +20,7 @@ import SwitchThread from "./components/SwitchThread.svelte";
 import QueueStream from "./components/QueueStream.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
+import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
 
 const serverUrl = inject("serverUrl");
 
@@ -808,6 +809,27 @@ it("switchThread to null clears messages", async () => {
   await expect
     .element(screen.getByTestId("message-count"))
     .toHaveTextContent("0");
+});
+
+it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
+  const screen = render(CustomStreamMethods, {
+    apiUrl: serverUrl,
+  });
+
+  await expect.element(screen.getByTestId("branch")).toHaveTextContent("");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("message-0")).toHaveTextContent("Hi");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hello!");
+
+  await screen.getByTestId("set-branch").click();
+
+  await expect
+    .element(screen.getByTestId("branch"))
+    .toHaveTextContent("test-branch");
 });
 
 // Server-side queue e2e tests

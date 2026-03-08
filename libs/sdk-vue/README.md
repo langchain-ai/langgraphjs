@@ -85,10 +85,10 @@ Provide your state type as a generic parameter:
 ```vue
 <script setup lang="ts">
 import { useStream } from "@langchain/vue";
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 
 interface MyState {
-  messages: Message[];
+  messages: BaseMessage[];
   context?: string;
 }
 
@@ -104,10 +104,10 @@ const { messages, submit } = useStream<MyState>({
 ```vue
 <script setup lang="ts">
 import { useStream } from "@langchain/vue";
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 
 const { interrupt, submit } = useStream<
-  { messages: Message[] },
+  { messages: BaseMessage[] },
   { InterruptType: { question: string } }
 >({
   assistantId: "my-graph",
@@ -121,10 +121,10 @@ const { interrupt, submit } = useStream<
 ```vue
 <script setup lang="ts">
 import { useStream } from "@langchain/vue";
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 
 const { messages, interrupt, submit } = useStream<
-  { messages: Message[] },
+  { messages: BaseMessage[] },
   { InterruptType: { question: string } }
 >({
   assistantId: "agent",
@@ -242,6 +242,54 @@ const { messages, submit, isLoading, queue, switchThread } = useStream({
 ```
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
+
+## Custom Transport
+
+Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
+
+```vue
+<script setup lang="ts">
+import { useStream, FetchStreamTransport } from "@langchain/vue";
+import type { BaseMessage } from "langchain";
+
+const {
+  messages,
+  submit,
+  isLoading,
+  branch,
+  setBranch,
+  getMessagesMetadata,
+} = useStream<{ messages: BaseMessage[] }>({
+  transport: new FetchStreamTransport({
+    url: "https://my-api.example.com/stream",
+  }),
+  threadId: null,
+  onThreadId: (id) => console.log("Thread created:", id),
+});
+</script>
+
+<template>
+  <div>
+    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+      <p>{{ msg.content }}</p>
+      <span v-if="getMessagesMetadata(msg, i)?.streamMetadata">
+        Node: {{ getMessagesMetadata(msg, i)?.streamMetadata?.langgraph_node }}
+      </span>
+    </div>
+
+    <p>Current branch: {{ branch.value }}</p>
+
+    <button
+      :disabled="isLoading.value"
+      @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
+    >
+      Send
+    </button>
+  </div>
+</template>
+```
+
+The custom transport interface returns the same properties as the standard `useStream` composable, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management.
 
 ## Playground
 

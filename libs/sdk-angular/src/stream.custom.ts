@@ -13,6 +13,7 @@ import {
   type GetToolCallsType,
   type AnyStreamCustomOptions,
   type CustomSubmitOptions,
+  type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
@@ -53,6 +54,8 @@ export function useStreamCustom<
   });
 
   let threadId: string | null = options.threadId ?? null;
+
+  const branch = signal<string>("");
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
@@ -177,6 +180,27 @@ export function useStreamCustom<
 
   const values = computed(() => streamValues() ?? ({} as StateType));
 
+  function setBranch(value: string) {
+    branch.set(value);
+  }
+
+  function getMessagesMetadata(
+    message: Message<ToolCallType>,
+    index?: number,
+  ): MessageMetadata<StateType> | undefined {
+    const streamMetadata = messageManager.get(message.id)?.metadata;
+    if (streamMetadata != null) {
+      return {
+        messageId: message.id ?? String(index),
+        firstSeenState: undefined,
+        branch: undefined,
+        branchOptions: undefined,
+        streamMetadata,
+      } as MessageMetadata<StateType>;
+    }
+    return undefined;
+  }
+
   return {
     values,
     error: streamError,
@@ -185,6 +209,10 @@ export function useStreamCustom<
     stop,
     submit,
     switchThread,
+
+    branch,
+    setBranch,
+    getMessagesMetadata,
 
     queue: {
       entries: signal([]),

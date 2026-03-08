@@ -1,4 +1,4 @@
-import { onUnmounted, shallowRef, watch } from "vue";
+import { onUnmounted, ref, shallowRef, watch } from "vue";
 import {
   StreamManager,
   MessageTupleManager,
@@ -12,6 +12,7 @@ import {
   type GetConfigurableType,
   type AnyStreamCustomOptions,
   type CustomSubmitOptions,
+  type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
@@ -49,6 +50,8 @@ export function useStreamCustom<
   onUnmounted(() => {
     unsubscribe();
   });
+
+  const branch = ref<string>("");
 
   let threadId: string | null = options.threadId ?? null;
 
@@ -187,6 +190,27 @@ export function useStreamCustom<
     await submitDirect(values, submitOptions);
   }
 
+  function setBranch(value: string) {
+    branch.value = value;
+  }
+
+  function getMessagesMetadata(
+    message: Message,
+    index?: number,
+  ): MessageMetadata<StateType> | undefined {
+    const streamMetadata = messageManager.get(message.id)?.metadata;
+    if (streamMetadata != null) {
+      return {
+        messageId: message.id ?? String(index),
+        firstSeenState: undefined,
+        branch: undefined,
+        branchOptions: undefined,
+        streamMetadata,
+      } as MessageMetadata<StateType>;
+    }
+    return undefined;
+  }
+
   return {
     get values() {
       return streamValues.value ?? ({} as StateType);
@@ -198,6 +222,10 @@ export function useStreamCustom<
     stop,
     submit,
     switchThread,
+
+    branch,
+    setBranch,
+    getMessagesMetadata,
 
     queue: {
       entries: [],

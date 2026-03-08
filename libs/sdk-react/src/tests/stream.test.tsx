@@ -14,6 +14,7 @@ import { NewThreadId } from "./components/NewThreadId.js";
 import { Branching } from "./components/Branching.js";
 import { OnRequest } from "./components/OnRequest.js";
 import { SwitchThread } from "./components/SwitchThread.js";
+import { CustomStreamMethods } from "./components/CustomStreamMethods.js";
 import { QueueStream } from "./components/QueueStream.js";
 import { SubmitOnError } from "./components/SubmitOnError.js";
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
@@ -720,6 +721,25 @@ it("switchThread to null clears messages", async () => {
   await expect
     .element(screen.getByTestId("message-count"))
     .toHaveTextContent("0");
+});
+
+it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
+  const screen = await render(<CustomStreamMethods />);
+
+  await expect.element(screen.getByTestId("branch")).toHaveTextContent("");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("message-0")).toHaveTextContent("Hi");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hello!");
+
+  await screen.getByTestId("set-branch").click();
+
+  await expect
+    .element(screen.getByTestId("branch"))
+    .toHaveTextContent("test-branch");
 });
 
 it("server-side queue: submitting three times rapidly queues the latter two", async () => {

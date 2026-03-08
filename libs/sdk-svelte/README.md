@@ -84,10 +84,10 @@ Provide your state type as a generic parameter:
 ```svelte
 <script lang="ts">
   import { useStream } from "@langchain/svelte";
-  import type { Message } from "@langchain/langgraph-sdk";
+  import type { BaseMessage } from "langchain";
 
   interface MyState {
-    messages: Message[];
+    messages: BaseMessage[];
     context?: string;
   }
 
@@ -103,10 +103,10 @@ Provide your state type as a generic parameter:
 ```svelte
 <script lang="ts">
   import { useStream } from "@langchain/svelte";
-  import type { Message } from "@langchain/langgraph-sdk";
+  import type { BaseMessage } from "langchain";
 
   const { interrupt, submit } = useStream<
-    { messages: Message[] },
+    { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
     assistantId: "my-graph",
@@ -120,10 +120,10 @@ Provide your state type as a generic parameter:
 ```svelte
 <script lang="ts">
   import { useStream } from "@langchain/svelte";
-  import type { Message } from "@langchain/langgraph-sdk";
+  import type { BaseMessage } from "langchain";
 
   const { messages, interrupt, submit } = useStream<
-    { messages: Message[] },
+    { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
     assistantId: "agent",
@@ -248,6 +248,56 @@ When `submit()` is called while a stream is already active, the SDK automaticall
 ```
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
+
+## Custom Transport
+
+Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
+
+```svelte
+<script lang="ts">
+  import { useStream, FetchStreamTransport } from "@langchain/svelte";
+  import type { BaseMessage } from "langchain";
+
+  const {
+    messages,
+    submit,
+    isLoading,
+    branch,
+    setBranch,
+    getMessagesMetadata,
+  } = useStream<{ messages: BaseMessage[] }>({
+    transport: new FetchStreamTransport({
+      url: "https://my-api.example.com/stream",
+    }),
+    threadId: null,
+    onThreadId: (id) => console.log("Thread created:", id),
+  });
+</script>
+
+<div>
+  {#each $messages as msg, i (msg.id ?? i)}
+    {@const metadata = getMessagesMetadata(msg, i)}
+    <div>
+      <p>{msg.content}</p>
+      {#if metadata?.streamMetadata}
+        <span>Node: {metadata.streamMetadata.langgraph_node}</span>
+      {/if}
+    </div>
+  {/each}
+
+  <p>Current branch: {$branch}</p>
+
+  <button
+    disabled={$isLoading}
+    onclick={() =>
+      void submit({ messages: [{ type: "human", content: "Hello!" }] })}
+  >
+    Send
+  </button>
+</div>
+```
+
+The custom transport interface returns the same properties as the standard `useStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management.
 
 ## Playground
 

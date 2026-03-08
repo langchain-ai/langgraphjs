@@ -26,6 +26,7 @@ import {
   onRequestCalls,
   resetOnRequestCalls,
 } from "./components/OnRequest.js";
+import { CustomStreamMethodsComponent } from "./components/CustomStreamMethods.js";
 import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHistory.js";
 import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
 import { ToolCallsComponent } from "./components/ToolCallsStream.js";
@@ -717,6 +718,25 @@ it("switchThread to null clears messages", async () => {
   await expect
     .element(screen.getByTestId("message-count"))
     .toHaveTextContent("0");
+});
+
+it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
+  const screen = await render(CustomStreamMethodsComponent);
+
+  await expect.element(screen.getByTestId("branch")).toHaveTextContent("");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("message-0")).toHaveTextContent("Hi");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hello!");
+
+  await screen.getByTestId("set-branch").click();
+
+  await expect
+    .element(screen.getByTestId("branch"))
+    .toHaveTextContent("test-branch");
 });
 
 // Server-side queue e2e tests

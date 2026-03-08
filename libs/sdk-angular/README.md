@@ -96,10 +96,10 @@ All reactive properties are Angular `Signal` or `WritableSignal` values.
 Provide your state type as a generic parameter:
 
 ```typescript
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 
 interface MyState {
-  messages: Message[];
+  messages: BaseMessage[];
   context?: string;
 }
 
@@ -115,12 +115,12 @@ export class ChatComponent {
 ### Typed Interrupts
 
 ```typescript
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 
 @Component({ /* ... */ })
 export class ChatComponent {
   stream = useStream<
-    { messages: Message[] },
+    { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
     assistantId: "my-graph",
@@ -135,7 +135,7 @@ export class ChatComponent {
 
 ```typescript
 import { Component } from "@angular/core";
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 import { useStream } from "@langchain/angular";
 
 @Component({
@@ -159,7 +159,7 @@ import { useStream } from "@langchain/angular";
 })
 export class ChatComponent {
   stream = useStream<
-    { messages: Message[] },
+    { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
     assistantId: "agent",
@@ -311,6 +311,67 @@ export class ChatComponent {
 ```
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
+
+## Custom Transport
+
+Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
+
+```typescript
+import { Component } from "@angular/core";
+import { useStream, FetchStreamTransport } from "@langchain/angular";
+import type { BaseMessage } from "langchain";
+
+@Component({
+  standalone: true,
+  template: `
+    <div>
+      @for (msg of stream.messages(); track msg.id ?? $index) {
+        <div>
+          <p>{{ str(msg.content) }}</p>
+          @if (getStreamNode(msg, $index); as node) {
+            <span>Node: {{ node }}</span>
+          }
+        </div>
+      }
+
+      <p>Current branch: {{ stream.branch() }}</p>
+
+      <button
+        [disabled]="stream.isLoading()"
+        (click)="onSubmit()"
+      >
+        Send
+      </button>
+    </div>
+  `,
+})
+export class ChatComponent {
+  stream = useStream<{ messages: BaseMessage[] }>({
+    transport: new FetchStreamTransport({
+      url: "https://my-api.example.com/stream",
+    }),
+    threadId: null,
+    onThreadId: (id) => console.log("Thread created:", id),
+  });
+
+  str(v: unknown) {
+    return typeof v === "string" ? v : JSON.stringify(v);
+  }
+
+  getStreamNode(msg: any, index: number): string | null {
+    const metadata = this.stream.getMessagesMetadata(msg, index);
+    return (metadata?.streamMetadata as any)?.langgraph_node ?? null;
+  }
+
+  onSubmit() {
+    void this.stream.submit({
+      messages: [{ type: "human", content: "Hello!" }],
+    });
+  }
+}
+```
+
+The custom transport interface returns the same properties as the standard `useStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management.
 
 ## Playground
 

@@ -24,6 +24,7 @@ import {
   type GetConfigurableType,
   type AnyStreamCustomOptions,
   type CustomSubmitOptions,
+  type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import type { BaseMessage } from "@langchain/core/messages";
@@ -61,6 +62,8 @@ export function useStreamCustom<
     stream.getSnapshot,
     stream.getSnapshot,
   );
+
+  const [branch, _setBranch] = useState("");
 
   const [threadId, onThreadId] = useControllableThreadId(options);
   const threadIdRef = useRef<string | null>(threadId);
@@ -206,6 +209,26 @@ export function useStreamCustom<
     stop,
     submit,
     switchThread,
+
+    branch,
+    setBranch: _setBranch,
+
+    getMessagesMetadata(
+      message: BaseMessage,
+      index?: number,
+    ): MessageMetadata<StateType> | undefined {
+      const streamMetadata = messageManager.get(message.id)?.metadata;
+      if (streamMetadata != null) {
+        return {
+          messageId: message.id ?? String(index),
+          firstSeenState: undefined,
+          branch: undefined,
+          branchOptions: undefined,
+          streamMetadata,
+        } as MessageMetadata<StateType>;
+      }
+      return undefined;
+    },
 
     get interrupts(): Interrupt<InterruptType>[] {
       if (

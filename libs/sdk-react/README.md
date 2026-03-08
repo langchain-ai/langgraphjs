@@ -104,10 +104,10 @@ function Chat() {
 For custom graphs, provide your state type directly:
 
 ```tsx
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 
 interface MyState {
-  messages: Message[];
+  messages: BaseMessage[];
   context?: string;
 }
 
@@ -144,7 +144,7 @@ Interrupts let you pause graph execution and wait for user input:
 ```tsx
 function Chat() {
   const { messages, interrupt, submit } = useStream<
-    { messages: Message[] },
+    { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
     assistantId: "agent",
@@ -271,6 +271,63 @@ function Chat() {
 ```
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
+
+## Custom Transport
+
+Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
+
+```tsx
+import { useStream, FetchStreamTransport } from "@langchain/react";
+import type { BaseMessage } from "langchain";
+
+function Chat() {
+  const {
+    messages,
+    submit,
+    isLoading,
+    branch,
+    setBranch,
+    getMessagesMetadata,
+  } = useStream<{ messages: BaseMessage[] }>({
+    transport: new FetchStreamTransport({
+      url: "https://my-api.example.com/stream",
+    }),
+    threadId: null,
+    onThreadId: (id) => console.log("Thread created:", id),
+  });
+
+  return (
+    <div>
+      {messages.map((msg, i) => {
+        const metadata = getMessagesMetadata(msg, i);
+        return (
+          <div key={msg.id ?? i}>
+            <p>{msg.content}</p>
+            {metadata?.streamMetadata && (
+              <span>Node: {metadata.streamMetadata.langgraph_node}</span>
+            )}
+          </div>
+        );
+      })}
+
+      <p>Current branch: {branch}</p>
+
+      <button
+        disabled={isLoading}
+        onClick={() =>
+          void submit({
+            messages: [{ type: "human", content: "Hello!" }],
+          })
+        }
+      >
+        Send
+      </button>
+    </div>
+  );
+}
+```
+
+The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management.
 
 ## React UI (Advanced)
 

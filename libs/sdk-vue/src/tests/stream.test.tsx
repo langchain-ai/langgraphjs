@@ -1718,6 +1718,108 @@ it("switchThread to null clears messages", async () => {
     .toHaveTextContent("0");
 });
 
+it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
+  const transport = {
+    async stream() {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "messages/metadata",
+          data: { langgraph_node: "agent" },
+        };
+        yield {
+          event: "messages/partial",
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "Hello!",
+            },
+          ],
+        };
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+      return generate();
+    },
+  };
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {thread.messages.map((msg, i: number) => {
+              const metadata = thread.getMessagesMetadata(msg as any, i);
+              return (
+                <div key={(msg as any).id ?? i} data-testid={`message-${i}`}>
+                  {typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content)}
+                  {metadata?.streamMetadata && (
+                    <span data-testid={`metadata-${i}`}>
+                      {(metadata.streamMetadata as any).langgraph_node}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div data-testid="branch">{thread.branch.value}</div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ type: "human", content: "Hi" }],
+              })
+            }
+          >
+            Submit
+          </button>
+          <button
+            data-testid="set-branch"
+            onClick={() => thread.setBranch("test-branch")}
+          >
+            Set Branch
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect.element(screen.getByTestId("branch")).toHaveTextContent("");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("message-0")).toHaveTextContent("Hi");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hello!");
+
+  await screen.getByTestId("set-branch").click();
+
+  await expect
+    .element(screen.getByTestId("branch"))
+    .toHaveTextContent("test-branch");
+});
+
 // Server-side queue e2e tests
 const VueQueueStreamComponent = defineComponent({
   setup() {
