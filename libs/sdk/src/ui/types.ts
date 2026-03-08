@@ -1305,3 +1305,44 @@ export type CustomSubmitOptions<
   SubmitOptions<StateType, ConfigurableType>,
   "optimisticValues" | "context" | "command" | "config"
 >;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type ExtractAsyncGenTypes<T> = T extends AsyncGenerator<infer Y, infer R, any>
+  ? { data: Y | undefined; result: R | undefined }
+  : { data: unknown; result: unknown };
+
+type ExtractToolStreamTypes<T> = T extends { func: (...args: any[]) => infer R }
+  ? ExtractAsyncGenTypes<
+      Extract<R, AsyncGenerator<any, any, any>>
+    > extends infer G
+    ? [G] extends [never]
+      ? { data: unknown; result: unknown }
+      : G
+    : { data: unknown; result: unknown }
+  : { data: unknown; result: unknown };
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+type ToolMapEntryFromTool<T> = T extends { name: infer N }
+  ? N extends string
+    ? IsLiteralString<N> extends true
+      ? { input: InferToolInput<T> } & ExtractToolStreamTypes<T>
+      : never
+    : never
+  : never;
+
+/**
+ * Infer a tool map from an agent's tools array. Maps each tool name to { input, data, result } types.
+ */
+export type InferToolMapFromAgent<T> =
+  ExtractAgentConfig<T>["Tools"] extends readonly (infer Tool)[]
+    ? {
+        [K in Tool extends { name: infer N }
+          ? N extends string
+            ? IsLiteralString<N> extends true
+              ? N
+              : never
+            : never
+          : never]: ToolMapEntryFromTool<Extract<Tool, { name: K }>>;
+      }
+    : Record<string, { input?: unknown; data?: unknown; result?: unknown }>;

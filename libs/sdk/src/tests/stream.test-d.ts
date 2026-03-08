@@ -44,6 +44,7 @@ import type {
   InferSubagentState,
   InferSubagentNames,
   SubagentStateMap,
+  InferToolMapFromAgent,
 } from "../ui/types.js";
 import type { ResolveStreamOptions } from "../ui/stream/index.js";
 
@@ -691,5 +692,121 @@ describe("useStream type inference integration", () => {
       "light" | "dark"
     >();
     expectTypeOf(stream.values.preferences.language).toEqualTypeOf<string>();
+  });
+});
+
+// ============================================================================
+// Type Tests: InferToolMapFromAgent (tool progress type inference)
+// ============================================================================
+
+describe("InferToolMapFromAgent", () => {
+  test("simple agent infers tool name and input; data/result are unknown for non-streaming tools", () => {
+    type Map = InferToolMapFromAgent<typeof simpleAgent>;
+
+    expectTypeOf<Map>().toHaveProperty("get_weather");
+    expectTypeOf<Map["get_weather"]["input"]>().toEqualTypeOf<{
+      location: string;
+    }>();
+    expectTypeOf<Map["get_weather"]>().toHaveProperty("data");
+    expectTypeOf<Map["get_weather"]>().toHaveProperty("result");
+  });
+
+  test("multi-tool agent infers all tool entries with correct input types", () => {
+    type Map = InferToolMapFromAgent<typeof multiToolAgent>;
+
+    expectTypeOf<Map>().toHaveProperty("get_weather");
+    expectTypeOf<Map>().toHaveProperty("search_web");
+    expectTypeOf<Map>().toHaveProperty("send_email");
+    expectTypeOf<Map["get_weather"]["input"]>().toEqualTypeOf<{
+      location: string;
+    }>();
+    expectTypeOf<Map["search_web"]["input"]>().toExtend<{
+      query: string;
+      maxResults?: number;
+    }>();
+    expectTypeOf<Map["send_email"]["input"]>().toEqualTypeOf<{
+      to: string;
+      subject: string;
+      body: string;
+    }>();
+  });
+
+  test("streaming tool (AsyncGenerator) infers typed data and result", () => {
+    type MockStreamingTool = {
+      name: "streaming_tool";
+      func: (arg: {
+        query: string;
+      }) => AsyncGenerator<{ progress: number }, string>;
+    };
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [MockStreamingTool];
+      };
+    };
+
+    type Map = InferToolMapFromAgent<MockAgent>;
+
+    expectTypeOf<Map>().toHaveProperty("streaming_tool");
+    expectTypeOf<Map["streaming_tool"]["data"]>().toExtend<
+      { progress: number } | undefined
+    >();
+    expectTypeOf<Map["streaming_tool"]["result"]>().toExtend<
+      string | undefined
+    >();
+  });
+
+  test("useStream with agent has toolProgress typed with literal tool names", () => {
+    const stream = useStream<typeof simpleAgent>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream).toHaveProperty("toolProgress");
+    const progress = stream.toolProgress[0];
+
+    if (progress) {
+      expectTypeOf(progress.name).toEqualTypeOf<"get_weather">();
+    }
+  });
+
+  test("useStream toolProgress narrows data and result by state", () => {
+    type MockStreamingTool = {
+      name: "live_search";
+      func: (arg: {
+        query: string;
+      }) => AsyncGenerator<{ progress: number; partial: string[] }, string>;
+    };
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: undefined;
+        Context: unknown;
+        Middleware: readonly [];
+        Tools: readonly [MockStreamingTool];
+      };
+    };
+
+    const stream = useStream<MockAgent>({
+      assistantId: "agent",
+    });
+
+    const tp = stream.toolProgress[0];
+
+    if (tp) {
+      expectTypeOf(tp.name).toEqualTypeOf<"live_search">();
+    }
+
+    if (tp && tp.name === "live_search" && tp.state === "running") {
+      expectTypeOf(tp.data).toEqualTypeOf<
+        { progress: number; partial: string[] } | undefined
+      >();
+    }
+
+    if (tp && tp.name === "live_search" && tp.state === "completed") {
+      expectTypeOf(tp.result).toEqualTypeOf<string | undefined>();
+    }
   });
 });

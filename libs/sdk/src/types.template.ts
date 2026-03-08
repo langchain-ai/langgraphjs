@@ -12,4 +12,8 @@ export type BagTemplate = {
   CustomEventType?: unknown;
   UpdateType?: unknown;
   MetaType?: unknown;
+  ToolMap?: Record<
+    string,
+    { input?: unknown; data?: unknown; result?: unknown }
+  >;
 };
