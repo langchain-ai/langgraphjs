@@ -1,4 +1,5 @@
 import type { InferInteropZodInput } from "@langchain/core/utils/types";
+import type { BaseMessage } from "@langchain/core/messages";
 
 import type { Client, ClientConfig } from "../client.js";
 import type {
@@ -245,6 +246,35 @@ export interface StreamBase<
     ToolCall,
     keyof SubagentStates & string
   >[];
+
+  /**
+   * Switch to a different thread, clearing the current stream state.
+   * Pass `null` to reset to no thread (a new thread will be created on next submit).
+   *
+   * @param newThreadId - The thread ID to switch to, or `null` to start fresh.
+   */
+  switchThread: (newThreadId: string | null) => void;
+}
+
+/**
+ * Subagent API surface parameterised by the subagent interface type.
+ *
+ * Framework adapters supply a class-message variant of
+ * `SubagentStreamInterface` (where `messages` is `BaseMessage[]`
+ * from `@langchain/core`) so that consumers always work with class
+ * instances.  The default parameter keeps the SDK's plain `Message`
+ * interface for direct SDK usage.
+ *
+ * @template Iface - The subagent stream interface to expose.
+ *   Defaults to {@link SubagentStreamInterface} with default generic
+ *   parameters.
+ */
+export interface SubagentApi<Iface = SubagentStreamInterface> {
+  subagents: Map<string, Iface>;
+  activeSubagents: Iface[];
+  getSubagent: (toolCallId: string) => Iface | undefined;
+  getSubagentsByType: (type: string) => Iface[];
+  getSubagentsByMessage: (messageId: string) => Iface[];
 }
 
 /**
@@ -412,17 +442,22 @@ export interface AgentMiddlewareLike<
  * Uses structural matching against AgentMiddleware to extract the state schema
  * type parameter, similar to how langchain's InferMiddlewareState works.
  */
+type SafeInferInteropZodInput<T> = InferInteropZodInput<T> extends never
+  ? // eslint-disable-next-line @typescript-eslint/ban-types
+    {}
+  : InferInteropZodInput<T>;
+
 type InferMiddlewareState<T> =
   // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema
   T extends AgentMiddlewareLike<infer TSchema, unknown, unknown, unknown>
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
       TSchema extends Record<string, any>
-      ? InferInteropZodInput<TSchema>
+      ? SafeInferInteropZodInput<TSchema>
       : // eslint-disable-next-line @typescript-eslint/ban-types
         {}
     : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
     T extends { stateSchema: infer S }
-    ? InferInteropZodInput<S>
+    ? SafeInferInteropZodInput<S>
     : // eslint-disable-next-line @typescript-eslint/ban-types
       {};
 
@@ -503,6 +538,25 @@ type BaseAgentState<ToolCall = DefaultToolCall> = {
   messages: Message<ToolCall>[];
 };
 
+/**
+ * Conditionally adds `structuredResponse` to the agent state when
+ * `responseFormat` is provided to `createAgent`.
+ *
+ * The sentinel type `ResponseFormatUndefined` (from langchain) has a
+ * `__responseFormatUndefined` brand property. When the Response type
+ * carries that brand, no `structuredResponse` key is added.
+ */
+type InferStructuredResponse<Response> = Response extends {
+  __responseFormatUndefined: true;
+}
+  ? // eslint-disable-next-line @typescript-eslint/ban-types
+    {}
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Response extends Record<string, any>
+  ? { structuredResponse: Response }
+  : // eslint-disable-next-line @typescript-eslint/ban-types
+    {};
+
 export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? ExtractAgentConfig<T> extends never
     ? // eslint-disable-next-line @typescript-eslint/ban-types
@@ -511,8 +565,9 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
         (ExtractAgentConfig<T>["State"] extends undefined
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
-          : InferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
-        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
+          : SafeInferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
+        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]> &
+        InferStructuredResponse<ExtractAgentConfig<T>["Response"]>
   : T extends { "~RunOutput": infer RunOutput }
   ? RunOutput
   : T extends { messages: unknown }
@@ -521,9 +576,25 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
     {};
 
 /**
- * Helper type to extract the input type from a DynamicStructuredTool's _call method.
- * This is more reliable than trying to infer from the schema directly because
- * DynamicStructuredTool has the input type baked into its _call signature.
+ * Helper type to infer schema input type, supporting both Zod v3 and v4.
+ * Self-contained to avoid cross-package type resolution issues with
+ * InferInteropZodInput from @langchain/core.
+ * - Zod v4 uses `_zod.input` property
+ * - Zod v3 uses `_input` property
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolSchemaInput<S> = S extends { _zod: { input: infer Args } }
+  ? Args
+  : S extends { _input: infer Args }
+  ? Args
+  : never;
+
+/**
+ * Helper type to extract the input type from a DynamicStructuredTool.
+ *
+ * Tries the following in order:
+ * 1. `_call` method signature (may fail when `_call` is `protected`)
+ * 2. `schema` property with self-contained Zod v3/v4 inference
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferToolInput<T> = T extends {
@@ -532,7 +603,7 @@ type InferToolInput<T> = T extends {
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferInteropZodInput<S>
+  ? InferToolSchemaInput<S>
   : never;
 
 /**
@@ -890,6 +961,24 @@ export type GetUpdateType<
   ? Bag["UpdateType"]
   : Partial<StateType>;
 
+/**
+ * Widens an update type so that its `messages` field also accepts
+ * `@langchain/core` {@link BaseMessage} class instances (single or array).
+ *
+ * Framework SDKs apply this to `submit` so callers can write:
+ * ```ts
+ * stream.submit({ messages: new HumanMessage("hello") });
+ * stream.submit({ messages: [new HumanMessage("hello")] });
+ * ```
+ */
+export type AcceptBaseMessages<T> = T extends Record<string, unknown>
+  ? {
+      [K in keyof T]: K extends "messages"
+        ? T[K] | BaseMessage | BaseMessage[]
+        : T[K];
+    }
+  : T;
+
 export type GetConfigurableType<Bag extends BagTemplate> = Bag extends {
   ConfigurableType: Record<string, unknown>;
 }
@@ -1176,6 +1265,7 @@ export type AnyStreamOptions<
   // Agent-specific options (optional, only present for agent types)
   subagentToolNames?: string[];
   filterSubagentMessages?: boolean;
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 };
 
 interface RunMetadataStorage {
@@ -1238,6 +1328,29 @@ export interface SubmitOptions<
    * before the thread is actually created.
    */
   threadId?: string;
+
+  /**
+   * Callback that is called when an error occurs during this specific submit call.
+   * Unlike the hook-level `onError`, this allows handling errors on a per-submit basis,
+   * e.g. to show a retry button or a specific error message to the user.
+   */
+  onError?: (error: unknown, run: RunCallbackMeta | undefined) => void;
+}
+
+/**
+ * Payload for the `stream` method of the `UseStreamTransport` interface.
+ * @template StateType - The type of the stream's state values.
+ * @template Bag - The type of the stream's bag values.
+ */
+export interface UseStreamTransportPayload<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate
+> {
+  input: GetUpdateType<Bag, StateType> | null | undefined;
+  context: GetConfigurableType<Bag> | undefined;
+  command: Command | undefined;
+  config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
+  signal: AbortSignal;
 }
 
 /**
@@ -1248,13 +1361,9 @@ export interface UseStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > {
-  stream: (payload: {
-    input: GetUpdateType<Bag, StateType> | null | undefined;
-    context: GetConfigurableType<Bag> | undefined;
-    command: Command | undefined;
-    config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
-    signal: AbortSignal;
-  }) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
+  stream: (
+    payload: UseStreamTransportPayload<StateType, Bag>
+  ) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
 }
 
 export type UseStreamCustomOptions<
@@ -1296,6 +1405,7 @@ export type AnyStreamCustomOptions<
   // Agent-specific options (optional, only present for agent types)
   subagentToolNames?: string[];
   filterSubagentMessages?: boolean;
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 };
 
 export type CustomSubmitOptions<
@@ -1303,5 +1413,5 @@ export type CustomSubmitOptions<
   ConfigurableType extends Record<string, unknown> = Record<string, unknown>
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
-  "optimisticValues" | "context" | "command" | "config"
+  "optimisticValues" | "context" | "command" | "config" | "onError"
 >;

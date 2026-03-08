@@ -1,0 +1,79 @@
+{
+  "name": "@langchain/vue",
+  "version": "0.0.1",
+  "description": "Vue integration for LangGraph & LangChain",
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist/ dist-cjs/",
+    "build": "pnpm turbo build:internal --filter=@langchain/vue",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/vue",
+    "prepublish": "pnpm build",
+    "format:check": "prettier --check src",
+    "format": "prettier --write src",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
+    "lint": "pnpm lint:eslint",
+    "lint:fix": "pnpm lint:eslint --fix",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/langgraph-sdk": "workspace:^"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.14.1",
+    "@langchain/core": "^1.1.27",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-api": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/scripts": "^0.1.4",
+    "@tsconfig/recommended": "^1.0.2",
+    "@types/node": "^18.15.11",
+    "@types/uuid": "^9.0.1",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "@vitejs/plugin-vue": "^6.0.4",
+    "@vitejs/plugin-vue-jsx": "^5.1.4",
+    "@vitest/browser": "^4.0.18",
+    "@vitest/browser-webdriverio": "^4.0.18",
+    "deepagents": "^1.8.0",
+    "eslint": "^8.33.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-prettier": "^4.2.1",
+    "hono": "^4.8.2",
+    "langchain": "^1.2.25",
+    "prettier": "^3.8.1",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^4.0.18",
+    "vitest-browser-vue": "^0.1.0",
+    "vue": "^3.5.24",
+    "webdriverio": "^9.14.2",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.1.27",
+    "vue": "^3.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "input": "./src/index.ts",
+      "typedoc": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/"
+  ]
+}

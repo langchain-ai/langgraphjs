@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/typecheck",
+    "target": "ES2022",
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src/**/*.test-d.ts", "src/**/*.d.ts"]
+}

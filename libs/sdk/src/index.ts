@@ -32,6 +32,7 @@ export type {
   Command,
   OnConflictBehavior,
   RunsInvokePayload,
+  StreamEvent,
 } from "./types.js";
 export type {
   AIMessage,
@@ -41,6 +42,11 @@ export type {
   RemoveMessage,
   SystemMessage,
   ToolMessage,
+  ToolCallWithResult,
+  ToolCallState,
+  DefaultToolCall,
+  ToolCallFromTool,
+  ToolCallsFromTools,
 } from "./types.messages.js";
 export type {
   CustomStreamEvent,
@@ -53,6 +59,7 @@ export type {
   MetadataStreamEvent,
   StreamMode,
   ToolProgress,
+  ToolsStreamEvent,
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "./types.stream.js";
