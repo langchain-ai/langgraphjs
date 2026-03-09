@@ -6,8 +6,8 @@
   "engines": {
     "node": ">=18"
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git@github.com:langchain-ai/langgraphjs.git"
@@ -59,16 +59,19 @@
   },
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "import": "./index.js",
-      "require": "./dist-cjs/index.js"
-    }
+      "input": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist/",
-    "dist-cjs/",
-    "index.cjs",
-    "index.js",
-    "index.d.ts"
+    "dist/"
   ]
 }

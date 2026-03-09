@@ -66,7 +66,7 @@ describe("AgentCoreMemoryStore Integration Tests", () => {
       expect(item).toBeNull();
     });
 
-    it("should handle delete operation (warn and skip)", async () => {
+    it("should delete an item", async () => {
       const namespace = ["test", "actor1"];
       const key = `doc-delete-${Date.now()}`;
       const value = { data: "test" };
@@ -75,12 +75,10 @@ describe("AgentCoreMemoryStore Integration Tests", () => {
       let item = await store.get(namespace, key);
       expect(item).toBeDefined();
 
-      // Delete should warn and skip (AgentCore Memory doesn't support deletion)
       await store.delete(namespace, key);
 
-      // Item should still exist since deletion is not supported
       item = await store.get(namespace, key);
-      expect(item).toBeDefined();
+      expect(item).toBeNull();
     });
   });
 

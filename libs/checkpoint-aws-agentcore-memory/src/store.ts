@@ -12,6 +12,7 @@ import {
 import {
   BedrockAgentCoreClient,
   CreateEventCommand,
+  DeleteEventCommand,
   ListEventsCommand,
   RetrieveMemoryRecordsCommand,
 } from "@aws-sdk/client-bedrock-agentcore";
@@ -163,11 +164,60 @@ export class AgentCoreMemoryStore extends BaseStore {
     return results as OperationResults<Op>;
   }
 
+  private async handleDelete(namespace: string[], key: string): Promise<void> {
+    const sessionId = this.getSessionId(namespace);
+    const actorId = this.getActorId(namespace);
+
+    try {
+      await this.rateLimit();
+      const response = await this.client.send(
+        new ListEventsCommand({
+          memoryId: this.memoryId,
+          actorId,
+          sessionId,
+          includePayloads: false,
+          maxResults: 100,
+          filter: {
+            eventMetadata: [
+              {
+                left: { metadataKey: "type" },
+                operator: "EQUALS_TO",
+                right: { metadataValue: { stringValue: "store_item" } },
+              },
+              {
+                left: { metadataKey: "key" },
+                operator: "EQUALS_TO",
+                right: { metadataValue: { stringValue: key } },
+              },
+            ],
+          },
+        })
+      );
+
+      for (const event of response.events || []) {
+        if (event.eventId) {
+          await this.rateLimit();
+          await this.client.send(
+            new DeleteEventCommand({
+              memoryId: this.memoryId,
+              sessionId,
+              eventId: event.eventId,
+              actorId,
+            })
+          );
+        }
+      }
+    } catch (error) {
+      if ((error as AWSError).name === "ResourceNotFoundException") {
+        return;
+      }
+      throw error;
+    }
+  }
+
   private async handlePut(op: PutOperation): Promise<void> {
     if (op.value === null) {
-      // Deletion - AgentCore Memory doesn't support direct deletion
-      // We could mark items as deleted or skip this operation
-      console.warn("Delete operations are not supported by AgentCore Memory");
+      await this.handleDelete(op.namespace, op.key);
       return;
     }
 
