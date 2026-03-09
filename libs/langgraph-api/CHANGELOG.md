@@ -1,5 +1,16 @@
 # @langchain/langgraph-api
 
+## 1.1.15
+
+### Patch Changes
+
+- [#2032](https://github.com/langchain-ai/langgraphjs/pull/2032) [`730b82d`](https://github.com/langchain-ai/langgraphjs/commit/730b82d2309e65e6b2ed99ebff2aa052cff8ed35) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-api): use UUIDv7 instead of UUIDv4 in embed server
+
+  Switches thread and run ID generation from `uuidv4` to `uuidv7` in the experimental embed server. UUIDv7 is time-ordered, which improves sortability and database index performance for IDs.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.15
+
 ## 1.1.14
 
 ### Patch Changes

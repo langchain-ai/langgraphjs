@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { v4 as uuidv4 } from "uuid";
+import { v7 as uuidv7 } from "uuid";
 
 import type { Metadata, Run } from "../storage/types.mjs";
 import * as schemas from "../schemas.mjs";
@@ -53,7 +53,7 @@ function createStubRun(
   payload: z.infer<typeof schemas.RunCreate>
 ): Run {
   const now = new Date();
-  const runId = uuidv4();
+  const runId = uuidv7();
 
   let streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
@@ -134,7 +134,7 @@ export function createEmbedServer(options: {
   api.post("/threads", zValidator("json", schemas.ThreadCreate), async (c) => {
     // create a new thread
     const payload = c.req.valid("json");
-    const threadId = payload.thread_id || uuidv4();
+    const threadId = payload.thread_id || uuidv7();
     return jsonExtra(
       c,
       await options.threads.set(threadId, {
@@ -425,7 +425,7 @@ export function createEmbedServer(options: {
     return streamSSE(c, async (stream) => {
       const payload = c.req.valid("json");
       const signal = getDisconnectAbortSignal(c, stream);
-      const threadId = uuidv4();
+      const threadId = uuidv7();
 
       await options.threads.set(threadId, {
         kind: "put",
