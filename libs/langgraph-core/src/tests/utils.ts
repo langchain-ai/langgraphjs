@@ -245,6 +245,13 @@ export class _AnyIdToolMessage extends ToolMessage {
     super({
       id: expect.any(String) as unknown as string,
       ...fields,
+      ...(fields.metadata != null
+        ? {
+            metadata: expect.objectContaining(
+              fields.metadata
+            ) as unknown as Record<string, unknown>,
+          }
+        : {}),
     });
   }
 }
