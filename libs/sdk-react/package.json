@@ -33,7 +33,7 @@
     "@types/uuid": "^9.0.1",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
-    "@vitejs/plugin-react": "^4.5.2",
+    "@vitejs/plugin-react": "^5.1.4",
     "@vitest/browser": "^4.0.18",
     "@vitest/browser-webdriverio": "^4.0.18",
     "deepagents": "^1.8.0",
@@ -51,7 +51,7 @@
     "react-dom": "^19.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
-    "vitest-browser-react": "^0.3.0",
+    "vitest-browser-react": "^2.0.5",
     "webdriverio": "^9.15.0",
     "zod": "^4.3.6"
   },
