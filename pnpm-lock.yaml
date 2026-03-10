@@ -1692,7 +1692,7 @@ importers:
         version: 4.12.7
       langsmith:
         specifier: '>=0.3.33 <1.0.0'
-        version: 0.4.12(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
+        version: 0.5.9(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
       open:
         specifier: ^10.1.0
         version: 10.2.0
@@ -1806,8 +1806,8 @@ importers:
         specifier: ^2.0.1
         version: 2.0.1
       langsmith:
-        specifier: ^0.4.6
-        version: 0.4.12(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
+        specifier: ^0.5.9
+        version: 0.5.9(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
       open:
         specifier: ^10.1.0
         version: 10.2.0
@@ -15854,6 +15854,7 @@ snapshots:
       uuid: 10.0.0
     optionalDependencies:
       openai: 6.27.0(ws@8.19.0)(zod@4.3.6)
+    optional: true
 
   langsmith@0.5.9(openai@4.104.0(ws@8.19.0)(zod@4.3.6)):
     dependencies:
