@@ -163,5 +163,11 @@ describe("AgentCoreMemory Implementation", () => {
     it("should validate namespace for store operations", async () => {
       await expect(store.put([], "key", { data: "test" })).rejects.toThrow();
     });
+
+    it("should throw when query string is passed to search", async () => {
+      await expect(
+        store.search(["test", "actor1"], { query: "find something" })
+      ).rejects.toThrow(/does not support vector\/semantic search/);
+    });
   });
 });

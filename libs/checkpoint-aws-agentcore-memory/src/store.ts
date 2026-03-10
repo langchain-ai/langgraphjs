@@ -15,7 +15,6 @@ import {
   DeleteEventCommand,
   ListActorsCommand,
   ListEventsCommand,
-  RetrieveMemoryRecordsCommand,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { ConfiguredRetryStrategy } from "@smithy/util-retry";
@@ -35,8 +34,7 @@ export interface AgentCoreMemoryStoreParams {
 /**
  * AWS Bedrock AgentCore Memory implementation of BaseStore.
  *
- * This store uses AgentCore Memory for persistent key-value storage with
- * optional vector similarity search capabilities.
+ * This store uses AgentCore Memory for persistent key-value storage
  *
  * ## Setup
  *
@@ -452,59 +450,24 @@ export class AgentCoreMemoryStore extends BaseStore {
 
   private async handleSearch(op: SearchOperation): Promise<SearchItem[]> {
     if (op.query) {
-      // Use vector search
-      return this.performVectorSearch(op);
-    } else {
-      // Use metadata filtering
-      return this.performMetadataSearch(op);
-    }
-  }
-
-  private async performVectorSearch(
-    op: SearchOperation
-  ): Promise<SearchItem[]> {
-    const namespaceStr = this.namespaceToString(op.namespacePrefix);
-
-    try {
-      const response = await this.client.send(
-        new RetrieveMemoryRecordsCommand({
-          memoryId: this.memoryId,
-          namespace: namespaceStr,
-          searchCriteria: {
-            searchQuery: op.query!,
-            topK: op.limit || 10,
-          },
-          maxResults: op.limit || 10,
-        })
+      // Vector/semantic search via op.query is not supported.
+      //
+      // store.put() writes items as Events (CreateEventCommand) in the
+      // AgentCore Memory data-plane (Events layer). RetrieveMemoryRecords
+      // queries the LTM layer — a separate data plane populated asynchronously
+      // by AgentCore's internal LLM extraction pipeline from those events.
+      // Items written via put() never appear in Memory Records, so
+      // RetrieveMemoryRecords would always return empty results, silently
+      // misleading callers.
+      //
+      // Use search() without a query string for metadata-filtered retrieval
+      // over store items.
+      throw new Error(
+        "AgentCoreMemoryStore does not support vector/semantic search via the query parameter. " +
+          "Use search() without a query string for metadata-filtered retrieval."
       );
-
-      const records = response.memoryRecordSummaries || [];
-      return records.map((record): SearchItem => {
-        const content = record.content || {};
-        const text =
-          typeof content === "object" && content !== null
-            ? (content as Record<string, unknown>).text || ""
-            : String(content);
-
-        return {
-          namespace: op.namespacePrefix,
-          key: record.memoryRecordId || crypto.randomUUID(),
-          value: {
-            content: text,
-            memoryStrategyId: record.memoryStrategyId,
-            namespaces: record.namespaces || [],
-          },
-          createdAt: new Date(record.createdAt || Date.now()),
-          updatedAt: new Date(record.createdAt || Date.now()),
-          score: record.score ? Number(record.score) : undefined,
-        };
-      });
-    } catch (error) {
-      if ((error as AWSError).name === "ResourceNotFoundException") {
-        return [];
-      }
-      throw error;
     }
+    return this.performMetadataSearch(op);
   }
 
   private async performMetadataSearch(
@@ -694,10 +657,6 @@ export class AgentCoreMemoryStore extends BaseStore {
     const offset = op.offset || 0;
     const limit = op.limit || namespaces.length;
     return namespaces.slice(offset, offset + limit);
-  }
-
-  private namespaceToString(namespace: string[]): string {
-    return namespace.length > 0 ? `/${namespace.join("/")}` : "/";
   }
 
   private compareValues(actual: unknown, expected: unknown): boolean {
