@@ -874,6 +874,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
 
     try {
       while (true) {
+        await this.rateLimit();
         const response = await this.client.send(
           new ListEventsCommand({
             memoryId: this.memoryId,
@@ -889,6 +890,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
           for (const event of response.events) {
             if (event.eventId) {
               try {
+                await this.rateLimit();
                 await this.client.send(
                   new DeleteEventCommand({
                     memoryId: this.memoryId,
