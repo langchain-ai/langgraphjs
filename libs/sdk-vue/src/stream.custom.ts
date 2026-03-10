@@ -1,4 +1,4 @@
-import { onUnmounted, ref, shallowRef, watch } from "vue";
+import { onScopeDispose, ref, shallowRef, watch } from "vue";
 import {
   StreamManager,
   MessageTupleManager,
@@ -47,10 +47,6 @@ export function useStreamCustom<
     subagentVersion.value += 1;
   });
 
-  onUnmounted(() => {
-    unsubscribe();
-  });
-
   const branch = ref<string>("");
 
   let threadId: string | null = options.threadId ?? null;
@@ -64,6 +60,7 @@ export function useStreamCustom<
         stream.clear();
       }
     },
+    { flush: "sync" },
   );
 
   const getMessages = (value: StateType): Message[] => {
@@ -79,6 +76,11 @@ export function useStreamCustom<
   };
 
   const historyValues = options.initialValues ?? ({} as StateType);
+
+  onScopeDispose(() => {
+    unsubscribe();
+    void stream.stop(historyValues, { onStop: options.onStop });
+  });
 
   const historyMessages = getMessages(historyValues);
   // @ts-expect-error used in watch callback below

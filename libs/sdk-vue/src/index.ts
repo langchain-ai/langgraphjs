@@ -1,7 +1,6 @@
 import {
   computed,
-  onMounted,
-  onUnmounted,
+  onScopeDispose,
   ref,
   shallowRef,
   watch,
@@ -177,6 +176,25 @@ function useStreamLGP<
   const queueEntries = shallowRef(pendingRuns.entries);
   const queueSize = ref(pendingRuns.size);
 
+  const trackedStreamModes: StreamMode[] = [];
+  function trackStreamMode(...modes: StreamMode[]) {
+    for (const mode of modes) {
+      if (!trackedStreamModes.includes(mode)) {
+        trackedStreamModes.push(mode);
+      }
+    }
+  }
+
+  const callbackStreamModes: StreamMode[] = [];
+  if (options.onUpdateEvent) callbackStreamModes.push("updates");
+  if (options.onCustomEvent) callbackStreamModes.push("custom");
+  if (options.onCheckpointEvent) callbackStreamModes.push("checkpoints");
+  if (options.onTaskEvent) callbackStreamModes.push("tasks");
+  if ("onDebugEvent" in options && options.onDebugEvent)
+    callbackStreamModes.push("debug");
+  if ("onLangChainEvent" in options && options.onLangChainEvent)
+    callbackStreamModes.push("events");
+
   const historyValues = computed(
     () =>
       branchContext.value.threadHead?.values ??
@@ -229,9 +247,10 @@ function useStreamLGP<
     queueSize.value = pendingRuns.size;
   });
 
-  onUnmounted(() => {
+  onScopeDispose(() => {
     unsubscribe();
     unsubQueue();
+    void stop();
   });
 
   watch(
@@ -381,32 +400,12 @@ function useStreamLGP<
         }
 
         const streamMode = unique([
-          ...(submitOptions?.streamMode ?? []),
           "values" as StreamMode,
-          "messages-tuple" as StreamMode,
           "updates" as StreamMode,
+          ...(submitOptions?.streamMode ?? []),
+          ...trackedStreamModes,
+          ...callbackStreamModes,
         ]);
-
-        if (options.onUpdateEvent && !streamMode.includes("updates"))
-          streamMode.push("updates");
-        if (options.onCustomEvent && !streamMode.includes("custom"))
-          streamMode.push("custom");
-        if (options.onCheckpointEvent && !streamMode.includes("checkpoints"))
-          streamMode.push("checkpoints");
-        if (options.onTaskEvent && !streamMode.includes("tasks"))
-          streamMode.push("tasks");
-        if (
-          "onDebugEvent" in options &&
-          options.onDebugEvent &&
-          !streamMode.includes("debug")
-        )
-          streamMode.push("debug");
-        if (
-          "onLangChainEvent" in options &&
-          options.onLangChainEvent &&
-          !streamMode.includes("events")
-        )
-          streamMode.push("events");
 
         stream.setStreamValues(() => {
           const prev = { ...historyValues.value, ...stream.values };
@@ -586,10 +585,10 @@ function useStreamLGP<
     return result;
   }
 
-  // --- Auto-reconnect on mount ---
+  // --- Auto-reconnect ---
   let shouldReconnect = !!runMetadataStorage;
 
-  onMounted(() => {
+  function tryReconnect() {
     if (shouldReconnect && runMetadataStorage && threadId.value) {
       const runId = runMetadataStorage.getItem(`lg:stream:${threadId.value}`);
       if (runId) {
@@ -597,20 +596,25 @@ function useStreamLGP<
         void joinStream(runId);
       }
     }
-  });
+  }
+
+  tryReconnect();
 
   watch(
     () => threadId.value,
     () => {
       shouldReconnect = !!runMetadataStorage;
+      tryReconnect();
     },
   );
 
-  const toolCalls = computed(() =>
-    getToolCallsWithResults(getMessages(values.value)),
-  );
+  const toolCalls = computed(() => {
+    trackStreamMode("messages-tuple");
+    return getToolCallsWithResults(getMessages(values.value));
+  });
 
   function getToolCalls(message: Message) {
+    trackStreamMode("messages-tuple");
     const allToolCalls = getToolCallsWithResults(getMessages(values.value));
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   }
@@ -670,11 +674,12 @@ function useStreamLGP<
     branch,
     setBranch,
 
-    messages: computed(() =>
-      ensureMessageInstances(
+    messages: computed(() => {
+      trackStreamMode("messages-tuple");
+      return ensureMessageInstances(
         getMessages(streamValues.value ?? historyValues.value),
-      ),
-    ),
+      );
+    }),
 
     toolCalls,
     getToolCalls,
