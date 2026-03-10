@@ -1,5 +1,6 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import { randomUUID } from "node:crypto";
+import type { Server } from "node:http";
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -378,7 +379,7 @@ const graphs: Record<string, AnyPregel> = {
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 
-let httpServer: ReturnType<typeof serve> | null = null;
+let httpServer: { close: () => void } | null = null;
 
 export async function setup({ provide }: TestProject) {
   const embedApp = createEmbedServer({ graph: graphs, checkpointer, threads });
@@ -397,6 +398,6 @@ export async function setup({ provide }: TestProject) {
 }
 
 export async function teardown() {
-  httpServer?.closeAllConnections();
+  (httpServer as Server)?.closeAllConnections();
   httpServer?.close();
 }
