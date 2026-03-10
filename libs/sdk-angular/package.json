@@ -23,7 +23,7 @@
     "@analogjs/vite-plugin-angular": "^2.2.3",
     "@analogjs/vitest-angular": "^2.2.3",
     "@angular/compiler": "^20.3.10",
-    "@angular/core": "^20.3.10",
+    "@angular/core": "^21.2.2",
     "@angular/platform-browser": "^20.3.10",
     "@angular/platform-browser-dynamic": "^20.3.10",
     "@angular/router": "^20.3.10",
