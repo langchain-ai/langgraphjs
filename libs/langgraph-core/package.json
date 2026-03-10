@@ -65,7 +65,7 @@
     "@typescript-eslint/parser": "^6.12.0",
     "@vitest/browser": "^3.0.8",
     "@xenova/transformers": "^2.17.2",
-    "cheerio": "1.0.0-rc.12",
+    "cheerio": "1.2.0",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
     "eslint": "^8.33.0",
@@ -81,7 +81,7 @@
     "rollup": "^4.37.0",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vite-plugin-node-polyfills": "^0.23.0",
+    "vite-plugin-node-polyfills": "^0.25.0",
     "vitest": "^3.2.4",
     "zod-to-json-schema": "^3.22.4"
   },
