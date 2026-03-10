@@ -514,13 +514,94 @@ export class AgentCoreMemoryStore extends BaseStore {
   }
 
   private async handleListNamespaces(
-    _op: ListNamespacesOperation
+    op: ListNamespacesOperation
   ): Promise<string[][]> {
-    // AgentCore Memory doesn't have a direct way to list namespaces
-    // We would need to scan all events and extract unique namespace patterns
-    // For now, return empty array
-    console.warn("listNamespaces is not fully supported by AgentCore Memory");
-    return [];
+    // Extract prefix/suffix from matchConditions
+    let prefix: string[] | undefined;
+    let suffix: string[] | undefined;
+    if (op.matchConditions) {
+      for (const condition of op.matchConditions) {
+        if (condition.matchType === "prefix") prefix = condition.path as string[];
+        else if (condition.matchType === "suffix") suffix = condition.path as string[];
+      }
+    }
+
+    // Scan all sessions we know about via a broad ListEvents call.
+    // We use the defaultActorId scope — callers who need cross-actor listing
+    // should pass a known actorId via namespace conventions.
+    const actorId = this.defaultActorId || `store-actor-default`;
+    const namespaceSet = new Set<string>();
+
+    try {
+      let nextToken: string | undefined;
+      do {
+        await this.rateLimit();
+        const response = await this.client.send(
+          new ListEventsCommand({
+            memoryId: this.memoryId,
+            actorId,
+            includePayloads: false,
+            maxResults: 100,
+            nextToken,
+            filter: {
+              eventMetadata: [
+                {
+                  left: { metadataKey: "type" },
+                  operator: "EQUALS_TO",
+                  right: { metadataValue: { stringValue: "store_item" } },
+                },
+              ],
+            },
+          })
+        );
+
+        for (const event of response.events || []) {
+          const nsMeta = event.metadata?.["namespace"];
+          const nsStr = nsMeta?.stringValue;
+          if (nsStr) namespaceSet.add(nsStr);
+        }
+
+        nextToken = response.nextToken;
+      } while (nextToken);
+    } catch (error) {
+      if ((error as AWSError).name === "ResourceNotFoundException") return [];
+      throw error;
+    }
+
+    // Convert "a:b:c" strings back to string[] tuples
+    let namespaces = Array.from(namespaceSet).map((ns) => ns.split(":"));
+
+    // Apply prefix filter
+    if (prefix?.length) {
+      namespaces = namespaces.filter(
+        (ns) =>
+          ns.length >= prefix!.length &&
+          prefix!.every((p, i) => p === "*" || ns[i] === p)
+      );
+    }
+
+    // Apply suffix filter
+    if (suffix?.length) {
+      namespaces = namespaces.filter((ns) => {
+        if (ns.length < suffix!.length) return false;
+        const start = ns.length - suffix!.length;
+        return suffix!.every((s, i) => s === "*" || ns[start + i] === s);
+      });
+    }
+
+    // Apply maxDepth — truncate and deduplicate
+    if (op.maxDepth) {
+      const truncated = new Set(
+        namespaces.map((ns) => ns.slice(0, op.maxDepth).join(":"))
+      );
+      namespaces = Array.from(truncated).map((ns) => ns.split(":"));
+    }
+
+    // Sort, then apply offset + limit
+    namespaces.sort((a, b) => a.join(":").localeCompare(b.join(":")));
+    const offset = op.offset || 0;
+    const limit = op.limit || namespaces.length;
+    return namespaces.slice(offset, offset + limit);
   }
 
   private namespaceToString(namespace: string[]): string {

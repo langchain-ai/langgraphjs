@@ -101,6 +101,23 @@ describe("AgentCoreMemory Implementation", () => {
       store.batch = originalBatch;
     });
 
+    it("should route listNamespaces via batch as ListNamespacesOperation", async () => {
+      let capturedOp: unknown;
+      store.batch = async (ops) => {
+        capturedOp = ops[0];
+        return [[]] as never;
+      };
+
+      await store.listNamespaces({ prefix: ["a", "b"], maxDepth: 3, limit: 5, offset: 0 });
+
+      expect(capturedOp).toMatchObject({
+        limit: 5,
+        offset: 0,
+        maxDepth: 3,
+        matchConditions: [{ matchType: "prefix", path: ["a", "b"] }],
+      });
+    });
+
     it("should validate namespace for store operations", async () => {
       await expect(store.put([], "key", { data: "test" })).rejects.toThrow();
     });
