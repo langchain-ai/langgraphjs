@@ -3,7 +3,7 @@
 import { initializeAsyncLocalStorageSingleton } from "./setup/async_local_storage.js";
 
 // Initialize global async local storage instance for tracing
-initializeAsyncLocalStorageSingleton();
+void initializeAsyncLocalStorageSingleton();
 
 export * from "./web.js";
 
