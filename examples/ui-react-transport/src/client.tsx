@@ -1,10 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import {
-  useStream,
-  FetchStreamTransport,
-} from "@langchain/langgraph-sdk/react";
+import { useStream, FetchStreamTransport } from "@langchain/react";
 
 export function App() {
   const stream = useStream({

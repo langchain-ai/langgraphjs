@@ -121,3 +121,28 @@ export const toMessageDict = (chunk: BaseMessage): Message => {
   const { type, data } = chunk.toDict();
   return { ...data, type } as Message;
 };
+
+/**
+ * Identity converter that keeps @langchain/core class instances.
+ * Used by framework SDKs to expose BaseMessage instances instead of plain dicts.
+ */
+export const toMessageClass = (chunk: BaseMessage): BaseMessage => chunk;
+
+/**
+ * Ensures all messages in an array are BaseMessage class instances.
+ * Messages that are already class instances pass through unchanged.
+ * Plain message objects (e.g. from API values/history) are converted
+ * via {@link tryCoerceMessageLikeToMessage}.
+ */
+export function ensureMessageInstances(
+  messages: (Message | BaseMessage)[]
+): (BaseMessage | BaseMessageChunk)[] {
+  return messages.map((msg) => {
+    if (typeof (msg as BaseMessage).getType === "function") {
+      return msg as BaseMessage;
+    }
+    return tryCoerceMessageLikeToMessage(
+      msg as Omit<Message, "type"> & { type: string }
+    );
+  });
+}

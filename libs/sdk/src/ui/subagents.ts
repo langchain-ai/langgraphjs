@@ -1,3 +1,4 @@
+import type { BaseMessage } from "@langchain/core/messages";
 import type {
   Message,
   DefaultToolCall,
@@ -114,6 +115,12 @@ export interface SubagentManagerOptions {
    * Callback when subagent state changes.
    */
   onSubagentChange?: () => void;
+
+  /**
+   * Converts a @langchain/core BaseMessage to the desired output format.
+   * Defaults to `toMessageDict` which produces plain Message objects.
+   */
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 }
 
 /**
@@ -127,15 +134,12 @@ type SubagentStreamBase<ToolCall> = Omit<
   | "getToolCalls"
   | "interrupt"
   | "interrupts"
+  | "switchThread"
   | "subagents"
   | "activeSubagents"
   | "getSubagent"
   | "getSubagentsByType"
   | "getSubagentsByMessage"
-  | "nodes"
-  | "activeNodes"
-  | "getNodeStream"
-  | "getNodeStreamsByName"
 > & {
   /** Internal: ID of the AI message that triggered this subagent */
   aiMessageId: string | null;
@@ -174,11 +178,14 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
   private onSubagentChange?: () => void;
 
+  private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
+
   constructor(options?: SubagentManagerOptions) {
     this.subagentToolNames = new Set(
       options?.subagentToolNames ?? DEFAULT_SUBAGENT_TOOL_NAMES
     );
     this.onSubagentChange = options?.onSubagentChange;
+    this.toMessage = options?.toMessage ?? toMessageDict;
   }
 
   /**
@@ -201,11 +208,10 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     const manager = this.messageManagers.get(toolCallId);
     if (!manager) return [];
 
-    // Convert chunks to messages in order
     const messages: Message<ToolCall>[] = [];
     for (const entry of Object.values(manager.chunks)) {
       if (entry.chunk) {
-        messages.push(toMessageDict(entry.chunk) as Message<ToolCall>);
+        messages.push(this.toMessage(entry.chunk) as Message<ToolCall>);
       }
     }
     return messages;
@@ -239,6 +245,9 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       // Subagents don't have interrupts yet (future enhancement)
       interrupt: undefined,
       interrupts: [],
+
+      // Subagents don't support thread switching
+      switchThread: () => {},
 
       // Nested subagent tracking (empty for now, future enhancement)
       subagents: new Map<

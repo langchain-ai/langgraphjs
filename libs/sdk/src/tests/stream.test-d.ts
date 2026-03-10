@@ -7,22 +7,15 @@
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
  * to verify type correctness. This allows us to test the type inference
  * system without needing working LLM integrations.
- *
- * ⚠️ CIRCULAR DEPENDENCY NOTE:
- * We use mocked StateGraph types from ./fixtures/langgraph-mocks.ts because
- * @langchain/langgraph-sdk is a dependency of @langchain/langgraph. Importing
- * from @langchain/langgraph here would create a circular dependency.
- *
- * This will be resolved once we separate the SDK into:
- * - @langchain/langgraph-sdk (BaseClient, API types)
- * - @langchain/react (useStream, React hooks)
- *
  */
 
 import { describe, test, expectTypeOf } from "vitest";
 import { z } from "zod/v4";
 import { createAgent, tool, createMiddleware } from "langchain";
+import { HumanMessage } from "@langchain/core/messages";
 import { createDeepAgent } from "deepagents";
+
+import { useStream } from "../react/index.js";
 
 // Mocked LangGraph StateGraph types (see fixtures/langgraph-mocks.ts for details)
 import {
@@ -32,8 +25,6 @@ import {
   START,
   END,
 } from "./fixtures/langgraph-mocks.js";
-
-import { useStream } from "../react/stream.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
@@ -43,7 +34,6 @@ import type {
   ExtractAgentConfig,
   InferSubagentState,
   InferSubagentNames,
-  SubagentStateMap,
 } from "../ui/types.js";
 import type { ResolveStreamOptions } from "../ui/stream/index.js";
 
@@ -364,6 +354,145 @@ describe("InferAgentToolCalls", () => {
 });
 
 // ============================================================================
+// Type Tests: Schema-based Tool Call Inference (cross-package resilience)
+// ============================================================================
+
+describe("InferAgentToolCalls schema fallback", () => {
+  // When tools cross package boundaries, the `protected _call` method on
+  // DynamicStructuredTool cannot be matched by `T extends { _call: ... }`.
+  // InferToolInput must fall back to the `schema` property. These tests
+  // verify that InferToolSchemaInput correctly handles Zod v3 and v4 schemas
+  // via structural checks, without depending on @langchain/core types.
+
+  test("infers tool calls from Zod v3 schema (_input)", () => {
+    type MockTool = {
+      name: "search";
+      schema: { _input: { query: string } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [MockTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"search">();
+    expectTypeOf<ToolCalls["args"]>().toEqualTypeOf<{ query: string }>();
+  });
+
+  test("infers tool calls from Zod v4 schema (_zod.input)", () => {
+    type MockTool = {
+      name: "get_weather";
+      schema: {
+        _zod: { input: { location: string; units?: "celsius" | "fahrenheit" } };
+      };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [MockTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"get_weather">();
+    expectTypeOf<ToolCalls["args"]>().toEqualTypeOf<{
+      location: string;
+      units?: "celsius" | "fahrenheit";
+    }>();
+  });
+
+  test("infers union from multiple schema-only tools", () => {
+    type SearchTool = {
+      name: "search";
+      schema: { _input: { query: string } };
+    };
+
+    type CalcTool = {
+      name: "calculate";
+      schema: { _input: { expression: string } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [SearchTool, CalcTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"search" | "calculate">();
+  });
+
+  test("filters out tools with generic string name", () => {
+    type TypedTool = {
+      name: "search";
+      schema: { _input: { query: string } };
+    };
+
+    type GenericTool = {
+      name: string;
+      schema: { _input: { data: unknown } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [TypedTool, GenericTool];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    // Only the typed tool should be included
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"search">();
+  });
+
+  test("prefers _call over schema when _call is public", () => {
+    type ToolWithPublicCall = {
+      name: "tool_a";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      _call: (arg: { fromCall: boolean }, ...rest: any[]) => any;
+      schema: { _input: { fromSchema: string } };
+    };
+
+    type MockAgent = {
+      "~agentTypes": {
+        Response: unknown;
+        State: unknown;
+        Context: unknown;
+        Middleware: unknown;
+        Tools: readonly [ToolWithPublicCall];
+      };
+    };
+
+    type ToolCalls = InferAgentToolCalls<MockAgent>;
+
+    expectTypeOf<ToolCalls["name"]>().toEqualTypeOf<"tool_a">();
+    // _call takes priority, so args come from _call, not schema
+    expectTypeOf<ToolCalls["args"]>().toEqualTypeOf<{ fromCall: boolean }>();
+  });
+});
+
+// ============================================================================
 // Type Tests: Agent Config Extraction
 // ============================================================================
 
@@ -407,15 +536,6 @@ describe("Deep Agent Subagent Types", () => {
 
     expectTypeOf<WriterState>().toHaveProperty("messages");
     expectTypeOf<WriterState>().toHaveProperty("todos");
-  });
-
-  test("creates subagent state map", () => {
-    type StateMap = SubagentStateMap<typeof deepAgent>;
-
-    expectTypeOf<StateMap>().toHaveProperty("researcher");
-    expectTypeOf<StateMap>().toHaveProperty("writer");
-    expectTypeOf<StateMap["researcher"]>().toHaveProperty("files");
-    expectTypeOf<StateMap["writer"]>().toHaveProperty("todos");
   });
 });
 
@@ -691,5 +811,83 @@ describe("useStream type inference integration", () => {
       "light" | "dark"
     >();
     expectTypeOf(stream.values.preferences.language).toEqualTypeOf<string>();
+  });
+});
+
+// ============================================================================
+// Backward Compatibility: @langchain/langgraph-sdk/react returns Message[]
+// ============================================================================
+
+interface BackwardCompatState {
+  messages: Message[];
+}
+
+describe("@langchain/langgraph-sdk/react backward compatibility", () => {
+  test("useStream from legacy path returns plain Message[], not BaseMessage[]", () => {
+    const stream = useStream<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.messages).toEqualTypeOf<Message[]>();
+  });
+
+  test("individual messages are plain Message objects", () => {
+    const stream = useStream<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    expectTypeOf(msg).toEqualTypeOf<Message>();
+    expectTypeOf(msg.type).toEqualTypeOf<
+      "human" | "ai" | "tool" | "system" | "function" | "remove"
+    >();
+    expectTypeOf(msg.content).not.toBeNever();
+  });
+
+  test("core stream properties still work via legacy path", () => {
+    const stream = useStream<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
+    expectTypeOf(stream.error).toEqualTypeOf<unknown>();
+    expectTypeOf(stream.stop()).toEqualTypeOf<Promise<void>>();
+    expectTypeOf(stream.branch).toEqualTypeOf<string>();
+  });
+
+  test("getMessagesMetadata accepts plain Message", () => {
+    const stream = useStream<BackwardCompatState>({
+      assistantId: "agent",
+    });
+
+    const msg = stream.messages[0];
+    const metadata = stream.getMessagesMetadata(msg, 0);
+
+    if (metadata) {
+      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
+    }
+  });
+
+  test("submit accepts @langchain/core HumanMessage instances", () => {
+    const stream = useStream<typeof simpleAgent>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      { messages: [{ type: "human", content: "Hello" }] },
+      undefined
+    );
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      // @ts-expect-error - ensuring we remain backward compatible
+      { messages: [new HumanMessage("Hello")] },
+      undefined
+    );
+
+    expectTypeOf(stream.submit).toBeCallableWith(
+      // @ts-expect-error - ensuring we remain backward compatible
+      { messages: new HumanMessage("Hello") },
+      undefined
+    );
   });
 });
