@@ -13,8 +13,8 @@ import {
   BedrockAgentCoreClient,
   CreateEventCommand,
   DeleteEventCommand,
+  ListActorsCommand,
   ListEventsCommand,
-  ListSessionsCommand,
   RetrieveMemoryRecordsCommand,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
@@ -163,9 +163,11 @@ export class AgentCoreMemoryStore extends BaseStore {
    * Validates that the AgentCore Memory resource exists and is reachable.
    *
    * Call this once after construction, before performing any store operations.
-   * It issues a lightweight `ListSessions` probe against the configured
+   * It issues a lightweight `ListActors` probe against the configured
    * `memoryId` using the same data-plane credentials required for all other
-   * operations — no additional IAM permissions are needed.
+   * operations — no additional IAM permissions are needed. `ListActors` is
+   * used rather than `ListSessions` or `ListEvents` because it only requires
+   * `memoryId`, avoiding the need for a placeholder `actorId`.
    *
    * @throws {Error} If `memoryId` does not exist or has not yet reached ACTIVE
    *   status (`ResourceNotFoundException`).
@@ -183,14 +185,15 @@ export class AgentCoreMemoryStore extends BaseStore {
   async start(): Promise<void> {
     // Validate the memory resource is reachable using the data plane client
     // we already have — no extra dependency or IAM permissions needed.
-    // ListSessions with maxResults:1 is the cheapest possible probe:
+    // ListActors with maxResults:1 is the cheapest possible probe — it only
+    // requires memoryId, unlike ListSessions/ListEvents which also require
+    // actorId/sessionId:
     // - ResourceNotFoundException → memoryId doesn't exist
     // - ValidationException       → memoryId format is invalid
     // - AccessDeniedException     → credentials lack data plane permissions
-    // Any of these surface immediately at startup rather than on first operation.
     try {
       await this.client.send(
-        new ListSessionsCommand({
+        new ListActorsCommand({
           memoryId: this.memoryId,
           maxResults: 1,
         })
@@ -561,8 +564,8 @@ export class AgentCoreMemoryStore extends BaseStore {
               seenKeys.add(itemKey);
 
               if (op.filter) {
-                const matches = Object.entries(op.filter).every(([key, value]) =>
-                  this.compareValues(data.value[key], value)
+                const matches = Object.entries(op.filter).every(
+                  ([key, value]) => this.compareValues(data.value[key], value)
                 );
                 if (!matches) continue;
               }
@@ -608,8 +611,10 @@ export class AgentCoreMemoryStore extends BaseStore {
     let suffix: string[] | undefined;
     if (op.matchConditions) {
       for (const condition of op.matchConditions) {
-        if (condition.matchType === "prefix") prefix = condition.path as string[];
-        else if (condition.matchType === "suffix") suffix = condition.path as string[];
+        if (condition.matchType === "prefix")
+          prefix = condition.path as string[];
+        else if (condition.matchType === "suffix")
+          suffix = condition.path as string[];
       }
     }
 

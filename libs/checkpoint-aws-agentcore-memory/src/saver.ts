@@ -341,7 +341,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
     allWrites: Map<string, StoredWrite[]>
   ): Promise<void> {
     let nextToken: string | undefined;
-    const branchFilter = checkpointNs !== undefined
+    const filter = checkpointNs !== undefined
       ? { branch: { name: this.checkpointNsToBranch(checkpointNs), includeParentBranches: false } }
       : undefined;
 
@@ -357,7 +357,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             includePayloads: true,
             maxResults: 100,
             nextToken,
-            filter: branchFilter,
+            filter,
           })
         );
 
@@ -487,6 +487,13 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             includePayloads: true,
             maxResults: 100,
             nextToken,
+            // We intentionally do not add an eventMetadata filter for
+            // type=checkpoint here. getTuple needs both checkpoints AND their
+            // associated writes in a single pass. Filtering to one type would
+            // require two separate API calls (one for checkpoints, one for
+            // writes), doubling round trips and adding latency that outweighs
+            // any bandwidth saving. The branch filter already scopes the scan
+            // to the correct checkpoint_ns.
             filter: {
               branch: {
                 name: this.checkpointNsToBranch(

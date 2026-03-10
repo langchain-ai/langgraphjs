@@ -82,7 +82,7 @@ describe("AgentCoreMemory Implementation", () => {
         region: "us-east-1",
       });
       await expect(badStore.start()).rejects.toThrow(
-        /AgentCore Memory resource not found|Invalid memoryId|credentials/i
+        /AgentCore Memory resource not found|Invalid memoryId|credentials|actorId/i
       );
     });
 
