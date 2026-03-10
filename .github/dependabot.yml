@@ -10,352 +10,83 @@ updates:
     schedule:
       interval: "monthly"
     groups:
-      minor-and-patch:
+      # Internal LangChain packages
+      langchain:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "@langchain/*"
+          - "langchain"
+          - "langsmith"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/checkpoint"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # Angular framework and tooling
+      angular:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "@angular/*"
+          - "@analogjs/*"
+          - "vitest-browser-angular"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/checkpoint-mongodb"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # Svelte framework and tooling
+      svelte:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "svelte"
+          - "@sveltejs/*"
+          - "vitest-browser-svelte"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/checkpoint-postgres"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # Vue framework and tooling
+      vue:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "vue"
+          - "rxjs"
+          - "@vitejs/plugin-vue"
+          - "@vitejs/plugin-vue-jsx"
+          - "vitest-browser-vue"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/checkpoint-redis"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # React framework and tooling
+      react:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@testing-library/*"
+          - "@vitejs/plugin-react"
+          - "vitest-browser-react"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/checkpoint-sqlite"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # Vite, Vitest, and build tools
+      vite-vitest:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "vite"
+          - "vite-*"
+          - "vitest"
+          - "vitest-*"
+          - "@vitest/*"
+          - "rollup"
+          - "esbuild"
+          - "esbuild-*"
+          - "turbo"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/checkpoint-validation"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # TypeScript, ESLint, and formatting
+      typescript-eslint:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "typescript"
+          - "@typescript-eslint/*"
+          - "@tsconfig/*"
+          - "eslint"
+          - "eslint-*"
+          - "prettier"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/create-langgraph"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
+      # Type definitions
+      types:
         patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+          - "@types/*"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph"
-    schedule:
-      interval: "monthly"
-    groups:
+      # Everything else — minor and patch together, major separately
       minor-and-patch:
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
 
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-api"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-cli"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-core"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-cua"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-supervisor"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-swarm"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/langgraph-ui"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/sdk"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/sdk-angular"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/sdk-react"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/sdk-svelte"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
-
-  - package-ecosystem: "npm"
-    directory: "/libs/sdk-vue"
-    schedule:
-      interval: "monthly"
-    groups:
-      minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
       major:
         patterns:
           - "*"
