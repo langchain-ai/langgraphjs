@@ -74,6 +74,46 @@ updates:
           - "eslint-*"
           - "prettier"
 
+      # Database clients and test containers
+      database:
+        patterns:
+          - "mongodb"
+          - "pg"
+          - "postgres"
+          - "redis"
+          - "better-sqlite3"
+          - "testcontainers"
+          - "@testcontainers/*"
+
+      # Hono web framework
+      hono:
+        patterns:
+          - "hono"
+          - "@hono/*"
+
+      # Zod validation and schema
+      zod:
+        patterns:
+          - "zod"
+          - "zod-to-json-schema"
+          - "@standard-schema/spec"
+
+      # OpenAI and AI clients
+      openai:
+        patterns:
+          - "openai"
+          - "@xenova/transformers"
+          - "scrapybara"
+
+      # CLI building tools
+      cli-tools:
+        patterns:
+          - "commander"
+          - "@commander-js/extra-typings"
+          - "@clack/prompts"
+          - "yargs"
+          - "picocolors"
+
       # Type definitions
       types:
         patterns:
