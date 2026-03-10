@@ -1,8 +1,58 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
-import { AsyncLocalStorage } from "node:async_hooks";
 
-export function initializeAsyncLocalStorageSingleton() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AsyncHooksModule = { AsyncLocalStorage: new () => any };
+
+interface NodeProcess {
+  getBuiltinModule?: (id: string) => Record<string, unknown> | undefined;
+}
+
+/**
+ * Attempt a synchronous resolve of `node:async_hooks` via the
+ * `process.getBuiltinModule` API (Node.js >= 20.16.0). Returns the module
+ * or `undefined` in older runtimes / browsers.
+ */
+function tryGetBuiltinModule(): AsyncHooksModule | undefined {
+  try {
+    const mod = (globalThis as unknown as { process?: NodeProcess }).process
+      ?.getBuiltinModule?.("node:async_hooks");
+    if (mod?.AsyncLocalStorage) return mod as AsyncHooksModule;
+  } catch {
+    // not available
+  }
+  return undefined;
+}
+
+function initFromModule(mod: AsyncHooksModule): void {
   AsyncLocalStorageProviderSingleton.initializeGlobalInstance(
-    new AsyncLocalStorage()
+    new mod.AsyncLocalStorage()
   );
+}
+
+/**
+ * Initializes the global {@link AsyncLocalStorage} singleton used for
+ * implicit config propagation.
+ *
+ * 1. Tries `process.getBuiltinModule("node:async_hooks")` for a **synchronous**
+ *    initialisation (Node.js >= 20.16.0).
+ * 2. Falls back to a dynamic `import("node:async_hooks")` so that bundlers
+ *    targeting browser environments (e.g. Vite) won't fail at build time.
+ *    In browsers the import is silently skipped and callers must pass config
+ *    explicitly (same behaviour as the `@langchain/langgraph/web` entry).
+ */
+export function initializeAsyncLocalStorageSingleton(): Promise<boolean> {
+  const builtinMod = tryGetBuiltinModule();
+  if (builtinMod) {
+    initFromModule(builtinMod);
+    return Promise.resolve(true);
+  }
+
+  return import("node:async_hooks")
+    .then((mod) => {
+      initFromModule(mod);
+      return true;
+    })
+    .catch(() => {
+      return false;
+    });
 }
