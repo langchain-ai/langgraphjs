@@ -14,8 +14,9 @@ interface NodeProcess {
  */
 function tryGetBuiltinModule(): AsyncHooksModule | undefined {
   try {
-    const mod = (globalThis as unknown as { process?: NodeProcess }).process
-      ?.getBuiltinModule?.("node:async_hooks");
+    const mod = (
+      globalThis as unknown as { process?: NodeProcess }
+    ).process?.getBuiltinModule?.("node:async_hooks");
     if (mod?.AsyncLocalStorage) return mod as AsyncHooksModule;
   } catch {
     // not available
