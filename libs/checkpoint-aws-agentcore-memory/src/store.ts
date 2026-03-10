@@ -510,95 +510,94 @@ export class AgentCoreMemoryStore extends BaseStore {
     const sessionId = this.getSessionId(op.namespacePrefix);
     const actorId = this.getActorId(op.namespacePrefix);
 
+    const items: SearchItem[] = [];
+    const seenKeys = new Set<string>();
+    let nextToken: string | undefined;
+
     try {
-      await this.rateLimit();
-      const response = await this.client.send(
-        new ListEventsCommand({
-          memoryId: this.memoryId,
-          actorId,
-          sessionId,
-          includePayloads: true,
-          maxResults: op.limit || 100,
-          filter: {
-            eventMetadata: [
-              {
-                left: { metadataKey: "type" },
-                operator: "EQUALS_TO",
-                right: { metadataValue: { stringValue: "store_item" } },
-              },
-            ],
-          },
-        })
-      );
+      do {
+        await this.rateLimit();
+        const response = await this.client.send(
+          new ListEventsCommand({
+            memoryId: this.memoryId,
+            actorId,
+            sessionId,
+            includePayloads: true,
+            maxResults: 100,
+            nextToken,
+            filter: {
+              eventMetadata: [
+                {
+                  left: { metadataKey: "type" },
+                  operator: "EQUALS_TO",
+                  right: { metadataValue: { stringValue: "store_item" } },
+                },
+              ],
+            },
+          })
+        );
 
-      const events = response.events || [];
-      const items: SearchItem[] = [];
-      const seenKeys = new Set<string>();
+        nextToken = response.nextToken;
 
-      for (const event of events) {
-        const payload = event.payload?.[0];
-        if (!payload?.blob) continue;
+        for (const event of response.events || []) {
+          const payload = event.payload?.[0];
+          if (!payload?.blob) continue;
 
-        try {
-          const blobStr = this.decodeBlob(payload.blob);
-          // Add validation before parsing
-          if (!blobStr || blobStr.length < 2) {
-            continue;
-          }
-          // Skip if it doesn't look like JSON
-          if (
-            !blobStr.trim().startsWith("{") &&
-            !blobStr.trim().startsWith("[")
-          ) {
-            continue;
-          }
-          const data = JSON.parse(blobStr);
-          if (data.type === "store_item") {
-            const itemKey = `${data.namespace.join(":")}:${data.key}`;
-
-            // Skip if we've already seen this key (keep most recent)
-            if (seenKeys.has(itemKey)) continue;
-            seenKeys.add(itemKey);
-
-            // Apply filter if provided
-            if (op.filter) {
-              const matches = Object.entries(op.filter).every(([key, value]) =>
-                this.compareValues(data.value[key], value)
-              );
-              if (!matches) continue;
+          try {
+            const blobStr = this.decodeBlob(payload.blob);
+            if (!blobStr || blobStr.length < 2) continue;
+            if (
+              !blobStr.trim().startsWith("{") &&
+              !blobStr.trim().startsWith("[")
+            ) {
+              continue;
             }
+            const data = JSON.parse(blobStr);
+            if (data.type === "store_item") {
+              const itemKey = `${data.namespace.join(":")}:${data.key}`;
 
-            items.push({
-              namespace: data.namespace,
-              key: data.key,
-              value: data.value,
-              createdAt: new Date(data.createdAt),
-              updatedAt: new Date(data.updatedAt),
-            });
+              // Keep only the most recent event per key
+              if (seenKeys.has(itemKey)) continue;
+              seenKeys.add(itemKey);
+
+              if (op.filter) {
+                const matches = Object.entries(op.filter).every(([key, value]) =>
+                  this.compareValues(data.value[key], value)
+                );
+                if (!matches) continue;
+              }
+
+              items.push({
+                namespace: data.namespace,
+                key: data.key,
+                value: data.value,
+                createdAt: new Date(data.createdAt),
+                updatedAt: new Date(data.updatedAt),
+              });
+            }
+          } catch (error) {
+            console.error(
+              "Error parsing event data:",
+              error,
+              "Raw blob:",
+              payload.blob,
+              "Decoded:",
+              this.decodeBlob(payload.blob)
+            );
           }
-        } catch (error) {
-          console.error(
-            "Error parsing event data:",
-            error,
-            "Raw blob:",
-            payload.blob,
-            "Decoded:",
-            this.decodeBlob(payload.blob)
-          );
-          continue;
         }
-      }
-
-      // Apply offset and limit
-      const offset = op.offset || 0;
-      const limit = op.limit || items.length;
-      return items.slice(offset, offset + limit);
+      } while (nextToken);
     } catch (error) {
       if ((error as AWSError).name === "ResourceNotFoundException") {
         return [];
       }
       throw error;
     }
+
+    // Apply offset and limit after collecting all matching events
+    const offset = op.offset || 0;
+    const limit = op.limit || items.length;
+    return items.slice(offset, offset + limit);
   }
 
   private async handleListNamespaces(
