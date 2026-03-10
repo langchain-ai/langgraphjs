@@ -26,6 +26,38 @@ describe("AgentCoreMemory Implementation", () => {
       expect(result).toBeUndefined();
     });
 
+    it("should reject invalid thread_id (sessionId) format", async () => {
+      await expect(
+        saver.getTuple({ configurable: { thread_id: "invalid_id" } })
+      ).rejects.toThrow(/Invalid thread_id/);
+
+      await expect(
+        saver.getTuple({ configurable: { thread_id: "a".repeat(101) } })
+      ).rejects.toThrow(/at most 100/);
+    });
+
+    it("should reject invalid actor_id format", async () => {
+      // Single char fails: pattern requires at least 2 chars
+      await expect(
+        saver.getTuple({
+          configurable: { thread_id: "valid-thread", actor_id: "a" },
+        })
+      ).rejects.toThrow(/Invalid actor_id/);
+
+      // Space is not in the allowed charset
+      await expect(
+        saver.getTuple({
+          configurable: { thread_id: "valid-thread", actor_id: "invalid actor" },
+        })
+      ).rejects.toThrow(/Invalid actor_id/);
+
+      await expect(
+        saver.getTuple({
+          configurable: { thread_id: "valid-thread", actor_id: "a".repeat(256) },
+        })
+      ).rejects.toThrow(/at most 255/);
+    });
+
     it("should handle missing actor_id with default", async () => {
       const config = { configurable: { thread_id: "test-thread" } };
 

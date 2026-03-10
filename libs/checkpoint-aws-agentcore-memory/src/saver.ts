@@ -22,7 +22,41 @@ import {
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { ConfiguredRetryStrategy } from "@smithy/util-retry";
 
-// Type definitions for AWS SDK compatibility
+// AgentCore Memory API field constraints (from CreateEvent docs)
+const SESSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/;
+const SESSION_ID_MAX = 100;
+const ACTOR_ID_RE =
+  /^[a-zA-Z0-9][a-zA-Z0-9-/](?::[a-zA-Z0-9-_/]+)*[a-zA-Z0-9-_/]*$/;
+const ACTOR_ID_MAX = 255;
+
+function validateSessionId(value: string, context: string): void {
+  if (!SESSION_ID_RE.test(value)) {
+    throw new Error(
+      `Invalid ${context} "${value}": sessionId must match [a-zA-Z0-9][a-zA-Z0-9-]* ` +
+        `(only alphanumeric and hyphens, must start with alphanumeric)`
+    );
+  }
+  if (value.length > SESSION_ID_MAX) {
+    throw new Error(
+      `Invalid ${context} "${value}": sessionId must be at most ${SESSION_ID_MAX} characters`
+    );
+  }
+}
+
+function validateActorId(value: string, context: string): void {
+  if (!ACTOR_ID_RE.test(value)) {
+    throw new Error(
+      `Invalid ${context} "${value}": actorId must match ` +
+        `[a-zA-Z0-9][a-zA-Z0-9-/](?::[a-zA-Z0-9-_/]+)*[a-zA-Z0-9-_/]*`
+    );
+  }
+  if (value.length > ACTOR_ID_MAX) {
+    throw new Error(
+      `Invalid ${context} "${value}": actorId must be at most ${ACTOR_ID_MAX} characters`
+    );
+  }
+}
+
 interface AWSError extends Error {
   name: string;
   code?: string;
@@ -97,21 +131,24 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
   }
 
   private getSessionId(config: RunnableConfig): string | undefined {
-    return config.configurable?.thread_id;
+    const sessionId = config.configurable?.thread_id;
+    if (sessionId) validateSessionId(sessionId, "thread_id");
+    return sessionId;
   }
 
   private getActorId(config: RunnableConfig): string | undefined {
     const actorId = config.configurable?.actor_id;
-    if (!actorId) {
-      // For validation tests, provide a unique default actor_id per instance
-      if (!this.defaultActorId) {
-        this.defaultActorId = `test-actor-${Date.now()}-${Math.random()
-          .toString(36)
-          .substring(2, 11)}`;
-      }
-      return this.defaultActorId;
+    if (actorId) {
+      validateActorId(actorId, "actor_id");
+      return actorId;
     }
-    return actorId;
+    if (!this.defaultActorId) {
+      // Use only alphanumeric + hyphens to satisfy actorId pattern
+      this.defaultActorId = `actor-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 11)}`;
+    }
+    return this.defaultActorId;
   }
 
   private decodeBlob(blob: string | Uint8Array | unknown): string {
@@ -828,6 +865,9 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
         "actor_id is required for deleteThread in AgentCore Memory"
       );
     }
+
+    validateSessionId(threadId, "threadId");
+    validateActorId(resolvedActorId, "actor_id");
 
     const sessionId = threadId;
     let nextToken: string | undefined;
