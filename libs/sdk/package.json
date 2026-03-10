@@ -33,7 +33,7 @@
     "deepagents": "^1.8.1",
     "langchain": "^1.2.27",
     "@tsconfig/recommended": "^1.0.2",
-    "@types/node": "^18.15.11",
+    "@types/node": "^25.4.0",
     "@types/uuid": "^9.0.1",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
