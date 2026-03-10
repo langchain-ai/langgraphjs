@@ -1,5 +1,11 @@
 # @langchain/react
 
+## 0.1.2
+
+### Patch Changes
+
+- [#2162](https://github.com/langchain-ai/langgraphjs/pull/2162) [`b518c47`](https://github.com/langchain-ai/langgraphjs/commit/b518c474f659538a62f4960b73b39c6d69f58807) Thanks [@christian-bromann](https://github.com/christian-bromann)! - update deps
+
 ## 0.1.1
 
 ### Patch Changes
