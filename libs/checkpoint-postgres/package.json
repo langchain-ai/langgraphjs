@@ -52,7 +52,7 @@
     "eslint-config-prettier": "^8.6.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-no-instanceof": "^1.0.1",
-    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-prettier": "^5.5.5",
     "prettier": "^2.8.3",
     "rollup": "^4.37.0",
     "tsx": "^4.19.3",
