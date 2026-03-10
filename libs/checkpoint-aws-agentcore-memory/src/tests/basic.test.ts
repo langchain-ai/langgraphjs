@@ -44,6 +44,16 @@ describe("AgentCoreMemory Implementation", () => {
       expect(store).toBeInstanceOf(AgentCoreMemoryStore);
     });
 
+    it("should throw descriptive error on start() with invalid memoryId", async () => {
+      const badStore = new AgentCoreMemoryStore({
+        memoryId: "valid-format-id-XXXXXXXXXX",
+        region: "us-east-1",
+      });
+      await expect(badStore.start()).rejects.toThrow(
+        /AgentCore Memory resource not found|Invalid memoryId|credentials/i
+      );
+    });
+
     it("should handle batch operations", async () => {
       const operations = [
         {

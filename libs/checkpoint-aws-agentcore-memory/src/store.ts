@@ -14,6 +14,7 @@ import {
   CreateEventCommand,
   DeleteEventCommand,
   ListEventsCommand,
+  ListSessionsCommand,
   RetrieveMemoryRecordsCommand,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
@@ -36,6 +37,32 @@ export interface AgentCoreMemoryStoreParams {
  *
  * This store uses AgentCore Memory for persistent key-value storage with
  * optional vector similarity search capabilities.
+ *
+ * ## Setup
+ *
+ * The Memory resource must be pre-provisioned in AWS Bedrock AgentCore before
+ * using this store. Call `start()` after construction to validate the resource
+ * is reachable before performing any operations:
+ *
+ * ```ts
+ * const store = new AgentCoreMemoryStore({ memoryId: "my-memory-XXXXXXXXXX", region: "us-east-1" });
+ * await store.start(); // validates memoryId and credentials eagerly
+ * ```
+ *
+ * If you skip `start()`, the first `get`/`put`/`search` call will still throw
+ * on an invalid `memoryId`, but the error will be less descriptive.
+ *
+ * ## Namespace conventions
+ *
+ * AgentCore Memory partitions events by `actorId` + `sessionId`. This store
+ * maps LangGraph namespaces as follows:
+ * - `namespace[0]` → `sessionId`
+ * - `namespace[1]` → `actorId` (falls back to a per-instance default if absent)
+ *
+ * ## Rate limiting
+ *
+ * AgentCore Memory enforces a 20 req/sec limit. This store applies a 60ms
+ * minimum interval between requests to stay safely under that threshold.
  */
 export class AgentCoreMemoryStore extends BaseStore {
   private client: BedrockAgentCoreClient;
@@ -130,6 +157,67 @@ export class AgentCoreMemoryStore extends BaseStore {
   private getSessionId(namespace: string[]): string {
     // Use the first part of namespace as session ID, or default
     return namespace.length > 0 ? namespace[0] : "default";
+  }
+
+  /**
+   * Validates that the AgentCore Memory resource exists and is reachable.
+   *
+   * Call this once after construction, before performing any store operations.
+   * It issues a lightweight `ListSessions` probe against the configured
+   * `memoryId` using the same data-plane credentials required for all other
+   * operations — no additional IAM permissions are needed.
+   *
+   * @throws {Error} If `memoryId` does not exist or has not yet reached ACTIVE
+   *   status (`ResourceNotFoundException`).
+   * @throws {Error} If `memoryId` does not match the required pattern
+   *   `[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}` (`ValidationException`).
+   * @throws {Error} If AWS credentials are missing or lack `bedrock-agentcore`
+   *   data-plane permissions (`AccessDeniedException` /
+   *   `CredentialsProviderError`).
+   *
+   * @example
+   * const store = new AgentCoreMemoryStore({ memoryId: "my-memory-XXXXXXXXXX" });
+   * await store.start();
+   * // store is now safe to use
+   */
+  async start(): Promise<void> {
+    // Validate the memory resource is reachable using the data plane client
+    // we already have — no extra dependency or IAM permissions needed.
+    // ListSessions with maxResults:1 is the cheapest possible probe:
+    // - ResourceNotFoundException → memoryId doesn't exist
+    // - ValidationException       → memoryId format is invalid
+    // - AccessDeniedException     → credentials lack data plane permissions
+    // Any of these surface immediately at startup rather than on first operation.
+    try {
+      await this.client.send(
+        new ListSessionsCommand({
+          memoryId: this.memoryId,
+          maxResults: 1,
+        })
+      );
+    } catch (error) {
+      const awsError = error as AWSError;
+      if (awsError.name === "ResourceNotFoundException") {
+        throw new Error(
+          `AgentCore Memory resource not found: "${this.memoryId}". ` +
+            `Ensure the memory exists and is in ACTIVE status.`
+        );
+      }
+      if (awsError.name === "ValidationException") {
+        throw new Error(
+          `Invalid memoryId "${this.memoryId}": ${awsError.message}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * No-op. `BedrockAgentCoreClient` uses stateless HTTP — there are no
+   * persistent connections to close.
+   */
+  async stop(): Promise<void> {
+    // No persistent connections to close — BedrockAgentCoreClient is stateless HTTP
   }
 
   async batch<Op extends readonly Operation[]>(

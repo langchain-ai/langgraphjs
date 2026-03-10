@@ -22,9 +22,28 @@ const store = new AgentCoreMemoryStore({
   region: "us-east-1", // optional, defaults to AWS SDK default
 });
 
+// Validate the memory resource is reachable before use
+await store.start();
+
 // Use with LangGraph
 const graph = builder.compile({ checkpointer, store });
 ```
+
+## Lifecycle: `start()` and `stop()`
+
+Call `start()` on `AgentCoreMemoryStore` once after construction, before performing any operations. It issues a lightweight probe against the configured `memoryId` to surface configuration errors early:
+
+| Error | Cause |
+|---|---|
+| `AgentCore Memory resource not found` | `memoryId` doesn't exist or memory is not yet `ACTIVE` |
+| `Invalid memoryId` | `memoryId` doesn't match the required pattern `[a-zA-Z][a-zA-Z0-9-_]{0,99}-[a-zA-Z0-9]{10}` |
+| `AccessDeniedException` | Credentials lack `bedrock-agentcore` data-plane permissions |
+
+`start()` uses the same IAM permissions as all other store operations — no additional permissions are required.
+
+`stop()` is a no-op. `BedrockAgentCoreClient` uses stateless HTTP with no persistent connections to close.
+
+If you skip `start()`, the first `get`/`put`/`search` call will still throw on an invalid `memoryId`, but with a less descriptive error.
 
 ## Configuration
 
@@ -115,13 +134,13 @@ AGENTCORE_MEMORY_ID=your-actual-memory-id
 
    ```bash
    # Test checkpointer
-   pnmp test:int
+   pnpm test:int
 
    # Test store
-   pnmp test:int:store
+   pnpm test:int:store
 
    # Test both
-   pnmp test:int && pnmp test:int:store
+   pnpm test:int && pnpm test:int:store
    ```
 
 ### Validation Tests
