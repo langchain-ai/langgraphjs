@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     globals: true,
     testTimeout: 30_000,
+    retry: 2,
     globalSetup: ["./src/tests/fixtures/mock-server.ts"],
     browser: {
       enabled: true,
