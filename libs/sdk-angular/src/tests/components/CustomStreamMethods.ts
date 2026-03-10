@@ -40,7 +40,7 @@ const transport = {
   template: `
     <div>
       <div data-testid="messages">
-        @for (msg of stream.messages; track msg.id ?? $index) {
+        @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
             {{ str(msg.content) }}
             @if (getStreamMetadataNode(msg, $index); as node) {

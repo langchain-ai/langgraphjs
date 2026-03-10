@@ -35,7 +35,7 @@ const transport = {
   template: `
     <div>
       <div data-testid="messages">
-        @for (msg of stream.messages; track msg.id ?? $index) {
+        @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
             {{ str(msg.content) }}
           </div>
@@ -44,7 +44,7 @@ const transport = {
       <div data-testid="loading">
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
-      <div data-testid="message-count">{{ stream.messages.length }}</div>
+      <div data-testid="message-count">{{ stream.messages().length }}</div>
       <button data-testid="submit" (click)="onSubmit()">Submit</button>
       <button data-testid="switch-thread" (click)="onSwitchThread()">
         Switch Thread
