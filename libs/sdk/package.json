@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.6.5",
+  "version": "1.7.0",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "repository": {
@@ -47,7 +47,7 @@
     "svelte": "^5.43.6",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",
-    "vue": "^3.5.24",    
+    "vue": "^3.5.24",
     "zod": "^4.3.5"
   },
   "peerDependencies": {
