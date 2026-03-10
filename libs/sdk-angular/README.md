@@ -8,7 +8,7 @@ Angular SDK for building AI-powered applications with [LangChain](https://js.lan
 npm install @langchain/angular @langchain/core
 ```
 
-**Peer dependencies:** `@angular/core` (^18.0.0 || ^19.0.0 || ^20.0.0), `@langchain/core` (^1.0.1)
+**Peer dependencies:** `@angular/core` (^18.0.0 - ^21.0.0), `@langchain/core` (^1.0.1)
 
 ## Quick Start
 
