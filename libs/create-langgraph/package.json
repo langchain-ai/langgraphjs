@@ -30,7 +30,7 @@
     "@clack/prompts": "^0.9.1",
     "@commander-js/extra-typings": "^13.0.0",
     "commander": "^13.0.0",
-    "dedent": "^1.5.3",
+    "dedent": "^1.7.2",
     "extract-zip": "^2.0.1",
     "picocolors": "^1.1.1"
   },

@@ -33,14 +33,14 @@
     "@angular/platform-browser": "^20.3.0",
     "@angular/router": "^20.3.0",
     "@langchain/angular": "workspace:*",
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.31",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^1.0.0",
+    "@langchain/openai": "^1.2.12",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
-    "zod": "^3.23.8",
-    "zone.js": "~0.15.0"
+    "zod": "^4.3.6",
+    "zone.js": "~0.16.1"
   },
   "devDependencies": {
     "@angular/build": "^20.3.9",

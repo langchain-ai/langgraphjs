@@ -20,8 +20,8 @@
     "@langchain/langgraph-sdk": "workspace:^"
   },
   "devDependencies": {
-    "@hono/node-server": "^1.14.1",
-    "@langchain/core": "^1.1.27",
+    "@hono/node-server": "^1.19.11",
+    "@langchain/core": "^1.1.31",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-api": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
@@ -42,18 +42,18 @@
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-prettier": "^4.2.1",
-    "hono": "^4.8.2",
-    "langchain": "^1.2.25",
+    "hono": "^4.12.7",
+    "langchain": "^1.2.30",
     "prettier": "^3.8.1",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^4.0.18",
     "vitest-browser-vue": "^0.1.0",
-    "vue": "^3.5.24",
-    "webdriverio": "^9.14.2",
+    "vue": "^3.5.30",
+    "webdriverio": "^9.25.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.27",
+    "@langchain/core": "^1.1.31",
     "vue": "^3.0.0"
   },
   "main": "./dist/index.js",

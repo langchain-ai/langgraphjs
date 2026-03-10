@@ -33,16 +33,16 @@
   "license": "MIT",
   "dependencies": {
     "scrapybara": "^2.4.4",
-    "zod": "^3.25.76 || ^4"
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5",
-    "@langchain/openai": "^1.0.0"
+    "@langchain/openai": "^1.2.12"
   },
   "devDependencies": {
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.0.0",
+    "@langchain/openai": "^1.2.12",
     "@langchain/scripts": "^0.1.3",
     "@tsconfig/recommended": "^1.0.3",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
@@ -58,7 +58,7 @@
     "openai": "^4.87.3",
     "prettier": "^2.8.3",
     "tsx": "^4.19.3",
-    "turbo": "^2.5.4",
+    "turbo": "^2.8.15",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4"
   },

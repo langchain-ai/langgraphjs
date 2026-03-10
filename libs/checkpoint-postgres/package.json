@@ -31,7 +31,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "pg": "^8.12.0"
+    "pg": "^8.20.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
@@ -41,7 +41,7 @@
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
-    "@types/pg": "^8.11.8",
+    "@types/pg": "^8.18.0",
     "@types/uuid": "^10",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
