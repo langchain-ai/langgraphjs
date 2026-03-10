@@ -652,6 +652,7 @@ export function useStreamLGP<
   submitDirectRef.current = submitDirect;
 
   const submittingRef = useRef(false);
+  const drainQueueRef = useRef<() => void>(() => {});
 
   const submit = async (
     values: UpdateType | null | undefined,
@@ -801,7 +802,6 @@ export function useStreamLGP<
     }
   };
 
-  const drainQueueRef = useRef(drainQueue);
   drainQueueRef.current = drainQueue;
 
   // Drain pending server-side runs when the stream finishes
