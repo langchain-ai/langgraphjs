@@ -1,5 +1,11 @@
 # @langchain/react
 
+## 0.1.1
+
+### Patch Changes
+
+- [`9c2bc9e`](https://github.com/langchain-ai/langgraphjs/commit/9c2bc9ef32abe5b33c8e67e7c8c7b3da7de5e0b0) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(react): bump version
+
 ## 0.1.0
 
 ### Minor Changes
