@@ -31,7 +31,7 @@
   "author": "Brian Sam-Bodden <bsb@redis.com>",
   "license": "MIT",
   "dependencies": {
-    "redis": "^4.7.0",
+    "redis": "^5.11.0",
     "ulid": "^2.3.0"
   },
   "peerDependencies": {
