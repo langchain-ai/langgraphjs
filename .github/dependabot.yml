@@ -10,12 +10,83 @@ updates:
     schedule:
       interval: "monthly"
     groups:
+      # Internal LangChain packages
+      langchain:
+        patterns:
+          - "@langchain/*"
+          - "langchain"
+          - "langsmith"
+
+      # Angular framework and tooling
+      angular:
+        patterns:
+          - "@angular/*"
+          - "@analogjs/*"
+          - "vitest-browser-angular"
+
+      # Svelte framework and tooling
+      svelte:
+        patterns:
+          - "svelte"
+          - "@sveltejs/*"
+          - "vitest-browser-svelte"
+
+      # Vue framework and tooling
+      vue:
+        patterns:
+          - "vue"
+          - "rxjs"
+          - "@vitejs/plugin-vue"
+          - "@vitejs/plugin-vue-jsx"
+          - "vitest-browser-vue"
+
+      # React framework and tooling
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@testing-library/*"
+          - "@vitejs/plugin-react"
+          - "vitest-browser-react"
+
+      # Vite, Vitest, and build tools
+      vite-vitest:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "vitest"
+          - "vitest-*"
+          - "@vitest/*"
+          - "rollup"
+          - "esbuild"
+          - "esbuild-*"
+          - "turbo"
+
+      # TypeScript, ESLint, and formatting
+      typescript-eslint:
+        patterns:
+          - "typescript"
+          - "@typescript-eslint/*"
+          - "@tsconfig/*"
+          - "eslint"
+          - "eslint-*"
+          - "prettier"
+
+      # Type definitions
+      types:
+        patterns:
+          - "@types/*"
+
+      # Everything else — minor and patch together, major separately
       minor-and-patch:
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
+
       major:
         patterns:
           - "*"
