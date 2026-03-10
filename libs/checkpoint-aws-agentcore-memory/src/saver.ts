@@ -347,73 +347,73 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
     }
 
     try {
-      const response = await this.client.send(
-        new ListEventsCommand({
-          memoryId: this.memoryId,
-          actorId: resolvedActorId,
-          sessionId,
-          includePayloads: true,
-          maxResults: 100,
-        })
-      );
-
-      const events = response.events || [];
       const checkpoints = new Map<string, StoredCheckpoint>();
       const writes = new Map<string, StoredWrite[]>();
+      let nextToken: string | undefined;
 
-      // Process events to extract checkpoints and writes
-      for (const event of events) {
-        const payload = event.payload?.[0];
-        if (!payload?.blob) continue;
+      do {
+        await this.rateLimit();
+        const response = await this.client.send(
+          new ListEventsCommand({
+            memoryId: this.memoryId,
+            actorId: resolvedActorId,
+            sessionId,
+            includePayloads: true,
+            maxResults: 100,
+            nextToken,
+          })
+        );
 
-        try {
-          const blobStr = this.decodeBlob(payload.blob);
-          // Add validation before parsing
-          if (!blobStr || blobStr.length < 2) {
-            continue;
-          }
-          // Skip if it doesn't look like JSON
-          if (
-            !blobStr.trim().startsWith("{") &&
-            !blobStr.trim().startsWith("[")
-          ) {
-            continue;
-          }
-          const data = await this.serde.loadsTyped("json", blobStr);
+        nextToken = response.nextToken;
 
-          if (data.type === "checkpoint") {
-            // Filter by checkpoint_ns if specified
-            const eventCheckpointNs = data.checkpoint_ns || "";
-            const configCheckpointNs = config.configurable?.checkpoint_ns || "";
+        // Process events to extract checkpoints and writes
+        for (const event of response.events || []) {
+          const payload = event.payload?.[0];
+          if (!payload?.blob) continue;
 
-            if (eventCheckpointNs === configCheckpointNs) {
-              checkpoints.set(data.checkpointId, {
-                checkpoint: data.checkpoint,
-                metadata: data.metadata,
-                parentCheckpointId: data.parentCheckpointId,
-              });
+          try {
+            const blobStr = this.decodeBlob(payload.blob);
+            if (!blobStr || blobStr.length < 2) continue;
+            if (
+              !blobStr.trim().startsWith("{") &&
+              !blobStr.trim().startsWith("[")
+            ) {
+              continue;
             }
-          } else if (data.type === "write") {
-            const existing = writes.get(data.checkpointId) || [];
-            existing.push({
-              taskId: data.taskId,
-              channel: data.channel,
-              value: data.value,
-            });
-            writes.set(data.checkpointId, existing);
+            const data = await this.serde.loadsTyped("json", blobStr);
+
+            if (data.type === "checkpoint") {
+              const eventCheckpointNs = data.checkpoint_ns || "";
+              const configCheckpointNs =
+                config.configurable?.checkpoint_ns || "";
+              if (eventCheckpointNs === configCheckpointNs) {
+                checkpoints.set(data.checkpointId, {
+                  checkpoint: data.checkpoint,
+                  metadata: data.metadata,
+                  parentCheckpointId: data.parentCheckpointId,
+                });
+              }
+            } else if (data.type === "write") {
+              const existing = writes.get(data.checkpointId) || [];
+              existing.push({
+                taskId: data.taskId,
+                channel: data.channel,
+                value: data.value,
+              });
+              writes.set(data.checkpointId, existing);
+            }
+          } catch (error) {
+            console.error(
+              "Error parsing event data:",
+              error,
+              "Raw blob:",
+              payload.blob,
+              "Decoded:",
+              this.decodeBlob(payload.blob)
+            );
           }
-        } catch (error) {
-          console.error(
-            "Error parsing event data:",
-            error,
-            "Raw blob:",
-            payload.blob,
-            "Decoded:",
-            this.decodeBlob(payload.blob)
-          );
-          continue;
         }
-      }
+      } while (nextToken);
 
       // Find the target checkpoint
       const targetCheckpointId =
