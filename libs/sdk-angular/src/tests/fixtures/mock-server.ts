@@ -378,7 +378,7 @@ const graphs: Record<string, AnyPregel> = {
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 
-let httpServer: { close: () => void } | null = null;
+let httpServer: ReturnType<typeof serve> | null = null;
 
 export async function setup({ provide }: TestProject) {
   const embedApp = createEmbedServer({ graph: graphs, checkpointer, threads });
@@ -397,5 +397,6 @@ export async function setup({ provide }: TestProject) {
 }
 
 export async function teardown() {
+  httpServer?.closeAllConnections();
   httpServer?.close();
 }
