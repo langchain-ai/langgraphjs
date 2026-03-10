@@ -2723,8 +2723,8 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@18.19.130)(@vitest/browser-webdriverio@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
       vitest-browser-vue:
-        specifier: ^0.1.0
-        version: 0.1.0(@vitest/browser@4.0.18(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))(vitest@4.0.18))(vitest@4.0.18)(vue@3.5.30(typescript@5.9.3))
+        specifier: ^2.0.2
+        version: 2.0.2(vitest@4.0.18)(vue@3.5.30(typescript@5.9.3))
       vue:
         specifier: ^3.5.24
         version: 3.5.30(typescript@5.9.3)
@@ -9978,12 +9978,10 @@ packages:
       svelte: ^3 || ^4 || ^5 || ^5.0.0-next.0
       vitest: ^2.1.0 || ^3.0.0 || ^4.0.0-0
 
-  vitest-browser-vue@0.1.0:
-    resolution: {integrity: sha512-S+OKXYEwWFIB+YqotLsMy20948ldYrplXbmehqXS26YmholbsGN/EMb6ztgiBgWMZR+j0uTbdJfqupZauSHvbg==}
-    engines: {node: ^18.0.0 || >=20.0.0}
+  vitest-browser-vue@2.0.2:
+    resolution: {integrity: sha512-/IM/+gOBEPL5Ocu/n28NmAvr1XgqGxzJrgwkPx9O+ioB52iuyg25nDQXlDDPSCm5PJFmwNzA6yycWxFAFTqXYA==}
     peerDependencies:
-      '@vitest/browser': ^2.1.0 || ^3.0.0-0
-      vitest: ^2.1.0 || ^3.0.0-0
+      vitest: ^4.0.0-0
       vue: ^3.0.0
 
   vitest@3.2.4:
@@ -18266,9 +18264,8 @@ snapshots:
       svelte: 5.53.9
       vitest: 4.0.18(@types/node@18.19.130)(@vitest/browser-webdriverio@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
 
-  vitest-browser-vue@0.1.0(@vitest/browser@4.0.18(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))(vitest@4.0.18))(vitest@4.0.18)(vue@3.5.30(typescript@5.9.3)):
+  vitest-browser-vue@2.0.2(vitest@4.0.18)(vue@3.5.30(typescript@5.9.3)):
     dependencies:
-      '@vitest/browser': 4.0.18(vite@7.3.1(@types/node@18.19.130)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2))(vitest@4.0.18)
       '@vue/test-utils': 2.4.6
       vitest: 4.0.18(@types/node@18.19.130)(@vitest/browser-webdriverio@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.90.0)(tsx@4.21.0)(yaml@2.8.2)
       vue: 3.5.30(typescript@5.9.3)
