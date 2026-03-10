@@ -22,7 +22,8 @@
     "directory": "libs/sdk-react"
   },
   "dependencies": {
-    "@langchain/langgraph-sdk": "workspace:^"
+    "@langchain/langgraph-sdk": "workspace:^",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.11",

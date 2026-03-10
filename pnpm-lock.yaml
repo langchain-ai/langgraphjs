@@ -2431,6 +2431,9 @@ importers:
       '@langchain/langgraph-sdk':
         specifier: workspace:*
         version: link:../sdk
+      uuid:
+        specifier: ^11.1.0
+        version: 11.1.0
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.11
