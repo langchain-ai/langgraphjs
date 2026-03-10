@@ -12,6 +12,7 @@ export default defineConfig({
     globalSetup: ["./src/tests/fixtures/mock-server.ts"],
     browser: {
       enabled: true,
+      connectTimeout: 120_000,
       provider: webdriverio(),
       instances: [{ browser: "chrome", headless: true }],
     },

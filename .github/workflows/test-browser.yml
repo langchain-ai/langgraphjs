@@ -1,0 +1,60 @@
+name: Browser tests
+
+on:
+  # Called from CI workflow after build completes
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: "Name of the build artifact to download"
+        required: true
+        type: string
+  # Allow manual triggering (will build from scratch)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk-react:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-and-build
+        with:
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test sdk-react
+        run: pnpm --filter @langchain/react run test
+
+  sdk-angular:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-and-build
+        with:
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test sdk-angular
+        run: pnpm --filter @langchain/angular run test
+
+  sdk-vue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-and-build
+        with:
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test sdk-vue
+        run: pnpm --filter @langchain/vue run test
+
+  sdk-svelte:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-and-build
+        with:
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test sdk-svelte
+        run: pnpm --filter @langchain/svelte run test

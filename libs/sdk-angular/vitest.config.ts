@@ -32,6 +32,7 @@ export default defineConfig({
     setupFiles: ["./src/tests/setup.ts"],
     browser: {
       enabled: true,
+      connectTimeout: 120_000,
       provider: webdriverio(),
       instances: [{ browser: "chrome", headless: true }],
     },
