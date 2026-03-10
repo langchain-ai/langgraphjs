@@ -34,7 +34,6 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tsconfig/recommended": "^1.0.13",
     "@types/node": "^25.4.0",
-    "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
     "@vitest/browser": "^4.0.18",
