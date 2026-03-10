@@ -18,6 +18,7 @@ import ToolCallsStream from "./components/ToolCallsStream.svelte";
 import InterruptsArray from "./components/InterruptsArray.svelte";
 import SwitchThread from "./components/SwitchThread.svelte";
 import QueueStream from "./components/QueueStream.svelte";
+import QueueOnCreated from "./components/QueueOnCreated.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
 import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
@@ -968,6 +969,30 @@ it("server-side queue: switchThread clears the queue", async () => {
   await expect
     .element(screen.getByTestId("message-count"), { timeout: 5000 })
     .toHaveTextContent("0");
+});
+
+it("server-side queue: follow-ups submitted from onCreated are drained", async () => {
+  const screen = render(QueueOnCreated, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit-presets").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
+    .toHaveTextContent("0");
+
+  const count = parseInt(
+    screen.getByTestId("message-count").element().textContent ?? "0",
+    10,
+  );
+  expect(count).toBeGreaterThanOrEqual(6);
 });
 
 it("calls per-submit onError when stream fails", async () => {

@@ -545,10 +545,15 @@ export function createEmbedServer(options: {
       if (thread == null) return c.json({ error: "Thread not found" }, 404);
 
       const state = getThreadState(thread_id);
+      const run = createStubRun(thread_id, payload);
+
+      c.header(
+        "Content-Location",
+        `/threads/${thread_id}/runs/${run.run_id}`
+      );
 
       return streamSSE(c, async (stream) => {
         const signal = getDisconnectAbortSignal(c, stream);
-        const run = createStubRun(thread_id, payload);
 
         state.activeRunId = run.run_id;
 
@@ -584,10 +589,17 @@ export function createEmbedServer(options: {
 
   api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
     // Stream Stateless Run
+    const payload = c.req.valid("json");
+    const threadId = uuidv7();
+    const run = createStubRun(threadId, payload);
+
+    c.header(
+      "Content-Location",
+      `/threads/${threadId}/runs/${run.run_id}`
+    );
+
     return streamSSE(c, async (stream) => {
-      const payload = c.req.valid("json");
       const signal = getDisconnectAbortSignal(c, stream);
-      const threadId = uuidv7();
 
       await options.threads.set(threadId, {
         kind: "put",
@@ -598,7 +610,6 @@ export function createEmbedServer(options: {
       });
 
       try {
-        const run = createStubRun(threadId, payload);
         try {
           for await (const { event, data } of streamState(run, {
             attempt: 1,

@@ -16,6 +16,7 @@ import { OnRequest } from "./components/OnRequest.js";
 import { SwitchThread } from "./components/SwitchThread.js";
 import { CustomStreamMethods } from "./components/CustomStreamMethods.js";
 import { QueueStream } from "./components/QueueStream.js";
+import { QueueOnCreated } from "./components/QueueOnCreated.js";
 import { SubmitOnError } from "./components/SubmitOnError.js";
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
 
@@ -877,6 +878,30 @@ it("server-side queue: switchThread clears the queue", async () => {
   await expect
     .element(screen.getByTestId("message-count"), { timeout: 5000 })
     .toHaveTextContent("0");
+});
+
+it("server-side queue: follow-ups submitted from onCreated are drained", async () => {
+  const screen = await render(<QueueOnCreated apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit-presets").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
+    .toHaveTextContent("0");
+
+  const count = parseInt(
+    screen.getByTestId("message-count").element().textContent ?? "0",
+    10,
+  );
+  expect(count).toBeGreaterThanOrEqual(6);
 });
 
 it("calls per-submit onError when stream fails", async () => {

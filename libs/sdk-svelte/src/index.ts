@@ -577,16 +577,21 @@ function useStreamLGP<
 
   let submitting = false;
 
-  isLoading.subscribe(($isLoading) => {
-    if (!$isLoading && !submitting && pendingRuns.size > 0) {
+  function drainQueue() {
+    if (!get(isLoading) && !submitting && pendingRuns.size > 0) {
       const next = pendingRuns.shift();
       if (next) {
         submitting = true;
         void joinStream(next.id).finally(() => {
           submitting = false;
+          drainQueue();
         });
       }
     }
+  }
+
+  isLoading.subscribe(() => {
+    drainQueue();
   });
 
   async function submit(
@@ -650,6 +655,7 @@ function useStreamLGP<
     const result = submitDirect(values, submitOptions);
     void Promise.resolve(result).finally(() => {
       submitting = false;
+      drainQueue();
     });
     return result;
   }

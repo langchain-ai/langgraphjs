@@ -496,22 +496,27 @@ function useStreamLGP<
 
   const submitting = ref(false);
 
+  function drainQueue() {
+    if (!isLoading.value && !submitting.value && pendingRuns.size > 0) {
+      const next = pendingRuns.shift();
+      if (next) {
+        submitting.value = true;
+        void joinStream(next.id).finally(() => {
+          submitting.value = false;
+          drainQueue();
+        });
+      }
+    }
+  }
+
   watch(
     () => ({
       loading: isLoading.value,
       submitting: submitting.value,
       size: pendingRuns.size,
     }),
-    ({ loading, submitting: s, size }) => {
-      if (!loading && !s && size > 0) {
-        const next = pendingRuns.shift();
-        if (next) {
-          submitting.value = true;
-          void joinStream(next.id).finally(() => {
-            submitting.value = false;
-          });
-        }
-      }
+    () => {
+      drainQueue();
     },
   );
 
@@ -576,6 +581,7 @@ function useStreamLGP<
     const result = submitDirect(values, submitOptions);
     void Promise.resolve(result).finally(() => {
       submitting.value = false;
+      drainQueue();
     });
     return result;
   }

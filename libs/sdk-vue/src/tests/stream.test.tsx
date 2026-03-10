@@ -2042,6 +2042,91 @@ it("server-side queue: switchThread clears the queue", async () => {
     .toHaveTextContent("0");
 });
 
+it("server-side queue: follow-ups submitted from onCreated are drained", async () => {
+  const VueQueueOnCreatedComponent = defineComponent({
+    setup() {
+      const PRESETS = ["Msg1", "Msg2", "Msg3"];
+      const pendingRef = ref<string[]>([]);
+      const submitRef = ref<ReturnType<typeof useStream>["submit"]>();
+
+      const stream = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        fetchStateHistory: false,
+        onCreated: () => {
+          if (pendingRef.value.length > 0) {
+            const followUps = pendingRef.value;
+            pendingRef.value = [];
+            for (const text of followUps) {
+              void submitRef.value?.({
+                messages: [{ content: text, type: "human" }],
+              } as any);
+            }
+          }
+        },
+      });
+
+      submitRef.value = stream.submit;
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {stream.messages.value.map((msg, i) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+          </div>
+          <div data-testid="loading">
+            {stream.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <div data-testid="message-count">
+            {stream.messages.value.length}
+          </div>
+          <div data-testid="queue-size">
+            {(stream as any).queue?.size?.value ?? 0}
+          </div>
+          <button
+            data-testid="submit-presets"
+            onClick={() => {
+              pendingRef.value = PRESETS.slice(1);
+              void stream.submit({
+                messages: [{ content: PRESETS[0], type: "human" }],
+              } as any);
+            }}
+          >
+            Submit Presets
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(VueQueueOnCreatedComponent);
+
+  await screen.getByTestId("submit-presets").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
+    .toHaveTextContent("0");
+
+  const count = parseInt(
+    screen.getByTestId("message-count").element().textContent ?? "0",
+    10,
+  );
+  expect(count).toBeGreaterThanOrEqual(6);
+});
+
 it("calls per-submit onError when stream fails", async () => {
   const SubmitOnErrorComponent = defineComponent({
     setup() {

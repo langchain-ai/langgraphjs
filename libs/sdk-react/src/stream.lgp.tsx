@@ -715,6 +715,7 @@ export function useStreamLGP<
       await submitDirect(values, submitOptions);
     } finally {
       submittingRef.current = false;
+      drainQueueRef.current();
     }
   };
 
@@ -787,17 +788,25 @@ export function useStreamLGP<
   const joinStreamRef = useRef<typeof joinStream>(joinStream);
   joinStreamRef.current = joinStream;
 
-  // Drain pending server-side runs when the stream finishes
-  useEffect(() => {
+  const drainQueue = () => {
     if (!stream.isLoading && !submittingRef.current && pendingRuns.size > 0) {
       const next = pendingRuns.shift();
       if (next) {
         submittingRef.current = true;
         void joinStreamRef.current(next.id).finally(() => {
           submittingRef.current = false;
+          drainQueue();
         });
       }
     }
+  };
+
+  const drainQueueRef = useRef(drainQueue);
+  drainQueueRef.current = drainQueue;
+
+  // Drain pending server-side runs when the stream finishes
+  useEffect(() => {
+    drainQueueRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream.isLoading, pendingRuns.size]);
 
