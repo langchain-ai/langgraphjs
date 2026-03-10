@@ -69,7 +69,9 @@ export function CustomStreamMethods() {
         data-testid="submit"
         onClick={() =>
           void thread.submit({
-            messages: [{ type: "human", content: "Hi" }],
+            messages: [
+              { type: "human", content: "Hi" } as unknown as BaseMessage,
+            ],
           })
         }
       >

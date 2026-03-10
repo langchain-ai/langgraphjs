@@ -383,7 +383,7 @@ let httpServer: { close: () => void } | null = null;
 export async function setup({ provide }: TestProject) {
   const embedApp = createEmbedServer({ graph: graphs, checkpointer, threads });
   const app = new Hono();
-  app.use("*", cors({ exposeHeaders: ["Content-Location"] }));
+  app.use("*", cors({ origin: "*", exposeHeaders: ["Content-Location"] }));
   app.route("/", embedApp);
 
   await new Promise<void>((resolve) => {
