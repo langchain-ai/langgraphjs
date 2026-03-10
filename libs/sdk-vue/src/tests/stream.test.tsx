@@ -2082,9 +2082,7 @@ it("server-side queue: follow-ups submitted from onCreated are drained", async (
           <div data-testid="loading">
             {stream.isLoading.value ? "Loading..." : "Not loading"}
           </div>
-          <div data-testid="message-count">
-            {stream.messages.value.length}
-          </div>
+          <div data-testid="message-count">{stream.messages.value.length}</div>
           <div data-testid="queue-size">
             {(stream as any).queue?.size?.value ?? 0}
           </div>

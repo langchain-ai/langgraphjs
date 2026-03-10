@@ -547,10 +547,7 @@ export function createEmbedServer(options: {
       const state = getThreadState(thread_id);
       const run = createStubRun(thread_id, payload);
 
-      c.header(
-        "Content-Location",
-        `/threads/${thread_id}/runs/${run.run_id}`
-      );
+      c.header("Content-Location", `/threads/${thread_id}/runs/${run.run_id}`);
 
       return streamSSE(c, async (stream) => {
         const signal = getDisconnectAbortSignal(c, stream);
@@ -593,10 +590,7 @@ export function createEmbedServer(options: {
     const threadId = uuidv7();
     const run = createStubRun(threadId, payload);
 
-    c.header(
-      "Content-Location",
-      `/threads/${threadId}/runs/${run.run_id}`
-    );
+    c.header("Content-Location", `/threads/${threadId}/runs/${run.run_id}`);
 
     return streamSSE(c, async (stream) => {
       const signal = getDisconnectAbortSignal(c, stream);
