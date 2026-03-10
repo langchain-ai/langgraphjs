@@ -112,7 +112,7 @@ export function useStreamCustom<
       stream.clear();
     }
 
-    let usableThreadId = threadId;
+    let usableThreadId = threadId ?? submitOptions?.threadId;
 
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
