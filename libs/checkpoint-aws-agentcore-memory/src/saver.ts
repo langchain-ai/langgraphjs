@@ -111,6 +111,11 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
 
   private defaultActorId?: string; // Unique default actor ID per instance
 
+  // Cache of sessionId -> rootEventId (oldest main-branch event) used to
+  // bootstrap new checkpoint_ns branches. Populated on first put() and
+  // recovered from ListEvents on cold start.
+  private sessionRootEventId: Map<string, string> = new Map();
+
   constructor(
     { memoryId, region }: AgentCoreMemorySaverParams,
     serde?: SerializerProtocol
@@ -246,11 +251,89 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
     this.lastRequestTime = Date.now();
   }
 
+  /** Maps checkpoint_ns to AgentCore branch name. Empty string uses "main". */
+  private checkpointNsToBranch(checkpointNs: string): string {
+    return checkpointNs === "" ? "main" : checkpointNs;
+  }
+
+  /**
+   * Returns the rootEventId for a session, required when creating the first
+   * event on a non-main branch. Recovers from API on cold start by fetching
+   * the oldest event on the main branch. If no main events exist yet,
+   * creates a lightweight anchor event on main to bootstrap the session.
+   */
+  private async getRootEventId(
+    sessionId: string,
+    actorId: string
+  ): Promise<string> {
+    if (this.sessionRootEventId.has(sessionId)) {
+      return this.sessionRootEventId.get(sessionId)!;
+    }
+
+    // Cold start recovery: find the oldest event on main branch
+    try {
+      let oldestEventId: string | undefined;
+      let nextToken: string | undefined;
+
+      do {
+        await this.rateLimit();
+        const response = await this.client.send(
+          new ListEventsCommand({
+            memoryId: this.memoryId,
+            actorId,
+            sessionId,
+            includePayloads: false,
+            maxResults: 100,
+            nextToken,
+            filter: { branch: { name: "main", includeParentBranches: false } },
+          })
+        );
+        const events = response.events || [];
+        if (events.length > 0) {
+          oldestEventId = events[events.length - 1].eventId;
+        }
+        nextToken = response.nextToken;
+      } while (nextToken);
+
+      if (oldestEventId) {
+        this.sessionRootEventId.set(sessionId, oldestEventId);
+        return oldestEventId;
+      }
+    } catch {
+      // Branch not found or session empty — fall through to create anchor
+    }
+
+    // No main events exist yet — create a lightweight anchor event on main
+    // to bootstrap the session so non-main branches have a rootEventId.
+    await this.rateLimit();
+    const res = await this.client.send(
+      new CreateEventCommand({
+        memoryId: this.memoryId,
+        actorId,
+        sessionId,
+        eventTimestamp: new Date(),
+        payload: [{ blob: btoa("__anchor__") }],
+        metadata: { type: { stringValue: "__anchor__" } },
+        // no branch field — lands on main automatically
+      })
+    );
+
+    const anchorId = res.event?.eventId;
+    if (!anchorId) {
+      throw new Error(
+        `Failed to create anchor event for session "${sessionId}"`
+      );
+    }
+    this.sessionRootEventId.set(sessionId, anchorId);
+    return anchorId;
+  }
+
   /** @internal */
   private async querySpecificSession(
     sessionId: string,
     threadId: string,
     actorId: string | undefined,
+    checkpointNs: string | undefined,
     allCheckpoints: Map<
       string,
       StoredCheckpoint & { namespace: string; threadId: string }
@@ -258,6 +341,9 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
     allWrites: Map<string, StoredWrite[]>
   ): Promise<void> {
     let nextToken: string | undefined;
+    const branchFilter = checkpointNs !== undefined
+      ? { branch: { name: this.checkpointNsToBranch(checkpointNs), includeParentBranches: false } }
+      : undefined;
 
     // Paginate through all events for this session
     do {
@@ -271,6 +357,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             includePayloads: true,
             maxResults: 100,
             nextToken,
+            filter: branchFilter,
           })
         );
 
@@ -298,7 +385,6 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             const data = await this.serde.loadsTyped("json", blobStr);
 
             if (data.type === "checkpoint") {
-              // Use checkpoint_ns from event data, not parameter
               const eventCheckpointNs = data.checkpoint_ns || "";
               allCheckpoints.set(data.checkpointId, {
                 checkpoint: data.checkpoint,
@@ -331,8 +417,11 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
           }
         }
       } catch (error) {
-        // If we get a ResourceNotFoundException for this session, continue
-        if ((error as AWSError).name === "ResourceNotFoundException") {
+        const awsError = error as AWSError;
+        const isBranchNotFound =
+          awsError.name === "ValidationException" &&
+          String(error).includes("Branch not found");
+        if (awsError.name === "ResourceNotFoundException" || isBranchNotFound) {
           return;
         }
         throw error;
@@ -398,6 +487,14 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             includePayloads: true,
             maxResults: 100,
             nextToken,
+            filter: {
+              branch: {
+                name: this.checkpointNsToBranch(
+                  config.configurable?.checkpoint_ns || ""
+                ),
+                includeParentBranches: false,
+              },
+            },
           })
         );
 
@@ -420,16 +517,11 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             const data = await this.serde.loadsTyped("json", blobStr);
 
             if (data.type === "checkpoint") {
-              const eventCheckpointNs = data.checkpoint_ns || "";
-              const configCheckpointNs =
-                config.configurable?.checkpoint_ns || "";
-              if (eventCheckpointNs === configCheckpointNs) {
-                checkpoints.set(data.checkpointId, {
-                  checkpoint: data.checkpoint,
-                  metadata: data.metadata,
-                  parentCheckpointId: data.parentCheckpointId,
-                });
-              }
+              checkpoints.set(data.checkpointId, {
+                checkpoint: data.checkpoint,
+                metadata: data.metadata,
+                parentCheckpointId: data.parentCheckpointId,
+              });
             } else if (data.type === "write") {
               const existing = writes.get(data.checkpointId) || [];
               existing.push({
@@ -522,10 +614,14 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
 
       return result;
     } catch (error) {
-      console.error("Error in getTuple:", error);
-      if ((error as AWSError).name === "ResourceNotFoundException") {
+      const awsError = error as AWSError;
+      const isBranchNotFound =
+        awsError.name === "ValidationException" &&
+        String(error).includes("Branch not found");
+      if (awsError.name === "ResourceNotFoundException" || isBranchNotFound) {
         return undefined;
       }
+      console.error("Error in getTuple:", error);
       throw error;
     }
   }
@@ -554,6 +650,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
           threadId,
           threadId,
           actorId,
+          checkpointNs,
           allCheckpoints,
           allWrites
         );
@@ -566,6 +663,7 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             sessionId,
             sessionId,
             actorId,
+            checkpointNs,
             allCheckpoints,
             allWrites
           );
@@ -727,33 +825,38 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
       checkpoint_ns: config.configurable?.checkpoint_ns || "",
     };
 
+    const branchName = this.checkpointNsToBranch(
+      config.configurable?.checkpoint_ns || ""
+    );
+
     try {
       const [, serializedData] = await this.serde.dumpsTyped(checkpointData);
-      // Convert Uint8Array to string, then encode as Base64
       const dataString =
         typeof serializedData === "string"
           ? serializedData
           : new TextDecoder().decode(serializedData);
-      // Use TextEncoder for proper Unicode handling
       const encoder = new TextEncoder();
       const bytes = encoder.encode(dataString);
-      // Convert bytes to binary string for btoa
       const binaryString = Array.from(bytes, (byte) =>
         String.fromCharCode(byte)
       ).join("");
       const blobData = btoa(binaryString);
 
-      await this.client.send(
+      // For non-main branches, provide rootEventId to bootstrap the branch.
+      // getRootEventId() always returns a value, creating an anchor event if needed.
+      let branchInput: { name: string; rootEventId?: string } = { name: branchName };
+      if (branchName !== "main") {
+        branchInput.rootEventId = await this.getRootEventId(sessionId, actorId);
+      }
+
+      const res = await this.client.send(
         new CreateEventCommand({
           memoryId: this.memoryId,
           actorId,
           sessionId,
           eventTimestamp: new Date(),
-          payload: [
-            {
-              blob: blobData,
-            },
-          ],
+          branch: branchInput,
+          payload: [{ blob: blobData }],
           metadata: {
             type: { stringValue: "checkpoint" },
             checkpointId: { stringValue: checkpoint.id },
@@ -763,6 +866,12 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
           },
         })
       );
+
+      // Cache the first main-branch event ID as rootEventId for this session
+      if (branchName === "main" && !this.sessionRootEventId.has(sessionId)) {
+        const eventId = res.event?.eventId;
+        if (eventId) this.sessionRootEventId.set(sessionId, eventId);
+      }
     } catch (error) {
       console.error("Error storing checkpoint:", error);
       throw error;
@@ -804,6 +913,10 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
       throw new Error("actor_id is required for putWrites operation");
     }
 
+    const branchName = this.checkpointNsToBranch(
+      config.configurable?.checkpoint_ns || ""
+    );
+
     for (const [channel, value] of writes) {
       const writeData = {
         type: "write",
@@ -815,19 +928,21 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
 
       try {
         const [, serializedData] = await this.serde.dumpsTyped(writeData);
-        // Convert Uint8Array to string, then encode as Base64
         const dataString =
           typeof serializedData === "string"
             ? serializedData
             : new TextDecoder().decode(serializedData);
-        // Use TextEncoder for proper Unicode handling
         const encoder = new TextEncoder();
         const bytes = encoder.encode(dataString);
-        // Convert bytes to binary string for btoa
         const binaryString = Array.from(bytes, (byte) =>
           String.fromCharCode(byte)
         ).join("");
         const blobData = btoa(binaryString);
+
+        let branchInput: { name: string; rootEventId?: string } = { name: branchName };
+        if (branchName !== "main") {
+          branchInput.rootEventId = await this.getRootEventId(sessionId, actorId);
+        }
 
         await this.client.send(
           new CreateEventCommand({
@@ -835,11 +950,8 @@ export class AgentCoreMemorySaver extends BaseCheckpointSaver {
             actorId,
             sessionId,
             eventTimestamp: new Date(),
-            payload: [
-              {
-                blob: blobData,
-              },
-            ],
+            branch: branchInput,
+            payload: [{ blob: blobData }],
             metadata: {
               type: { stringValue: "write" },
               checkpointId: { stringValue: checkpointId },
