@@ -18,6 +18,7 @@ import type {
   InferStateType,
   MessageMetadata,
   SubagentStreamInterface,
+  HistoryWithBaseMessages,
 } from "@langchain/langgraph-sdk/ui";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
@@ -58,6 +59,7 @@ export type ClassSubagentStreamInterface<
 type WithClassMessages<T> = Omit<
   T,
   | "messages"
+  | "history"
   | "getMessagesMetadata"
   | "toolCalls"
   | "getToolCalls"
@@ -73,7 +75,10 @@ type WithClassMessages<T> = Omit<
     message: BaseMessage,
     index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
-} & ("submit" extends keyof T
+} & ("history" extends keyof T
+    ? { history: HistoryWithBaseMessages<T["history"]> }
+    : unknown) &
+  ("submit" extends keyof T
     ? {
         submit: T extends {
           submit: (values: infer V, options?: infer O) => infer Ret;

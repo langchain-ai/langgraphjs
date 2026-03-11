@@ -19,6 +19,7 @@ import { QueueStream } from "./components/QueueStream.js";
 import { QueueOnCreated } from "./components/QueueOnCreated.js";
 import { SubmitOnError } from "./components/SubmitOnError.js";
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
+import { HistoryMessages } from "./components/HistoryMessages.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1015,4 +1016,30 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+});
+
+it("stream.history returns BaseMessage instances", async () => {
+  const screen = await render(<HistoryMessages apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("history-count"))
+    .not.toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("history-all-base-message"))
+    .toHaveTextContent("true");
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/human/);
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/ai/);
 });

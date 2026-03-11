@@ -16,6 +16,7 @@ import {
   extractInterrupts,
   toMessageClass,
   ensureMessageInstances,
+  ensureHistoryMessageInstances,
   type UseStreamThread,
   type GetConfigurableType,
   type GetCustomEventType,
@@ -33,6 +34,7 @@ import {
   type AcceptBaseMessages,
   type UseStreamCustomOptions,
   type SubagentStreamInterface,
+  type HistoryWithBaseMessages,
 } from "@langchain/langgraph-sdk/ui";
 
 import {
@@ -70,6 +72,7 @@ export type ClassSubagentStreamInterface<
 type WithClassMessages<T> = Omit<
   T,
   | "messages"
+  | "history"
   | "getMessagesMetadata"
   | "toolCalls"
   | "getToolCalls"
@@ -85,7 +88,10 @@ type WithClassMessages<T> = Omit<
     message: BaseMessage,
     index?: number,
   ) => MessageMetadata<Record<string, unknown>> | undefined;
-} & ("submit" extends keyof T
+} & ("history" extends keyof T
+    ? { history: HistoryWithBaseMessages<T["history"]> }
+    : unknown) &
+  ("submit" extends keyof T
     ? {
         submit: T extends {
           submit: (values: infer V, options?: infer O) => infer Ret;
@@ -803,7 +809,10 @@ export function useStreamLGP<
         "`fetchStateHistory` must be set to `true` to use `history`",
       );
     }
-    return branchContext().flatHistory;
+    return ensureHistoryMessageInstances(
+      branchContext().flatHistory,
+      options.messagesKey ?? "messages",
+    );
   });
 
   const isThreadLoading = computed(

@@ -6,6 +6,8 @@ export {
   toMessageDict,
   toMessageClass,
   ensureMessageInstances,
+  ensureHistoryMessageInstances,
+  type HistoryWithBaseMessages,
 } from "./messages.js";
 export { StreamManager, type EventStreamEvent } from "./manager.js";
 export { getBranchContext, getMessagesMetadataMap } from "./branching.js";

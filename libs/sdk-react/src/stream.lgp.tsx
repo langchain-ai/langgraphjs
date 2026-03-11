@@ -34,6 +34,7 @@ import {
   extractInterrupts,
   toMessageClass,
   ensureMessageInstances,
+  ensureHistoryMessageInstances,
   PendingRunsTracker,
   type EventStreamEvent,
   type AnyStreamOptions,
@@ -866,7 +867,10 @@ export function useStreamLGP<
         );
       }
 
-      return branchContext.flatHistory;
+      return ensureHistoryMessageInstances(
+        branchContext.flatHistory,
+        options.messagesKey ?? "messages",
+      );
     },
 
     isThreadLoading: history.isLoading && history.data == null,
