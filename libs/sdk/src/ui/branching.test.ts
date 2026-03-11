@@ -1,5 +1,9 @@
 import { it, expect, describe } from "vitest";
-import { getBranchSequence, getMessagesMetadataMap, getBranchContext } from "./branching.js";
+import {
+  getBranchSequence,
+  getMessagesMetadataMap,
+  getBranchContext,
+} from "./branching.js";
 import { ThreadState } from "../schema.js";
 import type { Message } from "../types.messages.js";
 
@@ -488,7 +492,7 @@ describe("functional graph (values: null)", () => {
       initialValues: { messages: [] },
       history: functionalHistory,
       getMessages: (values: FunctionalState) =>
-        ((values?.messages ?? []) as Message[]),
+        (values?.messages ?? []) as Message[],
       branchContext,
     });
 
