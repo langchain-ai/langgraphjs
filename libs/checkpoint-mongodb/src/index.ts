@@ -258,6 +258,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      updated_at: new Date(),
     };
     const upsertQuery = {
       thread_id,
@@ -318,7 +319,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           updateOne: {
             filter: upsertQuery,
             update: {
-              $set: { channel, type, value: serializedValue },
+              $set: { channel, type, value: serializedValue, updated_at: new Date() },
               ...this.timestampOp,
             },
             upsert: true,
