@@ -179,6 +179,7 @@ export function ensureHistoryMessageInstances<
   messagesKey: string = "messages"
 ): ThreadState<StateType>[] {
   return history.map((state) => {
+    if (state.values == null) return state;
     const messages = state.values[messagesKey];
     if (!Array.isArray(messages)) return state;
     return {

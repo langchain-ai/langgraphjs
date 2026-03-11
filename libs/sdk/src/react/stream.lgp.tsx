@@ -409,6 +409,7 @@ export function useStreamLGP<
 
         // Find the first checkpoint where the message was seen
         const firstSeenState = findLast(history.data ?? [], (state) =>
+          state.values != null &&
           getMessages(state.values)
             .map((m, idx) => m.id ?? idx)
             .includes(messageId)
