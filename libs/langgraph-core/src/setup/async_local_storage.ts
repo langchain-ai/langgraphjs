@@ -7,9 +7,7 @@ interface NodeProcess {
   getBuiltinModule?: (id: string) => Record<string, unknown> | undefined;
 }
 
-let asyncLocalStorageInitialization:
-  | Promise<boolean>
-  | undefined;
+let asyncLocalStorageInitialization: Promise<boolean> | undefined;
 let asyncLocalStorageInitialized = false;
 
 /**
