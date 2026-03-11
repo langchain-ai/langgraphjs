@@ -222,6 +222,26 @@ describe("ensureHistoryMessageInstances", () => {
   });
 });
 
+describe("functional graph (values: null)", () => {
+  it("ensureHistoryMessageInstances passes through states with null values", () => {
+    const history = [
+      createThreadState({ messages: [plainHuman, plainAI] }),
+      createThreadState({ messages: [] } as unknown as Values),
+      createThreadState(null as unknown as Values),
+    ];
+
+    const result = ensureHistoryMessageInstances(history);
+    expect(result).toHaveLength(3);
+
+    const msgs = result[0].values.messages as unknown[];
+    expect(msgs[0]).toBeInstanceOf(HumanMessageChunk);
+    expect(msgs[1]).toBeInstanceOf(AIMessageChunk);
+
+    expect(result[2].values).toBeNull();
+    expect(result[2]).toBe(history[2]);
+  });
+});
+
 describe("base SDK history returns plain Message dicts (no class instances)", () => {
   it("messages in history are plain objects with type/content fields", () => {
     const history = [createThreadState({ messages: [plainHuman, plainAI] })];

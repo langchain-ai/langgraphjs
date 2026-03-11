@@ -253,11 +253,14 @@ export function getMessagesMetadataMap<
     const messageId = message.id ?? idx;
 
     // Find the first checkpoint where the message was seen
-    const firstSeenState = findLast(options.history ?? [], (state) =>
-      options
-        .getMessages(state.values)
-        .map((m, idx) => m.id ?? idx)
-        .includes(messageId)
+    const firstSeenState = findLast(
+      options.history ?? [],
+      (state) =>
+        state.values != null &&
+        options
+          .getMessages(state.values)
+          .map((m, idx) => m.id ?? idx)
+          .includes(messageId)
     );
 
     const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;
