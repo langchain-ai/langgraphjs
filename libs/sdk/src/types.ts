@@ -155,13 +155,6 @@ export interface RunsInvokePayload {
   command?: Command;
 
   /**
-   * The version of the stream protocol to use.
-   * - `"v1"`: Original stream protocol.
-   * - `"v2"`: Updated stream protocol with improved event format.
-   */
-  version?: "v1" | "v2";
-
-  /**
    * Callback when a run is created.
    */
   onRunCreated?: (params: { run_id: string; thread_id?: string }) => void;
