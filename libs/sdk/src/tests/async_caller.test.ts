@@ -56,7 +56,9 @@ describe("AsyncCaller retry and error handling", () => {
   it("wraps connection refused errors with a helpful message", async () => {
     const caller = new AsyncCaller({ maxRetries: 0 });
 
-    const err = new Error("request to http://localhost:2024 failed, ECONNREFUSED");
+    const err = new Error(
+      "request to http://localhost:2024 failed, ECONNREFUSED"
+    );
     const callable = vi.fn().mockRejectedValue(err);
 
     await expect(caller.call(callable)).rejects.toThrow(
