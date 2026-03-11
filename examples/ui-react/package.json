@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "pnpm turbo dev:client dev:server --filter=@examples/ui-react",
     "dev:client": "vite",
-    "dev:server": "langgraphjs dev --no-browser",
+    "dev:server": "pnpm exec langgraphjs dev --no-browser",
     "build:internal": "tsc -b && vite build",
     "format": "prettier --write src",
     "lint": "prettier --check src",
