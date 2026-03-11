@@ -320,6 +320,10 @@ export class StateSchema<TFields extends StateSchemaFields> {
       if (ReducedValue.isInstance(value)) {
         // Use input schema for updates
         fieldSchema = getJsonSchemaFromSchema(value.inputSchema) as JSONSchema;
+        // Merge jsonSchemaExtra even if base schema is undefined
+        if (value.jsonSchemaExtra) {
+          fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
+        }
       } else if (UntrackedValue.isInstance(value)) {
         fieldSchema = value.schema
           ? (getJsonSchemaFromSchema(value.schema) as JSONSchema)
