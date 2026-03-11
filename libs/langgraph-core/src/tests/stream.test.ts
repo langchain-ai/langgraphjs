@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { AIMessage, AIMessageChunk } from "@langchain/core/messages";
-import { ChatGenerationChunk } from "@langchain/core/outputs";
+import { ChatGeneration, ChatGenerationChunk } from "@langchain/core/outputs";
 
 import { toEventStream } from "../pregel/stream.js";
 import { StreamMessagesHandler } from "../pregel/messages.js";
@@ -262,7 +262,7 @@ describe("StreamMessagesHandler", () => {
               {
                 text: "Hi!",
                 message: new AIMessage({ content: "Hi!", id: "msg_02" }),
-              },
+              } as ChatGeneration,
             ],
           ],
         },
@@ -374,7 +374,7 @@ describe("StreamMessagesHandler", () => {
               {
                 text: "AB",
                 message: new AIMessageChunk({ content: "AB", id: "msg_run1" }),
-              },
+              } as ChatGeneration,
             ],
           ],
         },
