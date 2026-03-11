@@ -241,8 +241,11 @@ export interface Cron {
   /** The end date to stop running the cron. */
   end_time: Optional<string>;
 
-  /** The schedule to run, cron format. Schedules are interpreted in UTC. */
+  /** The schedule to run, cron format. */
   schedule: string;
+
+  /** The IANA timezone for interpreting the schedule. */
+  timezone: Optional<string>;
 
   /** The time the cron was created. */
   created_at: string;
@@ -451,4 +454,7 @@ export type CronSelectField =
   | "payload"
   | "next_run_date"
   | "metadata"
-  | "now";
+  | "now"
+  | "timezone"
+  | "enabled"
+  | "on_run_completed";
