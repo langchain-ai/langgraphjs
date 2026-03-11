@@ -44,8 +44,9 @@ export function isAsyncLocalStorageSingletonInitialized(): boolean {
  *
  * 1. Tries `process.getBuiltinModule("node:async_hooks")` for a **synchronous**
  *    initialisation (Node.js >= 20.16.0).
- * 2. Falls back to a dynamic `import("node:async_hooks")` so that bundlers
- *    targeting browser environments (e.g. Vite) won't fail at build time.
+ * 2. Falls back to a dynamic import with bundler ignore hints so that bundlers
+ *    targeting browser environments (e.g. Vite, webpack/Next.js) won't try to
+ *    resolve the Node builtin at build time.
  *    In browsers the import is silently skipped and callers must pass config
  *    explicitly (same behaviour as the `@langchain/langgraph/web` entry).
  */
@@ -61,7 +62,11 @@ export function initializeAsyncLocalStorageSingleton(): Promise<boolean> {
     return asyncLocalStorageInitialization;
   }
 
-  asyncLocalStorageInitialization = import("node:async_hooks")
+  asyncLocalStorageInitialization = import(
+    /* webpackIgnore: true */
+    /* @vite-ignore */
+    "node:async_hooks"
+  )
     .then((mod) => {
       initFromModule(mod);
       return true;
