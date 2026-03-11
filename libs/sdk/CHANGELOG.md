@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.7.2
+
+### Patch Changes
+
+- [#2168](https://github.com/langchain-ai/langgraphjs/pull/2168) [`98da019`](https://github.com/langchain-ai/langgraphjs/commit/98da019c926c684c01fe7b598cad57cf6f929268) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): revert dependency between old SDK and new react package
+
 ## 1.7.1
 
 ### Patch Changes
