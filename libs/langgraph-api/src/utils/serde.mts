@@ -9,7 +9,11 @@ const STRIP_EMPTY_OBJECT_KEYS = new Set(["additional_kwargs"]);
 export const serialiseAsDict = (obj: unknown) => {
   return JSON.stringify(
     obj,
-    function (this: Record<string, unknown>, key: string | number, value: unknown) {
+    function (
+      this: Record<string, unknown>,
+      key: string | number,
+      value: unknown
+    ) {
       const rawValue = this[key as string];
       if (
         rawValue != null &&
