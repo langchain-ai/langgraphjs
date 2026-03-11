@@ -10,6 +10,10 @@ import { CachePolicy, RetryPolicy } from "./utils/index.js";
 import { RunnableCallable, type RunnableCallableArgs } from "../utils.js";
 import { EntrypointFunc, EntrypointReturnT, TaskFunc } from "../func/types.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import {
+  initializeAsyncLocalStorageSingleton,
+  isAsyncLocalStorageSingletonInitialized,
+} from "../setup/async_local_storage.js";
 
 /**
  * Wraps a user function in a Runnable that writes the returned value to the RETURN channel.
@@ -62,16 +66,24 @@ export function call<ArgsT extends unknown[], OutputT>(
   { func, name, cache, retry }: CallWrapperOptions<ArgsT, OutputT>,
   ...args: ArgsT
 ): Promise<OutputT> {
-  const config =
-    AsyncLocalStorageProviderSingleton.getRunnableConfig() as RunnableConfig;
-  if (typeof config.configurable?.[CONFIG_KEY_CALL] === "function") {
-    return config.configurable[CONFIG_KEY_CALL](func, name, args, {
-      retry,
-      cache,
-      callbacks: config.callbacks,
-    });
+  const runCall = () => {
+    const config =
+      AsyncLocalStorageProviderSingleton.getRunnableConfig() as RunnableConfig;
+    if (typeof config.configurable?.[CONFIG_KEY_CALL] === "function") {
+      return config.configurable[CONFIG_KEY_CALL](func, name, args, {
+        retry,
+        cache,
+        callbacks: config.callbacks,
+      });
+    }
+    throw new Error(
+      "Async local storage not initialized. Please call initializeAsyncLocalStorageSingleton() before using this function."
+    );
+  };
+
+  if (isAsyncLocalStorageSingletonInitialized()) {
+    return runCall();
   }
-  throw new Error(
-    "Async local storage not initialized. Please call initializeAsyncLocalStorageSingleton() before using this function."
-  );
+
+  return initializeAsyncLocalStorageSingleton().then(runCall);
 }

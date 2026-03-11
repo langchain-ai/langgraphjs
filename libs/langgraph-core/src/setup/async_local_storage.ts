@@ -7,6 +7,11 @@ interface NodeProcess {
   getBuiltinModule?: (id: string) => Record<string, unknown> | undefined;
 }
 
+let asyncLocalStorageInitialization:
+  | Promise<boolean>
+  | undefined;
+let asyncLocalStorageInitialized = false;
+
 /**
  * Attempt a synchronous resolve of `node:async_hooks` via the
  * `process.getBuiltinModule` API (Node.js >= 20.16.0). Returns the module
@@ -28,6 +33,11 @@ function initFromModule(mod: AsyncHooksModule): void {
   AsyncLocalStorageProviderSingleton.initializeGlobalInstance(
     new mod.AsyncLocalStorage()
   );
+  asyncLocalStorageInitialized = true;
+}
+
+export function isAsyncLocalStorageSingletonInitialized(): boolean {
+  return asyncLocalStorageInitialized;
 }
 
 /**
@@ -42,13 +52,18 @@ function initFromModule(mod: AsyncHooksModule): void {
  *    explicitly (same behaviour as the `@langchain/langgraph/web` entry).
  */
 export function initializeAsyncLocalStorageSingleton(): Promise<boolean> {
+  if (asyncLocalStorageInitialization !== undefined) {
+    return asyncLocalStorageInitialization;
+  }
+
   const builtinMod = tryGetBuiltinModule();
   if (builtinMod) {
     initFromModule(builtinMod);
-    return Promise.resolve(true);
+    asyncLocalStorageInitialization = Promise.resolve(true);
+    return asyncLocalStorageInitialization;
   }
 
-  return import("node:async_hooks")
+  asyncLocalStorageInitialization = import("node:async_hooks")
     .then((mod) => {
       initFromModule(mod);
       return true;
@@ -56,4 +71,6 @@ export function initializeAsyncLocalStorageSingleton(): Promise<boolean> {
     .catch(() => {
       return false;
     });
+
+  return asyncLocalStorageInitialization;
 }

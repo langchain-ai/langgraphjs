@@ -63,6 +63,10 @@ import {
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
+import {
+  initializeAsyncLocalStorageSingleton,
+  isAsyncLocalStorageSingletonInitialized,
+} from "../setup/async_local_storage.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
   _applyWrites,
@@ -1973,6 +1977,10 @@ export class Pregel<
     input: PregelInputType | Command,
     options?: Partial<PregelOptions<Nodes, Channels>>
   ): AsyncGenerator<PregelOutputType> {
+    if (!isAsyncLocalStorageSingletonInitialized()) {
+      await initializeAsyncLocalStorageSingleton();
+    }
+
     // Skip LGP encoding option is `streamEvents` is used
     const streamEncoding =
       "version" in (options ?? {}) ? undefined : options?.encoding ?? undefined;
