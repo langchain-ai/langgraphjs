@@ -267,7 +267,8 @@ export class StateSchema<TFields extends StateSchemaFields> {
 
       if (ReducedValue.isInstance(value)) {
         fieldSchema = getJsonSchemaFromSchema(value.valueSchema) as JSONSchema;
-        // Merge jsonSchemaExtra even if base schema is undefined
+        // Merge jsonSchemaExtra (e.g. langgraph_type) into the field schema,
+        // even if base schema is undefined
         if (value.jsonSchemaExtra) {
           fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
         }
@@ -320,7 +321,8 @@ export class StateSchema<TFields extends StateSchemaFields> {
       if (ReducedValue.isInstance(value)) {
         // Use input schema for updates
         fieldSchema = getJsonSchemaFromSchema(value.inputSchema) as JSONSchema;
-        // Merge jsonSchemaExtra even if base schema is undefined
+        // Merge jsonSchemaExtra (e.g. langgraph_type) into the field schema,
+        // even if base schema is undefined
         if (value.jsonSchemaExtra) {
           fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
         }
