@@ -614,11 +614,10 @@ export class StreamManager<
           const checkpointNs: string | undefined =
             typeof rawCheckpointNs === "string" ? rawCheckpointNs : undefined;
           const isFromSubagent =
-            isSubagentNamespace(checkpointNs) ||
-            isSubagentNamespace(namespace);
+            isSubagentNamespace(checkpointNs) || isSubagentNamespace(namespace);
           const toolCallId = isFromSubagent
-            ? (extractToolCallIdFromNamespace(checkpointNs?.split("|")) ??
-              extractToolCallIdFromNamespace(namespace))
+            ? extractToolCallIdFromNamespace(checkpointNs?.split("|")) ??
+              extractToolCallIdFromNamespace(namespace)
             : undefined;
 
           // If filtering is enabled and this is a subagent message,

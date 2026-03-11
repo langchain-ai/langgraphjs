@@ -734,8 +734,17 @@ describe("StreamManager", () => {
             },
             { langgraph_checkpoint_ns: "agent:t1", langgraph_node: "agent" },
           ] as [
-            { id: string; type: string; content: string; tool_calls: Array<{ id: string; name: string; args: Record<string, unknown> }> },
-            Record<string, unknown>,
+            {
+              id: string;
+              type: string;
+              content: string;
+              tool_calls: Array<{
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              }>;
+            },
+            Record<string, unknown>
           ],
         },
         // Subagent values event with a large messages array
@@ -822,7 +831,7 @@ describe("StreamManager", () => {
             null,
           ] as unknown as [
             { id: string; type: string; content: string },
-            Record<string, unknown>,
+            Record<string, unknown>
           ],
         },
       ];
@@ -850,9 +859,7 @@ describe("StreamManager", () => {
       const mainMessages = mainValues?.messages ?? [];
       // Sub-agent message should NOT be in main messages
       expect(
-        mainMessages.find(
-          (m: { id: string }) => m.id === "sub-ai-1"
-        )
+        mainMessages.find((m: { id: string }) => m.id === "sub-ai-1")
       ).toBeUndefined();
     });
   });

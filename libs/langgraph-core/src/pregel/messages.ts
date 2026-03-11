@@ -141,7 +141,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   ) {
     const chunk = fields?.chunk;
     this.emittedChatModelRunIds[runId] = true;
-    const meta = this.metadatas[runId]
+    const meta = this.metadatas[runId];
     if (meta !== undefined) {
       // Only send full metadata with the first streaming chunk per LLM
       // call. Subsequent chunks send null; the client keeps the
@@ -154,11 +154,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       if (isChatGenerationChunk(chunk)) {
         this._emit(metaForChunk, chunk.message, runId);
       } else {
-        this._emit(
-          metaForChunk,
-          new AIMessageChunk({ content: token }),
-          runId
-        );
+        this._emit(metaForChunk, new AIMessageChunk({ content: token }), runId);
       }
     }
   }
@@ -171,7 +167,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     if (!this.emittedChatModelRunIds[runId]) {
       const chatGeneration = output.generations?.[0]?.[0] as ChatGeneration;
       if (isBaseMessage(chatGeneration?.message)) {
-        this._emit(this.metadatas[runId]!, chatGeneration?.message, runId, true);
+        this._emit(
+          this.metadatas[runId]!,
+          chatGeneration?.message,
+          runId,
+          true
+        );
       }
       delete this.emittedChatModelRunIds[runId];
     }

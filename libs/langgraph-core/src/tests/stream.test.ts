@@ -57,18 +57,14 @@ describe("toEventStream", () => {
     it("should omit tool_calls, invalid_tool_calls, tool_call_chunks, additional_kwargs when empty", async () => {
       const msg = new AIMessageChunk({ content: "Hi", id: "msg_01" });
       const metadata = { langgraph_node: "agent" };
-      const chunks: StreamChunk[] = [
-        [[], "messages", [msg, metadata]],
-      ];
+      const chunks: StreamChunk[] = [[[], "messages", [msg, metadata]]];
 
-      const events = await collectSSE(
-        toEventStream(yieldChunks(chunks))
-      );
+      const events = await collectSSE(toEventStream(yieldChunks(chunks)));
 
       expect(events).toHaveLength(1);
       const [serializedMsg] = events[0].data as [
         Record<string, unknown>,
-        unknown,
+        unknown
       ];
 
       expect(serializedMsg.content).toBe("Hi");
@@ -88,13 +84,11 @@ describe("toEventStream", () => {
         ],
       });
       const chunks: StreamChunk[] = [[[], "messages", [msg, {}]]];
-      const events = await collectSSE(
-        toEventStream(yieldChunks(chunks))
-      );
+      const events = await collectSSE(toEventStream(yieldChunks(chunks)));
 
       const [serializedMsg] = events[0].data as [
         Record<string, unknown>,
-        unknown,
+        unknown
       ];
       expect(serializedMsg.tool_calls).toHaveLength(1);
     });
@@ -112,9 +106,7 @@ describe("toEventStream", () => {
         ],
       };
       const chunks: StreamChunk[] = [[[], "values", state]];
-      const events = await collectSSE(
-        toEventStream(yieldChunks(chunks))
-      );
+      const events = await collectSSE(toEventStream(yieldChunks(chunks)));
 
       const data = events[0].data as { messages: Record<string, unknown>[] };
       expect(data.messages[0]).not.toHaveProperty("tool_calls");
@@ -127,7 +119,11 @@ describe("toEventStream", () => {
     it("should drop values events with non-empty namespace when enabled", async () => {
       const chunks: StreamChunk[] = [
         [[], "values", { messages: ["root state"] }],
-        [["tools:call_1", "model:task_1"], "values", { messages: ["sub state"] }],
+        [
+          ["tools:call_1", "model:task_1"],
+          "values",
+          { messages: ["sub state"] },
+        ],
         [[], "updates", { node: "data" }],
       ];
 
@@ -141,9 +137,7 @@ describe("toEventStream", () => {
     });
 
     it("should keep root values events", async () => {
-      const chunks: StreamChunk[] = [
-        [[], "values", { messages: ["root"] }],
-      ];
+      const chunks: StreamChunk[] = [[[], "values", { messages: ["root"] }]];
 
       const events = await collectSSE(
         toEventStream(yieldChunks(chunks), { skipSubgraphValues: true })
@@ -202,7 +196,14 @@ describe("StreamMessagesHandler", () => {
           message: new AIMessageChunk({ content: token, id: "msg_01" }),
           text: token,
         });
-        handler.handleLLMNewToken(token, { prompt: 0, completion: 0 }, runId, undefined, undefined, { chunk });
+        handler.handleLLMNewToken(
+          token,
+          { prompt: 0, completion: 0 },
+          runId,
+          undefined,
+          undefined,
+          { chunk }
+        );
       }
 
       expect(collected).toHaveLength(3);
@@ -211,7 +212,7 @@ describe("StreamMessagesHandler", () => {
       const [, , [, meta1]] = collected[0] as [
         string[],
         string,
-        [unknown, Record<string, unknown> | null],
+        [unknown, Record<string, unknown> | null]
       ];
       expect(meta1).not.toBeNull();
       expect(meta1!.ls_provider).toBe("anthropic");
@@ -222,7 +223,7 @@ describe("StreamMessagesHandler", () => {
         const [, , [, metaN]] = collected[idx] as [
           string[],
           string,
-          [unknown, Record<string, unknown> | null],
+          [unknown, Record<string, unknown> | null]
         ];
         expect(metaN).toBeNull();
       }
@@ -257,7 +258,12 @@ describe("StreamMessagesHandler", () => {
       handler.handleLLMEnd(
         {
           generations: [
-            [{ text: "Hi!", message: new AIMessage({ content: "Hi!", id: "msg_02" }) }],
+            [
+              {
+                text: "Hi!",
+                message: new AIMessage({ content: "Hi!", id: "msg_02" }),
+              },
+            ],
           ],
         },
         runId
@@ -267,7 +273,7 @@ describe("StreamMessagesHandler", () => {
       const [, , [, meta]] = collected[0] as [
         string[],
         string,
-        [unknown, Record<string, unknown> | null],
+        [unknown, Record<string, unknown> | null]
       ];
       expect(meta).not.toBeNull();
       expect(meta!.ls_provider).toBe("openai");
@@ -315,7 +321,7 @@ describe("StreamMessagesHandler", () => {
         const [, , [, meta]] = collected[idx] as [
           string[],
           string,
-          [unknown, Record<string, unknown> | null],
+          [unknown, Record<string, unknown> | null]
         ];
         expect(meta).not.toBeNull();
         expect(meta!.langgraph_node).toBe("node");
@@ -352,10 +358,26 @@ describe("StreamMessagesHandler", () => {
           message: new AIMessageChunk({ content: token, id: "msg_run1" }),
           text: token,
         });
-        handler.handleLLMNewToken(token, { prompt: 0, completion: 0 }, runId1, undefined, undefined, { chunk });
+        handler.handleLLMNewToken(
+          token,
+          { prompt: 0, completion: 0 },
+          runId1,
+          undefined,
+          undefined,
+          { chunk }
+        );
       }
       handler.handleLLMEnd(
-        { generations: [[{ text: "AB", message: new AIMessageChunk({ content: "AB", id: "msg_run1" }) }]] },
+        {
+          generations: [
+            [
+              {
+                text: "AB",
+                message: new AIMessageChunk({ content: "AB", id: "msg_run1" }),
+              },
+            ],
+          ],
+        },
         runId1
       );
 
@@ -368,7 +390,11 @@ describe("StreamMessagesHandler", () => {
         undefined,
         undefined,
         [],
-        { ...metadata, langgraph_step: 2, langgraph_checkpoint_ns: "agent:task_5" },
+        {
+          ...metadata,
+          langgraph_step: 2,
+          langgraph_checkpoint_ns: "agent:task_5",
+        },
         "model"
       );
 
@@ -377,7 +403,14 @@ describe("StreamMessagesHandler", () => {
           message: new AIMessageChunk({ content: token, id: "msg_run2" }),
           text: token,
         });
-        handler.handleLLMNewToken(token, { prompt: 0, completion: 0 }, runId2, undefined, undefined, { chunk });
+        handler.handleLLMNewToken(
+          token,
+          { prompt: 0, completion: 0 },
+          runId2,
+          undefined,
+          undefined,
+          { chunk }
+        );
       }
 
       // run1: 2 chunks, run2: 2 chunks = 4 total
@@ -388,9 +421,9 @@ describe("StreamMessagesHandler", () => {
         (collected[i] as [string[], string, [unknown, unknown]])[2][1];
 
       expect(getMeta(0)).not.toBeNull(); // run1 chunk 1
-      expect(getMeta(1)).toBeNull();     // run1 chunk 2
+      expect(getMeta(1)).toBeNull(); // run1 chunk 2
       expect(getMeta(2)).not.toBeNull(); // run2 chunk 1
-      expect(getMeta(3)).toBeNull();     // run2 chunk 2
+      expect(getMeta(3)).toBeNull(); // run2 chunk 2
     });
   });
 
@@ -422,7 +455,14 @@ describe("StreamMessagesHandler", () => {
         message: new AIMessageChunk({ content: "partial", id: "msg_e" }),
         text: "partial",
       });
-      handler.handleLLMNewToken("partial", { prompt: 0, completion: 0 }, runId, undefined, undefined, { chunk });
+      handler.handleLLMNewToken(
+        "partial",
+        { prompt: 0, completion: 0 },
+        runId,
+        undefined,
+        undefined,
+        { chunk }
+      );
       handler.handleLLMError(new Error("boom"), runId);
 
       expect(collected).toHaveLength(1);
