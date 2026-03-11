@@ -115,9 +115,7 @@ describe("ensureMessageInstances", () => {
 
 describe("ensureHistoryMessageInstances", () => {
   it("converts messages in history state values to BaseMessage instances", () => {
-    const history = [
-      createThreadState({ messages: [plainHuman, plainAI] }),
-    ];
+    const history = [createThreadState({ messages: [plainHuman, plainAI] })];
 
     const result = ensureHistoryMessageInstances(history);
 
@@ -132,13 +130,30 @@ describe("ensureHistoryMessageInstances", () => {
     const history = [
       createThreadState(
         { messages: [plainHuman] },
-        { checkpoint: { thread_id: "t1", checkpoint_id: "cp-1", checkpoint_ns: "", checkpoint_map: null } }
+        {
+          checkpoint: {
+            thread_id: "t1",
+            checkpoint_id: "cp-1",
+            checkpoint_ns: "",
+            checkpoint_map: null,
+          },
+        }
       ),
       createThreadState(
         { messages: [plainHuman, plainAI, plainTool] },
         {
-          checkpoint: { thread_id: "t1", checkpoint_id: "cp-2", checkpoint_ns: "", checkpoint_map: null },
-          parent_checkpoint: { thread_id: "t1", checkpoint_id: "cp-1", checkpoint_ns: "", checkpoint_map: null },
+          checkpoint: {
+            thread_id: "t1",
+            checkpoint_id: "cp-2",
+            checkpoint_ns: "",
+            checkpoint_map: null,
+          },
+          parent_checkpoint: {
+            thread_id: "t1",
+            checkpoint_id: "cp-1",
+            checkpoint_ns: "",
+            checkpoint_map: null,
+          },
         }
       ),
     ];
@@ -169,9 +184,7 @@ describe("ensureHistoryMessageInstances", () => {
   });
 
   it("supports custom messagesKey", () => {
-    const history = [
-      createThreadState({ chat: [plainHuman, plainAI] }),
-    ];
+    const history = [createThreadState({ chat: [plainHuman, plainAI] })];
 
     const result = ensureHistoryMessageInstances(history, "chat");
 
@@ -194,24 +207,24 @@ describe("ensureHistoryMessageInstances", () => {
   });
 
   it("does not mutate original history array or states", () => {
-    const history = [
-      createThreadState({ messages: [plainHuman] }),
-    ];
+    const history = [createThreadState({ messages: [plainHuman] })];
     const originalMessages = history[0].values.messages;
 
     ensureHistoryMessageInstances(history);
 
     expect(history[0].values.messages).toBe(originalMessages);
-    expect(typeof (history[0].values.messages as Message[])[0].type).toBe("string");
-    expect((history[0].values.messages as Message[])[0]).not.toBeInstanceOf(HumanMessageChunk);
+    expect(typeof (history[0].values.messages as Message[])[0].type).toBe(
+      "string"
+    );
+    expect((history[0].values.messages as Message[])[0]).not.toBeInstanceOf(
+      HumanMessageChunk
+    );
   });
 });
 
 describe("base SDK history returns plain Message dicts (no class instances)", () => {
   it("messages in history are plain objects with type/content fields", () => {
-    const history = [
-      createThreadState({ messages: [plainHuman, plainAI] }),
-    ];
+    const history = [createThreadState({ messages: [plainHuman, plainAI] })];
 
     const msgs = history[0].values.messages as Message[];
     expect(msgs[0]).toEqual(plainHuman);
@@ -220,8 +233,12 @@ describe("base SDK history returns plain Message dicts (no class instances)", ()
     expect(msgs[0]).not.toBeInstanceOf(HumanMessageChunk);
     expect(msgs[1]).not.toBeInstanceOf(AIMessageChunk);
 
-    expect(typeof (msgs[0] as Record<string, unknown>).getType).toBe("undefined");
-    expect(typeof (msgs[1] as Record<string, unknown>).getType).toBe("undefined");
+    expect(typeof (msgs[0] as Record<string, unknown>).getType).toBe(
+      "undefined"
+    );
+    expect(typeof (msgs[1] as Record<string, unknown>).getType).toBe(
+      "undefined"
+    );
 
     expect(msgs[0].type).toBe("human");
     expect(msgs[1].type).toBe("ai");
@@ -238,18 +255,31 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
         ],
       },
       {
-        checkpoint: { thread_id: "t1", checkpoint_id: "cp-2", checkpoint_ns: "", checkpoint_map: null },
-        parent_checkpoint: { thread_id: "t1", checkpoint_id: "cp-1", checkpoint_ns: "", checkpoint_map: null },
+        checkpoint: {
+          thread_id: "t1",
+          checkpoint_id: "cp-2",
+          checkpoint_ns: "",
+          checkpoint_map: null,
+        },
+        parent_checkpoint: {
+          thread_id: "t1",
+          checkpoint_id: "cp-1",
+          checkpoint_ns: "",
+          checkpoint_map: null,
+        },
       }
     ),
     createThreadState(
       {
-        messages: [
-          { type: "human", content: "Hello", id: "m1" },
-        ],
+        messages: [{ type: "human", content: "Hello", id: "m1" }],
       },
       {
-        checkpoint: { thread_id: "t1", checkpoint_id: "cp-1", checkpoint_ns: "", checkpoint_map: null },
+        checkpoint: {
+          thread_id: "t1",
+          checkpoint_id: "cp-1",
+          checkpoint_ns: "",
+          checkpoint_map: null,
+        },
         parent_checkpoint: null,
       }
     ),
@@ -265,8 +295,12 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
     const messages = lastState.values.messages as Record<string, unknown>[];
     expect(messages).toHaveLength(2);
 
-    expect(typeof (messages[0] as Record<string, unknown>).getType).toBe("undefined");
-    expect(typeof (messages[1] as Record<string, unknown>).getType).toBe("undefined");
+    expect(typeof (messages[0] as Record<string, unknown>).getType).toBe(
+      "undefined"
+    );
+    expect(typeof (messages[1] as Record<string, unknown>).getType).toBe(
+      "undefined"
+    );
     expect(messages[0]).not.toBeInstanceOf(HumanMessageChunk);
     expect(messages[1]).not.toBeInstanceOf(AIMessageChunk);
 

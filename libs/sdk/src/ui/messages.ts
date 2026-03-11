@@ -29,10 +29,9 @@ export type StateWithBaseMessages<S> = S extends Record<string, unknown>
  * Maps a `ThreadState<StateType>[]` so that the `messages` field inside
  * `values` is typed as `BaseMessage[]` instead of `Message[]`.
  */
-export type HistoryWithBaseMessages<T> =
-  T extends ThreadState<infer S>[]
-    ? ThreadState<StateWithBaseMessages<S>>[]
-    : T;
+export type HistoryWithBaseMessages<T> = T extends ThreadState<infer S>[]
+  ? ThreadState<StateWithBaseMessages<S>>[]
+  : T;
 
 export function tryConvertToChunk(
   message: BaseMessage | BaseMessageChunk
@@ -174,7 +173,7 @@ export function ensureMessageInstances(
  * shallow-copied states whose messages have been coerced.
  */
 export function ensureHistoryMessageInstances<
-  StateType extends Record<string, unknown>,
+  StateType extends Record<string, unknown>
 >(
   history: ThreadState<StateType>[],
   messagesKey: string = "messages"

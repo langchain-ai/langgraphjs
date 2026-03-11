@@ -2421,9 +2421,7 @@ it("stream.history returns BaseMessage instances", async () => {
         const msgs = historyMessages.value;
         return String(
           msgs.length > 0 &&
-            msgs.every(
-              (msg: any) => typeof msg.getType === "function",
-            ),
+            msgs.every((msg: any) => typeof msg.getType === "function"),
         );
       });
 
@@ -2441,9 +2439,7 @@ it("stream.history returns BaseMessage instances", async () => {
           <div data-testid="history-all-base-message">
             {allAreBaseMessage.value}
           </div>
-          <div data-testid="history-message-types">
-            {messageTypes.value}
-          </div>
+          <div data-testid="history-message-types">{messageTypes.value}</div>
           <div data-testid="loading">
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>

@@ -8,7 +8,9 @@ const serverUrl = inject("serverUrl");
   template: `
     <div>
       <div data-testid="history-count">{{ stream.history().length }}</div>
-      <div data-testid="history-all-base-message">{{ allAreBaseMessage() }}</div>
+      <div data-testid="history-all-base-message">
+        {{ allAreBaseMessage() }}
+      </div>
       <div data-testid="history-message-types">{{ messageTypes() }}</div>
       <div data-testid="loading">
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
@@ -37,9 +39,7 @@ export class HistoryMessagesComponent {
     const msgs = this.historyMessages();
     return String(
       msgs.length > 0 &&
-        msgs.every(
-          (msg: any) => typeof msg.getType === "function",
-        ),
+        msgs.every((msg: any) => typeof msg.getType === "function"),
     );
   });
 
