@@ -129,6 +129,8 @@ export function useStreamCustom<
       stream.clear();
     }
 
+    let usableThreadId = threadId ?? submitOptions?.threadId;
+
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
         return {
@@ -144,12 +146,13 @@ export function useStreamCustom<
 
     await stream.start(
       async (signal: AbortSignal) => {
-        if (!threadId) {
-          threadId = crypto.randomUUID();
-          options.onThreadId?.(threadId);
+        if (!usableThreadId) {
+          usableThreadId = crypto.randomUUID();
+          threadId = usableThreadId;
+          options.onThreadId?.(usableThreadId);
         }
 
-        if (!threadId) {
+        if (!usableThreadId) {
           throw new Error("Failed to obtain valid thread ID.");
         }
 
@@ -161,7 +164,7 @@ export function useStreamCustom<
           config: {
             ...submitOptions?.config,
             configurable: {
-              thread_id: threadId,
+              thread_id: usableThreadId,
               ...submitOptions?.config?.configurable,
             } as unknown as GetConfigurableType<Bag>,
           },
