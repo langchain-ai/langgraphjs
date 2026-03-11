@@ -458,10 +458,15 @@ export class CronsClient extends BaseClient {
       interrupt_after: payload?.interruptAfter,
       webhook: payload?.webhook,
       multitask_strategy: payload?.multitaskStrategy,
-      if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
       enabled: payload?.enabled,
+      timezone: payload?.timezone,
+      stream_mode: payload?.streamMode,
+      stream_subgraphs: payload?.streamSubgraphs,
+      stream_resumable: payload?.streamResumable,
+      end_time: payload?.endTime,
+      on_run_completed: payload?.onRunCompleted,
     };
     return this.fetch<CronCreateForThreadResponse>(
       `/threads/${threadId}/runs/crons`,
@@ -495,10 +500,14 @@ export class CronsClient extends BaseClient {
       webhook: payload?.webhook,
       on_run_completed: payload?.onRunCompleted,
       multitask_strategy: payload?.multitaskStrategy,
-      if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
       enabled: payload?.enabled,
+      timezone: payload?.timezone,
+      stream_mode: payload?.streamMode,
+      stream_subgraphs: payload?.streamSubgraphs,
+      stream_resumable: payload?.streamResumable,
+      end_time: payload?.endTime,
     };
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
@@ -520,6 +529,9 @@ export class CronsClient extends BaseClient {
 
     if (payload?.schedule !== undefined) {
       json.schedule = payload.schedule;
+    }
+    if (payload?.timezone !== undefined) {
+      json.timezone = payload.timezone;
     }
     if (payload?.endTime !== undefined) {
       json.end_time = payload.endTime;
@@ -550,6 +562,18 @@ export class CronsClient extends BaseClient {
     }
     if (payload?.enabled !== undefined) {
       json.enabled = payload.enabled;
+    }
+    if (payload?.streamMode !== undefined) {
+      json.stream_mode = payload.streamMode;
+    }
+    if (payload?.streamSubgraphs !== undefined) {
+      json.stream_subgraphs = payload.streamSubgraphs;
+    }
+    if (payload?.streamResumable !== undefined) {
+      json.stream_resumable = payload.streamResumable;
+    }
+    if (payload?.durability !== undefined) {
+      json.durability = payload.durability;
     }
 
     return this.fetch<Cron>(`/runs/crons/${cronId}`, {
@@ -945,9 +969,12 @@ export class ThreadsClient<
    */
   async get<ValuesType = TStateType>(
     threadId: string,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; include?: string[] }
   ): Promise<Thread<ValuesType>> {
     return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`, {
+      params: {
+        include: options?.include ?? undefined,
+      },
       signal: options?.signal,
     });
   }
@@ -1091,6 +1118,34 @@ export class ThreadsClient<
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}`, {
       method: "DELETE",
+      signal: options?.signal,
+    });
+  }
+
+  /**
+   * Prune threads by ID. The 'delete' strategy removes threads entirely.
+   * The 'keep_latest' strategy prunes old checkpoints but keeps threads
+   * and their latest state.
+   *
+   * @param threadIds List of thread IDs to prune.
+   * @param options Additional options for pruning.
+   * @param options.strategy The prune strategy. Defaults to 'delete'.
+   * @param options.signal Signal to abort the request.
+   * @returns An object containing `pruned_count`.
+   */
+  async prune(
+    threadIds: string[],
+    options?: {
+      strategy?: "delete" | "keep_latest";
+      signal?: AbortSignal;
+    }
+  ): Promise<{ pruned_count: number }> {
+    return this.fetch<{ pruned_count: number }>("/threads/prune", {
+      method: "POST",
+      json: {
+        thread_ids: threadIds,
+        strategy: options?.strategy ?? "delete",
+      },
       signal: options?.signal,
     });
   }
@@ -1245,7 +1300,6 @@ export class ThreadsClient<
     options: {
       values: ValuesType;
       checkpoint?: Checkpoint;
-      checkpointId?: string;
       asNode?: string;
       signal?: AbortSignal;
     }
@@ -1256,7 +1310,6 @@ export class ThreadsClient<
         method: "POST",
         json: {
           values: options.values,
-          checkpoint_id: options.checkpointId,
           checkpoint: options.checkpoint,
           as_node: options?.asNode,
         },
@@ -1424,7 +1477,6 @@ export class RunsClient<
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       checkpoint: payload?.checkpoint,
-      checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
@@ -1476,17 +1528,18 @@ export class RunsClient<
       stream_mode: payload?.streamMode,
       stream_subgraphs: payload?.streamSubgraphs,
       stream_resumable: payload?.streamResumable,
+      feedback_keys: payload?.feedbackKeys,
       assistant_id: assistantId,
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       webhook: payload?.webhook,
       checkpoint: payload?.checkpoint,
-      checkpoint_id: payload?.checkpointId,
       multitask_strategy: payload?.multitaskStrategy,
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      on_completion: payload?.onCompletion,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1569,7 +1622,6 @@ export class RunsClient<
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       checkpoint: payload?.checkpoint,
-      checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
@@ -1738,10 +1790,11 @@ export class RunsClient<
   async join(
     threadId: string,
     runId: string,
-    options?: { signal?: AbortSignal }
+    options?: { cancelOnDisconnect?: boolean; signal?: AbortSignal }
   ): Promise<TStateType> {
     return this.fetch<TStateType>(`/threads/${threadId}/runs/${runId}/join`, {
       timeoutMs: null,
+      params: { cancel_on_disconnect: options?.cancelOnDisconnect ? "1" : "0" },
       signal: options?.signal,
     });
   }
