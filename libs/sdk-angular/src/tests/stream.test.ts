@@ -36,6 +36,7 @@ import { QueueStreamComponent } from "./components/QueueStream.js";
 import { QueueOnCreatedComponent } from "./components/QueueOnCreated.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
+import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1001,4 +1002,30 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+});
+
+it("stream.history returns BaseMessage instances", async () => {
+  const screen = await render(HistoryMessagesComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("history-count"))
+    .not.toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("history-all-base-message"))
+    .toHaveTextContent("true");
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/human/);
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/ai/);
 });

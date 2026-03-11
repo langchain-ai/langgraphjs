@@ -25,6 +25,7 @@ import {
   FetchStreamTransport,
   toMessageClass,
   ensureMessageInstances,
+  ensureHistoryMessageInstances,
   type UseStreamThread,
   type GetConfigurableType,
   type GetCustomEventType,
@@ -42,6 +43,7 @@ import {
   type AcceptBaseMessages,
   type UseStreamCustomOptions,
   type SubagentStreamInterface,
+  type HistoryWithBaseMessages,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 
@@ -647,7 +649,10 @@ function useStreamLGP<
         "`fetchStateHistory` must be set to `true` to use `history`",
       );
     }
-    return branchContext.value.flatHistory;
+    return ensureHistoryMessageInstances(
+      branchContext.value.flatHistory,
+      options.messagesKey ?? "messages",
+    );
   });
 
   const isThreadLoading = computed(
@@ -866,9 +871,11 @@ type WithClassMessages<T> = {
                           options?: O,
                         ) => Ret
                       : T[K]
-                    : T[K] extends (...args: infer A) => infer R
-                      ? (...args: A) => R
-                      : Ref<T[K]>;
+                    : K extends "history"
+                      ? ComputedRef<HistoryWithBaseMessages<T[K]>>
+                      : T[K] extends (...args: infer A) => infer R
+                        ? (...args: A) => R
+                        : Ref<T[K]>;
 } & ("subagents" extends keyof T
   ? {
       getSubagent: T extends {

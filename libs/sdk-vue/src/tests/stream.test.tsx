@@ -1,7 +1,7 @@
 import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
-import { defineComponent, ref } from "vue";
+import { computed, defineComponent, ref } from "vue";
 import { useStream } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import type { DeepAgentGraph } from "./fixtures/mock-server.js";
@@ -2399,4 +2399,90 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+});
+
+it("stream.history returns BaseMessage instances", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const { history, isLoading, submit } = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        fetchStateHistory: true,
+      });
+
+      const historyMessages = computed(() =>
+        history.value.flatMap(
+          (state: any) =>
+            (state.values.messages ?? []) as Record<string, unknown>[],
+        ),
+      );
+
+      const allAreBaseMessage = computed(() => {
+        const msgs = historyMessages.value;
+        return String(
+          msgs.length > 0 &&
+            msgs.every(
+              (msg: any) => typeof msg.getType === "function",
+            ),
+        );
+      });
+
+      const messageTypes = computed(() =>
+        historyMessages.value
+          .map((msg: any) =>
+            typeof msg.getType === "function" ? msg.getType() : "plain",
+          )
+          .join(","),
+      );
+
+      return () => (
+        <div>
+          <div data-testid="history-count">{history.value.length}</div>
+          <div data-testid="history-all-base-message">
+            {allAreBaseMessage.value}
+          </div>
+          <div data-testid="history-message-types">
+            {messageTypes.value}
+          </div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({
+                messages: [{ content: "Hello", type: "human" }],
+              })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("history-count"))
+    .not.toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("history-all-base-message"))
+    .toHaveTextContent("true");
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/human/);
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/ai/);
 });

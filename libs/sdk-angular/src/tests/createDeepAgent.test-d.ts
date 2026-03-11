@@ -148,6 +148,28 @@ describe("deep agent", () => {
     }
   });
 
+  test("has well typed history", () => {
+    const stream = useStream<typeof deepAgentTwoSubagents>({
+      assistantId: "deep-agent",
+      fetchStateHistory: true,
+    });
+
+    const state = stream.history()[0];
+    expectTypeOf(state.values).toHaveProperty("messages");
+    expectTypeOf(state.values.todos).toEqualTypeOf<
+      {
+        content: string;
+        status: "completed" | "in_progress" | "pending";
+      }[] &
+        {
+          status: "pending" | "in_progress" | "completed" | "cancelled";
+          content: string;
+          id: string;
+        }[]
+    >();
+    expectTypeOf(state.values.count).toEqualTypeOf<number>();
+  });
+
   test("has well typed values", () => {
     const stream = useStream<typeof deepAgentTwoSubagents>({
       assistantId: "deep-agent",
