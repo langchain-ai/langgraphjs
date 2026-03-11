@@ -4,6 +4,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateSchema } from "./schema.js";
 import { ReducedValue, UntrackedValue } from "./values/index.js";
 import { MessagesValue } from "./prebuilt/index.js";
+import type { SerializableSchema } from "./types.js";
 import {
   BinaryOperatorAggregate,
   LastValue,
@@ -357,6 +358,95 @@ describe("StateSchema", () => {
       expect(schema.properties?.history).toMatchObject({
         langgraph_type: "custom_type",
         description: "Custom history field",
+      });
+    });
+
+    it("should preserve langgraph_type metadata in getInputJsonSchema() with MessagesValue", () => {
+      const state = new StateSchema({
+        messages: MessagesValue,
+        count: z.number().default(0),
+      });
+
+      const schema = state.getInputJsonSchema() as {
+        type: string;
+        properties?: Record<string, { langgraph_type?: string }>;
+      };
+
+      expect(schema.type).toBe("object");
+      expect(schema.properties).toBeDefined();
+      expect(schema.properties?.messages).toMatchObject({
+        langgraph_type: "messages",
+      });
+    });
+
+    it("should preserve custom jsonSchemaExtra in getInputJsonSchema()", () => {
+      const state = new StateSchema({
+        history: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], next: string) => [...current, next],
+            jsonSchemaExtra: {
+              langgraph_type: "custom_type",
+              description: "Custom history field",
+            },
+          }
+        ),
+      });
+
+      const schema = state.getInputJsonSchema() as {
+        type: string;
+        properties?: Record<
+          string,
+          { langgraph_type?: string; description?: string }
+        >;
+      };
+
+      expect(schema.properties?.history).toMatchObject({
+        langgraph_type: "custom_type",
+        description: "Custom history field",
+      });
+    });
+
+    it("should merge jsonSchemaExtra in getInputJsonSchema() even when inputSchema has no JSON schema", () => {
+      // Create a StandardSchemaV1 that lacks jsonSchema support,
+      // so getJsonSchemaFromSchema returns undefined
+      const nonJsonInputSchema = {
+        "~standard": {
+          version: 1 as const,
+          vendor: "test",
+          validate: (value: unknown) => ({ value }),
+        },
+      };
+
+      const state = new StateSchema({
+        data: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: nonJsonInputSchema as unknown as SerializableSchema<
+              unknown,
+              string
+            >,
+            reducer: (current: string[], next: string) => [...current, next],
+            jsonSchemaExtra: {
+              langgraph_type: "custom",
+              description: "Should appear even without base schema",
+            },
+          }
+        ),
+      });
+
+      const schema = state.getInputJsonSchema() as {
+        type: string;
+        properties?: Record<
+          string,
+          { langgraph_type?: string; description?: string }
+        >;
+      };
+
+      expect(schema.properties?.data).toMatchObject({
+        langgraph_type: "custom",
+        description: "Should appear even without base schema",
       });
     });
   });
