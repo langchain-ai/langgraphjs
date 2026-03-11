@@ -155,6 +155,13 @@ export interface RunsInvokePayload {
   command?: Command;
 
   /**
+   * The version of the stream protocol to use.
+   * - `"v1"`: Original stream protocol.
+   * - `"v2"`: Updated stream protocol with improved event format.
+   */
+  version?: "v1" | "v2";
+
+  /**
    * Callback when a run is created.
    */
   onRunCreated?: (params: { run_id: string; thread_id?: string }) => void;
@@ -213,9 +220,16 @@ export interface RunsCreatePayload extends RunsInvokePayload {
 
 export interface CronsCreatePayload extends RunsCreatePayload {
   /**
-   * Schedule for running the Cron Job. Schedules are interpreted in UTC.
+   * Schedule for running the Cron Job. Schedules are interpreted in UTC unless
+   * a timezone is specified.
    */
   schedule: string;
+
+  /**
+   * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
+   * If not provided, the schedule is interpreted in UTC.
+   */
+  timezone?: string;
 
   /**
    * What to do with the thread after the run completes.
@@ -229,11 +243,37 @@ export interface CronsCreatePayload extends RunsCreatePayload {
    * Whether the cron is enabled.
    */
   enabled?: boolean;
+
+  /**
+   * The end date to stop running the cron job (ISO 8601 datetime string).
+   */
+  endTime?: string;
 }
 
 export interface CronsUpdatePayload extends RunsInvokePayload {
   schedule?: string;
   endTime?: string;
+
+  /**
+   * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
+   */
+  timezone?: string;
+
+  /**
+   * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
+   */
+  streamMode?: StreamMode | Array<StreamMode>;
+
+  /**
+   * Stream output from subgraphs. By default, streams only the top graph.
+   */
+  streamSubgraphs?: boolean;
+
+  /**
+   * Whether the stream is considered resumable.
+   */
+  streamResumable?: boolean;
+
   /**
    * What to do with the thread after the run completes.
    * - "delete" (default): Automatically deletes the thread after the run completes.

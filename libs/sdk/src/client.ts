@@ -462,6 +462,12 @@ export class CronsClient extends BaseClient {
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
       enabled: payload?.enabled,
+      timezone: payload?.timezone,
+      stream_mode: payload?.streamMode,
+      stream_subgraphs: payload?.streamSubgraphs,
+      stream_resumable: payload?.streamResumable,
+      end_time: payload?.endTime,
+      on_run_completed: payload?.onRunCompleted,
     };
     return this.fetch<CronCreateForThreadResponse>(
       `/threads/${threadId}/runs/crons`,
@@ -499,6 +505,11 @@ export class CronsClient extends BaseClient {
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
       enabled: payload?.enabled,
+      timezone: payload?.timezone,
+      stream_mode: payload?.streamMode,
+      stream_subgraphs: payload?.streamSubgraphs,
+      stream_resumable: payload?.streamResumable,
+      end_time: payload?.endTime,
     };
     return this.fetch<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
@@ -550,6 +561,18 @@ export class CronsClient extends BaseClient {
     }
     if (payload?.enabled !== undefined) {
       json.enabled = payload.enabled;
+    }
+    if (payload?.timezone !== undefined) {
+      json.timezone = payload.timezone;
+    }
+    if (payload?.streamMode !== undefined) {
+      json.stream_mode = payload.streamMode;
+    }
+    if (payload?.streamSubgraphs !== undefined) {
+      json.stream_subgraphs = payload.streamSubgraphs;
+    }
+    if (payload?.streamResumable !== undefined) {
+      json.stream_resumable = payload.streamResumable;
     }
 
     return this.fetch<Cron>(`/runs/crons/${cronId}`, {
@@ -802,6 +825,7 @@ export class AssistantsClient extends BaseClient {
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
     select?: AssistantSelectField[];
+    responseFormat?: "array" | "object";
     includePagination: true;
     signal?: AbortSignal;
   }): Promise<AssistantsSearchResponse>;
@@ -815,6 +839,7 @@ export class AssistantsClient extends BaseClient {
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
     select?: AssistantSelectField[];
+    responseFormat?: "array" | "object";
     includePagination?: false;
     signal?: AbortSignal;
   }): Promise<Assistant[]>;
@@ -828,6 +853,7 @@ export class AssistantsClient extends BaseClient {
     sortBy?: AssistantSortBy;
     sortOrder?: SortOrder;
     select?: AssistantSelectField[];
+    responseFormat?: "array" | "object";
     includePagination?: boolean;
     signal?: AbortSignal;
   }): Promise<Assistant[] | AssistantsSearchResponse> {
@@ -840,6 +866,7 @@ export class AssistantsClient extends BaseClient {
       sort_by: query?.sortBy ?? undefined,
       sort_order: query?.sortOrder ?? undefined,
       select: query?.select ?? undefined,
+      response_format: query?.responseFormat ?? undefined,
     };
     const [assistants, response] = await this.fetch<Assistant[]>(
       "/assistants/search",
@@ -945,9 +972,12 @@ export class ThreadsClient<
    */
   async get<ValuesType = TStateType>(
     threadId: string,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; include?: string[] }
   ): Promise<Thread<ValuesType>> {
     return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`, {
+      params: {
+        include: options?.include ?? undefined,
+      },
       signal: options?.signal,
     });
   }
@@ -1096,6 +1126,37 @@ export class ThreadsClient<
   }
 
   /**
+   * Prune threads based on staleness criteria.
+   *
+   * @param options Options for pruning threads.
+   * @returns The pruned threads.
+   */
+  async prune(options?: {
+    /**
+     * Maximum number of threads to prune.
+     * Defaults to 10.
+     */
+    limit?: number;
+    /**
+     * Minimum seconds since last state update before a thread can be pruned.
+     */
+    staleBefore?: string;
+    /**
+     * Signal to abort the request.
+     */
+    signal?: AbortSignal;
+  }): Promise<Thread<TStateType>[]> {
+    return this.fetch<Thread<TStateType>[]>("/threads/prune", {
+      method: "POST",
+      json: {
+        limit: options?.limit ?? 10,
+        stale_before: options?.staleBefore ?? undefined,
+      },
+      signal: options?.signal,
+    });
+  }
+
+  /**
    * List threads
    *
    * @param query Query options
@@ -1110,6 +1171,10 @@ export class ThreadsClient<
      * Filter by specific thread IDs.
      */
     ids?: string[];
+    /**
+     * Graph ID to filter threads by.
+     */
+    graphId?: string;
     /**
      * Maximum number of threads to return.
      * Defaults to 10
@@ -1160,6 +1225,7 @@ export class ThreadsClient<
       json: {
         metadata: query?.metadata ?? undefined,
         ids: query?.ids ?? undefined,
+        graph_id: query?.graphId ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
         status: query?.status,
@@ -1433,6 +1499,7 @@ export class RunsClient<
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      version: payload?.version,
     };
 
     yield* this.streamWithRetry({
@@ -1487,6 +1554,7 @@ export class RunsClient<
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      version: payload?.version,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1578,6 +1646,7 @@ export class RunsClient<
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      version: payload?.version,
       langsmith_tracer: payload?._langsmithTracer
         ? {
             project_name: payload?._langsmithTracer?.projectName,
@@ -1765,6 +1834,119 @@ export class RunsClient<
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
       },
+    });
+  }
+
+  /**
+   * Search for runs across all threads.
+   *
+   * @param query Search options.
+   * @returns List of runs matching the search criteria.
+   */
+  async search(query?: {
+    /**
+     * Metadata to filter runs by.
+     */
+    metadata?: Metadata;
+    /**
+     * Run status to filter by.
+     */
+    status?: RunStatus;
+    /**
+     * Assistant ID to filter by.
+     */
+    assistantId?: string;
+    /**
+     * Maximum number of runs to return. Defaults to 10.
+     */
+    limit?: number;
+    /**
+     * Offset to start from. Defaults to 0.
+     */
+    offset?: number;
+    select?: RunSelectField[];
+    signal?: AbortSignal;
+  }): Promise<Run[]> {
+    return this.fetch<Run[]>("/runs/search", {
+      method: "POST",
+      json: {
+        metadata: query?.metadata ?? undefined,
+        status: query?.status ?? undefined,
+        assistant_id: query?.assistantId ?? undefined,
+        limit: query?.limit ?? 10,
+        offset: query?.offset ?? 0,
+        select: query?.select ?? undefined,
+      },
+      signal: query?.signal,
+    });
+  }
+
+  /**
+   * Count runs matching filters.
+   *
+   * @param query Filter options.
+   * @returns Number of runs matching the criteria.
+   */
+  async count(query?: {
+    metadata?: Metadata;
+    status?: RunStatus;
+    assistantId?: string;
+    signal?: AbortSignal;
+  }): Promise<number> {
+    return this.fetch<number>("/runs/count", {
+      method: "POST",
+      json: {
+        metadata: query?.metadata ?? undefined,
+        status: query?.status ?? undefined,
+        assistant_id: query?.assistantId ?? undefined,
+      },
+      signal: query?.signal,
+    });
+  }
+
+  /**
+   * Bulk cancel runs.
+   *
+   * @param options Options for bulk cancelling runs.
+   */
+  async bulkCancel(options?: {
+    /**
+     * Run IDs to cancel.
+     */
+    runIds?: string[];
+    /**
+     * Assistant ID - cancel all runs for this assistant.
+     */
+    assistantId?: string;
+    /**
+     * Thread ID - cancel all runs for this thread.
+     */
+    threadId?: string;
+    /**
+     * Statuses to filter by when cancelling.
+     */
+    status?: RunStatus;
+    /**
+     * Action to take when cancelling. Default is "interrupt".
+     */
+    action?: CancelAction;
+    /**
+     * Whether to wait for the runs to be cancelled.
+     */
+    wait?: boolean;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    return this.fetch<void>("/runs/cancel", {
+      method: "POST",
+      json: {
+        run_ids: options?.runIds ?? undefined,
+        assistant_id: options?.assistantId ?? undefined,
+        thread_id: options?.threadId ?? undefined,
+        status: options?.status ?? undefined,
+        action: options?.action ?? undefined,
+        wait: options?.wait ?? undefined,
+      },
+      signal: options?.signal,
     });
   }
 
