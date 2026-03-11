@@ -1768,6 +1768,36 @@ export class RunsClient<
   }
 
   /**
+   * Cancel one or more runs. Can cancel runs by thread ID and run IDs, or by status filter.
+   *
+   * @param options Options for cancelling runs.
+   * @param options.threadId The ID of the thread containing runs to cancel.
+   * @param options.runIds List of run IDs to cancel.
+   * @param options.status Filter runs by status to cancel. Must be one of 'pending', 'running', or 'all'.
+   * @param options.action Action to take when cancelling the run. Possible values are `interrupt` or `rollback`. Default is `interrupt`.
+   * @param options.signal AbortSignal for cancelling the request.
+   * @returns
+   */
+  async cancelMany(options: {
+    threadId?: string;
+    runIds?: string[];
+    status?: "pending" | "running" | "all";
+    action?: CancelAction;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    return this.fetch<void>(`/runs/cancel`, {
+      method: "POST",
+      json: {
+        thread_id: options.threadId,
+        run_ids: options.runIds,
+        status: options.status,
+      },
+      params: { action: options.action },
+      signal: options.signal,
+    });
+  }
+
+  /**
    * Block until a run is done.
    *
    * @param threadId The ID of the thread.
