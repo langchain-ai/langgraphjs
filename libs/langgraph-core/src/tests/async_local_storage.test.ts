@@ -1,8 +1,6 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RunnableCallable } from "../utils.js";
-
 describe("async local storage initialization", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -36,6 +34,8 @@ describe("async local storage initialization", () => {
       return callback();
     });
 
+    // Import after mocking so RunnableCallable picks up the mocked ALS helpers.
+    const { RunnableCallable } = await import("../utils.js");
     const runnable = new RunnableCallable<string, string>({
       name: "testRunnable",
       trace: false,
