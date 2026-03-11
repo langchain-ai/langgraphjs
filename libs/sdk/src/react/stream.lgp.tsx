@@ -293,7 +293,8 @@ export function useStreamLGP<
   );
   const history = options.thread ?? builtInHistory;
 
-  const getMessages = (value: StateType): Message[] => {
+  const getMessages = (value: StateType | null | undefined): Message[] => {
+    if (value == null) return [];
     const messagesKey = options.messagesKey ?? "messages";
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])

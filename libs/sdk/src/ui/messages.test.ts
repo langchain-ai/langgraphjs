@@ -323,4 +323,27 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
     const origMessages = lastOrig.values.messages as Record<string, unknown>[];
     expect(origMessages[0]).not.toBeInstanceOf(HumanMessageChunk);
   });
+
+  it("does not crash when history contains null values", () => {
+    // @entrypoint graphs produce an initial checkpoint with values: null.
+    const history: ThreadState<Record<string, unknown>>[] = [
+      {
+        values: { messages: [{ type: "human", content: "hi", id: "1" }] },
+        checkpoint: { checkpoint_id: "cp-1", thread_id: "t", checkpoint_ns: "" },
+        metadata: {},
+        tasks: [],
+        next: [],
+      },
+      {
+        values: null as unknown as Record<string, unknown>,
+        checkpoint: { checkpoint_id: "cp-0", thread_id: "t", checkpoint_ns: "" },
+        metadata: {},
+        tasks: [],
+        next: [],
+      },
+    ];
+
+    expect(() => ensureHistoryMessageInstances(history)).not.toThrow();
+    expect(ensureHistoryMessageInstances(history)[1].values).toBeNull();
+  });
 });

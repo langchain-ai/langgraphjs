@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { getBranchSequence } from "./branching.js";
+import { getBranchSequence, getMessagesMetadataMap } from "./branching.js";
 import { ThreadState } from "../schema.js";
 
 const history = [
@@ -424,4 +424,49 @@ it("partial tree", async () => {
       )
     ),
   });
+});
+
+it("getMessagesMetadataMap does not crash when history contains null values", () => {
+  // @entrypoint graphs produce an initial checkpoint with values: null before
+  // the first run. getMessagesMetadataMap iterates all history states to find
+  // each message's first-seen checkpoint, and must skip null-valued states.
+  const aiMessage = {
+    type: "ai" as const,
+    id: "msg-1",
+    content: "Hello!",
+    additional_kwargs: {},
+    response_metadata: {},
+  };
+
+  const historyWithNull: ThreadState<Record<string, unknown>>[] = [
+    {
+      values: { messages: [aiMessage] },
+      checkpoint: { checkpoint_id: "cp-1", thread_id: "t", checkpoint_ns: "" },
+      metadata: {},
+      tasks: [],
+      next: [],
+    },
+    {
+      values: null as unknown as Record<string, unknown>,
+      checkpoint: { checkpoint_id: "cp-0", thread_id: "t", checkpoint_ns: "" },
+      metadata: {},
+      tasks: [],
+      next: [],
+    },
+  ];
+
+  const getMessages = (v: Record<string, unknown>) =>
+    Array.isArray(v["messages"]) ? v["messages"] : [];
+
+  expect(() =>
+    getMessagesMetadataMap({
+      initialValues: { messages: [aiMessage] },
+      history: historyWithNull,
+      getMessages,
+      branchContext: {
+        threadHead: historyWithNull[0],
+        branchByCheckpoint: {},
+      },
+    })
+  ).not.toThrow();
 });
