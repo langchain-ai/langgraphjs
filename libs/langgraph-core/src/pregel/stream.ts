@@ -259,6 +259,14 @@ export class StreamToolsHandler extends BaseCallbackHandler {
   }
 }
 
+const STRIP_EMPTY_ARRAY_KEYS = new Set([
+  "tool_calls",
+  "invalid_tool_calls",
+  "tool_call_chunks",
+]);
+
+const STRIP_EMPTY_OBJECT_KEYS = new Set(["additional_kwargs"]);
+
 function _stringifyAsDict(obj: unknown) {
   return JSON.stringify(obj, function (key: string | number, value: unknown) {
     const rawValue = this[key];
@@ -270,6 +278,28 @@ function _stringifyAsDict(obj: unknown) {
     ) {
       const { type, data } = rawValue.toDict();
       return { ...data, type };
+    }
+
+    // Strip empty arrays for known message chunk defaults
+    if (
+      typeof key === "string" &&
+      STRIP_EMPTY_ARRAY_KEYS.has(key) &&
+      Array.isArray(value) &&
+      value.length === 0
+    ) {
+      return undefined;
+    }
+
+    // Strip empty objects for known message chunk defaults
+    if (
+      typeof key === "string" &&
+      STRIP_EMPTY_OBJECT_KEYS.has(key) &&
+      typeof value === "object" &&
+      value != null &&
+      !Array.isArray(value) &&
+      Object.keys(value).length === 0
+    ) {
+      return undefined;
     }
 
     return value;
@@ -353,8 +383,24 @@ function _serializeCheckpoint(payload: StreamCheckpointsOutput<unknown>) {
   return result;
 }
 
-export function toEventStream(stream: AsyncGenerator) {
+export interface ToEventStreamOptions {
+  /**
+   * When true, values events from subgraphs (non-empty namespace) are
+   * dropped from the SSE stream.  This eliminates the quadratic growth
+   * caused by accumulating messages in subagent values events.
+   *
+   * @default false
+   */
+  skipSubgraphValues?: boolean;
+}
+
+export function toEventStream(
+  stream: AsyncGenerator,
+  options?: ToEventStreamOptions
+) {
   const encoder = new TextEncoder();
+  const skipSubgraphValues = options?.skipSubgraphValues ?? false;
+
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const enqueueChunk = (sse: {
@@ -372,6 +418,11 @@ export function toEventStream(stream: AsyncGenerator) {
       try {
         for await (const payload of stream) {
           const [ns, mode, chunk] = payload as AnyStreamOutput;
+
+          // Drop subgraph values events to avoid quadratic message growth
+          if (skipSubgraphValues && mode === "values" && ns?.length > 0) {
+            continue;
+          }
 
           let data: unknown = chunk;
           if (mode === "debug") {

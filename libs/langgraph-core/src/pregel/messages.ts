@@ -45,6 +45,15 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   emittedChatModelRunIds: Record<string, boolean> = {};
 
+  /**
+   * Tracks which LLM run IDs have already had their metadata emitted
+   * via handleLLMNewToken.  Subsequent streaming chunks for the same
+   * run send null metadata, drastically reducing per-event overhead.
+   * Only applies to LLM streaming (handleLLMNewToken); chain-output
+   * messages always carry full metadata since each is a distinct message.
+   */
+  emittedMetadataLLMRunIds: Record<string, boolean> = {};
+
   stableMessageIdMap: Record<string, string> = {};
 
   lc_prefer_streaming = true;
@@ -132,12 +141,21 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   ) {
     const chunk = fields?.chunk;
     this.emittedChatModelRunIds[runId] = true;
-    if (this.metadatas[runId] !== undefined) {
+    const meta = this.metadatas[runId]
+    if (meta !== undefined) {
+      // Only send full metadata with the first streaming chunk per LLM
+      // call. Subsequent chunks send null; the client keeps the
+      // previously received metadata for this message ID.
+      const metaForChunk: Meta = this.emittedMetadataLLMRunIds[runId]
+        ? [meta[0], null as unknown as Record<string, never>]
+        : meta;
+      this.emittedMetadataLLMRunIds[runId] = true;
+
       if (isChatGenerationChunk(chunk)) {
-        this._emit(this.metadatas[runId], chunk.message, runId);
+        this._emit(metaForChunk, chunk.message, runId);
       } else {
         this._emit(
-          this.metadatas[runId],
+          metaForChunk,
           new AIMessageChunk({ content: token }),
           runId
         );
@@ -153,7 +171,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     if (!this.emittedChatModelRunIds[runId]) {
       const chatGeneration = output.generations?.[0]?.[0] as ChatGeneration;
       if (isBaseMessage(chatGeneration?.message)) {
-        this._emit(this.metadatas[runId], chatGeneration?.message, runId, true);
+        this._emit(this.metadatas[runId]!, chatGeneration?.message, runId, true);
       }
       delete this.emittedChatModelRunIds[runId];
     }

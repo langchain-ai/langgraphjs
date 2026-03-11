@@ -578,10 +578,14 @@ export class StreamManager<
                 }
               }
 
-              // Update the subagent's values with the full state
+              // Strip the messages array before storing — messages are
+              // already tracked individually via addMessageToSubagent,
+              // so keeping them in values is purely redundant overhead.
+              const { messages: _stripped, ...valuesWithoutMessages } =
+                valuesData;
               this.subagentManager.updateSubagentValues(
                 namespaceId,
-                valuesData
+                valuesWithoutMessages
               );
             }
           } else if (
@@ -601,15 +605,20 @@ export class StreamManager<
         if (this.matchEventType("messages", event, data)) {
           const [serialized, metadata] = data;
 
-          // Check if this message is from a subagent namespace
+          // Check if this message is from a subagent namespace.
+          // Metadata may be null for subsequent chunks (deduplication),
+          // so we fall back to the event namespace which is always present.
           const rawCheckpointNs =
             (metadata?.langgraph_checkpoint_ns as string | undefined) ||
             (metadata?.checkpoint_ns as string | undefined);
           const checkpointNs: string | undefined =
             typeof rawCheckpointNs === "string" ? rawCheckpointNs : undefined;
-          const isFromSubagent = isSubagentNamespace(checkpointNs);
+          const isFromSubagent =
+            isSubagentNamespace(checkpointNs) ||
+            isSubagentNamespace(namespace);
           const toolCallId = isFromSubagent
-            ? extractToolCallIdFromNamespace(checkpointNs?.split("|"))
+            ? (extractToolCallIdFromNamespace(checkpointNs?.split("|")) ??
+              extractToolCallIdFromNamespace(namespace))
             : undefined;
 
           // If filtering is enabled and this is a subagent message,
