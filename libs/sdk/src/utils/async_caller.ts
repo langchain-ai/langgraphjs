@@ -155,7 +155,7 @@ export class AsyncCaller {
             }),
           {
             async onFailedAttempt({ error }) {
-              const errorMessage = error?.message ?? "";
+              const errorMessage = error.message ?? "";
               if (
                 errorMessage.startsWith("Cancel") ||
                 errorMessage.startsWith("TimeoutError") ||
