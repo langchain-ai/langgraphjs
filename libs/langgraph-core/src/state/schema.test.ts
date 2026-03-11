@@ -423,7 +423,10 @@ describe("StateSchema", () => {
         data: new ReducedValue(
           z.array(z.string()).default(() => []),
           {
-            inputSchema: nonJsonInputSchema as unknown as SerializableSchema,
+            inputSchema: nonJsonInputSchema as unknown as SerializableSchema<
+              unknown,
+              string
+            >,
             reducer: (current: string[], next: string) => [...current, next],
             jsonSchemaExtra: {
               langgraph_type: "custom",
