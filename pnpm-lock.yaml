@@ -2228,9 +2228,6 @@ importers:
       '@angular/core':
         specifier: ^18.0.0 || ^19.0.0 || ^20.0.0
         version: 20.3.17(@angular/compiler@20.3.17)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@langchain/react':
-        specifier: '*'
-        version: 0.0.1(@langchain/core@1.1.31(openai@6.27.0(ws@8.19.0)(zod@4.3.6)))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2256,6 +2253,12 @@ importers:
       '@types/node':
         specifier: ^18.15.11
         version: 18.19.130
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
       '@types/uuid':
         specifier: ^9.0.1
         version: 9.0.8
@@ -2292,6 +2295,12 @@ importers:
       prettier:
         specifier: ^2.8.3
         version: 2.8.8
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.4(react@19.2.4)
       svelte:
         specifier: ^5.43.6
         version: 5.53.9
@@ -3801,13 +3810,6 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': '>=1.1.27'
-
-  '@langchain/react@0.0.1':
-    resolution: {integrity: sha512-gCftYo8XHnMvzZHjW2dZupyRlNshhCAHwht9KCydlQV4QqChE506ki3r4QpPzgAuexMIMmcaU52e2tKmopdITA==}
-    peerDependencies:
-      '@langchain/core': '>=1.1.27'
-      react: ^18 || ^19
-      react-dom: ^18 || ^19
 
   '@langchain/scripts@0.1.4':
     resolution: {integrity: sha512-O+mv2aqUIm3XWxYBrwFWMeTI3aHWeFR8OYjGFXKc1MGV/3LLao3PciyQvKUg1SL7FemHJ1ltDx74rKuEv8xxPA==}
@@ -11208,13 +11210,6 @@ snapshots:
       zod: 4.3.6
     transitivePeerDependencies:
       - ws
-
-  '@langchain/react@0.0.1(@langchain/core@1.1.31(openai@6.27.0(ws@8.19.0)(zod@4.3.6)))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
-    dependencies:
-      '@langchain/core': 1.1.31(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/langgraph-sdk': link:libs/sdk
-      react: 19.2.4
-      react-dom: 19.2.4(react@19.2.4)
 
   '@langchain/scripts@0.1.4':
     dependencies:
