@@ -1,5 +1,35 @@
 # @langchain/svelte
 
+## 0.1.3
+
+### Patch Changes
+
+- [#2014](https://github.com/langchain-ai/langgraphjs/pull/2014) [`745112c`](https://github.com/langchain-ai/langgraphjs/commit/745112c0d754d0403aab415f46550dd61474dbd9) Thanks [@TheComputerM](https://github.com/TheComputerM)! - fix: use optimistic threadId in a custom stream
+
+- [#2165](https://github.com/langchain-ai/langgraphjs/pull/2165) [`8faf05c`](https://github.com/langchain-ai/langgraphjs/commit/8faf05c939051effda4d3566d2f24a0a96ae7a56) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(sdk): convert history messages to BaseMessage instances in framework SDKs
+
+  When accessing `stream.history` in the framework SDK packages (React,
+  Svelte, Angular, Vue), messages within thread state values are now
+  converted to proper @langchain/core BaseMessage class instances (e.g.
+  HumanMessage, AIMessage) instead of being returned as plain objects.
+
+  The base `@langchain/langgraph-sdk` package is intentionally unchanged
+  and continues to return plain Message dicts for backward compatibility.
+
+  - Add `ensureHistoryMessageInstances` utility to convert messages within
+    ThreadState values to BaseMessage instances
+  - Add `HistoryWithBaseMessages` type utility so `state.values.messages`
+    is typed as `BaseMessage[]` in framework SDK history
+  - Update `WithClassMessages` in all four framework SDKs to remap the
+    `history` property type accordingly
+  - Add unit tests (messages.test.ts) and type tests (stream-types.test-d.ts)
+    in the base SDK verifying plain Message behavior is preserved
+  - Add integration tests and type tests in all four framework SDKs
+    verifying BaseMessage conversion
+
+- Updated dependencies [[`745112c`](https://github.com/langchain-ai/langgraphjs/commit/745112c0d754d0403aab415f46550dd61474dbd9), [`8faf05c`](https://github.com/langchain-ai/langgraphjs/commit/8faf05c939051effda4d3566d2f24a0a96ae7a56)]:
+  - @langchain/langgraph-sdk@1.7.1
+
 ## 0.1.2
 
 ### Patch Changes
