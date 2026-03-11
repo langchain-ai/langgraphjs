@@ -1319,6 +1319,37 @@ export class ThreadsClient<
   }
 
   /**
+   * Patch the metadata of a thread.
+   *
+   * @param threadIdOrConfig Thread ID or config to patch the state of.
+   * @param metadata Metadata to patch the state with.
+   */
+  async patchState(
+    threadIdOrConfig: string | Config,
+    metadata: Metadata,
+    options?: { signal?: AbortSignal }
+  ): Promise<void> {
+    let threadId: string;
+
+    if (typeof threadIdOrConfig !== "string") {
+      if (typeof threadIdOrConfig.configurable?.thread_id !== "string") {
+        throw new Error(
+          "Thread ID is required when updating state with a config."
+        );
+      }
+      threadId = threadIdOrConfig.configurable.thread_id;
+    } else {
+      threadId = threadIdOrConfig;
+    }
+
+    return this.fetch<void>(`/threads/${threadId}/state`, {
+      method: "PATCH",
+      json: { metadata },
+      signal: options?.signal,
+    });
+  }
+
+  /**
    * Get all past states for a thread.
    *
    * @param threadId ID of the thread.
