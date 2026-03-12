@@ -216,9 +216,10 @@ describe("StreamMessagesHandler", () => {
 
     it("sends full metadata with first chunk, null for subsequent chunks in v2", () => {
       const collected: StreamChunk[] = [];
-      const handler = new StreamMessagesHandler((chunk) =>
-        collected.push(chunk)
-      , { dedupeMetadata: true });
+      const handler = new StreamMessagesHandler(
+        (chunk) => collected.push(chunk),
+        { dedupeMetadata: true }
+      );
 
       const runId = "run-123";
       const metadata = {
@@ -380,9 +381,10 @@ describe("StreamMessagesHandler", () => {
 
     it("resets metadata tracking between separate LLM runs", () => {
       const collected: StreamChunk[] = [];
-      const handler = new StreamMessagesHandler((chunk) =>
-        collected.push(chunk)
-      , { dedupeMetadata: true });
+      const handler = new StreamMessagesHandler(
+        (chunk) => collected.push(chunk),
+        { dedupeMetadata: true }
+      );
 
       const metadata = {
         langgraph_checkpoint_ns: "agent:task_4",

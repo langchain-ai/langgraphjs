@@ -174,11 +174,11 @@ export async function* streamState(
   const streamProtocolVersion =
     options.streamProtocolVersion ??
     kwargs.stream_protocol_version ??
-    ((kwargs.config?.configurable?.[STREAM_PROTOCOL_CONFIG_KEY] as
+    (kwargs.config?.configurable?.[STREAM_PROTOCOL_CONFIG_KEY] as
       | "v1"
       | "v2"
       | undefined) ??
-      "v1");
+    "v1";
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(

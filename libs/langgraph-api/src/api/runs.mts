@@ -84,7 +84,8 @@ const createValidRun = async (
 
   if (run.stream_protocol_version) {
     config.configurable ??= {};
-    config.configurable.__stream_protocol_version__ = run.stream_protocol_version;
+    config.configurable.__stream_protocol_version__ =
+      run.stream_protocol_version;
   }
 
   if (headers) {
@@ -239,7 +240,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       payload.on_disconnect === "cancel"
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
-      const streamProtocolVersion = payload.stream_protocol_version;
+    const streamProtocolVersion = payload.stream_protocol_version;
 
     try {
       for await (const { event, data } of runs().stream.join(
@@ -407,7 +408,7 @@ api.post(
         payload.on_disconnect === "cancel"
           ? getDisconnectAbortSignal(c, stream)
           : undefined;
-        const streamProtocolVersion = payload.stream_protocol_version;
+      const streamProtocolVersion = payload.stream_protocol_version;
 
       try {
         for await (const { id, event, data } of runs().stream.join(

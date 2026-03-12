@@ -509,7 +509,10 @@ export function createEmbedServer(options: {
               signal,
             })) {
               await stream.writeSSE({
-                data: serialiseRunChunk(data, run.kwargs.stream_protocol_version),
+                data: serialiseRunChunk(
+                  data,
+                  run.kwargs.stream_protocol_version
+                ),
                 event,
               });
             }
