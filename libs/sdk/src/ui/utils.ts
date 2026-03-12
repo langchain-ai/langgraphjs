@@ -4,15 +4,13 @@ export function unique<T>(array: T[]) {
   return [...new Set(array)] as T[];
 }
 
-export function withCompactStreamMode(
-  streamMode?: StreamMode | StreamMode[]
-) {
+export function withCompactStreamMode(streamMode?: StreamMode | StreamMode[]) {
   return unique([
     ...(streamMode == null
       ? []
       : Array.isArray(streamMode)
-        ? streamMode
-        : [streamMode]),
+      ? streamMode
+      : [streamMode]),
     "compact" as StreamMode,
   ]);
 }
