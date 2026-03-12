@@ -5,14 +5,11 @@ export function unique<T>(array: T[]) {
 }
 
 export function withCompactStreamMode(streamMode?: StreamMode | StreamMode[]) {
-  return unique([
-    ...(streamMode == null
-      ? []
-      : Array.isArray(streamMode)
-      ? streamMode
-      : [streamMode]),
-    "compact" as StreamMode,
-  ]);
+  let modes: StreamMode[] = [];
+  if (streamMode != null) {
+    modes = Array.isArray(streamMode) ? streamMode : [streamMode];
+  }
+  return unique([...modes, "compact" as StreamMode]);
 }
 
 export function findLast<T>(array: T[], predicate: (item: T) => boolean) {
