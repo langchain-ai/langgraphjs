@@ -18,6 +18,7 @@ import {
 } from "./utils/runnableConfig.mjs";
 
 type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
+type StreamEventName = LangGraphStreamMode | "values-patch";
 
 interface DebugTask {
   id: string;
@@ -238,7 +239,8 @@ export async function* streamState(
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
-      (mode) => mode !== "events" && mode !== "messages-tuple"
+      (mode): mode is LangGraphStreamMode =>
+        mode !== "events" && mode !== "messages-tuple"
     ) ?? []
   );
 
@@ -356,7 +358,7 @@ export async function* streamState(
         data = debugTask;
       }
 
-      let eventName = mode;
+      let eventName: StreamEventName = mode;
       if (
         mode === "values" &&
         streamProtocolVersion === "v2" &&
