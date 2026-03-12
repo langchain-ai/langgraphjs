@@ -10,8 +10,8 @@
     "build": "vite build",
     "preview": "vite preview --port 4600",
     "type-check": "tsc --noEmit",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix"
+    "format": "prettier --write src",
+    "lint": "prettier --check src"
   },
   "dependencies": {
     "@langchain/core": "^1.1.32",

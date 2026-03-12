@@ -9,7 +9,8 @@
     "dev:server": "langgraphjs dev --no-browser",
     "build": "vite build",
     "build:internal": "tsc -b && vite build",
-    "lint": "prettier --check .",
+    "format": "prettier --write src",
+    "lint": "prettier --check src",
     "preview": "vite preview"
   },
   "dependencies": {
