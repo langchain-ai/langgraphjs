@@ -837,11 +837,12 @@ describe("StreamManager", () => {
           } as unknown as TestState,
         },
         {
-          event: "values|tools:call_1|model:task_1" as "values",
+          event: "values-patch|tools:call_1|model:task_1" as "values",
           data: {
-            __langgraph_delta__: true,
-            someOtherState: { counter: 2 },
-            newField: "done",
+            values: {
+              someOtherState: { counter: 2 },
+              newField: "done",
+            },
           } as unknown as TestState,
         },
       ];
@@ -924,11 +925,12 @@ describe("StreamManager", () => {
           } as unknown as TestState,
         },
         {
-          event: "values|tools:call_1|model:task_1" as "values",
+          event: "values-patch|tools:call_1|model:task_1" as "values",
           data: {
-            __langgraph_delta__: true,
-            __langgraph_deleted_keys__: ["removeMe"],
-            keepMe: true,
+            values: {
+              keepMe: true,
+            },
+            deleted_keys: ["removeMe"],
           } as unknown as TestState,
         },
       ];

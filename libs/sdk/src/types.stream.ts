@@ -46,9 +46,23 @@ export type ValuesStreamEvent<StateType> = {
   data: StateType;
 };
 
+export type ValuesPatchStreamEvent<StateType> = {
+  id?: string;
+  event: "values-patch";
+  data: {
+    values: Partial<StateType>;
+    deleted_keys?: string[];
+  };
+};
+
 /** @internal */
 export type SubgraphValuesStreamEvent<StateType> = AsSubgraph<
   ValuesStreamEvent<StateType>
+>;
+
+/** @internal */
+export type SubgraphValuesPatchStreamEvent<StateType> = AsSubgraph<
+  ValuesPatchStreamEvent<StateType>
 >;
 
 /**

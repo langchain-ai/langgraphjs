@@ -143,8 +143,6 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
 let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
 const STREAM_PROTOCOL_CONFIG_KEY = "__stream_protocol_version__";
-const DELTA_MARKER_KEY = "__langgraph_delta__";
-const DELTA_DELETED_KEYS = "__langgraph_deleted_keys__";
 
 function hasToolsNamespace(ns: string[] | null): boolean {
   return Array.isArray(ns) && ns.some((part) => part.startsWith("tools:"));
@@ -172,9 +170,7 @@ export function createSubgraphValuesDeltaTracker() {
         return current;
       }
 
-      const delta: Record<string, unknown> = {
-        [DELTA_MARKER_KEY]: true,
-      };
+      const delta: Record<string, unknown> = {};
       const deletedKeys: string[] = [];
       let changed = false;
 
@@ -194,11 +190,9 @@ export function createSubgraphValuesDeltaTracker() {
 
       seen.set(key, current);
 
-      if (deletedKeys.length > 0) {
-        delta[DELTA_DELETED_KEYS] = deletedKeys;
-      }
-
-      return changed ? delta : null;
+      return changed
+        ? { values: delta, ...(deletedKeys.length ? { deleted_keys: deletedKeys } : {}) }
+        : null;
     },
   };
 }
@@ -357,7 +351,10 @@ export async function* streamState(
           options?.onTaskResult?.(debugTask);
         }
         data = debugTask;
-      } else if (
+      }
+
+      let eventName = mode;
+      if (
         mode === "values" &&
         streamProtocolVersion === "v2" &&
         hasToolsNamespace(ns) &&
@@ -372,9 +369,10 @@ export async function* streamState(
           continue;
         }
         data = delta;
+        eventName = "values-patch";
       }
 
-      if (mode === "messages") {
+      if (eventName === "messages") {
         if (userStreamMode.includes("messages-tuple")) {
           if (kwargs.subgraphs && ns?.length) {
             yield { event: `messages|${ns.join("|")}`, data };
@@ -382,11 +380,14 @@ export async function* streamState(
             yield { event: "messages", data };
           }
         }
-      } else if (userStreamMode.includes(mode)) {
+      } else if (
+        userStreamMode.includes(mode) ||
+        (eventName === "values-patch" && userStreamMode.includes("values"))
+      ) {
         if (kwargs.subgraphs && ns?.length) {
-          yield { event: `${mode}|${ns.join("|")}`, data };
+          yield { event: `${eventName}|${ns.join("|")}`, data };
         } else {
-          yield { event: mode, data };
+          yield { event: eventName, data };
         }
       }
     } else if (userStreamMode.includes("events")) {

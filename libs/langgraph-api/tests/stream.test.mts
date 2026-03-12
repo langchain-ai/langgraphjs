@@ -32,9 +32,10 @@ describe("createSubgraphValuesDeltaTracker", () => {
         count: 2,
       })
     ).toEqual({
-      __langgraph_delta__: true,
-      todos: [{ id: "1", content: "x" }],
-      count: 2,
+      values: {
+        todos: [{ id: "1", content: "x" }],
+        count: 2,
+      },
     });
   });
 
@@ -51,8 +52,8 @@ describe("createSubgraphValuesDeltaTracker", () => {
         keep: true,
       })
     ).toEqual({
-      __langgraph_delta__: true,
-      __langgraph_deleted_keys__: ["remove"],
+      values: {},
+      deleted_keys: ["remove"],
     });
   });
 

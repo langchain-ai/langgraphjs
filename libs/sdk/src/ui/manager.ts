@@ -12,6 +12,7 @@ import type {
   TasksStreamEvent,
   ToolsStreamEvent,
   UpdatesStreamEvent,
+  ValuesPatchStreamEvent,
   ValuesStreamEvent,
 } from "../types.stream.js";
 import { MessageTupleManager, toMessageDict } from "./messages.js";
@@ -46,6 +47,7 @@ type GetCustomEventType<Bag extends BagTemplate> = Bag extends {
 
 type EventStreamMap<StateType, UpdateType, CustomType> = {
   values: ValuesStreamEvent<StateType>;
+  "values-patch": ValuesPatchStreamEvent<StateType>;
   updates: UpdatesStreamEvent<UpdateType>;
   custom: CustomStreamEvent<CustomType>;
   debug: DebugStreamEvent;
@@ -555,20 +557,29 @@ export class StreamManager<
           options.callbacks.onToolEvent?.(data, { namespace, mutate });
         }
 
-        // Handle values events - use startsWith to match both "values" and "values|tools:xxx"
-        if (event === "values" || event.startsWith("values|")) {
+        // Handle values and values-patch events for both root and subgraphs
+        if (
+          event === "values" ||
+          event.startsWith("values|") ||
+          event === "values-patch" ||
+          event.startsWith("values-patch|")
+        ) {
+          const isValuesPatch =
+            event === "values-patch" || event.startsWith("values-patch|");
           // Check if this is a subgraph values event (for namespace mapping and values)
           if (namespace && isSubagentNamespace(namespace)) {
             const namespaceId = extractToolCallIdFromNamespace(namespace);
             if (namespaceId && this.filterSubagentMessages) {
-              const valuesData = data as Record<string, unknown>;
-              const isDelta = valuesData.__langgraph_delta__ === true;
-              const deletedKeys = Array.isArray(
-                valuesData.__langgraph_deleted_keys__
-              )
-                ? valuesData.__langgraph_deleted_keys__.filter(
+              const valuesPayload = isValuesPatch
+                ? (data as ValuesPatchStreamEvent<StateType>["data"])
+                : undefined;
+              const valuesData = isValuesPatch
+                ? ((valuesPayload?.values as Record<string, unknown>) ?? {})
+                : (data as Record<string, unknown>);
+              const deletedKeys = isValuesPatch
+                ? valuesPayload?.deleted_keys?.filter(
                     (key): key is string => typeof key === "string"
-                  )
+                  ) ?? []
                 : [];
 
               // Try to establish namespace mapping from the initial human message
@@ -589,16 +600,11 @@ export class StreamManager<
               // Strip the messages array before storing — messages are
               // already tracked individually via addMessageToSubagent,
               // so keeping them in values is purely redundant overhead.
-              const {
-                messages: _stripped,
-                __langgraph_delta__: _deltaMarker,
-                __langgraph_deleted_keys__: _deletedKeys,
-                ...valuesWithoutMessages
-              } = valuesData;
+              const { messages: _stripped, ...valuesWithoutMessages } = valuesData;
               this.subagentManager.updateSubagentValues(
                 namespaceId,
                 valuesWithoutMessages,
-                { merge: isDelta, deletedKeys }
+                { merge: isValuesPatch, deletedKeys }
               );
             }
           } else if (

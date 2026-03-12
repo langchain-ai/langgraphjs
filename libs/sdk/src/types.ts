@@ -14,6 +14,7 @@ export type StreamEvent =
   | "debug"
   | "updates"
   | "values"
+  | "values-patch"
   | "messages/partial"
   | "messages/metadata"
   | "messages/complete"
