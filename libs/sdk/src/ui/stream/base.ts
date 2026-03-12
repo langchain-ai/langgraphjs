@@ -21,6 +21,7 @@ import type {
   MessageMetadata,
   SubmitOptions,
 } from "../types.js";
+import type { QueueInterface } from "../queue.js";
 
 /**
  * Base stream interface shared by all stream types.
@@ -187,6 +188,21 @@ export interface BaseStream<
       }) => boolean;
     }
   ) => Promise<void>;
+
+  /**
+   * Switch to a different thread, clearing the current stream state.
+   * Pass `null` to reset to no thread (a new thread will be created on next submit).
+   */
+  switchThread: (newThreadId: string | null) => void;
+
+  /**
+   * Server-side submission queue. Pending runs created via
+   * `multitaskStrategy: "enqueue"` when submitting while the agent is busy.
+   */
+  queue: QueueInterface<
+    StateType,
+    SubmitOptions<StateType, GetConfigurableType<Bag>>
+  >;
 }
 
 // Note: BaseStreamOptions is not defined here - we use UseStreamOptions from types.ts

@@ -24,7 +24,7 @@
     "release": "pnpm changeset publish"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^0.5.2",
+    "@changesets/changelog-github": "^0.6.0",
     "@swc/core": "^1.3.90",
     "@tsconfig/recommended": "^1.0.3",
     "@types/d3": "^7",
@@ -41,7 +41,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "^1.1.28",
+      "@langchain/core": ">=1.1.27",
+      "langchain": ">=1.2.27",
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",

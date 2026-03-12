@@ -143,9 +143,18 @@ jobs:
         run: tar -xzf build-artifacts.tar.gz
         shell: bash
       - name: Test
-        # Run tests directly with pnpm, bypassing turbo's build dependency
-        # since build artifacts are already extracted.
-        run: pnpm -r --if-present run test
+        # Run non-browser tests directly with pnpm, bypassing turbo's build
+        # dependency since build artifacts are already extracted.
+        # Browser tests (sdk-react, sdk-angular, sdk-vue, sdk-svelte) run in
+        # a dedicated job to avoid Chrome connection timeouts.
+        run: pnpm -r --if-present --filter='!@langchain/react' --filter='!@langchain/angular' --filter='!@langchain/vue' --filter='!@langchain/svelte' run test
+
+  browser-tests:
+    name: Browser Tests
+    needs: [lint, format, build]
+    uses: ./.github/workflows/test-browser.yml
+    with:
+      artifact-name: build-artifacts
 
   # ============================================
   # Stage 2: Environment/Export Tests (separate workflow)

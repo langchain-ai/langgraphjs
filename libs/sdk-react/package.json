@@ -1,0 +1,112 @@
+{
+  "name": "@langchain/react",
+  "version": "0.1.3",
+  "description": "React integration for LangGraph & LangChain",
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist/ dist-cjs/",
+    "build": "pnpm turbo build:internal --filter=@langchain/react",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/react",
+    "prepublish": "pnpm build",
+    "format:check": "prettier --check src",
+    "format": "prettier --write src",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
+    "lint": "pnpm lint:eslint",
+    "lint:fix": "pnpm lint:eslint --fix",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/sdk-react"
+  },
+  "dependencies": {
+    "@langchain/langgraph-sdk": "workspace:^",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@langchain/core": "^1.1.31",
+    "@langchain/langgraph": "workspace:^",
+    "@langchain/langgraph-api": "workspace:^",
+    "@langchain/langgraph-checkpoint": "workspace:^",
+    "@langchain/scripts": "^0.1.4",
+    "@tsconfig/recommended": "^1.0.13",
+    "@types/node": "^25.4.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "@vitest/browser": "^4.0.18",
+    "@vitest/browser-webdriverio": "^4.0.18",
+    "deepagents": "^1.8.1",
+    "eslint": "^8.33.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "hono": "^4.12.7",
+    "langchain": "^1.2.30",
+    "prettier": "^3.8.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18",
+    "vitest-browser-react": "^2.0.5",
+    "webdriverio": "^9.25.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.1.27",
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "input": "./src/index.ts",
+      "typedoc": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react-ui": {
+      "input": "./src/react-ui/index.ts",
+      "typedoc": "./src/react-ui/index.ts",
+      "import": {
+        "types": "./dist/react-ui/index.d.ts",
+        "default": "./dist/react-ui/index.js"
+      },
+      "require": {
+        "types": "./dist/react-ui/index.d.cts",
+        "default": "./dist/react-ui/index.cjs"
+      }
+    },
+    "./react-ui/server": {
+      "input": "./src/react-ui/server/index.ts",
+      "typedoc": "./src/react-ui/server/index.ts",
+      "import": {
+        "types": "./dist/react-ui/server/index.d.ts",
+        "default": "./dist/react-ui/server/index.js"
+      },
+      "require": {
+        "types": "./dist/react-ui/server/index.d.cts",
+        "default": "./dist/react-ui/server/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/"
+  ]
+}
