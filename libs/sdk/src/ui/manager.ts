@@ -562,6 +562,14 @@ export class StreamManager<
             const namespaceId = extractToolCallIdFromNamespace(namespace);
             if (namespaceId && this.filterSubagentMessages) {
               const valuesData = data as Record<string, unknown>;
+              const isDelta = valuesData.__langgraph_delta__ === true;
+              const deletedKeys = Array.isArray(
+                valuesData.__langgraph_deleted_keys__
+              )
+                ? valuesData.__langgraph_deleted_keys__.filter(
+                    (key): key is string => typeof key === "string"
+                  )
+                : [];
 
               // Try to establish namespace mapping from the initial human message
               const messages = valuesData.messages as unknown[];
@@ -581,11 +589,16 @@ export class StreamManager<
               // Strip the messages array before storing — messages are
               // already tracked individually via addMessageToSubagent,
               // so keeping them in values is purely redundant overhead.
-              const { messages: _stripped, ...valuesWithoutMessages } =
-                valuesData;
+              const {
+                messages: _stripped,
+                __langgraph_delta__: _deltaMarker,
+                __langgraph_deleted_keys__: _deletedKeys,
+                ...valuesWithoutMessages
+              } = valuesData;
               this.subagentManager.updateSubagentValues(
                 namespaceId,
-                valuesWithoutMessages
+                valuesWithoutMessages,
+                { merge: isDelta, deletedKeys }
               );
             }
           } else if (

@@ -786,6 +786,177 @@ describe("StreamManager", () => {
         expect(subagent.values).not.toHaveProperty("messages");
       }
     });
+
+    it("merges v2 delta values into existing subagent values", async () => {
+      const mgr = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "Let me delegate",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Look into trends",
+                  },
+                },
+              ],
+            },
+            { langgraph_checkpoint_ns: "agent:t1", langgraph_node: "agent" },
+          ] as [
+            {
+              id: string;
+              type: string;
+              content: string;
+              tool_calls: Array<{
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              }>;
+            },
+            Record<string, unknown>
+          ],
+        },
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            messages: [{ type: "human", content: "Look into trends" }],
+            someOtherState: { counter: 1 },
+            statusText: "starting",
+          } as unknown as TestState,
+        },
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            __langgraph_delta__: true,
+            someOtherState: { counter: 2 },
+            newField: "done",
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (mgr as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const subagent = mgr.getSubagent("call_1");
+      if (subagent) {
+        expect(subagent.values).toEqual({
+          someOtherState: { counter: 2 },
+          statusText: "starting",
+          newField: "done",
+        });
+      }
+    });
+
+    it("applies deleted keys from v2 delta values", async () => {
+      const mgr = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "Let me delegate",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Look into trends",
+                  },
+                },
+              ],
+            },
+            { langgraph_checkpoint_ns: "agent:t1", langgraph_node: "agent" },
+          ] as [
+            {
+              id: string;
+              type: string;
+              content: string;
+              tool_calls: Array<{
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              }>;
+            },
+            Record<string, unknown>
+          ],
+        },
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            messages: [{ type: "human", content: "Look into trends" }],
+            keepMe: true,
+            removeMe: true,
+          } as unknown as TestState,
+        },
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            __langgraph_delta__: true,
+            __langgraph_deleted_keys__: ["removeMe"],
+            keepMe: true,
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (mgr as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const subagent = mgr.getSubagent("call_1");
+      if (subagent) {
+        expect(subagent.values).toEqual({ keepMe: true });
+        expect(subagent.values).not.toHaveProperty("removeMe");
+      }
+    });
   });
 
   describe("subagent routing with null metadata", () => {

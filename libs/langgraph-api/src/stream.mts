@@ -143,6 +143,65 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
 let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
 const STREAM_PROTOCOL_CONFIG_KEY = "__stream_protocol_version__";
+const DELTA_MARKER_KEY = "__langgraph_delta__";
+const DELTA_DELETED_KEYS = "__langgraph_deleted_keys__";
+
+function hasToolsNamespace(ns: string[] | null): boolean {
+  return Array.isArray(ns) && ns.some((part) => part.startsWith("tools:"));
+}
+
+function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return structuredClone(value);
+}
+
+function isEqualValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function createSubgraphValuesDeltaTracker() {
+  const seen = new Map<string, Record<string, unknown>>();
+
+  return {
+    next(namespace: string[], values: Record<string, unknown>) {
+      const key = namespace.join("|");
+      const previous = seen.get(key);
+      const current = cloneRecord(values);
+
+      if (previous == null) {
+        seen.set(key, current);
+        return current;
+      }
+
+      const delta: Record<string, unknown> = {
+        [DELTA_MARKER_KEY]: true,
+      };
+      const deletedKeys: string[] = [];
+      let changed = false;
+
+      for (const [field, nextValue] of Object.entries(current)) {
+        if (!isEqualValue(previous[field], nextValue)) {
+          delta[field] = nextValue;
+          changed = true;
+        }
+      }
+
+      for (const field of Object.keys(previous)) {
+        if (!(field in current)) {
+          deletedKeys.push(field);
+          changed = true;
+        }
+      }
+
+      seen.set(key, current);
+
+      if (deletedKeys.length > 0) {
+        delta[DELTA_DELETED_KEYS] = deletedKeys;
+      }
+
+      return changed ? delta : null;
+    },
+  };
+}
 
 export async function* streamState(
   run: Run,
@@ -259,6 +318,10 @@ export async function* streamState(
 
   const messages: Record<string, BaseMessageChunk> = {};
   const completedIds = new Set<string>();
+  const subgraphValuesDeltaTracker =
+    streamProtocolVersion === "v2"
+      ? createSubgraphValuesDeltaTracker()
+      : undefined;
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
@@ -294,6 +357,21 @@ export async function* streamState(
           options?.onTaskResult?.(debugTask);
         }
         data = debugTask;
+      } else if (
+        mode === "values" &&
+        streamProtocolVersion === "v2" &&
+        hasToolsNamespace(ns) &&
+        chunk != null &&
+        typeof chunk === "object"
+      ) {
+        const delta = subgraphValuesDeltaTracker?.next(
+          ns ?? [],
+          chunk as Record<string, unknown>
+        );
+        if (delta == null) {
+          continue;
+        }
+        data = delta;
       }
 
       if (mode === "messages") {
