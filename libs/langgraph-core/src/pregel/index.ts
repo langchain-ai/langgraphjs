@@ -2035,8 +2035,11 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
+      const dedupeMetadata =
+        config.configurable?.__stream_protocol_version__ === "v2";
       const messageStreamer = new StreamMessagesHandler((chunk) =>
-        stream.push(chunk)
+        stream.push(chunk),
+        { dedupeMetadata }
       );
       const { callbacks } = config;
       if (callbacks === undefined) {

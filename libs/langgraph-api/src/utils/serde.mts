@@ -6,7 +6,10 @@ const STRIP_EMPTY_ARRAY_KEYS = new Set([
 
 const STRIP_EMPTY_OBJECT_KEYS = new Set(["additional_kwargs"]);
 
-export const serialiseAsDict = (obj: unknown) => {
+export const serialiseAsDict = (
+  obj: unknown,
+  options?: { sparseMessages?: boolean }
+) => {
   return JSON.stringify(
     obj,
     function (
@@ -26,8 +29,8 @@ export const serialiseAsDict = (obj: unknown) => {
         return { ...data, type };
       }
 
-      // Strip empty arrays for known message chunk defaults
       if (
+        options?.sparseMessages &&
         typeof key === "string" &&
         STRIP_EMPTY_ARRAY_KEYS.has(key) &&
         Array.isArray(value) &&
@@ -36,8 +39,8 @@ export const serialiseAsDict = (obj: unknown) => {
         return undefined;
       }
 
-      // Strip empty objects for known message chunk defaults
       if (
+        options?.sparseMessages &&
         typeof key === "string" &&
         STRIP_EMPTY_OBJECT_KEYS.has(key) &&
         typeof value === "object" &&

@@ -62,6 +62,8 @@ export type StreamMode =
   | "checkpoints"
   | "tools";
 
+export type StreamProtocolVersion = "v1" | "v2";
+
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 
 export type OnConflictBehavior = "raise" | "do_nothing";
@@ -112,6 +114,7 @@ export interface RunKwargs {
   command?: RunCommand;
 
   stream_mode?: Array<StreamMode>;
+  stream_protocol_version?: StreamProtocolVersion;
 
   interrupt_before?: "*" | string[] | undefined;
   interrupt_after?: "*" | string[] | undefined;

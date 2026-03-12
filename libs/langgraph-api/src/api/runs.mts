@@ -9,7 +9,11 @@ import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
-import type { Run, RunKwargs } from "../storage/types.mjs";
+import type {
+  Run,
+  RunKwargs,
+  StreamProtocolVersion,
+} from "../storage/types.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
@@ -18,6 +22,23 @@ import {
 import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
+
+const isStreamProtocolV2 = (
+  version: StreamProtocolVersion | undefined
+): boolean => version === "v2";
+
+const getRunStreamProtocolVersion = (
+  run: Run | null | undefined
+): StreamProtocolVersion | undefined =>
+  run?.kwargs.stream_protocol_version ??
+  (run?.kwargs.config?.configurable?.__stream_protocol_version__ as
+    | StreamProtocolVersion
+    | undefined);
+
+const serialiseRunChunk = (
+  data: unknown,
+  version: StreamProtocolVersion | undefined
+) => serialiseAsDict(data, { sparseMessages: isStreamProtocolV2(version) });
 
 const createValidRun = async (
   threadId: string | undefined,
@@ -59,6 +80,11 @@ const createValidRun = async (
       langsmith_project: run.langsmith_tracer.project_name,
       langsmith_example_id: run.langsmith_tracer.example_id,
     });
+  }
+
+  if (run.stream_protocol_version) {
+    config.configurable ??= {};
+    config.configurable.__stream_protocol_version__ = run.stream_protocol_version;
   }
 
   if (headers) {
@@ -112,6 +138,7 @@ const createValidRun = async (
         threadId == null && (run.on_completion ?? "delete") === "delete",
       subgraphs: run.stream_subgraphs ?? false,
       resumable: run.stream_resumable ?? false,
+      stream_protocol_version: run.stream_protocol_version,
     },
     {
       threadId,
@@ -212,6 +239,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       payload.on_disconnect === "cancel"
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
+      const streamProtocolVersion = payload.stream_protocol_version;
 
     try {
       for await (const { event, data } of runs().stream.join(
@@ -224,7 +252,10 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         },
         c.var.auth
       )) {
-        await stream.writeSSE({ data: serialiseAsDict(data), event });
+        await stream.writeSSE({
+          data: serialiseRunChunk(data, streamProtocolVersion),
+          event,
+        });
       }
     } catch (error) {
       logError(error, { prefix: "Error streaming run" });
@@ -243,6 +274,7 @@ api.get(
   async (c) => {
     const { run_id } = c.req.valid("param");
     const query = c.req.valid("query");
+    const run = await runs().get(run_id, undefined, c.var.auth);
 
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
     c.header("Content-Location", `/runs/${run_id}`);
@@ -258,7 +290,11 @@ api.get(
           { cancelOnDisconnect, lastEventId, ignore404: true },
           c.var.auth
         )) {
-          await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+          await stream.writeSSE({
+            id,
+            data: serialiseRunChunk(data, getRunStreamProtocolVersion(run)),
+            event,
+          });
         }
       } catch (error) {
         logError(error, { prefix: "Error streaming run" });
@@ -371,6 +407,7 @@ api.post(
         payload.on_disconnect === "cancel"
           ? getDisconnectAbortSignal(c, stream)
           : undefined;
+        const streamProtocolVersion = payload.stream_protocol_version;
 
       try {
         for await (const { id, event, data } of runs().stream.join(
@@ -382,7 +419,11 @@ api.post(
           },
           c.var.auth
         )) {
-          await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+          await stream.writeSSE({
+            id,
+            data: serialiseRunChunk(data, streamProtocolVersion),
+            event,
+          });
         }
       } catch (error) {
         logError(error, { prefix: "Error streaming run" });
@@ -469,6 +510,7 @@ api.get(
     // Stream Run Http
     const { thread_id, run_id } = c.req.valid("param");
     const { cancel_on_disconnect } = c.req.valid("query");
+    const run = await runs().get(run_id, thread_id, c.var.auth);
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
 
     return streamSSE(c, async (stream) => {
@@ -482,7 +524,11 @@ api.get(
         { cancelOnDisconnect: signal, lastEventId },
         c.var.auth
       )) {
-        await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+        await stream.writeSSE({
+          id,
+          data: serialiseRunChunk(data, getRunStreamProtocolVersion(run)),
+          event,
+        });
       }
     });
   }

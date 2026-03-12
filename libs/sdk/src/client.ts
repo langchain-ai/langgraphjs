@@ -1470,6 +1470,7 @@ export class RunsClient<
       context: payload?.context,
       metadata: payload?.metadata,
       stream_mode: payload?.streamMode,
+      stream_protocol_version: payload?.streamProtocolVersion,
       stream_subgraphs: payload?.streamSubgraphs,
       stream_resumable: payload?.streamResumable,
       feedback_keys: payload?.feedbackKeys,
@@ -1526,6 +1527,7 @@ export class RunsClient<
       context: payload?.context,
       metadata: payload?.metadata,
       stream_mode: payload?.streamMode,
+      stream_protocol_version: payload?.streamProtocolVersion,
       stream_subgraphs: payload?.streamSubgraphs,
       stream_resumable: payload?.streamResumable,
       feedback_keys: payload?.feedbackKeys,
@@ -1573,7 +1575,11 @@ export class RunsClient<
     options?: { signal?: AbortSignal }
   ): Promise<Run[]> {
     const filteredPayloads = payloads
-      .map((payload) => ({ ...payload, assistant_id: payload.assistantId }))
+      .map((payload) => ({
+        ...payload,
+        assistant_id: payload.assistantId,
+        stream_protocol_version: payload.streamProtocolVersion,
+      }))
       .map((payload) => {
         return Object.fromEntries(
           Object.entries(payload).filter(([_, v]) => v !== undefined)
@@ -1618,6 +1624,7 @@ export class RunsClient<
       config: payload?.config,
       context: payload?.context,
       metadata: payload?.metadata,
+      stream_protocol_version: payload?.streamProtocolVersion,
       assistant_id: assistantId,
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,

@@ -241,6 +241,7 @@ export const RunCreate = z
       .optional(),
     stream_subgraphs: z.boolean().optional(),
     stream_resumable: z.boolean().optional(),
+    stream_protocol_version: z.enum(["v1", "v2"]).optional(),
     after_seconds: z.number().optional(),
     if_not_exists: z.enum(["reject", "create"]).optional(),
     on_completion: z.enum(["delete", "keep"]).optional(),

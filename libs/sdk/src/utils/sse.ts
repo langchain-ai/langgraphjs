@@ -91,7 +91,7 @@ export function BytesLineDecoder() {
 }
 
 interface StreamPart {
-  id: string | undefined;
+  id?: string;
   event: string;
   data: unknown;
 }
@@ -101,6 +101,7 @@ export function SSEDecoder() {
   let data: Uint8Array[] = [];
   let lastEventId = "";
   let retry: number | null = null;
+  let sawIdForCurrentEvent = false;
 
   const decoder = new TextDecoder();
 
@@ -110,16 +111,19 @@ export function SSEDecoder() {
       if (!chunk.length) {
         if (!event && !data.length && !lastEventId && retry == null) return;
 
-        const sse = {
-          id: lastEventId || undefined,
+        const sse: StreamPart = {
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
         };
+        if (sawIdForCurrentEvent && lastEventId !== "") {
+          sse.id = lastEventId;
+        }
 
         // NOTE: as per the SSE spec, do not reset lastEventId
         event = "";
         data = [];
         retry = null;
+        sawIdForCurrentEvent = false;
 
         controller.enqueue(sse);
         return;
@@ -140,6 +144,7 @@ export function SSEDecoder() {
       } else if (fieldName === "data") {
         data.push(value);
       } else if (fieldName === "id") {
+        sawIdForCurrentEvent = true;
         if (value.indexOf(NULL) === -1) lastEventId = decoder.decode(value);
       } else if (fieldName === "retry") {
         const retryNum = Number.parseInt(decoder.decode(value), 10);
@@ -149,11 +154,14 @@ export function SSEDecoder() {
 
     flush(controller) {
       if (event) {
-        controller.enqueue({
-          id: lastEventId || undefined,
+        const sse: StreamPart = {
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
-        });
+        };
+        if (sawIdForCurrentEvent && lastEventId !== "") {
+          sse.id = lastEventId;
+        }
+        controller.enqueue(sse);
       }
     },
   });

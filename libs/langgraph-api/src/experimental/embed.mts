@@ -9,7 +9,12 @@ import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v7 as uuidv7 } from "uuid";
 
-import type { Metadata, MultitaskStrategy, Run } from "../storage/types.mjs";
+import type {
+  Metadata,
+  MultitaskStrategy,
+  Run,
+  StreamProtocolVersion,
+} from "../storage/types.mjs";
 import * as schemas from "../schemas.mjs";
 
 import { z } from "zod/v3";
@@ -50,6 +55,15 @@ export interface ThreadSaver {
 
 type RunStatus = "pending" | "running" | "success" | "error" | "interrupted";
 
+const isStreamProtocolV2 = (
+  version: StreamProtocolVersion | undefined
+): boolean => version === "v2";
+
+const serialiseRunChunk = (
+  data: unknown,
+  version: StreamProtocolVersion | undefined
+) => serialiseAsDict(data, { sparseMessages: isStreamProtocolV2(version) });
+
 function createStubRun(
   threadId: string,
   payload: z.infer<typeof schemas.RunCreate>,
@@ -83,6 +97,9 @@ function createStubRun(
               langsmith_example_id: payload.langsmith_tracer.example_id,
             }
           : null),
+        ...(payload.stream_protocol_version
+          ? { __stream_protocol_version__: payload.stream_protocol_version }
+          : null),
       },
     },
     { metadata: payload.metadata ?? {} }
@@ -100,6 +117,7 @@ function createStubRun(
       config,
       context: payload.context,
       stream_mode: streamMode,
+      stream_protocol_version: payload.stream_protocol_version,
       interrupt_before: payload.interrupt_before,
       interrupt_after: payload.interrupt_after,
       feedback_keys: payload.feedback_keys,
@@ -472,7 +490,7 @@ export function createEmbedServer(options: {
           const run = await waitForRunReady(thread_id, run_id, signal);
           if (!run) {
             await stream.writeSSE({
-              data: serialiseAsDict({ error: "Run not found" }),
+              data: serialiseRunChunk({ error: "Run not found" }, undefined),
               event: "error",
             });
             return;
@@ -490,11 +508,17 @@ export function createEmbedServer(options: {
               getGraph,
               signal,
             })) {
-              await stream.writeSSE({ data: serialiseAsDict(data), event });
+              await stream.writeSSE({
+                data: serialiseRunChunk(data, run.kwargs.stream_protocol_version),
+                event,
+              });
             }
           } catch (error) {
             await stream.writeSSE({
-              data: serialiseAsDict(serializeError(error)),
+              data: serialiseRunChunk(
+                serializeError(error),
+                run.kwargs.stream_protocol_version
+              ),
               event: "error",
             });
           } finally {
@@ -546,6 +570,7 @@ export function createEmbedServer(options: {
 
       const state = getThreadState(thread_id);
       const run = createStubRun(thread_id, payload);
+      const streamProtocolVersion = run.kwargs.stream_protocol_version;
 
       c.header("Content-Location", `/threads/${thread_id}/runs/${run.run_id}`);
 
@@ -568,11 +593,17 @@ export function createEmbedServer(options: {
             getGraph,
             signal,
           })) {
-            await stream.writeSSE({ data: serialiseAsDict(data), event });
+            await stream.writeSSE({
+              data: serialiseRunChunk(data, streamProtocolVersion),
+              event,
+            });
           }
         } catch (error) {
           await stream.writeSSE({
-            data: serialiseAsDict(serializeError(error)),
+            data: serialiseRunChunk(
+              serializeError(error),
+              streamProtocolVersion
+            ),
             event: "error",
           });
         } finally {
@@ -589,6 +620,7 @@ export function createEmbedServer(options: {
     const payload = c.req.valid("json");
     const threadId = uuidv7();
     const run = createStubRun(threadId, payload);
+    const streamProtocolVersion = run.kwargs.stream_protocol_version;
 
     c.header("Content-Location", `/threads/${threadId}/runs/${run.run_id}`);
 
@@ -610,11 +642,17 @@ export function createEmbedServer(options: {
             getGraph,
             signal,
           })) {
-            await stream.writeSSE({ data: serialiseAsDict(data), event });
+            await stream.writeSSE({
+              data: serialiseRunChunk(data, streamProtocolVersion),
+              event,
+            });
           }
         } catch (error) {
           await stream.writeSSE({
-            data: serialiseAsDict(serializeError(error)),
+            data: serialiseRunChunk(
+              serializeError(error),
+              streamProtocolVersion
+            ),
             event: "error",
           });
         }

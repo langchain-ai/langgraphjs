@@ -142,6 +142,8 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
 
 let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
+const STREAM_PROTOCOL_CONFIG_KEY = "__stream_protocol_version__";
+
 export async function* streamState(
   run: Run,
   options: {
@@ -154,6 +156,7 @@ export async function* streamState(
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
+    streamProtocolVersion?: "v1" | "v2";
   }
 ): AsyncGenerator<{ event: string; data: unknown }> {
   const kwargs = run.kwargs;
@@ -168,6 +171,14 @@ export async function* streamState(
   });
 
   const userStreamMode = kwargs.stream_mode ?? [];
+  const streamProtocolVersion =
+    options.streamProtocolVersion ??
+    kwargs.stream_protocol_version ??
+    ((kwargs.config?.configurable?.[STREAM_PROTOCOL_CONFIG_KEY] as
+      | "v1"
+      | "v2"
+      | undefined) ??
+      "v1");
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
@@ -231,7 +242,10 @@ export async function* streamState(
 
       tags: kwargs.config?.tags,
       context: kwargs.context,
-      configurable: kwargs.config?.configurable,
+      configurable: {
+        ...kwargs.config?.configurable,
+        [STREAM_PROTOCOL_CONFIG_KEY]: streamProtocolVersion,
+      },
       recursionLimit: kwargs.config?.recursion_limit,
       subgraphs: kwargs.subgraphs,
       metadata,

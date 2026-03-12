@@ -164,11 +164,61 @@ describe("toEventStream", () => {
 
 describe("StreamMessagesHandler", () => {
   describe("metadata deduplication for LLM streaming", () => {
-    it("sends full metadata with first chunk, null for subsequent chunks", () => {
+    it("preserves full metadata on every chunk by default (v1)", () => {
       const collected: StreamChunk[] = [];
       const handler = new StreamMessagesHandler((chunk) =>
         collected.push(chunk)
       );
+
+      const runId = "run-v1";
+      const metadata = {
+        langgraph_checkpoint_ns: "agent:task_v1",
+        langgraph_node: "model",
+        langgraph_step: 1,
+      };
+
+      handler.handleChatModelStart(
+        { id: ["test"], lc: 1, type: "not_implemented" },
+        [],
+        runId,
+        undefined,
+        undefined,
+        [],
+        metadata,
+        "model"
+      );
+
+      for (const token of ["Hello", " ", "world"]) {
+        const chunk = new ChatGenerationChunk({
+          message: new AIMessageChunk({ content: token, id: "msg_v1" }),
+          text: token,
+        });
+        handler.handleLLMNewToken(
+          token,
+          { prompt: 0, completion: 0 },
+          runId,
+          undefined,
+          undefined,
+          { chunk }
+        );
+      }
+
+      expect(collected).toHaveLength(3);
+      for (const idx of [0, 1, 2]) {
+        const [, , [, meta]] = collected[idx] as [
+          string[],
+          string,
+          [unknown, Record<string, unknown> | null]
+        ];
+        expect(meta).not.toBeNull();
+      }
+    });
+
+    it("sends full metadata with first chunk, null for subsequent chunks in v2", () => {
+      const collected: StreamChunk[] = [];
+      const handler = new StreamMessagesHandler((chunk) =>
+        collected.push(chunk)
+      , { dedupeMetadata: true });
 
       const runId = "run-123";
       const metadata = {
@@ -332,7 +382,7 @@ describe("StreamMessagesHandler", () => {
       const collected: StreamChunk[] = [];
       const handler = new StreamMessagesHandler((chunk) =>
         collected.push(chunk)
-      );
+      , { dedupeMetadata: true });
 
       const metadata = {
         langgraph_checkpoint_ns: "agent:task_4",

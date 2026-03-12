@@ -7,6 +7,7 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
+export type StreamProtocolVersion = "v1" | "v2";
 export type StreamEvent =
   | "events"
   | "metadata"
@@ -158,6 +159,15 @@ export interface RunsInvokePayload {
    * Callback when a run is created.
    */
   onRunCreated?: (params: { run_id: string; thread_id?: string }) => void;
+
+  /**
+   * Opt into a newer stream protocol.
+   * - `"v1"` preserves the legacy protocol shape.
+   * - `"v2"` enables protocol optimizations such as sparse message chunks,
+   *   metadata deduplication, and subgraph values suppression.
+   * @default "v1"
+   */
+  streamProtocolVersion?: StreamProtocolVersion;
 
   /**
    * @internal
