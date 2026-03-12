@@ -32,7 +32,7 @@
   "license": "MIT",
   "dependencies": {
     "redis": "^4.7.0",
-    "ulid": "^2.3.0"
+    "uuid": "^13.0.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.0.1",
