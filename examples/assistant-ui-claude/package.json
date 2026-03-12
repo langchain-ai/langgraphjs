@@ -1,0 +1,43 @@
+{
+  "name": "@examples/assistant-ui-claude",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm turbo dev:client dev:server --filter=@examples/assistant-ui-claude",
+    "dev:client": "vite",
+    "dev:server": "langgraphjs dev --no-browser",
+    "build": "vite build",
+    "build:internal": "tsc -b && vite build",
+    "lint": "prettier --check .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.12.17",
+    "@assistant-ui/react-markdown": "^0.12.5",
+    "@langchain/core": "^1.1.32",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/openai": "^1.2.13",
+    "@langchain/react": "workspace:*",
+    "@radix-ui/react-icons": "^1.3.2",
+    "langchain": "^1.2.30",
+    "lucide-react": "^0.577.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-cli": "workspace:*",
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.4",
+    "prettier": "^2.8.3",
+    "tailwindcss": "^4.2.1",
+    "tw-shimmer": "^0.4.8",
+    "typescript": "^5",
+    "vite": "^7.0.0"
+  }
+}
