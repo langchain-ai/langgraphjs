@@ -1155,8 +1155,7 @@ describe("runs", () => {
         body: JSON.stringify({
           assistant_id: assistant.assistant_id,
           input,
-          stream_mode: "messages-tuple",
-          stream_protocol_version: "v2",
+          stream_mode: ["messages-tuple", "compact"],
           stream_subgraphs: true,
           config: globalConfig,
         }),

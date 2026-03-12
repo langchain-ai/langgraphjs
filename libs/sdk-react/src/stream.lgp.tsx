@@ -588,7 +588,6 @@ export function useStreamLGP<
 
           checkpoint,
           streamMode,
-          streamProtocolVersion: submitOptions?.streamProtocolVersion,
           streamSubgraphs: submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
@@ -693,7 +692,6 @@ export function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
-              streamProtocolVersion: submitOptions?.streamProtocolVersion,
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

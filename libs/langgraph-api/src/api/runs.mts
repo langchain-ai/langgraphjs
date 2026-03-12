@@ -9,11 +9,7 @@ import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
-import type {
-  Run,
-  RunKwargs,
-  StreamProtocolVersion,
-} from "../storage/types.mjs";
+import type { Run, RunKwargs } from "../storage/types.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
@@ -23,22 +19,22 @@ import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
 
-const isStreamProtocolV2 = (
-  version: StreamProtocolVersion | undefined
-): boolean => version === "v2";
+const hasCompactMode = (modes: string[] | undefined): boolean =>
+  Array.isArray(modes) && modes.includes("compact");
 
-const getRunStreamProtocolVersion = (
-  run: Run | null | undefined
-): StreamProtocolVersion | undefined =>
-  run?.kwargs.stream_protocol_version ??
-  (run?.kwargs.config?.configurable?.__stream_protocol_version__ as
-    | StreamProtocolVersion
-    | undefined);
+const getRunCompactMode = (run: Run | null | undefined): boolean =>
+  hasCompactMode(run?.kwargs.stream_mode) ||
+  run?.kwargs.config?.configurable?.__stream_mode_compact__ === true;
 
-const serialiseRunChunk = (
-  data: unknown,
-  version: StreamProtocolVersion | undefined
-) => serialiseAsDict(data, { sparseMessages: isStreamProtocolV2(version) });
+const serialiseRunChunk = (data: unknown, compact: boolean) =>
+  serialiseAsDict(data, { sparseMessages: compact });
+
+const getPayloadCompactMode = (
+  mode: z.infer<typeof schemas.RunCreate>["stream_mode"]
+): boolean =>
+  hasCompactMode(
+    Array.isArray(mode) ? mode : mode != null ? [mode] : undefined
+  );
 
 const createValidRun = async (
   threadId: string | undefined,
@@ -82,10 +78,9 @@ const createValidRun = async (
     });
   }
 
-  if (run.stream_protocol_version) {
+  if (streamMode.includes("compact")) {
     config.configurable ??= {};
-    config.configurable.__stream_protocol_version__ =
-      run.stream_protocol_version;
+    config.configurable.__stream_mode_compact__ = true;
   }
 
   if (headers) {
@@ -139,7 +134,6 @@ const createValidRun = async (
         threadId == null && (run.on_completion ?? "delete") === "delete",
       subgraphs: run.stream_subgraphs ?? false,
       resumable: run.stream_resumable ?? false,
-      stream_protocol_version: run.stream_protocol_version,
     },
     {
       threadId,
@@ -240,7 +234,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       payload.on_disconnect === "cancel"
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
-    const streamProtocolVersion = payload.stream_protocol_version;
+      const compactMode = getPayloadCompactMode(payload.stream_mode);
 
     try {
       for await (const { event, data } of runs().stream.join(
@@ -254,7 +248,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         c.var.auth
       )) {
         await stream.writeSSE({
-          data: serialiseRunChunk(data, streamProtocolVersion),
+          data: serialiseRunChunk(data, compactMode),
           event,
         });
       }
@@ -293,7 +287,7 @@ api.get(
         )) {
           await stream.writeSSE({
             id,
-            data: serialiseRunChunk(data, getRunStreamProtocolVersion(run)),
+            data: serialiseRunChunk(data, getRunCompactMode(run)),
             event,
           });
         }
@@ -408,7 +402,7 @@ api.post(
         payload.on_disconnect === "cancel"
           ? getDisconnectAbortSignal(c, stream)
           : undefined;
-      const streamProtocolVersion = payload.stream_protocol_version;
+        const compactMode = getPayloadCompactMode(payload.stream_mode);
 
       try {
         for await (const { id, event, data } of runs().stream.join(
@@ -422,7 +416,7 @@ api.post(
         )) {
           await stream.writeSSE({
             id,
-            data: serialiseRunChunk(data, streamProtocolVersion),
+            data: serialiseRunChunk(data, compactMode),
             event,
           });
         }
@@ -527,7 +521,7 @@ api.get(
       )) {
         await stream.writeSSE({
           id,
-          data: serialiseRunChunk(data, getRunStreamProtocolVersion(run)),
+          data: serialiseRunChunk(data, getRunCompactMode(run)),
           event,
         });
       }

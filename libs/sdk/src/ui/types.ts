@@ -15,7 +15,6 @@ import type {
   OnCompletionBehavior,
   DisconnectMode,
   Durability,
-  StreamProtocolVersion,
 } from "../types.js";
 import type {
   UpdatesStreamEvent,
@@ -1294,7 +1293,6 @@ export interface SubmitOptions<
   onDisconnect?: DisconnectMode;
   feedbackKeys?: string[];
   streamMode?: Array<StreamMode>;
-  streamProtocolVersion?: StreamProtocolVersion;
   runId?: string;
   optimisticValues?:
     | Partial<StateType>

@@ -143,7 +143,7 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
 
 let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
-const STREAM_PROTOCOL_CONFIG_KEY = "__stream_protocol_version__";
+const STREAM_MODE_COMPACT_CONFIG_KEY = "__stream_mode_compact__";
 
 function hasToolsNamespace(ns: string[] | null): boolean {
   return Array.isArray(ns) && ns.some((part) => part.startsWith("tools:"));
@@ -213,7 +213,6 @@ export async function* streamState(
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
-    streamProtocolVersion?: "v1" | "v2";
   }
 ): AsyncGenerator<{ event: string; data: unknown }> {
   const kwargs = run.kwargs;
@@ -228,19 +227,14 @@ export async function* streamState(
   });
 
   const userStreamMode = kwargs.stream_mode ?? [];
-  const streamProtocolVersion =
-    options.streamProtocolVersion ??
-    kwargs.stream_protocol_version ??
-    (kwargs.config?.configurable?.[STREAM_PROTOCOL_CONFIG_KEY] as
-      | "v1"
-      | "v2"
-      | undefined) ??
-    "v1";
+  const compactMode =
+    userStreamMode.includes("compact") ||
+    kwargs.config?.configurable?.[STREAM_MODE_COMPACT_CONFIG_KEY] === true;
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
       (mode): mode is LangGraphStreamMode =>
-        mode !== "events" && mode !== "messages-tuple"
+        mode !== "events" && mode !== "messages-tuple" && mode !== "compact"
     ) ?? []
   );
 
@@ -302,7 +296,7 @@ export async function* streamState(
       context: kwargs.context,
       configurable: {
         ...kwargs.config?.configurable,
-        [STREAM_PROTOCOL_CONFIG_KEY]: streamProtocolVersion,
+        [STREAM_MODE_COMPACT_CONFIG_KEY]: compactMode,
       },
       recursionLimit: kwargs.config?.recursion_limit,
       subgraphs: kwargs.subgraphs,
@@ -318,9 +312,7 @@ export async function* streamState(
   const messages: Record<string, BaseMessageChunk> = {};
   const completedIds = new Set<string>();
   const subgraphValuesDeltaTracker =
-    streamProtocolVersion === "v2"
-      ? createSubgraphValuesDeltaTracker()
-      : undefined;
+    compactMode ? createSubgraphValuesDeltaTracker() : undefined;
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
@@ -361,7 +353,7 @@ export async function* streamState(
       let eventName: StreamEventName = mode;
       if (
         mode === "values" &&
-        streamProtocolVersion === "v2" &&
+        compactMode &&
         hasToolsNamespace(ns) &&
         chunk != null &&
         typeof chunk === "object"
