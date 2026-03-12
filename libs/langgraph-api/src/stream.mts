@@ -311,8 +311,9 @@ export async function* streamState(
 
   const messages: Record<string, BaseMessageChunk> = {};
   const completedIds = new Set<string>();
-  const subgraphValuesDeltaTracker =
-    compactMode ? createSubgraphValuesDeltaTracker() : undefined;
+  const subgraphValuesDeltaTracker = compactMode
+    ? createSubgraphValuesDeltaTracker()
+    : undefined;
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;

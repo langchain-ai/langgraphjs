@@ -9,11 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v7 as uuidv7 } from "uuid";
 
-import type {
-  Metadata,
-  MultitaskStrategy,
-  Run,
-} from "../storage/types.mjs";
+import type { Metadata, MultitaskStrategy, Run } from "../storage/types.mjs";
 import * as schemas from "../schemas.mjs";
 
 import { z } from "zod/v3";
@@ -514,7 +510,10 @@ export function createEmbedServer(options: {
             }
           } catch (error) {
             await stream.writeSSE({
-              data: serialiseRunChunk(serializeError(error), getRunCompactMode(run)),
+              data: serialiseRunChunk(
+                serializeError(error),
+                getRunCompactMode(run)
+              ),
               event: "error",
             });
           } finally {

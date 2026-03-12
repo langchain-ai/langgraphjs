@@ -234,7 +234,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       payload.on_disconnect === "cancel"
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
-      const compactMode = getPayloadCompactMode(payload.stream_mode);
+    const compactMode = getPayloadCompactMode(payload.stream_mode);
 
     try {
       for await (const { event, data } of runs().stream.join(
@@ -402,7 +402,7 @@ api.post(
         payload.on_disconnect === "cancel"
           ? getDisconnectAbortSignal(c, stream)
           : undefined;
-        const compactMode = getPayloadCompactMode(payload.stream_mode);
+      const compactMode = getPayloadCompactMode(payload.stream_mode);
 
       try {
         for await (const { id, event, data } of runs().stream.join(

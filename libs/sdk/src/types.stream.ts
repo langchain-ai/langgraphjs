@@ -323,21 +323,19 @@ type GetStreamModeMap<
       checkpoints: CheckpointsStreamEvent<TStateType>;
       events: EventsStreamEvent;
       tools: ToolsStreamEvent;
-    }[
-      Extract<
-        TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode,
-        | "values"
-        | "updates"
-        | "custom"
-        | "debug"
-        | "messages"
-        | "messages-tuple"
-        | "tasks"
-        | "checkpoints"
-        | "events"
-        | "tools"
-      >
-    ]
+    }[Extract<
+      TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode,
+      | "values"
+      | "updates"
+      | "custom"
+      | "debug"
+      | "messages"
+      | "messages-tuple"
+      | "tasks"
+      | "checkpoints"
+      | "events"
+      | "tools"
+    >]
   | ErrorStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
@@ -359,21 +357,19 @@ type GetSubgraphsStreamModeMap<
       tasks: SubgraphTasksStreamEvent<TStateType, TUpdateType>;
       checkpoints: SubgraphCheckpointsStreamEvent<TStateType>;
       tools: SubgraphToolsStreamEvent;
-    }[
-      Extract<
-        TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode,
-        | "values"
-        | "updates"
-        | "custom"
-        | "debug"
-        | "messages"
-        | "messages-tuple"
-        | "events"
-        | "tasks"
-        | "checkpoints"
-        | "tools"
-      >
-    ]
+    }[Extract<
+      TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode,
+      | "values"
+      | "updates"
+      | "custom"
+      | "debug"
+      | "messages"
+      | "messages-tuple"
+      | "events"
+      | "tasks"
+      | "checkpoints"
+      | "tools"
+    >]
   | SubgraphErrorStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
