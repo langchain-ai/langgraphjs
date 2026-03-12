@@ -14,7 +14,7 @@ export { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 export { StreamError } from "./errors.js";
 export { extractInterrupts } from "./interrupts.js";
 export { FetchStreamTransport } from "./transport.js";
-export { unique, findLast, filterStream } from "./utils.js";
+export { unique, withCompactStreamMode, findLast, filterStream } from "./utils.js";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,

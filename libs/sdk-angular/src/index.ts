@@ -10,6 +10,7 @@ import {
   MessageTupleManager,
   PendingRunsTracker,
   filterStream,
+  withCompactStreamMode,
   getBranchContext,
   getMessagesMetadataMap,
   StreamError,
@@ -498,7 +499,7 @@ export function useStreamLGP<
         }
 
         const streamMode = new Set<StreamMode>([
-          ...(submitOptions?.streamMode ?? []),
+          ...withCompactStreamMode(submitOptions?.streamMode),
           "values",
           "messages-tuple",
           "updates",
@@ -651,6 +652,7 @@ export function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode: withCompactStreamMode(submitOptions?.streamMode),
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

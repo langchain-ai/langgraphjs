@@ -18,6 +18,7 @@ import {
   PendingRunsTracker,
   filterStream,
   unique,
+  withCompactStreamMode,
   getBranchContext,
   getMessagesMetadataMap,
   StreamError,
@@ -404,7 +405,7 @@ function useStreamLGP<
         const streamMode = unique([
           "values" as StreamMode,
           "updates" as StreamMode,
-          ...(submitOptions?.streamMode ?? []),
+          ...withCompactStreamMode(submitOptions?.streamMode),
           ...trackedStreamModes,
           ...callbackStreamModes,
         ]);
@@ -558,6 +559,7 @@ function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode: withCompactStreamMode(submitOptions?.streamMode),
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

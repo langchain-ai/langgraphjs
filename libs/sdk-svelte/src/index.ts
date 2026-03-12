@@ -17,6 +17,7 @@ import {
   extractInterrupts,
   filterStream,
   FetchStreamTransport,
+  withCompactStreamMode,
   toMessageClass,
   ensureMessageInstances,
   ensureHistoryMessageInstances,
@@ -470,7 +471,7 @@ function useStreamLGP<
           "values",
           "messages-tuple",
           "updates",
-          ...(submitOptions?.streamMode ?? []),
+          ...withCompactStreamMode(submitOptions?.streamMode),
         ];
         if (options.onUpdateEvent && !streamMode.includes("updates"))
           streamMode.push("updates");
@@ -635,6 +636,7 @@ function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode: withCompactStreamMode(submitOptions?.streamMode),
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,
