@@ -370,8 +370,7 @@ export async function* streamState(
           continue;
         }
         data = nextValueEvent.data;
-        eventName =
-          nextValueEvent.kind === "patch" ? "values-patch" : "values";
+        eventName = nextValueEvent.kind === "patch" ? "values-patch" : "values";
       }
 
       if (eventName === "messages") {
