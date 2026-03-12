@@ -547,6 +547,13 @@ function useStreamLGP<
       }
       if (usableThreadId) {
         try {
+          const streamMode = unique([
+            "values" as StreamMode,
+            "updates" as StreamMode,
+            ...withCompactStreamMode(submitOptions?.streamMode),
+            ...trackedStreamModes,
+            ...callbackStreamModes,
+          ]);
           const run = await client.runs.create(
             usableThreadId,
             options.assistantId,
@@ -559,7 +566,7 @@ function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
-              streamMode: withCompactStreamMode(submitOptions?.streamMode),
+              streamMode,
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

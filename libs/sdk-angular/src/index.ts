@@ -640,6 +640,20 @@ export function useStreamLGP<
       }
       if (usableThreadId) {
         try {
+          const streamMode = new Set<StreamMode>([
+            ...withCompactStreamMode(submitOptions?.streamMode),
+            "values",
+            "messages-tuple",
+            "updates",
+          ]);
+          if (options.onUpdateEvent) streamMode.add("updates");
+          if (options.onCustomEvent) streamMode.add("custom");
+          if (options.onCheckpointEvent) streamMode.add("checkpoints");
+          if (options.onTaskEvent) streamMode.add("tasks");
+          if ("onDebugEvent" in options && options.onDebugEvent)
+            streamMode.add("debug");
+          if ("onLangChainEvent" in options && options.onLangChainEvent)
+            streamMode.add("events");
           const run = await client.runs.create(
             usableThreadId,
             options.assistantId,
@@ -652,7 +666,7 @@ export function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
-              streamMode: withCompactStreamMode(submitOptions?.streamMode),
+              streamMode: [...streamMode],
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

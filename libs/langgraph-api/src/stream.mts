@@ -168,7 +168,7 @@ export function createSubgraphValuesDeltaTracker() {
 
       if (previous == null) {
         seen.set(key, current);
-        return current;
+        return { kind: "snapshot" as const, data: current };
       }
 
       const delta: Record<string, unknown> = {};
@@ -193,8 +193,11 @@ export function createSubgraphValuesDeltaTracker() {
 
       return changed
         ? {
-            values: delta,
-            ...(deletedKeys.length ? { deleted_keys: deletedKeys } : {}),
+            kind: "patch" as const,
+            data: {
+              values: delta,
+              ...(deletedKeys.length ? { deleted_keys: deletedKeys } : {}),
+            },
           }
         : null;
     },
@@ -359,15 +362,16 @@ export async function* streamState(
         chunk != null &&
         typeof chunk === "object"
       ) {
-        const delta = subgraphValuesDeltaTracker?.next(
+        const nextValueEvent = subgraphValuesDeltaTracker?.next(
           ns ?? [],
           chunk as Record<string, unknown>
         );
-        if (delta == null) {
+        if (nextValueEvent == null) {
           continue;
         }
-        data = delta;
-        eventName = "values-patch";
+        data = nextValueEvent.data;
+        eventName =
+          nextValueEvent.kind === "patch" ? "values-patch" : "values";
       }
 
       if (eventName === "messages") {
