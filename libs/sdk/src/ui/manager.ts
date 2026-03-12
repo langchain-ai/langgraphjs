@@ -574,7 +574,7 @@ export class StreamManager<
                 ? (data as ValuesPatchStreamEvent<StateType>["data"])
                 : undefined;
               const valuesData = isValuesPatch
-                ? ((valuesPayload?.values as Record<string, unknown>) ?? {})
+                ? (valuesPayload?.values as Record<string, unknown>) ?? {}
                 : (data as Record<string, unknown>);
               const deletedKeys = isValuesPatch
                 ? valuesPayload?.deleted_keys?.filter(
@@ -600,7 +600,8 @@ export class StreamManager<
               // Strip the messages array before storing — messages are
               // already tracked individually via addMessageToSubagent,
               // so keeping them in values is purely redundant overhead.
-              const { messages: _stripped, ...valuesWithoutMessages } = valuesData;
+              const { messages: _stripped, ...valuesWithoutMessages } =
+                valuesData;
               this.subagentManager.updateSubagentValues(
                 namespaceId,
                 valuesWithoutMessages,

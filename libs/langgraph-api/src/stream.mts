@@ -191,7 +191,10 @@ export function createSubgraphValuesDeltaTracker() {
       seen.set(key, current);
 
       return changed
-        ? { values: delta, ...(deletedKeys.length ? { deleted_keys: deletedKeys } : {}) }
+        ? {
+            values: delta,
+            ...(deletedKeys.length ? { deleted_keys: deletedKeys } : {}),
+          }
         : null;
     },
   };
