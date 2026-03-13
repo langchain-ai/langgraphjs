@@ -11,7 +11,10 @@ describe("createSubgraphValuesDeltaTracker", () => {
       files: {},
     };
 
-    expect(tracker.next(["tools:call_1"], values)).toEqual(values);
+    expect(tracker.next(["tools:call_1"], values)).toEqual({
+      kind: "snapshot",
+      data: values,
+    });
   });
 
   it("emits only changed fields on subsequent updates", () => {
@@ -32,9 +35,12 @@ describe("createSubgraphValuesDeltaTracker", () => {
         count: 2,
       })
     ).toEqual({
-      values: {
-        todos: [{ id: "1", content: "x" }],
-        count: 2,
+      kind: "patch",
+      data: {
+        values: {
+          todos: [{ id: "1", content: "x" }],
+          count: 2,
+        },
       },
     });
   });
@@ -52,8 +58,11 @@ describe("createSubgraphValuesDeltaTracker", () => {
         keep: true,
       })
     ).toEqual({
-      values: {},
-      deleted_keys: ["remove"],
+      kind: "patch",
+      data: {
+        values: {},
+        deleted_keys: ["remove"],
+      },
     });
   });
 
