@@ -60,8 +60,8 @@ export function Claude({
                   Claude-style general agent
                 </h1>
                 <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-[#6b6a68] dark:text-[#b8b5a9]">
-                  This example uses assistant-ui primitives for the chat surface and
-                  `@langchain/react` for basic streamed agent responses.
+                  This example uses assistant-ui primitives for the chat surface
+                  and `@langchain/react` for basic streamed agent responses.
                 </p>
               </div>
 
@@ -145,7 +145,11 @@ export function Claude({
                   Sonnet 4.6
                   <span className="opacity-50 pl-2">Extended</span>
                 </span>
-                <ChevronDownIcon className="opacity-75" height={20} width={20} />
+                <ChevronDownIcon
+                  className="opacity-75"
+                  height={20}
+                  width={20}
+                />
               </button>
 
               {!isLoading && (
@@ -170,7 +174,9 @@ export function Claude({
             <div className="overflow-hidden rounded-b-2xl">
               <div className="overflow-x-auto rounded-b-2xl border-t border-[#00000015] bg-[#f5f5f0] p-3.5 dark:border-[#6c6a6040] dark:bg-[#393937]">
                 <div className="flex flex-row gap-3">
-                  <ComposerPrimitive.Attachments components={{ Attachment: ClaudeAttachment }} />
+                  <ComposerPrimitive.Attachments
+                    components={{ Attachment: ClaudeAttachment }}
+                  />
                 </div>
               </div>
             </div>
@@ -183,12 +189,18 @@ export function Claude({
 
 const ChatMessage = () => {
   const hasText = useAuiState((state) =>
-    state.message.content.some((part) => part.type === "text" && part.text.trim().length > 0),
+    state.message.content.some(
+      (part) => part.type === "text" && part.text.trim().length > 0,
+    ),
   );
   const hasRenderableContent = useAuiState((state) =>
     state.message.content.some((part) => {
       if (part.type === "text") return part.text.trim().length > 0;
-      return part.type === "reasoning" || part.type === "tool-call" || part.type === "image";
+      return (
+        part.type === "reasoning" ||
+        part.type === "tool-call" ||
+        part.type === "image"
+      );
     }),
   );
 
@@ -247,7 +259,8 @@ const ChatMessage = () => {
                 </div>
                 <AuiIf condition={(state) => state.message.isLast}>
                   <p className="mt-2 w-full text-right text-[0.65rem] leading-[0.85rem] text-[#8a8985] opacity-90 dark:text-[#b8b5a9] sm:text-[0.75rem]">
-                    Claude-style UI demo. Verify important details before relying on them.
+                    Claude-style UI demo. Verify important details before
+                    relying on them.
                   </p>
                 </AuiIf>
               </ActionBarPrimitive.Root>
@@ -365,7 +378,9 @@ const ClaudeChainOfThought: FC = () => {
         <div className="border-t border-[#00000010] px-4 py-3 dark:border-[#6c6a6030]">
           <ChainOfThoughtPrimitive.Parts
             components={{
-              Layout: ({ children }) => <div className="mb-3 last:mb-0">{children}</div>,
+              Layout: ({ children }) => (
+                <div className="mb-3 last:mb-0">{children}</div>
+              ),
               Reasoning: ClaudeReasoning,
               tools: {
                 Fallback: ClaudeToolCall,
@@ -379,7 +394,10 @@ const ClaudeChainOfThought: FC = () => {
 };
 
 const useFileSrc = (file: File | undefined) => {
-  const src = useMemo(() => (file ? URL.createObjectURL(file) : undefined), [file]);
+  const src = useMemo(
+    () => (file ? URL.createObjectURL(file) : undefined),
+    [file],
+  );
 
   useEffect(
     () => () => {
@@ -397,7 +415,9 @@ const useAttachmentSrc = () => {
       if (state.attachment.type !== "image") return {};
       if (state.attachment.file) return { file: state.attachment.file };
 
-      const content = state.attachment.content?.find((part) => part.type === "image");
+      const content = state.attachment.content?.find(
+        (part) => part.type === "image",
+      );
       if (!content || !("image" in content)) return {};
 
       return { src: content.image };

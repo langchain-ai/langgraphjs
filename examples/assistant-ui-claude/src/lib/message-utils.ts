@@ -33,7 +33,12 @@ function isComposerImagePart(part: unknown): part is ImageMessagePart {
 }
 
 function isComposerFilePart(part: unknown): part is FileMessagePart {
-  return typeof part === "object" && part !== null && "type" in part && part.type === "file";
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    part.type === "file"
+  );
 }
 
 export function getTextFromContent(content: unknown): string {
@@ -89,14 +94,17 @@ function getImageUrl(part: ContentBlock[]): string[] {
 
     if (block.type === "image") {
       if ("url" in block && typeof block.url === "string") return [block.url];
-      if ("data" in block && typeof block.data === "string") return [block.data];
+      if ("data" in block && typeof block.data === "string")
+        return [block.data];
     }
 
     return [];
   });
 }
 
-function toUserThreadContent(content: string | ContentBlock[]): ThreadUserMessagePart[] {
+function toUserThreadContent(
+  content: string | ContentBlock[],
+): ThreadUserMessagePart[] {
   const text = getTextFromContent(content).trim();
   const imageCount = getImageCount(content);
   const parts: ThreadUserMessagePart[] = [];
@@ -107,7 +115,10 @@ function toUserThreadContent(content: string | ContentBlock[]): ThreadUserMessag
 
   if (imageCount > 0) {
     parts.push({
-      text: imageCount === 1 ? "[Image attached]" : `[${imageCount} images attached]`,
+      text:
+        imageCount === 1
+          ? "[Image attached]"
+          : `[${imageCount} images attached]`,
       type: "text",
     });
   }
@@ -144,7 +155,9 @@ function isLangChainToolCall(value: unknown): value is LangChainToolCall {
   );
 }
 
-function isLangChainToolMessage(message: BaseMessage): message is LangChainToolMessage {
+function isLangChainToolMessage(
+  message: BaseMessage,
+): message is LangChainToolMessage {
   return message.type === "tool" && "tool_call_id" in message;
 }
 
@@ -181,15 +194,22 @@ function toToolResult(message: LangChainToolMessage): unknown {
   }
 }
 
-function toAssistantThreadContent(message: BaseMessage): ThreadAssistantMessagePart[] {
+function toAssistantThreadContent(
+  message: BaseMessage,
+): ThreadAssistantMessagePart[] {
   const parts: ThreadAssistantMessagePart[] = [];
   const content = message.contentBlocks;
   console.log(content);
 
   for (const part of content) {
-    if (typeof part !== "object" || part === null || !("type" in part)) continue;
+    if (typeof part !== "object" || part === null || !("type" in part))
+      continue;
 
-    if (part.type === "text" && "text" in part && typeof part.text === "string") {
+    if (
+      part.type === "text" &&
+      "text" in part &&
+      typeof part.text === "string"
+    ) {
       if (part.text.trim().length > 0) {
         parts.push({ text: part.text, type: "text" });
       }
@@ -210,11 +230,18 @@ function toAssistantThreadContent(message: BaseMessage): ThreadAssistantMessageP
       continue;
     }
 
-    if (part.type === "tool_call" && "name" in part && typeof part.name === "string") {
+    if (
+      part.type === "tool_call" &&
+      "name" in part &&
+      typeof part.name === "string"
+    ) {
       const toolCallPart: ToolCallMessagePart = {
         args: toReadonlyJsonObject("args" in part ? part.args : {}),
         argsText: safeJsonStringify("args" in part ? part.args : {}),
-        toolCallId: typeof part.id === "string" ? part.id : `${message.id ?? "ai"}-${parts.length}`,
+        toolCallId:
+          typeof part.id === "string"
+            ? part.id
+            : `${message.id ?? "ai"}-${parts.length}`,
         toolName: part.name,
         type: "tool-call",
       };
@@ -233,7 +260,9 @@ function toAssistantThreadContent(message: BaseMessage): ThreadAssistantMessageP
   if (Array.isArray(toolCalls)) {
     const existingIds = new Set(
       parts
-        .filter((part): part is ToolCallMessagePart => part.type === "tool-call")
+        .filter(
+          (part): part is ToolCallMessagePart => part.type === "tool-call",
+        )
         .map((part) => part.toolCallId),
     );
 
@@ -254,13 +283,24 @@ function toAssistantThreadContent(message: BaseMessage): ThreadAssistantMessageP
   return parts;
 }
 
-function attachToolResult(threadMessages: ThreadMessageLike[], toolMessage: LangChainToolMessage) {
+function attachToolResult(
+  threadMessages: ThreadMessageLike[],
+  toolMessage: LangChainToolMessage,
+) {
   for (let index = threadMessages.length - 1; index >= 0; index -= 1) {
     const message = threadMessages[index];
-    if (!message || message.role !== "assistant" || !Array.isArray(message.content)) continue;
+    if (
+      !message ||
+      message.role !== "assistant" ||
+      !Array.isArray(message.content)
+    )
+      continue;
 
     const updatedContent = message.content.map((part): typeof part => {
-      if (part.type !== "tool-call" || part.toolCallId !== toolMessage.tool_call_id) {
+      if (
+        part.type !== "tool-call" ||
+        part.toolCallId !== toolMessage.tool_call_id
+      ) {
         return part;
       }
 
@@ -276,7 +316,9 @@ function attachToolResult(threadMessages: ThreadMessageLike[], toolMessage: Lang
   }
 }
 
-export function toThreadMessages(messages: readonly BaseMessage[]): ThreadMessageLike[] {
+export function toThreadMessages(
+  messages: readonly BaseMessage[],
+): ThreadMessageLike[] {
   const threadMessages: ThreadMessageLike[] = [];
 
   for (const [index, message] of messages.entries()) {
@@ -315,8 +357,9 @@ export function toThreadMessages(messages: readonly BaseMessage[]): ThreadMessag
 }
 
 export function toLangGraphMessageContent(parts: readonly ContentBlock[]) {
-  const content: Array<{ text: string; type: "text" } | { image_url: string; type: "image_url" }> =
-    [];
+  const content: Array<
+    { text: string; type: "text" } | { image_url: string; type: "image_url" }
+  > = [];
 
   for (const part of parts) {
     if (isComposerTextPart(part) && part.text.trim()) {
@@ -329,7 +372,11 @@ export function toLangGraphMessageContent(parts: readonly ContentBlock[]) {
       continue;
     }
 
-    if (isComposerFilePart(part) && part.data && part.mimeType?.startsWith("image/")) {
+    if (
+      isComposerFilePart(part) &&
+      part.data &&
+      part.mimeType?.startsWith("image/")
+    ) {
       content.push({ image_url: part.data, type: "image_url" });
       continue;
     }

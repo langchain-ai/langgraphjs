@@ -7,5 +7,5 @@ import { MyAssistant } from "./components/my-assistant";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MyAssistant />
-  </StrictMode>
+  </StrictMode>,
 );

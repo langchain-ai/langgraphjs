@@ -12,11 +12,18 @@ import {
 import { useStream } from "@langchain/react";
 
 import { Claude } from "./claude";
-import { toLangGraphMessageContent, toThreadMessages } from "../lib/message-utils";
+import {
+  toLangGraphMessageContent,
+  toThreadMessages,
+} from "../lib/message-utils";
 import { useThreadIdParam } from "../lib/thread-id";
 
-const attachmentAdapter = new CompositeAttachmentAdapter([new SimpleImageAttachmentAdapter()]);
-const apiUrl = import.meta.env.VITE_LANGGRAPH_API_URL ?? `${window.location.origin}/api/langgraph`;
+const attachmentAdapter = new CompositeAttachmentAdapter([
+  new SimpleImageAttachmentAdapter(),
+]);
+const apiUrl =
+  import.meta.env.VITE_LANGGRAPH_API_URL ??
+  `${window.location.origin}/api/langgraph`;
 
 export function MyAssistant() {
   const [threadId, onThreadId] = useThreadIdParam();
@@ -29,7 +36,10 @@ export function MyAssistant() {
     threadId,
   });
 
-  const messages = useMemo(() => toThreadMessages(stream.messages), [stream.messages]);
+  const messages = useMemo(
+    () => toThreadMessages(stream.messages),
+    [stream.messages],
+  );
 
   const submitPrompt = useCallback(
     async (prompt: string) => {
