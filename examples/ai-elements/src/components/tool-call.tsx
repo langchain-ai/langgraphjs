@@ -25,10 +25,10 @@ export function ToolCall({
   const state: ToolUIPart["state"] = error
     ? "output-error"
     : output !== undefined
-    ? "output-available"
-    : isStreaming
-    ? "input-streaming"
-    : "input-available";
+      ? "output-available"
+      : isStreaming
+        ? "input-streaming"
+        : "input-available";
 
   const hasResult = state === "output-available" || state === "output-error";
 

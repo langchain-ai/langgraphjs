@@ -36,14 +36,14 @@ export function App() {
       setInputText("");
       stream.submit({ messages: [{ type: "human", content: message.text }] });
     },
-    [stream]
+    [stream],
   );
 
   const handleSuggestionSelect = useCallback(
     (prompt: string) => {
       stream.submit({ messages: [{ type: "human", content: prompt }] });
     },
-    [stream]
+    [stream],
   );
 
   const handleNewChat = useCallback(() => {

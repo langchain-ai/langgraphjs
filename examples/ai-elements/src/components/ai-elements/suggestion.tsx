@@ -18,7 +18,7 @@ export const Suggestions = ({
     <div
       className={cn(
         "flex flex-wrap items-center justify-center gap-2",
-        className
+        className,
       )}
     >
       {children}

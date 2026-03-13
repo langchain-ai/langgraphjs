@@ -35,7 +35,7 @@ interface RenderedItem {
 
 function buildRenderItems(
   messages: BaseMessage[],
-  isLoading: boolean
+  isLoading: boolean,
 ): RenderedItem[] {
   const items: RenderedItem[] = [];
   const toolResultMap = new Map<string, { output?: unknown; error?: string }>();
@@ -75,7 +75,7 @@ function buildRenderItems(
       };
 
       const reasoning = msg.contentBlocks.find(
-        (block) => block.type === "reasoning"
+        (block) => block.type === "reasoning",
       )?.reasoning;
       const textContent = msg.text;
 
