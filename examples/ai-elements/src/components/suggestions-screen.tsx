@@ -14,7 +14,9 @@ export function SuggestionsScreen({ onSelect }: SuggestionsScreenProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 px-4">
       <div className="text-center space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">What can I help you with?</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          What can I help you with?
+        </h1>
         <p className="text-sm text-muted-foreground">
           I can check the weather or search the web for you.
         </p>

@@ -13,7 +13,11 @@ import {
   MessageContent,
   MessageResponse,
 } from "./ai-elements/message";
-import { Reasoning, ReasoningContent, ReasoningTrigger } from "./ai-elements/reasoning";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "./ai-elements/reasoning";
 import { Shimmer } from "./ai-elements/shimmer";
 import { ToolCall } from "./tool-call";
 
@@ -29,7 +33,10 @@ interface RenderedItem {
   isStreaming?: boolean;
 }
 
-function buildRenderItems(messages: BaseMessage[], isLoading: boolean): RenderedItem[] {
+function buildRenderItems(
+  messages: BaseMessage[],
+  isLoading: boolean
+): RenderedItem[] {
   const items: RenderedItem[] = [];
   const toolResultMap = new Map<string, { output?: unknown; error?: string }>();
 
@@ -60,10 +67,16 @@ function buildRenderItems(messages: BaseMessage[], isLoading: boolean): Rendered
 
     if (msgType === "ai") {
       const aiMsg = msg as BaseMessage & {
-        tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+        tool_calls?: Array<{
+          id: string;
+          name: string;
+          args: Record<string, unknown>;
+        }>;
       };
 
-      const reasoning = msg.contentBlocks.find((block) => block.type === "reasoning")?.reasoning;
+      const reasoning = msg.contentBlocks.find(
+        (block) => block.type === "reasoning"
+      )?.reasoning;
       const textContent = msg.text;
 
       // Reasoning is still streaming when the last message is loading and text hasn't arrived yet.
@@ -109,12 +122,18 @@ interface MessageListProps {
   onCopyLastMessage: () => void;
 }
 
-export function MessageList({ messages, isLoading, onCopyLastMessage }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  onCopyLastMessage,
+}: MessageListProps) {
   const [copied, setCopied] = useState(false);
   const items = buildRenderItems(messages, isLoading);
   const lastAiIndex = [...items].reverse().findIndex((it) => it.kind === "ai");
-  const lastAiItemIndex = lastAiIndex >= 0 ? items.length - 1 - lastAiIndex : -1;
-  const showShimmer = isLoading && items.length > 0 && items[items.length - 1].kind === "human";
+  const lastAiItemIndex =
+    lastAiIndex >= 0 ? items.length - 1 - lastAiIndex : -1;
+  const showShimmer =
+    isLoading && items.length > 0 && items[items.length - 1].kind === "human";
 
   function handleCopy() {
     onCopyLastMessage();

@@ -36,9 +36,9 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "langchain": "^1.2.30",
+    "langchain": "^1.2.32",
     "lucide-react": "^0.577.0",
-    "motion": "^12.35.2",
+    "motion": "^12.36.0",
     "nanoid": "^5.1.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -52,13 +52,14 @@
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",
-    "@types/node": "^25.4.0",
+    "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.4",
-    "oxlint": "^1.53.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "oxlint": "^1.55.0",
+    "prettier": "^3.8.1",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^8.0.0"
   }
 }

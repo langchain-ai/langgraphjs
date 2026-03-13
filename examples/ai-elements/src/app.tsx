@@ -36,14 +36,14 @@ export function App() {
       setInputText("");
       stream.submit({ messages: [{ type: "human", content: message.text }] });
     },
-    [stream],
+    [stream]
   );
 
   const handleSuggestionSelect = useCallback(
     (prompt: string) => {
       stream.submit({ messages: [{ type: "human", content: prompt }] });
     },
-    [stream],
+    [stream]
   );
 
   const handleNewChat = useCallback(() => {
@@ -55,7 +55,8 @@ export function App() {
     const lastAi = [...stream.messages].reverse().find(AIMessage.isInstance);
     if (!lastAi) return;
     const content = lastAi.content;
-    const text = typeof content === "string" ? content : JSON.stringify(content);
+    const text =
+      typeof content === "string" ? content : JSON.stringify(content);
     navigator.clipboard.writeText(text).catch(() => undefined);
   }, [stream.messages]);
 
@@ -66,7 +67,12 @@ export function App() {
       {hasMessages && (
         <header className="flex items-center justify-between px-4 py-2 border-b shrink-0">
           <span className="text-sm font-medium">AI Elements Demo</span>
-          <Button variant="ghost" size="sm" onClick={handleNewChat} className="gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewChat}
+            className="gap-1.5"
+          >
             <PlusIcon className="size-4" />
             New Chat
           </Button>
@@ -84,7 +90,10 @@ export function App() {
       )}
 
       <div className="shrink-0 p-4 border-t">
-        <PromptInput onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto">
+        <PromptInput
+          onSubmit={handleSubmit}
+          className="w-full max-w-2xl mx-auto"
+        >
           <PromptInputBody>
             <PromptInputTextarea
               value={inputText}
