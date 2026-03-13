@@ -1328,9 +1328,9 @@ importers:
       redis:
         specifier: ^4.7.0
         version: 4.7.1
-      ulid:
-        specifier: ^2.3.0
-        version: 2.4.0
+      uuid:
+        specifier: ^13.0.0
+        version: 13.0.0
     devDependencies:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
@@ -9580,10 +9580,6 @@ packages:
     engines: {node: '>=0.8.0'}
     hasBin: true
 
-  ulid@2.4.0:
-    resolution: {integrity: sha512-fIRiVTJNcSRmXKPZtGzFQv9WRrZ3M9eoptl/teFJvjOzmpU+/K/JH6HZ8deBfb5vMEpicJcLn7JmvdknlMq7Zg==}
-    hasBin: true
-
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
@@ -17629,8 +17625,6 @@ snapshots:
 
   uglify-js@3.19.3:
     optional: true
-
-  ulid@2.4.0: {}
 
   unbox-primitive@1.1.0:
     dependencies:
