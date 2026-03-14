@@ -210,7 +210,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
             `Invalid filter value for key "${key}": filter values must be primitives (string, number, boolean, or null)`
           );
         }
-        query[`metadata.${key}`] = value;
+        query[`metadata_search.${key}`] = value;
       });
     }
 
@@ -305,6 +305,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      metadata_search: metadata,
     };
     const upsertQuery = {
       thread_id,
