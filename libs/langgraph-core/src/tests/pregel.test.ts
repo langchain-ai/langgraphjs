@@ -9228,6 +9228,7 @@ graph TD;
           ls_stop: undefined,
           tags: ["c_two_chat_model"],
           name: "c_two_chat_model_stream",
+          versions: expect.objectContaining({}),
         },
       ],
       [
@@ -9245,7 +9246,9 @@ graph TD;
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
+          name: undefined,
           tags: ["c_two_chat_model"],
+          versions: expect.objectContaining({}),
         },
       ],
       [
@@ -9263,7 +9266,9 @@ graph TD;
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
+          name: undefined,
           tags: [],
+          versions: expect.objectContaining({}),
         },
       ],
     ]);

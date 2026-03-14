@@ -9,7 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { v7 as uuidv7 } from "uuid";
 
-import type { Metadata, Run } from "../storage/types.mjs";
+import type { Metadata, MultitaskStrategy, Run } from "../storage/types.mjs";
 import * as schemas from "../schemas.mjs";
 
 import { z } from "zod/v3";
@@ -48,9 +48,12 @@ export interface ThreadSaver {
   }) => AsyncGenerator<{ thread: Thread; total: number }>;
 }
 
+type RunStatus = "pending" | "running" | "success" | "error" | "interrupted";
+
 function createStubRun(
   threadId: string,
-  payload: z.infer<typeof schemas.RunCreate>
+  payload: z.infer<typeof schemas.RunCreate>,
+  overrides?: { status?: RunStatus; multitask_strategy?: MultitaskStrategy }
 ): Run {
   const now = new Date();
   const runId = uuidv7();
@@ -90,7 +93,7 @@ function createStubRun(
     thread_id: threadId,
     assistant_id: payload.assistant_id,
     metadata: payload.metadata ?? {},
-    status: "running",
+    status: overrides?.status ?? "running",
     kwargs: {
       input: payload.input,
       command: payload.command,
@@ -103,10 +106,18 @@ function createStubRun(
       subgraphs: payload.stream_subgraphs,
       temporary: false,
     },
-    multitask_strategy: "reject",
+    multitask_strategy: (overrides?.multitask_strategy ??
+      payload.multitask_strategy ??
+      "reject") as MultitaskStrategy,
     created_at: now,
     updated_at: now,
   };
+}
+
+/** Per-thread run queue state for enqueue support. */
+interface ThreadRunState {
+  activeRunId: string | null;
+  pendingRuns: Run[];
 }
 
 /**
@@ -120,6 +131,38 @@ export function createEmbedServer(options: {
   checkpointer: BaseCheckpointSaver;
   store?: BaseStore;
 }) {
+  const threadRunState = new Map<string, ThreadRunState>();
+
+  function getThreadState(threadId: string): ThreadRunState {
+    let state = threadRunState.get(threadId);
+    if (!state) {
+      state = { activeRunId: null, pendingRuns: [] };
+      threadRunState.set(threadId, state);
+    }
+    return state;
+  }
+
+  async function waitForRunReady(
+    threadId: string,
+    runId: string,
+    signal?: AbortSignal
+  ): Promise<Run | null> {
+    const state = getThreadState(threadId);
+    const run = state.pendingRuns.find((r) => r.run_id === runId);
+    if (!run) return null;
+
+    while (true) {
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      const isHead = state.pendingRuns[0]?.run_id === runId;
+      const noActive = !state.activeRunId;
+      if (isHead && noActive) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return run;
+  }
+
   async function getGraph(graphId: string) {
     const targetGraph = options.graph[graphId];
     targetGraph.store = options.store;
@@ -379,20 +422,137 @@ export function createEmbedServer(options: {
   );
 
   api.post(
-    "/threads/:thread_id/runs/stream",
+    "/threads/:thread_id/runs",
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
     zValidator("json", schemas.RunCreate),
     async (c) => {
-      // Stream Run
       const { thread_id } = c.req.valid("param");
       const payload = c.req.valid("json");
 
       const thread = await options.threads.get(thread_id);
       if (thread == null) return c.json({ error: "Thread not found" }, 404);
 
+      const state = getThreadState(thread_id);
+      const multitaskStrategy = payload.multitask_strategy ?? "reject";
+      const shouldEnqueue =
+        multitaskStrategy === "enqueue" && state.activeRunId != null;
+
+      const run = createStubRun(thread_id, payload, {
+        status: shouldEnqueue ? "pending" : "running",
+        multitask_strategy: multitaskStrategy,
+      });
+
+      state.pendingRuns.push(run);
+
+      c.header("Content-Location", `/threads/${thread_id}/runs/${run.run_id}`);
+      return jsonExtra(c, run);
+    }
+  );
+
+  api.get(
+    "/threads/:thread_id/runs/:run_id/stream",
+    zValidator(
+      "param",
+      z.object({
+        thread_id: z.string().uuid(),
+        run_id: z.string().uuid(),
+      })
+    ),
+    async (c) => {
+      const { thread_id, run_id } = c.req.valid("param");
+
+      const thread = await options.threads.get(thread_id);
+      if (thread == null) return c.json({ error: "Thread not found" }, 404);
+
       return streamSSE(c, async (stream) => {
         const signal = getDisconnectAbortSignal(c, stream);
-        const run = createStubRun(thread_id, payload);
+        const state = getThreadState(thread_id);
+
+        try {
+          const run = await waitForRunReady(thread_id, run_id, signal);
+          if (!run) {
+            await stream.writeSSE({
+              data: serialiseAsDict({ error: "Run not found" }),
+              event: "error",
+            });
+            return;
+          }
+
+          const idx = state.pendingRuns.findIndex((r) => r.run_id === run_id);
+          if (idx >= 0) state.pendingRuns.splice(idx, 1);
+
+          state.activeRunId = run_id;
+          (run as Run & { status: string }).status = "running";
+
+          try {
+            for await (const { event, data } of streamState(run, {
+              attempt: 1,
+              getGraph,
+              signal,
+            })) {
+              await stream.writeSSE({ data: serialiseAsDict(data), event });
+            }
+          } catch (error) {
+            await stream.writeSSE({
+              data: serialiseAsDict(serializeError(error)),
+              event: "error",
+            });
+          } finally {
+            if (state.activeRunId === run_id) {
+              state.activeRunId = null;
+            }
+          }
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") {
+            return;
+          }
+          throw err;
+        }
+      });
+    }
+  );
+
+  api.post(
+    "/threads/:thread_id/runs/:run_id/cancel",
+    zValidator(
+      "param",
+      z.object({
+        thread_id: z.string().uuid(),
+        run_id: z.string().uuid(),
+      })
+    ),
+    async (c) => {
+      const { thread_id, run_id } = c.req.valid("param");
+      const state = getThreadState(thread_id);
+      const idx = state.pendingRuns.findIndex((r) => r.run_id === run_id);
+      if (idx >= 0) {
+        state.pendingRuns.splice(idx, 1);
+      }
+      return new Response(null, { status: 204 });
+    }
+  );
+
+  api.post(
+    "/threads/:thread_id/runs/stream",
+    zValidator("param", z.object({ thread_id: z.string().uuid() })),
+    zValidator("json", schemas.RunCreate),
+    async (c) => {
+      // Stream Run (create + stream in one request)
+      const { thread_id } = c.req.valid("param");
+      const payload = c.req.valid("json");
+
+      const thread = await options.threads.get(thread_id);
+      if (thread == null) return c.json({ error: "Thread not found" }, 404);
+
+      const state = getThreadState(thread_id);
+      const run = createStubRun(thread_id, payload);
+
+      c.header("Content-Location", `/threads/${thread_id}/runs/${run.run_id}`);
+
+      return streamSSE(c, async (stream) => {
+        const signal = getDisconnectAbortSignal(c, stream);
+
+        state.activeRunId = run.run_id;
 
         await options.threads.set(thread_id, {
           kind: "patch",
@@ -415,6 +575,10 @@ export function createEmbedServer(options: {
             data: serialiseAsDict(serializeError(error)),
             event: "error",
           });
+        } finally {
+          if (state.activeRunId === run.run_id) {
+            state.activeRunId = null;
+          }
         }
       });
     }
@@ -422,10 +586,14 @@ export function createEmbedServer(options: {
 
   api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
     // Stream Stateless Run
+    const payload = c.req.valid("json");
+    const threadId = uuidv7();
+    const run = createStubRun(threadId, payload);
+
+    c.header("Content-Location", `/threads/${threadId}/runs/${run.run_id}`);
+
     return streamSSE(c, async (stream) => {
-      const payload = c.req.valid("json");
       const signal = getDisconnectAbortSignal(c, stream);
-      const threadId = uuidv7();
 
       await options.threads.set(threadId, {
         kind: "put",
@@ -436,7 +604,6 @@ export function createEmbedServer(options: {
       });
 
       try {
-        const run = createStubRun(threadId, payload);
         try {
           for await (const { event, data } of streamState(run, {
             attempt: 1,

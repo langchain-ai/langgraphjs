@@ -1,0 +1,52 @@
+{
+  "name": "@examples/ui-angular",
+  "version": "0.0.5",
+  "scripts": {
+    "dev": "turbo dev:client dev:server",
+    "dev:client": "ng serve",
+    "dev:server": "langgraphjs dev --no-browser",
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "format": "prettier --write src",
+    "lint": "prettier --check src"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^21.2.2",
+    "@angular/compiler": "^21.2.2",
+    "@angular/core": "^21.2.2",
+    "@angular/forms": "^21.2.2",
+    "@angular/platform-browser": "^21.2.2",
+    "@angular/router": "^21.2.2",
+    "@langchain/angular": "workspace:*",
+    "@langchain/core": "^1.0.1",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-sdk": "workspace:*",
+    "@langchain/openai": "^1.0.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zod": "^3.23.8",
+    "zone.js": "~0.16.1"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.1",
+    "@angular/cli": "^21.2.1",
+    "@angular/compiler-cli": "^21.2.2",
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  }
+}

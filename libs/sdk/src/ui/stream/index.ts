@@ -24,6 +24,7 @@ import type {
 } from "../types.js";
 
 // Import for internal use
+import type { BaseStream } from "./base.js";
 import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
 import type {
   UseDeepAgentStream,
@@ -167,9 +168,9 @@ export type InferSubagentStates<T> = T extends { "~deepAgentTypes": unknown }
  *    - Includes: values, messages, toolCalls, getToolCalls
  *    - Excludes: subagents, getSubagentsByType
  *
- * 3. **CompiledGraph** / **Default** → {@link UseDeepAgentStream} with `DefaultSubagentStates`
- *    - Includes: values, messages, submit, stop, toolCalls, subagents
- *    - SubagentStates defaults to `DefaultSubagentStates` (loosely typed)
+ * 3. **CompiledGraph** / **Default** → {@link BaseStream}
+ *    - Includes: values, messages, submit, stop
+ *    - Does NOT include: toolCalls, subagents (not applicable to raw graphs)
  *
  * @template T - The agent or graph type (use `typeof agent` or `typeof graph`)
  * @template Bag - Type configuration bag for interrupts, configurable, etc.
@@ -199,12 +200,7 @@ export type ResolveStreamInterface<
     >
   : IsReactAgent<T> extends true
   ? UseAgentStream<InferStateType<T>, InferToolCalls<T>, Bag>
-  : UseDeepAgentStream<
-      InferStateType<T>,
-      InferToolCalls<T>,
-      DefaultSubagentStates,
-      Bag
-    >;
+  : BaseStream<InferStateType<T>, InferToolCalls<T>, Bag>;
 
 // ============================================================================
 // Options Interface Resolution

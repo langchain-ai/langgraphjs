@@ -1,0 +1,7 @@
+{
+  "node_version": "22",
+  "graphs": {
+    "assistant-ui-claude": "./agent.ts:agent"
+  },
+  "env": ".env"
+}

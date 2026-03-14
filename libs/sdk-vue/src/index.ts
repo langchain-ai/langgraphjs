@@ -1,0 +1,989 @@
+import {
+  computed,
+  onScopeDispose,
+  ref,
+  shallowRef,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from "vue";
+import type {
+  BaseMessage,
+  ToolMessage as CoreToolMessage,
+  AIMessage as CoreAIMessage,
+} from "@langchain/core/messages";
+import {
+  StreamManager,
+  MessageTupleManager,
+  PendingRunsTracker,
+  filterStream,
+  unique,
+  getBranchContext,
+  getMessagesMetadataMap,
+  StreamError,
+  extractInterrupts,
+  FetchStreamTransport,
+  toMessageClass,
+  ensureMessageInstances,
+  ensureHistoryMessageInstances,
+  type UseStreamThread,
+  type GetConfigurableType,
+  type GetCustomEventType,
+  type GetInterruptType,
+  type GetUpdateType,
+  type MessageMetadata,
+  type AnyStreamOptions,
+  type SubmitOptions,
+  type EventStreamEvent,
+  type RunCallbackMeta,
+  type ResolveStreamInterface,
+  type ResolveStreamOptions,
+  type InferBag,
+  type InferStateType,
+  type AcceptBaseMessages,
+  type UseStreamCustomOptions,
+  type SubagentStreamInterface,
+  type HistoryWithBaseMessages,
+} from "@langchain/langgraph-sdk/ui";
+import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
+
+import {
+  Client,
+  type StreamMode,
+  type StreamEvent,
+  type Message,
+  type Interrupt,
+  type BagTemplate,
+  type ThreadState,
+  type ToolCallWithResult as _ToolCallWithResult,
+  type DefaultToolCall,
+} from "@langchain/langgraph-sdk";
+
+import { useStreamCustom } from "./stream.custom.js";
+
+export { FetchStreamTransport };
+
+function fetchHistory<StateType extends Record<string, unknown>>(
+  client: Client,
+  threadId: string,
+  options?: { limit?: boolean | number },
+) {
+  if (options?.limit === false) {
+    return client.threads.getState<StateType>(threadId).then((state) => {
+      if (state.checkpoint == null) return [];
+      return [state];
+    });
+  }
+
+  const limit = typeof options?.limit === "number" ? options.limit : 10;
+  return client.threads.getHistory<StateType>(threadId, { limit });
+}
+
+function useStreamLGP<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends {
+    ConfigurableType?: Record<string, unknown>;
+    InterruptType?: unknown;
+    CustomEventType?: unknown;
+    UpdateType?: unknown;
+  } = BagTemplate,
+>(options: AnyStreamOptions<StateType, Bag>) {
+  type UpdateType = GetUpdateType<Bag, StateType>;
+  type CustomType = GetCustomEventType<Bag>;
+  type InterruptType = GetInterruptType<Bag>;
+  type ConfigurableType = GetConfigurableType<Bag>;
+
+  const runMetadataStorage = (() => {
+    if (typeof window === "undefined") return null;
+    const storage = options.reconnectOnMount;
+    if (storage === true) return window.sessionStorage;
+    if (typeof storage === "function") return storage();
+    return null;
+  })();
+
+  const getMessages = (value: StateType): Message[] => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+  };
+
+  const setMessages = (current: StateType, messages: Message[]): StateType => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return { ...current, [messagesKey]: messages };
+  };
+
+  const historyLimit =
+    typeof options.fetchStateHistory === "object" &&
+    options.fetchStateHistory != null
+      ? (options.fetchStateHistory.limit ?? false)
+      : (options.fetchStateHistory ?? false);
+
+  const threadId = ref<string | undefined>(undefined);
+  let threadIdPromise: Promise<string> | null = null;
+
+  const client = options.client ?? new Client({ apiUrl: options.apiUrl });
+
+  const history = shallowRef<UseStreamThread<StateType>>({
+    data: undefined,
+    error: undefined,
+    isLoading: false,
+    mutate: async () => undefined,
+  });
+
+  async function mutate(
+    mutateId?: string,
+  ): Promise<ThreadState<StateType>[] | undefined> {
+    const tid = mutateId ?? threadId.value;
+    if (!tid) return undefined;
+    try {
+      const data = await fetchHistory<StateType>(client, tid, {
+        limit: historyLimit,
+      });
+      history.value = {
+        data,
+        error: undefined,
+        isLoading: false,
+        mutate,
+      };
+      return data;
+    } catch (err) {
+      history.value = {
+        ...history.value,
+        error: err,
+        isLoading: false,
+      };
+      options.onError?.(err, undefined);
+      return undefined;
+    }
+  }
+
+  history.value = { ...history.value, mutate };
+
+  const branch = ref<string>("");
+  const branchContext = computed(() =>
+    getBranchContext(branch.value, history.value.data ?? undefined),
+  );
+
+  const messageManager = new MessageTupleManager();
+  const stream = new StreamManager<StateType, Bag>(messageManager, {
+    throttle: options.throttle ?? false,
+    subagentToolNames: options.subagentToolNames,
+    filterSubagentMessages: options.filterSubagentMessages,
+    toMessage: toMessageClass,
+  });
+
+  const pendingRuns = new PendingRunsTracker<
+    StateType,
+    SubmitOptions<StateType, ConfigurableType>
+  >();
+  const queueEntries = shallowRef(pendingRuns.entries);
+  const queueSize = ref(pendingRuns.size);
+
+  const trackedStreamModes: StreamMode[] = [];
+  function trackStreamMode(...modes: StreamMode[]) {
+    for (const mode of modes) {
+      if (!trackedStreamModes.includes(mode)) {
+        trackedStreamModes.push(mode);
+      }
+    }
+  }
+
+  const callbackStreamModes: StreamMode[] = [];
+  if (options.onUpdateEvent) callbackStreamModes.push("updates");
+  if (options.onCustomEvent) callbackStreamModes.push("custom");
+  if (options.onCheckpointEvent) callbackStreamModes.push("checkpoints");
+  if (options.onTaskEvent) callbackStreamModes.push("tasks");
+  if ("onDebugEvent" in options && options.onDebugEvent)
+    callbackStreamModes.push("debug");
+  if ("onLangChainEvent" in options && options.onLangChainEvent)
+    callbackStreamModes.push("events");
+
+  const historyValues = computed(
+    () =>
+      branchContext.value.threadHead?.values ??
+      options.initialValues ??
+      ({} as StateType),
+  );
+
+  const historyError = computed(() => {
+    const error = branchContext.value.threadHead?.tasks?.at(-1)?.error;
+    if (error == null) return undefined;
+    try {
+      const parsed = JSON.parse(error) as unknown;
+      if (StreamError.isStructuredError(parsed)) return new StreamError(parsed);
+      return parsed;
+    } catch {
+      // do nothing
+    }
+    return error;
+  });
+
+  const streamValues = shallowRef<StateType | null>(stream.values);
+  const streamError = shallowRef<unknown>(stream.error);
+  const isLoading = shallowRef(stream.isLoading);
+
+  const values = computed(() => streamValues.value ?? historyValues.value);
+  const error = computed(
+    () => streamError.value ?? historyError.value ?? history.value.error,
+  );
+
+  const messageMetadata = computed(() =>
+    getMessagesMetadataMap({
+      initialValues: options.initialValues,
+      history: history.value.data,
+      getMessages,
+      branchContext: branchContext.value,
+    }),
+  );
+
+  const subagentVersion = shallowRef(0);
+
+  const unsubscribe = stream.subscribe(() => {
+    streamValues.value = stream.values;
+    streamError.value = stream.error;
+    isLoading.value = stream.isLoading;
+    subagentVersion.value += 1;
+  });
+
+  const unsubQueue = pendingRuns.subscribe(() => {
+    queueEntries.value = pendingRuns.entries;
+    queueSize.value = pendingRuns.size;
+  });
+
+  onScopeDispose(() => {
+    unsubscribe();
+    unsubQueue();
+    void stop();
+  });
+
+  watch(
+    () => {
+      const hvMessages = getMessages(historyValues.value);
+      return {
+        should:
+          options.filterSubagentMessages &&
+          !isLoading.value &&
+          !history.value.isLoading &&
+          hvMessages.length > 0,
+        len: hvMessages.length,
+      };
+    },
+    ({ should }) => {
+      if (should) {
+        const hvMessages = getMessages(historyValues.value);
+        stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+      }
+    },
+    { immediate: true },
+  );
+
+  function stop() {
+    return stream.stop(historyValues.value, {
+      onStop: (args) => {
+        if (runMetadataStorage && threadId.value) {
+          const runId = runMetadataStorage.getItem(
+            `lg:stream:${threadId.value}`,
+          );
+          if (runId) void client.runs.cancel(threadId.value, runId);
+          runMetadataStorage.removeItem(`lg:stream:${threadId.value}`);
+        }
+
+        options.onStop?.(args);
+      },
+    });
+  }
+
+  function setBranch(value: string) {
+    branch.value = value;
+  }
+
+  async function joinStream(
+    runId: string,
+    lastEventId?: string,
+    joinOptions?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    },
+  ) {
+    // eslint-disable-next-line no-param-reassign
+    lastEventId ??= "-1";
+    if (!threadId.value) return;
+
+    const callbackMeta: RunCallbackMeta = {
+      thread_id: threadId.value,
+      run_id: runId,
+    };
+
+    await stream.start(
+      async (signal: AbortSignal) => {
+        const rawStream = client.runs.joinStream(threadId.value!, runId, {
+          signal,
+          lastEventId,
+          streamMode: joinOptions?.streamMode,
+        }) as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
+        >;
+
+        return joinOptions?.filter != null
+          ? filterStream(rawStream, joinOptions.filter)
+          : rawStream;
+      },
+      {
+        getMessages,
+        setMessages,
+
+        initialValues: historyValues.value,
+        callbacks: options,
+        async onSuccess() {
+          runMetadataStorage?.removeItem(`lg:stream:${threadId.value}`);
+          const newHistory = await mutate(threadId.value);
+          const lastHead = newHistory?.at(0);
+          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+        },
+        onError(error) {
+          options.onError?.(error, callbackMeta);
+        },
+      },
+    );
+  }
+
+  function submitDirect(
+    values: StateType,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+  ) {
+    const currentBranchContext = branchContext.value;
+
+    const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
+    branch.value =
+      checkpointId != null
+        ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
+        : "";
+
+    const includeImplicitBranch =
+      historyLimit === true || typeof historyLimit === "number";
+
+    const shouldRefetch = options.onFinish != null || includeImplicitBranch;
+
+    let checkpoint =
+      submitOptions?.checkpoint ??
+      (includeImplicitBranch
+        ? currentBranchContext.threadHead?.checkpoint
+        : undefined) ??
+      undefined;
+
+    if (submitOptions?.checkpoint === null) checkpoint = undefined;
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
+    if (checkpoint != null) delete checkpoint.thread_id;
+
+    let callbackMeta: RunCallbackMeta | undefined;
+    let rejoinKey: `lg:stream:${string}` | undefined;
+    let usableThreadId: string | undefined;
+
+    return stream.start(
+      async (signal) => {
+        usableThreadId = threadId.value;
+        if (!usableThreadId) {
+          const threadPromise = client.threads.create({
+            threadId: submitOptions?.threadId,
+            metadata: submitOptions?.metadata,
+          });
+
+          threadIdPromise = threadPromise.then((t) => t.thread_id);
+
+          const thread = await threadPromise;
+
+          usableThreadId = thread.thread_id;
+          threadId.value = usableThreadId;
+          options.onThreadId?.(usableThreadId);
+        }
+
+        const streamMode = unique([
+          "values" as StreamMode,
+          "updates" as StreamMode,
+          ...(submitOptions?.streamMode ?? []),
+          ...trackedStreamModes,
+          ...callbackStreamModes,
+        ]);
+
+        stream.setStreamValues(() => {
+          const prev = { ...historyValues.value, ...stream.values };
+
+          if (submitOptions?.optimisticValues != null) {
+            return {
+              ...prev,
+              ...(typeof submitOptions.optimisticValues === "function"
+                ? submitOptions.optimisticValues(prev)
+                : submitOptions.optimisticValues),
+            };
+          }
+
+          return { ...prev };
+        });
+
+        const streamResumable =
+          submitOptions?.streamResumable ?? !!runMetadataStorage;
+
+        return client.runs.stream(usableThreadId!, options.assistantId, {
+          input: values as Record<string, unknown>,
+          config: submitOptions?.config,
+          context: submitOptions?.context,
+          command: submitOptions?.command,
+
+          interruptBefore: submitOptions?.interruptBefore,
+          interruptAfter: submitOptions?.interruptAfter,
+          metadata: submitOptions?.metadata,
+          multitaskStrategy: submitOptions?.multitaskStrategy,
+          onCompletion: submitOptions?.onCompletion,
+          onDisconnect:
+            submitOptions?.onDisconnect ??
+            (streamResumable ? "continue" : "cancel"),
+
+          signal,
+
+          checkpoint,
+          streamMode,
+          streamSubgraphs: submitOptions?.streamSubgraphs,
+          streamResumable,
+          durability: submitOptions?.durability,
+          onRunCreated(params) {
+            callbackMeta = {
+              run_id: params.run_id,
+              thread_id: params.thread_id ?? usableThreadId!,
+            };
+
+            if (runMetadataStorage) {
+              rejoinKey = `lg:stream:${usableThreadId}`;
+              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+            }
+
+            options.onCreated?.(callbackMeta);
+          },
+        }) as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
+        >;
+      },
+      {
+        getMessages,
+        setMessages,
+
+        initialValues: historyValues.value,
+        callbacks: options,
+
+        async onSuccess() {
+          if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
+
+          if (shouldRefetch && usableThreadId) {
+            const newHistory = await mutate(usableThreadId);
+            const lastHead = newHistory?.at(0);
+            if (lastHead) {
+              options.onFinish?.(lastHead, callbackMeta);
+              return null;
+            }
+          }
+          return undefined;
+        },
+        onError: (error) => {
+          options.onError?.(error, callbackMeta);
+          submitOptions?.onError?.(error, callbackMeta);
+        },
+        onFinish: () => {},
+      },
+    );
+  }
+
+  const submitting = ref(false);
+
+  function drainQueue() {
+    if (!isLoading.value && !submitting.value && pendingRuns.size > 0) {
+      const next = pendingRuns.shift();
+      if (next) {
+        submitting.value = true;
+        void joinStream(next.id).finally(() => {
+          submitting.value = false;
+          drainQueue();
+        });
+      }
+    }
+  }
+
+  watch(
+    () => ({
+      loading: isLoading.value,
+      submitting: submitting.value,
+      size: pendingRuns.size,
+    }),
+    () => {
+      drainQueue();
+    },
+  );
+
+  async function submit(
+    values: StateType,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+  ) {
+    if (stream.isLoading || submitting.value) {
+      const shouldAbort =
+        submitOptions?.multitaskStrategy === "interrupt" ||
+        submitOptions?.multitaskStrategy === "rollback";
+
+      if (shouldAbort) {
+        submitting.value = true;
+        try {
+          await submitDirect(values, submitOptions);
+        } finally {
+          submitting.value = false;
+        }
+        return;
+      }
+
+      let usableThreadId: string | undefined = threadId.value;
+      if (!usableThreadId && threadIdPromise) {
+        usableThreadId = await threadIdPromise;
+      }
+      if (usableThreadId) {
+        try {
+          const run = await client.runs.create(
+            usableThreadId,
+            options.assistantId,
+            {
+              input: values as Record<string, unknown>,
+              config: submitOptions?.config,
+              context: submitOptions?.context,
+              command: submitOptions?.command,
+              interruptBefore: submitOptions?.interruptBefore,
+              interruptAfter: submitOptions?.interruptAfter,
+              metadata: submitOptions?.metadata,
+              multitaskStrategy: "enqueue",
+              streamResumable: true,
+              streamSubgraphs: submitOptions?.streamSubgraphs,
+              durability: submitOptions?.durability,
+            },
+          );
+
+          pendingRuns.add({
+            id: run.run_id,
+            values: values as Partial<StateType> | null | undefined,
+            options: submitOptions,
+            createdAt: new Date(run.created_at),
+          });
+        } catch (error) {
+          options.onError?.(error, undefined);
+          submitOptions?.onError?.(error, undefined);
+        }
+        return;
+      }
+    }
+
+    submitting.value = true;
+    const result = submitDirect(values, submitOptions);
+    void Promise.resolve(result).finally(() => {
+      submitting.value = false;
+      drainQueue();
+    });
+    return result;
+  }
+
+  // --- Auto-reconnect ---
+  let shouldReconnect = !!runMetadataStorage;
+
+  function tryReconnect() {
+    if (shouldReconnect && runMetadataStorage && threadId.value) {
+      const runId = runMetadataStorage.getItem(`lg:stream:${threadId.value}`);
+      if (runId) {
+        shouldReconnect = false;
+        void joinStream(runId);
+      }
+    }
+  }
+
+  tryReconnect();
+
+  watch(
+    () => threadId.value,
+    () => {
+      shouldReconnect = !!runMetadataStorage;
+      tryReconnect();
+    },
+  );
+
+  const toolCalls = computed(() => {
+    trackStreamMode("messages-tuple");
+    return getToolCallsWithResults(getMessages(values.value));
+  });
+
+  function getToolCalls(message: Message) {
+    trackStreamMode("messages-tuple");
+    const allToolCalls = getToolCallsWithResults(getMessages(values.value));
+    return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+  }
+
+  const interrupts = computed((): Interrupt<InterruptType>[] => {
+    const v = values.value;
+    if (v != null && "__interrupt__" in v && Array.isArray(v.__interrupt__)) {
+      const valueInterrupts = v.__interrupt__;
+      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+      return valueInterrupts;
+    }
+
+    if (isLoading.value) return [];
+
+    const allTasks = branchContext.value.threadHead?.tasks ?? [];
+    const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
+
+    if (allInterrupts.length > 0) {
+      return allInterrupts as Interrupt<InterruptType>[];
+    }
+
+    const next = branchContext.value.threadHead?.next ?? [];
+    if (!next.length || error.value != null) return [];
+    return [{ when: "breakpoint" }];
+  });
+
+  const flatHistory = computed(() => {
+    if (historyLimit === false) {
+      throw new Error(
+        "`fetchStateHistory` must be set to `true` to use `history`",
+      );
+    }
+    return ensureHistoryMessageInstances(
+      branchContext.value.flatHistory,
+      options.messagesKey ?? "messages",
+    );
+  });
+
+  const isThreadLoading = computed(
+    () => history.value.isLoading && history.value.data == null,
+  );
+
+  const experimentalBranchTree = computed(() => {
+    if (historyLimit === false) {
+      throw new Error(
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
+      );
+    }
+    return branchContext.value.branchTree;
+  });
+
+  return {
+    assistantId: options.assistantId,
+    client,
+
+    values,
+    error,
+    isLoading,
+
+    branch,
+    setBranch,
+
+    messages: computed(() => {
+      trackStreamMode("messages-tuple");
+      return ensureMessageInstances(
+        getMessages(streamValues.value ?? historyValues.value),
+      );
+    }),
+
+    toolCalls,
+    getToolCalls,
+
+    interrupt: computed(() =>
+      extractInterrupts<InterruptType>(streamValues.value, {
+        isLoading: isLoading.value,
+        threadState: branchContext.value.threadHead,
+        error: streamError.value,
+      }),
+    ),
+
+    interrupts,
+    history: flatHistory,
+    isThreadLoading,
+    experimental_branchTree: experimentalBranchTree,
+
+    getMessagesMetadata: (
+      message: Message,
+      index?: number,
+    ): MessageMetadata<StateType> | undefined => {
+      const streamMetadata = messageManager.get(message.id)?.metadata;
+      const historyMetadata = messageMetadata.value?.find(
+        (m) => m.messageId === (message.id ?? index),
+      );
+
+      if (streamMetadata != null || historyMetadata != null) {
+        return {
+          ...historyMetadata,
+          streamMetadata,
+        } as MessageMetadata<StateType>;
+      }
+
+      return undefined;
+    },
+
+    submit,
+    stop,
+    joinStream,
+
+    queue: {
+      entries: queueEntries,
+      size: queueSize,
+      async cancel(id: string) {
+        const tid = threadId.value;
+        const removed = pendingRuns.remove(id);
+        if (removed && tid) {
+          await client.runs.cancel(tid, id);
+        }
+        return removed;
+      },
+      async clear() {
+        const tid = threadId.value;
+        const removed = pendingRuns.removeAll();
+        if (tid && removed.length > 0) {
+          await Promise.all(removed.map((e) => client.runs.cancel(tid, e.id)));
+        }
+      },
+    },
+
+    switchThread(newThreadId: string | null) {
+      const current = threadId.value ?? null;
+      if (newThreadId !== current) {
+        const prevThreadId = threadId.value;
+        threadId.value = newThreadId ?? undefined;
+        stream.clear();
+
+        const removed = pendingRuns.removeAll();
+        if (prevThreadId && removed.length > 0) {
+          void Promise.all(
+            removed.map((e) => client.runs.cancel(prevThreadId, e.id)),
+          );
+        }
+
+        if (newThreadId != null) {
+          options.onThreadId?.(newThreadId);
+        }
+      }
+    },
+
+    get subagents() {
+      void subagentVersion.value;
+      return stream.getSubagents();
+    },
+    get activeSubagents() {
+      void subagentVersion.value;
+      return stream.getActiveSubagents();
+    },
+    getSubagent(toolCallId: string) {
+      return stream.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return stream.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return stream.getSubagentsByMessage(messageId);
+    },
+  };
+}
+
+type ClassToolCallWithResult<T> =
+  T extends _ToolCallWithResult<infer TC, unknown, unknown>
+    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+    : T;
+
+export type ClassSubagentStreamInterface<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string,
+> = Omit<
+  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
+  "messages"
+> & {
+  messages: BaseMessage[];
+};
+
+/**
+ * Maps a stream interface to Vue-reactive types:
+ * - `messages` becomes `ComputedRef<BaseMessage[]>`
+ * - `getMessagesMetadata` accepts `BaseMessage`
+ * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Ref`
+ * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
+ * - `queue` properties are individually mapped (reactive → `Ref`, functions unchanged)
+ * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
+ * - Functions remain unchanged
+ * - All other properties are wrapped in `Ref<T>` to match Vue's reactivity
+ */
+type WithClassMessages<T> = {
+  [K in keyof T as K extends
+    | "getSubagent"
+    | "getSubagentsByType"
+    | "getSubagentsByMessage"
+    ? never
+    : K]: K extends "messages"
+    ? ComputedRef<BaseMessage[]>
+    : K extends "getMessagesMetadata"
+      ? (
+          message: BaseMessage,
+          index?: number,
+        ) => MessageMetadata<Record<string, unknown>> | undefined
+      : K extends "toolCalls"
+        ? T[K] extends (infer TC)[]
+          ? Ref<ClassToolCallWithResult<TC>[]>
+          : Ref<T[K]>
+        : K extends "getToolCalls"
+          ? T[K] extends (message: infer _M) => (infer TC)[]
+            ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
+            : T[K]
+          : K extends "queue"
+            ? {
+                [QK in keyof T[K]]: T[K][QK] extends (
+                  ...args: infer A
+                ) => infer R
+                  ? (...args: A) => R
+                  : Ref<T[K][QK]>;
+              }
+            : K extends "client" | "assistantId"
+              ? T[K]
+              : K extends "subagents"
+                ? T[K] extends Map<
+                    string,
+                    SubagentStreamInterface<infer S, infer TC, infer N>
+                  >
+                  ? Map<string, ClassSubagentStreamInterface<S, TC, N>>
+                  : T[K]
+                : K extends "activeSubagents"
+                  ? T[K] extends SubagentStreamInterface<
+                      infer S,
+                      infer TC,
+                      infer N
+                    >[]
+                    ? ClassSubagentStreamInterface<S, TC, N>[]
+                    : T[K]
+                  : K extends "submit"
+                    ? T[K] extends (
+                        values: infer V,
+                        options?: infer O,
+                      ) => infer Ret
+                      ? (
+                          values:
+                            | AcceptBaseMessages<Exclude<V, null | undefined>>
+                            | null
+                            | undefined,
+                          options?: O,
+                        ) => Ret
+                      : T[K]
+                    : K extends "history"
+                      ? ComputedRef<HistoryWithBaseMessages<T[K]>>
+                      : T[K] extends (...args: infer A) => infer R
+                        ? (...args: A) => R
+                        : Ref<T[K]>;
+} & ("subagents" extends keyof T
+  ? {
+      getSubagent: T extends {
+        getSubagent: (
+          id: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
+      }
+        ? (
+            toolCallId: string,
+          ) => ClassSubagentStreamInterface<S, TC, N> | undefined
+        : never;
+      getSubagentsByType: T extends {
+        getSubagentsByType: (
+          type: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+      }
+        ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
+        : never;
+      getSubagentsByMessage: T extends {
+        getSubagentsByMessage: (
+          id: string,
+        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
+      }
+        ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
+        : never;
+    }
+  : unknown);
+
+export function useStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+
+export function useStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useStream(options: any): any {
+  if ("transport" in options) {
+    return useStreamCustom(options);
+  }
+  return useStreamLGP(options);
+}
+
+export type {
+  BaseStream,
+  UseAgentStream,
+  UseAgentStreamOptions,
+  UseDeepAgentStream,
+  UseDeepAgentStreamOptions,
+  ResolveStreamInterface,
+  ResolveStreamOptions,
+  InferStateType,
+  InferToolCalls,
+  InferSubagentStates,
+  InferNodeNames,
+  InferBag,
+  MessageMetadata,
+  UseStreamOptions,
+  UseStreamCustomOptions,
+  UseStreamTransport,
+  UseStreamThread,
+  GetToolCallsType,
+  AgentTypeConfigLike,
+  IsAgentLike,
+  ExtractAgentConfig,
+  InferAgentToolCalls,
+  SubagentToolCall,
+  SubagentStatus,
+  SubagentStream,
+  SubagentApi,
+  SubagentStreamInterface,
+  SubAgentLike,
+  CompiledSubAgentLike,
+  DeepAgentTypeConfigLike,
+  IsDeepAgentLike,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferDeepAgentSubagents,
+  InferSubagentByName,
+  InferSubagentState,
+  InferSubagentNames,
+  SubagentStateMap,
+  DefaultSubagentStates,
+  BaseSubagentState,
+  QueueEntry,
+  QueueInterface,
+} from "@langchain/langgraph-sdk/ui";
+
+export type ToolCallWithResult<ToolCall = DefaultToolCall> =
+  _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
+export type {
+  ToolCallState,
+  DefaultToolCall,
+  ToolCallFromTool,
+  ToolCallsFromTools,
+} from "@langchain/langgraph-sdk";
+
+export {
+  SubagentManager,
+  extractToolCallIdFromNamespace,
+  calculateDepthFromNamespace,
+  extractParentIdFromNamespace,
+  isSubagentNamespace,
+} from "@langchain/langgraph-sdk/ui";

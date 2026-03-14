@@ -264,6 +264,17 @@ export function useStreamLGP<
     }
   }, [threadId, stream]);
 
+  const switchThread = useCallback(
+    (newThreadId: string | null) => {
+      if (newThreadId !== threadIdRef.current) {
+        threadIdRef.current = newThreadId;
+        stream.clear();
+        onThreadId(newThreadId as string);
+      }
+    },
+    [stream, onThreadId]
+  );
+
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
     options.fetchStateHistory != null
@@ -397,10 +408,13 @@ export function useStreamLGP<
         const messageId = message.id ?? idx;
 
         // Find the first checkpoint where the message was seen
-        const firstSeenState = findLast(history.data ?? [], (state) =>
-          getMessages(state.values)
-            .map((m, idx) => m.id ?? idx)
-            .includes(messageId)
+        const firstSeenState = findLast(
+          history.data ?? [],
+          (state) =>
+            state.values != null &&
+            getMessages(state.values)
+              .map((m, idx) => m.id ?? idx)
+              .includes(messageId)
         );
 
         const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;
@@ -729,6 +743,7 @@ export function useStreamLGP<
 
     stop,
     submit,
+    switchThread,
 
     joinStream,
 

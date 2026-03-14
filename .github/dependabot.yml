@@ -5,36 +5,147 @@
 
 version: 2
 updates:
-  - package-ecosystem: npm
+  - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: weekly
-      time: "11:00"
-    open-pull-requests-limit: 10
-    versioning-strategy: increase-if-necessary
+      interval: "monthly"
     groups:
-      patch-deps-updates-main:
-        update-types:
-          - "patch"
-      minor-deps-updates-main:
+      # Internal LangChain packages
+      langchain:
+        patterns:
+          - "@langchain/*"
+          - "langchain"
+          - "langsmith"
+
+      # Angular framework and tooling
+      angular:
+        patterns:
+          - "@angular/*"
+          - "@analogjs/*"
+          - "vitest-browser-angular"
+
+      # Svelte framework and tooling
+      svelte:
+        patterns:
+          - "svelte"
+          - "@sveltejs/*"
+          - "vitest-browser-svelte"
+
+      # Vue framework and tooling
+      vue:
+        patterns:
+          - "vue"
+          - "rxjs"
+          - "@vitejs/plugin-vue"
+          - "@vitejs/plugin-vue-jsx"
+          - "vitest-browser-vue"
+
+      # React framework and tooling
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@testing-library/*"
+          - "@vitejs/plugin-react"
+          - "vitest-browser-react"
+
+      # Vite, Vitest, and build tools
+      vite-vitest:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "vitest"
+          - "vitest-*"
+          - "@vitest/*"
+          - "rollup"
+          - "esbuild"
+          - "esbuild-*"
+          - "turbo"
+
+      # TypeScript, ESLint, and formatting
+      typescript-eslint:
+        patterns:
+          - "typescript"
+          - "@typescript-eslint/*"
+          - "@tsconfig/*"
+          - "eslint"
+          - "eslint-*"
+          - "prettier"
+
+      # Database clients and test containers
+      database:
+        patterns:
+          - "mongodb"
+          - "pg"
+          - "postgres"
+          - "redis"
+          - "better-sqlite3"
+          - "testcontainers"
+          - "@testcontainers/*"
+
+      # Hono web framework
+      hono:
+        patterns:
+          - "hono"
+          - "@hono/*"
+
+      # Zod validation and schema
+      zod:
+        patterns:
+          - "zod"
+          - "zod-to-json-schema"
+          - "@standard-schema/spec"
+
+      # OpenAI and AI clients
+      openai:
+        patterns:
+          - "openai"
+          - "@xenova/transformers"
+          - "scrapybara"
+
+      # CLI building tools
+      cli-tools:
+        patterns:
+          - "commander"
+          - "@commander-js/extra-typings"
+          - "@clack/prompts"
+          - "yargs"
+          - "picocolors"
+
+      # Type definitions
+      types:
+        patterns:
+          - "@types/*"
+
+      # Everything else — minor and patch together, major separately
+      minor-and-patch:
+        patterns:
+          - "*"
         update-types:
           - "minor"
-      major-deps-updates-main:
+          - "patch"
+
+      major:
+        patterns:
+          - "*"
         update-types:
           - "major"
-  - package-ecosystem: github-actions
+
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: weekly
-      time: "11:00"
-    open-pull-requests-limit: 10
+      interval: "monthly"
     groups:
-      patch-deps-updates:
-        update-types:
-          - "patch"
-      minor-deps-updates:
+      minor-and-patch:
+        patterns:
+          - "*"
         update-types:
           - "minor"
-      major-deps-updates:
+          - "patch"
+      major:
+        patterns:
+          - "*"
         update-types:
           - "major"

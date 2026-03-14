@@ -1,0 +1,51 @@
+<script lang="ts">
+  import { useStream } from "../../index.js";
+
+  interface Props {
+    apiUrl: string;
+  }
+
+  const { apiUrl }: Props = $props();
+
+  const { history, isLoading, submit } = useStream({
+    assistantId: "agent",
+    apiUrl,
+    fetchStateHistory: true,
+  });
+
+  const historyMessages = $derived(
+    $history.flatMap(
+      (state: any) => (state.values.messages ?? []) as Record<string, unknown>[],
+    ),
+  );
+
+  const allAreBaseMessage = $derived(
+    historyMessages.length > 0 &&
+    historyMessages.every(
+      (msg: any) => typeof msg.getType === "function",
+    ),
+  );
+
+  const messageTypes = $derived(
+    historyMessages
+      .map((msg: any) => {
+        return typeof msg.getType === "function" ? msg.getType() : "plain";
+      })
+      .join(","),
+  );
+</script>
+
+<div>
+  <div data-testid="history-count">{$history.length}</div>
+  <div data-testid="history-all-base-message">{String(allAreBaseMessage)}</div>
+  <div data-testid="history-message-types">{messageTypes}</div>
+  <div data-testid="loading">
+    {$isLoading ? "Loading..." : "Not loading"}
+  </div>
+  <button
+    data-testid="submit"
+    onclick={() => void submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+  >
+    Send
+  </button>
+</div>
