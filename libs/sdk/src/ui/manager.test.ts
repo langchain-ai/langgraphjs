@@ -813,4 +813,110 @@ describe("StreamManager", () => {
       }
     });
   });
+
+  describe("SubagentManager aiMessageId update (OpenAI ID replacement)", () => {
+    function createManager(onChange?: () => void) {
+      return new SubagentManager({
+        subagentToolNames: ["task"],
+        onSubagentChange: onChange,
+      });
+    }
+
+    const toolCalls = [
+      {
+        id: "call_1",
+        name: "task",
+        args: {
+          subagent_type: "researcher",
+          description: "Research AI trends",
+        },
+      },
+    ];
+
+    it("should update aiMessageId when provider replaces it", () => {
+      const mgr = createManager();
+      const streamingId = "lc_run--abc123";
+      const finalId = "resp_xyz789";
+
+      // Register with streaming ID
+      mgr.registerFromToolCalls(toolCalls, streamingId);
+      mgr.markRunning("call_1");
+
+      // Verify lookup works with streaming ID
+      expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(1);
+
+      // Re-register with final ID (simulating OpenAI replacing the ID)
+      mgr.registerFromToolCalls(toolCalls, finalId);
+
+      // Now lookup should work with the final ID
+      expect(mgr.getSubagentsByMessage(finalId)).toHaveLength(1);
+      // Old streaming ID should no longer match
+      expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(0);
+    });
+
+    it("should not clear aiMessageId when re-registering with null or undefined", () => {
+      const mgr = createManager();
+      const streamingId = "lc_run--abc123";
+
+      mgr.registerFromToolCalls(toolCalls, streamingId);
+      mgr.markRunning("call_1");
+
+      // Re-register with null — should keep original ID
+      mgr.registerFromToolCalls(toolCalls, null);
+      expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(1);
+
+      // Re-register with undefined — should keep original ID
+      mgr.registerFromToolCalls(toolCalls, undefined);
+      expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(1);
+    });
+
+    it("should not fire onSubagentChange when re-registering with the same ID", () => {
+      const onChange = vi.fn();
+      const mgr = createManager(onChange);
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+      onChange.mockClear();
+
+      // Re-register with the same ID and same args — no change expected
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("should update aiMessageId for multiple subagents from the same message", () => {
+      const mgr = createManager();
+      const streamingId = "lc_run--abc123";
+      const finalId = "resp_xyz789";
+
+      const multiToolCalls = [
+        {
+          id: "call_1",
+          name: "task",
+          args: {
+            subagent_type: "researcher",
+            description: "Research AI trends",
+          },
+        },
+        {
+          id: "call_2",
+          name: "task",
+          args: {
+            subagent_type: "writer",
+            description: "Write summary",
+          },
+        },
+      ];
+
+      mgr.registerFromToolCalls(multiToolCalls, streamingId);
+      mgr.markRunning("call_1");
+      mgr.markRunning("call_2");
+
+      expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(2);
+
+      // Re-register with final ID
+      mgr.registerFromToolCalls(multiToolCalls, finalId);
+
+      expect(mgr.getSubagentsByMessage(finalId)).toHaveLength(2);
+      expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(0);
+    });
+  });
 });
