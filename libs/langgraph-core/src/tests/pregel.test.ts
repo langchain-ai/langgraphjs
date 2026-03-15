@@ -8157,7 +8157,13 @@ graph TD;
             ],
             { grandchild1: { myKey: "hi my value here" } },
           ],
-          [[""], { [INTERRUPT]: [] }],
+          [
+            [
+              expect.stringMatching(/^child:/),
+              expect.stringMatching(/^child1:/),
+            ],
+            { [INTERRUPT]: [] },
+          ],
         ]);
       }
     });
@@ -10194,6 +10200,154 @@ graph TD;
 
     expect(result.messages).toBeDefined();
     expect(result.messages).toHaveLength(1);
+  });
+
+  it("should time travel directly to nested subgraph interrupts", async () => {
+    const InterruptState = Annotation.Root({
+      events: Annotation<string[]>({
+        reducer: (left, right) => left.concat(right),
+        default: () => [],
+      }),
+    });
+
+    const counts = {
+      before: 0,
+      stepA: 0,
+      ask1: 0,
+      ask2: 0,
+      after: 0,
+    };
+
+    const subgraph = new StateGraph(InterruptState)
+      .addNode("step_a", () => {
+        counts.stepA += 1;
+        return { events: ["step_a"] };
+      })
+      .addNode("ask_1", () => {
+        counts.ask1 += 1;
+        const answer = interrupt("ask_1");
+        return { events: [`ask_1:${answer}`] };
+      })
+      .addNode("ask_2", () => {
+        counts.ask2 += 1;
+        const answer = interrupt("ask_2");
+        return { events: [`ask_2:${answer}`] };
+      })
+      .addEdge(START, "step_a")
+      .addEdge("step_a", "ask_1")
+      .addEdge("ask_1", "ask_2")
+      .addEdge("ask_2", END)
+      .compile();
+
+    const graph = new StateGraph(InterruptState)
+      .addNode("before", () => {
+        counts.before += 1;
+        return { events: ["before"] };
+      })
+      .addNode("subgraph", subgraph)
+      .addNode("after", () => {
+        counts.after += 1;
+        return { events: ["after"] };
+      })
+      .addEdge(START, "before")
+      .addEdge("before", "subgraph")
+      .addEdge("subgraph", "after")
+      .addEdge("after", END)
+      .compile({ checkpointer: await createCheckpointer() });
+
+    const config = {
+      configurable: { thread_id: "test_subgraph_direct_time_travel_interrupts" },
+    };
+
+    const firstInterruptResult = await graph.invoke({ events: [] }, config);
+    expect(firstInterruptResult).toMatchObject({
+      [INTERRUPT]: [expect.objectContaining({ value: "ask_1" })],
+    });
+    expect(counts).toEqual({
+      before: 1,
+      stepA: 1,
+      ask1: 1,
+      ask2: 0,
+      after: 0,
+    });
+
+    const firstState = await graph.getState(config, { subgraphs: true });
+    const firstSubgraphState = firstState.tasks[0].state as StateSnapshot;
+    const firstInterruptConfig = structuredClone(firstSubgraphState.config);
+    const firstCheckpointNs =
+      firstInterruptConfig.configurable?.checkpoint_ns ?? "";
+    expect(firstInterruptConfig.configurable?.checkpoint_map).toMatchObject({
+      [firstCheckpointNs]: expect.any(String),
+    });
+
+    const secondInterruptResult = await graph.invoke(
+      new Command({ resume: "answer_1" }),
+      config
+    );
+    expect(secondInterruptResult).toMatchObject({
+      [INTERRUPT]: [expect.objectContaining({ value: "ask_2" })],
+    });
+    expect(counts).toEqual({
+      before: 1,
+      stepA: 1,
+      ask1: 2,
+      ask2: 1,
+      after: 0,
+    });
+
+    const secondState = await graph.getState(config, { subgraphs: true });
+    const secondSubgraphState = secondState.tasks[0].state as StateSnapshot;
+    const secondInterruptConfig = structuredClone(secondSubgraphState.config);
+    const secondCheckpointNs =
+      secondInterruptConfig.configurable?.checkpoint_ns ?? "";
+    expect(secondInterruptConfig.configurable?.checkpoint_map).toMatchObject({
+      [secondCheckpointNs]: expect.any(String),
+    });
+
+    const finalResult = await graph.invoke(
+      new Command({ resume: "answer_2" }),
+      config
+    );
+    expect(finalResult).toMatchObject({
+      events: expect.arrayContaining([
+        "before",
+        "step_a",
+        "ask_1:answer_1",
+        "ask_2:answer_2",
+        "after",
+      ]),
+    });
+    expect(counts).toEqual({
+      before: 1,
+      stepA: 1,
+      ask1: 2,
+      ask2: 2,
+      after: 1,
+    });
+
+    const replayFirstInterrupt = await graph.invoke(null, firstInterruptConfig);
+    expect(replayFirstInterrupt).toMatchObject({
+      [INTERRUPT]: [expect.objectContaining({ value: "ask_1" })],
+    });
+    expect(counts).toEqual({
+      before: 1,
+      stepA: 1,
+      ask1: 3,
+      ask2: 2,
+      after: 1,
+    });
+
+    const replaySecondInterrupt = await graph.invoke(null, secondInterruptConfig);
+    expect(replaySecondInterrupt).toMatchObject({
+      [INTERRUPT]: [expect.objectContaining({ value: "ask_2" })],
+    });
+    expect(counts).toEqual({
+      before: 1,
+      stepA: 1,
+      ask1: 3,
+      ask2: 3,
+      after: 1,
+    });
   });
 
   it("should fail fast when interrupt is called without a checkpointer", async () => {

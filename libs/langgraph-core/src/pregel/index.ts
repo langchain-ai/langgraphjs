@@ -39,6 +39,7 @@ import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_NODE_FINISHED,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
@@ -953,6 +954,7 @@ export class Pregel<
       config.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
+      config.configurable?.[CONFIG_KEY_READ] === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns
@@ -1881,6 +1883,66 @@ export class Pregel<
       signal: combineAbortSignals(options?.signal, abortController.signal)
         .signal,
     };
+
+    const checkpointNamespace: string =
+      config.configurable?.checkpoint_ns ?? "";
+    const checkpointMap = config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP];
+    const isDirectSubgraphConfig =
+      input === null &&
+      config.configurable?.checkpoint_id !== undefined &&
+      typeof checkpointMap === "object" &&
+      checkpointMap !== null &&
+      checkpointNamespace in checkpointMap;
+    if (
+      checkpointNamespace !== "" &&
+      isDirectSubgraphConfig &&
+      config.configurable?.[CONFIG_KEY_READ] === undefined &&
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
+    ) {
+      const { checkpointer } = this;
+      if (!checkpointer || checkpointer === true) {
+        throw new GraphValueError("No checkpointer set", {
+          lc_error_code: "MISSING_CHECKPOINTER",
+        });
+      }
+
+      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
+      for await (const [name, subgraph] of this.getSubgraphsAsync(
+        recastNamespace,
+        true
+      )) {
+        if (name === recastNamespace) {
+          return (await subgraph.stream(
+            input,
+            patchConfigurable(config, {
+              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+            }) as Partial<
+              PregelOptions<
+                Nodes,
+                Channels,
+                ContextType,
+                TStreamMode,
+                TSubgraphs,
+                TEncoding
+              >
+            >
+          )) as IterableReadableStream<
+            StreamOutputMap<
+              TStreamMode,
+              TSubgraphs,
+              StreamUpdatesType,
+              StreamValuesType,
+              keyof Nodes,
+              NodeReturnType,
+              StreamCustom,
+              TEncoding
+            >
+          >;
+        }
+      }
+
+      throw new Error(`Subgraph with namespace "${recastNamespace}" not found.`);
+    }
 
     const stream = await super.stream(input, config);
     return new IterableReadableStreamWithAbortSignal(
