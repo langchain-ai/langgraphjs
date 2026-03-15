@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.2.3
+
+### Patch Changes
+
+- [#2176](https://github.com/langchain-ai/langgraphjs/pull/2176) [`ad48dee`](https://github.com/langchain-ai/langgraphjs/commit/ad48dee9dcaf29c718c9f6b1c188756c14e85a0f) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - fix(state): merge jsonSchemaExtra in getInputJsonSchema()
+
+- Updated dependencies [[`a9ff2ef`](https://github.com/langchain-ai/langgraphjs/commit/a9ff2efdf0a2b6ff0301eedfff541e125c1e6300), [`a24bb55`](https://github.com/langchain-ai/langgraphjs/commit/a24bb550fb81271c505b9cab0295d8e599aaeb79), [`b80076c`](https://github.com/langchain-ai/langgraphjs/commit/b80076c5a7fc1b6985abc1fd9c367438ba6ca968)]:
+  - @langchain/langgraph-sdk@1.7.3
+
 ## 1.2.2
 
 ### Patch Changes
