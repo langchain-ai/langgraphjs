@@ -24,6 +24,10 @@ import { StreamChunk } from "./stream.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Meta = [string[], Record<string, any>];
 
+interface StreamMessagesHandlerOptions {
+  dedupeMetadata?: boolean;
+}
+
 function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
   return isBaseMessage((x as ChatGenerationChunk)?.message);
 }
@@ -45,13 +49,29 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   emittedChatModelRunIds: Record<string, boolean> = {};
 
+  /**
+   * Tracks which LLM run IDs have already had their metadata emitted
+   * via handleLLMNewToken when metadata deduplication is enabled.
+   * Subsequent streaming chunks for the same run send null metadata,
+   * drastically reducing per-event overhead. Only applies to LLM
+   * streaming (handleLLMNewToken); chain-output messages always carry
+   * full metadata since each is a distinct message.
+   */
+  emittedMetadataLLMRunIds: Record<string, boolean> = {};
+
   stableMessageIdMap: Record<string, string> = {};
 
   lc_prefer_streaming = true;
 
-  constructor(streamFn: (streamChunk: StreamChunk) => void) {
+  dedupeMetadata: boolean;
+
+  constructor(
+    streamFn: (streamChunk: StreamChunk) => void,
+    options?: StreamMessagesHandlerOptions
+  ) {
     super();
     this.streamFn = streamFn;
+    this.dedupeMetadata = options?.dedupeMetadata ?? false;
   }
 
   _emit(
@@ -132,15 +152,23 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   ) {
     const chunk = fields?.chunk;
     this.emittedChatModelRunIds[runId] = true;
-    if (this.metadatas[runId] !== undefined) {
+    const meta = this.metadatas[runId];
+    if (meta !== undefined) {
+      let metaForChunk: Meta = meta;
+      if (this.dedupeMetadata) {
+        // Only send full metadata with the first streaming chunk per LLM
+        // call. Subsequent chunks send null; the client keeps the
+        // previously received metadata for this message ID.
+        metaForChunk = this.emittedMetadataLLMRunIds[runId]
+          ? [meta[0], null as unknown as Record<string, never>]
+          : meta;
+        this.emittedMetadataLLMRunIds[runId] = true;
+      }
+
       if (isChatGenerationChunk(chunk)) {
-        this._emit(this.metadatas[runId], chunk.message, runId);
+        this._emit(metaForChunk, chunk.message, runId);
       } else {
-        this._emit(
-          this.metadatas[runId],
-          new AIMessageChunk({ content: token }),
-          runId
-        );
+        this._emit(metaForChunk, new AIMessageChunk({ content: token }), runId);
       }
     }
   }
@@ -153,7 +181,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     if (!this.emittedChatModelRunIds[runId]) {
       const chatGeneration = output.generations?.[0]?.[0] as ChatGeneration;
       if (isBaseMessage(chatGeneration?.message)) {
-        this._emit(this.metadatas[runId], chatGeneration?.message, runId, true);
+        this._emit(
+          this.metadatas[runId]!,
+          chatGeneration?.message,
+          runId,
+          true
+        );
       }
       delete this.emittedChatModelRunIds[runId];
     }

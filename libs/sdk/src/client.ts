@@ -1573,7 +1573,10 @@ export class RunsClient<
     options?: { signal?: AbortSignal }
   ): Promise<Run[]> {
     const filteredPayloads = payloads
-      .map((payload) => ({ ...payload, assistant_id: payload.assistantId }))
+      .map((payload) => ({
+        ...payload,
+        assistant_id: payload.assistantId,
+      }))
       .map((payload) => {
         return Object.fromEntries(
           Object.entries(payload).filter(([_, v]) => v !== undefined)

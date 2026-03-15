@@ -26,6 +26,7 @@ import { Client, getClientConfigHash } from "@langchain/langgraph-sdk/client";
 import {
   filterStream,
   unique,
+  withCompactStreamMode,
   StreamError,
   getBranchContext,
   getMessagesMetadataMap,
@@ -548,7 +549,7 @@ export function useStreamLGP<
         threadIdStreamingRef.current = usableThreadId;
 
         const streamMode = unique([
-          ...(submitOptions?.streamMode ?? []),
+          ...withCompactStreamMode(submitOptions?.streamMode),
           ...trackStreamModeRef.current,
           ...callbackStreamMode,
         ]);
@@ -680,6 +681,11 @@ export function useStreamLGP<
       }
       if (usableThreadId) {
         try {
+          const streamMode = unique([
+            ...withCompactStreamMode(submitOptions?.streamMode),
+            ...trackStreamModeRef.current,
+            ...callbackStreamMode,
+          ]);
           const run = await client.runs.create(
             usableThreadId,
             options.assistantId,
@@ -692,6 +698,7 @@ export function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode,
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

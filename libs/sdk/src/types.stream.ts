@@ -21,6 +21,7 @@ export type StreamMode =
   | "checkpoints"
   | "custom"
   | "messages-tuple"
+  | "compact"
   | "tools";
 
 export type ThreadStreamMode = "run_modes" | "lifecycle" | "state_update";
@@ -46,9 +47,23 @@ export type ValuesStreamEvent<StateType> = {
   data: StateType;
 };
 
+export type ValuesPatchStreamEvent<StateType> = {
+  id?: string;
+  event: "values-patch";
+  data: {
+    values: Partial<StateType>;
+    deleted_keys?: string[];
+  };
+};
+
 /** @internal */
 export type SubgraphValuesStreamEvent<StateType> = AsSubgraph<
   ValuesStreamEvent<StateType>
+>;
+
+/** @internal */
+export type SubgraphValuesPatchStreamEvent<StateType> = AsSubgraph<
+  ValuesPatchStreamEvent<StateType>
 >;
 
 /**
@@ -308,7 +323,19 @@ type GetStreamModeMap<
       checkpoints: CheckpointsStreamEvent<TStateType>;
       events: EventsStreamEvent;
       tools: ToolsStreamEvent;
-    }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
+    }[Extract<
+      TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode,
+      | "values"
+      | "updates"
+      | "custom"
+      | "debug"
+      | "messages"
+      | "messages-tuple"
+      | "tasks"
+      | "checkpoints"
+      | "events"
+      | "tools"
+    >]
   | ErrorStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
@@ -330,7 +357,19 @@ type GetSubgraphsStreamModeMap<
       tasks: SubgraphTasksStreamEvent<TStateType, TUpdateType>;
       checkpoints: SubgraphCheckpointsStreamEvent<TStateType>;
       tools: SubgraphToolsStreamEvent;
-    }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
+    }[Extract<
+      TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode,
+      | "values"
+      | "updates"
+      | "custom"
+      | "debug"
+      | "messages"
+      | "messages-tuple"
+      | "events"
+      | "tasks"
+      | "checkpoints"
+      | "tools"
+    >]
   | SubgraphErrorStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;

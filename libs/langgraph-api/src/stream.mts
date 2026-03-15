@@ -18,6 +18,7 @@ import {
 } from "./utils/runnableConfig.mjs";
 
 type LangGraphStreamMode = Pregel<any, any>["streamMode"][number];
+type StreamEventName = LangGraphStreamMode | "values-patch";
 
 interface DebugTask {
   id: string;
@@ -142,6 +143,67 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
 
 let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
+const STREAM_MODE_COMPACT_CONFIG_KEY = "__stream_mode_compact__";
+
+function hasToolsNamespace(ns: string[] | null): boolean {
+  return Array.isArray(ns) && ns.some((part) => part.startsWith("tools:"));
+}
+
+function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return structuredClone(value);
+}
+
+function isEqualValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function createSubgraphValuesDeltaTracker() {
+  const seen = new Map<string, Record<string, unknown>>();
+
+  return {
+    next(namespace: string[], values: Record<string, unknown>) {
+      const key = namespace.join("|");
+      const previous = seen.get(key);
+      const current = cloneRecord(values);
+
+      if (previous == null) {
+        seen.set(key, current);
+        return { kind: "snapshot" as const, data: current };
+      }
+
+      const delta: Record<string, unknown> = {};
+      const deletedKeys: string[] = [];
+      let changed = false;
+
+      for (const [field, nextValue] of Object.entries(current)) {
+        if (!isEqualValue(previous[field], nextValue)) {
+          delta[field] = nextValue;
+          changed = true;
+        }
+      }
+
+      for (const field of Object.keys(previous)) {
+        if (!(field in current)) {
+          deletedKeys.push(field);
+          changed = true;
+        }
+      }
+
+      seen.set(key, current);
+
+      return changed
+        ? {
+            kind: "patch" as const,
+            data: {
+              values: delta,
+              ...(deletedKeys.length ? { deleted_keys: deletedKeys } : {}),
+            },
+          }
+        : null;
+    },
+  };
+}
+
 export async function* streamState(
   run: Run,
   options: {
@@ -168,10 +230,14 @@ export async function* streamState(
   });
 
   const userStreamMode = kwargs.stream_mode ?? [];
+  const compactMode =
+    userStreamMode.includes("compact") ||
+    kwargs.config?.configurable?.[STREAM_MODE_COMPACT_CONFIG_KEY] === true;
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
-      (mode) => mode !== "events" && mode !== "messages-tuple"
+      (mode): mode is LangGraphStreamMode =>
+        mode !== "events" && mode !== "messages-tuple" && mode !== "compact"
     ) ?? []
   );
 
@@ -231,7 +297,10 @@ export async function* streamState(
 
       tags: kwargs.config?.tags,
       context: kwargs.context,
-      configurable: kwargs.config?.configurable,
+      configurable: {
+        ...kwargs.config?.configurable,
+        [STREAM_MODE_COMPACT_CONFIG_KEY]: compactMode,
+      },
       recursionLimit: kwargs.config?.recursion_limit,
       subgraphs: kwargs.subgraphs,
       metadata,
@@ -245,6 +314,9 @@ export async function* streamState(
 
   const messages: Record<string, BaseMessageChunk> = {};
   const completedIds = new Set<string>();
+  const subgraphValuesDeltaTracker = compactMode
+    ? createSubgraphValuesDeltaTracker()
+    : undefined;
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
@@ -282,7 +354,26 @@ export async function* streamState(
         data = debugTask;
       }
 
-      if (mode === "messages") {
+      let eventName: StreamEventName = mode;
+      if (
+        mode === "values" &&
+        compactMode &&
+        hasToolsNamespace(ns) &&
+        chunk != null &&
+        typeof chunk === "object"
+      ) {
+        const nextValueEvent = subgraphValuesDeltaTracker?.next(
+          ns ?? [],
+          chunk as Record<string, unknown>
+        );
+        if (nextValueEvent == null) {
+          continue;
+        }
+        data = nextValueEvent.data;
+        eventName = nextValueEvent.kind === "patch" ? "values-patch" : "values";
+      }
+
+      if (eventName === "messages") {
         if (userStreamMode.includes("messages-tuple")) {
           if (kwargs.subgraphs && ns?.length) {
             yield { event: `messages|${ns.join("|")}`, data };
@@ -290,11 +381,14 @@ export async function* streamState(
             yield { event: "messages", data };
           }
         }
-      } else if (userStreamMode.includes(mode)) {
+      } else if (
+        userStreamMode.includes(mode) ||
+        (eventName === "values-patch" && userStreamMode.includes("values"))
+      ) {
         if (kwargs.subgraphs && ns?.length) {
-          yield { event: `${mode}|${ns.join("|")}`, data };
+          yield { event: `${eventName}|${ns.join("|")}`, data };
         } else {
-          yield { event: mode, data };
+          yield { event: eventName, data };
         }
       }
     } else if (userStreamMode.includes("events")) {

@@ -761,7 +761,8 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   updateSubagentValues(
     namespaceId: string,
-    values: Record<string, unknown>
+    values: Record<string, unknown>,
+    options?: { merge?: boolean; deletedKeys?: string[] }
   ): void {
     // Resolve the actual tool call ID from the namespace mapping
     const toolCallId = this.getToolCallIdFromNamespace(namespaceId);
@@ -771,9 +772,19 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       return;
     }
 
+    const nextValues = options?.merge
+      ? { ...existing.values, ...values }
+      : values;
+
+    if (options?.deletedKeys?.length) {
+      for (const key of options.deletedKeys) {
+        delete nextValues[key];
+      }
+    }
+
     this.subagents.set(toolCallId, {
       ...existing,
-      values,
+      values: nextValues,
       status: existing.status === "pending" ? "running" : existing.status,
       startedAt: existing.startedAt ?? new Date(),
     });

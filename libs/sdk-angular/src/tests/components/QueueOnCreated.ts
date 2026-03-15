@@ -39,7 +39,7 @@ export class QueueOnCreatedComponent {
         const followUps = this.pending;
         this.pending = [];
         for (const text of followUps) {
-          this.stream.submit({
+          void this.stream.submit({
             messages: [{ content: text, type: "human" }],
           } as any);
         }

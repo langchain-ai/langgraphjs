@@ -20,6 +20,7 @@ describe("StreamMessagesHandler", () => {
 
       expect(handler.name).toBe("StreamMessagesHandler");
       expect(handler.streamFn).toBe(streamFn);
+      expect(handler.dedupeMetadata).toBe(false);
       expect(handler.metadatas).toEqual({});
       expect(handler.seen).toEqual({});
       expect(handler.emittedChatModelRunIds).toEqual({});

@@ -17,6 +17,7 @@ import {
   extractInterrupts,
   filterStream,
   FetchStreamTransport,
+  withCompactStreamMode,
   toMessageClass,
   ensureMessageInstances,
   ensureHistoryMessageInstances,
@@ -470,7 +471,7 @@ function useStreamLGP<
           "values",
           "messages-tuple",
           "updates",
-          ...(submitOptions?.streamMode ?? []),
+          ...withCompactStreamMode(submitOptions?.streamMode),
         ];
         if (options.onUpdateEvent && !streamMode.includes("updates"))
           streamMode.push("updates");
@@ -623,6 +624,32 @@ function useStreamLGP<
       }
       if (usableThreadId) {
         try {
+          const streamMode: StreamMode[] = [
+            "values",
+            "messages-tuple",
+            "updates",
+            ...withCompactStreamMode(submitOptions?.streamMode),
+          ];
+          if (options.onUpdateEvent && !streamMode.includes("updates"))
+            streamMode.push("updates");
+          if (options.onCustomEvent && !streamMode.includes("custom"))
+            streamMode.push("custom");
+          if (options.onCheckpointEvent && !streamMode.includes("checkpoints"))
+            streamMode.push("checkpoints");
+          if (options.onTaskEvent && !streamMode.includes("tasks"))
+            streamMode.push("tasks");
+          if (
+            "onDebugEvent" in options &&
+            options.onDebugEvent &&
+            !streamMode.includes("debug")
+          )
+            streamMode.push("debug");
+          if (
+            "onLangChainEvent" in options &&
+            options.onLangChainEvent &&
+            !streamMode.includes("events")
+          )
+            streamMode.push("events");
           const run = await client.runs.create(
             usableThreadId,
             options.assistantId,
@@ -635,6 +662,7 @@ function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode,
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

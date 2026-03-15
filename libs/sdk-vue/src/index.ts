@@ -18,6 +18,7 @@ import {
   PendingRunsTracker,
   filterStream,
   unique,
+  withCompactStreamMode,
   getBranchContext,
   getMessagesMetadataMap,
   StreamError,
@@ -404,7 +405,7 @@ function useStreamLGP<
         const streamMode = unique([
           "values" as StreamMode,
           "updates" as StreamMode,
-          ...(submitOptions?.streamMode ?? []),
+          ...withCompactStreamMode(submitOptions?.streamMode),
           ...trackedStreamModes,
           ...callbackStreamModes,
         ]);
@@ -546,6 +547,13 @@ function useStreamLGP<
       }
       if (usableThreadId) {
         try {
+          const streamMode = unique([
+            "values" as StreamMode,
+            "updates" as StreamMode,
+            ...withCompactStreamMode(submitOptions?.streamMode),
+            ...trackedStreamModes,
+            ...callbackStreamModes,
+          ]);
           const run = await client.runs.create(
             usableThreadId,
             options.assistantId,
@@ -558,6 +566,7 @@ function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode,
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

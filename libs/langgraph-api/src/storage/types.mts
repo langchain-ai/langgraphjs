@@ -54,6 +54,7 @@ export type StreamMode =
   | "values"
   | "messages"
   | "messages-tuple"
+  | "compact"
   | "custom"
   | "updates"
   | "events"

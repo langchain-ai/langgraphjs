@@ -1119,18 +1119,88 @@ describe("runs", () => {
       )
       .map((i) => i.data[0]);
 
+    const messageMetadata = chunks
+      .filter(
+        (i): i is MessagesTupleStreamEvent =>
+          i.event.startsWith("messages|") || i.event === "messages"
+      )
+      .map((i) => i.data[1]);
+
     expect(messages).toHaveLength("begin".length + "end".length + 1);
     expect(messages).toMatchObject([
       ..."begin".split("").map((c) => ({ content: c })),
       { content: "tool_call__begin" },
       ..."end".split("").map((c) => ({ content: c })),
     ]);
+    expect(messageMetadata.every((meta) => meta != null)).toBe(true);
 
     const seenEventTypes = new Set(chunks.map((i) => i.event.split("|")[0]));
     expect(seenEventTypes).toEqual(new Set(["metadata", "messages"]));
 
     const run = await client.runs.get(thread.thread_id, runId as string);
     expect(run.status).toBe("success");
+  });
+
+  it.concurrent("stream messages tuple with stream protocol v2", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const input = {
+      messages: [{ type: "human", content: "foo", id: "initial-message" }],
+    };
+    const response = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/runs/stream`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          assistant_id: assistant.assistant_id,
+          input,
+          stream_mode: ["messages-tuple", "compact"],
+          stream_subgraphs: true,
+          config: globalConfig,
+        }),
+      }
+    );
+    expect(response.ok).toBe(true);
+
+    const raw = await response.text();
+    const chunks = raw
+      .split("\n\n")
+      .filter(Boolean)
+      .map((block) => {
+        const lines = block.split("\n");
+        const event = lines
+          .find((line) => line.startsWith("event: "))
+          ?.slice("event: ".length);
+        const dataText = lines
+          .filter((line) => line.startsWith("data: "))
+          .map((line) => line.slice("data: ".length))
+          .join("\n");
+        return {
+          event: event as string,
+          data: dataText ? JSON.parse(dataText) : null,
+        };
+      });
+
+    const tuples = chunks.filter(
+      (i): i is MessagesTupleStreamEvent =>
+        i.event.startsWith("messages|") || i.event === "messages"
+    );
+
+    expect(tuples.length).toBeGreaterThan(1);
+
+    const sparseTextChunk = tuples
+      .map((tuple) => tuple.data[0] as Record<string, unknown>)
+      .find(
+        (message) =>
+          typeof message.content === "string" && message.content.length > 0
+      );
+
+    expect(sparseTextChunk).toBeDefined();
+    expect(sparseTextChunk).not.toHaveProperty("tool_calls");
+    expect(sparseTextChunk).not.toHaveProperty("invalid_tool_calls");
+    expect(sparseTextChunk).not.toHaveProperty("tool_call_chunks");
+    expect(sparseTextChunk).not.toHaveProperty("additional_kwargs");
   });
 
   it.concurrent("stream mixed modes", async () => {

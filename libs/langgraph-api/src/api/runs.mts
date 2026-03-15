@@ -19,6 +19,23 @@ import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
 
+const hasCompactMode = (modes: string[] | undefined): boolean =>
+  Array.isArray(modes) && modes.includes("compact");
+
+const getRunCompactMode = (run: Run | null | undefined): boolean =>
+  hasCompactMode(run?.kwargs.stream_mode) ||
+  run?.kwargs.config?.configurable?.__stream_mode_compact__ === true;
+
+const serialiseRunChunk = (data: unknown, compact: boolean) =>
+  serialiseAsDict(data, { sparseMessages: compact });
+
+const getPayloadCompactMode = (
+  mode: z.infer<typeof schemas.RunCreate>["stream_mode"]
+): boolean =>
+  hasCompactMode(
+    Array.isArray(mode) ? mode : mode != null ? [mode] : undefined
+  );
+
 const createValidRun = async (
   threadId: string | undefined,
   payload: z.infer<typeof schemas.RunCreate>,
@@ -59,6 +76,11 @@ const createValidRun = async (
       langsmith_project: run.langsmith_tracer.project_name,
       langsmith_example_id: run.langsmith_tracer.example_id,
     });
+  }
+
+  if (streamMode.includes("compact")) {
+    config.configurable ??= {};
+    config.configurable.__stream_mode_compact__ = true;
   }
 
   if (headers) {
@@ -212,6 +234,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
       payload.on_disconnect === "cancel"
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
+    const compactMode = getPayloadCompactMode(payload.stream_mode);
 
     try {
       for await (const { event, data } of runs().stream.join(
@@ -224,7 +247,10 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         },
         c.var.auth
       )) {
-        await stream.writeSSE({ data: serialiseAsDict(data), event });
+        await stream.writeSSE({
+          data: serialiseRunChunk(data, compactMode),
+          event,
+        });
       }
     } catch (error) {
       logError(error, { prefix: "Error streaming run" });
@@ -243,6 +269,7 @@ api.get(
   async (c) => {
     const { run_id } = c.req.valid("param");
     const query = c.req.valid("query");
+    const run = await runs().get(run_id, undefined, c.var.auth);
 
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
     c.header("Content-Location", `/runs/${run_id}`);
@@ -258,7 +285,11 @@ api.get(
           { cancelOnDisconnect, lastEventId, ignore404: true },
           c.var.auth
         )) {
-          await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+          await stream.writeSSE({
+            id,
+            data: serialiseRunChunk(data, getRunCompactMode(run)),
+            event,
+          });
         }
       } catch (error) {
         logError(error, { prefix: "Error streaming run" });
@@ -371,6 +402,7 @@ api.post(
         payload.on_disconnect === "cancel"
           ? getDisconnectAbortSignal(c, stream)
           : undefined;
+      const compactMode = getPayloadCompactMode(payload.stream_mode);
 
       try {
         for await (const { id, event, data } of runs().stream.join(
@@ -382,7 +414,11 @@ api.post(
           },
           c.var.auth
         )) {
-          await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+          await stream.writeSSE({
+            id,
+            data: serialiseRunChunk(data, compactMode),
+            event,
+          });
         }
       } catch (error) {
         logError(error, { prefix: "Error streaming run" });
@@ -469,6 +505,7 @@ api.get(
     // Stream Run Http
     const { thread_id, run_id } = c.req.valid("param");
     const { cancel_on_disconnect } = c.req.valid("query");
+    const run = await runs().get(run_id, thread_id, c.var.auth);
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
 
     return streamSSE(c, async (stream) => {
@@ -482,7 +519,11 @@ api.get(
         { cancelOnDisconnect: signal, lastEventId },
         c.var.auth
       )) {
-        await stream.writeSSE({ id, data: serialiseAsDict(data), event });
+        await stream.writeSSE({
+          id,
+          data: serialiseRunChunk(data, getRunCompactMode(run)),
+          event,
+        });
       }
     });
   }

@@ -153,6 +153,44 @@ describe("SSEDecoder", () => {
     });
   });
 
+  test("only includes id when the event sent one", async () => {
+    const input = createStream([
+      "id: 123\n",
+      "event: first\n",
+      'data: {"message": "hello"}\n',
+      "\n",
+      "event: second\n",
+      'data: {"message": "world"}\n',
+      "\n",
+    ]);
+    const decoded = input
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    const results = await gather(decoded);
+    expect(results).toEqual([
+      { id: "123", event: "first", data: { message: "hello" } },
+      { event: "second", data: { message: "world" } },
+    ]);
+  });
+
+  test("omits id when the SSE id field is blank", async () => {
+    const input = createStream([
+      "id:\n",
+      "event: blank-id\n",
+      'data: {"message": "hello"}\n',
+      "\n",
+    ]);
+    const decoded = input
+      .pipeThrough(BytesLineDecoder())
+      .pipeThrough(SSEDecoder());
+
+    const results = await gather(decoded);
+    expect(results).toEqual([
+      { event: "blank-id", data: { message: "hello" } },
+    ]);
+  });
+
   test("end event without data", async () => {
     const input = createStream(["event: test\n"]);
     const decoded = input

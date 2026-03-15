@@ -704,6 +704,339 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("subagent values stripping", () => {
+    it("strips messages array from subagent values when filterSubagentMessages is true", async () => {
+      const mgr = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+
+      // Register a subagent via an AI message with tool calls
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "Let me delegate",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Look into trends",
+                  },
+                },
+              ],
+            },
+            { langgraph_checkpoint_ns: "agent:t1", langgraph_node: "agent" },
+          ] as [
+            {
+              id: string;
+              type: string;
+              content: string;
+              tool_calls: Array<{
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              }>;
+            },
+            Record<string, unknown>
+          ],
+        },
+        // Subagent values event with a large messages array
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            messages: [
+              { type: "human", content: "Look into trends" },
+              { type: "ai", content: "Here are the trends..." },
+              { type: "ai", content: "More details..." },
+            ],
+            someOtherState: { counter: 42 },
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (mgr as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      // The subagent should have values WITHOUT messages (stripped)
+      const subagent = mgr.getSubagent("call_1");
+      if (subagent) {
+        expect(subagent.values).toEqual({ someOtherState: { counter: 42 } });
+        expect(subagent.values).not.toHaveProperty("messages");
+      }
+    });
+
+    it("merges v2 delta values into existing subagent values", async () => {
+      const mgr = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "Let me delegate",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Look into trends",
+                  },
+                },
+              ],
+            },
+            { langgraph_checkpoint_ns: "agent:t1", langgraph_node: "agent" },
+          ] as [
+            {
+              id: string;
+              type: string;
+              content: string;
+              tool_calls: Array<{
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              }>;
+            },
+            Record<string, unknown>
+          ],
+        },
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            messages: [{ type: "human", content: "Look into trends" }],
+            someOtherState: { counter: 1 },
+            statusText: "starting",
+          } as unknown as TestState,
+        },
+        {
+          event: "values-patch|tools:call_1|model:task_1" as "values",
+          data: {
+            values: {
+              someOtherState: { counter: 2 },
+              newField: "done",
+            },
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (mgr as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const subagent = mgr.getSubagent("call_1");
+      if (subagent) {
+        expect(subagent.values).toEqual({
+          someOtherState: { counter: 2 },
+          statusText: "starting",
+          newField: "done",
+        });
+      }
+    });
+
+    it("applies deleted keys from v2 delta values", async () => {
+      const mgr = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "Let me delegate",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Look into trends",
+                  },
+                },
+              ],
+            },
+            { langgraph_checkpoint_ns: "agent:t1", langgraph_node: "agent" },
+          ] as [
+            {
+              id: string;
+              type: string;
+              content: string;
+              tool_calls: Array<{
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              }>;
+            },
+            Record<string, unknown>
+          ],
+        },
+        {
+          event: "values|tools:call_1|model:task_1" as "values",
+          data: {
+            messages: [{ type: "human", content: "Look into trends" }],
+            keepMe: true,
+            removeMe: true,
+          } as unknown as TestState,
+        },
+        {
+          event: "values-patch|tools:call_1|model:task_1" as "values",
+          data: {
+            values: {
+              keepMe: true,
+            },
+            deleted_keys: ["removeMe"],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (mgr as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const subagent = mgr.getSubagent("call_1");
+      if (subagent) {
+        expect(subagent.values).toEqual({ keepMe: true });
+        expect(subagent.values).not.toHaveProperty("removeMe");
+      }
+    });
+  });
+
+  describe("subagent routing with null metadata", () => {
+    it("uses event namespace for subagent detection when metadata is null", async () => {
+      const mgr = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+
+      // Register subagent
+      const events = [
+        {
+          event: "updates" as const,
+          data: {
+            agent: {
+              messages: [
+                {
+                  id: "ai-1",
+                  type: "ai",
+                  content: "Delegating",
+                  tool_calls: [
+                    {
+                      id: "call_1",
+                      name: "task",
+                      args: {
+                        subagent_type: "researcher",
+                        description: "Research AI",
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        // Subagent message with null metadata (simulating metadata dedup)
+        // The event name contains the namespace info
+        {
+          event: "messages|tools:call_1|model:task_1" as "messages",
+          data: [
+            { id: "sub-ai-1", type: "ai", content: "Working on it" },
+            null,
+          ] as unknown as [
+            { id: string; type: string; content: string },
+            Record<string, unknown>
+          ],
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (mgr as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      // The message should have been routed to the subagent, not the main stream
+      const mainValues = mgr.values;
+      const mainMessages = mainValues?.messages ?? [];
+      // Sub-agent message should NOT be in main messages
+      expect(
+        mainMessages.find((m: { id: string }) => m.id === "sub-ai-1")
+      ).toBeUndefined();
+    });
+  });
+
   describe("subagent message conversion via toMessage", () => {
     function createSubagentManager(
       toMessage?: (chunk: CoreBaseMessage) => CoreBaseMessage
