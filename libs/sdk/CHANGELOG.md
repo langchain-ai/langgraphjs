@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.7.3
+
+### Patch Changes
+
+- [#2170](https://github.com/langchain-ai/langgraphjs/pull/2170) [`a9ff2ef`](https://github.com/langchain-ai/langgraphjs/commit/a9ff2efdf0a2b6ff0301eedfff541e125c1e6300) Thanks [@jdrogers940](https://github.com/jdrogers940)! - add cancelMany method to sdk
+
+- [#2173](https://github.com/langchain-ai/langgraphjs/pull/2173) [`a24bb55`](https://github.com/langchain-ai/langgraphjs/commit/a24bb550fb81271c505b9cab0295d8e599aaeb79) Thanks [@hinthornw](https://github.com/hinthornw)! - Adds threads.prune and updates SDK methods to have latest values.
+
+- [#2177](https://github.com/langchain-ai/langgraphjs/pull/2177) [`b80076c`](https://github.com/langchain-ai/langgraphjs/commit/b80076c5a7fc1b6985abc1fd9c367438ba6ca968) Thanks [@hntrl](https://github.com/hntrl)! - handle null values in functional graph checkpoint history
+
 ## 1.7.2
 
 ### Patch Changes
