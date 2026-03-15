@@ -15,7 +15,7 @@
     "prepublish": "pnpm build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",
-    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
+    "lint:eslint": "ESLINT_USE_FLAT_CONFIG=false NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js,.jsx,.tsx src/",
     "lint": "pnpm lint:eslint",
     "lint:fix": "pnpm lint:eslint --fix",
     "test": "vitest run"
