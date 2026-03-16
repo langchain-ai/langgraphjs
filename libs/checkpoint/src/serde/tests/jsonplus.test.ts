@@ -99,9 +99,13 @@ const VALUES = [
   ],
 ] satisfies [string, unknown][];
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  return ArrayBuffer.isView(value) && value.constructor === Uint8Array;
+}
+
 function assertTypedArraysPreserved(a: unknown, b: unknown): void {
-  if (a instanceof Uint8Array) {
-    expect(b).toBeInstanceOf(Uint8Array);
+  if (isUint8Array(a)) {
+    expect(isUint8Array(b)).toBe(true);
     expect(Array.from(b as Uint8Array)).toEqual(Array.from(a));
   } else if (Array.isArray(a)) {
     expect(Array.isArray(b)).toBe(true);
