@@ -293,6 +293,115 @@ export class StreamManager<
   }
 
   /**
+   * Fetch and restore internal messages for reconstructed subagents from their
+   * subgraph checkpoints. Should be called after `reconstructSubagents` to
+   * restore the full subagent conversation after a page refresh.
+   *
+   * Subagent messages are persisted in the LangGraph checkpointer under a
+   * subgraph-specific `checkpoint_ns` (e.g. `tools:call_abc123`). This method
+   * fetches the latest checkpoint for each subagent that has no messages yet
+   * and populates them from the stored subgraph state.
+   *
+   * @param threads - Client with a `getHistory` method (e.g. `client.threads`)
+   * @param threadId - The parent thread ID
+   * @param options - Optional configuration
+   * @param options.messagesKey - Key in state values containing messages (default: "messages")
+   */
+  async fetchSubagentHistory(
+    threads: {
+      getHistory<V extends Record<string, unknown>>(
+        threadId: string,
+        options?: {
+          limit?: number;
+          checkpoint?: { checkpoint_ns?: string };
+          signal?: AbortSignal;
+        }
+      ): Promise<Array<{ values: V }>>;
+    },
+    threadId: string,
+    options?: { messagesKey?: string; signal?: AbortSignal }
+  ): Promise<void> {
+    const messagesKey = options?.messagesKey ?? "messages";
+    const signal = options?.signal;
+
+    // Bail immediately if already cancelled (React Strict Mode cleanup)
+    if (signal?.aborted) return;
+
+    // Only fetch for subagents that have no messages (reconstructed from history)
+    const toFetch = [...this.subagentManager.getSubagents().entries()].filter(
+      ([, s]) => s.messages.length === 0
+    );
+
+    if (toFetch.length === 0) return;
+
+    await Promise.all(
+      toFetch.map(async ([toolCallId, subagent]) => {
+        // Use the actual subgraph checkpoint_ns stored in the subagent's namespace
+        // (restored from the ToolMessage's additional_kwargs.subgraph_checkpoint_ns).
+        // This UUID-based namespace (e.g. "tools:a1b2-...") is where LangGraph
+        // actually persisted the subagent's checkpoints, which differs from the
+        // LLM provider's tool call ID (e.g. "call_abc123").
+        const checkpointNs =
+          subagent.namespace.length > 0
+            ? subagent.namespace.join("|")
+            : `tools:${toolCallId}`;
+        try {
+          const history = await threads.getHistory<Record<string, unknown>>(
+            threadId,
+            {
+              checkpoint: { checkpoint_ns: checkpointNs },
+              limit: 1,
+              signal,
+            }
+          );
+
+          // If the HTTP request was cancelled mid-flight (signal aborted), the
+          // getHistory call would have thrown an AbortError (caught below). If
+          // we reach here the fetch completed successfully, so always process it.
+          const latestState = history[0];
+          if (latestState?.values) {
+            const messages = latestState.values[messagesKey];
+            if (Array.isArray(messages) && messages.length > 0) {
+              // Normalize messages to ensure tool_calls is at the top level.
+              // When subagent messages are restored from the checkpointer via
+              // _prepareStateSnapshot, the messages may only have tool_calls
+              // under additional_kwargs (older serialization format).
+              const normalizedMessages = messages.map((msg) => {
+                const m = msg as Record<string, unknown>;
+                if (
+                  m.type === "ai" &&
+                  (!m.tool_calls || (m.tool_calls as unknown[]).length === 0)
+                ) {
+                  const additionalKwargs = m.additional_kwargs as
+                    | Record<string, unknown>
+                    | undefined;
+                  const legacyToolCalls = additionalKwargs?.tool_calls;
+                  if (
+                    Array.isArray(legacyToolCalls) &&
+                    legacyToolCalls.length > 0
+                  ) {
+                    return { ...m, tool_calls: legacyToolCalls };
+                  }
+                }
+                return m;
+              });
+              this.subagentManager.updateSubagentFromSubgraphState(
+                toolCallId,
+                normalizedMessages as Message[],
+                latestState.values
+              );
+            }
+          }
+        } catch (err) {
+          // Ignore AbortError — signal was aborted while the request was in-flight
+          if (err instanceof Error && err.name === "AbortError") return;
+          // Silently ignore other errors - subgraph history may not be available for all backends
+        }
+      })
+    );
+  }
+
+  /**
    * Check if any subagents are currently tracked.
    */
   hasSubagents(): boolean {

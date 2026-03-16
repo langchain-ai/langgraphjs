@@ -30,7 +30,7 @@
   "devDependencies": {
     "@langchain/core": "^1.1.28",
     "@langchain/scripts": "^0.1.4",
-    "deepagents": "^1.8.1",
+    "deepagents": "https://pkg.pr.new/deepagents@263aea6",
     "langchain": "^1.2.27",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",

@@ -382,14 +382,30 @@ function useStreamLGP<
     },
   );
 
+  let fetchController: AbortController | null = null;
+
   const unsubReconstruct = shouldReconstructSubagents.subscribe(($should) => {
     if ($should) {
       const hvMessages = getMessages(get(historyValues));
       stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+      // Fetch internal messages for each subagent from their subgraph checkpoints.
+      // These messages are not in the main thread state but are persisted in the
+      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
+      // Cancel any previous in-flight fetch before starting a new one.
+      fetchController?.abort();
+      fetchController = new AbortController();
+      const tid = get(threadId);
+      if (tid) {
+        void stream.fetchSubagentHistory(client.threads, tid, {
+          messagesKey: options.messagesKey ?? "messages",
+          signal: fetchController.signal,
+        });
+      }
     }
   });
 
   onDestroy(() => {
+    fetchController?.abort();
     unsubscribe();
     unsubReconstruct();
     unsubQueue();

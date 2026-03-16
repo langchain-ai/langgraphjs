@@ -382,6 +382,17 @@ export function useStreamLGP<
     if (shouldReconstructSubagents) {
       // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
       stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+      // Fetch internal messages for each subagent from their subgraph checkpoints.
+      // These messages are not in the main thread state but are persisted in the
+      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
+      if (threadId) {
+        const controller = new AbortController();
+        void stream.fetchSubagentHistory(client.threads, threadId, {
+          messagesKey: options.messagesKey ?? "messages",
+          signal: controller.signal,
+        });
+        return () => controller.abort();
+      }
     }
     // We intentionally only run this when shouldReconstructSubagents changes
     // to avoid unnecessary reconstructions during streaming

@@ -411,7 +411,7 @@ export function useStreamLGP<
     queueSize.set(pendingRuns.size);
   });
 
-  effect(() => {
+  effect((onCleanup) => {
     const hvMessages = getMessages(historyValues());
     const should =
       options.filterSubagentMessages &&
@@ -420,6 +420,18 @@ export function useStreamLGP<
       hvMessages.length > 0;
     if (should) {
       stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+      // Fetch internal messages for each subagent from their subgraph checkpoints.
+      // These messages are not in the main thread state but are persisted in the
+      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
+      const tid = threadId();
+      if (tid) {
+        const controller = new AbortController();
+        void stream.fetchSubagentHistory(client.threads, tid, {
+          messagesKey: options.messagesKey ?? "messages",
+          signal: controller.signal,
+        });
+        onCleanup(() => controller.abort());
+      }
     }
   });
 
