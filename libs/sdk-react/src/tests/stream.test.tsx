@@ -26,6 +26,7 @@ import { SuspenseBasicStream } from "./components/SuspenseBasicStream.js";
 import { SuspenseErrorStream } from "./components/SuspenseErrorStream.js";
 import { SuspenseWithThreadId } from "./components/SuspenseWithThreadId.js";
 import { ContextProvider } from "./components/ContextProvider.js";
+import { BrowserToolStream } from "./components/BrowserToolStream.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1350,4 +1351,69 @@ it("useStreamContext throws when used outside StreamProvider", async () => {
     .toHaveTextContent(
       "useStreamContext must be used within a <StreamProvider>",
     );
+});
+
+
+// ============================================================================
+// Browser Tools
+// ============================================================================
+
+it("browser tools - executes in browser and resumes agent automatically", async () => {
+  const screen = await render(<BrowserToolStream apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Where am I?");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
+});
+
+it("browser tools - onBrowserTool callback fires start and success events", async () => {
+  const screen = await render(<BrowserToolStream apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-0"))
+    .toHaveTextContent("start:get_location");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("success:get_location");
+});
+
+it("browser tools - propagates execute error back to agent as error payload", async () => {
+  const failingExecute = async () => {
+    throw new Error("GPS unavailable");
+  };
+
+  const screen = await render(
+    <BrowserToolStream apiUrl={serverUrl} execute={failingExecute} />,
+  );
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("error:get_location:GPS unavailable");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
 });

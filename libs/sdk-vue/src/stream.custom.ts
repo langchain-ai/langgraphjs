@@ -17,6 +17,10 @@ import {
   type GetConfigurableType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
+import {
+  isBrowserToolInterrupt,
+  handleBrowserToolInterrupt,
+} from "@langchain/langgraph-sdk";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 import type { VueReactiveOptions } from "./types.js";
 
@@ -117,6 +121,52 @@ export function useStreamCustom<
   const queueEntries = shallowRef<unknown[]>([]);
   const queueSize = shallowRef(0);
 
+  const submit = async (
+    values: UpdateType | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+  ) => {
+    await orchestrator.submit(values, submitOptions);
+  };
+
+  const handledBrowserTools = new Set<string>();
+
+  watch(
+    () => toValue(options.threadId),
+    () => {
+      handledBrowserTools.clear();
+    }
+  );
+
+  watch(streamValues, (vals) => {
+    const { browserTools, onBrowserTool } = options;
+    if (!browserTools?.length) return;
+
+    const interrupts = vals?.__interrupt__;
+    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
+
+    for (const interrupt of interrupts) {
+      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+
+      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+      if (handledBrowserTools.has(interruptId)) continue;
+      handledBrowserTools.add(interruptId);
+
+      void handleBrowserToolInterrupt(
+        interrupt.value,
+        browserTools,
+        onBrowserTool
+      ).then((result) => {
+        void submit(null, {
+          command: {
+            resume: result.toolCallId
+              ? { [result.toolCallId]: result.value }
+              : result.value,
+          },
+        });
+      });
+    }
+  });
+
   return {
     get values() {
       return streamValues.value ?? ({} as StateType);
@@ -127,12 +177,7 @@ export function useStreamCustom<
 
     stop: () => orchestrator.stop(),
 
-    submit: async (
-      values: UpdateType | null | undefined,
-      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
-    ) => {
-      await orchestrator.submit(values, submitOptions);
-    },
+    submit,
 
     switchThread(newThreadId: string | null) {
       orchestrator.switchThread(newThreadId);
