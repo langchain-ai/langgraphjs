@@ -9,6 +9,10 @@ import {
   type GetConfigurableType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
+import {
+  isBrowserToolInterrupt,
+  handleBrowserToolInterrupt,
+} from "@langchain/langgraph-sdk";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 
 export function useStreamCustom<
@@ -37,6 +41,53 @@ export function useStreamCustom<
   const messagesStore = derived(version, () => orchestrator.messages);
 
   const toolCallsStore = derived(version, () => orchestrator.toolCalls);
+
+  async function submit(
+    values: UpdateType | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+  ) {
+    await orchestrator.submit(values, submitOptions);
+  }
+
+  const handledBrowserTools = new Set<string>();
+  let lastThreadId = options.threadId;
+
+  const unsubscribeBrowserTools = valuesStore.subscribe((vals) => {
+    if (options.threadId !== lastThreadId) {
+      lastThreadId = options.threadId;
+      handledBrowserTools.clear();
+    }
+
+    const { browserTools, onBrowserTool } = options;
+    if (!browserTools?.length) return;
+
+    const interrupts = vals?.__interrupt__;
+    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
+
+    for (const interrupt of interrupts) {
+      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+
+      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+      if (handledBrowserTools.has(interruptId)) continue;
+      handledBrowserTools.add(interruptId);
+
+      void handleBrowserToolInterrupt(
+        interrupt.value,
+        browserTools,
+        onBrowserTool
+      ).then((result) => {
+        void submit(null, {
+          command: {
+            resume: result.toolCallId
+              ? { [result.toolCallId]: result.value }
+              : result.value,
+          },
+        });
+      });
+    }
+  });
+
+  onDestroy(unsubscribeBrowserTools);
 
   const interruptStore = derived(
     version,
@@ -85,12 +136,7 @@ export function useStreamCustom<
 
     stop: () => orchestrator.stop(),
 
-    async submit(
-      values: UpdateType | null | undefined,
-      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
-    ) {
-      await orchestrator.submit(values, submitOptions);
-    },
+    submit,
 
     switchThread(newThreadId: string | null) {
       orchestrator.switchThread(newThreadId);

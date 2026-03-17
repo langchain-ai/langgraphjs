@@ -33,7 +33,13 @@ import {
   type Pregel,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { tool, ToolMessage } from "langchain";
+import {
+  tool,
+  ToolMessage,
+  createAgent,
+  browserTool,
+  type BrowserTool,
+} from "langchain";
 import { z } from "zod/v4";
 import { createDeepAgent, type DeepAgent } from "deepagents";
 
@@ -370,12 +376,46 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   systemPrompt: "You are an AI coordinator that delegates tasks.",
 });
 
+const getLocationTool: BrowserTool = browserTool(
+  async (_args: { highAccuracy?: boolean }) => ({ latitude: 0, longitude: 0 }),
+  {
+    name: "get_location",
+    description: "Get the user's current GPS location",
+    schema: z.object({ highAccuracy: z.boolean().optional() }),
+  },
+);
+
+const browserToolModel = new FakeToolCallingModel({
+  responses: [
+    new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          name: "get_location",
+          args: { highAccuracy: false },
+          id: "tool-call-browser-1",
+          type: "tool_call",
+        },
+      ],
+    }),
+    new AIMessage("Location received!"),
+  ],
+});
+
+const browserToolAgent = createAgent({
+  model: browserToolModel,
+  // @ts-expect-error - TODO: fix this
+  tools: [getLocationTool],
+  checkpointer,
+}) as unknown as AnyPregel;
+
 const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
   parentAgent,
   removeMessageAgent,
   errorAgent,
+  browserToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 

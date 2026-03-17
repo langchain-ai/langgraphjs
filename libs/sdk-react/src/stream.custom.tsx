@@ -34,6 +34,8 @@ import type {
   Message,
   Interrupt,
   ThreadState,
+  isBrowserToolInterrupt,
+  handleBrowserToolInterrupt,
 } from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStreamCustom } from "./types.js";
@@ -233,6 +235,50 @@ export function useStreamCustom<
   ) => {
     await submitDirect(values, submitOptions);
   };
+
+  // Browser tools handling
+  const browserToolsRef = useRef(options.browserTools);
+  browserToolsRef.current = options.browserTools;
+
+  const onBrowserToolRef = useRef(options.onBrowserTool);
+  onBrowserToolRef.current = options.onBrowserTool;
+
+  const handledBrowserToolsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    handledBrowserToolsRef.current.clear();
+  }, [threadId]);
+
+  useEffect(() => {
+    const browserTools = browserToolsRef.current;
+    if (!browserTools?.length) return;
+    if (!stream.values) return;
+
+    const interrupts = stream.values.__interrupt__;
+    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
+
+    for (const interrupt of interrupts) {
+      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+
+      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+      if (handledBrowserToolsRef.current.has(interruptId)) continue;
+      handledBrowserToolsRef.current.add(interruptId);
+
+      void handleBrowserToolInterrupt(
+        interrupt.value,
+        browserTools,
+        onBrowserToolRef.current,
+      ).then((result) => {
+        void submit(null, {
+          command: {
+            resume: result.toolCallId
+              ? { [result.toolCallId]: result.value }
+              : result.value,
+          },
+        });
+      });
+    }
+  }, [stream.values, submit]);
 
   return {
     get values() {
