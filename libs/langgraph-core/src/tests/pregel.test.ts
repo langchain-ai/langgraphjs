@@ -9299,8 +9299,21 @@ graph TD;
       )
     );
 
-    expect(streamedCombinedEvents).toMatchObject([
+    // The relative ordering of "custom" and "messages" events for the same
+    // chunk is non-deterministic across Node.js versions, so sort by mode
+    // before asserting (custom < messages alphabetically).
+    const sortedCombinedEvents = [...streamedCombinedEvents].sort((a, b) => {
+      const aMode = a[0] as string;
+      const bMode = b[0] as string;
+      if (aMode !== bMode) return aMode < bMode ? -1 : 1;
+      // within same mode, preserve original order by index
+      return (
+        streamedCombinedEvents.indexOf(a) - streamedCombinedEvents.indexOf(b)
+      );
+    });
+    expect(sortedCombinedEvents).toMatchObject([
       ["custom", { from: "parent" }],
+      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -9357,7 +9370,6 @@ graph TD;
           },
         ],
       ],
-      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
