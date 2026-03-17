@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint
 
+## 1.0.1
+
+### Patch Changes
+
+- [#2190](https://github.com/langchain-ai/langgraphjs/pull/2190) [`b6cfe55`](https://github.com/langchain-ai/langgraphjs/commit/b6cfe555bfb498fe24fa85847f0fe5d1194dfa39) Thanks [@colifran](https://github.com/colifran)! - feat(langgraph): implement uint8array support for json plus serializer
+
 ## 1.0.0
 
 ### Major Changes
