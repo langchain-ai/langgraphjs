@@ -5351,7 +5351,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5383,7 +5383,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5393,7 +5393,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5451,7 +5451,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5461,7 +5461,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5519,7 +5519,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5529,7 +5529,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5587,7 +5587,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5597,7 +5597,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -9175,6 +9175,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_one:/),
+          ls_integration: "langgraph",
           name: "p_one",
           tags: ["graph:step:1"],
         },
@@ -9191,6 +9192,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           name: "c_one",
           tags: ["graph:step:1"],
         },
@@ -9207,6 +9209,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           name: "c_one",
           tags: ["graph:step:1"],
         },
@@ -9223,6 +9226,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
@@ -9243,6 +9247,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
@@ -9263,6 +9268,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_three/),
+          ls_integration: "langgraph",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
@@ -9348,6 +9354,7 @@ graph TD;
           },
         ],
       ],
+      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -9369,7 +9376,6 @@ graph TD;
           },
         ],
       ],
-      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
