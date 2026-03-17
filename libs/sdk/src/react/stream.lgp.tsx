@@ -47,6 +47,10 @@ import { normalizeInterruptsList } from "../ui/interrupts.js";
 import { useControllableThreadId } from "./thread.js";
 import type { StreamEvent } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
+import {
+  isBrowserToolInterrupt,
+  handleBrowserToolInterrupt,
+} from "../browser-tools.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -299,17 +303,23 @@ export function useStreamLGP<
   );
   const history = options.thread ?? builtInHistory;
 
-  const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey])
-      ? (value[messagesKey] as Message[])
-      : [];
-  };
+  const getMessages = useCallback(
+    (value: StateType): Message[] => {
+      const messagesKey = options.messagesKey ?? "messages";
+      return Array.isArray(value[messagesKey])
+        ? (value[messagesKey] as Message[])
+        : [];
+    },
+    [options.messagesKey]
+  );
 
-  const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return { ...current, [messagesKey]: messages };
-  };
+  const setMessages = useCallback(
+    (current: StateType, messages: Message[]): StateType => {
+      const messagesKey = options.messagesKey ?? "messages";
+      return { ...current, [messagesKey]: messages };
+    },
+    [options.messagesKey]
+  );
 
   const [branch, setBranch] = useState<string>("");
   const branchContext = getBranchContext(branch, history.data ?? undefined);
@@ -367,10 +377,14 @@ export function useStreamLGP<
     });
   }, []);
 
-  const historyValues =
-    branchContext.threadHead?.values ??
-    options.initialValues ??
-    ({} as StateType);
+  const historyValues = useMemo(
+    () =>
+      branchContext.threadHead?.values ??
+      options.initialValues ??
+      ({} as StateType),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [branchContext.threadHead?.values, options.initialValues]
+  );
 
   // Reconstruct subagents from history when:
   // 1. History is loaded (not loading, has data)
@@ -474,185 +488,197 @@ export function useStreamLGP<
     });
 
   // --- TRANSPORT ---
-  const submit = async (
-    values: UpdateType | null | undefined,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
-  ) => {
-    setToolProgressMap(new Map());
+  const submit = useCallback(
+    async (
+      values: UpdateType | null | undefined,
+      submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    ) => {
+      setToolProgressMap(new Map());
 
-    // Unbranch things
-    const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
-    setBranch(
-      checkpointId != null
-        ? (branchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
-        : ""
-    );
+      // Unbranch things
+      const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
+      setBranch(
+        checkpointId != null
+          ? branchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+          : ""
+      );
 
-    // When `fetchStateHistory` is requested, thus we assume that branching
-    // is enabled. We then need to include the implicit branch.
-    const includeImplicitBranch =
-      historyLimit === true || typeof historyLimit === "number";
+      // When `fetchStateHistory` is requested, thus we assume that branching
+      // is enabled. We then need to include the implicit branch.
+      const includeImplicitBranch =
+        historyLimit === true || typeof historyLimit === "number";
 
-    const shouldRefetch =
-      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
+      const shouldRefetch =
+        includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
 
-    let callbackMeta: RunCallbackMeta | undefined;
-    let rejoinKey: `lg:stream:${string}` | undefined;
-    let usableThreadId = threadId;
+      let callbackMeta: RunCallbackMeta | undefined;
+      let rejoinKey: `lg:stream:${string}` | undefined;
+      let usableThreadId = threadId;
 
-    const shouldAbortPrevious =
-      (submitOptions?.multitaskStrategy === "interrupt" ||
-        submitOptions?.multitaskStrategy === "rollback") &&
-      stream.isLoading;
+      const shouldAbortPrevious =
+        (submitOptions?.multitaskStrategy === "interrupt" ||
+          submitOptions?.multitaskStrategy === "rollback") &&
+        stream.isLoading;
 
-    await stream.start(
-      async (signal: AbortSignal) => {
-        stream.setStreamValues((values) => {
-          const prev = { ...historyValues, ...values };
-          if (submitOptions?.optimisticValues != null) {
-            return {
-              ...prev,
-              ...(typeof submitOptions.optimisticValues === "function"
-                ? submitOptions.optimisticValues(prev)
-                : submitOptions.optimisticValues),
-            };
-          }
+      await stream.start(
+        async (signal: AbortSignal) => {
+          stream.setStreamValues((values) => {
+            const prev = { ...historyValues, ...values };
+            if (submitOptions?.optimisticValues != null) {
+              return {
+                ...prev,
+                ...(typeof submitOptions.optimisticValues === "function"
+                  ? submitOptions.optimisticValues(prev)
+                  : submitOptions.optimisticValues),
+              };
+            }
 
-          return { ...prev };
-        });
-
-        if (!usableThreadId) {
-          const thread = await client.threads.create({
-            threadId: submitOptions?.threadId,
-            metadata: submitOptions?.metadata,
-            signal,
+            return { ...prev };
           });
 
-          usableThreadId = thread.thread_id;
+          if (!usableThreadId) {
+            const thread = await client.threads.create({
+              threadId: submitOptions?.threadId,
+              metadata: submitOptions?.metadata,
+              signal,
+            });
 
-          // Pre-emptively update the thread ID before
-          // stream cancellation is kicked off and thread
-          // is being refetched
-          threadIdRef.current = usableThreadId;
-          threadIdStreamingRef.current = usableThreadId;
+            usableThreadId = thread.thread_id;
 
-          onThreadId(usableThreadId);
-        }
+            // Pre-emptively update the thread ID before
+            // stream cancellation is kicked off and thread
+            // is being refetched
+            threadIdRef.current = usableThreadId;
+            threadIdStreamingRef.current = usableThreadId;
 
-        if (!usableThreadId) {
-          throw new Error("Failed to obtain valid thread ID.");
-        }
-
-        threadIdStreamingRef.current = usableThreadId;
-
-        const streamMode = unique([
-          ...(submitOptions?.streamMode ?? []),
-          ...trackStreamModeRef.current,
-          ...callbackStreamMode,
-        ]);
-
-        let checkpoint =
-          submitOptions?.checkpoint ??
-          (includeImplicitBranch
-            ? branchContext.threadHead?.checkpoint
-            : undefined) ??
-          undefined;
-
-        // Avoid specifying a checkpoint if user explicitly set it to null
-        if (submitOptions?.checkpoint === null) checkpoint = undefined;
-
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error
-        if (checkpoint != null) delete checkpoint.thread_id;
-        const streamResumable =
-          submitOptions?.streamResumable ?? !!runMetadataStorage;
-
-        return client.runs.stream(usableThreadId, options.assistantId, {
-          input: values as Record<string, unknown>,
-          config: submitOptions?.config,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
-
-          interruptBefore: submitOptions?.interruptBefore,
-          interruptAfter: submitOptions?.interruptAfter,
-          metadata: submitOptions?.metadata,
-          multitaskStrategy: submitOptions?.multitaskStrategy,
-          onCompletion: submitOptions?.onCompletion,
-          onDisconnect:
-            submitOptions?.onDisconnect ??
-            (streamResumable ? "continue" : "cancel"),
-
-          signal,
-
-          checkpoint,
-          streamMode,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
-          streamResumable,
-          durability: submitOptions?.durability,
-          onRunCreated(params) {
-            callbackMeta = {
-              run_id: params.run_id,
-              thread_id: params.thread_id ?? usableThreadId!,
-            };
-
-            if (runMetadataStorage) {
-              rejoinKey = `lg:stream:${usableThreadId}`;
-              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
-            }
-
-            options.onCreated?.(callbackMeta);
-          },
-        }) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
-      },
-      {
-        getMessages,
-        setMessages,
-
-        initialValues: historyValues,
-        callbacks: {
-          ...options,
-          onToolEvent: (data, opts) => {
-            handleToolEvent(data);
-            options.onToolEvent?.(data, opts);
-          },
-        },
-
-        async onSuccess() {
-          if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch) {
-            const newHistory = await history.mutate(usableThreadId!);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              // We now have the latest update from /history
-              // Thus we can clear the local stream state
-              options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          } else if (
-            options.onFinish != null &&
-            !onFinishRequiresThreadState(options.onFinish)
-          ) {
-            options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
+            onThreadId(usableThreadId);
           }
 
-          return undefined;
+          if (!usableThreadId) {
+            throw new Error("Failed to obtain valid thread ID.");
+          }
+
+          threadIdStreamingRef.current = usableThreadId;
+
+          const streamMode = unique([
+            ...(submitOptions?.streamMode ?? []),
+            ...trackStreamModeRef.current,
+            ...callbackStreamMode,
+          ]);
+
+          let checkpoint =
+            submitOptions?.checkpoint ??
+            (includeImplicitBranch
+              ? branchContext.threadHead?.checkpoint
+              : undefined) ??
+            undefined;
+
+          // Avoid specifying a checkpoint if user explicitly set it to null
+          if (submitOptions?.checkpoint === null) checkpoint = undefined;
+
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          if (checkpoint != null) delete checkpoint.thread_id;
+          const streamResumable =
+            submitOptions?.streamResumable ?? !!runMetadataStorage;
+
+          return client.runs.stream(usableThreadId, options.assistantId, {
+            input: values as Record<string, unknown>,
+            config: submitOptions?.config,
+            context: submitOptions?.context,
+            command: submitOptions?.command,
+
+            interruptBefore: submitOptions?.interruptBefore,
+            interruptAfter: submitOptions?.interruptAfter,
+            metadata: submitOptions?.metadata,
+            multitaskStrategy: submitOptions?.multitaskStrategy,
+            onCompletion: submitOptions?.onCompletion,
+            onDisconnect:
+              submitOptions?.onDisconnect ??
+              (streamResumable ? "continue" : "cancel"),
+
+            signal,
+
+            checkpoint,
+            streamMode,
+            streamSubgraphs: submitOptions?.streamSubgraphs,
+            streamResumable,
+            durability: submitOptions?.durability,
+            onRunCreated(params) {
+              callbackMeta = {
+                run_id: params.run_id,
+                thread_id: params.thread_id ?? usableThreadId!,
+              };
+
+              if (runMetadataStorage) {
+                rejoinKey = `lg:stream:${usableThreadId}`;
+                runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+              }
+
+              options.onCreated?.(callbackMeta);
+            },
+          }) as AsyncGenerator<
+            EventStreamEvent<StateType, UpdateType, CustomType>
+          >;
         },
-        onError(error) {
-          options.onError?.(error, callbackMeta);
+        {
+          getMessages,
+          setMessages,
+
+          initialValues: historyValues,
+          callbacks: {
+            ...options,
+            onToolEvent: (data, opts) => {
+              handleToolEvent(data);
+              options.onToolEvent?.(data, opts);
+            },
+          },
+
+          async onSuccess() {
+            if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
+
+            if (shouldRefetch) {
+              const newHistory = await history.mutate(usableThreadId!);
+              const lastHead = newHistory?.at(0);
+              if (lastHead) {
+                // We now have the latest update from /history
+                // Thus we can clear the local stream state
+                options.onFinish?.(lastHead, callbackMeta);
+                return null;
+              }
+            }
+
+            return undefined;
+          },
+          onError(error) {
+            options.onError?.(error, callbackMeta);
+          },
+          onFinish() {
+            threadIdStreamingRef.current = null;
+          },
         },
-        onFinish() {
-          threadIdStreamingRef.current = null;
-        },
-      },
-      { abortPrevious: shouldAbortPrevious }
-    );
-  };
+        { abortPrevious: shouldAbortPrevious }
+      );
+    },
+    [
+      branchContext.branchByCheckpoint,
+      branchContext.threadHead?.checkpoint,
+      historyLimit,
+      options,
+      threadId,
+      stream,
+      getMessages,
+      setMessages,
+      historyValues,
+      callbackStreamMode,
+      runMetadataStorage,
+      client.runs,
+      client.threads,
+      onThreadId,
+      history,
+      handleToolEvent,
+    ]
+  );
 
   const joinStream = async (
     runId: string,
@@ -768,6 +794,58 @@ export function useStreamLGP<
 
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
+
+  // Browser tools handling
+  const browserToolsRef = useRef(options.browserTools);
+  browserToolsRef.current = options.browserTools;
+
+  const onBrowserToolRef = useRef(options.onBrowserTool);
+  onBrowserToolRef.current = options.onBrowserTool;
+
+  // Track which browser tool interrupts have been handled to prevent duplicates
+  const handledBrowserToolsRef = useRef<Set<string>>(new Set());
+
+  // Reset handled browser tools when thread changes
+  useEffect(() => {
+    handledBrowserToolsRef.current.clear();
+  }, [threadId]);
+
+  // Handle browser tool interrupts
+  useEffect(() => {
+    const browserTools = browserToolsRef.current;
+    if (!browserTools?.length) return;
+
+    // Check for browser tool interrupt in values
+    const interrupts = values?.__interrupt__;
+    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
+
+    // Find browser tool interrupts that haven't been handled
+    for (const interrupt of interrupts) {
+      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+
+      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+      if (handledBrowserToolsRef.current.has(interruptId)) continue;
+
+      // Mark as handled before async operation
+      handledBrowserToolsRef.current.add(interruptId);
+
+      // Handle the browser tool interrupt
+      void handleBrowserToolInterrupt(
+        interrupt.value,
+        browserTools,
+        onBrowserToolRef.current
+      ).then((result) => {
+        // Resume with the tool result
+        void submit(null, {
+          command: {
+            resume: result.toolCallId
+              ? { [result.toolCallId]: result.value }
+              : result.value,
+          },
+        });
+      });
+    }
+  }, [values, submit]);
 
   return {
     get values() {
