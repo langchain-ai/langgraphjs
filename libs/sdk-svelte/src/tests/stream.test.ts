@@ -1309,9 +1309,7 @@ it("browser tools - executes in browser and resumes agent automatically", async 
 
   await screen.getByTestId("submit").click();
 
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("idle");
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -1327,9 +1325,7 @@ it("browser tools - onBrowserTool callback fires start and success events", asyn
 
   await screen.getByTestId("submit").click();
 
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("idle");
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
 
   await expect
     .element(screen.getByTestId("tool-event-0"))
@@ -1352,9 +1348,7 @@ it("browser tools - propagates execute error back to agent as error payload", as
 
   await screen.getByTestId("submit").click();
 
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("idle");
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
 
   await expect
     .element(screen.getByTestId("tool-event-1"))

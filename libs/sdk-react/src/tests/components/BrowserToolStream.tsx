@@ -19,7 +19,10 @@ interface Props {
  */
 function makeGetLocationTool(
   execute: BrowserTool["execute"],
-): BrowserTool<{ highAccuracy?: boolean }, { latitude: number; longitude: number }> {
+): BrowserTool<
+  { highAccuracy?: boolean },
+  { latitude: number; longitude: number }
+> {
   return {
     name: "get_location",
     execute: execute as BrowserTool<
@@ -50,10 +53,7 @@ export function BrowserToolStream({ apiUrl, execute }: Props) {
     <div>
       <div data-testid="messages">
         {messages.map((msg, i) => (
-          <div
-            key={msg.id ?? i}
-            data-testid={`message-${i}`}
-          >
+          <div key={msg.id ?? i} data-testid={`message-${i}`}>
             {typeof msg.content === "string"
               ? msg.content
               : JSON.stringify(msg.content)}
