@@ -380,7 +380,7 @@ export class StreamManager<
            * Bail immediately if there are no messages to fetch
            */
           const messages = latestState.values[messagesKey];
-          const hasMessages = Array.isArray(messages) && messages.length > 0
+          const hasMessages = Array.isArray(messages) && messages.length > 0;
           if (!hasMessages) {
             return;
           }
