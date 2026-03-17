@@ -58,6 +58,9 @@ async function _reviver(value: any): Promise<any> {
             case "Error":
               constructor = Error;
               break;
+            case "Uint8Array":
+              constructor = Uint8Array;
+              break;
             default:
               return revivedObj;
           }
@@ -118,6 +121,8 @@ function _default(obj: any): any {
       node: obj.node,
       args: obj.args,
     };
+  } else if (obj instanceof Uint8Array) {
+    return _encodeConstructorArgs(Uint8Array, "from", [Array.from(obj)]);
   } else {
     return obj;
   }

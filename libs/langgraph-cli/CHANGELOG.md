@@ -1,5 +1,14 @@
 # @langchain/langgraph-cli
 
+## 1.1.16
+
+### Patch Changes
+
+- [#2183](https://github.com/langchain-ai/langgraphjs/pull/2183) [`ad266cf`](https://github.com/langchain-ai/langgraphjs/commit/ad266cf29fc42000485aa77b6142f5729bc17c82) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(cli): allow --config to point to any config file
+
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.1.16
+
 ## 1.1.15
 
 ### Patch Changes

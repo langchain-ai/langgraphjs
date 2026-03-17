@@ -84,7 +84,43 @@ const VALUES = [
     "object with the same value in memory duplicated but not nested",
     { duped1: complexValue, duped2: complexValue },
   ],
+  ["a top-level Uint8Array", new Uint8Array([72, 101, 108, 108, 111])],
+  [
+    "a Uint8Array nested in an object",
+    { data: new Uint8Array([72, 101, 108, 108, 111]), label: "hello" },
+  ],
+  [
+    "a Uint8Array nested in an array",
+    [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])],
+  ],
+  [
+    "a Uint8Array deeply nested",
+    { files: { image: new Uint8Array([137, 80, 78, 71]) } },
+  ],
 ] satisfies [string, unknown][];
+
+function isUint8Array(value: unknown): value is Uint8Array {
+  return ArrayBuffer.isView(value) && value.constructor === Uint8Array;
+}
+
+function assertTypedArraysPreserved(a: unknown, b: unknown): void {
+  if (isUint8Array(a)) {
+    expect(isUint8Array(b)).toBe(true);
+    expect(Array.from(b as Uint8Array)).toEqual(Array.from(a));
+  } else if (Array.isArray(a)) {
+    expect(Array.isArray(b)).toBe(true);
+    (a as unknown[]).forEach((item, i) =>
+      assertTypedArraysPreserved(item, (b as unknown[])[i])
+    );
+  } else if (a !== null && typeof a === "object") {
+    for (const key of Object.keys(a as object)) {
+      assertTypedArraysPreserved(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key]
+      );
+    }
+  }
+}
 
 it.each(VALUES)(
   "should serialize and deserialize %s",
@@ -93,6 +129,7 @@ it.each(VALUES)(
     const [type, serialized] = await serde.dumpsTyped(value);
     const deserialized = await serde.loadsTyped(type, serialized);
     expect(deserialized).toEqual(value);
+    assertTypedArraysPreserved(value, deserialized);
   }
 );
 

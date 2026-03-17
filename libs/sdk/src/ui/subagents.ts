@@ -558,9 +558,15 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           newTypeIsValid && newType.length > oldType.length;
         const shouldUpdateDesc = newDesc.length > oldDesc.length;
 
-        if (shouldUpdateType || shouldUpdateDesc) {
+        // Update aiMessageId when the provider replaces it (e.g. OpenAI
+        // changes streaming "lc_run--..." IDs to final "resp_..." IDs).
+        const shouldUpdateMessageId =
+          aiMessageId != null && aiMessageId !== existing.aiMessageId;
+
+        if (shouldUpdateType || shouldUpdateDesc || shouldUpdateMessageId) {
           this.subagents.set(toolCall.id, {
             ...existing,
+            ...(shouldUpdateMessageId ? { aiMessageId } : {}),
             toolCall: {
               ...existing.toolCall,
               args: {
