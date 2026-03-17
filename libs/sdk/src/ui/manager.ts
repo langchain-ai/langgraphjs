@@ -508,7 +508,11 @@ export class StreamManager<
         });
 
         toolCallIdToNamespace = new Map();
-        for (let i = 0; i < sorted.length && i < subagentToolCalls.length; i++) {
+        for (
+          let i = 0;
+          i < sorted.length && i < subagentToolCalls.length;
+          i++
+        ) {
           const tc = subagentToolCalls[i];
           const task = sorted[i];
           if (tc?.id && task.id && task.name) {
