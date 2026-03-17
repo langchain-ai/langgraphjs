@@ -385,7 +385,7 @@ export class StreamManager<
       );
 
       for (const checkpoint of mainHistory) {
-        const tasks = checkpoint.tasks;
+        const { tasks } = checkpoint;
         if (!tasks || tasks.length === 0) {
           continue;
         }
@@ -467,7 +467,7 @@ export class StreamManager<
         if (!Array.isArray(msgs)) continue;
 
         let aiMessage: Record<string, unknown> | undefined;
-        for (let i = msgs.length - 1; i >= 0; i--) {
+        for (let i = msgs.length - 1; i >= 0; i -= 1) {
           const m = msgs[i] as Record<string, unknown>;
           if (
             m.type === "ai" &&
@@ -511,7 +511,7 @@ export class StreamManager<
         for (
           let i = 0;
           i < sorted.length && i < subagentToolCalls.length;
-          i++
+          i += 1
         ) {
           const tc = subagentToolCalls[i];
           const task = sorted[i];
