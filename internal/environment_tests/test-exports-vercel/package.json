@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "next lint ."
+    "test": "eslint ."
   },
   "dependencies": {
     "@langchain/core": "^1.0.1",
