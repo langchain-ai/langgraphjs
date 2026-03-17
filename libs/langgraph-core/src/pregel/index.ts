@@ -2020,6 +2020,10 @@ export class Pregel<
       durability,
     ] = this._defaults(restConfig);
 
+    // Tag root run with LangGraph integration metadata, but don't override
+    // if already set (e.g. by downstream frameworks like DeepAgents)
+    config.metadata = { ls_integration: "langgraph", ...config.metadata };
+
     // At entrypoint, `configurable` is an alias for `context`.
     if (typeof config.context !== "undefined") {
       config.context = await this._validateContext(config.context);
