@@ -1366,6 +1366,14 @@ export interface UseStreamTransport<
   ) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
 }
 
+/**
+ * Options for useStream when using a custom transport implementation.
+ *
+ * `onFinish` is supported for parity with the standard transport-backed hook.
+ * Because custom transports do not expose LangGraph thread history, it receives
+ * a synthetic `ThreadState` built from the final locally streamed values and
+ * the run metadata argument is `undefined`.
+ */
 export type UseStreamCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
@@ -1375,6 +1383,7 @@ export type UseStreamCustomOptions<
   | "threadId"
   | "onThreadId"
   | "onError"
+  | "onFinish"
   | "onCreated"
   | "onUpdateEvent"
   | "onCustomEvent"
