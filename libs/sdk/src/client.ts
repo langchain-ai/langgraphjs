@@ -55,7 +55,7 @@ import { streamWithRetry, StreamRequestParams } from "./utils/stream.js";
 type HeaderValue = string | undefined | null;
 
 function* iterateHeaders(
-  headers: HeadersInit | Record<string, HeaderValue>,
+  headers: HeadersInit | Record<string, HeaderValue>
 ): IterableIterator<[string, string | null]> {
   let iter: Iterable<(HeaderValue | HeaderValue | null[])[]>;
   let shouldClear = false;
@@ -78,7 +78,7 @@ function* iterateHeaders(
     const name = item[0];
     if (typeof name !== "string")
       throw new TypeError(
-        `Expected header name to be a string, got ${typeof name}`,
+        `Expected header name to be a string, got ${typeof name}`
       );
     const values = Array.isArray(item[1]) ? item[1] : [item[1]];
     let didClear = false;
@@ -161,7 +161,7 @@ const REGEX_RUN_METADATA =
   /(\/threads\/(?<thread_id>.+))?\/runs\/(?<run_id>.+)/;
 
 function getRunMetadataFromResponse(
-  response: Response,
+  response: Response
 ): { run_id: string; thread_id?: string } | undefined {
   const contentLocation = response.headers.get("Content-Location");
   if (!contentLocation) return undefined;
@@ -177,7 +177,7 @@ function getRunMetadataFromResponse(
 
 export type RequestHook = (
   url: URL,
-  init: RequestInit,
+  init: RequestInit
 ) => Promise<RequestInit> | RequestInit;
 
 export interface ClientConfig {
@@ -253,7 +253,7 @@ class BaseClient {
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
       withResponse?: boolean;
-    },
+    }
   ): [url: URL, init: RequestInit] {
     const mutatedOptions = {
       ...options,
@@ -309,7 +309,7 @@ class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse: true;
-    },
+    }
   ): Promise<[T, Response]>;
 
   protected async fetch<T>(
@@ -320,7 +320,7 @@ class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse?: false;
-    },
+    }
   ): Promise<T>;
 
   protected async fetch<T>(
@@ -331,7 +331,7 @@ class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse?: boolean;
-    },
+    }
   ): Promise<T | [T, Response]> {
     const [url, init] = this.prepareFetchOptions(path, options);
 
@@ -361,7 +361,7 @@ class BaseClient {
    * Handles both initial requests and reconnections with SSE.
    */
   protected async *streamWithRetry<
-    T extends { id?: string; event: string; data: unknown },
+    T extends { id?: string; event: string; data: unknown }
   >(config: {
     endpoint: string;
     method?: string;
@@ -445,7 +445,7 @@ export class CronsClient extends BaseClient {
   async createForThread(
     threadId: string,
     assistantId: string,
-    payload?: CronsCreatePayload,
+    payload?: CronsCreatePayload
   ): Promise<CronCreateForThreadResponse> {
     const json: Record<string, unknown> = {
       schedule: payload?.schedule,
@@ -474,7 +474,7 @@ export class CronsClient extends BaseClient {
         method: "POST",
         json,
         signal: payload?.signal,
-      },
+      }
     );
   }
 
@@ -486,7 +486,7 @@ export class CronsClient extends BaseClient {
    */
   async create(
     assistantId: string,
-    payload?: CronsCreatePayload,
+    payload?: CronsCreatePayload
   ): Promise<CronCreateResponse> {
     const json: Record<string, unknown> = {
       schedule: payload?.schedule,
@@ -591,7 +591,7 @@ export class CronsClient extends BaseClient {
    */
   async delete(
     cronId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     await this.fetch<void>(`/runs/crons/${cronId}`, {
       method: "DELETE",
@@ -663,7 +663,7 @@ export class AssistantsClient extends BaseClient {
    */
   async get(
     assistantId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<Assistant> {
     return this.fetch<Assistant>(`/assistants/${assistantId}`, {
       signal: options?.signal,
@@ -678,7 +678,7 @@ export class AssistantsClient extends BaseClient {
    */
   async getGraph(
     assistantId: string,
-    options?: { xray?: boolean | number; signal?: AbortSignal },
+    options?: { xray?: boolean | number; signal?: AbortSignal }
   ): Promise<AssistantGraph> {
     return this.fetch<AssistantGraph>(`/assistants/${assistantId}/graph`, {
       params: { xray: options?.xray },
@@ -693,7 +693,7 @@ export class AssistantsClient extends BaseClient {
    */
   async getSchemas(
     assistantId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<GraphSchema> {
     return this.fetch<GraphSchema>(`/assistants/${assistantId}/schemas`, {
       signal: options?.signal,
@@ -713,12 +713,12 @@ export class AssistantsClient extends BaseClient {
       namespace?: string;
       recurse?: boolean;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<Subgraphs> {
     if (options?.namespace) {
       return this.fetch<Subgraphs>(
         `/assistants/${assistantId}/subgraphs/${options.namespace}`,
-        { params: { recurse: options?.recurse }, signal: options?.signal },
+        { params: { recurse: options?.recurse }, signal: options?.signal }
       );
     }
     return this.fetch<Subgraphs>(`/assistants/${assistantId}/subgraphs`, {
@@ -775,7 +775,7 @@ export class AssistantsClient extends BaseClient {
       name?: string;
       description?: string;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<Assistant> {
     return this.fetch<Assistant>(`/assistants/${assistantId}`, {
       method: "PATCH",
@@ -799,7 +799,7 @@ export class AssistantsClient extends BaseClient {
    */
   async delete(
     assistantId: string,
-    options?: { signal?: AbortSignal; deleteThreads?: boolean },
+    options?: { signal?: AbortSignal; deleteThreads?: boolean }
   ): Promise<void> {
     return this.fetch<void>(
       `/assistants/${assistantId}?delete_threads=${
@@ -808,7 +808,7 @@ export class AssistantsClient extends BaseClient {
       {
         method: "DELETE",
         signal: options?.signal,
-      },
+      }
     );
   }
 
@@ -872,7 +872,7 @@ export class AssistantsClient extends BaseClient {
         json,
         withResponse: true,
         signal: query?.signal,
-      },
+      }
     );
 
     if (query?.includePagination) {
@@ -921,7 +921,7 @@ export class AssistantsClient extends BaseClient {
       limit?: number;
       offset?: number;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<AssistantVersion[]> {
     return this.fetch<AssistantVersion[]>(
       `/assistants/${assistantId}/versions`,
@@ -933,7 +933,7 @@ export class AssistantsClient extends BaseClient {
           offset: payload?.offset ?? 0,
         },
         signal: payload?.signal,
-      },
+      }
     );
   }
 
@@ -947,7 +947,7 @@ export class AssistantsClient extends BaseClient {
   async setLatest(
     assistantId: string,
     version: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<Assistant> {
     return this.fetch<Assistant>(`/assistants/${assistantId}/latest`, {
       method: "POST",
@@ -959,7 +959,7 @@ export class AssistantsClient extends BaseClient {
 
 export class ThreadsClient<
   TStateType = DefaultValues,
-  TUpdateType = TStateType,
+  TUpdateType = TStateType
 > extends BaseClient {
   /**
    * Get a thread by ID.
@@ -969,7 +969,7 @@ export class ThreadsClient<
    */
   async get<ValuesType = TStateType>(
     threadId: string,
-    options?: { signal?: AbortSignal; include?: string[] },
+    options?: { signal?: AbortSignal; include?: string[] }
   ): Promise<Thread<ValuesType>> {
     return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`, {
       params: {
@@ -1061,7 +1061,7 @@ export class ThreadsClient<
    */
   async copy(
     threadId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<Thread<TStateType>> {
     return this.fetch<Thread<TStateType>>(`/threads/${threadId}/copy`, {
       method: "POST",
@@ -1093,7 +1093,7 @@ export class ThreadsClient<
        * Signal to abort the request.
        */
       signal?: AbortSignal;
-    },
+    }
   ): Promise<Thread> {
     const ttlPayload =
       typeof payload?.ttl === "number"
@@ -1114,7 +1114,7 @@ export class ThreadsClient<
    */
   async delete(
     threadId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}`, {
       method: "DELETE",
@@ -1138,7 +1138,7 @@ export class ThreadsClient<
     options?: {
       strategy?: "delete" | "keep_latest";
       signal?: AbortSignal;
-    },
+    }
   ): Promise<{ pruned_count: number }> {
     return this.fetch<{ pruned_count: number }>("/threads/prune", {
       method: "POST",
@@ -1262,7 +1262,7 @@ export class ThreadsClient<
   async getState<ValuesType = TStateType>(
     threadId: string,
     checkpoint?: Checkpoint | string,
-    options?: { subgraphs?: boolean; signal?: AbortSignal },
+    options?: { subgraphs?: boolean; signal?: AbortSignal }
   ): Promise<ThreadState<ValuesType>> {
     if (checkpoint != null) {
       if (typeof checkpoint !== "string") {
@@ -1272,14 +1272,14 @@ export class ThreadsClient<
             method: "POST",
             json: { checkpoint, subgraphs: options?.subgraphs },
             signal: options?.signal,
-          },
+          }
         );
       }
 
       // deprecated
       return this.fetch<ThreadState<ValuesType>>(
         `/threads/${threadId}/state/${checkpoint}`,
-        { params: { subgraphs: options?.subgraphs }, signal: options?.signal },
+        { params: { subgraphs: options?.subgraphs }, signal: options?.signal }
       );
     }
 
@@ -1303,7 +1303,7 @@ export class ThreadsClient<
       checkpointId?: string;
       asNode?: string;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<Pick<Config, "configurable">> {
     return this.fetch<Pick<Config, "configurable">>(
       `/threads/${threadId}/state`,
@@ -1316,7 +1316,7 @@ export class ThreadsClient<
           as_node: options?.asNode,
         },
         signal: options?.signal,
-      },
+      }
     );
   }
 
@@ -1329,14 +1329,14 @@ export class ThreadsClient<
   async patchState(
     threadIdOrConfig: string | Config,
     metadata: Metadata,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     let threadId: string;
 
     if (typeof threadIdOrConfig !== "string") {
       if (typeof threadIdOrConfig.configurable?.thread_id !== "string") {
         throw new Error(
-          "Thread ID is required when updating state with a config.",
+          "Thread ID is required when updating state with a config."
         );
       }
       threadId = threadIdOrConfig.configurable.thread_id;
@@ -1366,7 +1366,7 @@ export class ThreadsClient<
       checkpoint?: Partial<Omit<Checkpoint, "thread_id">>;
       metadata?: Metadata;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<ThreadState<ValuesType>[]> {
     return this.fetch<ThreadState<ValuesType>[]>(
       `/threads/${threadId}/history`,
@@ -1379,7 +1379,7 @@ export class ThreadsClient<
           checkpoint: options?.checkpoint,
         },
         signal: options?.signal,
-      },
+      }
     );
   }
 
@@ -1389,7 +1389,7 @@ export class ThreadsClient<
       lastEventId?: string;
       streamMode?: ThreadStreamMode | ThreadStreamMode[];
       signal?: AbortSignal;
-    },
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
     yield* this.streamWithRetry({
@@ -1409,18 +1409,18 @@ export class ThreadsClient<
 export class RunsClient<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
-  TCustomEventType = unknown,
+  TCustomEventType = unknown
 > extends BaseClient {
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
+    TSubgraphs extends boolean = false
   >(
     threadId: null,
     assistantId: string,
     payload?: Omit<
       RunsStreamPayload<TStreamMode, TSubgraphs>,
       "multitaskStrategy" | "onCompletion"
-    >,
+    >
   ): TypedAsyncGenerator<
     TStreamMode,
     TSubgraphs,
@@ -1431,11 +1431,11 @@ export class RunsClient<
 
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
+    TSubgraphs extends boolean = false
   >(
     threadId: string,
     assistantId: string,
-    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>,
+    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
   ): TypedAsyncGenerator<
     TStreamMode,
     TSubgraphs,
@@ -1453,11 +1453,11 @@ export class RunsClient<
    */
   async *stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
+    TSubgraphs extends boolean = false
   >(
     threadId: string | null,
     assistantId: string,
-    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>,
+    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
   ): TypedAsyncGenerator<
     TStreamMode,
     TSubgraphs,
@@ -1519,7 +1519,7 @@ export class RunsClient<
   async create(
     threadId: string | null,
     assistantId: string,
-    payload?: RunsCreatePayload,
+    payload?: RunsCreatePayload
   ): Promise<Run> {
     const json: Record<string, unknown> = {
       input: payload?.input,
@@ -1573,13 +1573,13 @@ export class RunsClient<
    */
   async createBatch(
     payloads: (Omit<RunsCreatePayload, "signal"> & { assistantId: string })[],
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<Run[]> {
     const filteredPayloads = payloads
       .map((payload) => ({ ...payload, assistant_id: payload.assistantId }))
       .map((payload) => {
         return Object.fromEntries(
-          Object.entries(payload).filter(([_, v]) => v !== undefined),
+          Object.entries(payload).filter(([_, v]) => v !== undefined)
         );
       });
 
@@ -1593,13 +1593,13 @@ export class RunsClient<
   async wait(
     threadId: null,
     assistantId: string,
-    payload?: Omit<RunsWaitPayload, "multitaskStrategy" | "onCompletion">,
+    payload?: Omit<RunsWaitPayload, "multitaskStrategy" | "onCompletion">
   ): Promise<ThreadState["values"]>;
 
   async wait(
     threadId: string,
     assistantId: string,
-    payload?: RunsWaitPayload,
+    payload?: RunsWaitPayload
   ): Promise<ThreadState["values"]>;
 
   /**
@@ -1613,7 +1613,7 @@ export class RunsClient<
   async wait(
     threadId: string | null,
     assistantId: string,
-    payload?: RunsWaitPayload,
+    payload?: RunsWaitPayload
   ): Promise<ThreadState["values"]> {
     const json: Record<string, unknown> = {
       input: payload?.input,
@@ -1701,7 +1701,7 @@ export class RunsClient<
        * Signal to abort the request.
        */
       signal?: AbortSignal;
-    },
+    }
   ): Promise<Run[]> {
     return this.fetch<Run[]>(`/threads/${threadId}/runs`, {
       params: {
@@ -1724,7 +1724,7 @@ export class RunsClient<
   async get(
     threadId: string,
     runId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<Run> {
     return this.fetch<Run>(`/threads/${threadId}/runs/${runId}`, {
       signal: options?.signal,
@@ -1745,7 +1745,7 @@ export class RunsClient<
     runId: string,
     wait: boolean = false,
     action: CancelAction = "interrupt",
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal } = {}
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}/runs/${runId}/cancel`, {
       method: "POST",
@@ -1794,7 +1794,7 @@ export class RunsClient<
   async join(
     threadId: string,
     runId: string,
-    options?: { cancelOnDisconnect?: boolean; signal?: AbortSignal },
+    options?: { cancelOnDisconnect?: boolean; signal?: AbortSignal }
   ): Promise<TStateType> {
     return this.fetch<TStateType>(`/threads/${threadId}/runs/${runId}/join`, {
       timeoutMs: null,
@@ -1827,7 +1827,7 @@ export class RunsClient<
           lastEventId?: string;
           streamMode?: StreamMode | StreamMode[];
         }
-      | AbortSignal,
+      | AbortSignal
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
     const opts =
@@ -1865,7 +1865,7 @@ export class RunsClient<
   async delete(
     threadId: string,
     runId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     return this.fetch<void>(`/threads/${threadId}/runs/${runId}`, {
       method: "DELETE",
@@ -1915,12 +1915,12 @@ export class StoreClient extends BaseClient {
       index?: false | string[] | null;
       ttl?: number | null;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<void> {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
-          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`,
+          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`
         );
       }
     });
@@ -1971,12 +1971,12 @@ export class StoreClient extends BaseClient {
     options?: {
       refreshTtl?: boolean | null;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<Item | null> {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
-          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`,
+          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`
         );
       }
     });
@@ -2014,12 +2014,12 @@ export class StoreClient extends BaseClient {
   async deleteItem(
     namespace: string[],
     key: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal }
   ): Promise<void> {
     namespace.forEach((label) => {
       if (label.includes(".")) {
         throw new Error(
-          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`,
+          `Invalid namespace label '${label}'. Namespace labels cannot contain periods ('.')`
         );
       }
     });
@@ -2076,7 +2076,7 @@ export class StoreClient extends BaseClient {
       query?: string;
       refreshTtl?: boolean | null;
       signal?: AbortSignal;
-    },
+    }
   ): Promise<SearchItemsResponse> {
     const payload = {
       namespace_prefix: namespacePrefix,
@@ -2093,7 +2093,7 @@ export class StoreClient extends BaseClient {
         method: "POST",
         json: payload,
         signal: options?.signal,
-      },
+      }
     );
     return {
       items: response.items.map((item) => ({
@@ -2168,7 +2168,7 @@ class UiClient extends BaseClient {
 
         const response = await this.asyncCaller.fetch(url.toString(), init);
         return response.text();
-      },
+      }
     );
   }
 }
@@ -2176,7 +2176,7 @@ class UiClient extends BaseClient {
 export class Client<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
-  TCustomEventType = unknown,
+  TCustomEventType = unknown
 > {
   /**
    * The client for interacting with assistants.
