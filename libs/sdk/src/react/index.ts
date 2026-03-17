@@ -71,8 +71,14 @@ export {
   isSubagentNamespace,
 } from "../ui/subagents.js";
 
-// Browser tools
+// Headless tools
 export type {
+  HeadlessToolImplementation,
+  AnyHeadlessToolImplementation,
+  ToolEvent,
+  HeadlessToolInterrupt,
+  OnToolCallback,
+  // Deprecated aliases
   BrowserTool,
   AnyBrowserTool,
   BrowserToolEvent,
@@ -80,6 +86,11 @@ export type {
   OnBrowserToolCallback,
 } from "../browser-tools.js";
 export {
+  isHeadlessToolInterrupt,
+  findHeadlessTool,
+  executeHeadlessTool,
+  handleHeadlessToolInterrupt,
+  // Deprecated aliases
   isBrowserToolInterrupt,
   findBrowserTool,
   executeBrowserTool,

@@ -12,7 +12,7 @@
  * - Low-latency recall without server roundtrips
  */
 
-import { browserTool } from "langchain";
+import { tool } from "langchain";
 import { z } from "zod/v4";
 
 // ============================================================================
@@ -178,7 +178,39 @@ async function getAllMemories(): Promise<Memory[]> {
  * Store a memory in the browser's local database.
  * Use this to remember user preferences, facts, or context across sessions.
  */
-export const memoryPut = browserTool(
+export const memoryPut = tool({
+  name: "memory_put",
+  description:
+    "Store a memory in the user's browser for long-term recall. " +
+    "Use this to save user preferences, important facts, or context that should persist across sessions. " +
+    "Memories are stored locally and never leave the user's device.",
+  schema: z.object({
+    key: z
+      .string()
+      .describe(
+        "Unique identifier for this memory (e.g., 'user_name', 'preferred_language', 'meeting_notes_2024')"
+      ),
+    value: z
+      .unknown()
+      .describe(
+        "The value to store - can be a string, object, or any JSON-serializable data"
+      ),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Tags to categorize this memory for easier recall (e.g., ['preference', 'work'])"
+      ),
+    ttlDays: z
+      .number()
+      .optional()
+      .describe(
+        "Optional: Number of days until this memory expires (omit for permanent)"
+      ),
+  }),
+});
+
+export const memoryPutImpl = memoryPut.implement(
   async ({ key, value, tags = [], ttlDays }) => {
     const now = new Date();
     const memory: Memory = {
@@ -192,7 +224,6 @@ export const memoryPut = browserTool(
         : undefined,
     };
 
-    // Check if updating existing memory
     const existing = await withStore("readonly", (store) => store.get(key));
     if (existing) {
       memory.createdAt = existing.createdAt;
@@ -208,110 +239,82 @@ export const memoryPut = browserTool(
         ttlDays ? ` (expires in ${ttlDays} days)` : ""
       }`,
     };
-  },
-  {
-    name: "memory_put",
-    description:
-      "Store a memory in the user's browser for long-term recall. " +
-      "Use this to save user preferences, important facts, or context that should persist across sessions. " +
-      "Memories are stored locally and never leave the user's device.",
-    schema: z.object({
-      key: z
-        .string()
-        .describe(
-          "Unique identifier for this memory (e.g., 'user_name', 'preferred_language', 'meeting_notes_2024')"
-        ),
-      value: z
-        .unknown()
-        .describe(
-          "The value to store - can be a string, object, or any JSON-serializable data"
-        ),
-      tags: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Tags to categorize this memory for easier recall (e.g., ['preference', 'work'])"
-        ),
-      ttlDays: z
-        .number()
-        .optional()
-        .describe(
-          "Optional: Number of days until this memory expires (omit for permanent)"
-        ),
-    }),
   }
 );
 
 /**
  * Retrieve a specific memory by key.
  */
-export const memoryGet = browserTool(
-  async ({ key }) => {
-    const memory = await withStore<Memory | undefined>("readonly", (store) =>
-      store.get(key)
-    );
+export const memoryGet = tool({
+  name: "memory_get",
+  description:
+    "Retrieve a specific memory by its key. " +
+    "Use this to recall previously stored information like user preferences or saved context.",
+  schema: z.object({
+    key: z.string().describe("The key of the memory to retrieve"),
+  }),
+});
 
-    if (!memory) {
-      return {
-        found: false,
-        key,
-        message: `No memory found with key "${key}"`,
-      };
-    }
+export const memoryGetImpl = memoryGet.implement(async ({ key }) => {
+  const memory = await withStore<Memory | undefined>("readonly", (store) =>
+    store.get(key)
+  );
 
-    // Check if expired
-    if (memory.expiresAt && memory.expiresAt < new Date().toISOString()) {
-      // Clean up expired memory
-      await withStore("readwrite", (store) => store.delete(key));
-      return {
-        found: false,
-        key,
-        message: `Memory "${key}" has expired`,
-      };
-    }
-
-    return {
-      found: true,
-      key,
-      value: memory.value,
-      tags: memory.tags,
-      createdAt: memory.createdAt,
-      updatedAt: memory.updatedAt,
-      expiresAt: memory.expiresAt,
-    };
-  },
-  {
-    name: "memory_get",
-    description:
-      "Retrieve a specific memory by its key. " +
-      "Use this to recall previously stored information like user preferences or saved context.",
-    schema: z.object({
-      key: z.string().describe("The key of the memory to retrieve"),
-    }),
+  if (!memory) {
+    return { found: false, key, message: `No memory found with key "${key}"` };
   }
-);
+
+  if (memory.expiresAt && memory.expiresAt < new Date().toISOString()) {
+    await withStore("readwrite", (store) => store.delete(key));
+    return { found: false, key, message: `Memory "${key}" has expired` };
+  }
+
+  return {
+    found: true,
+    key,
+    value: memory.value,
+    tags: memory.tags,
+    createdAt: memory.createdAt,
+    updatedAt: memory.updatedAt,
+    expiresAt: memory.expiresAt,
+  };
+});
 
 /**
  * List all memories, optionally filtered by tags.
  */
-export const memoryList = browserTool(
+export const memoryList = tool({
+  name: "memory_list",
+  description:
+    "List all stored memories, optionally filtered by tags. " +
+    "Use this to see what the user has asked you to remember or to find relevant context.",
+  schema: z.object({
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe("Filter memories by these tags"),
+    limit: z
+      .number()
+      .optional()
+      .describe("Maximum number of memories to return (default 20)"),
+  }),
+});
+
+export const memoryListImpl = memoryList.implement(
   async ({ tags, limit = 20 }) => {
     let memories = await getAllMemories();
 
-    // Filter by tags if provided
     if (tags && tags.length > 0) {
       memories = memories.filter((m) =>
         tags.some((tag: string) => m.tags.includes(tag))
       );
     }
 
-    // Sort by most recently updated
     memories.sort(
       (a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
 
-    // Apply limit
     memories = memories.slice(0, limit);
 
     return {
@@ -323,40 +326,40 @@ export const memoryList = browserTool(
         updatedAt: m.updatedAt,
       })),
     };
-  },
-  {
-    name: "memory_list",
-    description:
-      "List all stored memories, optionally filtered by tags. " +
-      "Use this to see what the user has asked you to remember or to find relevant context.",
-    schema: z.object({
-      tags: z
-        .array(z.string())
-        .optional()
-        .describe("Filter memories by these tags"),
-      limit: z
-        .number()
-        .optional()
-        .describe("Maximum number of memories to return (default 20)"),
-    }),
   }
 );
 
 /**
  * Search memories by content.
  */
-export const memorySearch = browserTool(
+export const memorySearch = tool({
+  name: "memory_search",
+  description:
+    "Search through stored memories by content. " +
+    "Use this to find relevant memories when you're not sure of the exact key.",
+  schema: z.object({
+    query: z.string().describe("Search query to find matching memories"),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe("Optionally filter search to memories with these tags"),
+    limit: z
+      .number()
+      .optional()
+      .describe("Maximum results to return (default 10)"),
+  }),
+});
+
+export const memorySearchImpl = memorySearch.implement(
   async ({ query, tags, limit = 10 }) => {
     let memories = await getAllMemories();
 
-    // Filter by tags if provided
     if (tags && tags.length > 0) {
       memories = memories.filter((m) =>
         tags.some((tag: string) => m.tags.includes(tag))
       );
     }
 
-    // Simple text search across key and value
     const queryLower = query.toLowerCase();
     const matches = memories.filter((m) => {
       const keyMatch = m.key.toLowerCase().includes(queryLower);
@@ -367,7 +370,6 @@ export const memorySearch = browserTool(
       return keyMatch || valueMatch || tagMatch;
     });
 
-    // Sort by relevance (exact key match first, then by recency)
     matches.sort((a, b) => {
       const aExact = a.key.toLowerCase() === queryLower;
       const bExact = b.key.toLowerCase() === queryLower;
@@ -387,34 +389,31 @@ export const memorySearch = browserTool(
         updatedAt: m.updatedAt,
       })),
     };
-  },
-  {
-    name: "memory_search",
-    description:
-      "Search through stored memories by content. " +
-      "Use this to find relevant memories when you're not sure of the exact key.",
-    schema: z.object({
-      query: z.string().describe("Search query to find matching memories"),
-      tags: z
-        .array(z.string())
-        .optional()
-        .describe("Optionally filter search to memories with these tags"),
-      limit: z
-        .number()
-        .optional()
-        .describe("Maximum results to return (default 10)"),
-    }),
   }
 );
 
 /**
  * Delete a memory or all memories matching a tag.
  */
-export const memoryForget = browserTool(
+export const memoryForget = tool({
+  name: "memory_forget",
+  description:
+    "Delete a memory by key, all memories with a tag, or clear all memories. " +
+    "Use this when the user asks you to forget something.",
+  schema: z.object({
+    key: z.string().optional().describe("The key of the memory to delete"),
+    tag: z.string().optional().describe("Delete all memories with this tag"),
+    confirmForgetAll: z
+      .boolean()
+      .optional()
+      .describe("Set to true to delete ALL memories (use with caution)"),
+  }),
+});
+
+export const memoryForgetImpl = memoryForget.implement(
   async ({ key, tag, confirmForgetAll }) => {
     if (!key && !tag) {
       if (confirmForgetAll) {
-        // Delete all memories
         const db = await openDB();
         return new Promise((resolve, reject) => {
           const transaction = db.transaction(STORE_NAME, "readwrite");
@@ -448,23 +447,13 @@ export const memoryForget = browserTool(
         (store) => store.get(key)
       );
       if (!existing) {
-        return {
-          success: false,
-          key,
-          message: `No memory found with key "${key}"`,
-        };
+        return { success: false, key, message: `No memory found with key "${key}"` };
       }
       await withStore("readwrite", (store) => store.delete(key));
-      return {
-        success: true,
-        action: "deleted",
-        key,
-        message: `Memory "${key}" has been forgotten`,
-      };
+      return { success: true, action: "deleted", key, message: `Memory "${key}" has been forgotten` };
     }
 
     if (tag) {
-      // Delete all memories with this tag
       const memories = await getAllMemories();
       const toDelete = memories.filter((m) => m.tags.includes(tag));
 
@@ -482,20 +471,6 @@ export const memoryForget = browserTool(
     }
 
     return { success: false, message: "Unexpected state" };
-  },
-  {
-    name: "memory_forget",
-    description:
-      "Delete a memory by key, all memories with a tag, or clear all memories. " +
-      "Use this when the user asks you to forget something.",
-    schema: z.object({
-      key: z.string().optional().describe("The key of the memory to delete"),
-      tag: z.string().optional().describe("Delete all memories with this tag"),
-      confirmForgetAll: z
-        .boolean()
-        .optional()
-        .describe("Set to true to delete ALL memories (use with caution)"),
-    }),
   }
 );
 
@@ -508,7 +483,24 @@ export const memoryForget = browserTool(
  * persist it to the IndexedDB memory store so the agent can reference it
  * in future turns without asking again.
  */
-export const geolocationGet = browserTool(
+export const geolocationGet = tool({
+  name: "geolocation_get",
+  description:
+    "Get the user's current GPS coordinates using the browser's Geolocation API. " +
+    "Saves latitude, longitude, accuracy, and timestamp to the local memory store " +
+    "so they can be referenced in future conversations without asking again. " +
+    "The browser will prompt the user for permission the first time this is called.",
+  schema: z.object({
+    save: z
+      .boolean()
+      .optional()
+      .describe(
+        "Save the location to memory for future reference (default true)"
+      ),
+  }),
+});
+
+export const geolocationGetImpl = geolocationGet.implement(
   async ({ save = true }) => {
     if (!navigator.geolocation) {
       return {
@@ -517,20 +509,18 @@ export const geolocationGet = browserTool(
       };
     }
 
-    // Wrap the callback-based API in a Promise
     const position = await new Promise<GeolocationPosition>(
       (resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
           timeout: 10_000,
-          maximumAge: 5 * 60 * 1_000, // accept a cached fix up to 5 min old
+          maximumAge: 5 * 60 * 1_000,
         });
       }
     );
 
     const { latitude, longitude, accuracy } = position.coords;
     const timestamp = new Date(position.timestamp).toISOString();
-
     const locationData = { latitude, longitude, accuracy, timestamp };
 
     if (save) {
@@ -552,35 +542,27 @@ export const geolocationGet = browserTool(
       longitude,
       accuracy,
       timestamp,
-      message: `Location determined: ${latitude.toFixed(
-        5
-      )}, ${longitude.toFixed(5)} (±${Math.round(accuracy)} m)`,
+      message: `Location determined: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)} m)`,
     };
-  },
-  {
-    name: "geolocation_get",
-    description:
-      "Get the user's current GPS coordinates using the browser's Geolocation API. " +
-      "Saves latitude, longitude, accuracy, and timestamp to the local memory store " +
-      "so they can be referenced in future conversations without asking again. " +
-      "The browser will prompt the user for permission the first time this is called.",
-    schema: z.object({
-      save: z
-        .boolean()
-        .optional()
-        .describe(
-          "Save the location to memory for future reference (default true)"
-        ),
-    }),
   }
 );
 
-// Export all browser tools as an array for easy registration
-export const browserTools = [
+// Headless tool definitions — pass these to createAgent on the server
+export const headlessTools = [
   memoryPut,
   memoryGet,
   memoryList,
   memorySearch,
   memoryForget,
   geolocationGet,
+];
+
+// Implementations — pass these to useStream on the client via `tools: [...]`
+export const toolImplementations = [
+  memoryPutImpl,
+  memoryGetImpl,
+  memoryListImpl,
+  memorySearchImpl,
+  memoryForgetImpl,
+  geolocationGetImpl,
 ];

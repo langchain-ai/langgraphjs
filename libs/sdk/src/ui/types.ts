@@ -35,8 +35,8 @@ import type {
 } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
-  AnyBrowserTool,
-  OnBrowserToolCallback,
+  AnyHeadlessToolImplementation,
+  OnToolCallback,
 } from "../browser-tools.js";
 
 /**
@@ -1259,32 +1259,44 @@ export interface UseStreamOptions<
   throttle?: number | boolean;
 
   /**
-   * Browser tools to execute locally when the agent requests them.
-   * These are tools that use browser-specific APIs (e.g., geolocation, clipboard)
-   * and are executed client-side when the agent triggers an interrupt.
+   * Headless tool implementations to execute locally when the agent requests them.
    *
-   * Browser tools are defined using `browserTool()` from `langchain/tools/browser`
-   * or by providing objects with `name` and `execute` properties.
+   * Headless tools are defined without an implementation using `tool()` from
+   * `langchain/tools`. The client provides the implementation via `.implement()`.
+   *
+   * When the agent calls a headless tool it always interrupts; `useStream`
+   * detects the interrupt, runs the implementation in the browser, and resumes
+   * the agent with the result — all automatically.
    *
    * @example
    * ```typescript
-   * import { getLocation, copyToClipboard } from "./browser-tools";
+   * import { getLocation } from "./tools";
    *
    * const stream = useStream({
    *   assistantId: "agent",
-   *   browserTools: [getLocation, copyToClipboard],
+   *   tools: [
+   *     getLocation.implement(async ({ highAccuracy }) => {
+   *       return new Promise((resolve, reject) =>
+   *         navigator.geolocation.getCurrentPosition(
+   *           (pos) => resolve({ latitude: pos.coords.latitude }),
+   *           (err) => reject(new Error(err.message)),
+   *           { enableHighAccuracy: highAccuracy }
+   *         )
+   *       );
+   *     }),
+   *   ],
    * });
    * ```
    */
-  browserTools?: AnyBrowserTool[];
+  tools?: AnyHeadlessToolImplementation[];
 
   /**
-   * Callback for browser tool lifecycle events.
-   * Called when a browser tool starts executing, succeeds, or fails.
+   * Callback for headless tool lifecycle events.
+   * Called when a tool starts executing, succeeds, or fails.
    *
    * @example
    * ```typescript
-   * onBrowserTool: (event) => {
+   * onTool: (event) => {
    *   if (event.phase === "start") {
    *     console.log(`Executing ${event.name}...`);
    *   }
@@ -1294,7 +1306,7 @@ export interface UseStreamOptions<
    * }
    * ```
    */
-  onBrowserTool?: OnBrowserToolCallback;
+  onTool?: OnToolCallback;
 
   // Note: Agent-specific options are defined in their respective option interfaces:
   // - UseAgentStreamOptions: subagentToolNames
@@ -1442,8 +1454,8 @@ export type UseStreamCustomOptions<
   | "initialValues"
   | "throttle"
   | "onToolEvent"
-  | "browserTools"
-  | "onBrowserTool"
+  | "tools"
+  | "onTool"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 /**

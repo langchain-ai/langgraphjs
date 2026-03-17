@@ -52,8 +52,8 @@ import {
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import {
-  isBrowserToolInterrupt,
-  handleBrowserToolInterrupt,
+  isHeadlessToolInterrupt,
+  handleHeadlessToolInterrupt,
 } from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStream, SubmitOptions } from "./types.js";
@@ -882,12 +882,12 @@ export function useStreamLGP<
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
 
-  // Browser tools handling
-  const browserToolsRef = useRef(options.browserTools);
-  browserToolsRef.current = options.browserTools;
+  // Headless tools handling
+  const toolsRef = useRef(options.tools);
+  toolsRef.current = options.tools;
 
-  const onBrowserToolRef = useRef(options.onBrowserTool);
-  onBrowserToolRef.current = options.onBrowserTool;
+  const onToolRef = useRef(options.onTool);
+  onToolRef.current = options.onTool;
 
   const handledBrowserToolsRef = useRef<Set<string>>(new Set());
 
@@ -896,23 +896,23 @@ export function useStreamLGP<
   }, [threadId]);
 
   useEffect(() => {
-    const browserTools = browserToolsRef.current;
-    if (!browserTools?.length) return;
+    const tools = toolsRef.current;
+    if (!tools?.length) return;
 
     const interrupts = values?.__interrupt__;
     if (!Array.isArray(interrupts) || interrupts.length === 0) return;
 
     for (const interrupt of interrupts) {
-      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+      if (!isHeadlessToolInterrupt(interrupt.value)) continue;
 
       const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
       if (handledBrowserToolsRef.current.has(interruptId)) continue;
       handledBrowserToolsRef.current.add(interruptId);
 
-      void handleBrowserToolInterrupt(
+      void handleHeadlessToolInterrupt(
         interrupt.value,
-        browserTools,
-        onBrowserToolRef.current,
+        tools,
+        onToolRef.current,
       ).then((result) => {
         void submit(null, {
           command: {

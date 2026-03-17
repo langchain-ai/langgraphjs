@@ -24,7 +24,7 @@ import {
 import type { Message } from "@langchain/langgraph-sdk";
 import {
   useStream,
-  type BrowserToolEvent,
+  type ToolEvent,
 } from "@langchain/langgraph-sdk/react";
 import type {
   ToolCallWithResult,
@@ -37,7 +37,25 @@ import { MessageInput } from "../../components/MessageInput";
 import { LoadingIndicator } from "../../components/Loading";
 
 import type { agent } from "./agent";
-import { canvasTools, setCanvasContext } from "./tools";
+import {
+  setCanvasContext,
+  canvasGetInfo,
+  canvasClear,
+  canvasSetStyle,
+  canvasDrawRect,
+  canvasDrawCircle,
+  canvasDrawLine,
+  canvasDrawText,
+  canvasDrawPath,
+  canvasSaveRestore,
+  canvasTransform,
+  canvasSetGradient,
+  canvasDrawEllipse,
+  canvasDrawPolygon,
+  canvasSetLineDash,
+  canvasSetBlendMode,
+  canvasSetFilter,
+} from "./toolsImpl";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -189,7 +207,7 @@ function ColorSwatch({ color }: { color?: string }) {
 // Live browser-tool status bar (while executing)
 // ---------------------------------------------------------------------------
 
-function DrawingStatus({ events }: { events: BrowserToolEvent[] }) {
+function DrawingStatus({ events }: { events: ToolEvent[] }) {
   if (events.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
@@ -366,8 +384,8 @@ function hasContent(message: Message): boolean {
 export function CanvasDrawingAgent() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [browserToolEvents, setBrowserToolEvents] = useState<
-    BrowserToolEvent[]
+  const [toolEvents, setToolEvents] = useState<
+    ToolEvent[]
   >([]);
 
   // ── Initialise canvas & share context with browser tools ──────────────────
@@ -415,20 +433,37 @@ export function CanvasDrawingAgent() {
   const stream = useStream<typeof agent>({
     assistantId: "canvas-drawing",
     apiUrl: "http://localhost:2024",
-    browserTools: canvasTools,
-    onBrowserTool: (event) => {
+    tools: [
+      canvasGetInfo,
+      canvasClear,
+      canvasSetStyle,
+      canvasDrawRect,
+      canvasDrawCircle,
+      canvasDrawLine,
+      canvasDrawText,
+      canvasDrawPath,
+      canvasSaveRestore,
+      canvasTransform,
+      canvasSetGradient,
+      canvasDrawEllipse,
+      canvasDrawPolygon,
+      canvasSetLineDash,
+      canvasSetBlendMode,
+      canvasSetFilter,
+    ],
+    onTool: (event) => {
       if (event.phase === "start") {
         setIsDrawing(true);
-        setBrowserToolEvents((prev) => [...prev, event]);
+        setToolEvents((prev) => [...prev, event]);
       } else {
-        setBrowserToolEvents((prev) =>
+        setToolEvents((prev) =>
           prev.map((e) =>
             e.name === event.name && e.phase === "start" ? event : e
           )
         );
         setTimeout(() => {
           setIsDrawing(false);
-          setBrowserToolEvents((prev) =>
+          setToolEvents((prev) =>
             prev.filter((e) => e.name !== event.name)
           );
         }, 1500);
@@ -508,7 +543,7 @@ export function CanvasDrawingAgent() {
               })}
 
               {/* Live drawing status */}
-              <DrawingStatus events={browserToolEvents} />
+              <DrawingStatus events={toolEvents} />
 
               {/* Spinner while the LLM is thinking */}
               {stream.isLoading &&
@@ -516,7 +551,7 @@ export function CanvasDrawingAgent() {
                   (m) => m.type === "ai" && hasContent(m)
                 ) &&
                 stream.toolCalls.length === 0 &&
-                browserToolEvents.length === 0 && <LoadingIndicator />}
+                toolEvents.length === 0 && <LoadingIndicator />}
             </div>
           )}
         </div>

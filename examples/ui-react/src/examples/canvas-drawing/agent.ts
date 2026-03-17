@@ -38,42 +38,26 @@ const checkpointer = new MemorySaver();
 export const agent = createAgent({
   model,
   tools: [
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasGetInfo,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasClear,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasSetStyle,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasSetGradient,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasSetLineDash,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasSetBlendMode,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasSetFilter,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawRect,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawCircle,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawEllipse,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawPolygon,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawLine,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawText,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasDrawPath,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasSaveRestore,
-    // @ts-expect-error - browser tools have special runtime semantics
     canvasTransform,
   ],
   checkpointer,
   systemPrompt: `You are a creative visual artist that draws directly on an HTML5 canvas.
-The canvas is 800 × 500 pixels. The coordinate origin (0, 0) is at the TOP-LEFT corner.
+The canvas is 800 x 500 pixels. The coordinate origin (0, 0) is at the TOP-LEFT corner.
 X increases to the right, Y increases downward.
 
 ## Your Drawing Toolkit

@@ -1,25 +1,23 @@
 /**
- * Browser Tools Support for LangGraph SDK
+ * Headless Tools Support for LangGraph SDK
  *
- * This module provides types and utilities for handling browser tools
- * in the LangGraph SDK without requiring a dependency on langchain.
- *
- * Browser tools are tools that execute in the browser while the agent
- * runs on the server. They use LangGraph's interrupt mechanism to pause
- * execution, execute the tool client-side, and resume with the result.
+ * This module provides types and utilities for handling headless tools
+ * in the LangGraph SDK. Headless tools are defined without an implementation
+ * on the server; when the agent calls one it always interrupts and the client
+ * provides the implementation via `.implement()`.
  *
  * @module
  */
 
 /**
- * Represents a browser tool interrupt payload.
- * This is the structure of the interrupt value when a browser tool is called.
+ * Represents a headless tool interrupt payload.
+ * This is the structure of the interrupt value when a headless tool is called.
  */
-export interface BrowserToolInterrupt {
+export interface HeadlessToolInterrupt {
   /**
-   * The type of interrupt. Always "browser_tool" for browser tools.
+   * The type of interrupt. Always "tool" for headless tools.
    */
-  type: "browser_tool";
+  type: "tool";
 
   /**
    * The tool call details.
@@ -43,54 +41,55 @@ export interface BrowserToolInterrupt {
 }
 
 /**
- * A browser tool that can be registered with useStream.
+ * A headless tool implementation that pairs a tool definition with its
+ * client-side execute function.
  *
- * This interface is compatible with the BrowserTool type returned by
- * `browserTool()` from `langchain`, but doesn't require importing from langchain.
- *
- * Browser tools are created using the `browserTool()` function:
+ * Created by calling `.implement()` on a headless tool:
  *
  * @example
  * ```typescript
- * import { browserTool } from "langchain";
+ * import { tool } from "langchain/tools";
  * import { z } from "zod";
  *
- * const getLocation = browserTool(
- *   async ({ highAccuracy }) => {
- *     // Execute function runs in the browser
- *     return new Promise((resolve, reject) => {
- *       navigator.geolocation.getCurrentPosition(
- *         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
- *         (err) => reject(new Error(err.message)),
- *         { enableHighAccuracy: highAccuracy }
- *       );
- *     });
- *   },
- *   {
- *     name: "get_location",
- *     description: "Get the user's current GPS location",
- *     schema: z.object({
- *       highAccuracy: z.boolean().optional(),
- *     }),
- *   }
- * );
+ * const getLocation = tool({
+ *   name: "get_location",
+ *   description: "Get the user's current GPS location",
+ *   schema: z.object({
+ *     highAccuracy: z.boolean().optional(),
+ *   }),
+ * });
  *
  * // Register with useStream
  * const stream = useStream({
  *   assistantId: "agent",
- *   browserTools: [getLocation],
+ *   tools: [
+ *     getLocation.implement(async ({ highAccuracy }) => {
+ *       return new Promise((resolve, reject) =>
+ *         navigator.geolocation.getCurrentPosition(
+ *           (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+ *           (err) => reject(new Error(err.message)),
+ *           { enableHighAccuracy: highAccuracy }
+ *         )
+ *       );
+ *     }),
+ *   ],
  * });
  * ```
  */
-export interface BrowserTool<Args = unknown, Output = unknown> {
+export interface HeadlessToolImplementation<
+  Args = unknown,
+  Output = unknown,
+> {
   /**
-   * The name of the tool. Must match the name used in the agent.
+   * The headless tool definition. Must have a `name` property matching the
+   * tool name used in the agent.
    */
-  name: string;
+  tool: {
+    name: string;
+  };
 
   /**
    * Execute the tool in the browser.
-   * This is the function passed as the first argument to `browserTool()`.
    *
    * @param args - The arguments passed to the tool (validated by the schema on the server)
    * @returns A promise that resolves with the tool output
@@ -99,20 +98,16 @@ export interface BrowserTool<Args = unknown, Output = unknown> {
 }
 
 /**
- * A permissive browser tool type that accepts any browser tool regardless of its
- * specific type parameters. Use this when you need to store or pass arrays of
- * browser tools with different argument types.
- *
- * This type uses `any` for the args parameter to avoid contravariance issues
- * when mixing browser tools with different argument schemas.
+ * A permissive headless tool implementation type that accepts any
+ * implementation regardless of its specific type parameters.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyBrowserTool = BrowserTool<any, any>;
+export type AnyHeadlessToolImplementation = HeadlessToolImplementation<any, any>;
 
 /**
- * Event emitted during browser tool execution lifecycle.
+ * Event emitted during headless tool execution lifecycle.
  */
-export interface BrowserToolEvent {
+export interface ToolEvent {
   /**
    * Which phase of execution.
    */
@@ -145,19 +140,19 @@ export interface BrowserToolEvent {
 }
 
 /**
- * Callback for browser tool lifecycle events.
+ * Callback for headless tool lifecycle events.
  */
-export type OnBrowserToolCallback = (event: BrowserToolEvent) => void;
+export type OnToolCallback = (event: ToolEvent) => void;
 
 /**
- * Check if an interrupt value is a browser tool interrupt.
+ * Check if an interrupt value is a headless tool interrupt.
  *
  * @param interrupt - The interrupt value to check
- * @returns True if the interrupt is a browser tool interrupt
+ * @returns True if the interrupt is a headless tool interrupt
  */
-export function isBrowserToolInterrupt(
+export function isHeadlessToolInterrupt(
   interrupt: unknown
-): interrupt is BrowserToolInterrupt {
+): interrupt is HeadlessToolInterrupt {
   if (typeof interrupt !== "object" || interrupt === null) {
     return false;
   }
@@ -165,7 +160,7 @@ export function isBrowserToolInterrupt(
   const value = interrupt as Record<string, unknown>;
 
   return (
-    value.type === "browser_tool" &&
+    value.type === "tool" &&
     typeof value.toolCall === "object" &&
     value.toolCall !== null &&
     typeof (value.toolCall as Record<string, unknown>).name === "string"
@@ -173,51 +168,51 @@ export function isBrowserToolInterrupt(
 }
 
 /**
- * Find a browser tool by name from a list of registered tools.
+ * Find a headless tool implementation by name.
  *
- * @param tools - List of registered browser tools
+ * @param tools - List of registered headless tool implementations
  * @param name - The name of the tool to find
- * @returns The matching tool or undefined
+ * @returns The matching implementation or undefined
  */
-export function findBrowserTool<Args = unknown, Output = unknown>(
-  tools: BrowserTool[],
+export function findHeadlessTool<Args = unknown, Output = unknown>(
+  tools: HeadlessToolImplementation[],
   name: string
-): BrowserTool<Args, Output> | undefined {
-  return tools.find((t) => t.name === name) as
-    | BrowserTool<Args, Output>
+): HeadlessToolImplementation<Args, Output> | undefined {
+  return tools.find((t) => t.tool.name === name) as
+    | HeadlessToolImplementation<Args, Output>
     | undefined;
 }
 
 /**
- * Execute a browser tool and handle the result.
+ * Execute a headless tool implementation and handle the result.
  *
- * @param tool - The browser tool to execute
+ * @param impl - The headless tool implementation to execute
  * @param args - The arguments to pass to the tool
- * @param onBrowserTool - Optional callback for lifecycle events
+ * @param onTool - Optional callback for lifecycle events
  * @returns A promise that resolves with the tool result or error
  */
-export async function executeBrowserTool<Args = unknown, Output = unknown>(
-  tool: BrowserTool<Args, Output>,
+export async function executeHeadlessTool<Args = unknown, Output = unknown>(
+  impl: HeadlessToolImplementation<Args, Output>,
   args: Args,
-  onBrowserTool?: OnBrowserToolCallback
+  onTool?: OnToolCallback
 ): Promise<
   { success: true; result: Output } | { success: false; error: Error }
 > {
   const startTime = Date.now();
 
-  onBrowserTool?.({
+  onTool?.({
     phase: "start",
-    name: tool.name,
+    name: impl.tool.name,
     args,
   });
 
   try {
-    const result = await tool.execute(args);
+    const result = await impl.execute(args);
     const duration = Date.now() - startTime;
 
-    onBrowserTool?.({
+    onTool?.({
       phase: "success",
-      name: tool.name,
+      name: impl.tool.name,
       args,
       result,
       duration,
@@ -234,9 +229,9 @@ export async function executeBrowserTool<Args = unknown, Output = unknown>(
         : new Error(String(err));
     const duration = Date.now() - startTime;
 
-    onBrowserTool?.({
+    onTool?.({
       phase: "error",
-      name: tool.name,
+      name: impl.tool.name,
       args,
       error,
       duration,
@@ -247,31 +242,31 @@ export async function executeBrowserTool<Args = unknown, Output = unknown>(
 }
 
 /**
- * Handle a browser tool interrupt by executing the tool and returning
- * the command to resume the agent.
+ * Handle a headless tool interrupt by executing the implementation and
+ * returning the command to resume the agent.
  *
- * @param interrupt - The browser tool interrupt
- * @param browserTools - List of registered browser tools
- * @param onBrowserTool - Optional callback for lifecycle events
+ * @param interrupt - The headless tool interrupt
+ * @param tools - List of registered headless tool implementations
+ * @param onTool - Optional callback for lifecycle events
  * @returns A promise that resolves with the resume command value
  */
-export async function handleBrowserToolInterrupt(
-  interrupt: BrowserToolInterrupt,
-  browserTools: BrowserTool[],
-  onBrowserTool?: OnBrowserToolCallback
+export async function handleHeadlessToolInterrupt(
+  interrupt: HeadlessToolInterrupt,
+  tools: HeadlessToolImplementation[],
+  onTool?: OnToolCallback
 ): Promise<{ toolCallId: string | undefined; value: unknown }> {
   const { toolCall } = interrupt;
-  const tool = findBrowserTool(browserTools, toolCall.name);
+  const impl = findHeadlessTool(tools, toolCall.name);
 
-  if (!tool) {
+  if (!impl) {
     const error = new Error(
-      `Browser tool "${toolCall.name}" is not registered. ` +
+      `Headless tool "${toolCall.name}" is not registered. ` +
         `Available tools: ${
-          browserTools.map((t) => t.name).join(", ") || "none"
+          tools.map((t) => t.tool.name).join(", ") || "none"
         }`
     );
 
-    onBrowserTool?.({
+    onTool?.({
       phase: "error",
       name: toolCall.name,
       args: toolCall.args,
@@ -285,7 +280,7 @@ export async function handleBrowserToolInterrupt(
     };
   }
 
-  const result = await executeBrowserTool(tool, toolCall.args, onBrowserTool);
+  const result = await executeHeadlessTool(impl, toolCall.args, onTool);
 
   if (result.success) {
     return {
@@ -299,3 +294,27 @@ export async function handleBrowserToolInterrupt(
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Backward-compatible aliases (deprecated — use the renamed exports above)
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use `HeadlessToolInterrupt` */
+export type BrowserToolInterrupt = HeadlessToolInterrupt;
+/** @deprecated Use `HeadlessToolImplementation` */
+export type BrowserTool<Args = unknown, Output = unknown> =
+  HeadlessToolImplementation<Args, Output>;
+/** @deprecated Use `AnyHeadlessToolImplementation` */
+export type AnyBrowserTool = AnyHeadlessToolImplementation;
+/** @deprecated Use `ToolEvent` */
+export type BrowserToolEvent = ToolEvent;
+/** @deprecated Use `OnToolCallback` */
+export type OnBrowserToolCallback = OnToolCallback;
+/** @deprecated Use `isHeadlessToolInterrupt` */
+export const isBrowserToolInterrupt = isHeadlessToolInterrupt;
+/** @deprecated Use `findHeadlessTool` */
+export const findBrowserTool = findHeadlessTool;
+/** @deprecated Use `executeHeadlessTool` */
+export const executeBrowserTool = executeHeadlessTool;
+/** @deprecated Use `handleHeadlessToolInterrupt` */
+export const handleBrowserToolInterrupt = handleHeadlessToolInterrupt;

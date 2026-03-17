@@ -1,206 +1,345 @@
-import { writable, derived, fromStore } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import { onDestroy } from "svelte";
 import {
-  CustomStreamOrchestrator,
-  type AnyStreamCustomOptions,
-  type CustomSubmitOptions,
+  StreamManager,
+  MessageTupleManager,
+  extractInterrupts,
+  userFacingInterruptsFromValuesArray,
+  toMessageClass,
+  ensureMessageInstances,
+  type EventStreamEvent,
   type GetUpdateType,
+  type GetCustomEventType,
   type GetInterruptType,
   type GetConfigurableType,
+  type GetToolCallsType,
+  type AnyStreamCustomOptions,
+  type CustomSubmitOptions,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
+import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import {
-  isBrowserToolInterrupt,
-  handleBrowserToolInterrupt,
+  type BagTemplate,
+  type Message,
+  type Interrupt,
+  type ThreadState,
+  flushPendingHeadlessToolInterrupts,
 } from "@langchain/langgraph-sdk";
-import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
+
+function createCustomTransportThreadState<
+  StateType extends Record<string, unknown>,
+>(values: StateType, threadId: string): ThreadState<StateType> {
+  return {
+    values,
+    next: [],
+    tasks: [],
+    metadata: undefined,
+    created_at: null,
+    checkpoint: {
+      thread_id: threadId,
+      checkpoint_id: null,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    },
+    parent_checkpoint: null,
+  };
+}
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamCustomOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
+  type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
-  const orchestrator = new CustomStreamOrchestrator<StateType, Bag>(options);
+  type ToolCallType = GetToolCallsType<StateType>;
 
-  const version = writable(0);
+  const messageManager = new MessageTupleManager();
+  const stream = new StreamManager<StateType, Bag>(messageManager, {
+    throttle: options.throttle ?? false,
+    subagentToolNames: options.subagentToolNames,
+    filterSubagentMessages: options.filterSubagentMessages,
+    toMessage: toMessageClass,
+  });
+
+  let threadId: string | null = options.threadId ?? null;
+
   const branch = writable<string>("");
 
-  const unsubscribe = orchestrator.subscribe(() => {
-    version.update((v) => v + 1);
+  const streamValues = writable<StateType | null>(stream.values);
+  const streamError = writable<unknown>(stream.error);
+  const isLoading = writable(stream.isLoading);
+
+  const subagentVersion = writable(0);
+
+  const unsubscribe = stream.subscribe(() => {
+    streamValues.set(stream.values);
+    streamError.set(stream.error);
+    isLoading.set(stream.isLoading);
+    subagentVersion.update((v) => v + 1);
   });
 
   onDestroy(() => {
     unsubscribe();
-    orchestrator.dispose();
   });
 
-  const valuesStore = derived(version, () => orchestrator.values);
+  const getMessages = (value: StateType): Message[] => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return Array.isArray(value[messagesKey])
+      ? (value[messagesKey] as Message[])
+      : [];
+  };
 
-  const messagesStore = derived(version, () => orchestrator.messages);
+  const setMessages = (current: StateType, messages: Message[]): StateType => {
+    const messagesKey = options.messagesKey ?? "messages";
+    return { ...current, [messagesKey]: messages };
+  };
 
-  const toolCallsStore = derived(version, () => orchestrator.toolCalls);
+  const historyValues = options.initialValues ?? ({} as StateType);
+
+  const historyMessages = getMessages(historyValues);
+  const shouldReconstructSubagents =
+    options.filterSubagentMessages &&
+    !stream.isLoading &&
+    historyMessages.length > 0;
+
+  if (shouldReconstructSubagents) {
+    stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+  }
+
+  function switchThread(newThreadId: string | null) {
+    if (newThreadId !== threadId) {
+      threadId = newThreadId;
+      stream.clear();
+    }
+  }
+
+  function stop() {
+    return stream.stop(historyValues, { onStop: options.onStop });
+  }
+
+  async function submitDirect(
+    values: UpdateType | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+  ) {
+    const currentThreadId = options.threadId ?? null;
+    if (currentThreadId !== threadId) {
+      threadId = currentThreadId;
+      stream.clear();
+    }
+
+    let usableThreadId = threadId ?? submitOptions?.threadId;
+
+    stream.setStreamValues(() => {
+      if (submitOptions?.optimisticValues != null) {
+        return {
+          ...historyValues,
+          ...(typeof submitOptions.optimisticValues === "function"
+            ? submitOptions.optimisticValues(historyValues)
+            : submitOptions.optimisticValues),
+        };
+      }
+
+      return { ...historyValues };
+    });
+
+    await stream.start(
+      async (signal: AbortSignal) => {
+        if (!usableThreadId) {
+          usableThreadId = crypto.randomUUID();
+          threadId = usableThreadId;
+          options.onThreadId?.(usableThreadId);
+        }
+
+        if (!usableThreadId) {
+          throw new Error("Failed to obtain valid thread ID.");
+        }
+
+        return options.transport.stream({
+          input: values,
+          context: submitOptions?.context,
+          command: submitOptions?.command,
+          signal,
+          config: {
+            ...submitOptions?.config,
+            configurable: {
+              thread_id: usableThreadId,
+              ...submitOptions?.config?.configurable,
+            } as unknown as GetConfigurableType<Bag>,
+          },
+        }) as Promise<
+          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
+        >;
+      },
+      {
+        getMessages,
+        setMessages,
+
+        initialValues: {} as StateType,
+        callbacks: options,
+
+        onSuccess: () => {
+          if (!usableThreadId) return undefined;
+
+          const finalValues = stream.values ?? historyValues;
+          options.onFinish?.(
+            createCustomTransportThreadState(finalValues, usableThreadId),
+            undefined,
+          );
+
+          return undefined;
+        },
+        onError(error) {
+          options.onError?.(error, undefined);
+          submitOptions?.onError?.(error, undefined);
+        },
+      },
+    );
+  }
 
   async function submit(
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
-    await orchestrator.submit(values, submitOptions);
+    await submitDirect(values, submitOptions);
   }
 
+  // Headless tools handling
   const handledBrowserTools = new Set<string>();
   let lastThreadId = options.threadId;
 
-  const unsubscribeBrowserTools = valuesStore.subscribe((vals) => {
+  const unsubscribeBrowserTools = streamValues.subscribe((vals) => {
     if (options.threadId !== lastThreadId) {
       lastThreadId = options.threadId;
       handledBrowserTools.clear();
     }
 
-    const { browserTools, onBrowserTool } = options;
-    if (!browserTools?.length) return;
-
-    const interrupts = vals?.__interrupt__;
-    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
-
-    for (const interrupt of interrupts) {
-      if (!isBrowserToolInterrupt(interrupt.value)) continue;
-
-      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
-      if (handledBrowserTools.has(interruptId)) continue;
-      handledBrowserTools.add(interruptId);
-
-      void handleBrowserToolInterrupt(
-        interrupt.value,
-        browserTools,
-        onBrowserTool
-      ).then((result) => {
-        void submit(null, {
-          command: {
-            resume: result.toolCallId
-              ? { [result.toolCallId]: result.value }
-              : result.value,
-          },
-        });
-      });
-    }
+    flushPendingHeadlessToolInterrupts(
+      vals,
+      options.tools,
+      handledBrowserTools,
+      {
+        onTool: options.onTool,
+        defer: (run) => void Promise.resolve().then(run),
+        resumeSubmit: (command) =>
+          void submit(null, {
+            command,
+          }),
+      },
+    );
   });
 
   onDestroy(unsubscribeBrowserTools);
 
-  const interruptStore = derived(
-    version,
-    () => orchestrator.interrupt as Interrupt<InterruptType> | undefined
+  const values = derived(
+    [streamValues],
+    ([$streamValues]) => $streamValues ?? ({} as StateType),
   );
 
-  const interruptsStore = derived(
-    version,
-    () => orchestrator.interrupts as Interrupt<InterruptType>[]
+  const messages = derived([streamValues], ([$streamValues]) => {
+    if (!$streamValues) return [];
+    return ensureMessageInstances(getMessages($streamValues));
+  });
+
+  const toolCalls = derived([streamValues], ([$streamValues]) => {
+    if (!$streamValues) return [];
+    const msgs = getMessages($streamValues);
+    return getToolCallsWithResults<ToolCallType>(msgs);
+  });
+
+  const interrupt = derived([streamValues], ([$streamValues]) =>
+    extractInterrupts<InterruptType>($streamValues),
   );
 
-  const subagentsStore = derived(version, () => orchestrator.subagents);
-  const activeSubagentsStore = derived(
-    version,
-    () => orchestrator.activeSubagents
+  const interrupts = derived(
+    [streamValues],
+    ([$streamValues]): Interrupt<InterruptType>[] => {
+      if (
+        $streamValues != null &&
+        "__interrupt__" in $streamValues &&
+        Array.isArray($streamValues.__interrupt__)
+      ) {
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          $streamValues.__interrupt__ as Interrupt<InterruptType>[],
+        );
+      }
+
+      return [];
+    },
   );
 
-  const emptyEntries = writable<never[]>([]);
-  const emptySize = writable(0);
+  function getToolCalls(message: Message) {
+    const $streamValues = get(streamValues);
+    if (!$streamValues) return [];
+    const msgs = getMessages($streamValues);
+    const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+    return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+  }
 
-  const valuesRef = fromStore(valuesStore);
-  const errorRef = fromStore(derived(version, () => orchestrator.error));
-  const isLoadingRef = fromStore(
-    derived(version, () => orchestrator.isLoading)
-  );
-  const branchRef = fromStore(branch);
-  const messagesRef = fromStore(messagesStore);
-  const toolCallsRef = fromStore(toolCallsStore);
-  const interruptRef = fromStore(interruptStore);
-  const interruptsRef = fromStore(interruptsStore);
-  const subagentsRef = fromStore(subagentsStore);
-  const activeSubagentsRef = fromStore(activeSubagentsStore);
-  const emptyEntriesRef = fromStore(emptyEntries);
-  const emptySizeRef = fromStore(emptySize);
+  function setBranch(value: string) {
+    branch.set(value);
+  }
+
+  function getMessagesMetadata(
+    message: Message,
+    index?: number,
+  ): MessageMetadata<StateType> | undefined {
+    const streamMetadata = messageManager.get(message.id)?.metadata;
+    if (streamMetadata != null) {
+      return {
+        messageId: message.id ?? String(index),
+        firstSeenState: undefined,
+        branch: undefined,
+        branchOptions: undefined,
+        streamMetadata,
+      } as MessageMetadata<StateType>;
+    }
+    return undefined;
+  }
 
   return {
-    get values() {
-      return valuesRef.current;
-    },
-    get error() {
-      return errorRef.current;
-    },
-    get isLoading() {
-      return isLoadingRef.current;
-    },
+    values,
+    error: streamError,
+    isLoading,
 
-    stop: () => orchestrator.stop(),
-
+    stop,
     submit,
+    switchThread,
 
-    switchThread(newThreadId: string | null) {
-      orchestrator.switchThread(newThreadId);
-    },
-
-    get branch() {
-      return branchRef.current;
-    },
-    setBranch(value: string) {
-      branch.set(value);
-      orchestrator.setBranch(value);
-    },
-
-    getMessagesMetadata(
-      message: Message,
-      index?: number
-    ): MessageMetadata<StateType> | undefined {
-      return orchestrator.getMessagesMetadata(message, index);
-    },
+    branch,
+    setBranch,
+    getMessagesMetadata,
 
     queue: {
-      get entries() {
-        return emptyEntriesRef.current;
-      },
-      get size() {
-        return emptySizeRef.current;
-      },
+      entries: writable([]),
+      size: writable(0),
       async cancel() {
         return false;
       },
       async clear() {},
     },
 
-    get interrupt() {
-      return interruptRef.current;
-    },
-    get interrupts() {
-      return interruptsRef.current;
-    },
+    interrupt,
+    interrupts,
 
-    get messages() {
-      return messagesRef.current;
-    },
-    get toolCalls() {
-      return toolCallsRef.current;
-    },
-    getToolCalls(message: Message) {
-      return orchestrator.getToolCalls(message);
-    },
+    messages,
+    toolCalls,
+    getToolCalls,
 
-    get subagents() {
-      return subagentsRef.current;
-    },
-    get activeSubagents() {
-      return activeSubagentsRef.current;
-    },
+    subagents: derived(subagentVersion, () => stream.getSubagents()),
+
+    activeSubagents: derived(subagentVersion, () =>
+      stream.getActiveSubagents(),
+    ),
     getSubagent(toolCallId: string) {
-      return orchestrator.getSubagent(toolCallId);
+      return stream.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      return orchestrator.getSubagentsByType(type);
+      return stream.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      return orchestrator.getSubagentsByMessage(messageId);
+      return stream.getSubagentsByMessage(messageId);
     },
   };
 }

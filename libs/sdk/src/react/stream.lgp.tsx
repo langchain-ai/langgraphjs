@@ -48,8 +48,8 @@ import { useControllableThreadId } from "./thread.js";
 import type { StreamEvent } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
 import {
-  isBrowserToolInterrupt,
-  handleBrowserToolInterrupt,
+  isHeadlessToolInterrupt,
+  handleHeadlessToolInterrupt,
 } from "../browser-tools.js";
 
 function getFetchHistoryKey(
@@ -795,25 +795,25 @@ export function useStreamLGP<
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
 
-  // Browser tools handling
-  const browserToolsRef = useRef(options.browserTools);
-  browserToolsRef.current = options.browserTools;
+  // Headless tools handling
+  const toolsRef = useRef(options.tools);
+  toolsRef.current = options.tools;
 
-  const onBrowserToolRef = useRef(options.onBrowserTool);
-  onBrowserToolRef.current = options.onBrowserTool;
+  const onToolRef = useRef(options.onTool);
+  onToolRef.current = options.onTool;
 
-  // Track which browser tool interrupts have been handled to prevent duplicates
-  const handledBrowserToolsRef = useRef<Set<string>>(new Set());
+  // Track which headless tool interrupts have been handled to prevent duplicates
+  const handledToolsRef = useRef<Set<string>>(new Set());
 
-  // Reset handled browser tools when thread changes
+  // Reset handled headless tools when thread changes
   useEffect(() => {
-    handledBrowserToolsRef.current.clear();
+    handledToolsRef.current.clear();
   }, [threadId]);
 
-  // Handle browser tool interrupts
+  // Handle headless tool interrupts
   useEffect(() => {
-    const browserTools = browserToolsRef.current;
-    if (!browserTools?.length) return;
+    const tools = toolsRef.current;
+    if (!tools?.length) return;
 
     // Check for browser tool interrupt in values
     const interrupts = values?.__interrupt__;
@@ -821,19 +821,19 @@ export function useStreamLGP<
 
     // Find browser tool interrupts that haven't been handled
     for (const interrupt of interrupts) {
-      if (!isBrowserToolInterrupt(interrupt.value)) continue;
+      if (!isHeadlessToolInterrupt(interrupt.value)) continue;
 
       const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
-      if (handledBrowserToolsRef.current.has(interruptId)) continue;
+      if (handledToolsRef.current.has(interruptId)) continue;
 
       // Mark as handled before async operation
-      handledBrowserToolsRef.current.add(interruptId);
+      handledToolsRef.current.add(interruptId);
 
       // Handle the browser tool interrupt
-      void handleBrowserToolInterrupt(
+      void handleHeadlessToolInterrupt(
         interrupt.value,
-        browserTools,
-        onBrowserToolRef.current
+        tools,
+        onToolRef.current
       ).then((result) => {
         // Resume with the tool result
         void submit(null, {

@@ -39,18 +39,11 @@ const checkpointer = new MemorySaver();
 export const agent = createAgent({
   model,
   tools: [
-    // Browser tools for memory (execute on client via interrupt)
-    // @ts-expect-error - TODO: fix this
     memoryPut,
-    // @ts-expect-error - TODO: fix this
     memoryGet,
-    // @ts-expect-error - TODO: fix this
     memoryList,
-    // @ts-expect-error - TODO: fix this
     memorySearch,
-    // @ts-expect-error - TODO: fix this
     memoryForget,
-    // @ts-expect-error - TODO: fix this
     geolocationGet,
   ],
   checkpointer,

@@ -384,22 +384,77 @@ const getLocationTool = browserTool(
   },
 );
 
-const browserToolModel = new FakeToolCallingModel({
-  responses: [
-    new AIMessage({
-      content: "",
-      tool_calls: [
-        {
-          name: "get_location",
-          args: { highAccuracy: false },
-          id: "tool-call-browser-1",
-          type: "tool_call",
-        },
-      ],
-    }),
-    new AIMessage("Location received!"),
-  ],
-});
+/**
+ * Stateless model for browser tool tests. Inspects incoming messages instead
+ * of using a call counter, so retries never receive a stale response.
+ */
+class FakeBrowserToolModel extends BaseChatModel {
+  constructor() {
+    super({});
+  }
+
+  _llmType() {
+    return "fake-browser-tool";
+  }
+
+  _combineLLMOutput() {
+    return [];
+  }
+
+  private _needsToolCall(messages?: BaseMessage[]) {
+    return !messages?.some((m) => m.getType() === "tool");
+  }
+
+  async _generate(messages?: BaseMessage[]): Promise<ChatResult> {
+    const msg = this._needsToolCall(messages)
+      ? new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "get_location",
+              args: { highAccuracy: false },
+              id: "tool-call-browser-1",
+              type: "tool_call",
+            },
+          ],
+        })
+      : new AIMessage("Location received!");
+    return {
+      generations: [{ text: (msg.content as string) || "", message: msg }],
+    };
+  }
+
+  async *_streamResponseChunks(messages?: BaseMessage[]) {
+    if (this._needsToolCall(messages)) {
+      yield new ChatGenerationChunk({
+        message: new AIMessageChunk({
+          content: "",
+          tool_call_chunks: [
+            {
+              name: "get_location",
+              args: JSON.stringify({ highAccuracy: false }),
+              id: "tool-call-browser-1",
+              index: 0,
+              type: "tool_call_chunk",
+            },
+          ],
+        }),
+        text: "",
+      });
+    } else {
+      yield new ChatGenerationChunk({
+        message: new AIMessageChunk("Location received!"),
+        text: "Location received!",
+      });
+    }
+  }
+
+  bindTools() {
+    return this;
+  }
+}
+
+const browserToolModel = new FakeBrowserToolModel();
 
 const browserToolAgent = createAgent({
   model: browserToolModel,
@@ -440,3 +495,4 @@ export async function teardown() {
   (httpServer as Server)?.closeAllConnections();
   httpServer?.close();
 }
+

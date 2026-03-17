@@ -14,7 +14,7 @@ import {
 import type { Message } from "@langchain/langgraph-sdk";
 import {
   useStream,
-  type BrowserToolEvent,
+  type ToolEvent,
 } from "@langchain/langgraph-sdk/react";
 import type {
   ToolCallWithResult,
@@ -28,7 +28,7 @@ import { MessageBubble } from "../../components/MessageBubble";
 import { MessageInput } from "../../components/MessageInput";
 
 import type { agent } from "./agent";
-import { browserTools } from "./tools";
+import { memoryListImpl, memoryPutImpl, memoryGetImpl, memorySearchImpl, memoryForgetImpl, geolocationGetImpl } from "./tools";
 
 const MEMORY_SUGGESTIONS = [
   "What do you remember about me?",
@@ -127,7 +127,7 @@ function LocationMap({
 /**
  * Component to display browser tool execution status
  */
-function BrowserToolStatus({ events }: { events: BrowserToolEvent[] }) {
+function BrowserToolStatus({ events }: { events: ToolEvent[] }) {
   if (events.length === 0) return null;
 
   return (
@@ -448,18 +448,25 @@ function hasContent(message: Message): boolean {
 
 export function BrowserToolsAgent() {
   // Track browser tool events for display
-  const [browserToolEvents, setBrowserToolEvents] = useState<
-    BrowserToolEvent[]
+  const [toolEvents, setToolEvents] = useState<
+    ToolEvent[]
   >([]);
 
   const stream = useStream<typeof agent>({
     assistantId: "browser-tools",
     apiUrl: "http://localhost:2024",
     // Register browser tools - these will execute locally when the agent calls them
-    browserTools,
+    tools: [
+      memoryListImpl,
+      memoryPutImpl,
+      memoryGetImpl,
+      memorySearchImpl,
+      memoryForgetImpl,
+      geolocationGetImpl,
+    ],
     // Track browser tool lifecycle events
-    onBrowserTool: (event) => {
-      setBrowserToolEvents((prev) => {
+    onTool: (event) => {
+      setToolEvents((prev) => {
         // On start, add the event
         if (event.phase === "start") {
           return [...prev, event];
@@ -473,7 +480,7 @@ export function BrowserToolsAgent() {
       // Clear events after a delay on success/error
       if (event.phase !== "start") {
         setTimeout(() => {
-          setBrowserToolEvents((prev) =>
+          setToolEvents((prev) =>
             prev.filter((e) => e.name !== event.name)
           );
         }, 2000);
@@ -537,7 +544,7 @@ export function BrowserToolsAgent() {
               })}
 
               {/* Show browser tool execution status */}
-              <BrowserToolStatus events={browserToolEvents} />
+              <BrowserToolStatus events={toolEvents} />
 
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
@@ -545,7 +552,7 @@ export function BrowserToolsAgent() {
                   (m) => m.type === "ai" && hasContent(m)
                 ) &&
                 stream.toolCalls.length === 0 &&
-                browserToolEvents.length === 0 && <LoadingIndicator />}
+                toolEvents.length === 0 && <LoadingIndicator />}
             </div>
           )}
         </div>
