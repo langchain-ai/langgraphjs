@@ -70,3 +70,18 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "../ui/subagents.js";
+
+// Browser tools
+export type {
+  BrowserTool,
+  AnyBrowserTool,
+  BrowserToolEvent,
+  BrowserToolInterrupt,
+  OnBrowserToolCallback,
+} from "../browser-tools.js";
+export {
+  isBrowserToolInterrupt,
+  findBrowserTool,
+  executeBrowserTool,
+  handleBrowserToolInterrupt,
+} from "../browser-tools.js";

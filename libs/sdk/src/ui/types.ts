@@ -34,6 +34,10 @@ import type {
   ToolCallWithResult,
 } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import type {
+  AnyBrowserTool,
+  OnBrowserToolCallback,
+} from "../browser-tools.js";
 
 /**
  * Represents a tool call that initiated a subagent.
@@ -1254,6 +1258,44 @@ export interface UseStreamOptions<
    */
   throttle?: number | boolean;
 
+  /**
+   * Browser tools to execute locally when the agent requests them.
+   * These are tools that use browser-specific APIs (e.g., geolocation, clipboard)
+   * and are executed client-side when the agent triggers an interrupt.
+   *
+   * Browser tools are defined using `browserTool()` from `langchain/tools/browser`
+   * or by providing objects with `name` and `execute` properties.
+   *
+   * @example
+   * ```typescript
+   * import { getLocation, copyToClipboard } from "./browser-tools";
+   *
+   * const stream = useStream({
+   *   assistantId: "agent",
+   *   browserTools: [getLocation, copyToClipboard],
+   * });
+   * ```
+   */
+  browserTools?: AnyBrowserTool[];
+
+  /**
+   * Callback for browser tool lifecycle events.
+   * Called when a browser tool starts executing, succeeds, or fails.
+   *
+   * @example
+   * ```typescript
+   * onBrowserTool: (event) => {
+   *   if (event.phase === "start") {
+   *     console.log(`Executing ${event.name}...`);
+   *   }
+   *   if (event.phase === "error") {
+   *     console.error(`${event.name} failed:`, event.error);
+   *   }
+   * }
+   * ```
+   */
+  onBrowserTool?: OnBrowserToolCallback;
+
   // Note: Agent-specific options are defined in their respective option interfaces:
   // - UseAgentStreamOptions: subagentToolNames
   // - UseDeepAgentStreamOptions: filterSubagentMessages
@@ -1400,6 +1442,8 @@ export type UseStreamCustomOptions<
   | "initialValues"
   | "throttle"
   | "onToolEvent"
+  | "browserTools"
+  | "onBrowserTool"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 /**
