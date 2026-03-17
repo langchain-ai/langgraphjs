@@ -18,6 +18,7 @@ import "../examples/deepagent";
 import "../examples/deepagent-tools";
 import "../examples/tool-streaming";
 import "../examples/browser-tools";
+import "../examples/canvas-drawing";
 
 function WelcomeScreen() {
   return (
