@@ -394,9 +394,10 @@ export function useStreamLGP<
         return () => controller.abort();
       }
     }
+
     // We intentionally only run this when shouldReconstructSubagents changes
     // to avoid unnecessary reconstructions during streaming
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return undefined;
   }, [shouldReconstructSubagents, historyMessages.length]);
 
   const historyError = (() => {
