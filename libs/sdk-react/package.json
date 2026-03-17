@@ -37,7 +37,7 @@
     "@vitejs/plugin-react": "^5.1.4",
     "@vitest/browser": "^4.0.18",
     "@vitest/browser-webdriverio": "^4.0.18",
-    "deepagents": "https://pkg.pr.new/deepagents@263aea6",
+    "deepagents": "^1.8.3",
     "eslint": "^8.33.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.6.0",

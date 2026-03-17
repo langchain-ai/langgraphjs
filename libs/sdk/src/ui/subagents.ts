@@ -886,12 +886,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     // Build a map of tool_call_id -> tool message data for quick lookup
     const toolResults = new Map<
       string,
-      {
-        content: string;
-        status: "success" | "error";
-        /** The actual subgraph checkpoint_ns stored by deepagents in additional_kwargs */
-        subgraphCheckpointNs?: string;
-      }
+      { content: string; status: "success" | "error" }
     >();
 
     for (const message of messages) {
@@ -905,14 +900,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           "status" in message && message.status === "error"
             ? "error"
             : "success";
-        const subgraphCheckpointNs =
-          "additional_kwargs" in message &&
-          message.additional_kwargs != null &&
-          typeof message.additional_kwargs === "object"
-            ? ((message.additional_kwargs as Record<string, unknown>)
-                .subgraph_checkpoint_ns as string | undefined)
-            : undefined;
-        toolResults.set(toolCallId, { content, status, subgraphCheckpointNs });
+        toolResults.set(toolCallId, { content, status });
       }
     }
 
@@ -962,17 +950,9 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
             : "complete"
           : "running";
 
-        // Restore the subgraph checkpoint_ns from the tool message's
-        // additional_kwargs (stored by deepagents as subgraph_checkpoint_ns).
-        // This is the UUID-based namespace (e.g. "tools:a1b2-...") under which
-        // the subagent persisted its checkpoints, allowing fetchSubagentHistory
-        // to query the correct namespace.
-        const subgraphCheckpointNs = toolResult?.subgraphCheckpointNs;
-        const namespace = subgraphCheckpointNs
-          ? subgraphCheckpointNs.split("|")
-          : [];
-
-        // Create the subagent execution
+        // Create the subagent execution stub. Messages and namespace are empty
+        // here; fetchSubagentHistory will derive the subgraph checkpoint_ns by
+        // inspecting intermediate history tasks and populate messages async.
         const execution: SubagentStreamBase<ToolCall> = {
           id: toolCall.id,
           toolCall: subagentToolCall,
@@ -981,7 +961,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           result:
             isComplete && status === "complete" ? toolResult.content : null,
           error: isComplete && status === "error" ? toolResult.content : null,
-          namespace,
+          namespace: [],
           messages: [], // Restored asynchronously via fetchSubagentHistory
           aiMessageId: (message.id as string) ?? null,
           parentId: null,
