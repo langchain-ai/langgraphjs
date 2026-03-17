@@ -121,13 +121,26 @@ export const canvasClear = browserTool(
 // ---------------------------------------------------------------------------
 
 export const canvasSetStyle = browserTool(
-  async ({ fillColor, strokeColor, lineWidth, font, globalAlpha, lineCap, lineJoin, shadowColor, shadowBlur, shadowOffsetX, shadowOffsetY }) => {
+  async ({
+    fillColor,
+    strokeColor,
+    lineWidth,
+    font,
+    globalAlpha,
+    lineCap,
+    lineJoin,
+    shadowColor,
+    shadowBlur,
+    shadowOffsetX,
+    shadowOffsetY,
+  }) => {
     const c = ctx();
     if (fillColor !== undefined) c.fillStyle = fillColor;
     if (strokeColor !== undefined) c.strokeStyle = strokeColor;
     if (lineWidth !== undefined) c.lineWidth = lineWidth;
     if (font !== undefined) c.font = font;
-    if (globalAlpha !== undefined) c.globalAlpha = Math.max(0, Math.min(1, globalAlpha));
+    if (globalAlpha !== undefined)
+      c.globalAlpha = Math.max(0, Math.min(1, globalAlpha));
     if (lineCap !== undefined) c.lineCap = lineCap as CanvasLineCap;
     if (lineJoin !== undefined) c.lineJoin = lineJoin as CanvasLineJoin;
     if (shadowColor !== undefined) c.shadowColor = shadowColor;
@@ -176,7 +189,10 @@ export const canvasSetStyle = browserTool(
         .string()
         .optional()
         .describe("Shadow colour (e.g. 'rgba(0,0,0,0.5)')"),
-      shadowBlur: z.number().optional().describe("Shadow blur radius in pixels"),
+      shadowBlur: z
+        .number()
+        .optional()
+        .describe("Shadow blur radius in pixels"),
       shadowOffsetX: z.number().optional().describe("Shadow X offset"),
       shadowOffsetY: z.number().optional().describe("Shadow Y offset"),
     }),
@@ -188,7 +204,15 @@ export const canvasSetStyle = browserTool(
 // ---------------------------------------------------------------------------
 
 export const canvasDrawRect = browserTool(
-  async ({ x, y, width, height, fill = true, stroke = false, cornerRadius }) => {
+  async ({
+    x,
+    y,
+    width,
+    height,
+    fill = true,
+    stroke = false,
+    cornerRadius,
+  }) => {
     const c = ctx();
     c.beginPath();
     if (cornerRadius && cornerRadius > 0) {
@@ -229,10 +253,24 @@ export const canvasDrawRect = browserTool(
 // ---------------------------------------------------------------------------
 
 export const canvasDrawCircle = browserTool(
-  async ({ cx, cy, radius, fill = true, stroke = false, startAngle = 0, endAngle = 360 }) => {
+  async ({
+    cx,
+    cy,
+    radius,
+    fill = true,
+    stroke = false,
+    startAngle = 0,
+    endAngle = 360,
+  }) => {
     const c = ctx();
     c.beginPath();
-    c.arc(cx, cy, radius, (startAngle * Math.PI) / 180, (endAngle * Math.PI) / 180);
+    c.arc(
+      cx,
+      cy,
+      radius,
+      (startAngle * Math.PI) / 180,
+      (endAngle * Math.PI) / 180
+    );
     if (fill) c.fill();
     if (stroke) c.stroke();
     return { success: true };
@@ -273,7 +311,8 @@ export const canvasDrawLine = browserTool(
   },
   {
     name: "canvas_draw_line",
-    description: "Draw a straight line between two points using the current stroke style.",
+    description:
+      "Draw a straight line between two points using the current stroke style.",
     schema: z.object({
       x1: z.number().describe("Start X"),
       y1: z.number().describe("Start Y"),
@@ -288,7 +327,16 @@ export const canvasDrawLine = browserTool(
 // ---------------------------------------------------------------------------
 
 export const canvasDrawText = browserTool(
-  async ({ text, x, y, fill = true, stroke = false, maxWidth, align, baseline }) => {
+  async ({
+    text,
+    x,
+    y,
+    fill = true,
+    stroke = false,
+    maxWidth,
+    align,
+    baseline,
+  }) => {
     const c = ctx();
     const prevAlign = c.textAlign;
     const prevBaseline = c.textBaseline;
@@ -470,7 +518,9 @@ export const canvasSaveRestore = browserTool(
     schema: z.object({
       action: z
         .enum(["save", "restore"])
-        .describe("'save' to push current state, 'restore' to pop previous state"),
+        .describe(
+          "'save' to push current state, 'restore' to pop previous state"
+        ),
     }),
   }
 );
@@ -529,7 +579,14 @@ export const canvasSetGradient = browserTool(
     if (type === "linear") {
       gradient = c.createLinearGradient(x0, y0, x1 ?? x0, y1 ?? y0);
     } else {
-      gradient = c.createRadialGradient(x0, y0, r0 ?? 0, x1 ?? x0, y1 ?? y0, r1 ?? 100);
+      gradient = c.createRadialGradient(
+        x0,
+        y0,
+        r0 ?? 0,
+        x1 ?? x0,
+        y1 ?? y0,
+        r1 ?? 100
+      );
     }
 
     for (const stop of stops) {
@@ -552,12 +609,28 @@ export const canvasSetGradient = browserTool(
       "Define colour stops as fractions from 0 to 1.",
     schema: z.object({
       type: z.enum(["linear", "radial"]).describe("Gradient type"),
-      x0: z.number().describe("Start X (linear) or inner circle centre X (radial)"),
-      y0: z.number().describe("Start Y (linear) or inner circle centre Y (radial)"),
-      x1: z.number().optional().describe("End X (linear) or outer circle centre X (radial)"),
-      y1: z.number().optional().describe("End Y (linear) or outer circle centre Y (radial)"),
-      r0: z.number().optional().describe("Inner circle radius (radial only, default 0)"),
-      r1: z.number().optional().describe("Outer circle radius (radial only, default 100)"),
+      x0: z
+        .number()
+        .describe("Start X (linear) or inner circle centre X (radial)"),
+      y0: z
+        .number()
+        .describe("Start Y (linear) or inner circle centre Y (radial)"),
+      x1: z
+        .number()
+        .optional()
+        .describe("End X (linear) or outer circle centre X (radial)"),
+      y1: z
+        .number()
+        .optional()
+        .describe("End Y (linear) or outer circle centre Y (radial)"),
+      r0: z
+        .number()
+        .optional()
+        .describe("Inner circle radius (radial only, default 0)"),
+      r1: z
+        .number()
+        .optional()
+        .describe("Outer circle radius (radial only, default 100)"),
       stops: z
         .array(
           z.object({
@@ -579,11 +652,24 @@ export const canvasSetGradient = browserTool(
 // ---------------------------------------------------------------------------
 
 export const canvasDrawEllipse = browserTool(
-  async ({ cx, cy, radiusX, radiusY, rotation = 0, fill = true, stroke = false, startAngle = 0, endAngle = 360 }) => {
+  async ({
+    cx,
+    cy,
+    radiusX,
+    radiusY,
+    rotation = 0,
+    fill = true,
+    stroke = false,
+    startAngle = 0,
+    endAngle = 360,
+  }) => {
     const c = ctx();
     c.beginPath();
     c.ellipse(
-      cx, cy, radiusX, radiusY,
+      cx,
+      cy,
+      radiusX,
+      radiusY,
       (rotation * Math.PI) / 180,
       (startAngle * Math.PI) / 180,
       (endAngle * Math.PI) / 180
@@ -609,8 +695,14 @@ export const canvasDrawEllipse = browserTool(
         .describe("Rotation of the ellipse in degrees (default 0)"),
       fill: z.boolean().optional().describe("Fill the ellipse (default true)"),
       stroke: z.boolean().optional().describe("Outline the ellipse"),
-      startAngle: z.number().optional().describe("Start angle in degrees (default 0)"),
-      endAngle: z.number().optional().describe("End angle in degrees (default 360 = full ellipse)"),
+      startAngle: z
+        .number()
+        .optional()
+        .describe("Start angle in degrees (default 0)"),
+      endAngle: z
+        .number()
+        .optional()
+        .describe("End angle in degrees (default 360 = full ellipse)"),
     }),
   }
 );
@@ -620,7 +712,16 @@ export const canvasDrawEllipse = browserTool(
 // ---------------------------------------------------------------------------
 
 export const canvasDrawPolygon = browserTool(
-  async ({ cx, cy, outerRadius, sides, innerRadius, rotation = 0, fill = true, stroke = false }) => {
+  async ({
+    cx,
+    cy,
+    outerRadius,
+    sides,
+    innerRadius,
+    rotation = 0,
+    fill = true,
+    stroke = false,
+  }) => {
     const c = ctx();
     const isStar = innerRadius !== undefined && innerRadius > 0;
     const points = isStar ? sides * 2 : sides;
@@ -629,8 +730,7 @@ export const canvasDrawPolygon = browserTool(
     c.beginPath();
     for (let i = 0; i < points; i++) {
       const angle = rotRad + (i * Math.PI * 2) / points - Math.PI / 2;
-      const r =
-        isStar && i % 2 === 1 ? (innerRadius as number) : outerRadius;
+      const r = isStar && i % 2 === 1 ? (innerRadius as number) : outerRadius;
       const x = cx + r * Math.cos(angle);
       const y = cy + r * Math.sin(angle);
       if (i === 0) c.moveTo(x, y);
@@ -651,7 +751,9 @@ export const canvasDrawPolygon = browserTool(
     schema: z.object({
       cx: z.number().describe("Centre X"),
       cy: z.number().describe("Centre Y"),
-      outerRadius: z.number().describe("Outer radius (tip of each point / vertex)"),
+      outerRadius: z
+        .number()
+        .describe("Outer radius (tip of each point / vertex)"),
       sides: z
         .number()
         .int()
@@ -709,15 +811,32 @@ export const canvasSetLineDash = browserTool(
 // ---------------------------------------------------------------------------
 
 const BLEND_MODES = [
-  "source-over", "source-in", "source-out", "source-atop",
-  "destination-over", "destination-in", "destination-out", "destination-atop",
-  "lighter", "copy", "xor",
-  "multiply", "screen", "overlay",
-  "darken", "lighten",
-  "color-dodge", "color-burn",
-  "hard-light", "soft-light",
-  "difference", "exclusion",
-  "hue", "saturation", "color", "luminosity",
+  "source-over",
+  "source-in",
+  "source-out",
+  "source-atop",
+  "destination-over",
+  "destination-in",
+  "destination-out",
+  "destination-atop",
+  "lighter",
+  "copy",
+  "xor",
+  "multiply",
+  "screen",
+  "overlay",
+  "darken",
+  "lighten",
+  "color-dodge",
+  "color-burn",
+  "hard-light",
+  "soft-light",
+  "difference",
+  "exclusion",
+  "hue",
+  "saturation",
+  "color",
+  "luminosity",
 ] as const;
 
 export const canvasSetBlendMode = browserTool(
@@ -738,9 +857,7 @@ export const canvasSetBlendMode = browserTool(
       "'difference' for psychedelic inversions. " +
       "Always reset to 'source-over' when done to avoid affecting later draws.",
     schema: z.object({
-      mode: z
-        .enum(BLEND_MODES)
-        .describe("Composite operation name"),
+      mode: z.enum(BLEND_MODES).describe("Composite operation name"),
     }),
   }
 );

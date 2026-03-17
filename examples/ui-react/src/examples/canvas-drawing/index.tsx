@@ -112,7 +112,9 @@ function toolArgSummary(name: string, args: Record<string, unknown>): string {
       return parts.join(" · ") || "no changes";
     }
     case "canvas_set_gradient":
-      return `${args.type} gradient (${(args.stops as { color: string }[])?.length ?? 0} stops)`;
+      return `${args.type} gradient (${
+        (args.stops as { color: string }[])?.length ?? 0
+      } stops)`;
     case "canvas_draw_rect":
       return `(${args.x}, ${args.y}) ${args.width}×${args.height}px`;
     case "canvas_draw_circle":
@@ -126,7 +128,9 @@ function toolArgSummary(name: string, args: Record<string, unknown>): string {
     case "canvas_save_restore":
       return String(args.action);
     case "canvas_draw_ellipse":
-      return `(${args.cx}, ${args.cy}) rx=${args.radiusX} ry=${args.radiusY}${args.rotation ? ` rot=${args.rotation}°` : ""}`;
+      return `(${args.cx}, ${args.cy}) rx=${args.radiusX} ry=${args.radiusY}${
+        args.rotation ? ` rot=${args.rotation}°` : ""
+      }`;
     case "canvas_draw_polygon":
       return args.innerRadius
         ? `${args.sides}-point star r=${args.outerRadius}`
@@ -142,7 +146,8 @@ function toolArgSummary(name: string, args: Record<string, unknown>): string {
     case "canvas_transform":
       if (args.action === "translate") return `translate(${args.x}, ${args.y})`;
       if (args.action === "rotate") return `rotate(${args.angle}°)`;
-      if (args.action === "scale") return `scale(${args.scaleX}, ${args.scaleY})`;
+      if (args.action === "scale")
+        return `scale(${args.scaleX}, ${args.scaleY})`;
       return String(args.action);
     default:
       return "";
@@ -150,7 +155,10 @@ function toolArgSummary(name: string, args: Record<string, unknown>): string {
 }
 
 /** Returns the primary colour argument for swatch preview (if any). */
-function primaryColor(name: string, args: Record<string, unknown>): string | undefined {
+function primaryColor(
+  name: string,
+  args: Record<string, unknown>
+): string | undefined {
   if (name === "canvas_clear" && args.color) return String(args.color);
   if (name === "canvas_set_style") {
     return args.fillColor
@@ -235,7 +243,10 @@ function CanvasToolCallCard({
   const label =
     TOOL_LABELS[call.name] ||
     call.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const summary = toolArgSummary(call.name, call.args as Record<string, unknown>);
+  const summary = toolArgSummary(
+    call.name,
+    call.args as Record<string, unknown>
+  );
   const swatch = primaryColor(call.name, call.args as Record<string, unknown>);
 
   return (
@@ -246,7 +257,9 @@ function CanvasToolCallCard({
       <div className="flex-1 min-w-0">
         <span className="text-white font-medium">{label}</span>
         {summary && (
-          <span className="ml-2 text-neutral-500 text-xs truncate">{summary}</span>
+          <span className="ml-2 text-neutral-500 text-xs truncate">
+            {summary}
+          </span>
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -339,7 +352,9 @@ function SuggestionPills({
 function hasContent(message: Message): boolean {
   if (typeof message.content === "string") return message.content.trim() !== "";
   if (Array.isArray(message.content)) {
-    return message.content.some((c) => c.type === "text" && c.text.trim() !== "");
+    return message.content.some(
+      (c) => c.type === "text" && c.text.trim() !== ""
+    );
   }
   return false;
 }
@@ -351,7 +366,9 @@ function hasContent(message: Message): boolean {
 export function CanvasDrawingAgent() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [browserToolEvents, setBrowserToolEvents] = useState<BrowserToolEvent[]>([]);
+  const [browserToolEvents, setBrowserToolEvents] = useState<
+    BrowserToolEvent[]
+  >([]);
 
   // ── Initialise canvas & share context with browser tools ──────────────────
   useEffect(() => {
@@ -495,7 +512,9 @@ export function CanvasDrawingAgent() {
 
               {/* Spinner while the LLM is thinking */}
               {stream.isLoading &&
-                !stream.messages.some((m) => m.type === "ai" && hasContent(m)) &&
+                !stream.messages.some(
+                  (m) => m.type === "ai" && hasContent(m)
+                ) &&
                 stream.toolCalls.length === 0 &&
                 browserToolEvents.length === 0 && <LoadingIndicator />}
             </div>
@@ -529,7 +548,8 @@ export function CanvasDrawingAgent() {
 registerExample({
   id: "canvas-drawing",
   title: "Canvas Drawing",
-  description: "AI artist that draws on an HTML5 canvas using browser tools — no eval",
+  description:
+    "AI artist that draws on an HTML5 canvas using browser tools — no eval",
   category: "agents",
   icon: "tool",
   ready: true,
