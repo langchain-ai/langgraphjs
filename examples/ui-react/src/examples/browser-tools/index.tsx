@@ -12,8 +12,14 @@ import {
   Eye,
 } from "lucide-react";
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream, type BrowserToolEvent } from "@langchain/langgraph-sdk/react";
-import type { ToolCallWithResult, DefaultToolCall } from "@langchain/langgraph-sdk/react";
+import {
+  useStream,
+  type BrowserToolEvent,
+} from "@langchain/langgraph-sdk/react";
+import type {
+  ToolCallWithResult,
+  DefaultToolCall,
+} from "@langchain/langgraph-sdk/react";
 
 import { registerExample } from "../registry";
 import { LoadingIndicator } from "../../components/Loading";
@@ -68,13 +74,18 @@ function LocationMap({
 }) {
   // Choose a bbox delta that gives a comfortable street-level view (~500 m radius)
   const delta = 0.005;
-  const bbox = `${longitude - delta},${latitude - delta},${longitude + delta},${latitude + delta}`;
+  const bbox = `${longitude - delta},${latitude - delta},${longitude + delta},${
+    latitude + delta
+  }`;
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitude},${longitude}`;
   const externalHref = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`;
 
   return (
     <div className="space-y-2">
-      <div className="overflow-hidden rounded-lg border border-neutral-700" style={{ height: 220 }}>
+      <div
+        className="overflow-hidden rounded-lg border border-neutral-700"
+        style={{ height: 220 }}
+      >
         <iframe
           src={src}
           title="Your location on OpenStreetMap"
@@ -88,7 +99,9 @@ function LocationMap({
         <span className="font-mono text-neutral-400">
           {latitude.toFixed(5)}, {longitude.toFixed(5)}
           {accuracy != null && (
-            <span className="ml-2 text-neutral-500">±{Math.round(accuracy)} m</span>
+            <span className="ml-2 text-neutral-500">
+              ±{Math.round(accuracy)} m
+            </span>
           )}
         </span>
         <div className="flex items-center gap-3">
@@ -130,8 +143,8 @@ function BrowserToolStatus({ events }: { events: BrowserToolEvent[] }) {
               event.phase === "start"
                 ? "bg-purple-500/10 border border-purple-500/20 text-purple-400"
                 : event.phase === "success"
-                  ? "bg-green-500/10 border border-green-500/20 text-green-400"
-                  : "bg-red-500/10 border border-red-500/20 text-red-400"
+                ? "bg-green-500/10 border border-green-500/20 text-green-400"
+                : "bg-red-500/10 border border-red-500/20 text-red-400"
             }`}
           >
             {event.phase === "start" ? (
@@ -146,8 +159,10 @@ function BrowserToolStatus({ events }: { events: BrowserToolEvent[] }) {
               {event.phase === "start"
                 ? `${name}...`
                 : event.phase === "success"
-                  ? `${name} completed${event.duration ? ` (${event.duration}ms)` : ""}`
-                  : `${name} failed: ${event.error?.message}`}
+                ? `${name} completed${
+                    event.duration ? ` (${event.duration}ms)` : ""
+                  }`
+                : `${name} failed: ${event.error?.message}`}
             </span>
           </div>
         );
@@ -167,7 +182,11 @@ function MemoryValue({ value }: { value: unknown }) {
     "latitude" in value &&
     "longitude" in value
   ) {
-    const loc = value as { latitude: number; longitude: number; accuracy?: number };
+    const loc = value as {
+      latitude: number;
+      longitude: number;
+      accuracy?: number;
+    };
     return (
       <LocationMap
         latitude={loc.latitude}
@@ -177,7 +196,8 @@ function MemoryValue({ value }: { value: unknown }) {
     );
   }
 
-  if (typeof value === "string") return <span className="truncate">{value}</span>;
+  if (typeof value === "string")
+    return <span className="truncate">{value}</span>;
   return (
     <pre className="text-xs overflow-auto whitespace-pre-wrap">
       {JSON.stringify(value, null, 2)}
@@ -229,13 +249,16 @@ function MemoryToolCallCard({
               Found {data.count as number}{" "}
               {data.count === 1 ? "memory" : "memories"}
             </div>
-            {(data.memories as { key: string; value: unknown; tags?: string[] }[])
+            {(
+              data.memories as {
+                key: string;
+                value: unknown;
+                tags?: string[];
+              }[]
+            )
               .slice(0, 5)
               .map((m, i) => (
-                <div
-                  key={i}
-                  className="bg-neutral-800/50 rounded p-2 text-xs"
-                >
+                <div key={i} className="bg-neutral-800/50 rounded p-2 text-xs">
                   <div className="font-medium text-white">{m.key}</div>
                   <div className="text-neutral-400">
                     <MemoryValue value={m.value} />
@@ -293,15 +316,17 @@ function MemoryToolCallCard({
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-white">
             {TOOL_NAMES[call.name] ||
-              call.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+              call.name
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase())}
           </div>
           {call.args && Object.keys(call.args).length > 0 && (
             <div className="text-xs text-neutral-500 truncate">
               {call.name === "memory_put" && call.args.key
                 ? `Key: ${call.args.key}`
                 : call.name === "memory_search" && call.args.query
-                  ? `Query: "${call.args.query}"`
-                  : JSON.stringify(call.args)}
+                ? `Query: "${call.args.query}"`
+                : JSON.stringify(call.args)}
             </div>
           )}
         </div>
@@ -423,9 +448,9 @@ function hasContent(message: Message): boolean {
 
 export function BrowserToolsAgent() {
   // Track browser tool events for display
-  const [browserToolEvents, setBrowserToolEvents] = useState<BrowserToolEvent[]>(
-    []
-  );
+  const [browserToolEvents, setBrowserToolEvents] = useState<
+    BrowserToolEvent[]
+  >([]);
 
   const stream = useStream<typeof agent>({
     assistantId: "browser-tools",

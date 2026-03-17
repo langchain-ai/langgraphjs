@@ -73,12 +73,12 @@ async function openDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      
+
       // Delete old store if it exists (clean upgrade)
       if (db.objectStoreNames.contains(STORE_NAME)) {
         db.deleteObjectStore(STORE_NAME);
       }
-      
+
       // Create the object store with indexes
       const store = db.createObjectStore(STORE_NAME, { keyPath: "key" });
       store.createIndex("tags", "tags", { multiEntry: true });
@@ -87,7 +87,9 @@ async function openDB(): Promise<IDBDatabase> {
     };
 
     request.onblocked = () => {
-      reject(new Error("Database blocked - please close other tabs using this app"));
+      reject(
+        new Error("Database blocked - please close other tabs using this app")
+      );
     };
   });
 }
@@ -359,13 +361,9 @@ export const memorySearch = browserTool(
     const matches = memories.filter((m) => {
       const keyMatch = m.key.toLowerCase().includes(queryLower);
       const valueStr =
-        typeof m.value === "string"
-          ? m.value
-          : JSON.stringify(m.value);
+        typeof m.value === "string" ? m.value : JSON.stringify(m.value);
       const valueMatch = valueStr.toLowerCase().includes(queryLower);
-      const tagMatch = m.tags.some((t) =>
-        t.toLowerCase().includes(queryLower)
-      );
+      const tagMatch = m.tags.some((t) => t.toLowerCase().includes(queryLower));
       return keyMatch || valueMatch || tagMatch;
     });
 
@@ -375,9 +373,7 @@ export const memorySearch = browserTool(
       const bExact = b.key.toLowerCase() === queryLower;
       if (aExact && !bExact) return -1;
       if (bExact && !aExact) return 1;
-      return (
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
 
     return {
@@ -494,10 +490,7 @@ export const memoryForget = browserTool(
       "Use this when the user asks you to forget something.",
     schema: z.object({
       key: z.string().optional().describe("The key of the memory to delete"),
-      tag: z
-        .string()
-        .optional()
-        .describe("Delete all memories with this tag"),
+      tag: z.string().optional().describe("Delete all memories with this tag"),
       confirmForgetAll: z
         .boolean()
         .optional()
@@ -525,13 +518,15 @@ export const geolocationGet = browserTool(
     }
 
     // Wrap the callback-based API in a Promise
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 10_000,
-        maximumAge: 5 * 60 * 1_000, // accept a cached fix up to 5 min old
-      });
-    });
+    const position = await new Promise<GeolocationPosition>(
+      (resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10_000,
+          maximumAge: 5 * 60 * 1_000, // accept a cached fix up to 5 min old
+        });
+      }
+    );
 
     const { latitude, longitude, accuracy } = position.coords;
     const timestamp = new Date(position.timestamp).toISOString();
@@ -557,7 +552,9 @@ export const geolocationGet = browserTool(
       longitude,
       accuracy,
       timestamp,
-      message: `Location determined: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)} m)`,
+      message: `Location determined: ${latitude.toFixed(
+        5
+      )}, ${longitude.toFixed(5)} (±${Math.round(accuracy)} m)`,
     };
   },
   {
