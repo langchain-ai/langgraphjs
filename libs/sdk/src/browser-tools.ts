@@ -98,9 +98,10 @@ export interface HeadlessToolImplementation<Args = unknown, Output = unknown> {
  * A permissive headless tool implementation type that accepts any
  * implementation regardless of its specific type parameters.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyHeadlessToolImplementation = HeadlessToolImplementation<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any
 >;
 
