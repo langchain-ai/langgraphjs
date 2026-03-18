@@ -1300,6 +1300,7 @@ export class ThreadsClient<
     options: {
       values: ValuesType;
       checkpoint?: Checkpoint;
+      checkpointId?: string;
       asNode?: string;
       signal?: AbortSignal;
     }
@@ -1311,6 +1312,7 @@ export class ThreadsClient<
         json: {
           values: options.values,
           checkpoint: options.checkpoint,
+          checkpoint_id: options.checkpointId,
           as_node: options?.asNode,
         },
         signal: options?.signal,
@@ -1534,6 +1536,7 @@ export class RunsClient<
       interrupt_after: payload?.interruptAfter,
       webhook: payload?.webhook,
       checkpoint: payload?.checkpoint,
+      checkpoint_id: payload?.checkpointId,
       multitask_strategy: payload?.multitaskStrategy,
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
@@ -1622,6 +1625,7 @@ export class RunsClient<
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       checkpoint: payload?.checkpoint,
+      checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
