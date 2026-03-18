@@ -33,7 +33,11 @@ import {
   type Pregel,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { tool, ToolMessage, createAgent, browserTool } from "langchain";
+import {
+  tool,
+  ToolMessage,
+  createAgent,
+} from "langchain";
 import { z } from "zod/v4";
 import { createDeepAgent, type DeepAgent } from "deepagents";
 
@@ -370,19 +374,11 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   systemPrompt: "You are an AI coordinator that delegates tasks.",
 });
 
-/**
- * Browser tool for tests — executes in the browser, interrupts on the server.
- * The execute function is never called server-side; it lives here only so the
- * tool definition is complete. The real execute runs in the test component.
- */
-const getLocationTool = browserTool(
-  async (_args: { highAccuracy?: boolean }) => ({ latitude: 0, longitude: 0 }),
-  {
-    name: "get_location",
-    description: "Get the user's current GPS location",
-    schema: z.object({ highAccuracy: z.boolean().optional() }),
-  },
-);
+const getLocationTool = tool({
+  name: "get_location",
+  description: "Get the user's current GPS location",
+  schema: z.object({ highAccuracy: z.boolean().optional() }),
+});
 
 /**
  * Stateless model for browser tool tests. Inspects incoming messages instead

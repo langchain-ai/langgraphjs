@@ -37,8 +37,6 @@ import {
   tool,
   ToolMessage,
   createAgent,
-  browserTool,
-  type BrowserTool,
 } from "langchain";
 import { z } from "zod/v4";
 import { createDeepAgent, type DeepAgent } from "deepagents";
@@ -376,14 +374,11 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   systemPrompt: "You are an AI coordinator that delegates tasks.",
 });
 
-const getLocationTool: BrowserTool = browserTool(
-  async (_args: { highAccuracy?: boolean }) => ({ latitude: 0, longitude: 0 }),
-  {
-    name: "get_location",
-    description: "Get the user's current GPS location",
-    schema: z.object({ highAccuracy: z.boolean().optional() }),
-  },
-);
+const getLocationTool = tool({
+  name: "get_location",
+  description: "Get the user's current GPS location",
+  schema: z.object({ highAccuracy: z.boolean().optional() }),
+});
 
 /**
  * Stateless model for browser tool tests. Inspects incoming messages instead
