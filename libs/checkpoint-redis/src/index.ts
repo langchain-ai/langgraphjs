@@ -685,13 +685,21 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
 
     // Delete writes
-    const writesPattern = `writes:${threadId}:*`;
+    const writesPattern = `checkpoint_write:${threadId}:*`;
     // Use scan for better performance and cluster compatibility
     // Use keys for simplicity - scan would be better for large datasets
     const writesKeys = await (this.client as any).keys(writesPattern);
 
     if (writesKeys.length > 0) {
       await this.client.del(writesKeys);
+    }
+
+    // Delete write registries
+    const zsetPattern = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:*`;
+    const zsetKeys = await (this.client as any).keys(zsetPattern);
+
+    if (zsetKeys.length > 0) {
+      await this.client.del(zsetKeys);
     }
   }
 
