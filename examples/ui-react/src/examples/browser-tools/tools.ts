@@ -447,10 +447,19 @@ export const memoryForgetImpl = memoryForget.implement(
         (store) => store.get(key)
       );
       if (!existing) {
-        return { success: false, key, message: `No memory found with key "${key}"` };
+        return {
+          success: false,
+          key,
+          message: `No memory found with key "${key}"`,
+        };
       }
       await withStore("readwrite", (store) => store.delete(key));
-      return { success: true, action: "deleted", key, message: `Memory "${key}" has been forgotten` };
+      return {
+        success: true,
+        action: "deleted",
+        key,
+        message: `Memory "${key}" has been forgotten`,
+      };
     }
 
     if (tag) {
@@ -542,7 +551,9 @@ export const geolocationGetImpl = geolocationGet.implement(
       longitude,
       accuracy,
       timestamp,
-      message: `Location determined: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)} m)`,
+      message: `Location determined: ${latitude.toFixed(
+        5
+      )}, ${longitude.toFixed(5)} (±${Math.round(accuracy)} m)`,
     };
   }
 );

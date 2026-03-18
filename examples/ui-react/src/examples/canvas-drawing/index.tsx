@@ -22,10 +22,7 @@ import {
   Star,
 } from "lucide-react";
 import type { Message } from "@langchain/langgraph-sdk";
-import {
-  useStream,
-  type ToolEvent,
-} from "@langchain/langgraph-sdk/react";
+import { useStream, type ToolEvent } from "@langchain/langgraph-sdk/react";
 import type {
   ToolCallWithResult,
   DefaultToolCall,
@@ -384,9 +381,7 @@ function hasContent(message: Message): boolean {
 export function CanvasDrawingAgent() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [toolEvents, setToolEvents] = useState<
-    ToolEvent[]
-  >([]);
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
   // ── Initialise canvas & share context with browser tools ──────────────────
   useEffect(() => {
@@ -463,9 +458,7 @@ export function CanvasDrawingAgent() {
         );
         setTimeout(() => {
           setIsDrawing(false);
-          setToolEvents((prev) =>
-            prev.filter((e) => e.name !== event.name)
-          );
+          setToolEvents((prev) => prev.filter((e) => e.name !== event.name));
         }, 1500);
       }
     },

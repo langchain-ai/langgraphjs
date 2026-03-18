@@ -51,45 +51,41 @@ function ctx(): CanvasRenderingContext2D {
   return canvasCtx;
 }
 
-export const canvasGetInfo = canvasGetInfoHeadless.implement(
-  async () => {
-    const c = ctx();
-    return {
-      success: true,
-      // Always return LOGICAL (CSS-pixel) dimensions so the LLM uses the
-      // correct coordinate space regardless of the device pixel ratio.
-      width: logicalWidth,
-      height: logicalHeight,
-      fillStyle: String(c.fillStyle),
-      strokeStyle: String(c.strokeStyle),
-      lineWidth: c.lineWidth,
-      font: c.font,
-      globalAlpha: c.globalAlpha,
-    };
-  }
-);
+export const canvasGetInfo = canvasGetInfoHeadless.implement(async () => {
+  const c = ctx();
+  return {
+    success: true,
+    // Always return LOGICAL (CSS-pixel) dimensions so the LLM uses the
+    // correct coordinate space regardless of the device pixel ratio.
+    width: logicalWidth,
+    height: logicalHeight,
+    fillStyle: String(c.fillStyle),
+    strokeStyle: String(c.strokeStyle),
+    lineWidth: c.lineWidth,
+    font: c.font,
+    globalAlpha: c.globalAlpha,
+  };
+});
 
-export const canvasClear = canvasClearHeadless.implement(
-  async ({ color }) => {
-    const c = ctx();
-    if (color) {
-      const prev = c.fillStyle;
-      c.fillStyle = color;
-      c.fillRect(0, 0, c.canvas.width, c.canvas.height);
-      c.fillStyle = prev;
-    } else {
-      c.clearRect(0, 0, c.canvas.width, c.canvas.height);
-    }
-    return {
-      success: true,
-      width: c.canvas.width,
-      height: c.canvas.height,
-      message: color
-        ? `Canvas filled with ${color}`
-        : "Canvas cleared to transparent",
-    };
+export const canvasClear = canvasClearHeadless.implement(async ({ color }) => {
+  const c = ctx();
+  if (color) {
+    const prev = c.fillStyle;
+    c.fillStyle = color;
+    c.fillRect(0, 0, c.canvas.width, c.canvas.height);
+    c.fillStyle = prev;
+  } else {
+    c.clearRect(0, 0, c.canvas.width, c.canvas.height);
   }
-);
+  return {
+    success: true,
+    width: c.canvas.width,
+    height: c.canvas.height,
+    message: color
+      ? `Canvas filled with ${color}`
+      : "Canvas cleared to transparent",
+  };
+});
 
 export const canvasSetStyle = canvasSetStyleHeadless.implement(
   async ({
@@ -122,156 +118,169 @@ export const canvasSetStyle = canvasSetStyleHeadless.implement(
   }
 );
 
-export const canvasDrawRect = canvasDrawRectHeadless.implement(async ({
-  x,
-  y,
-  width,
-  height,
-  fill = true,
-  stroke = false,
-  cornerRadius,
-}) => {
-  const c = ctx();
-  c.beginPath();
-  if (cornerRadius && cornerRadius > 0) {
-    c.roundRect(x, y, width, height, cornerRadius);
-  } else {
-    c.rect(x, y, width, height);
+export const canvasDrawRect = canvasDrawRectHeadless.implement(
+  async ({
+    x,
+    y,
+    width,
+    height,
+    fill = true,
+    stroke = false,
+    cornerRadius,
+  }) => {
+    const c = ctx();
+    c.beginPath();
+    if (cornerRadius && cornerRadius > 0) {
+      c.roundRect(x, y, width, height, cornerRadius);
+    } else {
+      c.rect(x, y, width, height);
+    }
+    if (fill) c.fill();
+    if (stroke) c.stroke();
+    return { success: true };
   }
-  if (fill) c.fill();
-  if (stroke) c.stroke();
-  return { success: true };
-});
+);
 
-export const canvasDrawCircle = canvasDrawCircleHeadless.implement(async ({
-  cx,
-  cy,
-  radius,
-  fill = true,
-  stroke = false,
-  startAngle = 0,
-  endAngle = 360,
-}) => {
-  const c = ctx();
-  c.beginPath();
-  c.arc(
+export const canvasDrawCircle = canvasDrawCircleHeadless.implement(
+  async ({
     cx,
     cy,
     radius,
-    (startAngle * Math.PI) / 180,
-    (endAngle * Math.PI) / 180
-  );
-  if (fill) c.fill();
-  if (stroke) c.stroke();
-  return { success: true };
-});
-
-export const canvasDrawLine = canvasDrawLineHeadless.implement(async ({ x1, y1, x2, y2 }) => {
-  const c = ctx();
-  c.beginPath();
-  c.moveTo(x1, y1);
-  c.lineTo(x2, y2);
-  c.stroke();
-  return { success: true };
-});
-
-export const canvasDrawText = canvasDrawTextHeadless.implement(async ({
-  text,
-  x,
-  y,
-  fill = true,
-  stroke = false,
-  maxWidth,
-  align,
-  baseline,
-}) => {
-  const c = ctx();
-  const prevAlign = c.textAlign;
-  const prevBaseline = c.textBaseline;
-  if (align) c.textAlign = align as CanvasTextAlign;
-  if (baseline) c.textBaseline = baseline as CanvasTextBaseline;
-
-  if (fill) {
-    maxWidth !== undefined
-      ? c.fillText(text, x, y, maxWidth)
-      : c.fillText(text, x, y);
+    fill = true,
+    stroke = false,
+    startAngle = 0,
+    endAngle = 360,
+  }) => {
+    const c = ctx();
+    c.beginPath();
+    c.arc(
+      cx,
+      cy,
+      radius,
+      (startAngle * Math.PI) / 180,
+      (endAngle * Math.PI) / 180
+    );
+    if (fill) c.fill();
+    if (stroke) c.stroke();
+    return { success: true };
   }
-  if (stroke) {
-    maxWidth !== undefined
-      ? c.strokeText(text, x, y, maxWidth)
-      : c.strokeText(text, x, y);
+);
+
+export const canvasDrawLine = canvasDrawLineHeadless.implement(
+  async ({ x1, y1, x2, y2 }) => {
+    const c = ctx();
+    c.beginPath();
+    c.moveTo(x1, y1);
+    c.lineTo(x2, y2);
+    c.stroke();
+    return { success: true };
   }
+);
 
-  c.textAlign = prevAlign;
-  c.textBaseline = prevBaseline;
-  return { success: true };
-});
+export const canvasDrawText = canvasDrawTextHeadless.implement(
+  async ({
+    text,
+    x,
+    y,
+    fill = true,
+    stroke = false,
+    maxWidth,
+    align,
+    baseline,
+  }) => {
+    const c = ctx();
+    const prevAlign = c.textAlign;
+    const prevBaseline = c.textBaseline;
+    if (align) c.textAlign = align as CanvasTextAlign;
+    if (baseline) c.textBaseline = baseline as CanvasTextBaseline;
 
+    if (fill) {
+      maxWidth !== undefined
+        ? c.fillText(text, x, y, maxWidth)
+        : c.fillText(text, x, y);
+    }
+    if (stroke) {
+      maxWidth !== undefined
+        ? c.strokeText(text, x, y, maxWidth)
+        : c.strokeText(text, x, y);
+    }
+
+    c.textAlign = prevAlign;
+    c.textBaseline = prevBaseline;
+    return { success: true };
+  }
+);
 
 type PathCommandType = z.infer<typeof PathCommand>;
-export const canvasDrawPath = canvasDrawPathHeadless.implement(async ({ commands, fill = false, stroke = true, close = false }) => {
-  const c = ctx();
-  c.beginPath();
-  for (const cmd of commands as PathCommandType[]) {
-    switch (cmd.type) {
-      case "moveTo":
-        c.moveTo(cmd.x, cmd.y);
+export const canvasDrawPath = canvasDrawPathHeadless.implement(
+  async ({ commands, fill = false, stroke = true, close = false }) => {
+    const c = ctx();
+    c.beginPath();
+    for (const cmd of commands as PathCommandType[]) {
+      switch (cmd.type) {
+        case "moveTo":
+          c.moveTo(cmd.x, cmd.y);
+          break;
+        case "lineTo":
+          c.lineTo(cmd.x, cmd.y);
+          break;
+        case "quadraticCurveTo":
+          c.quadraticCurveTo(cmd.cpx, cmd.cpy, cmd.x, cmd.y);
+          break;
+        case "bezierCurveTo":
+          c.bezierCurveTo(cmd.cp1x, cmd.cp1y, cmd.cp2x, cmd.cp2y, cmd.x, cmd.y);
+          break;
+        case "arc":
+          c.arc(
+            cmd.x,
+            cmd.y,
+            cmd.radius,
+            (cmd.startAngle * Math.PI) / 180,
+            (cmd.endAngle * Math.PI) / 180,
+            cmd.counterclockwise ?? false
+          );
+          break;
+        case "closePath":
+          c.closePath();
+          break;
+      }
+    }
+    if (close) c.closePath();
+    if (fill) c.fill();
+    if (stroke) c.stroke();
+    return { success: true };
+  }
+);
+
+export const canvasSaveRestore = canvasSaveRestoreHeadless.implement(
+  async ({ action }) => {
+    const c = ctx();
+    if (action === "save") c.save();
+    else c.restore();
+    return { success: true };
+  }
+);
+
+export const canvasTransform = canvasTransformHeadless.implement(
+  async ({ action, x, y, angle, scaleX, scaleY }) => {
+    const c = ctx();
+    switch (action) {
+      case "translate":
+        c.translate(x ?? 0, y ?? 0);
         break;
-      case "lineTo":
-        c.lineTo(cmd.x, cmd.y);
+      case "rotate":
+        c.rotate(((angle ?? 0) * Math.PI) / 180);
         break;
-      case "quadraticCurveTo":
-        c.quadraticCurveTo(cmd.cpx, cmd.cpy, cmd.x, cmd.y);
+      case "scale":
+        c.scale(scaleX ?? 1, scaleY ?? 1);
         break;
-      case "bezierCurveTo":
-        c.bezierCurveTo(cmd.cp1x, cmd.cp1y, cmd.cp2x, cmd.cp2y, cmd.x, cmd.y);
-        break;
-      case "arc":
-        c.arc(
-          cmd.x,
-          cmd.y,
-          cmd.radius,
-          (cmd.startAngle * Math.PI) / 180,
-          (cmd.endAngle * Math.PI) / 180,
-          cmd.counterclockwise ?? false
-        );
-        break;
-      case "closePath":
-        c.closePath();
+      case "reset":
+        c.resetTransform();
         break;
     }
+    return { success: true };
   }
-  if (close) c.closePath();
-  if (fill) c.fill();
-  if (stroke) c.stroke();
-  return { success: true };
-});
-
-export const canvasSaveRestore = canvasSaveRestoreHeadless.implement(async ({ action }) => {
-  const c = ctx();
-  if (action === "save") c.save();
-  else c.restore();
-  return { success: true };
-});
-
-export const canvasTransform = canvasTransformHeadless.implement(async ({ action, x, y, angle, scaleX, scaleY }) => {
-  const c = ctx();
-  switch (action) {
-    case "translate":
-      c.translate(x ?? 0, y ?? 0);
-      break;
-    case "rotate":
-      c.rotate(((angle ?? 0) * Math.PI) / 180);
-      break;
-    case "scale":
-      c.scale(scaleX ?? 1, scaleY ?? 1);
-      break;
-    case "reset":
-      c.resetTransform();
-      break;
-  }
-  return { success: true };
-});
+);
 
 export const canvasSetGradient = canvasSetGradientHeadless.implement(
   async ({ type, x0, y0, x1, y1, r0, r1, stops, target }) => {
@@ -304,62 +313,66 @@ export const canvasSetGradient = canvasSetGradientHeadless.implement(
   }
 );
 
-export const canvasDrawEllipse = canvasDrawEllipseHeadless.implement(async ({
-  cx,
-  cy,
-  radiusX,
-  radiusY,
-  rotation = 0,
-  fill = true,
-  stroke = false,
-  startAngle = 0,
-  endAngle = 360,
-}) => {
-  const c = ctx();
-  c.beginPath();
-  c.ellipse(
+export const canvasDrawEllipse = canvasDrawEllipseHeadless.implement(
+  async ({
     cx,
     cy,
     radiusX,
     radiusY,
-    (rotation * Math.PI) / 180,
-    (startAngle * Math.PI) / 180,
-    (endAngle * Math.PI) / 180
-  );
-  if (fill) c.fill();
-  if (stroke) c.stroke();
-  return { success: true };
-});
-
-export const canvasDrawPolygon = canvasDrawPolygonHeadless.implement(async ({
-  cx,
-  cy,
-  outerRadius,
-  sides,
-  innerRadius,
-  rotation = 0,
-  fill = true,
-  stroke = false,
-}) => {
-  const c = ctx();
-  const isStar = innerRadius !== undefined && innerRadius > 0;
-  const points = isStar ? sides * 2 : sides;
-  const rotRad = (rotation * Math.PI) / 180;
-
-  c.beginPath();
-  for (let i = 0; i < points; i++) {
-    const angle = rotRad + (i * Math.PI * 2) / points - Math.PI / 2;
-    const r = isStar && i % 2 === 1 ? (innerRadius as number) : outerRadius;
-    const x = cx + r * Math.cos(angle);
-    const y = cy + r * Math.sin(angle);
-    if (i === 0) c.moveTo(x, y);
-    else c.lineTo(x, y);
+    rotation = 0,
+    fill = true,
+    stroke = false,
+    startAngle = 0,
+    endAngle = 360,
+  }) => {
+    const c = ctx();
+    c.beginPath();
+    c.ellipse(
+      cx,
+      cy,
+      radiusX,
+      radiusY,
+      (rotation * Math.PI) / 180,
+      (startAngle * Math.PI) / 180,
+      (endAngle * Math.PI) / 180
+    );
+    if (fill) c.fill();
+    if (stroke) c.stroke();
+    return { success: true };
   }
-  c.closePath();
-  if (fill) c.fill();
-  if (stroke) c.stroke();
-  return { success: true };
-});
+);
+
+export const canvasDrawPolygon = canvasDrawPolygonHeadless.implement(
+  async ({
+    cx,
+    cy,
+    outerRadius,
+    sides,
+    innerRadius,
+    rotation = 0,
+    fill = true,
+    stroke = false,
+  }) => {
+    const c = ctx();
+    const isStar = innerRadius !== undefined && innerRadius > 0;
+    const points = isStar ? sides * 2 : sides;
+    const rotRad = (rotation * Math.PI) / 180;
+
+    c.beginPath();
+    for (let i = 0; i < points; i++) {
+      const angle = rotRad + (i * Math.PI * 2) / points - Math.PI / 2;
+      const r = isStar && i % 2 === 1 ? (innerRadius as number) : outerRadius;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      if (i === 0) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.closePath();
+    if (fill) c.fill();
+    if (stroke) c.stroke();
+    return { success: true };
+  }
+);
 
 export const canvasSetLineDash = canvasSetLineDashHeadless.implement(
   async ({ segments, offset = 0 }) => {
@@ -370,14 +383,18 @@ export const canvasSetLineDash = canvasSetLineDashHeadless.implement(
   }
 );
 
-export const canvasSetBlendMode = canvasSetBlendModeHeadless.implement(async ({ mode }) => {
-  const c = ctx();
-  c.globalCompositeOperation = mode as GlobalCompositeOperation;
-  return { success: true };
-});
+export const canvasSetBlendMode = canvasSetBlendModeHeadless.implement(
+  async ({ mode }) => {
+    const c = ctx();
+    c.globalCompositeOperation = mode as GlobalCompositeOperation;
+    return { success: true };
+  }
+);
 
-export const canvasSetFilter = canvasSetFilterHeadless.implement(async ({ filter }) => {
-  const c = ctx();
-  c.filter = filter;
-  return { success: true };
-});
+export const canvasSetFilter = canvasSetFilterHeadless.implement(
+  async ({ filter }) => {
+    const c = ctx();
+    c.filter = filter;
+    return { success: true };
+  }
+);

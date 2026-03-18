@@ -12,10 +12,7 @@ import {
   Eye,
 } from "lucide-react";
 import type { Message } from "@langchain/langgraph-sdk";
-import {
-  useStream,
-  type ToolEvent,
-} from "@langchain/langgraph-sdk/react";
+import { useStream, type ToolEvent } from "@langchain/langgraph-sdk/react";
 import type {
   ToolCallWithResult,
   DefaultToolCall,
@@ -28,7 +25,14 @@ import { MessageBubble } from "../../components/MessageBubble";
 import { MessageInput } from "../../components/MessageInput";
 
 import type { agent } from "./agent";
-import { memoryListImpl, memoryPutImpl, memoryGetImpl, memorySearchImpl, memoryForgetImpl, geolocationGetImpl } from "./tools";
+import {
+  memoryListImpl,
+  memoryPutImpl,
+  memoryGetImpl,
+  memorySearchImpl,
+  memoryForgetImpl,
+  geolocationGetImpl,
+} from "./tools";
 
 const MEMORY_SUGGESTIONS = [
   "What do you remember about me?",
@@ -448,9 +452,7 @@ function hasContent(message: Message): boolean {
 
 export function BrowserToolsAgent() {
   // Track browser tool events for display
-  const [toolEvents, setToolEvents] = useState<
-    ToolEvent[]
-  >([]);
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
   const stream = useStream<typeof agent>({
     assistantId: "browser-tools",
@@ -480,9 +482,7 @@ export function BrowserToolsAgent() {
       // Clear events after a delay on success/error
       if (event.phase !== "start") {
         setTimeout(() => {
-          setToolEvents((prev) =>
-            prev.filter((e) => e.name !== event.name)
-          );
+          setToolEvents((prev) => prev.filter((e) => e.name !== event.name));
         }, 2000);
       }
     },
