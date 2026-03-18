@@ -14,8 +14,6 @@
 import { tool } from "langchain";
 import { z } from "zod/v4";
 
-
-
 // ---------------------------------------------------------------------------
 // Tool: get canvas info
 // ---------------------------------------------------------------------------
@@ -27,8 +25,6 @@ export const canvasGetInfo = tool({
     "drawing styles. Call this first so you know the coordinate space.",
   schema: z.object({}),
 });
-
-
 
 // ---------------------------------------------------------------------------
 // Tool: clear canvas
@@ -48,8 +44,6 @@ export const canvasClear = tool({
       ),
   }),
 });
-
-
 
 // ---------------------------------------------------------------------------
 // Tool: set drawing style
@@ -94,16 +88,11 @@ export const canvasSetStyle = tool({
       .string()
       .optional()
       .describe("Shadow colour (e.g. 'rgba(0,0,0,0.5)')"),
-    shadowBlur: z
-      .number()
-      .optional()
-      .describe("Shadow blur radius in pixels"),
+    shadowBlur: z.number().optional().describe("Shadow blur radius in pixels"),
     shadowOffsetX: z.number().optional().describe("Shadow X offset"),
     shadowOffsetY: z.number().optional().describe("Shadow Y offset"),
   }),
 });
-
-
 
 // ---------------------------------------------------------------------------
 // Tool: draw rectangle
@@ -131,8 +120,6 @@ export const canvasDrawRect = tool({
   }),
 });
 
-
-
 // ---------------------------------------------------------------------------
 // Tool: draw circle / arc / ellipse
 // ---------------------------------------------------------------------------
@@ -155,8 +142,6 @@ export const canvasDrawCircle = tool({
       .describe("End angle in degrees. Default 360 (full circle)"),
   }),
 });
-
-
 
 // ---------------------------------------------------------------------------
 // Tool: draw line
@@ -195,14 +180,7 @@ export const canvasDrawText = tool({
       .optional()
       .describe("Horizontal alignment relative to x"),
     baseline: z
-      .enum([
-        "top",
-        "hanging",
-        "middle",
-        "alphabetic",
-        "ideographic",
-        "bottom",
-      ])
+      .enum(["top", "hanging", "middle", "alphabetic", "ideographic", "bottom"])
       .optional()
       .describe("Vertical alignment relative to y"),
   }),
@@ -274,7 +252,6 @@ export const canvasDrawPath = tool({
   }),
 });
 
-
 // ---------------------------------------------------------------------------
 // Tool: save / restore context state
 // ---------------------------------------------------------------------------
@@ -291,8 +268,6 @@ export const canvasSaveRestore = tool({
       ),
   }),
 });
-
-
 
 // ---------------------------------------------------------------------------
 // Tool: transform coordinate system
@@ -314,7 +289,6 @@ export const canvasTransform = tool({
     scaleY: z.number().optional().describe("Y scale factor (scale)"),
   }),
 });
-
 
 // ---------------------------------------------------------------------------
 // Tool: set linear gradient as fill / stroke
@@ -395,8 +369,6 @@ export const canvasDrawEllipse = tool({
       .describe("End angle in degrees (default 360 = full ellipse)"),
   }),
 });
-
-
 
 // ---------------------------------------------------------------------------
 // Tool: draw regular polygon or star

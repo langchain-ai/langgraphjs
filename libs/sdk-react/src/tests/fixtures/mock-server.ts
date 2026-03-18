@@ -495,4 +495,3 @@ export async function teardown() {
   (httpServer as Server)?.closeAllConnections();
   httpServer?.close();
 }
-

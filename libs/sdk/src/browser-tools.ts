@@ -76,10 +76,7 @@ export interface HeadlessToolInterrupt {
  * });
  * ```
  */
-export interface HeadlessToolImplementation<
-  Args = unknown,
-  Output = unknown,
-> {
+export interface HeadlessToolImplementation<Args = unknown, Output = unknown> {
   /**
    * The headless tool definition. Must have a `name` property matching the
    * tool name used in the agent.
@@ -102,7 +99,10 @@ export interface HeadlessToolImplementation<
  * implementation regardless of its specific type parameters.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyHeadlessToolImplementation = HeadlessToolImplementation<any, any>;
+export type AnyHeadlessToolImplementation = HeadlessToolImplementation<
+  any,
+  any
+>;
 
 /**
  * Event emitted during headless tool execution lifecycle.
@@ -261,9 +261,7 @@ export async function handleHeadlessToolInterrupt(
   if (!impl) {
     const error = new Error(
       `Headless tool "${toolCall.name}" is not registered. ` +
-        `Available tools: ${
-          tools.map((t) => t.tool.name).join(", ") || "none"
-        }`
+        `Available tools: ${tools.map((t) => t.tool.name).join(", ") || "none"}`
     );
 
     onTool?.({
@@ -302,8 +300,10 @@ export async function handleHeadlessToolInterrupt(
 /** @deprecated Use `HeadlessToolInterrupt` */
 export type BrowserToolInterrupt = HeadlessToolInterrupt;
 /** @deprecated Use `HeadlessToolImplementation` */
-export type BrowserTool<Args = unknown, Output = unknown> =
-  HeadlessToolImplementation<Args, Output>;
+export type BrowserTool<
+  Args = unknown,
+  Output = unknown
+> = HeadlessToolImplementation<Args, Output>;
 /** @deprecated Use `AnyHeadlessToolImplementation` */
 export type AnyBrowserTool = AnyHeadlessToolImplementation;
 /** @deprecated Use `ToolEvent` */
