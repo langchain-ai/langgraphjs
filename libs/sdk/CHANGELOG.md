@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.7.4
+
+### Patch Changes
+
+- [#2200](https://github.com/langchain-ai/langgraphjs/pull/2200) [`3873f36`](https://github.com/langchain-ai/langgraphjs/commit/3873f36c42e4fb1a2cd797a02e37875b16455cfe) Thanks [@hntrl](https://github.com/hntrl)! - Add checkpointId support to threads.updateState, runs.create, and runs.wait methods
+
 ## 1.7.3
 
 ### Patch Changes
