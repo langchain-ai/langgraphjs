@@ -442,6 +442,21 @@ export class StreamManager<
 
       const run = await action(this.abortRef.signal);
 
+      // Clear stale __interrupt__ from previous runs so that resumed
+      // interrupts don't linger.  Fresh interrupts will be accumulated
+      // from the values events of the new stream below.
+      this.setStreamValues((prev) => {
+        if (
+          prev &&
+          "__interrupt__" in prev
+        ) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { __interrupt__, ...rest } = prev;
+          return rest as StateType;
+        }
+        return prev;
+      });
+
       let streamError: StreamError | undefined;
       for await (const { event, data } of run) {
         if (event === "error") {
@@ -589,12 +604,57 @@ export class StreamManager<
             typeof data === "object" &&
             "__interrupt__" in data
           ) {
-            const interruptData = data as Partial<StateType>;
-            this.setStreamValues(
-              (prev) => ({ ...prev, ...interruptData } as StateType)
-            );
+            // When parallel branches each raise an interrupt, the backend
+            // may stream separate values events per branch.  We accumulate
+            // the __interrupt__ arrays so none are lost.
+            const interruptData = data as Partial<StateType> & {
+              __interrupt__?: Array<{ id?: string }>;
+            };
+            this.setStreamValues((prev) => {
+              const merged = { ...prev, ...interruptData } as StateType & {
+                __interrupt__?: Array<{ id?: string }>;
+              };
+              const prevInterrupts = (
+                prev as (StateType & { __interrupt__?: Array<{ id?: string }> }) | null
+              )?.__interrupt__;
+              if (
+                Array.isArray(prevInterrupts) &&
+                Array.isArray(interruptData.__interrupt__)
+              ) {
+                const existingIds = new Set(
+                  prevInterrupts.map((i) => i.id)
+                );
+                const newInterrupts = interruptData.__interrupt__.filter(
+                  (i) => !existingIds.has(i.id)
+                );
+                (merged as Record<string, unknown>).__interrupt__ = [
+                  ...prevInterrupts,
+                  ...newInterrupts,
+                ];
+              }
+              return merged;
+            });
           } else {
-            this.setStreamValues(data as StateType);
+            // Non-interrupt values events must not wipe accumulated
+            // __interrupt__ state.  Preserve it when the incoming data
+            // does not carry its own __interrupt__ field.
+            this.setStreamValues((prev) => {
+              if (
+                prev &&
+                "__interrupt__" in prev &&
+                Array.isArray(
+                  (prev as Record<string, unknown>).__interrupt__
+                ) &&
+                !(data && typeof data === "object" && "__interrupt__" in data)
+              ) {
+                return {
+                  ...(data as StateType),
+                  __interrupt__: (prev as Record<string, unknown>)
+                    .__interrupt__,
+                } as StateType;
+              }
+              return data as StateType;
+            });
           }
         }
 
