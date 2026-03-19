@@ -1,7 +1,8 @@
 import { Component, signal } from "@angular/core";
 import { inject } from "vitest";
-import type { BrowserToolEvent } from "@langchain/langgraph-sdk";
+import type { ToolEvent } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
+import { getLocationTool } from "../fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -38,21 +39,18 @@ const TEMPLATE = `
 
 @Component({ template: TEMPLATE })
 export class BrowserToolComponent {
-  toolEvents = signal<BrowserToolEvent[]>([]);
+  toolEvents = signal<ToolEvent[]>([]);
 
   stream = useStream({
     assistantId: "browserToolAgent",
     apiUrl: serverUrl,
-    browserTools: [
-      {
-        name: "get_location",
-        execute: async (_args: unknown) => ({
-          latitude: 37.7749,
-          longitude: -122.4194,
-        }),
-      },
+    tools: [
+      getLocationTool.implement(async () => ({
+        latitude: 37.7749,
+        longitude: -122.4194,
+      })),
     ],
-    onBrowserTool: (event: BrowserToolEvent) => {
+    onTool: (event) => {
       this.toolEvents.update((prev) => [...prev, event]);
     },
   });
@@ -70,20 +68,17 @@ export class BrowserToolComponent {
 
 @Component({ template: TEMPLATE })
 export class BrowserToolErrorComponent {
-  toolEvents = signal<BrowserToolEvent[]>([]);
+  toolEvents = signal<ToolEvent[]>([]);
 
   stream = useStream({
     assistantId: "browserToolAgent",
     apiUrl: serverUrl,
-    browserTools: [
-      {
-        name: "get_location",
-        execute: async (_args: unknown) => {
-          throw new Error("GPS unavailable");
-        },
-      },
+    tools: [
+      getLocationTool.implement(async () => {
+        throw new Error("GPS unavailable");
+      }),
     ],
-    onBrowserTool: (event: BrowserToolEvent) => {
+    onTool: (event) => {
       this.toolEvents.update((prev) => [...prev, event]);
     },
   });

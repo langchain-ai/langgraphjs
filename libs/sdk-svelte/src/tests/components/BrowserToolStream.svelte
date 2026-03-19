@@ -1,26 +1,30 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import type { BrowserTool, BrowserToolEvent } from "@langchain/langgraph-sdk";
+  import type { ToolEvent } from "@langchain/langgraph-sdk";
+  import { getLocationTool } from "../fixtures/mock-server.js";
 
   interface Props {
     apiUrl: string;
-    execute?: BrowserTool["execute"];
+    execute?: Parameters<typeof getLocationTool.implement>[0];
   }
 
   const { apiUrl, execute }: Props = $props();
 
-  let toolEvents = $state<BrowserToolEvent[]>([]);
+  let toolEvents = $state<ToolEvent[]>([]);
 
-  const defaultExecute: BrowserTool["execute"] = async (_args) => ({
-    latitude: 37.7749,
-    longitude: -122.4194,
-  });
+  const tool = getLocationTool.implement(
+    execute ??
+      (async () => ({
+        latitude: 37.7749,
+        longitude: -122.4194,
+      })),
+  );
 
   const { messages, isLoading, submit } = useStream({
     assistantId: "browserToolAgent",
     apiUrl,
-    browserTools: [{ name: "get_location", execute: execute ?? defaultExecute }],
-    onBrowserTool: (event) => {
+    tools: [tool],
+    onTool: (event) => {
       toolEvents = [...toolEvents, event];
     },
   });
