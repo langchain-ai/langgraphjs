@@ -1,10 +1,5 @@
 export type * from "./types.js";
 export type * from "./stream/index.js";
-export type {
-  ClassToolCallWithResult,
-  ClassSubagentStreamInterface,
-  WithClassMessages,
-} from "./class-messages.js";
 export type { Sequence } from "./branching.js";
 export {
   MessageTupleManager,
@@ -19,17 +14,11 @@ export { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 export { StreamError } from "./errors.js";
 export {
   extractInterrupts,
-  normalizeInterruptForClient,
-  normalizeInterruptsList,
+  userFacingInterruptsFromValuesArray,
+  userFacingInterruptsFromThreadTasks,
 } from "./interrupts.js";
-export { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";
-export {
-  unique,
-  findLast,
-  filterStream,
-  onFinishRequiresThreadState,
-} from "./utils.js";
+export { unique, findLast, filterStream } from "./utils.js";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
@@ -43,7 +32,7 @@ export {
   type QueueInterface,
 } from "./queue.js";
 export {
-  StreamOrchestrator,
-  type OrchestratorAccessors,
-} from "./orchestrator.js";
-export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
+  flushPendingHeadlessToolInterrupts,
+  headlessToolResumeCommand,
+  type FlushPendingHeadlessToolInterruptsOptions,
+} from "../browser-tools.js";

@@ -13,7 +13,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
-  normalizeInterruptsList,
+  userFacingInterruptsFromValuesArray,
   FetchStreamTransport,
   toMessageClass,
   ensureMessageInstances,
@@ -28,15 +28,14 @@ import {
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
-import type { BaseMessage } from "@langchain/core/messages";
 import type {
   BagTemplate,
   Message,
   Interrupt,
   ThreadState,
-  isHeadlessToolInterrupt,
-  handleHeadlessToolInterrupt,
 } from "@langchain/langgraph-sdk";
+import { flushPendingHeadlessToolInterrupts } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStreamCustom } from "./types.js";
 
@@ -65,7 +64,7 @@ export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: AnyStreamCustomOptions<StateType, Bag>
+  options: AnyStreamCustomOptions<StateType, Bag>,
 ): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -81,13 +80,13 @@ export function useStreamCustom<
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
         toMessage: options.toMessage ?? toMessageClass,
-      })
+      }),
   );
 
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
-    stream.getSnapshot
+    stream.getSnapshot,
   );
 
   const [branch, _setBranch] = useState("");
@@ -110,7 +109,7 @@ export function useStreamCustom<
         stream.clear();
       }
     },
-    [stream]
+    [stream],
   );
 
   const getMessages = (value: StateType): Message[] => {
@@ -152,7 +151,7 @@ export function useStreamCustom<
 
   const submitDirect = async (
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) => {
     if (threadId !== threadIdRef.current) {
       threadIdRef.current = threadId;
@@ -190,7 +189,6 @@ export function useStreamCustom<
           input: values,
           context: submitOptions?.context,
           command: submitOptions?.command,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
           signal,
           config: {
             ...submitOptions?.config,
@@ -216,7 +214,7 @@ export function useStreamCustom<
           const finalValues = stream.values ?? historyValues;
           options.onFinish?.(
             createCustomTransportThreadState(finalValues, usableThreadId),
-            undefined
+            undefined,
           );
 
           return undefined;
@@ -225,13 +223,13 @@ export function useStreamCustom<
           options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
-      }
+      },
     );
   };
 
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) => {
     await submitDirect(values, submitOptions);
   };
@@ -250,34 +248,18 @@ export function useStreamCustom<
   }, [threadId]);
 
   useEffect(() => {
-    const tools = toolsRef.current;
-    if (!tools?.length) return;
-    if (!stream.values) return;
-
-    const interrupts = stream.values.__interrupt__;
-    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
-
-    for (const interrupt of interrupts) {
-      if (!isHeadlessToolInterrupt(interrupt.value)) continue;
-
-      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
-      if (handledBrowserToolsRef.current.has(interruptId)) continue;
-      handledBrowserToolsRef.current.add(interruptId);
-
-      void handleHeadlessToolInterrupt(
-        interrupt.value,
-        tools,
-        onToolRef.current,
-      ).then((result) => {
-        void submit(null, {
-          command: {
-            resume: result.toolCallId
-              ? { [result.toolCallId]: result.value }
-              : result.value,
-          },
-        });
-      });
-    }
+    flushPendingHeadlessToolInterrupts(
+      stream.values,
+      toolsRef.current,
+      handledBrowserToolsRef.current,
+      {
+        onTool: onToolRef.current,
+        resumeSubmit: (command) =>
+          void submit(null, {
+            command,
+          }),
+      },
+    );
   }, [stream.values, submit]);
 
   return {
@@ -297,7 +279,7 @@ export function useStreamCustom<
 
     getMessagesMetadata(
       message: BaseMessage,
-      index?: number
+      index?: number,
     ): MessageMetadata<StateType> | undefined {
       const streamMetadata = messageManager.get(message.id)?.metadata;
       if (streamMetadata != null) {
@@ -318,10 +300,8 @@ export function useStreamCustom<
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          stream.values.__interrupt__ as Interrupt<InterruptType>[],
         );
       }
 
@@ -335,7 +315,7 @@ export function useStreamCustom<
     get messages(): BaseMessage[] {
       if (!stream.values) return [];
       return ensureMessageInstances(
-        getMessages(stream.values)
+        getMessages(stream.values),
       ) as BaseMessage[];
     },
 

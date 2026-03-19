@@ -11,12 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  filterStream,
-  findLast,
-  onFinishRequiresThreadState,
-  unique,
-} from "../ui/utils.js";
+import { filterStream, findLast, unique } from "../ui/utils.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
@@ -43,14 +38,14 @@ import type {
   ToolsStreamEvent,
 } from "../types.stream.js";
 import { MessageTupleManager } from "../ui/messages.js";
-import { normalizeInterruptsList } from "../ui/interrupts.js";
+import {
+  userFacingInterruptsFromThreadTasks,
+  userFacingInterruptsFromValuesArray,
+} from "../ui/interrupts.js";
 import { useControllableThreadId } from "./thread.js";
 import type { StreamEvent } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
-import {
-  isHeadlessToolInterrupt,
-  handleHeadlessToolInterrupt,
-} from "../browser-tools.js";
+import { flushPendingHeadlessToolInterrupts } from "../browser-tools.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -171,7 +166,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  Bag extends BagTemplate = BagTemplate
 >(options: AnyStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -288,8 +283,8 @@ export function useStreamLGP<
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
     options.fetchStateHistory != null
-      ? (options.fetchStateHistory.limit ?? false)
-      : (options.fetchStateHistory ?? false);
+      ? options.fetchStateHistory.limit ?? false
+      : options.fetchStateHistory ?? false;
 
   const builtInHistory = useThreadHistory<StateType>(
     client,
@@ -402,22 +397,10 @@ export function useStreamLGP<
     if (shouldReconstructSubagents) {
       // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
       stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
-      // Fetch internal messages for each subagent from their subgraph checkpoints.
-      // These messages are not in the main thread state but are persisted in the
-      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      if (threadId) {
-        const controller = new AbortController();
-        void stream.fetchSubagentHistory(client.threads, threadId, {
-          messagesKey: options.messagesKey ?? "messages",
-          signal: controller.signal,
-        });
-        return () => controller.abort();
-      }
     }
-
     // We intentionally only run this when shouldReconstructSubagents changes
     // to avoid unnecessary reconstructions during streaming
-    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldReconstructSubagents, historyMessages.length]);
 
   const historyError = (() => {
@@ -509,7 +492,11 @@ export function useStreamLGP<
         historyLimit === true || typeof historyLimit === "number";
 
       const shouldRefetch =
-        includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
+        // We're expecting the whole thread state in onFinish
+        options.onFinish != null ||
+        // We're fetching history, thus we need the latest checkpoint
+        // to ensure we're not accidentally submitting to a wrong branch
+        includeImplicitBranch;
 
       let callbackMeta: RunCallbackMeta | undefined;
       let rejoinKey: `lg:stream:${string}` | undefined;
@@ -703,12 +690,6 @@ export function useStreamLGP<
       run_id: runId,
     };
 
-    const includeImplicitBranchJoin =
-      historyLimit === true || typeof historyLimit === "number";
-    const shouldRefetchJoin =
-      includeImplicitBranchJoin ||
-      onFinishRequiresThreadState(options.onFinish);
-
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
@@ -738,18 +719,6 @@ export function useStreamLGP<
         },
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
-          if (!shouldRefetchJoin) {
-            if (
-              options.onFinish != null &&
-              !onFinishRequiresThreadState(options.onFinish)
-            ) {
-              options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
           const newHistory = await history.mutate(threadId);
           const lastHead = newHistory?.at(0);
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);
@@ -812,39 +781,18 @@ export function useStreamLGP<
 
   // Handle headless tool interrupts
   useEffect(() => {
-    const tools = toolsRef.current;
-    if (!tools?.length) return;
-
-    // Check for browser tool interrupt in values
-    const interrupts = values?.__interrupt__;
-    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
-
-    // Find browser tool interrupts that haven't been handled
-    for (const interrupt of interrupts) {
-      if (!isHeadlessToolInterrupt(interrupt.value)) continue;
-
-      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
-      if (handledToolsRef.current.has(interruptId)) continue;
-
-      // Mark as handled before async operation
-      handledToolsRef.current.add(interruptId);
-
-      // Handle the browser tool interrupt
-      void handleHeadlessToolInterrupt(
-        interrupt.value,
-        tools,
-        onToolRef.current
-      ).then((result) => {
-        // Resume with the tool result
-        void submit(null, {
-          command: {
-            resume: result.toolCallId
-              ? { [result.toolCallId]: result.value }
-              : result.value,
-          },
-        });
-      });
-    }
+    flushPendingHeadlessToolInterrupts(
+      values,
+      toolsRef.current,
+      handledToolsRef.current,
+      {
+        onTool: onToolRef.current,
+        resumeSubmit: (command) =>
+          void submit(null, {
+            command,
+          }),
+      }
+    );
   }, [values, submit]);
 
   return {
@@ -896,10 +844,8 @@ export function useStreamLGP<
         "__interrupt__" in values &&
         Array.isArray(values.__interrupt__)
       ) {
-        const valueInterrupts = values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          values.__interrupt__ as Interrupt<InterruptType>[]
         );
       }
 
@@ -910,10 +856,11 @@ export function useStreamLGP<
       const allTasks = branchContext.threadHead?.tasks ?? [];
       const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
-      if (allInterrupts.length > 0) {
-        return normalizeInterruptsList(
-          allInterrupts as Interrupt<InterruptType>[]
-        );
+      const fromTasks = userFacingInterruptsFromThreadTasks<InterruptType>(
+        allInterrupts as Interrupt<InterruptType>[]
+      );
+      if (fromTasks !== null) {
+        return fromTasks;
       }
 
       // check if there's a next task present (breakpoint-style interrupt)
