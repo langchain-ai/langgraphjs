@@ -5,7 +5,7 @@ import {
   type BaseMessage,
 } from "@langchain/core/messages";
 
-import type { DeepAgentGraph } from "../fixtures/mock-server.js";
+import type { DeepAgentGraph } from "../fixtures/browser-fixtures.js";
 import { useStream } from "../../index.js";
 
 interface Props {

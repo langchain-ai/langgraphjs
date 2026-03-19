@@ -2,7 +2,7 @@ import { Component, signal } from "@angular/core";
 import { inject } from "vitest";
 import type { ToolEvent } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
-import { getLocationTool } from "../fixtures/mock-server.js";
+import { getLocationTool } from "../fixtures/browser-fixtures.js";
 
 const serverUrl = inject("serverUrl");
 
