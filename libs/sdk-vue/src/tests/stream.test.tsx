@@ -12,7 +12,7 @@ import { useStreamCustom } from "../stream.custom.js";
 import {
   type DeepAgentGraph,
   getLocationTool,
-} from "./fixtures/mock-server.js";
+} from "./fixtures/browser-fixtures.js";
 
 const serverUrl = inject("serverUrl");
 

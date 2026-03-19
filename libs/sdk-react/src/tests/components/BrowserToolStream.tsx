@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Message, ToolEvent } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
-import { getLocationTool } from "../fixtures/mock-server.js";
+import { getLocationTool } from "../fixtures/browser-fixtures.js";
 
 interface Props {
   apiUrl: string;

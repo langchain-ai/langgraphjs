@@ -33,12 +33,14 @@ import {
   type Pregel,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { tool, ToolMessage, createAgent, HeadlessTool } from "langchain";
+import { tool, ToolMessage, createAgent } from "langchain";
 import { z } from "zod/v4";
 import { createDeepAgent, type DeepAgent } from "deepagents";
 
 import type { Message } from "@langchain/langgraph-sdk";
 import type { TestProject } from "vitest/node";
+
+import { getLocationTool } from "./browser-fixtures.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -347,8 +349,6 @@ const deepAnalystModel = new FakeToolCallingModel({
   ],
 });
 
-export type DeepAgentGraph = DeepAgent;
-
 const deepAgentGraph: DeepAgent = createDeepAgent({
   model: deepOrchestratorModel,
   subagents: [
@@ -368,12 +368,6 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
     },
   ],
   systemPrompt: "You are an AI coordinator that delegates tasks.",
-});
-
-export const getLocationTool = tool({
-  name: "get_location",
-  description: "Get the user's current GPS location",
-  schema: z.object({ highAccuracy: z.boolean().optional() }),
 });
 
 /**
