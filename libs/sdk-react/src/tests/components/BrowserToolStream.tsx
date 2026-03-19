@@ -1,50 +1,30 @@
 import { useState } from "react";
-import type {
-  Message,
-  BrowserTool,
-  BrowserToolEvent,
-} from "@langchain/langgraph-sdk";
+import type { Message, ToolEvent } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
+import { getLocationTool } from "../fixtures/mock-server.js";
 
 interface Props {
   apiUrl: string;
   /** Override the default execute function for error-path testing. */
-  execute?: BrowserTool["execute"];
-}
-
-/**
- * A minimal browser tool — defined inline so the test component has no
- * dependency on `langchain`. The execute function runs in the browser when
- * useStream detects a matching interrupt.
- */
-function makeGetLocationTool(
-  execute: BrowserTool["execute"],
-): BrowserTool<
-  { highAccuracy?: boolean },
-  { latitude: number; longitude: number }
-> {
-  return {
-    name: "get_location",
-    execute: execute as BrowserTool<
-      { highAccuracy?: boolean },
-      { latitude: number; longitude: number }
-    >["execute"],
-  };
+  execute?: Parameters<typeof getLocationTool.implement>[0];
 }
 
 export function BrowserToolStream({ apiUrl, execute }: Props) {
-  const [toolEvents, setToolEvents] = useState<BrowserToolEvent[]>([]);
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
-  const defaultExecute: BrowserTool["execute"] = async (_args) => ({
-    latitude: 37.7749,
-    longitude: -122.4194,
-  });
+  const tool = getLocationTool.implement(
+    execute ??
+      (async () => ({
+        latitude: 37.7749,
+        longitude: -122.4194,
+      })),
+  );
 
   const { messages, isLoading, submit } = useStream<{ messages: Message[] }>({
     assistantId: "browserToolAgent",
     apiUrl,
-    browserTools: [makeGetLocationTool(execute ?? defaultExecute)],
-    onBrowserTool: (event) => {
+    tools: [tool],
+    onTool: (event) => {
       setToolEvents((prev) => [...prev, event]);
     },
   });

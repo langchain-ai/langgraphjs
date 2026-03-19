@@ -9,7 +9,10 @@ import {
   type UseStreamTransport,
 } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
-import type { DeepAgentGraph } from "./fixtures/mock-server.js";
+import {
+  type DeepAgentGraph,
+  getLocationTool,
+} from "./fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -3055,18 +3058,19 @@ function makeBrowserToolComponent(
         [],
       );
 
-      const defaultExecute = async (_args: unknown) => ({
-        latitude: 37.7749,
-        longitude: -122.4194,
-      });
+      const tool = getLocationTool.implement(
+        execute ??
+          (async () => ({
+            latitude: 37.7749,
+            longitude: -122.4194,
+          })),
+      );
 
       const { messages, isLoading, submit } = useStream({
         assistantId: "browserToolAgent",
         apiUrl: serverUrl,
-        browserTools: [
-          { name: "get_location", execute: execute ?? defaultExecute },
-        ],
-        onBrowserTool: (event) => {
+        tools: [tool],
+        onTool: (event) => {
           toolEvents.value = [...toolEvents.value, event];
         },
       });

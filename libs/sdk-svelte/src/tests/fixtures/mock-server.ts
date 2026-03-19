@@ -370,7 +370,7 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   systemPrompt: "You are an AI coordinator that delegates tasks.",
 });
 
-const getLocationTool = tool({
+export const getLocationTool = tool({
   name: "get_location",
   description: "Get the user's current GPS location",
   schema: z.object({ highAccuracy: z.boolean().optional() }),
@@ -450,7 +450,6 @@ const browserToolModel = new FakeBrowserToolModel();
 
 const browserToolAgent = createAgent({
   model: browserToolModel,
-  // @ts-expect-error - TODO: fix this
   tools: [getLocationTool],
   checkpointer,
 }) as unknown as AnyPregel;
