@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Check, X, Pencil, Mail, Trash2, ShieldAlert } from "lucide-react";
+import {
+  Check,
+  X,
+  Pencil,
+  Mail,
+  Trash2,
+  ShieldAlert,
+  MapPin,
+} from "lucide-react";
 
 import type { ActionRequest, ReviewConfig } from "langchain";
 
@@ -36,6 +44,8 @@ export function PendingApprovalCard({
         return <Mail className="w-5 h-5" />;
       case "delete_file":
         return <Trash2 className="w-5 h-5" />;
+      case "geolocation_get":
+        return <MapPin className="w-5 h-5" />;
       default:
         return <ShieldAlert className="w-5 h-5" />;
     }
@@ -47,6 +57,8 @@ export function PendingApprovalCard({
         return "Send Email";
       case "delete_file":
         return "Delete File";
+      case "geolocation_get":
+        return "Share location";
       default:
         return actionRequest.name;
     }
