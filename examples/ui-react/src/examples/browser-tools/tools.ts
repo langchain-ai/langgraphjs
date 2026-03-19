@@ -10,6 +10,10 @@
  * - Privacy-friendly (data never leaves device)
  * - Per-user + per-device by default
  * - Low-latency recall without server roundtrips
+ *
+ * Geolocation (`geolocation_get`) is additionally gated in `agent.ts` with
+ * `humanInTheLoopMiddleware` so each request is approved in the UI before the
+ * client runs this tool.
  */
 
 import { tool } from "langchain";

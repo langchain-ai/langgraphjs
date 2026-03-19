@@ -10,8 +10,10 @@ import {
   Search,
   Save,
   Eye,
+  MapPin,
 } from "lucide-react";
 import type { Message } from "@langchain/langgraph-sdk";
+import type { HITLRequest, HITLResponse } from "langchain";
 import { useStream, type ToolEvent } from "@langchain/langgraph-sdk/react";
 import type {
   ToolCallWithResult,
@@ -33,6 +35,10 @@ import {
   memoryForgetImpl,
   geolocationGetImpl,
 } from "./tools";
+import {
+  PendingApprovalCard,
+  DEFAULT_REJECT_REASON,
+} from "../human-in-the-loop/components/PendingApprovalCard";
 
 const MEMORY_SUGGESTIONS = [
   "What do you remember about me?",
@@ -49,6 +55,7 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   memory_list: <Database className="w-4 h-4" />,
   memory_search: <Search className="w-4 h-4" />,
   memory_forget: <Trash2 className="w-4 h-4" />,
+  geolocation_get: <MapPin className="w-4 h-4" />,
 };
 
 // Friendly names for memory tools
@@ -453,8 +460,9 @@ function hasContent(message: Message): boolean {
 export function BrowserToolsAgent() {
   // Track browser tool events for display
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
+  const [isProcessingHitl, setIsProcessingHitl] = useState(false);
 
-  const stream = useStream<typeof agent>({
+  const stream = useStream<typeof agent, { InterruptType: HITLRequest }>({
     assistantId: "browser-tools",
     apiUrl: "http://localhost:2024",
     // Register browser tools - these will execute locally when the agent calls them
@@ -491,6 +499,7 @@ export function BrowserToolsAgent() {
   const { scrollRef, contentRef } = useStickToBottom();
 
   const hasMessages = stream.messages.length > 0;
+  const hitlRequest = stream.interrupt?.value as HITLRequest | undefined;
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -499,15 +508,56 @@ export function BrowserToolsAgent() {
     [stream]
   );
 
+  const handleHitlApprove = useCallback(async () => {
+    if (!hitlRequest) return;
+    setIsProcessingHitl(true);
+    try {
+      const decisions: HITLResponse["decisions"] =
+        hitlRequest.actionRequests.map(() => ({ type: "approve" as const }));
+      await stream.submit(null, {
+        command: { resume: { decisions } as HITLResponse },
+      });
+    } finally {
+      setIsProcessingHitl(false);
+    }
+  }, [hitlRequest, stream]);
+
+  const handleHitlReject = useCallback(
+    async (index: number, reason: string) => {
+      if (!hitlRequest) return;
+      setIsProcessingHitl(true);
+      try {
+        const decisions: HITLResponse["decisions"] =
+          hitlRequest.actionRequests.map((_, i) =>
+            i === index
+              ? {
+                  type: "reject" as const,
+                  message: reason || DEFAULT_REJECT_REASON,
+                }
+              : {
+                  type: "reject" as const,
+                  message: "Rejected along with other actions",
+                }
+          );
+        await stream.submit(null, {
+          command: { resume: { decisions } as HITLResponse },
+        });
+      } finally {
+        setIsProcessingHitl(false);
+      }
+    },
+    [hitlRequest, stream]
+  );
+
   return (
     <div className="h-full flex flex-col">
       <main ref={scrollRef} className="flex-1 overflow-y-auto">
         <div ref={contentRef} className="max-w-2xl mx-auto px-4 py-8">
-          {!hasMessages ? (
+          {!hasMessages && !stream.interrupt ? (
             <EmptyState
               icon={Brain}
               title="Long-Term Memory Agent"
-              description="An AI assistant that remembers you across sessions. Your memories are stored locally in your browser - private, persistent, and never uploaded to servers."
+              description="An AI assistant that remembers you across sessions. Memory tools run in your browser; each geolocation request is paused for your approval first, then the client executes the tool (same pattern as headless tools + HITL)."
               suggestions={MEMORY_SUGGESTIONS}
               onSuggestionClick={handleSubmit}
             />
@@ -543,11 +593,29 @@ export function BrowserToolsAgent() {
                 );
               })}
 
+              {/* Human approval before geolocation (HITL + headless tools) */}
+              {hitlRequest && hitlRequest.actionRequests.length > 0 && (
+                <div className="flex flex-col gap-4">
+                  {hitlRequest.actionRequests.map((actionRequest, idx) => (
+                    <PendingApprovalCard
+                      key={idx}
+                      actionRequest={actionRequest}
+                      reviewConfig={hitlRequest.reviewConfigs[idx]}
+                      onApprove={() => void handleHitlApprove()}
+                      onReject={(reason) => handleHitlReject(idx, reason)}
+                      onEdit={() => {}}
+                      isProcessing={isProcessingHitl}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Show browser tool execution status */}
               <BrowserToolStatus events={toolEvents} />
 
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
+                !stream.interrupt &&
                 !stream.messages.some(
                   (m) => m.type === "ai" && hasContent(m)
                 ) &&
@@ -578,8 +646,12 @@ export function BrowserToolsAgent() {
           <MemoryStats />
         </div>
         <MessageInput
-          disabled={stream.isLoading}
-          placeholder="Tell me something to remember, or ask what I know about you..."
+          disabled={stream.isLoading || isProcessingHitl || !!stream.interrupt}
+          placeholder={
+            stream.interrupt
+              ? "Approve or reject location access above…"
+              : "Tell me something to remember, or ask what I know about you..."
+          }
           onSubmit={handleSubmit}
         />
       </div>
@@ -592,7 +664,7 @@ registerExample({
   id: "browser-tools",
   title: "Long-Term Memory",
   description:
-    "AI that remembers you across sessions using local browser storage",
+    "Local browser memory + headless tools; geolocation is gated with human-in-the-loop",
   category: "agents",
   icon: "tool",
   ready: true,

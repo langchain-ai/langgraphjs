@@ -10,9 +10,10 @@
  * - Recall previously saved information
  * - Search through memories to find relevant context
  * - Forget information when asked
+ * - Geolocation via browser APIs, gated by human-in-the-loop before each request
  */
 
-import { createAgent } from "langchain";
+import { createAgent, humanInTheLoopMiddleware } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 
@@ -45,6 +46,24 @@ export const agent = createAgent({
     memorySearch,
     memoryForget,
     geolocationGet,
+  ],
+  middleware: [
+    humanInTheLoopMiddleware({
+      interruptOn: {
+        /**
+         * Memory tools run on the client without an extra approval step.
+         * (Tools not listed here are auto-approved by the middleware.)
+         */
+        geolocation_get: {
+          allowedDecisions: ["approve", "reject"],
+          description:
+            "📍 The assistant wants to read your GPS location in the browser. " +
+            "Approve to continue (you may still need to allow the browser permission prompt), " +
+            "or reject to skip.",
+        },
+      },
+      descriptionPrefix: "Browser action requires approval",
+    }),
   ],
   checkpointer,
   systemPrompt: `You are a helpful assistant with long-term memory and location awareness.
