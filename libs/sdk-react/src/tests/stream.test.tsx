@@ -1,6 +1,8 @@
-import { Client } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-react";
+import type { UseStreamTransport } from "../index.js";
+import { useStreamCustom } from "../stream.custom.js";
 import { BasicStream } from "./components/BasicStream.js";
 import { InitialValuesStream } from "./components/InitialValuesStream.js";
 import { StopMutateStream } from "./components/StopMutateStream.js";
@@ -742,6 +744,107 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
   await expect
     .element(screen.getByTestId("branch"))
     .toHaveTextContent("test-branch");
+});
+
+it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
+  const onFinish = vi.fn();
+  type StreamState = { messages: Message[] };
+  const transport: UseStreamTransport<StreamState> = {
+    async stream(payload) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human`,
+                type: "human",
+                content: "Hello from custom transport",
+              },
+              {
+                id: `${threadId}-ai`,
+                type: "ai",
+                content: "Finished",
+              },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  };
+
+  function OnFinishCustomStream() {
+    const thread = useStreamCustom<StreamState>({
+      transport,
+      threadId: null,
+      onThreadId: () => {},
+      onFinish,
+    });
+
+    return (
+      <div>
+        <div data-testid="loading">
+          {thread.isLoading ? "Loading..." : "Not loading"}
+        </div>
+        <button
+          data-testid="submit"
+          onClick={() => {
+            const input = {
+              messages: [{ type: "human", content: "Hi" }],
+            } satisfies StreamState;
+
+            void thread.submit(input);
+          }}
+        >
+          Submit
+        </button>
+      </div>
+    );
+  }
+
+  const screen = await render(<OnFinishCustomStream />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  expect(onFinish).toHaveBeenCalledTimes(1);
+  expect(onFinish).toHaveBeenCalledWith(
+    expect.objectContaining({
+      values: expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            content: "Hello from custom transport",
+            type: "human",
+          }),
+          expect.objectContaining({
+            content: "Finished",
+            type: "ai",
+          }),
+        ]),
+      }),
+      next: [],
+      tasks: [],
+      created_at: null,
+      parent_checkpoint: null,
+      checkpoint: expect.objectContaining({
+        thread_id: expect.any(String),
+        checkpoint_id: null,
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      }),
+    }),
+    undefined,
+  );
 });
 
 it("server-side queue: submitting three times rapidly queues the latter two", async () => {

@@ -1820,6 +1820,108 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
     .toHaveTextContent("test-branch");
 });
 
+it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
+  const onFinish = vi.fn();
+  const transport = {
+    async stream(payload: {
+      config?: { configurable?: { thread_id?: string } };
+    }) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human`,
+                type: "human",
+                content: "Hello from custom transport",
+              },
+              {
+                id: `${threadId}-ai`,
+                type: "ai",
+                content: "Finished",
+              },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  };
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+        onFinish,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {thread.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ type: "human", content: "Hi" }],
+              } as any)
+            }
+          >
+            Submit
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  expect(onFinish).toHaveBeenCalledTimes(1);
+  expect(onFinish).toHaveBeenCalledWith(
+    expect.objectContaining({
+      values: expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            content: "Hello from custom transport",
+            type: "human",
+          }),
+          expect.objectContaining({
+            content: "Finished",
+            type: "ai",
+          }),
+        ]),
+      }),
+      next: [],
+      tasks: [],
+      created_at: null,
+      parent_checkpoint: null,
+      checkpoint: expect.objectContaining({
+        thread_id: expect.any(String),
+        checkpoint_id: null,
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      }),
+    }),
+    undefined,
+  );
+});
+
 // Server-side queue e2e tests
 const VueQueueStreamComponent = defineComponent({
   setup() {

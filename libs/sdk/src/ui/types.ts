@@ -1375,6 +1375,7 @@ export type UseStreamCustomOptions<
   | "threadId"
   | "onThreadId"
   | "onError"
+  | "onFinish"
   | "onCreated"
   | "onUpdateEvent"
   | "onCustomEvent"
