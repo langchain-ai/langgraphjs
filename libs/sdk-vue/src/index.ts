@@ -117,8 +117,9 @@ function useStreamLGP<
       ? (options.fetchStateHistory.limit ?? false)
       : (options.fetchStateHistory ?? false);
 
-  const threadId = ref<string | undefined>(undefined);
+  const threadId = ref<string | undefined>(options.threadId ?? undefined);
   let threadIdPromise: Promise<string> | null = null;
+  let threadIdStreaming: string | null = null;
 
   const client = options.client ?? new Client({ apiUrl: options.apiUrl });
 
@@ -170,6 +171,40 @@ function useStreamLGP<
     filterSubagentMessages: options.filterSubagentMessages,
     toMessage: toMessageClass,
   });
+
+  watch(
+    () => options.threadId,
+    (newId) => {
+      const resolved = newId ?? undefined;
+      if (resolved !== threadId.value) {
+        threadId.value = resolved;
+        stream.clear();
+      }
+    },
+    { flush: "sync" },
+  );
+
+  watch(
+    () => threadId.value,
+    (newThreadId) => {
+      if (threadIdStreaming != null && threadIdStreaming === newThreadId) {
+        return;
+      }
+
+      if (newThreadId != null) {
+        history.value = { ...history.value, isLoading: true };
+        void mutate(newThreadId);
+      } else {
+        history.value = {
+          data: undefined,
+          error: undefined,
+          isLoading: false,
+          mutate,
+        };
+      }
+    },
+    { immediate: true },
+  );
 
   const pendingRuns = new PendingRunsTracker<
     StateType,
@@ -311,6 +346,7 @@ function useStreamLGP<
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     if (!threadId.value) return;
+    threadIdStreaming = threadId.value;
 
     const callbackMeta: RunCallbackMeta = {
       thread_id: threadId.value,
@@ -345,6 +381,9 @@ function useStreamLGP<
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
+        },
+        onFinish() {
+          threadIdStreaming = null;
         },
       },
     );
@@ -386,6 +425,9 @@ function useStreamLGP<
     return stream.start(
       async (signal) => {
         usableThreadId = threadId.value;
+        if (usableThreadId) {
+          threadIdStreaming = usableThreadId;
+        }
         if (!usableThreadId) {
           const threadPromise = client.threads.create({
             threadId: submitOptions?.threadId,
@@ -397,6 +439,7 @@ function useStreamLGP<
           const thread = await threadPromise;
 
           usableThreadId = thread.thread_id;
+          threadIdStreaming = usableThreadId;
           threadId.value = usableThreadId;
           options.onThreadId?.(usableThreadId);
         }
@@ -490,7 +533,9 @@ function useStreamLGP<
           options.onError?.(error, callbackMeta);
           submitOptions?.onError?.(error, callbackMeta);
         },
-        onFinish: () => {},
+        onFinish: () => {
+          threadIdStreaming = null;
+        },
       },
     );
   }
