@@ -32,11 +32,11 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
-  normalizeInterruptsList,
+  userFacingInterruptsFromThreadTasks,
+  userFacingInterruptsFromValuesArray,
   toMessageClass,
   ensureMessageInstances,
   ensureHistoryMessageInstances,
-  onFinishRequiresThreadState,
   PendingRunsTracker,
   type EventStreamEvent,
   type AnyStreamOptions,
@@ -51,17 +51,14 @@ import {
   type UseStreamThread,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
-import {
-  isHeadlessToolInterrupt,
-  handleHeadlessToolInterrupt,
-} from "@langchain/langgraph-sdk";
+import { flushPendingHeadlessToolInterrupts } from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStream, SubmitOptions } from "./types.js";
 
 function getFetchHistoryKey(
   client: Client,
   threadId: string | undefined | null,
-  limit: boolean | number
+  limit: boolean | number,
 ) {
   return [getClientConfigHash(client), threadId, limit].join(":");
 }
@@ -69,7 +66,7 @@ function getFetchHistoryKey(
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number }
+  options?: { limit?: boolean | number },
 ) {
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
@@ -90,7 +87,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     passthrough: boolean;
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
-  }
+  },
 ): UseStreamThread<StateType> {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
@@ -114,7 +111,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
-      limit: boolean | number
+      limit: boolean | number,
     ): Promise<ThreadState<StateType>[]> => {
       // If only passthrough is enabled, don't fetch history
       if (options.passthrough) return Promise.resolve([]);
@@ -142,14 +139,14 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
             });
             onErrorRef.current?.(error);
             return Promise.reject(error);
-          }
+          },
         );
       }
 
       setState({ key, data: undefined, error: undefined, isLoading: false });
       return Promise.resolve([]);
     },
-    [options.passthrough]
+    [options.passthrough],
   );
 
   useEffect(() => {
@@ -185,7 +182,7 @@ function useTrackStreamMode() {
         if (!ref.includes(m)) ref.push(m);
       }
     },
-    []
+    [],
   );
 
   return [trackStreamModeRef, trackStreamMode] as [
@@ -258,7 +255,7 @@ export function useStreamLGP<
       options.apiUrl,
       options.callerOptions,
       options.defaultHeaders,
-    ]
+    ],
   );
 
   const [messageManager] = useState(() => new MessageTupleManager());
@@ -269,7 +266,7 @@ export function useStreamLGP<
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
         toMessage: options.toMessage ?? toMessageClass,
-      })
+      }),
   );
 
   const [pendingRuns] = useState(
@@ -277,13 +274,13 @@ export function useStreamLGP<
       new PendingRunsTracker<
         StateType,
         SubmitOptions<StateType, ConfigurableType>
-      >()
+      >(),
   );
 
   useSyncExternalStore(
     pendingRuns.subscribe,
     pendingRuns.getSnapshot,
-    pendingRuns.getSnapshot
+    pendingRuns.getSnapshot,
   );
 
   const [trackStreamModeRef, trackStreamMode] = useTrackStreamMode();
@@ -302,7 +299,7 @@ export function useStreamLGP<
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
-    stream.getSnapshot
+    stream.getSnapshot,
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -329,14 +326,14 @@ export function useStreamLGP<
         const removed = pendingRuns.removeAll();
         if (prevThreadId && removed.length > 0) {
           void Promise.all(
-            removed.map((e) => client.runs.cancel(prevThreadId, e.id))
+            removed.map((e) => client.runs.cancel(prevThreadId, e.id)),
           );
         }
 
         onThreadId(newThreadId);
       }
     },
-    [stream, pendingRuns, onThreadId, client]
+    [stream, pendingRuns, onThreadId, client],
   );
 
   const historyLimit =
@@ -353,7 +350,7 @@ export function useStreamLGP<
       passthrough: options.thread != null,
       submittingRef: threadIdStreamingRef,
       onError: options.onError,
-    }
+    },
   );
   const history = options.thread ?? builtInHistory;
 
@@ -404,7 +401,7 @@ export function useStreamLGP<
         }
         default: {
           throw new Error(
-            `Unexpected tool event: ${(data as { event: string }).event}`
+            `Unexpected tool event: ${(data as { event: string }).event}`,
           );
         }
       }
@@ -434,21 +431,7 @@ export function useStreamLGP<
     if (shouldReconstructSubagents) {
       // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
       stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
-      // Fetch internal messages for each subagent from their subgraph checkpoints.
-      // These messages are not in the main thread state but are persisted in the
-      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      // We use an AbortController so React Strict Mode's effect cleanup can cancel
-      // the in-flight fetch before the effect re-runs (preventing stale updates).
-      if (threadId) {
-        const controller = new AbortController();
-        void stream.fetchSubagentHistory(client.threads, threadId, {
-          messagesKey: options.messagesKey ?? "messages",
-          signal: controller.signal,
-        });
-        return () => controller.abort();
-      }
     }
-    return undefined;
     // We intentionally only run this when shouldReconstructSubagents changes
     // to avoid unnecessary reconstructions during streaming
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -490,7 +473,7 @@ export function useStreamLGP<
   // --- TRANSPORT ---
   const submitDirect = async (
     values: UpdateType | null | undefined,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) => {
     setToolProgressMap(new Map());
 
@@ -499,7 +482,7 @@ export function useStreamLGP<
     setBranch(
       checkpointId != null
         ? (branchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
-        : ""
+        : "",
     );
 
     // When `fetchStateHistory` is requested, thus we assume that branching
@@ -508,8 +491,11 @@ export function useStreamLGP<
       historyLimit === true || typeof historyLimit === "number";
 
     const shouldRefetch =
-      // Latest checkpoint head for branching / onFinish(state, …)
-      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
+      // We're expecting the whole thread state in onFinish
+      options.onFinish != null ||
+      // We're fetching history, thus we need the latest checkpoint
+      // to ensure we're not accidentally submitting to a wrong branch
+      includeImplicitBranch;
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
@@ -650,14 +636,6 @@ export function useStreamLGP<
               options.onFinish?.(lastHead, callbackMeta);
               return null;
             }
-          } else if (
-            options.onFinish != null &&
-            !onFinishRequiresThreadState(options.onFinish)
-          ) {
-            options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
           }
 
           return undefined;
@@ -670,7 +648,7 @@ export function useStreamLGP<
           threadIdStreamingRef.current = null;
         },
       },
-      { abortPrevious: shouldAbortPrevious }
+      { abortPrevious: shouldAbortPrevious },
     );
   };
 
@@ -682,7 +660,7 @@ export function useStreamLGP<
 
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) => {
     if (stream.isLoading || submittingRef.current) {
       const shouldAbort =
@@ -720,7 +698,7 @@ export function useStreamLGP<
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,
-            }
+            },
           );
 
           pendingRuns.add({
@@ -756,7 +734,7 @@ export function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) => {
     setToolProgressMap(new Map());
 
@@ -768,12 +746,6 @@ export function useStreamLGP<
       thread_id: threadId,
       run_id: runId,
     };
-
-    const includeImplicitBranchJoin =
-      historyLimit === true || typeof historyLimit === "number";
-    const shouldRefetchJoin =
-      includeImplicitBranchJoin ||
-      onFinishRequiresThreadState(options.onFinish);
 
     await stream.start(
       async (signal: AbortSignal) => {
@@ -804,18 +776,6 @@ export function useStreamLGP<
         },
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
-          if (!shouldRefetchJoin) {
-            if (
-              options.onFinish != null &&
-              !onFinishRequiresThreadState(options.onFinish)
-            ) {
-              options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
           const newHistory = await history.mutate(threadId);
           const lastHead = newHistory?.at(0);
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);
@@ -826,7 +786,7 @@ export function useStreamLGP<
         onFinish() {
           threadIdStreamingRef.current = null;
         },
-      }
+      },
     );
   };
 
@@ -896,33 +856,18 @@ export function useStreamLGP<
   }, [threadId]);
 
   useEffect(() => {
-    const tools = toolsRef.current;
-    if (!tools?.length) return;
-
-    const interrupts = values?.__interrupt__;
-    if (!Array.isArray(interrupts) || interrupts.length === 0) return;
-
-    for (const interrupt of interrupts) {
-      if (!isHeadlessToolInterrupt(interrupt.value)) continue;
-
-      const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
-      if (handledBrowserToolsRef.current.has(interruptId)) continue;
-      handledBrowserToolsRef.current.add(interruptId);
-
-      void handleHeadlessToolInterrupt(
-        interrupt.value,
-        tools,
-        onToolRef.current,
-      ).then((result) => {
-        void submit(null, {
-          command: {
-            resume: result.toolCallId
-              ? { [result.toolCallId]: result.value }
-              : result.value,
-          },
-        });
-      });
-    }
+    flushPendingHeadlessToolInterrupts(
+      values,
+      toolsRef.current,
+      handledBrowserToolsRef.current,
+      {
+        onTool: onToolRef.current,
+        resumeSubmit: (command) =>
+          void submit(null, {
+            command,
+          }),
+      },
+    );
   }, [values, submit]);
 
   return {
@@ -949,13 +894,13 @@ export function useStreamLGP<
     get history() {
       if (historyLimit === false) {
         throw new Error(
-          "`fetchStateHistory` must be set to `true` to use `history`"
+          "`fetchStateHistory` must be set to `true` to use `history`",
         );
       }
 
       return ensureHistoryMessageInstances(
         branchContext.flatHistory,
-        options.messagesKey ?? "messages"
+        options.messagesKey ?? "messages",
       );
     },
 
@@ -964,7 +909,7 @@ export function useStreamLGP<
     get experimental_branchTree() {
       if (historyLimit === false) {
         throw new Error(
-          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
         );
       }
 
@@ -977,10 +922,8 @@ export function useStreamLGP<
         "__interrupt__" in values &&
         Array.isArray(values.__interrupt__)
       ) {
-        const valueInterrupts = values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          values.__interrupt__ as Interrupt<InterruptType>[],
         );
       }
 
@@ -991,10 +934,11 @@ export function useStreamLGP<
       const allTasks = branchContext.threadHead?.tasks ?? [];
       const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
-      if (allInterrupts.length > 0) {
-        return normalizeInterruptsList(
-          allInterrupts as Interrupt<InterruptType>[]
-        );
+      const fromTasks = userFacingInterruptsFromThreadTasks<InterruptType>(
+        allInterrupts as Interrupt<InterruptType>[],
+      );
+      if (fromTasks !== null) {
+        return fromTasks;
       }
 
       // check if there's a next task present (breakpoint-style interrupt)
@@ -1036,13 +980,13 @@ export function useStreamLGP<
 
     getMessagesMetadata(
       message: BaseMessage,
-      index?: number
+      index?: number,
     ): MessageMetadata<StateType> | undefined {
       trackStreamMode("values");
 
       const streamMetadata = messageManager.get(message.id)?.metadata;
       const historyMetadata = messageMetadata?.find(
-        (m) => m.messageId === (message.id ?? index)
+        (m) => m.messageId === (message.id ?? index),
       );
 
       if (streamMetadata != null || historyMetadata != null) {
@@ -1100,7 +1044,7 @@ export function useStreamLGP<
         const removed = pendingRuns.removeAll();
         if (usableThreadId && removed.length > 0) {
           await Promise.all(
-            removed.map((e) => client.runs.cancel(usableThreadId!, e.id))
+            removed.map((e) => client.runs.cancel(usableThreadId!, e.id)),
           );
         }
       },

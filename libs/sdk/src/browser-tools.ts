@@ -146,6 +146,19 @@ export interface ToolEvent {
 export type OnToolCallback = (event: ToolEvent) => void;
 
 /**
+ * Strip interrupts whose payload is a headless (browser) tool request.
+ * Those are handled by {@link flushPendingHeadlessToolInterrupts} and should
+ * not surface on {@link useStream}'s `interrupt` / `interrupts`.
+ */
+export function filterOutHeadlessToolInterrupts<T extends { value?: unknown }>(
+  interrupts: readonly T[]
+): T[] {
+  return interrupts.filter(
+    (i) => i.value == null || !isHeadlessToolInterrupt(i.value)
+  );
+}
+
+/**
  * Check if an interrupt value is a headless tool interrupt.
  *
  * @param interrupt - The interrupt value to check
@@ -291,6 +304,78 @@ export async function handleHeadlessToolInterrupt(
       toolCallId: toolCall.id,
       value: { error: result.error.message },
     };
+  }
+}
+
+/**
+ * Build the `command.resume` payload for a headless tool result (same shape
+ * `useStream` / `useStreamCustom` pass to `submit`).
+ */
+export function headlessToolResumeCommand(result: {
+  toolCallId: string | undefined;
+  value: unknown;
+}): { resume: unknown } {
+  return {
+    resume: result.toolCallId
+      ? { [result.toolCallId]: result.value }
+      : result.value,
+  };
+}
+
+export interface FlushPendingHeadlessToolInterruptsOptions {
+  onTool?: OnToolCallback;
+  /**
+   * Invoked for each newly seen headless interrupt. Typically calls
+   * `submit(null, { command: headlessToolResumeCommand(result), ... })`.
+   * Frameworks that need `multitaskStrategy: "interrupt"` (e.g. Svelte/Angular
+   * LGP) should merge that here.
+   */
+  resumeSubmit: (command: { resume: unknown }) => void | Promise<void>;
+  /**
+   * Run the handler after the current stack turn. Svelte/Vue subscribe paths
+   * use microtask deferral so notifications settle before `submit` restarts
+   * the stream.
+   */
+  defer?: (run: () => void) => void;
+}
+
+/**
+ * Scan `values.__interrupt__` for headless tool interrupts, execute matching
+ * implementations, and resume the graph via `resumeSubmit`. Mutates
+ * `handledIds` (clear when the thread changes in the host).
+ *
+ * Use this from framework hooks instead of duplicating the interrupt loop in
+ * each `useStream` implementation.
+ */
+export function flushPendingHeadlessToolInterrupts(
+  values: Record<string, unknown> | null | undefined,
+  tools: HeadlessToolImplementation[] | undefined,
+  handledIds: Set<string>,
+  options: FlushPendingHeadlessToolInterruptsOptions
+): void {
+  if (!tools?.length || !values) return;
+
+  const interrupts = values.__interrupt__;
+  if (!Array.isArray(interrupts) || interrupts.length === 0) return;
+
+  const defer = options.defer ?? ((run) => run());
+
+  for (const interrupt of interrupts) {
+    if (!isHeadlessToolInterrupt(interrupt.value)) continue;
+
+    const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+    if (handledIds.has(interruptId)) continue;
+    handledIds.add(interruptId);
+
+    defer(() => {
+      void handleHeadlessToolInterrupt(
+        interrupt.value,
+        tools,
+        options.onTool
+      ).then((result) => {
+        void options.resumeSubmit(headlessToolResumeCommand(result));
+      });
+    });
   }
 }
 

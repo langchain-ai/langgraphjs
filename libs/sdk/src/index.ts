@@ -76,6 +76,7 @@ export type {
   ToolEvent,
   HeadlessToolInterrupt,
   OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
   // Deprecated aliases
   BrowserTool,
   AnyBrowserTool,
@@ -85,9 +86,12 @@ export type {
 } from "./browser-tools.js";
 export {
   isHeadlessToolInterrupt,
+  filterOutHeadlessToolInterrupts,
   findHeadlessTool,
   executeHeadlessTool,
   handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
   // Deprecated aliases
   isBrowserToolInterrupt,
   findBrowserTool,

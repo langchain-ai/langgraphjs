@@ -78,6 +78,7 @@ export type {
   ToolEvent,
   HeadlessToolInterrupt,
   OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
   // Deprecated aliases
   BrowserTool,
   AnyBrowserTool,
@@ -90,6 +91,8 @@ export {
   findHeadlessTool,
   executeHeadlessTool,
   handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
   // Deprecated aliases
   isBrowserToolInterrupt,
   findBrowserTool,
