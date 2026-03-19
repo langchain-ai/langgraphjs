@@ -174,7 +174,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
     // Create a timeout error handler that will handle the expected timeout
     await expect(async () => {
       await graph.invoke(1, { timeout: 5 });
-    }).rejects.toThrow(/abort|timeout/i);
+    }).rejects.toThrow(/abort/i);
 
     expect(innerTaskExecuted).toBe(true);
     expect(innerTaskCancelled).toBe(true);

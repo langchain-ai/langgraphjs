@@ -525,7 +525,11 @@ describe("Checkpoint Tests (Python port)", () => {
     // Wait for task to finish (should throw AbortError)
     await expect(invokePromise).rejects.toThrow();
 
-    await waitForCheckpointPutToSettle(logs);
+    // `invoke` can reject before in-flight async `checkpointer.put` completes
+    // (LongPutCheckpointer waits 100ms); settle before asserting logs.
+    await new Promise<void>((r) => {
+      setTimeout(r, 150);
+    });
 
     // Check logs after cancellation is handled
     expect(logs.sort()).toEqual([
@@ -640,7 +644,10 @@ describe("Checkpoint Tests (Python port)", () => {
       /abort/i
     );
 
-    await waitForCheckpointPutToSettle(logs);
+    // Same as invoke case: allow async checkpoint put to finish after stream errors.
+    await new Promise<void>((r) => {
+      setTimeout(r, 150);
+    });
 
     // Check logs after cancellation is handled
     expect(logs.sort()).toEqual([
@@ -757,7 +764,10 @@ describe("Checkpoint Tests (Python port)", () => {
       async () => await gatherIterator(streamEvents)
     ).rejects.toThrow(/abort/i);
 
-    await waitForCheckpointPutToSettle(logs);
+    // Same as invoke / stream: allow async checkpoint put to finish after errors.
+    await new Promise<void>((r) => {
+      setTimeout(r, 150);
+    });
 
     // Check logs after cancellation is handled
     expect(logs.sort()).toEqual([
