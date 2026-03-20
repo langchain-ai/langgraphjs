@@ -1,4 +1,10 @@
-import { signal, computed, effect, Injectable } from "@angular/core";
+import {
+  signal,
+  computed,
+  effect,
+  Injectable,
+  inject as angularInject,
+} from "@angular/core";
 import type { Signal, WritableSignal } from "@angular/core";
 import type {
   BaseMessage,
@@ -50,13 +56,13 @@ import {
 } from "@langchain/langgraph-sdk";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { injectStreamCustom } from "./stream.custom.js";
+import { STREAM_INSTANCE } from "./context.js";
 
 export { injectStreamCustom, useStreamCustom } from "./stream.custom.js";
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
 export {
   provideStreamDefaults,
   provideStream,
-  injectStream,
   STREAM_DEFAULTS,
   STREAM_INSTANCE,
 } from "./context.js";
@@ -233,6 +239,55 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   const limit = typeof options?.limit === "number" ? options.limit : 10;
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
+
+/**
+ * Injects the shared stream instance from the nearest ancestor that provided
+ * one via {@link provideStream}. Throws if no ancestor provides a stream
+ * instance.
+ *
+ * @example
+ * ```typescript
+ * import { Component } from "@angular/core";
+ * import { injectStream } from "@langchain/angular";
+ *
+ * @Component({
+ *   template: `
+ *     @for (msg of stream.messages(); track msg.id) {
+ *       <div>{{ msg.content }}</div>
+ *     }
+ *     <button
+ *       [disabled]="stream.isLoading()"
+ *       (click)="onSubmit()"
+ *     >Send</button>
+ *   `,
+ * })
+ * export class ChatComponent {
+ *   stream = injectStream();
+ *
+ *   onSubmit() {
+ *     void this.stream.submit({
+ *       messages: [{ type: "human", content: "Hello!" }],
+ *     });
+ *   }
+ * }
+ * ```
+ *
+ * @example With type parameters for full type safety:
+ * ```typescript
+ * import type { agent } from "./agent";
+ *
+ * export class ChatComponent {
+ *   stream = injectStream<typeof agent>();
+ *   // stream.messages() returns typed messages
+ * }
+ * ```
+ */
+function injectStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): AngularSignalWrap<
+  WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
+>;
 
 /**
  * Angular entry point for LangGraph streaming. Call from a component, directive,
@@ -439,10 +494,21 @@ function injectStream<
 >;
 
 /**
- * @internal Merges LangGraph Platform and custom transport overloads.
+ * @internal Merges DI, LangGraph Platform, and custom transport overloads.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function injectStream(options: any): any {
+function injectStream(options?: any): any {
+  if (arguments.length === 0) {
+    const instance = angularInject(STREAM_INSTANCE, { optional: true });
+    if (instance == null) {
+      throw new Error(
+        "injectStream() requires an ancestor component to provide a stream via provideStream(). " +
+          "Add provideStream({ assistantId: '...' }) to the providers array of a parent component, " +
+          "or use useStream() directly.",
+      );
+    }
+    return instance;
+  }
   if ("transport" in options) {
     return injectStreamCustom(options);
   }

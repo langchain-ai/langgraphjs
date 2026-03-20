@@ -1,5 +1,4 @@
 import type { LocatorSelectors } from "@vitest/browser/context";
-import { Component } from "@angular/core";
 import { Client } from "@langchain/langgraph-sdk";
 import type { BaseMessage } from "langchain";
 import { it, expect, vi, inject } from "vitest";
