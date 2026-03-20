@@ -53,6 +53,7 @@ import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport };
+export { provideStream, getStream } from "./context.js";
 
 const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
 

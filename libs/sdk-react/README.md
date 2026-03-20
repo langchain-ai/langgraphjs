@@ -461,6 +461,105 @@ function Chat() {
 
 The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
+## Sharing State with `StreamProvider`
+
+When multiple components in a tree need access to the same stream (a message list, a header with loading status, an input bar), use `StreamProvider` and `useStreamContext` to avoid prop drilling:
+
+```tsx
+import { StreamProvider, useStreamContext } from "@langchain/react";
+
+function App() {
+  return (
+    <StreamProvider assistantId="agent" apiUrl="http://localhost:2024">
+      <ChatHeader />
+      <MessageList />
+      <MessageInput />
+    </StreamProvider>
+  );
+}
+
+function ChatHeader() {
+  const { isLoading, error } = useStreamContext();
+  return (
+    <header>
+      <h1>Chat</h1>
+      {isLoading && <span>Thinking...</span>}
+      {error != null && <span>Error occurred</span>}
+    </header>
+  );
+}
+
+function MessageList() {
+  const { messages, getMessagesMetadata } = useStreamContext();
+  return (
+    <div>
+      {messages.map((msg, i) => (
+        <div key={msg.id ?? i}>{msg.content}</div>
+      ))}
+    </div>
+  );
+}
+
+function MessageInput() {
+  const { submit, isLoading } = useStreamContext();
+  return (
+    <button
+      disabled={isLoading}
+      onClick={() =>
+        void submit({
+          messages: [{ type: "human", content: "Hello!" }],
+        })
+      }
+    >
+      Send
+    </button>
+  );
+}
+```
+
+### Type Safety with `StreamProvider`
+
+Pass agent or state types to both `StreamProvider` and `useStreamContext`:
+
+```tsx
+import type { agent } from "./agent";
+
+function App() {
+  return (
+    <StreamProvider<typeof agent>
+      assistantId="agent"
+      apiUrl="http://localhost:2024"
+    >
+      <Chat />
+    </StreamProvider>
+  );
+}
+
+function Chat() {
+  const { toolCalls } = useStreamContext<typeof agent>();
+  // toolCalls are fully typed from the agent's tools
+}
+```
+
+### Multiple Agents
+
+Nest providers for multi-agent scenarios — each subtree gets its own isolated stream:
+
+```tsx
+function MultiAgentApp() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <StreamProvider assistantId="researcher" apiUrl="http://localhost:2024">
+        <ResearchPanel />
+      </StreamProvider>
+      <StreamProvider assistantId="writer" apiUrl="http://localhost:2024">
+        <WriterPanel />
+      </StreamProvider>
+    </div>
+  );
+}
+```
+
 ## Playground
 
 For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).

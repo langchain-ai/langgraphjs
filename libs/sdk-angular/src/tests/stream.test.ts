@@ -1,4 +1,5 @@
 import type { LocatorSelectors } from "@vitest/browser/context";
+import { Component } from "@angular/core";
 import { Client } from "@langchain/langgraph-sdk";
 import type { BaseMessage } from "langchain";
 import { it, expect, vi, inject } from "vitest";
@@ -46,7 +47,8 @@ import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
 import { StreamServiceBasicComponent } from "./components/StreamServiceBasic.js";
 import { StreamServiceCustomTransportComponent } from "./components/StreamServiceCustomTransport.js";
 import { StreamServiceSharedComponent } from "./components/StreamServiceShared.js";
-import type { UseStreamTransport } from "../index.js";
+import { ContextProviderComponent } from "./components/ContextProvider.js";
+import { injectStream, type UseStreamTransport } from "../index.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1185,4 +1187,51 @@ it("StreamService: shares state between parent and child components", async () =
   await expect
     .element(screen.getByTestId("parent-message-count"))
     .toHaveTextContent("2");
+});
+
+// provideStream / injectStream context tests
+it("provideStream shares stream state across child components", async () => {
+  const screen = await render(ContextProviderComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("provideStream children can submit and receive messages", async () => {
+  const screen = await render(ContextProviderComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("provideStream children can stop the stream", async () => {
+  const screen = await render(ContextProviderComponent);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("injectStream throws when used outside an injection context", () => {
+  expect(() => {
+    injectStream();
+  }).toThrow();
 });

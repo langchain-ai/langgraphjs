@@ -2,7 +2,12 @@ import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
 import { computed, defineComponent, ref } from "vue";
-import { useStream, type UseStreamTransport } from "../index.js";
+import {
+  useStream,
+  provideStream,
+  useStreamContext,
+  type UseStreamTransport,
+} from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import type { DeepAgentGraph } from "./fixtures/mock-server.js";
 
@@ -2649,4 +2654,228 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+it("provideStream shares stream state across child components", async () => {
+  const MessageList = defineComponent({
+    setup() {
+      const { messages } = useStreamContext();
+      return () => (
+        <div data-testid="messages">
+          {messages.value.map((msg: any, i: number) => (
+            <div key={msg.id ?? i} data-testid={`message-${i}`}>
+              {typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content)}
+            </div>
+          ))}
+        </div>
+      );
+    },
+  });
+
+  const StatusBar = defineComponent({
+    setup() {
+      const { isLoading, error } = useStreamContext();
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          {error.value ? (
+            <div data-testid="error">{String(error.value)}</div>
+          ) : null}
+        </div>
+      );
+    },
+  });
+
+  const SubmitButton = defineComponent({
+    setup() {
+      const { submit, stop } = useStreamContext();
+      return () => (
+        <div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const Parent = defineComponent({
+    setup() {
+      provideStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+      return () => (
+        <div>
+          <MessageList />
+          <StatusBar />
+          <SubmitButton />
+        </div>
+      );
+    },
+  });
+
+  const screen = render(Parent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("provideStream children can submit and receive messages", async () => {
+  const MessageList = defineComponent({
+    setup() {
+      const { messages } = useStreamContext();
+      return () => (
+        <div data-testid="messages">
+          {messages.value.map((msg: any, i: number) => (
+            <div key={msg.id ?? i} data-testid={`message-${i}`}>
+              {typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content)}
+            </div>
+          ))}
+        </div>
+      );
+    },
+  });
+
+  const Controls = defineComponent({
+    setup() {
+      const { submit, stop, isLoading } = useStreamContext();
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const Parent = defineComponent({
+    setup() {
+      provideStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+      return () => (
+        <div>
+          <MessageList />
+          <Controls />
+        </div>
+      );
+    },
+  });
+
+  const screen = render(Parent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("provideStream children can stop the stream", async () => {
+  const Controls = defineComponent({
+    setup() {
+      const { submit, stop, isLoading } = useStreamContext();
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const Parent = defineComponent({
+    setup() {
+      provideStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+      return () => <Controls />;
+    },
+  });
+
+  const screen = render(Parent);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("useStreamContext throws when used outside provideStream", async () => {
+  const Orphan = defineComponent({
+    setup() {
+      try {
+        useStreamContext();
+        return () => <div data-testid="result">no-error</div>;
+      } catch (e: any) {
+        return () => (
+          <div data-testid="result">
+            {e instanceof Error ? e.message : "unknown"}
+          </div>
+        );
+      }
+    },
+  });
+
+  const screen = render(Orphan);
+  await expect
+    .element(screen.getByTestId("result"))
+    .toHaveTextContent(
+      "useStreamContext() requires a parent component to call provideStream()",
+    );
 });

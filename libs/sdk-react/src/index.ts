@@ -13,6 +13,11 @@ export {
   invalidateSuspenseCache,
 } from "./suspense-stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
+export { StreamProvider, useStreamContext } from "./context.js";
+export type {
+  StreamProviderProps,
+  StreamProviderCustomProps,
+} from "./context.js";
 // Legacy exports - kept for backward compatibility
 export type {
   UseStream,

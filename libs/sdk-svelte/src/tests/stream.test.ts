@@ -26,7 +26,8 @@ import CustomTransportStreamSubgraphs from "./components/CustomTransportStreamSu
 import HistoryMessages from "./components/HistoryMessages.svelte";
 import StreamContextParent from "./components/StreamContextParent.svelte";
 import StreamContextOrphan from "./components/StreamContextOrphan.svelte";
-import type { UseStreamTransport } from "../index.js";
+import ContextProvider from "./components/ContextProvider.svelte";
+import { getStream, type UseStreamTransport } from "../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1174,7 +1175,7 @@ it("stream.history returns BaseMessage instances", async () => {
     .toHaveTextContent(/ai/);
 });
 
-// Stream context tests
+// Stream context tests (main branch)
 it("setStreamContext / getStreamContext shares stream with child components", async () => {
   const screen = render(StreamContextParent, {
     apiUrl: serverUrl,
@@ -1229,4 +1230,57 @@ it("getStreamContext throws when no parent has set context", async () => {
     .toHaveTextContent(
       "getStreamContext must be used within a component that has called setStreamContext",
     );
+});
+
+// provideStream / getStream context tests
+it("provideStream shares stream state across child components", async () => {
+  const screen = render(ContextProvider, {
+    apiUrl: serverUrl,
+  });
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("provideStream children can submit and receive messages", async () => {
+  const screen = render(ContextProvider, {
+    apiUrl: serverUrl,
+  });
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("provideStream children can stop the stream", async () => {
+  const screen = render(ContextProvider, {
+    apiUrl: serverUrl,
+  });
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("getStream throws when used outside a component", () => {
+  expect(() => {
+    getStream();
+  }).toThrow();
 });

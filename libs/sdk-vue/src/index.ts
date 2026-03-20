@@ -66,6 +66,13 @@ import type { VueReactiveOptions } from "./types.js";
 
 export { FetchStreamTransport };
 export type { VueReactiveOptions } from "./types.js";
+export {
+  LangChainPlugin,
+  provideStream,
+  useStreamContext,
+  LANGCHAIN_OPTIONS,
+} from "./context.js";
+export type { LangChainPluginOptions } from "./context.js";
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
