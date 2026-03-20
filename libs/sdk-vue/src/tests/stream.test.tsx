@@ -2013,11 +2013,9 @@ const VueQueueStreamComponent = defineComponent({
           {stream.isLoading.value ? "Loading..." : "Not loading"}
         </div>
         <div data-testid="message-count">{stream.messages.value.length}</div>
-        <div data-testid="queue-size">
-          {(stream as any).queue?.size?.value ?? 0}
-        </div>
+        <div data-testid="queue-size">{(stream as any).queue?.size ?? 0}</div>
         <div data-testid="queue-entries">
-          {((stream as any).queue?.entries?.value ?? [])
+          {((stream as any).queue?.entries ?? [])
             .map((e: { values?: { messages?: { content?: string }[] } }) => {
               const msgs = e.values?.messages;
               return msgs?.[0]?.content ?? "?";
@@ -2052,7 +2050,7 @@ const VueQueueStreamComponent = defineComponent({
           data-testid="cancel-first"
           onClick={() => {
             const q = (stream as any).queue;
-            const first = q?.entries?.value?.[0];
+            const first = q?.entries?.[0];
             if (first && q) void q.cancel(first.id);
           }}
         >
