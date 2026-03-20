@@ -20,7 +20,8 @@ import {
 } from "@langchain/core/messages";
 import type { Message } from "@langchain/langgraph-sdk";
 import { get } from "svelte/store";
-import { useStream } from "../index.js";
+import type { Readable } from "svelte/store";
+import { useStream, setStreamContext, getStreamContext } from "../index.js";
 
 // ============================================================================
 // Test State Types
@@ -415,5 +416,55 @@ describe("realistic usage patterns with class instances", () => {
 
     const toolMessages = get(stream.messages).filter(ToolMessage.isInstance);
     expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
+  });
+});
+
+// ============================================================================
+// Type Tests: setStreamContext / getStreamContext
+// ============================================================================
+
+describe("setStreamContext / getStreamContext types", () => {
+  test("setStreamContext returns the same stream it receives", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    const returned = setStreamContext(stream);
+    expectTypeOf(returned).toEqualTypeOf(stream);
+  });
+
+  test("getStreamContext returns stream with BaseMessage[]", () => {
+    const ctx = getStreamContext<BasicState>();
+
+    expectTypeOf(get(ctx.messages)).toExtend<BaseMessage[]>();
+    expectTypeOf(get(ctx.isLoading)).toEqualTypeOf<boolean>();
+    expectTypeOf(get(ctx.error)).toEqualTypeOf<unknown>();
+  });
+
+  test("getStreamContext messages is Readable<BaseMessage[]>", () => {
+    const ctx = getStreamContext<BasicState>();
+
+    expectTypeOf(ctx.messages).toExtend<Readable<BaseMessage[]>>();
+  });
+
+  test("getStreamContext with custom state type", () => {
+    const ctx = getStreamContext<CustomState>();
+
+    expectTypeOf(get(ctx.messages)).toExtend<BaseMessage[]>();
+    expectTypeOf(ctx).toHaveProperty("values");
+    expectTypeOf(ctx).toHaveProperty("submit");
+    expectTypeOf(ctx).toHaveProperty("stop");
+  });
+
+  test("getStreamContext has submit function", () => {
+    const ctx = getStreamContext<BasicState>();
+
+    expectTypeOf(ctx.submit).toBeFunction();
+  });
+
+  test("getStreamContext has stop function", () => {
+    const ctx = getStreamContext<BasicState>();
+
+    expectTypeOf(ctx.stop).toBeFunction();
   });
 });
