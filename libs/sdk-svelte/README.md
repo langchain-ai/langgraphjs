@@ -392,6 +392,96 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
 
 The custom transport interface returns the same properties as the standard `useStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
+## Sharing State with `provideStream`
+
+When multiple components need access to the same stream (a message list, a header, an input bar), use `provideStream` and `getStream` to share a single stream instance via Svelte's context API:
+
+```svelte
+<!-- ChatContainer.svelte -->
+<script lang="ts">
+  import { provideStream } from "@langchain/svelte";
+  import ChatHeader from "./ChatHeader.svelte";
+  import MessageList from "./MessageList.svelte";
+  import MessageInput from "./MessageInput.svelte";
+
+  provideStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+  });
+</script>
+
+<ChatHeader />
+<MessageList />
+<MessageInput />
+```
+
+```svelte
+<!-- MessageList.svelte -->
+<script lang="ts">
+  import { getStream } from "@langchain/svelte";
+
+  const { messages } = getStream();
+</script>
+
+{#each $messages as msg (msg.id)}
+  <div>{msg.content}</div>
+{/each}
+```
+
+```svelte
+<!-- MessageInput.svelte -->
+<script lang="ts">
+  import { getStream } from "@langchain/svelte";
+
+  const { submit, isLoading } = getStream();
+  let input = $state("");
+
+  function send() {
+    submit({ messages: [{ type: "human", content: input }] });
+    input = "";
+  }
+</script>
+
+<form onsubmit={send}>
+  <textarea bind:value={input}></textarea>
+  <button disabled={$isLoading} type="submit">Send</button>
+</form>
+```
+
+```svelte
+<!-- ChatHeader.svelte -->
+<script lang="ts">
+  import { getStream } from "@langchain/svelte";
+
+  const { isLoading, error } = getStream();
+</script>
+
+<header>
+  <h1>Chat</h1>
+  {#if $isLoading}
+    <span>Thinking...</span>
+  {/if}
+  {#if $error}
+    <span>Error occurred</span>
+  {/if}
+</header>
+```
+
+### Multiple Agents
+
+Nest `provideStream` calls for multi-agent scenarios — Svelte's context scoping ensures each subtree gets its own stream:
+
+```svelte
+<!-- ResearchPanel.svelte -->
+<script lang="ts">
+  import { provideStream } from "@langchain/svelte";
+  provideStream({ assistantId: "researcher", apiUrl: "http://localhost:2024" });
+</script>
+
+<MessageList />
+<MessageInput />
+```
+
 ## Playground
 
 For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).
