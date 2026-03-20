@@ -1,4 +1,3 @@
-import { writable, derived, get, fromStore } from "svelte/store";
 import { onDestroy, onMount, setContext, getContext } from "svelte";
 
 import type {
@@ -52,7 +51,6 @@ import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport };
-export { provideStream, getStream } from "./context.js";
 
 const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
 
@@ -82,8 +80,8 @@ export function setStreamContext<T extends ReturnType<typeof useStream>>(
 
 /**
  * Retrieves the `useStream` instance previously provided by a parent
- * component via {@link setStreamContext}. Must be called during component
- * initialisation.
+ * component via {@link setStreamContext} or {@link provideStream}.
+ * Must be called during component initialisation.
  *
  * @throws If no stream context has been set by an ancestor component.
  *
@@ -107,6 +105,105 @@ export function getStreamContext<
     );
   }
   return ctx as WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+}
+
+/**
+ * Creates a shared `useStream` instance and makes it available to all
+ * descendant components via Svelte's `setContext`/`getContext`.
+ *
+ * Call this in a parent component's `<script>` block. Children access
+ * the shared stream via {@link getStream}.
+ *
+ * Uses the same context key as {@link setStreamContext}/{@link getStreamContext},
+ * so both retrieval functions work interchangeably.
+ *
+ * @example
+ * ```svelte
+ * <!-- ChatContainer.svelte -->
+ * <script lang="ts">
+ *   import { provideStream } from "@langchain/svelte";
+ *
+ *   provideStream({
+ *     assistantId: "agent",
+ *     apiUrl: "http://localhost:2024",
+ *   });
+ * </script>
+ *
+ * <ChatHeader />
+ * <MessageList />
+ * <MessageInput />
+ * ```
+ *
+ * @returns The stream instance (same as calling `useStream` directly).
+ */
+export function provideStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(
+  options:
+    | ResolveStreamOptions<T, InferBag<T, Bag>>
+    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+): ReturnType<typeof useStream<T, Bag>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stream = useStream<T, Bag>(options as any);
+  setContext(STREAM_CONTEXT_KEY, stream);
+  return stream;
+}
+
+/**
+ * Retrieves the shared stream instance from the nearest ancestor that
+ * called {@link provideStream} or {@link setStreamContext}.
+ *
+ * Throws if no ancestor has provided a stream.
+ *
+ * @example
+ * ```svelte
+ * <!-- MessageList.svelte -->
+ * <script lang="ts">
+ *   import { getStream } from "@langchain/svelte";
+ *
+ *   const stream = getStream();
+ * </script>
+ *
+ * {#each stream.messages as msg (msg.id)}
+ *   <div>{msg.content}</div>
+ * {/each}
+ * ```
+ *
+ * @example
+ * ```svelte
+ * <!-- MessageInput.svelte -->
+ * <script lang="ts">
+ *   import { getStream } from "@langchain/svelte";
+ *
+ *   const stream = getStream();
+ *   let input = $state("");
+ *
+ *   function send() {
+ *     stream.submit({ messages: [{ type: "human", content: input }] });
+ *     input = "";
+ *   }
+ * </script>
+ *
+ * <form onsubmit={send}>
+ *   <textarea bind:value={input}></textarea>
+ *   <button disabled={stream.isLoading} type="submit">Send</button>
+ * </form>
+ * ```
+ */
+export function getStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): ReturnType<typeof useStream<T, Bag>> {
+  const context = getContext(STREAM_CONTEXT_KEY);
+  if (context == null) {
+    throw new Error(
+      "getStream() requires a parent component to call provideStream(). " +
+        "Add provideStream({ assistantId: '...' }) in an ancestor component.",
+    );
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return context as any;
 }
 
 function fetchHistory<StateType extends Record<string, unknown>>(
@@ -304,12 +401,12 @@ function useStreamLGP<
       ? (options.fetchStateHistory.limit ?? false)
       : (options.fetchStateHistory ?? false);
 
-  const threadId = writable<string | undefined>(undefined);
+  let threadId = $state<string | undefined>(undefined);
   let threadIdPromise: Promise<string> | null = null;
 
   const client = options.client ?? new Client({ apiUrl: options.apiUrl });
 
-  const history = writable<UseStreamThread<StateType>>({
+  let historyState = $state<UseStreamThread<StateType>>({
     data: undefined,
     error: undefined,
     isLoading: false,
@@ -319,36 +416,33 @@ function useStreamLGP<
   async function mutate(
     mutateId?: string,
   ): Promise<ThreadState<StateType>[] | undefined> {
-    const tid = mutateId ?? get(threadId);
+    const tid = mutateId ?? threadId;
     if (!tid) return undefined;
     try {
       const data = await fetchHistory<StateType>(client, tid, {
         limit: historyLimit,
       });
-      history.set({
+      historyState = {
         data,
         error: undefined,
         isLoading: false,
         mutate,
-      });
+      };
       return data;
     } catch (err) {
-      history.update((prev) => ({
-        ...prev,
+      historyState = {
+        ...historyState,
         error: err,
         isLoading: false,
-      }));
+      };
       options.onError?.(err, undefined);
       return undefined;
     }
   }
 
-  history.update((prev) => ({ ...prev, mutate }));
+  historyState = { ...historyState, mutate };
 
-  const branch = writable<string>("");
-  const branchContext = derived([branch, history], ([$branch, $history]) =>
-    getBranchContext($branch, $history.data ?? undefined),
-  );
+  let branch = $state<string>("");
 
   const messageManager = new MessageTupleManager();
   const stream = new StreamManager<StateType, Bag>(messageManager, {
@@ -363,16 +457,37 @@ function useStreamLGP<
     SubmitOptions<StateType, ConfigurableType>
   >();
 
-  const historyValues = derived(
-    [branchContext],
-    ([$branchContext]) =>
-      $branchContext.threadHead?.values ??
+  let streamValues = $state<StateType | null>(stream.values);
+  let streamError = $state<unknown>(stream.error);
+  let isLoadingState = $state(stream.isLoading);
+  let queueEntries = $state(pendingRuns.entries);
+  let queueSize = $state(pendingRuns.size);
+  let subagentVersion = $state(0);
+
+  const unsubscribe = stream.subscribe(() => {
+    streamValues = stream.values;
+    streamError = stream.error;
+    isLoadingState = stream.isLoading;
+    subagentVersion++;
+  });
+
+  const unsubQueue = pendingRuns.subscribe(() => {
+    queueEntries = pendingRuns.entries;
+    queueSize = pendingRuns.size;
+  });
+
+  let branchContext = $derived(
+    getBranchContext(branch, historyState.data ?? undefined),
+  );
+
+  let historyValues = $derived(
+    branchContext.threadHead?.values ??
       options.initialValues ??
       ({} as StateType),
   );
 
-  const historyError = derived([branchContext], ([$branchContext]) => {
-    const error = $branchContext.threadHead?.tasks?.at(-1)?.error;
+  let historyError = $derived.by(() => {
+    const error = branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
       const parsed = JSON.parse(error) as unknown;
@@ -384,68 +499,37 @@ function useStreamLGP<
     return error;
   });
 
-  const streamValues = writable<StateType | null>(stream.values);
-  const streamError = writable<unknown>(stream.error);
-  const isLoading = writable(stream.isLoading);
+  let values = $derived(streamValues ?? historyValues);
 
-  const queueEntries = writable(pendingRuns.entries);
-  const queueSize = writable(pendingRuns.size);
-
-  const values = derived(
-    [streamValues, historyValues],
-    ([$streamValues, $historyValues]) => $streamValues ?? $historyValues,
+  let error = $derived(
+    streamError ?? historyError ?? historyState.error,
   );
 
-  const error = derived(
-    [streamError, historyError, history],
-    ([$streamError, $historyError, $history]) =>
-      $streamError ?? $historyError ?? $history.error,
+  let messageMetadataMap = $derived(
+    getMessagesMetadataMap({
+      initialValues: options.initialValues,
+      history: historyState.data,
+      getMessages,
+      branchContext,
+    }),
   );
 
-  const messageMetadata = derived(
-    [history, branchContext],
-    ([$history, $branchContext]) =>
-      getMessagesMetadataMap({
-        initialValues: options.initialValues,
-        history: $history.data,
-        getMessages,
-        branchContext: $branchContext,
-      }),
-  );
-
-  const subagentVersion = writable(0);
-
-  const unsubscribe = stream.subscribe(() => {
-    streamValues.set(stream.values);
-    streamError.set(stream.error);
-    isLoading.set(stream.isLoading);
-    subagentVersion.update((v) => v + 1);
+  let shouldReconstructSubagents = $derived.by(() => {
+    if (!options.filterSubagentMessages) return false;
+    if (isLoadingState || historyState.isLoading) return false;
+    const hvMessages = getMessages(historyValues);
+    return hvMessages.length > 0;
   });
-
-  const unsubQueue = pendingRuns.subscribe(() => {
-    queueEntries.set(pendingRuns.entries);
-    queueSize.set(pendingRuns.size);
-  });
-
-  const shouldReconstructSubagents = derived(
-    [isLoading, history],
-    ([$isLoading, $history]) => {
-      if (!options.filterSubagentMessages) return false;
-      if ($isLoading || $history.isLoading) return false;
-      const hvMessages = getMessages(get(historyValues));
-      return hvMessages.length > 0;
-    },
-  );
 
   let fetchController: AbortController | null = null;
 
-  const unsubReconstruct = shouldReconstructSubagents.subscribe(($should) => {
-    if ($should) {
-      const hvMessages = getMessages(get(historyValues));
+  $effect(() => {
+    if (shouldReconstructSubagents) {
+      const hvMessages = getMessages(historyValues);
       stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
       fetchController?.abort();
       fetchController = new AbortController();
-      const tid = get(threadId);
+      const tid = threadId;
       if (tid) {
         void stream.fetchSubagentHistory(client.threads, tid, {
           messagesKey: options.messagesKey ?? "messages",
@@ -458,14 +542,13 @@ function useStreamLGP<
   onDestroy(() => {
     fetchController?.abort();
     unsubscribe();
-    unsubReconstruct();
     unsubQueue();
   });
 
   function stop() {
-    return stream.stop(get(historyValues), {
+    return stream.stop(historyValues, {
       onStop: (args) => {
-        const tid = get(threadId);
+        const tid = threadId;
         if (runMetadataStorage && tid) {
           const runId = runMetadataStorage.getItem(`lg:stream:${tid}`);
           if (runId) void client.runs.cancel(tid, runId);
@@ -478,21 +561,20 @@ function useStreamLGP<
   }
 
   function setBranch(value: string) {
-    branch.set(value);
+    branch = value;
   }
 
   function submitDirect(
-    values: StateType,
+    submitValues: StateType,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) {
-    const currentBranchContext = get(branchContext);
+    const currentBranchContext = branchContext;
 
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
-    branch.set(
+    branch =
       checkpointId != null
         ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
-        : "",
-    );
+        : "";
 
     const includeImplicitBranch =
       historyLimit === true || typeof historyLimit === "number";
@@ -517,7 +599,7 @@ function useStreamLGP<
 
     return stream.start(
       async (signal) => {
-        usableThreadId = get(threadId);
+        usableThreadId = threadId;
         if (!usableThreadId) {
           const threadPromise = client.threads.create({
             threadId: submitOptions?.threadId,
@@ -529,7 +611,7 @@ function useStreamLGP<
           const thread = await threadPromise;
 
           usableThreadId = thread.thread_id;
-          threadId.set(usableThreadId);
+          threadId = usableThreadId;
           options.onThreadId?.(usableThreadId);
         }
 
@@ -561,7 +643,7 @@ function useStreamLGP<
           streamMode.push("events");
 
         stream.setStreamValues(() => {
-          const prev = { ...get(historyValues), ...stream.values };
+          const prev = { ...historyValues, ...stream.values };
 
           if (submitOptions?.optimisticValues != null) {
             return {
@@ -579,7 +661,7 @@ function useStreamLGP<
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
         return client.runs.stream(usableThreadId!, options.assistantId, {
-          input: values as Record<string, unknown>,
+          input: submitValues as Record<string, unknown>,
           config: submitOptions?.config,
           context: submitOptions?.context,
           command: submitOptions?.command,
@@ -621,7 +703,7 @@ function useStreamLGP<
         getMessages,
         setMessages,
 
-        initialValues: get(historyValues),
+        initialValues: historyValues,
         callbacks: options,
 
         async onSuccess() {
@@ -637,9 +719,9 @@ function useStreamLGP<
           }
           return undefined;
         },
-        onError(error) {
-          options.onError?.(error, callbackMeta);
-          submitOptions?.onError?.(error, callbackMeta);
+        onError(submitError) {
+          options.onError?.(submitError, callbackMeta);
+          submitOptions?.onError?.(submitError, callbackMeta);
         },
         onFinish: () => {},
       },
@@ -649,7 +731,7 @@ function useStreamLGP<
   let submitting = false;
 
   function drainQueue() {
-    if (!get(isLoading) && !submitting && pendingRuns.size > 0) {
+    if (!isLoadingState && !submitting && pendingRuns.size > 0) {
       const next = pendingRuns.shift();
       if (next) {
         submitting = true;
@@ -661,12 +743,13 @@ function useStreamLGP<
     }
   }
 
-  isLoading.subscribe(() => {
+  $effect(() => {
+    void isLoadingState;
     drainQueue();
   });
 
   async function submit(
-    values: StateType,
+    submitValues: StateType,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>,
   ) {
     if (stream.isLoading || submitting) {
@@ -677,14 +760,14 @@ function useStreamLGP<
       if (shouldAbort) {
         submitting = true;
         try {
-          await submitDirect(values, submitOptions);
+          await submitDirect(submitValues, submitOptions);
         } finally {
           submitting = false;
         }
         return;
       }
 
-      let usableThreadId: string | undefined = get(threadId);
+      let usableThreadId: string | undefined = threadId;
       if (!usableThreadId && threadIdPromise) {
         usableThreadId = await threadIdPromise;
       }
@@ -694,7 +777,7 @@ function useStreamLGP<
             usableThreadId,
             options.assistantId,
             {
-              input: values as Record<string, unknown>,
+              input: submitValues as Record<string, unknown>,
               config: submitOptions?.config,
               context: submitOptions?.context,
               command: submitOptions?.command,
@@ -710,20 +793,20 @@ function useStreamLGP<
 
           pendingRuns.add({
             id: run.run_id,
-            values: values as Partial<StateType> | null | undefined,
+            values: submitValues as Partial<StateType> | null | undefined,
             options: submitOptions,
             createdAt: new Date(run.created_at),
           });
-        } catch (error) {
-          options.onError?.(error, undefined);
-          submitOptions?.onError?.(error, undefined);
+        } catch (submitError) {
+          options.onError?.(submitError, undefined);
+          submitOptions?.onError?.(submitError, undefined);
         }
         return;
       }
     }
 
     submitting = true;
-    const result = submitDirect(values, submitOptions);
+    const result = submitDirect(submitValues, submitOptions);
     void Promise.resolve(result).finally(() => {
       submitting = false;
       drainQueue();
@@ -745,7 +828,7 @@ function useStreamLGP<
   ) {
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
-    const tid = get(threadId);
+    const tid = threadId;
     if (!tid) return;
 
     const callbackMeta: RunCallbackMeta = {
@@ -771,7 +854,7 @@ function useStreamLGP<
         getMessages,
         setMessages,
 
-        initialValues: get(historyValues),
+        initialValues: historyValues,
         callbacks: options,
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${tid}`);
@@ -779,8 +862,8 @@ function useStreamLGP<
           const lastHead = newHistory?.at(0);
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);
         },
-        onError(error) {
-          options.onError?.(error, callbackMeta);
+        onError(joinError) {
+          options.onError?.(joinError, callbackMeta);
         },
         onFinish: () => {},
       },
@@ -790,7 +873,7 @@ function useStreamLGP<
   let shouldReconnect = !!runMetadataStorage;
 
   onMount(() => {
-    const tid = get(threadId);
+    const tid = threadId;
     if (shouldReconnect && runMetadataStorage && tid) {
       const runId = runMetadataStorage.getItem(`lg:stream:${tid}`);
       if (runId) {
@@ -800,96 +883,82 @@ function useStreamLGP<
     }
   });
 
-  const messages = derived(
-    [streamValues, historyValues],
-    ([$streamValues, $historyValues]) =>
-      ensureMessageInstances(getMessages($streamValues ?? $historyValues)),
+  let messages = $derived(
+    ensureMessageInstances(getMessages(streamValues ?? historyValues)),
   );
 
-  const interrupt = derived(
-    [streamValues, streamError, branchContext, isLoading],
-    ([$streamValues, $streamError, $branchContext, $isLoading]) => {
-      return extractInterrupts<InterruptType>($streamValues, {
-        isLoading: $isLoading,
-        threadState: $branchContext.threadHead,
-        error: $streamError,
-      });
-    },
+  let interrupt = $derived(
+    extractInterrupts<InterruptType>(streamValues, {
+      isLoading: isLoadingState,
+      threadState: branchContext.threadHead,
+      error: streamError,
+    }),
   );
 
-  const interrupts = derived(
-    [streamValues, streamError, branchContext, isLoading],
-    ([$streamValues, $streamError, $branchContext, $isLoading]) => {
-      const vals = $streamValues ?? get(historyValues);
-      if (
-        vals != null &&
-        "__interrupt__" in vals &&
-        Array.isArray(vals.__interrupt__)
-      ) {
-        const valueInterrupts = vals.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
-      }
+  let interrupts = $derived.by(() => {
+    const vals = streamValues ?? historyValues;
+    if (
+      vals != null &&
+      "__interrupt__" in vals &&
+      Array.isArray(vals.__interrupt__)
+    ) {
+      const valueInterrupts = vals.__interrupt__;
+      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+      return valueInterrupts;
+    }
 
-      if ($isLoading) return [];
+    if (isLoadingState) return [];
 
-      const allTasks = $branchContext.threadHead?.tasks ?? [];
-      const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
-      if (allInterrupts.length > 0) return allInterrupts;
+    const allTasks = branchContext.threadHead?.tasks ?? [];
+    const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
+    if (allInterrupts.length > 0) return allInterrupts;
 
-      const next = $branchContext.threadHead?.next ?? [];
-      if (!next.length || $streamError != null) return [];
-      return [{ when: "breakpoint" }];
-    },
-  );
+    const next = branchContext.threadHead?.next ?? [];
+    if (!next.length || streamError != null) return [];
+    return [{ when: "breakpoint" }];
+  });
 
-  const toolCalls = derived(
-    [streamValues, historyValues],
-    ([$streamValues, $historyValues]) =>
-      getToolCallsWithResults(getMessages($streamValues ?? $historyValues)),
+  let toolCalls = $derived(
+    getToolCallsWithResults(getMessages(streamValues ?? historyValues)),
   );
 
   function getToolCalls(message: Message) {
-    const currentValues = get(streamValues) ?? get(historyValues);
+    const currentValues = streamValues ?? historyValues;
     const allToolCalls = getToolCallsWithResults(getMessages(currentValues));
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   }
 
-  const historyList = derived([branchContext], ([$branchContext]) => {
+  let historyList = $derived.by(() => {
     if (historyLimit === false) {
       throw new Error(
         "`fetchStateHistory` must be set to `true` to use `history`",
       );
     }
     return ensureHistoryMessageInstances(
-      $branchContext.flatHistory,
+      branchContext.flatHistory,
       options.messagesKey ?? "messages",
     );
   });
 
-  const isThreadLoading = derived(
-    [history],
-    ([$history]) => $history.isLoading && $history.data == null,
+  let isThreadLoading = $derived(
+    historyState.isLoading && historyState.data == null,
   );
 
-  const experimentalBranchTree = derived(
-    [branchContext],
-    ([$branchContext]) => {
-      if (historyLimit === false) {
-        throw new Error(
-          "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
-        );
-      }
-      return $branchContext.branchTree;
-    },
-  );
+  let experimentalBranchTree = $derived.by(() => {
+    if (historyLimit === false) {
+      throw new Error(
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
+      );
+    }
+    return branchContext.branchTree;
+  });
 
   function getMessagesMetadata(
     message: Message,
     index?: number,
   ): MessageMetadata<StateType> | undefined {
     const streamMetadata = messageManager.get(message.id)?.metadata;
-    const historyMetadata = get(messageMetadata)?.find(
+    const historyMetadata = messageMetadataMap?.find(
       (m) => m.messageId === (message.id ?? index),
     );
 
@@ -903,69 +972,59 @@ function useStreamLGP<
     return undefined;
   }
 
-  const subagentsStore = derived(subagentVersion, () => stream.getSubagents());
-  const activeSubagentsStore = derived(subagentVersion, () =>
-    stream.getActiveSubagents(),
-  );
-
-  const valuesRef = fromStore(values);
-  const errorRef = fromStore(error);
-  const isLoadingRef = fromStore(isLoading);
-  const isThreadLoadingRef = fromStore(isThreadLoading);
-  const branchRef = fromStore(branch);
-  const messagesRef = fromStore(messages);
-  const toolCallsRef = fromStore(toolCalls);
-  const interruptRef = fromStore(interrupt);
-  const interruptsRef = fromStore(interrupts);
-  const historyListRef = fromStore(historyList);
-  const experimentalBranchTreeRef = fromStore(experimentalBranchTree);
-  const subagentsRef = fromStore(subagentsStore);
-  const activeSubagentsRef = fromStore(activeSubagentsStore);
-  const queueEntriesRef = fromStore(queueEntries);
-  const queueSizeRef = fromStore(queueSize);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _subagentTrigger = $derived(subagentVersion);
+  let subagentsValue = $derived.by(() => {
+    void _subagentTrigger;
+    return stream.getSubagents();
+  });
+  let activeSubagentsValue = $derived.by(() => {
+    void _subagentTrigger;
+    return stream.getActiveSubagents();
+  });
 
   return {
     assistantId: options.assistantId,
     client,
 
     get values() {
-      return valuesRef.current;
+      return values;
     },
     get error() {
-      return errorRef.current;
+      return error;
     },
     get isLoading() {
-      return isLoadingRef.current;
+      return isLoadingState;
     },
     get isThreadLoading() {
-      return isThreadLoadingRef.current;
+      return isThreadLoading;
     },
 
     get branch() {
-      return branchRef.current;
+      return branch;
     },
     setBranch,
 
     get messages() {
-      return messagesRef.current;
+      return messages;
     },
     get toolCalls() {
-      return toolCallsRef.current;
+      return toolCalls;
     },
     getToolCalls,
 
     get interrupt() {
-      return interruptRef.current;
+      return interrupt;
     },
     get interrupts() {
-      return interruptsRef.current;
+      return interrupts;
     },
 
     get history() {
-      return historyListRef.current;
+      return historyList;
     },
     get experimental_branchTree() {
-      return experimentalBranchTreeRef.current;
+      return experimentalBranchTree;
     },
 
     getMessagesMetadata,
@@ -976,13 +1035,13 @@ function useStreamLGP<
 
     queue: {
       get entries() {
-        return queueEntriesRef.current;
+        return queueEntries;
       },
       get size() {
-        return queueSizeRef.current;
+        return queueSize;
       },
       async cancel(id: string) {
-        const tid = get(threadId);
+        const tid = threadId;
         const removed = pendingRuns.remove(id);
         if (removed && tid) {
           await client.runs.cancel(tid, id);
@@ -990,7 +1049,7 @@ function useStreamLGP<
         return removed;
       },
       async clear() {
-        const tid = get(threadId);
+        const tid = threadId;
         const removed = pendingRuns.removeAll();
         if (tid && removed.length > 0) {
           await Promise.all(removed.map((e) => client.runs.cancel(tid!, e.id)));
@@ -999,10 +1058,10 @@ function useStreamLGP<
     },
 
     switchThread(newThreadId: string | null) {
-      const current = get(threadId) ?? null;
+      const current = threadId ?? null;
       if (newThreadId !== current) {
-        const prevThreadId = get(threadId);
-        threadId.set(newThreadId ?? undefined);
+        const prevThreadId = threadId;
+        threadId = newThreadId ?? undefined;
         stream.clear();
 
         const removed = pendingRuns.removeAll();
@@ -1019,10 +1078,10 @@ function useStreamLGP<
     },
 
     get subagents() {
-      return subagentsRef.current;
+      return subagentsValue;
     },
     get activeSubagents() {
-      return activeSubagentsRef.current;
+      return activeSubagentsValue;
     },
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);

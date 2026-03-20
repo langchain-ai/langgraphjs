@@ -1,4 +1,3 @@
-import { writable, derived, get, fromStore } from "svelte/store";
 import { onDestroy } from "svelte";
 import {
   StreamManager,
@@ -61,21 +60,21 @@ export function useStreamCustom<
     toMessage: toMessageClass,
   });
 
-  let threadId: string | null = options.threadId ?? null;
+  let currentThreadId: string | null = options.threadId ?? null;
 
-  const branch = writable<string>("");
+  let branch = $state<string>("");
 
-  const streamValues = writable<StateType | null>(stream.values);
-  const streamError = writable<unknown>(stream.error);
-  const isLoading = writable(stream.isLoading);
+  let streamValues = $state<StateType | null>(stream.values);
+  let streamError = $state<unknown>(stream.error);
+  let isLoadingState = $state(stream.isLoading);
 
-  const subagentVersion = writable(0);
+  let subagentVersion = $state(0);
 
   const unsubscribe = stream.subscribe(() => {
-    streamValues.set(stream.values);
-    streamError.set(stream.error);
-    isLoading.set(stream.isLoading);
-    subagentVersion.update((v) => v + 1);
+    streamValues = stream.values;
+    streamError = stream.error;
+    isLoadingState = stream.isLoading;
+    subagentVersion++;
   });
 
   onDestroy(() => {
@@ -107,8 +106,8 @@ export function useStreamCustom<
   }
 
   function switchThread(newThreadId: string | null) {
-    if (newThreadId !== threadId) {
-      threadId = newThreadId;
+    if (newThreadId !== currentThreadId) {
+      currentThreadId = newThreadId;
       stream.clear();
     }
   }
@@ -118,16 +117,16 @@ export function useStreamCustom<
   }
 
   async function submitDirect(
-    values: UpdateType | null | undefined,
+    submitValues: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
-    const currentThreadId = options.threadId ?? null;
-    if (currentThreadId !== threadId) {
-      threadId = currentThreadId;
+    const optionThreadId = options.threadId ?? null;
+    if (optionThreadId !== currentThreadId) {
+      currentThreadId = optionThreadId;
       stream.clear();
     }
 
-    let usableThreadId = threadId ?? submitOptions?.threadId;
+    let usableThreadId = currentThreadId ?? submitOptions?.threadId;
 
     stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
@@ -146,7 +145,7 @@ export function useStreamCustom<
       async (signal: AbortSignal) => {
         if (!usableThreadId) {
           usableThreadId = crypto.randomUUID();
-          threadId = usableThreadId;
+          currentThreadId = usableThreadId;
           options.onThreadId?.(usableThreadId);
         }
 
@@ -155,7 +154,7 @@ export function useStreamCustom<
         }
 
         return options.transport.stream({
-          input: values,
+          input: submitValues,
           context: submitOptions?.context,
           command: submitOptions?.command,
           streamSubgraphs: submitOptions?.streamSubgraphs,
@@ -189,68 +188,61 @@ export function useStreamCustom<
 
           return undefined;
         },
-        onError(error) {
-          options.onError?.(error, undefined);
-          submitOptions?.onError?.(error, undefined);
+        onError(submitError) {
+          options.onError?.(submitError, undefined);
+          submitOptions?.onError?.(submitError, undefined);
         },
       },
     );
   }
 
   async function submit(
-    values: UpdateType | null | undefined,
+    submitValues: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
-    await submitDirect(values, submitOptions);
+    await submitDirect(submitValues, submitOptions);
   }
 
-  const valuesStore = derived(
-    [streamValues],
-    ([$streamValues]) => $streamValues ?? ({} as StateType),
-  );
+  let valuesComputed = $derived(streamValues ?? ({} as StateType));
 
-  const messagesStore = derived([streamValues], ([$streamValues]) => {
-    if (!$streamValues) return [];
-    return ensureMessageInstances(getMessages($streamValues));
+  let messagesComputed = $derived.by(() => {
+    if (!streamValues) return [];
+    return ensureMessageInstances(getMessages(streamValues));
   });
 
-  const toolCallsStore = derived([streamValues], ([$streamValues]) => {
-    if (!$streamValues) return [];
-    const msgs = getMessages($streamValues);
+  let toolCallsComputed = $derived.by(() => {
+    if (!streamValues) return [];
+    const msgs = getMessages(streamValues);
     return getToolCallsWithResults<ToolCallType>(msgs);
   });
 
-  const interruptStore = derived([streamValues], ([$streamValues]) =>
-    extractInterrupts<InterruptType>($streamValues),
+  let interruptComputed = $derived(
+    extractInterrupts<InterruptType>(streamValues),
   );
 
-  const interruptsStore = derived(
-    [streamValues],
-    ([$streamValues]): Interrupt<InterruptType>[] => {
-      if (
-        $streamValues != null &&
-        "__interrupt__" in $streamValues &&
-        Array.isArray($streamValues.__interrupt__)
-      ) {
-        const valueInterrupts = $streamValues.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
-      }
+  let interruptsComputed = $derived.by((): Interrupt<InterruptType>[] => {
+    if (
+      streamValues != null &&
+      "__interrupt__" in streamValues &&
+      Array.isArray(streamValues.__interrupt__)
+    ) {
+      const valueInterrupts = streamValues.__interrupt__;
+      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+      return valueInterrupts;
+    }
 
-      return [];
-    },
-  );
+    return [];
+  });
 
   function getToolCalls(message: Message) {
-    const $streamValues = get(streamValues);
-    if (!$streamValues) return [];
-    const msgs = getMessages($streamValues);
+    if (!streamValues) return [];
+    const msgs = getMessages(streamValues);
     const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   }
 
   function setBranch(value: string) {
-    branch.set(value);
+    branch = value;
   }
 
   function getMessagesMetadata(
@@ -270,36 +262,26 @@ export function useStreamCustom<
     return undefined;
   }
 
-  const emptyEntries = writable<never[]>([]);
-  const emptySize = writable(0);
-
-  const subagentsStore = derived(subagentVersion, () => stream.getSubagents());
-  const activeSubagentsStore = derived(subagentVersion, () =>
-    stream.getActiveSubagents(),
-  );
-
-  const valuesRef = fromStore(valuesStore);
-  const errorRef = fromStore(streamError);
-  const isLoadingRef = fromStore(isLoading);
-  const branchRef = fromStore(branch);
-  const messagesRef = fromStore(messagesStore);
-  const toolCallsRef = fromStore(toolCallsStore);
-  const interruptRef = fromStore(interruptStore);
-  const interruptsRef = fromStore(interruptsStore);
-  const subagentsRef = fromStore(subagentsStore);
-  const activeSubagentsRef = fromStore(activeSubagentsStore);
-  const emptyEntriesRef = fromStore(emptyEntries);
-  const emptySizeRef = fromStore(emptySize);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _subagentTrigger = $derived(subagentVersion);
+  let subagentsComputed = $derived.by(() => {
+    void _subagentTrigger;
+    return stream.getSubagents();
+  });
+  let activeSubagentsComputed = $derived.by(() => {
+    void _subagentTrigger;
+    return stream.getActiveSubagents();
+  });
 
   return {
     get values() {
-      return valuesRef.current;
+      return valuesComputed;
     },
     get error() {
-      return errorRef.current;
+      return streamError;
     },
     get isLoading() {
-      return isLoadingRef.current;
+      return isLoadingState;
     },
 
     stop,
@@ -307,17 +289,17 @@ export function useStreamCustom<
     switchThread,
 
     get branch() {
-      return branchRef.current;
+      return branch;
     },
     setBranch,
     getMessagesMetadata,
 
     queue: {
       get entries() {
-        return emptyEntriesRef.current;
+        return [] as never[];
       },
       get size() {
-        return emptySizeRef.current;
+        return 0;
       },
       async cancel() {
         return false;
@@ -326,25 +308,25 @@ export function useStreamCustom<
     },
 
     get interrupt() {
-      return interruptRef.current;
+      return interruptComputed;
     },
     get interrupts() {
-      return interruptsRef.current;
+      return interruptsComputed;
     },
 
     get messages() {
-      return messagesRef.current;
+      return messagesComputed;
     },
     get toolCalls() {
-      return toolCallsRef.current;
+      return toolCallsComputed;
     },
     getToolCalls,
 
     get subagents() {
-      return subagentsRef.current;
+      return subagentsComputed;
     },
     get activeSubagents() {
-      return activeSubagentsRef.current;
+      return activeSubagentsComputed;
     },
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);
