@@ -58,19 +58,31 @@ export class CustomStreamOrchestrator<
   Bag extends BagTemplate = BagTemplate
 > {
   readonly stream: StreamManager<StateType, Bag>;
+
   readonly messageManager: MessageTupleManager;
 
-  #threadId: string | null;
-  #branch: string = "";
-
   readonly #options: AnyStreamCustomOptions<StateType, Bag>;
+
   readonly #historyValues: StateType;
 
+  #threadId: string | null;
+
+  #branch: string = "";
+
   #listeners = new Set<() => void>();
+
   #version = 0;
+
   #streamUnsub: (() => void) | null = null;
+
   #disposed = false;
 
+  /**
+   * Create a new {@link CustomStreamOrchestrator} instance.
+   *
+   * @param options - Configuration options for the custom transport stream,
+   *   including thread ID, transport, callbacks, and subagent settings.
+   */
   constructor(options: AnyStreamCustomOptions<StateType, Bag>) {
     this.#options = options;
 
@@ -102,6 +114,12 @@ export class CustomStreamOrchestrator<
     }
   }
 
+  /**
+   * Register a listener that is called whenever the orchestrator state changes.
+   *
+   * @param listener - Callback invoked on each state change.
+   * @returns An unsubscribe function that removes the listener.
+   */
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
     return () => {
@@ -109,6 +127,12 @@ export class CustomStreamOrchestrator<
     };
   };
 
+  /**
+   * Return the current version number, incremented on each state change.
+   * Useful as a cache key for external sync (e.g. `useSyncExternalStore`).
+   *
+   * @returns The current version counter.
+   */
   getSnapshot = (): number => this.#version;
 
   #notify(): void {
@@ -120,7 +144,11 @@ export class CustomStreamOrchestrator<
   }
 
   /**
-   * Sync the external thread ID. Clears stream if it changed.
+   * Synchronize the external thread ID with the orchestrator.
+   * If the ID has changed, the current stream is cleared and listeners
+   * are notified.
+   *
+   * @param newId - The new thread ID, or `null` to clear.
    */
   syncThreadId(newId: string | null): void {
     if (newId !== this.#threadId) {
@@ -142,31 +170,52 @@ export class CustomStreamOrchestrator<
     return { ...current, [messagesKey]: messages };
   };
 
+  /**
+   * The current stream state values, falling back to an empty object
+   * when no stream values are available.
+   */
   get values(): StateType {
     return this.stream.values ?? ({} as StateType);
   }
 
+  /**
+   * The raw stream state values, or `null` if no stream has been started
+   * or values have not yet been received.
+   */
   get streamValues(): StateType | null {
     return this.stream.values;
   }
 
+  /** The most recent stream error, or `undefined` if no error occurred. */
   get error(): unknown {
     return this.stream.error;
   }
 
+  /** Whether a stream is currently in progress. */
   get isLoading(): boolean {
     return this.stream.isLoading;
   }
 
+  /** The current branch identifier. */
   get branch(): string {
     return this.#branch;
   }
 
-  setBranch = (value: string): void => {
+  /**
+   * Update the current branch and notify listeners.
+   *
+   * @param value - The new branch identifier.
+   */
+  setBranch(value: string): void {
     this.#branch = value;
     this.#notify();
-  };
+  }
 
+  /**
+   * All messages from the current stream values, converted to
+   * {@link BaseMessage} instances. Returns an empty array when no
+   * stream values are available.
+   */
   get messages(): BaseMessage[] {
     if (!this.stream.values) return [];
     return ensureMessageInstances(
@@ -174,19 +223,34 @@ export class CustomStreamOrchestrator<
     ) as BaseMessage[];
   }
 
+  /**
+   * All tool calls paired with their results extracted from the
+   * current stream messages.
+   */
   get toolCalls() {
     if (!this.stream.values) return [];
     return getToolCallsWithResults(this.#getMessages(this.stream.values));
   }
 
-  getToolCalls = (message: Message) => {
+  /**
+   * Get tool calls (with results) that belong to a specific AI message.
+   *
+   * @param message - The AI message whose tool calls to retrieve.
+   * @returns Tool calls associated with the given message.
+   */
+  getToolCalls(message: Message) {
     if (!this.stream.values) return [];
     const allToolCalls = getToolCallsWithResults(
       this.#getMessages(this.stream.values)
     );
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
-  };
+  }
 
+  /**
+   * All active interrupts from the current stream values.
+   * Returns a single breakpoint interrupt when the interrupt array is
+   * present but empty, or an empty array when no interrupts exist.
+   */
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
     if (
       this.stream.values != null &&
@@ -200,14 +264,26 @@ export class CustomStreamOrchestrator<
     return [];
   }
 
+  /**
+   * The first active interrupt extracted from the current stream values,
+   * or `undefined` if there are no interrupts.
+   */
   get interrupt(): Interrupt<GetInterruptType<Bag>> | undefined {
     return extractInterrupts<GetInterruptType<Bag>>(this.stream.values);
   }
 
-  getMessagesMetadata = (
+  /**
+   * Retrieve stream-level metadata for a given message.
+   *
+   * @param message - The message to look up metadata for.
+   * @param index - Optional positional index used as fallback message ID.
+   * @returns The metadata associated with the message, or `undefined`
+   *   if no stream metadata is available.
+   */
+  getMessagesMetadata(
     message: Message,
     index?: number
-  ): MessageMetadata<StateType> | undefined => {
+  ): MessageMetadata<StateType> | undefined {
     const streamMetadata = this.messageManager.get(message.id)?.metadata;
     if (streamMetadata != null) {
       return {
@@ -219,30 +295,52 @@ export class CustomStreamOrchestrator<
       } as MessageMetadata<StateType>;
     }
     return undefined;
-  };
+  }
 
+  /** A map of all tracked subagent streams, keyed by tool call ID. */
   get subagents(): Map<string, SubagentStreamInterface> {
     return this.stream.getSubagents();
   }
 
+  /** The subset of subagent streams that are currently active (loading). */
   get activeSubagents(): SubagentStreamInterface[] {
     return this.stream.getActiveSubagents();
   }
 
-  getSubagent = (toolCallId: string) => {
+  /**
+   * Look up a single subagent stream by its tool call ID.
+   *
+   * @param toolCallId - The tool call ID that initiated the subagent.
+   * @returns The subagent stream, or `undefined` if not found.
+   */
+  getSubagent(toolCallId: string) {
     return this.stream.getSubagent(toolCallId);
-  };
-
-  getSubagentsByType = (type: string) => {
-    return this.stream.getSubagentsByType(type);
-  };
-
-  getSubagentsByMessage = (messageId: string) => {
-    return this.stream.getSubagentsByMessage(messageId);
-  };
+  }
 
   /**
-   * Reconstruct subagents if needed (e.g. on isLoading change).
+   * Retrieve all subagent streams matching a given tool name / type.
+   *
+   * @param type - The subagent type (tool name) to filter by.
+   * @returns An array of matching subagent streams.
+   */
+  getSubagentsByType(type: string) {
+    return this.stream.getSubagentsByType(type);
+  }
+
+  /**
+   * Retrieve all subagent streams associated with a specific AI message.
+   *
+   * @param messageId - The ID of the parent AI message.
+   * @returns An array of subagent streams linked to the message.
+   */
+  getSubagentsByMessage(messageId: string) {
+    return this.stream.getSubagentsByMessage(messageId);
+  }
+
+  /**
+   * Reconstruct subagent streams from history values when subagent
+   * filtering is enabled and the stream is not currently loading.
+   * This is a no-op if subagents are already populated.
    */
   reconstructSubagentsIfNeeded(): void {
     const hvMessages = this.#getMessages(this.#historyValues);
@@ -255,24 +353,46 @@ export class CustomStreamOrchestrator<
     }
   }
 
-  stop = (): void => {
+  /**
+   * Abort the current stream and invoke the `onStop` callback
+   * if one was provided in the options.
+   */
+  stop(): void {
     void this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });
-  };
+  }
 
-  switchThread = (newThreadId: string | null): void => {
+  /**
+   * Switch to a different thread. If the thread ID actually changed,
+   * the current stream is cleared and listeners are notified.
+   *
+   * @param newThreadId - The thread ID to switch to, or `null` to clear.
+   */
+  switchThread(newThreadId: string | null): void {
     if (newThreadId !== this.#threadId) {
       this.#threadId = newThreadId;
       this.stream.clear();
       this.#notify();
     }
-  };
+  }
 
-  submitDirect = async (
+  /**
+   * Start a new stream run against the custom transport.
+   *
+   * This is the low-level submit entry point that handles thread ID
+   * resolution, optimistic value merging, and transport invocation.
+   * Prefer {@link submit} unless you need to bypass higher-level wrappers.
+   *
+   * @param values - The input values to send, or `null`/`undefined` for
+   *   a resume-style invocation.
+   * @param submitOptions - Optional per-call overrides such as
+   *   `optimisticValues`, `config`, `command`, and error callbacks.
+   */
+  async submitDirect(
     values: GetUpdateType<Bag, StateType> | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
-  ): Promise<void> => {
+  ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
@@ -348,21 +468,36 @@ export class CustomStreamOrchestrator<
         },
       }
     );
-  };
+  }
 
-  submit = async (
+  /**
+   * Submit input values and start a new stream run.
+   *
+   * Delegates to {@link submitDirect}. Override or wrap this method
+   * in framework adapters to add queuing or other middleware.
+   *
+   * @param values - The input values to send, or `null`/`undefined` for
+   *   a resume-style invocation.
+   * @param submitOptions - Optional per-call overrides.
+   */
+  async submit(
     values: GetUpdateType<Bag, StateType> | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
-  ): Promise<void> => {
+  ): Promise<void> {
     await this.submitDirect(values, submitOptions);
-  };
+  }
 
-  dispose = (): void => {
+  /**
+   * Tear down the orchestrator. Marks the instance as disposed,
+   * unsubscribes from the stream, and aborts any in-progress stream.
+   * After calling this method, no further notifications will be emitted.
+   */
+  dispose(): void {
     this.#disposed = true;
     this.#streamUnsub?.();
     this.#streamUnsub = null;
     void this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });
-  };
+  }
 }
