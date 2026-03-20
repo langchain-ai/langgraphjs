@@ -99,9 +99,7 @@ export interface StreamServiceInstance<
       >
     | undefined;
   getToolCalls(message: Message): ToolCallWithResult<DefaultToolCall>[];
-  getSubagent(
-    toolCallId: string,
-  ): SubagentStreamInterface | undefined;
+  getSubagent(toolCallId: string): SubagentStreamInterface | undefined;
   getSubagentsByType(type: string): SubagentStreamInterface[];
   getSubagentsByMessage(messageId: string): SubagentStreamInterface[];
 }
