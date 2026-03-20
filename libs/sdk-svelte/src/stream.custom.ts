@@ -9,11 +9,7 @@ import {
   type GetConfigurableType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
-import type {
-  BagTemplate,
-  Message,
-  Interrupt,
-} from "@langchain/langgraph-sdk";
+import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -36,10 +32,7 @@ export function useStreamCustom<
     orchestrator.dispose();
   });
 
-  const valuesStore = derived(
-    version,
-    () => orchestrator.values,
-  );
+  const valuesStore = derived(version, () => orchestrator.values);
 
   const messagesStore = derived(version, () => orchestrator.messages);
 
@@ -66,7 +59,9 @@ export function useStreamCustom<
 
   const valuesRef = fromStore(valuesStore);
   const errorRef = fromStore(derived(version, () => orchestrator.error));
-  const isLoadingRef = fromStore(derived(version, () => orchestrator.isLoading));
+  const isLoadingRef = fromStore(
+    derived(version, () => orchestrator.isLoading),
+  );
   const branchRef = fromStore(branch);
   const messagesRef = fromStore(messagesStore);
   const toolCallsRef = fromStore(toolCallsStore);

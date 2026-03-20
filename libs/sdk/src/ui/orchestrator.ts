@@ -6,11 +6,13 @@ import type { StreamMode } from "../types.stream.js";
 import type { StreamEvent } from "../types.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import { StreamManager, type EventStreamEvent } from "./manager.js";
 import {
-  StreamManager,
-  type EventStreamEvent,
-} from "./manager.js";
-import { MessageTupleManager, toMessageClass , ensureMessageInstances, ensureHistoryMessageInstances } from "./messages.js";
+  MessageTupleManager,
+  toMessageClass,
+  ensureMessageInstances,
+  ensureHistoryMessageInstances,
+} from "./messages.js";
 import { PendingRunsTracker } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
@@ -39,7 +41,7 @@ interface RunMetadataStorage {
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number },
+  options?: { limit?: boolean | number }
 ) {
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
@@ -53,10 +55,7 @@ function fetchHistory<StateType extends Record<string, unknown>>(
 }
 
 function resolveRunMetadataStorage(
-  reconnectOnMount:
-    | boolean
-    | (() => RunMetadataStorage)
-    | undefined,
+  reconnectOnMount: boolean | (() => RunMetadataStorage) | undefined
 ): RunMetadataStorage | null {
   if (typeof globalThis.window === "undefined") return null;
   if (reconnectOnMount === true) return globalThis.window.sessionStorage;
@@ -66,7 +65,7 @@ function resolveRunMetadataStorage(
 
 function resolveCallbackStreamModes<
   S extends Record<string, unknown>,
-  B extends BagTemplate,
+  B extends BagTemplate
 >(options: AnyStreamOptions<S, B>): StreamMode[] {
   const modes: StreamMode[] = [];
   if (options.onUpdateEvent) modes.push("updates");
@@ -101,7 +100,7 @@ export interface OrchestratorAccessors {
  */
 export class StreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  Bag extends BagTemplate = BagTemplate
 > {
   // --- Type aliases for internal use ---
   private declare _updateType: GetUpdateType<Bag, StateType>;
@@ -161,21 +160,21 @@ export class StreamOrchestrator<
 
   constructor(
     options: AnyStreamOptions<StateType, Bag>,
-    accessors: OrchestratorAccessors,
+    accessors: OrchestratorAccessors
   ) {
     this.options = options;
     this.accessors = accessors;
 
     this.runMetadataStorage = resolveRunMetadataStorage(
-      options.reconnectOnMount,
+      options.reconnectOnMount
     );
     this.callbackStreamModes = resolveCallbackStreamModes(options);
 
     this.historyLimit =
       typeof options.fetchStateHistory === "object" &&
       options.fetchStateHistory != null
-        ? (options.fetchStateHistory.limit ?? false)
-        : (options.fetchStateHistory ?? false);
+        ? options.fetchStateHistory.limit ?? false
+        : options.fetchStateHistory ?? false;
 
     this.messageManager = new MessageTupleManager();
     this.stream = new StreamManager<StateType, Bag>(this.messageManager, {
@@ -268,7 +267,11 @@ export class StreamOrchestrator<
     }
 
     if (threadId != null) {
-      this._history = { ...this._history, isLoading: true, mutate: this._mutate };
+      this._history = {
+        ...this._history,
+        isLoading: true,
+        mutate: this._mutate,
+      };
       this._notify();
       void this._mutate(threadId);
     } else {
@@ -291,7 +294,7 @@ export class StreamOrchestrator<
   }
 
   private _mutate = async (
-    mutateId?: string,
+    mutateId?: string
   ): Promise<ThreadState<StateType>[] | undefined> => {
     const tid = mutateId ?? this._threadId;
     if (!tid) return undefined;
@@ -299,7 +302,7 @@ export class StreamOrchestrator<
       const data = await fetchHistory<StateType>(
         this.accessors.getClient(),
         tid,
-        { limit: this.historyLimit },
+        { limit: this.historyLimit }
       );
       this._history = {
         data,
@@ -359,7 +362,7 @@ export class StreamOrchestrator<
 
   private _setMessages = (
     current: StateType,
-    messages: Message[],
+    messages: Message[]
   ): StateType => {
     const messagesKey = this.accessors.getMessagesKey();
     return { ...current, [messagesKey]: messages };
@@ -423,7 +426,7 @@ export class StreamOrchestrator<
   getToolCalls = (message: Message) => {
     this.trackStreamMode("messages-tuple");
     const allToolCalls = getToolCallsWithResults(
-      this._getMessages(this.values),
+      this._getMessages(this.values)
     );
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   };
@@ -461,12 +464,12 @@ export class StreamOrchestrator<
   get flatHistory() {
     if (this.historyLimit === false) {
       throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `history`",
+        "`fetchStateHistory` must be set to `true` to use `history`"
       );
     }
     return ensureHistoryMessageInstances(
       this.branchContext.flatHistory,
-      this.accessors.getMessagesKey(),
+      this.accessors.getMessagesKey()
     );
   }
 
@@ -477,7 +480,7 @@ export class StreamOrchestrator<
   get experimental_branchTree() {
     if (this.historyLimit === false) {
       throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
       );
     }
     return this.branchContext.branchTree;
@@ -494,11 +497,11 @@ export class StreamOrchestrator<
 
   getMessagesMetadata = (
     message: Message,
-    index?: number,
+    index?: number
   ): MessageMetadata<StateType> | undefined => {
     const streamMetadata = this.messageManager.get(message.id)?.metadata;
     const historyMetadata = this.messageMetadata?.find(
-      (m) => m.messageId === (message.id ?? index),
+      (m) => m.messageId === (message.id ?? index)
     );
 
     if (streamMetadata != null || historyMetadata != null) {
@@ -537,7 +540,7 @@ export class StreamOrchestrator<
     const removed = this.pendingRuns.removeAll();
     if (tid && removed.length > 0) {
       await Promise.all(
-        removed.map((e) => this.accessors.getClient().runs.cancel(tid, e.id)),
+        removed.map((e) => this.accessors.getClient().runs.cancel(tid, e.id))
       );
     }
   };
@@ -593,7 +596,7 @@ export class StreamOrchestrator<
         {
           messagesKey: this.accessors.getMessagesKey(),
           signal: controller.signal,
-        },
+        }
       );
       return controller;
     }
@@ -622,16 +625,12 @@ export class StreamOrchestrator<
       onStop: (args) => {
         if (this.runMetadataStorage && this._threadId) {
           const runId = this.runMetadataStorage.getItem(
-            `lg:stream:${this._threadId}`,
+            `lg:stream:${this._threadId}`
           );
           if (runId) {
-            void this.accessors
-              .getClient()
-              .runs.cancel(this._threadId, runId);
+            void this.accessors.getClient().runs.cancel(this._threadId, runId);
           }
-          this.runMetadataStorage.removeItem(
-            `lg:stream:${this._threadId}`,
-          );
+          this.runMetadataStorage.removeItem(`lg:stream:${this._threadId}`);
         }
         this.options.onStop?.(args);
       },
@@ -652,7 +651,7 @@ export class StreamOrchestrator<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    },
+    }
   ): Promise<void> => {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -701,7 +700,7 @@ export class StreamOrchestrator<
         onFinish: () => {
           this._threadIdStreaming = null;
         },
-      },
+      }
     );
   };
 
@@ -711,7 +710,7 @@ export class StreamOrchestrator<
 
   submitDirect = (
     values: StateType,
-    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
+    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
   ) => {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -721,7 +720,7 @@ export class StreamOrchestrator<
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
     this._branch =
       checkpointId != null
-        ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
+        ? currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
         : "";
 
     const includeImplicitBranch =
@@ -860,7 +859,7 @@ export class StreamOrchestrator<
         onFinish: () => {
           this._threadIdStreaming = null;
         },
-      },
+      }
     );
   };
 
@@ -887,7 +886,7 @@ export class StreamOrchestrator<
 
   submit = async (
     values: StateType,
-    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
+    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<ReturnType<typeof this.submitDirect> | void> => {
     if (this.stream.isLoading || this._submitting) {
       const shouldAbort =
@@ -964,7 +963,7 @@ export class StreamOrchestrator<
       if (prevThreadId && removed.length > 0) {
         const client = this.accessors.getClient();
         void Promise.all(
-          removed.map((e) => client.runs.cancel(prevThreadId, e.id)),
+          removed.map((e) => client.runs.cancel(prevThreadId, e.id))
         );
       }
 
@@ -989,7 +988,7 @@ export class StreamOrchestrator<
   tryReconnect = (): boolean => {
     if (this.runMetadataStorage && this._threadId) {
       const runId = this.runMetadataStorage.getItem(
-        `lg:stream:${this._threadId}`,
+        `lg:stream:${this._threadId}`
       );
       if (runId) {
         void this.joinStream(runId);

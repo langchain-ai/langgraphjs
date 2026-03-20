@@ -3,11 +3,12 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { ThreadState, Interrupt } from "../schema.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import { StreamManager, type EventStreamEvent } from "./manager.js";
 import {
-  StreamManager,
-  type EventStreamEvent,
-} from "./manager.js";
-import { MessageTupleManager, toMessageClass , ensureMessageInstances } from "./messages.js";
+  MessageTupleManager,
+  toMessageClass,
+  ensureMessageInstances,
+} from "./messages.js";
 import { extractInterrupts } from "./interrupts.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type {
@@ -22,7 +23,7 @@ import type {
 } from "./types.js";
 
 function createCustomTransportThreadState<
-  StateType extends Record<string, unknown>,
+  StateType extends Record<string, unknown>
 >(values: StateType, threadId: string): ThreadState<StateType> {
   return {
     values,
@@ -48,7 +49,7 @@ function createCustomTransportThreadState<
  */
 export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  Bag extends BagTemplate = BagTemplate
 > {
   // --- Managers ---
   readonly stream: StreamManager<StateType, Bag>;
@@ -154,7 +155,7 @@ export class CustomStreamOrchestrator<
 
   private _setMessages = (
     current: StateType,
-    messages: Message[],
+    messages: Message[]
   ): StateType => {
     const messagesKey = this.options.messagesKey ?? "messages";
     return { ...current, [messagesKey]: messages };
@@ -192,7 +193,7 @@ export class CustomStreamOrchestrator<
   get messages(): BaseMessage[] {
     if (!this.stream.values) return [];
     return ensureMessageInstances(
-      this._getMessages(this.stream.values),
+      this._getMessages(this.stream.values)
     ) as BaseMessage[];
   }
 
@@ -204,7 +205,7 @@ export class CustomStreamOrchestrator<
   getToolCalls = (message: Message) => {
     if (!this.stream.values) return [];
     const allToolCalls = getToolCallsWithResults(
-      this._getMessages(this.stream.values),
+      this._getMessages(this.stream.values)
     );
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   };
@@ -228,7 +229,7 @@ export class CustomStreamOrchestrator<
 
   getMessagesMetadata = (
     message: Message,
-    index?: number,
+    index?: number
   ): MessageMetadata<StateType> | undefined => {
     const streamMetadata = this.messageManager.get(message.id)?.metadata;
     if (streamMetadata != null) {
@@ -307,7 +308,7 @@ export class CustomStreamOrchestrator<
 
   submitDirect = async (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<void> => {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -373,7 +374,7 @@ export class CustomStreamOrchestrator<
           const finalValues = this.stream.values ?? this.historyValues;
           this.options.onFinish?.(
             createCustomTransportThreadState(finalValues, usableThreadId),
-            undefined,
+            undefined
           );
 
           return undefined;
@@ -382,13 +383,13 @@ export class CustomStreamOrchestrator<
           this.options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
-      },
+      }
     );
   };
 
   submit = async (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<void> => {
     await this.submitDirect(values, submitOptions);
   };

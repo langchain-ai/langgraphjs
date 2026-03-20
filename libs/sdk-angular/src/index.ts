@@ -326,18 +326,13 @@ export function useStreamLGP<
   });
 
   // Auto-reconnect
-  const shouldReconnect = orchestrator.shouldReconnect;
+  const { shouldReconnect } = orchestrator;
   let hasReconnected = false;
 
   effect(() => {
     void version();
     const tid = orchestrator.threadId;
-    if (
-      !hasReconnected &&
-      shouldReconnect &&
-      tid &&
-      !orchestrator.isLoading
-    ) {
+    if (!hasReconnected && shouldReconnect && tid && !orchestrator.isLoading) {
       const reconnected = orchestrator.tryReconnect();
       if (reconnected) hasReconnected = true;
     }
@@ -485,8 +480,10 @@ export class StreamService<
       | ResolveStreamOptions<T, InferBag<T, Bag>>
       | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this._stream = injectStream(options as any) as unknown as StreamServiceInstance<T, Bag>;
+    this._stream = injectStream(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      options as any,
+    ) as unknown as StreamServiceInstance<T, Bag>;
   }
 
   get values(): Signal<T> {
@@ -606,9 +603,7 @@ export class StreamService<
     return this._stream.getMessagesMetadata(message, index);
   }
 
-  getToolCalls(
-    message: Message,
-  ): SdkToolCallWithResult<DefaultToolCall>[] {
+  getToolCalls(message: Message): SdkToolCallWithResult<DefaultToolCall>[] {
     return this._stream.getToolCalls(message);
   }
 

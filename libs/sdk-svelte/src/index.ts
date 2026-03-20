@@ -285,7 +285,7 @@ function useStreamLGP<
   });
 
   // Auto-reconnect
-  let {shouldReconnect} = orchestrator;
+  let { shouldReconnect } = orchestrator;
 
   onMount(() => {
     if (shouldReconnect) {

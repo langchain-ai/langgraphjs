@@ -9,11 +9,7 @@ import {
   type GetConfigurableType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
-import type {
-  BagTemplate,
-  Message,
-  Interrupt,
-} from "@langchain/langgraph-sdk";
+import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 import type { VueReactiveOptions } from "./types.js";
 
 export function useStreamCustom<

@@ -10,11 +10,7 @@ import {
   type GetToolCallsType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
-import type {
-  BagTemplate,
-  Message,
-  Interrupt,
-} from "@langchain/langgraph-sdk";
+import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 
 export function injectStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -42,11 +38,7 @@ export function injectStreamCustom<
     void version();
     const loading = orchestrator.isLoading;
     const hvMessages = orchestrator.messages;
-    if (
-      options.filterSubagentMessages &&
-      !loading &&
-      hvMessages.length > 0
-    ) {
+    if (options.filterSubagentMessages && !loading && hvMessages.length > 0) {
       orchestrator.reconstructSubagentsIfNeeded();
     }
   });
