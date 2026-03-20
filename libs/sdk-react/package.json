@@ -22,8 +22,7 @@
     "directory": "libs/sdk-react"
   },
   "dependencies": {
-    "@langchain/langgraph-sdk": "workspace:^",
-    "uuid": "^11.1.0"
+    "@langchain/langgraph-sdk": "workspace:^"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.11",
@@ -31,11 +30,8 @@
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
     "@langchain/langgraph-checkpoint": "workspace:^",
-    "@langchain/scripts": "^0.1.4",
-    "@tsconfig/recommended": "^1.0.13",
     "@types/node": "^25.4.0",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
     "@vitejs/plugin-react": "^5.1.4",

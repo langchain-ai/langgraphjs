@@ -1,6 +1,6 @@
 # @langchain/svelte
 
-Svelte SDK for building AI-powered applications with [LangChain](https://js.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraphjs/). Provides a `useStream` function that manages streaming, state, branching, and interrupts using Svelte stores.
+Svelte SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` function that manages streaming, state, branching, and interrupts using Svelte stores.
 
 ## Installation
 
@@ -301,7 +301,7 @@ The custom transport interface returns the same properties as the standard `useS
 
 ## Playground
 
-For complete end-to-end examples with full agentic UIs, visit the [LangGraph Playground](https://github.com/langchain-ai/langgraphjs).
+For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).
 
 ## License
 
