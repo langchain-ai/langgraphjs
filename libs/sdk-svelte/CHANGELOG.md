@@ -1,5 +1,28 @@
 # @langchain/svelte
 
+## 0.2.0
+
+### Minor Changes
+
+- [#2221](https://github.com/langchain-ai/langgraphjs/pull/2221) [`6ca2121`](https://github.com/langchain-ai/langgraphjs/commit/6ca2121e67701ba0cd04b78d7c6d0498b6a08907) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(svelte): add setStreamContext / getStreamContext for dependency injection
+
+- [#2223](https://github.com/langchain-ai/langgraphjs/pull/2223) [`09b9b60`](https://github.com/langchain-ai/langgraphjs/commit/09b9b60fe5acf57d76cda19dbced995bda748204) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: add provider/context patterns for React, Vue, Angular, and Svelte SDKs
+
+- [#2222](https://github.com/langchain-ai/langgraphjs/pull/2222) [`c0ddd8d`](https://github.com/langchain-ai/langgraphjs/commit/c0ddd8d38e7c84020b9fb8f362a16273d08a642b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - refactor(@langchain/svelte): Migrate from Svelte 4 stores to Svelte 5 runes-compatible API
+
+### Patch Changes
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Support `onFinish` callback in custom transport, ensuring it is called when the stream completes.
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(react/vue/svelte/angular): clean up Readme and dev deps
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Forward streamSubgraphs in custom transports
+
+- Updated dependencies [[`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634)]:
+  - @langchain/langgraph-sdk@1.7.5
+
 ## 0.1.3
 
 ### Patch Changes
