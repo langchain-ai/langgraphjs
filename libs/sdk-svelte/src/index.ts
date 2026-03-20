@@ -52,7 +52,6 @@ import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport };
-export { provideStream, getStream } from "./context.js";
 
 const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
 
@@ -82,8 +81,8 @@ export function setStreamContext<T extends ReturnType<typeof useStream>>(
 
 /**
  * Retrieves the `useStream` instance previously provided by a parent
- * component via {@link setStreamContext}. Must be called during component
- * initialisation.
+ * component via {@link setStreamContext} or {@link provideStream}.
+ * Must be called during component initialisation.
  *
  * @throws If no stream context has been set by an ancestor component.
  *
@@ -107,6 +106,84 @@ export function getStreamContext<
     );
   }
   return ctx as WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+}
+
+/**
+ * Creates a shared `useStream` instance and makes it available to all
+ * descendant components via Svelte's `setContext`/`getContext`.
+ *
+ * Call this in a parent component's `<script>` block. Children access
+ * the shared stream via {@link getStream}.
+ *
+ * Uses the same context key as {@link setStreamContext}/{@link getStreamContext},
+ * so both retrieval functions work interchangeably.
+ *
+ * @example
+ * ```svelte
+ * <!-- ChatContainer.svelte -->
+ * <script lang="ts">
+ *   import { provideStream } from "@langchain/svelte";
+ *
+ *   provideStream({
+ *     assistantId: "agent",
+ *     apiUrl: "http://localhost:2024",
+ *   });
+ * </script>
+ *
+ * <ChatHeader />
+ * <MessageList />
+ * <MessageInput />
+ * ```
+ *
+ * @returns The stream instance (same as calling `useStream` directly).
+ */
+export function provideStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(
+  options:
+    | ResolveStreamOptions<T, InferBag<T, Bag>>
+    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+): ReturnType<typeof useStream<T, Bag>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stream = useStream<T, Bag>(options as any);
+  setContext(STREAM_CONTEXT_KEY, stream);
+  return stream;
+}
+
+/**
+ * Retrieves the shared stream instance from the nearest ancestor that
+ * called {@link provideStream} or {@link setStreamContext}.
+ *
+ * Throws if no ancestor has provided a stream.
+ *
+ * @example
+ * ```svelte
+ * <!-- MessageList.svelte -->
+ * <script lang="ts">
+ *   import { getStream } from "@langchain/svelte";
+ *
+ *   const stream = getStream();
+ * </script>
+ *
+ * {#each stream.messages as msg (msg.id)}
+ *   <div>{msg.content}</div>
+ * {/each}
+ * ```
+ */
+export function getStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): ReturnType<typeof useStream<T, Bag>> {
+  const context = getContext(STREAM_CONTEXT_KEY);
+  if (context == null) {
+    throw new Error(
+      "getStream() requires a parent component to call provideStream(). " +
+        "Add provideStream({ assistantId: '...' }) in an ancestor component.",
+    );
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return context as any;
 }
 
 function fetchHistory<StateType extends Record<string, unknown>>(
