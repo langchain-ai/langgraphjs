@@ -1,7 +1,7 @@
 import { Component, input } from "@angular/core";
 import type { Message } from "@langchain/langgraph-sdk";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -31,7 +31,7 @@ export class StopMutateComponent {
 
   stopped = false;
 
-  stream = useStream<{ messages: Message[] }>({
+  stream = injectStream<{ messages: Message[] }>({
     assistantId: "agent",
     apiUrl: serverUrl,
     onStop: ({ mutate }: any) => {

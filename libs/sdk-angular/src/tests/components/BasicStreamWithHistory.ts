@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -32,7 +32,7 @@ export class BasicStreamWithHistoryComponent {
 
   submitOptions = input<Record<string, unknown> | undefined>(undefined);
 
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: serverUrl,
     fetchStateHistory: { limit: 2 },

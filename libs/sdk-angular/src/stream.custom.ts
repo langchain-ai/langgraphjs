@@ -42,7 +42,7 @@ function createCustomTransportThreadState<
   };
 }
 
-export function useStreamCustom<
+export function injectStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamCustomOptions<StateType, Bag>) {
@@ -321,3 +321,10 @@ export function useStreamCustom<
     },
   };
 }
+
+/**
+ * @deprecated Use `injectStreamCustom` instead. `useStreamCustom` will be
+ * removed in a future major version. `injectStreamCustom` follows Angular's
+ * `inject*` naming convention for injection-based patterns.
+ */
+export const useStreamCustom = injectStreamCustom;
