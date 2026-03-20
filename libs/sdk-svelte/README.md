@@ -249,6 +249,99 @@ When `submit()` is called while a stream is already active, the SDK automaticall
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
 
+## Stream Context
+
+Use `setStreamContext` and `getStreamContext` to share a single `useStream` instance across a component tree without prop drilling. This uses Svelte's built-in `setContext` / `getContext` under the hood.
+
+### Setting context in a parent
+
+Call `setStreamContext` during component initialisation to provide the stream to all descendants:
+
+```svelte
+<script lang="ts">
+  import { useStream, setStreamContext } from "@langchain/svelte";
+  import ChatMessages from "./ChatMessages.svelte";
+  import ChatInput from "./ChatInput.svelte";
+
+  const stream = useStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+  });
+
+  setStreamContext(stream);
+</script>
+
+<ChatMessages />
+<ChatInput />
+```
+
+### Consuming context in a child
+
+Call `getStreamContext` in any descendant to retrieve the stream. The returned value has the same shape and types as the `useStream` return value:
+
+```svelte
+<script lang="ts">
+  import { getStreamContext } from "@langchain/svelte";
+
+  const { messages, isLoading } = getStreamContext();
+</script>
+
+{#each $messages as msg, i (msg.id ?? i)}
+  <div>{msg.content}</div>
+{/each}
+
+{#if $isLoading}
+  <p>Thinking…</p>
+{/if}
+```
+
+```svelte
+<script lang="ts">
+  import { getStreamContext } from "@langchain/svelte";
+
+  const { submit } = getStreamContext();
+
+  let input = $state("");
+</script>
+
+<form onsubmit={(e) => { e.preventDefault(); void submit({ messages: [{ type: "human", content: input }] }); input = ""; }}>
+  <input bind:value={input} />
+  <button type="submit">Send</button>
+</form>
+```
+
+### Type safety
+
+`getStreamContext` accepts the same generic parameters as `useStream` so child components can be fully typed:
+
+```svelte
+<script lang="ts">
+  import { getStreamContext } from "@langchain/svelte";
+  import type { BaseMessage } from "@langchain/core/messages";
+
+  interface MyState {
+    messages: BaseMessage[];
+    context?: string;
+  }
+
+  const { messages, values } = getStreamContext<MyState>();
+</script>
+```
+
+`setStreamContext` returns the stream it was given, so you can combine the two calls:
+
+```svelte
+<script lang="ts">
+  import { useStream, setStreamContext } from "@langchain/svelte";
+
+  const { messages, submit } = setStreamContext(
+    useStream({ assistantId: "agent", apiUrl: "http://localhost:2024" }),
+  );
+</script>
+```
+
+> **Note:** Both functions must be called during component initialisation (i.e. at the top level of a `<script>` block), just like Svelte's own `setContext` / `getContext`. Calling `getStreamContext` without a parent `setStreamContext` throws an error.
+
 ## Custom Transport
 
 Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:

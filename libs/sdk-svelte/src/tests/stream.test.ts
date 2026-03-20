@@ -24,6 +24,8 @@ import DeepAgentStream from "./components/DeepAgentStream.svelte";
 import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
 import CustomTransportStreamSubgraphs from "./components/CustomTransportStreamSubgraphs.svelte";
 import HistoryMessages from "./components/HistoryMessages.svelte";
+import StreamContextParent from "./components/StreamContextParent.svelte";
+import StreamContextOrphan from "./components/StreamContextOrphan.svelte";
 import type { UseStreamTransport } from "../index.js";
 
 const serverUrl = inject("serverUrl");
@@ -1170,4 +1172,61 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+// Stream context tests
+it("setStreamContext / getStreamContext shares stream with child components", async () => {
+  const screen = render(StreamContextParent, {
+    apiUrl: serverUrl,
+  });
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("parent-submit").click();
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("parent-message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("parent-message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("child-message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("child-message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("getStreamContext throws when no parent has set context", async () => {
+  const screen = render(StreamContextOrphan);
+
+  await expect
+    .element(screen.getByTestId("orphan-error"))
+    .toHaveTextContent(
+      "getStreamContext must be used within a component that has called setStreamContext",
+    );
 });

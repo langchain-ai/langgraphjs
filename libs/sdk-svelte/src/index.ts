@@ -1,6 +1,6 @@
 import { writable, derived, get } from "svelte/store";
 import type { Readable } from "svelte/store";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, onMount, setContext, getContext } from "svelte";
 
 import type {
   BaseMessage,
@@ -53,6 +53,63 @@ import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport };
+
+const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
+
+/**
+ * Provides a `useStream` return value to all descendant components via
+ * Svelte's context API. Must be called during component initialisation
+ * (i.e. at the top level of a `<script>` block).
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   import { useStream, setStreamContext } from "@langchain/svelte";
+ *
+ *   const stream = useStream({ assistantId: "agent", apiUrl: "..." });
+ *   setStreamContext(stream);
+ * </script>
+ *
+ * <ChildComponent />
+ * ```
+ */
+export function setStreamContext<
+  T extends ReturnType<typeof useStream>,
+>(stream: T): T {
+  setContext(STREAM_CONTEXT_KEY, stream);
+  return stream;
+}
+
+/**
+ * Retrieves the `useStream` instance previously provided by a parent
+ * component via {@link setStreamContext}. Must be called during component
+ * initialisation.
+ *
+ * @throws If no stream context has been set by an ancestor component.
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   import { getStreamContext } from "@langchain/svelte";
+ *
+ *   const { messages, submit, isLoading } = getStreamContext();
+ * </script>
+ * ```
+ */
+export function getStreamContext<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): WithClassMessages<ResolveStreamInterface<StateType, InferBag<StateType, Bag>>> {
+  const ctx = getContext(STREAM_CONTEXT_KEY);
+  if (!ctx) {
+    throw new Error(
+      "getStreamContext must be used within a component that has called setStreamContext",
+    );
+  }
+  return ctx as WithClassMessages<
+    ResolveStreamInterface<StateType, InferBag<StateType, Bag>>
+  >;
+}
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
