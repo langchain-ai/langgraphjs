@@ -26,7 +26,7 @@
     fetchStateHistory,
   }: Props = $props();
 
-  const { messages, isLoading, error, submit, stop } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
     onCheckpointEvent,
@@ -39,7 +39,7 @@
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -48,16 +48,16 @@
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  {#if $error}
-    <div data-testid="error">{String($error)}</div>
+  {#if stream.error}
+    <div data-testid="error">{String(stream.error)}</div>
   {/if}
   <button
     data-testid="submit"
-    onclick={() => void submit(submitInput as any, submitOptions as any)}
+    onclick={() => void stream.submit(submitInput as any, submitOptions as any)}
   >
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stop()}>Stop</button>
+  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
 </div>

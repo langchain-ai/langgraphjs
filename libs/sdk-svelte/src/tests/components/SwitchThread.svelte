@@ -38,18 +38,16 @@
     },
   };
 
-  const thread = useStreamCustom<{ messages: Message[] }>({
+  const stream = useStreamCustom<{ messages: Message[] }>({
     transport: transport as any,
     threadId: null,
     onThreadId: () => {},
   });
-
-  const { messages, isLoading } = thread;
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -58,25 +56,25 @@
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  <div data-testid="message-count">{$messages.length}</div>
+  <div data-testid="message-count">{stream.messages.length}</div>
   <button
     data-testid="submit"
     onclick={() =>
-      void thread.submit({ messages: [{ type: "human", content: "Hi" }] } as any)}
+      void stream.submit({ messages: [{ type: "human", content: "Hi" }] } as any)}
   >
     Submit
   </button>
   <button
     data-testid="switch-thread"
-    onclick={() => thread.switchThread(crypto.randomUUID())}
+    onclick={() => stream.switchThread(crypto.randomUUID())}
   >
     Switch Thread
   </button>
   <button
     data-testid="switch-thread-null"
-    onclick={() => thread.switchThread(null)}
+    onclick={() => stream.switchThread(null)}
   >
     Switch to Null Thread
   </button>

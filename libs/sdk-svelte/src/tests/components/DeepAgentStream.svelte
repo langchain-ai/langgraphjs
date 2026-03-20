@@ -9,7 +9,7 @@
   const { apiUrl }: Props = $props();
 
   // svelte-ignore state_referenced_locally
-  const { messages, isLoading, error, submit, subagents } = useStream<DeepAgentGraph>({
+  const stream = useStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl,
     filterSubagentMessages: true,
@@ -19,7 +19,7 @@
   let observedToolCallStates = $state("");
 
   const sortedSubagents = $derived(
-    [...$subagents.values()].sort((a: any, b: any) => {
+    [...stream.subagents.values()].sort((a: any, b: any) => {
       const typeA = a.toolCall?.args?.subagent_type ?? "";
       const typeB = b.toolCall?.args?.subagent_type ?? "";
       return typeA.localeCompare(typeB);
@@ -51,17 +51,17 @@
 
 <div data-testid="deep-agent-root" style="font-family: monospace; font-size: 13px">
   <div data-testid="loading">
-    <b>Status:</b> {$isLoading ? "Loading..." : "Not loading"}
+    <b>Status:</b> {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
 
-  {#if $error}
-    <div data-testid="error">{String($error)}</div>
+  {#if stream.error}
+    <div data-testid="error">{String(stream.error)}</div>
   {/if}
 
   <hr />
-  <div><b>Messages ({$messages.length})</b></div>
+  <div><b>Messages ({stream.messages.length})</b></div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         [{msg.type}] {formatMessage(msg)}
       </div>
@@ -103,7 +103,7 @@
   <hr />
   <button
     data-testid="submit"
-    onclick={() => void submit({ messages: [{ content: "Run analysis", type: "human" }] }, { streamSubgraphs: true })}
+    onclick={() => void stream.submit({ messages: [{ content: "Run analysis", type: "human" }] }, { streamSubgraphs: true })}
   >
     Send
   </button>

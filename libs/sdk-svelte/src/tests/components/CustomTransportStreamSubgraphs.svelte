@@ -11,7 +11,7 @@
 
   let { streamTransport }: Props = $props();
 
-  const thread = useStreamCustom<StreamState>({
+  const stream = useStreamCustom<StreamState>({
     transport: {
       stream: (payload) => streamTransport(payload),
     },
@@ -23,7 +23,7 @@
 <button
   data-testid="submit-custom-subgraphs"
   onclick={() =>
-    void thread.submit(
+    void stream.submit(
       { messages: [{ type: "human", content: "Hi" } as Message] },
       { streamSubgraphs: true },
     )}

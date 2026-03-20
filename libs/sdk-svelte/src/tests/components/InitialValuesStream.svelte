@@ -9,12 +9,12 @@
 
   const { options }: Props = $props();
 
-  const { messages, values, submit } = useStream(options);
+  const stream = useStream(options);
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div
         data-testid={msg.id?.includes("cached")
           ? `message-cached-${i}`
@@ -26,11 +26,11 @@
       </div>
     {/each}
   </div>
-  <div data-testid="values">{JSON.stringify($values)}</div>
+  <div data-testid="values">{JSON.stringify(stream.values)}</div>
   <button
     data-testid="submit"
     onclick={() =>
-      void submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+      void stream.submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
   >
     Submit
   </button>
