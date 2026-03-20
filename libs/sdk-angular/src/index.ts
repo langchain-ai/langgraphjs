@@ -51,10 +51,12 @@ import {
   type Interrupt,
   type BagTemplate,
   type ThreadState,
-  type ToolCallWithResult as _ToolCallWithResult,
+  type ToolCallWithResult as SdkToolCallWithResult,
   type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
+import type { ClassSubagentStreamInterface } from "./subagent-types.js";
+import type { StreamServiceInstance } from "./stream-service-instance.js";
 import { injectStreamCustom } from "./stream.custom.js";
 import { STREAM_INSTANCE } from "./context.js";
 
@@ -67,22 +69,12 @@ export {
   STREAM_INSTANCE,
 } from "./context.js";
 export type { StreamDefaults } from "./context.js";
+export type { ClassSubagentStreamInterface } from "./subagent-types.js";
 
 type ClassToolCallWithResult<T> =
-  T extends _ToolCallWithResult<infer TC, unknown, unknown>
-    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+  T extends SdkToolCallWithResult<infer TC, unknown, unknown>
+    ? SdkToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
     : T;
-
-export type ClassSubagentStreamInterface<
-  StateType = Record<string, unknown>,
-  ToolCall = DefaultToolCall,
-  SubagentName extends string = string,
-> = Omit<
-  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
-  "messages"
-> & {
-  messages: BaseMessage[];
-};
 
 type WithClassMessages<T> = Omit<
   T,
@@ -1221,7 +1213,7 @@ export function useStreamLGP<
 }
 
 /**
- * Injectable Angular service that wraps {@link useStream}.
+ * Injectable Angular service that wraps {@link injectStream}.
  *
  * Extend this class with your own `@Injectable()` service and call
  * `super(options)` in the constructor:
@@ -1235,7 +1227,7 @@ export function useStreamLGP<
  * }
  * ```
  *
- * The service exposes the same signals and methods as `useStream`
+ * The service exposes the same signals and methods as `injectStream`
  * (e.g. `values`, `messages`, `isLoading`, `submit`, `stop`).
  *
  * Must be created within an Angular injection context (via DI or
@@ -1246,16 +1238,21 @@ export class StreamService<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 > {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly _stream: any;
+  private readonly _stream: StreamServiceInstance<T, Bag>;
 
   constructor(
     options:
       | ResolveStreamOptions<T, InferBag<T, Bag>>
       | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this._stream = useStream(options as any);
+    // Same routing as `injectStream` (`"transport"` discriminant). LGP vs custom
+    // implementations share the runtime surface area of `StreamServiceInstance`,
+    // but inferred return types differ; the assertion matches that contract.
+    this._stream = (
+      "transport" in options
+        ? injectStreamCustom(options)
+        : useStreamLGP(options)
+    ) as StreamServiceInstance<T, Bag>;
   }
 
   get values(): Signal<T> {
@@ -1286,9 +1283,7 @@ export class StreamService<
     return this._stream.interrupts;
   }
 
-  get toolCalls(): Signal<
-    _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[]
-  > {
+  get toolCalls(): Signal<SdkToolCallWithResult<DefaultToolCall>[]> {
     return this._stream.toolCalls;
   }
 
@@ -1301,11 +1296,11 @@ export class StreamService<
     return this._stream.queue;
   }
 
-  get subagents(): Map<string, ClassSubagentStreamInterface> {
+  get subagents(): Map<string, SubagentStreamInterface> {
     return this._stream.subagents;
   }
 
-  get activeSubagents(): ClassSubagentStreamInterface[] {
+  get activeSubagents(): SubagentStreamInterface[] {
     return this._stream.activeSubagents;
   }
 
@@ -1335,11 +1330,11 @@ export class StreamService<
       T extends Record<string, unknown> ? T : Record<string, unknown>,
       GetConfigurableType<Bag>
     >,
-  ): ReturnType<typeof this._stream.submit> {
+  ): Promise<void> {
     return this._stream.submit(values, options);
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     return this._stream.stop();
   }
 
@@ -1374,24 +1369,22 @@ export class StreamService<
         T extends Record<string, unknown> ? T : Record<string, unknown>
       >
     | undefined {
-    return this._stream.getMessagesMetadata(message, index);
+    return this._stream.getMessagesMetadata(message as Message, index);
   }
 
-  getToolCalls(
-    message: BaseMessage,
-  ): _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[] {
-    return this._stream.getToolCalls(message);
+  getToolCalls(message: BaseMessage): SdkToolCallWithResult<DefaultToolCall>[] {
+    return this._stream.getToolCalls(message as Message);
   }
 
-  getSubagent(toolCallId: string): ClassSubagentStreamInterface | undefined {
+  getSubagent(toolCallId: string): SubagentStreamInterface | undefined {
     return this._stream.getSubagent(toolCallId);
   }
 
-  getSubagentsByType(type: string): ClassSubagentStreamInterface[] {
+  getSubagentsByType(type: string): SubagentStreamInterface[] {
     return this._stream.getSubagentsByType(type);
   }
 
-  getSubagentsByMessage(messageId: string): ClassSubagentStreamInterface[] {
+  getSubagentsByMessage(messageId: string): SubagentStreamInterface[] {
     return this._stream.getSubagentsByMessage(messageId);
   }
 }
@@ -1442,7 +1435,7 @@ export type {
 } from "@langchain/langgraph-sdk/ui";
 
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
-  _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
+  SdkToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
 export type {
   ToolCallState,
   DefaultToolCall,
