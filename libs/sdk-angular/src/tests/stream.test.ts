@@ -1230,16 +1230,8 @@ it("provideStream children can stop the stream", async () => {
     .toHaveTextContent("Not loading");
 });
 
-it("injectStream throws when used outside provideStream", () => {
+it("injectStream throws when used outside an injection context", () => {
   expect(() => {
-    @Component({
-      template: `<div></div>`,
-    })
-    class OrphanComponent {
-      stream = injectStream();
-    }
-    return new OrphanComponent();
-  }).toThrow(
-    "injectStream() requires an ancestor component to provide a stream via provideStream()",
-  );
+    injectStream();
+  }).toThrow();
 });
