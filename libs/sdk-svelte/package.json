@@ -37,7 +37,6 @@
     "@vitest/browser": "^4.0.18",
     "@vitest/browser-webdriverio": "^4.0.18",
     "deepagents": "^1.8.3",
-    "esbuild": "^0.25.12",
     "eslint": "^8.33.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.6.0",
