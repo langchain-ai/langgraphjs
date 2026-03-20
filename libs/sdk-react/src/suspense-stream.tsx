@@ -105,7 +105,9 @@ function getOrCreateCacheEntry<StateType extends Record<string, unknown>>(
  * </ErrorBoundary>
  * ```
  */
-export function invalidateSuspenseCache(cache: SuspenseCache = defaultSuspenseCache): void {
+export function invalidateSuspenseCache(
+  cache: SuspenseCache = defaultSuspenseCache,
+): void {
   cache.clear();
 }
 

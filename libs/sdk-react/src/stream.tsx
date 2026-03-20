@@ -347,6 +347,8 @@ export function useStream<
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
   // Keep implementation stable for the lifetime of this hook instance.
-  const [useSelectedStream] = useState(() => selectStreamImplementation(options));
+  const [useSelectedStream] = useState(() =>
+    selectStreamImplementation(options),
+  );
   return useSelectedStream(options);
 }
