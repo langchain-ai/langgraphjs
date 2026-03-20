@@ -2574,12 +2574,6 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
-      '@langchain/scripts':
-        specifier: ^0.1.4
-        version: 0.1.4
-      '@tsconfig/recommended':
-        specifier: ^1.0.13
-        version: 1.0.13
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0
@@ -2655,9 +2649,6 @@ importers:
       '@langchain/langgraph-sdk':
         specifier: workspace:*
         version: link:../sdk
-      uuid:
-        specifier: ^11.1.0
-        version: 11.1.0
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.11
@@ -2674,21 +2665,12 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
-      '@langchain/scripts':
-        specifier: ^0.1.4
-        version: 0.1.4
-      '@tsconfig/recommended':
-        specifier: ^1.0.13
-        version: 1.0.13
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.14)
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.12.0
         version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
@@ -2740,9 +2722,6 @@ importers:
       react:
         specifier: ^19.2.4
         version: 19.2.4
-      react-dom:
-        specifier: ^19.2.4
-        version: 19.2.4(react@19.2.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -2780,15 +2759,9 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
-      '@langchain/scripts':
-        specifier: ^0.1.4
-        version: 0.1.4
       '@sveltejs/vite-plugin-svelte':
         specifier: ^6.2.4
         version: 6.2.4(svelte@5.53.9)(vite@8.0.0(@types/node@25.4.0)(esbuild@0.27.3)(jiti@2.6.1)(sass@1.97.3)(tsx@4.21.0)(yaml@2.8.2))
-      '@tsconfig/recommended':
-        specifier: ^1.0.13
-        version: 1.0.13
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0
@@ -2874,12 +2847,6 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
-      '@langchain/scripts':
-        specifier: ^0.1.4
-        version: 0.1.4
-      '@tsconfig/recommended':
-        specifier: ^1.0.13
-        version: 1.0.13
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0

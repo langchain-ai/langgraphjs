@@ -1,6 +1,6 @@
 # @langchain/react
 
-React SDK for building AI-powered applications with [LangChain](https://js.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraphjs/). Provides a `useStream` hook that manages streaming, state, branching, and interrupts out of the box.
+React SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` hook that manages streaming, state, branching, and interrupts out of the box.
 
 ## Installation
 
@@ -8,7 +8,7 @@ React SDK for building AI-powered applications with [LangChain](https://js.langc
 npm install @langchain/react @langchain/core
 ```
 
-**Peer dependencies:** `react` (^18 || ^19), `react-dom` (^18 || ^19), `@langchain/core` (^1.0.1)
+**Peer dependencies:** `react` (^18 || ^19), `@langchain/core` (^1.1.27)
 
 ## Quick Start
 
@@ -329,29 +329,9 @@ function Chat() {
 
 The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
-## React UI (Advanced)
-
-The `@langchain/react/react-ui` sub-package provides utilities for rendering server-defined UI components:
-
-```tsx
-import { useStreamContext, LoadExternalComponent } from "@langchain/react/react-ui";
-import { uiMessageReducer } from "@langchain/react/react-ui";
-import type { UIMessage } from "@langchain/react/react-ui";
-```
-
-- **`useStreamContext`** - Access the stream context from deeply nested components
-- **`LoadExternalComponent`** - Render UI components defined by the server
-- **`uiMessageReducer`** - Reducer for managing UI message state
-
-A server-side helper is also available:
-
-```tsx
-import { typedUi } from "@langchain/react/react-ui/server";
-```
-
 ## Playground
 
-For complete end-to-end examples with full agentic UIs, visit the [LangGraph Playground](https://github.com/langchain-ai/langgraphjs).
+For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).
 
 ## License
 
