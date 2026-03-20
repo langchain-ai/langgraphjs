@@ -10,14 +10,13 @@ import {
   StreamManager,
   type EventStreamEvent,
 } from "./manager.js";
-import { MessageTupleManager, toMessageClass } from "./messages.js";
+import { MessageTupleManager, toMessageClass , ensureMessageInstances, ensureHistoryMessageInstances } from "./messages.js";
 import { PendingRunsTracker } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
 import { extractInterrupts } from "./interrupts.js";
 import { unique, filterStream } from "./utils.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import { ensureMessageInstances, ensureHistoryMessageInstances } from "./messages.js";
 import type {
   UseStreamThread,
   AnyStreamOptions,
@@ -106,13 +105,18 @@ export class StreamOrchestrator<
 > {
   // --- Type aliases for internal use ---
   private declare _updateType: GetUpdateType<Bag, StateType>;
+
   private declare _customType: GetCustomEventType<Bag>;
+
   private declare _interruptType: GetInterruptType<Bag>;
+
   private declare _configurableType: GetConfigurableType<Bag>;
 
   // --- Managers ---
   readonly stream: StreamManager<StateType, Bag>;
+
   readonly messageManager: MessageTupleManager;
+
   readonly pendingRuns: PendingRunsTracker<
     StateType,
     SubmitOptions<StateType, GetConfigurableType<Bag>>
@@ -120,25 +124,39 @@ export class StreamOrchestrator<
 
   // --- Internal state ---
   private _threadId: string | undefined;
+
   private _threadIdPromise: Promise<string> | null = null;
+
   private _threadIdStreaming: string | null = null;
+
   private _history: UseStreamThread<StateType>;
+
   private _branch: string = "";
+
   private _submitting = false;
 
   // --- Config ---
   private readonly options: AnyStreamOptions<StateType, Bag>;
+
   private readonly accessors: OrchestratorAccessors;
+
   readonly historyLimit: boolean | number;
+
   private readonly runMetadataStorage: RunMetadataStorage | null;
+
   private readonly callbackStreamModes: StreamMode[];
+
   private readonly trackedStreamModes: StreamMode[] = [];
 
   // --- Subscription ---
   private listeners = new Set<() => void>();
+
   private _version = 0;
+
   private _streamUnsub: (() => void) | null = null;
+
   private _queueUnsub: (() => void) | null = null;
+
   private _disposed = false;
 
   constructor(
@@ -600,7 +618,7 @@ export class StreamOrchestrator<
   // ---------------------------------------------------------------------------
 
   stop = (): void => {
-    this.stream.stop(this.historyValues, {
+    void this.stream.stop(this.historyValues, {
       onStop: (args) => {
         if (this.runMetadataStorage && this._threadId) {
           const runId = this.runMetadataStorage.getItem(

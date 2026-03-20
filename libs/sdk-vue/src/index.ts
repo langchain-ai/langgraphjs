@@ -141,7 +141,7 @@ function useStreamLGP<
   );
 
   // Auto-reconnect
-  let shouldReconnect = orchestrator.shouldReconnect;
+  let {shouldReconnect} = orchestrator;
   if (shouldReconnect) {
     orchestrator.tryReconnect();
   }

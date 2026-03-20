@@ -7,8 +7,7 @@ import {
   StreamManager,
   type EventStreamEvent,
 } from "./manager.js";
-import { MessageTupleManager, toMessageClass } from "./messages.js";
-import { ensureMessageInstances } from "./messages.js";
+import { MessageTupleManager, toMessageClass , ensureMessageInstances } from "./messages.js";
 import { extractInterrupts } from "./interrupts.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type {
@@ -53,20 +52,26 @@ export class CustomStreamOrchestrator<
 > {
   // --- Managers ---
   readonly stream: StreamManager<StateType, Bag>;
+
   readonly messageManager: MessageTupleManager;
 
   // --- Internal state ---
   private _threadId: string | null;
+
   private _branch: string = "";
 
   // --- Config ---
   private readonly options: AnyStreamCustomOptions<StateType, Bag>;
+
   private readonly historyValues: StateType;
 
   // --- Subscription ---
   private listeners = new Set<() => void>();
+
   private _version = 0;
+
   private _streamUnsub: (() => void) | null = null;
+
   private _disposed = false;
 
   constructor(options: AnyStreamCustomOptions<StateType, Bag>) {
@@ -281,7 +286,7 @@ export class CustomStreamOrchestrator<
   // ---------------------------------------------------------------------------
 
   stop = (): void => {
-    this.stream.stop(this.historyValues, { onStop: this.options.onStop });
+    void this.stream.stop(this.historyValues, { onStop: this.options.onStop });
   };
 
   // ---------------------------------------------------------------------------
@@ -396,6 +401,6 @@ export class CustomStreamOrchestrator<
     this._disposed = true;
     this._streamUnsub?.();
     this._streamUnsub = null;
-    this.stream.stop(this.historyValues, { onStop: this.options.onStop });
+    void this.stream.stop(this.historyValues, { onStop: this.options.onStop });
   };
 }

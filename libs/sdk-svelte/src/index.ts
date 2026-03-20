@@ -1,5 +1,5 @@
 import { writable, derived, fromStore } from "svelte/store";
-import { onDestroy } from "svelte";
+import { onDestroy , setContext, getContext } from "svelte";
 
 import type {
   BaseMessage,
@@ -30,12 +30,11 @@ import {
 } from "@langchain/langgraph-sdk";
 import { useStreamCustom } from "./stream.custom.js";
 
+
 export { FetchStreamTransport };
 export { provideStream, getStream } from "./context.js";
 
 const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
-
-import { setContext, getContext } from "svelte";
 
 /**
  * Provides a `useStream` return value to all descendant components via
@@ -246,7 +245,7 @@ function useStreamLGP<
   });
 
   // Auto-reconnect
-  let shouldReconnect = orchestrator.shouldReconnect;
+  let {shouldReconnect} = orchestrator;
   if (shouldReconnect) {
     const reconnected = orchestrator.tryReconnect();
     if (reconnected) shouldReconnect = false;

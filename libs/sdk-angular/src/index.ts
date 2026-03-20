@@ -283,7 +283,7 @@ export function useStreamLGP<
   });
 
   // Auto-reconnect
-  const shouldReconnect = orchestrator.shouldReconnect;
+  const {shouldReconnect} = orchestrator;
   let hasReconnected = false;
 
   effect(() => {
