@@ -53,7 +53,6 @@
     "langchain": "^1.2.30",
     "prettier": "^3.8.1",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
     "vitest-browser-react": "^2.0.5",
@@ -62,8 +61,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.27",
-    "react": "^18 || ^19",
-    "react-dom": "^18 || ^19"
+    "react": "^18 || ^19"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -78,30 +76,6 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
-      }
-    },
-    "./react-ui": {
-      "input": "./src/react-ui/index.ts",
-      "typedoc": "./src/react-ui/index.ts",
-      "import": {
-        "types": "./dist/react-ui/index.d.ts",
-        "default": "./dist/react-ui/index.js"
-      },
-      "require": {
-        "types": "./dist/react-ui/index.d.cts",
-        "default": "./dist/react-ui/index.cjs"
-      }
-    },
-    "./react-ui/server": {
-      "input": "./src/react-ui/server/index.ts",
-      "typedoc": "./src/react-ui/server/index.ts",
-      "import": {
-        "types": "./dist/react-ui/server/index.d.ts",
-        "default": "./dist/react-ui/server/index.js"
-      },
-      "require": {
-        "types": "./dist/react-ui/server/index.d.cts",
-        "default": "./dist/react-ui/server/index.cjs"
       }
     },
     "./package.json": "./package.json"
