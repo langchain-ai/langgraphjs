@@ -412,10 +412,10 @@ When multiple components need access to the same stream (a message list, a heade
 <script lang="ts">
   import { getStream } from "@langchain/svelte";
 
-  const { messages } = getStream();
+  const stream = getStream();
 </script>
 
-{#each $messages as msg (msg.id)}
+{#each stream.messages as msg (msg.id)}
   <div>{msg.content}</div>
 {/each}
 ```
@@ -425,18 +425,18 @@ When multiple components need access to the same stream (a message list, a heade
 <script lang="ts">
   import { getStream } from "@langchain/svelte";
 
-  const { submit, isLoading } = getStream();
+  const stream = getStream();
   let input = $state("");
 
   function send() {
-    submit({ messages: [{ type: "human", content: input }] });
+    stream.submit({ messages: [{ type: "human", content: input }] });
     input = "";
   }
 </script>
 
 <form onsubmit={send}>
   <textarea bind:value={input}></textarea>
-  <button disabled={$isLoading} type="submit">Send</button>
+  <button disabled={stream.isLoading} type="submit">Send</button>
 </form>
 ```
 
@@ -445,15 +445,15 @@ When multiple components need access to the same stream (a message list, a heade
 <script lang="ts">
   import { getStream } from "@langchain/svelte";
 
-  const { isLoading, error } = getStream();
+  const stream = getStream();
 </script>
 
 <header>
   <h1>Chat</h1>
-  {#if $isLoading}
+  {#if stream.isLoading}
     <span>Thinking...</span>
   {/if}
-  {#if $error}
+  {#if stream.error}
     <span>Error occurred</span>
   {/if}
 </header>

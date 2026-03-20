@@ -62,10 +62,10 @@ export function provideStream<
  * <script lang="ts">
  *   import { getStream } from "@langchain/svelte";
  *
- *   const { messages } = getStream();
+ *   const stream = getStream();
  * </script>
  *
- * {#each $messages as msg (msg.id)}
+ * {#each stream.messages as msg (msg.id)}
  *   <div>{msg.content}</div>
  * {/each}
  * ```
@@ -76,18 +76,18 @@ export function provideStream<
  * <script lang="ts">
  *   import { getStream } from "@langchain/svelte";
  *
- *   const { submit, isLoading } = getStream();
+ *   const stream = getStream();
  *   let input = $state("");
  *
  *   function send() {
- *     submit({ messages: [{ type: "human", content: input }] });
+ *     stream.submit({ messages: [{ type: "human", content: input }] });
  *     input = "";
  *   }
  * </script>
  *
  * <form onsubmit={send}>
  *   <textarea bind:value={input}></textarea>
- *   <button disabled={$isLoading} type="submit">Send</button>
+ *   <button disabled={stream.isLoading} type="submit">Send</button>
  * </form>
  * ```
  */
