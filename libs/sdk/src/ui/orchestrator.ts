@@ -848,7 +848,8 @@ export class StreamOrchestrator<
       },
       {
         getMessages: (value: StateType) => this.#getMessages(value),
-        setMessages: (current: StateType, messages: Message[]) => this.#setMessages(current, messages),
+        setMessages: (current: StateType, messages: Message[]) =>
+          this.#setMessages(current, messages),
         initialValues: this.historyValues,
         callbacks: this.#options,
         onSuccess: async () => {
@@ -1004,7 +1005,8 @@ export class StreamOrchestrator<
       },
       {
         getMessages: (value: StateType) => this.#getMessages(value),
-        setMessages: (current: StateType, messages: Message[]) => this.#setMessages(current, messages),
+        setMessages: (current: StateType, messages: Message[]) =>
+          this.#setMessages(current, messages),
         initialValues: this.historyValues,
         callbacks: this.#options,
 
