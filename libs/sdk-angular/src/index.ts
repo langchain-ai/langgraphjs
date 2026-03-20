@@ -1,4 +1,4 @@
-import { signal, computed, effect } from "@angular/core";
+import { signal, computed, effect, Injectable } from "@angular/core";
 import type { Signal, WritableSignal } from "@angular/core";
 import type {
   BaseMessage,
@@ -946,6 +946,60 @@ export function useStreamLGP<
     },
   };
 }
+
+type UseStreamReturn<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> = AngularSignalWrap<
+  WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
+>;
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface, @typescript-eslint/no-unsafe-declaration-merging
+interface StreamService<T, Bag extends BagTemplate> extends UseStreamReturn<
+  T,
+  Bag
+> {}
+
+/**
+ * Injectable Angular service that wraps {@link useStream}.
+ *
+ * Extend this class with your own `@Injectable()` service and call
+ * `super(options)` in the constructor:
+ *
+ * ```ts
+ * @Injectable({ providedIn: 'root' })
+ * export class ChatService extends StreamService {
+ *   constructor() {
+ *     super({ assistantId: 'agent', apiUrl: '...' });
+ *   }
+ * }
+ * ```
+ *
+ * The service exposes the same signals and methods as `useStream`
+ * (e.g. `values`, `messages`, `isLoading`, `submit`, `stop`).
+ *
+ * Must be created within an Angular injection context (via DI or
+ * `runInInjectionContext`).
+ */
+/* eslint-disable no-redeclare, @typescript-eslint/no-unsafe-declaration-merging */
+@Injectable()
+class StreamService<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> {
+  constructor(
+    options:
+      | ResolveStreamOptions<T, InferBag<T, Bag>>
+      | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream = useStream(options as any);
+    Object.defineProperties(this, Object.getOwnPropertyDescriptors(stream));
+  }
+}
+/* eslint-enable no-redeclare, @typescript-eslint/no-unsafe-declaration-merging */
+
+export { StreamService };
 
 export type {
   BaseStream,
