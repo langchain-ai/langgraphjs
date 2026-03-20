@@ -397,9 +397,7 @@ describe("stream.values contains the expected agent state", () => {
     expectTypeOf(stream.values.preferences.theme).toEqualTypeOf<
       "light" | "dark"
     >();
-    expectTypeOf(
-      stream.values.preferences.language,
-    ).toEqualTypeOf<string>();
+    expectTypeOf(stream.values.preferences.language).toEqualTypeOf<string>();
   });
 
   test("agent with custom state + middleware: both are merged", () => {

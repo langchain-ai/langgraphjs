@@ -273,9 +273,7 @@ export function useStreamCustom<
   const emptyEntries = writable<never[]>([]);
   const emptySize = writable(0);
 
-  const subagentsStore = derived(subagentVersion, () =>
-    stream.getSubagents(),
-  );
+  const subagentsStore = derived(subagentVersion, () => stream.getSubagents());
   const activeSubagentsStore = derived(subagentVersion, () =>
     stream.getActiveSubagents(),
   );

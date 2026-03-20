@@ -903,9 +903,7 @@ function useStreamLGP<
     return undefined;
   }
 
-  const subagentsStore = derived(subagentVersion, () =>
-    stream.getSubagents(),
-  );
+  const subagentsStore = derived(subagentVersion, () => stream.getSubagents());
   const activeSubagentsStore = derived(subagentVersion, () =>
     stream.getActiveSubagents(),
   );

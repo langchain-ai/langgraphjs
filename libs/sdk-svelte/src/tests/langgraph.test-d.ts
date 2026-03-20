@@ -278,15 +278,11 @@ describe("graph: stream.values has correct state type", () => {
     expectTypeOf(stream.values.summary).toEqualTypeOf<string>();
     expectTypeOf(stream.values.tags).toEqualTypeOf<string[]>();
 
-    expectTypeOf(stream.values.parsedData.entities).toEqualTypeOf<
-      string[]
-    >();
+    expectTypeOf(stream.values.parsedData.entities).toEqualTypeOf<string[]>();
     expectTypeOf(stream.values.parsedData.sentiment).toEqualTypeOf<
       "positive" | "negative" | "neutral"
     >();
-    expectTypeOf(
-      stream.values.parsedData.confidence,
-    ).toEqualTypeOf<number>();
+    expectTypeOf(stream.values.parsedData.confidence).toEqualTypeOf<number>();
   });
 });
 
