@@ -312,6 +312,142 @@ export class ChatComponent {
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
 
+## Service Pattern
+
+For projects that prefer Angular's dependency injection, `StreamService` provides an `@Injectable()` base class that wraps `useStream`. Extend it with your own service to enable DI, testability, and shared state across components:
+
+```typescript
+import { Injectable, Component, inject } from "@angular/core";
+import { StreamService } from "@langchain/angular";
+import type { BaseMessage } from "langchain";
+
+interface ChatState {
+  messages: BaseMessage[];
+}
+
+@Injectable({ providedIn: "root" })
+export class ChatService extends StreamService<ChatState> {
+  constructor() {
+    super({
+      assistantId: "agent",
+      apiUrl: "http://localhost:2024",
+    });
+  }
+}
+
+@Component({
+  standalone: true,
+  template: `
+    <div>
+      @for (msg of chat.messages(); track msg.id ?? $index) {
+        <div>{{ str(msg.content) }}</div>
+      }
+
+      <button
+        [disabled]="chat.isLoading()"
+        (click)="onSubmit()"
+      >
+        Send
+      </button>
+    </div>
+  `,
+})
+export class ChatComponent {
+  chat = inject(ChatService);
+
+  str(v: unknown) {
+    return typeof v === "string" ? v : JSON.stringify(v);
+  }
+
+  onSubmit() {
+    void this.chat.submit({
+      messages: [{ type: "human", content: "Hello!" }],
+    });
+  }
+}
+```
+
+The service exposes the same signals and methods as `useStream` (`values`, `messages`, `isLoading`, `submit`, `stop`, etc.).
+
+### Shared State Across Components
+
+Because the service is provided through DI, multiple components can inject the same instance and share stream state:
+
+```typescript
+@Component({
+  standalone: true,
+  selector: "app-message-list",
+  template: `
+    @for (msg of chat.messages(); track msg.id ?? $index) {
+      <div>{{ msg.content }}</div>
+    }
+  `,
+})
+export class MessageListComponent {
+  chat = inject(ChatService);
+}
+
+@Component({
+  standalone: true,
+  imports: [MessageListComponent],
+  template: `
+    <app-message-list />
+    <button (click)="onSubmit()">Send</button>
+  `,
+})
+export class ChatPageComponent {
+  chat = inject(ChatService);
+
+  onSubmit() {
+    void this.chat.submit({
+      messages: [{ type: "human", content: "Hello!" }],
+    });
+  }
+}
+```
+
+### Custom Transport with StreamService
+
+```typescript
+import { Injectable } from "@angular/core";
+import { StreamService, FetchStreamTransport } from "@langchain/angular";
+import type { BaseMessage } from "langchain";
+
+@Injectable({ providedIn: "root" })
+export class CustomChatService extends StreamService<{
+  messages: BaseMessage[];
+}> {
+  constructor() {
+    super({
+      transport: new FetchStreamTransport({
+        url: "https://my-api.example.com/stream",
+      }),
+      threadId: null,
+      onThreadId: (id) => console.log("Thread created:", id),
+    });
+  }
+}
+```
+
+### Testing
+
+Services can be mocked or overridden in tests using Angular's standard DI testing utilities:
+
+```typescript
+import { TestBed } from "@angular/core/testing";
+
+const mockService = {
+  messages: signal([]),
+  isLoading: signal(false),
+  submit: vi.fn(),
+  stop: vi.fn(),
+};
+
+TestBed.configureTestingModule({
+  providers: [{ provide: ChatService, useValue: mockService }],
+});
+```
+
 ## Custom Transport
 
 Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
