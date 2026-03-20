@@ -1,6 +1,7 @@
 import {
   computed,
   onScopeDispose,
+  reactive,
   ref,
   shallowRef,
   toValue,
@@ -272,12 +273,12 @@ function useStreamLGP<
     stop: orchestrator.stop,
     joinStream: orchestrator.joinStream,
 
-    queue: {
+    queue: reactive({
       entries: queueEntries,
       size: queueSize,
       cancel: orchestrator.cancelQueueItem,
       clear: orchestrator.clearQueue,
-    },
+    }),
 
     switchThread: orchestrator.switchThread,
 
