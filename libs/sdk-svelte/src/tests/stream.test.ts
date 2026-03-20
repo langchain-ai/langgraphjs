@@ -1282,7 +1282,5 @@ it("provideStream children can stop the stream", async () => {
 it("getStream throws when used outside provideStream", () => {
   expect(() => {
     getStream();
-  }).toThrow(
-    "getStream() requires a parent component to call provideStream()",
-  );
+  }).toThrow("getStream() requires a parent component to call provideStream()");
 });

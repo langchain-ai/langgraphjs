@@ -36,10 +36,7 @@ function SubmitButton({
   const { submit, stop } = useStreamContext<{ messages: Message[] }>();
   return (
     <div>
-      <button
-        data-testid="submit"
-        onClick={() => void submit(submitInput)}
-      >
+      <button data-testid="submit" onClick={() => void submit(submitInput)}>
         Send
       </button>
       <button data-testid="stop" onClick={() => void stop()}>

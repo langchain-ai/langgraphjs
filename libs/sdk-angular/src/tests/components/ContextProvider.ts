@@ -67,9 +67,7 @@ export class SubmitButtonComponent {
 @Component({
   selector: "app-context-provider",
   imports: [MessageListComponent, StatusBarComponent, SubmitButtonComponent],
-  providers: [
-    provideStream({ assistantId: "agent", apiUrl: serverUrl }),
-  ],
+  providers: [provideStream({ assistantId: "agent", apiUrl: serverUrl })],
   template: `
     <div>
       <app-message-list />

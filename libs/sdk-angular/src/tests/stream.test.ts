@@ -47,9 +47,7 @@ import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
 import { StreamServiceBasicComponent } from "./components/StreamServiceBasic.js";
 import { StreamServiceCustomTransportComponent } from "./components/StreamServiceCustomTransport.js";
 import { StreamServiceSharedComponent } from "./components/StreamServiceShared.js";
-import {
-  ContextProviderComponent,
-} from "./components/ContextProvider.js";
+import { ContextProviderComponent } from "./components/ContextProvider.js";
 import { injectStream, type UseStreamTransport } from "../index.js";
 
 declare module "vitest-browser-angular" {

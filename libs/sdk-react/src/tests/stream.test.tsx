@@ -1347,5 +1347,7 @@ it("useStreamContext throws when used outside StreamProvider", async () => {
   const screen = await render(<Orphan />);
   await expect
     .element(screen.getByTestId("result"))
-    .toHaveTextContent("useStreamContext must be used within a <StreamProvider>");
+    .toHaveTextContent(
+      "useStreamContext must be used within a <StreamProvider>",
+    );
 });

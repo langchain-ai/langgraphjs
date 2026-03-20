@@ -2875,5 +2875,7 @@ it("useStreamContext throws when used outside provideStream", async () => {
   const screen = render(Orphan);
   await expect
     .element(screen.getByTestId("result"))
-    .toHaveTextContent("useStreamContext() requires a parent component to call provideStream()");
+    .toHaveTextContent(
+      "useStreamContext() requires a parent component to call provideStream()",
+    );
 });
