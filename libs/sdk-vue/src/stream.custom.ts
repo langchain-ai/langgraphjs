@@ -1,11 +1,4 @@
-import {
-  onScopeDispose,
-  ref,
-  shallowRef,
-  toValue,
-  watch,
-  type MaybeRefOrGetter,
-} from "vue";
+import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import {
   StreamManager,
   MessageTupleManager,
@@ -28,20 +21,7 @@ import type {
   Interrupt,
   ThreadState,
 } from "@langchain/langgraph-sdk";
-
-type ReactiveOptionKeys =
-  | "assistantId"
-  | "apiUrl"
-  | "apiKey"
-  | "callerOptions"
-  | "defaultHeaders"
-  | "client"
-  | "threadId"
-  | "messagesKey";
-
-type VueReactiveOptions<T> = {
-  [K in keyof T]: K extends ReactiveOptionKeys ? MaybeRefOrGetter<T[K]> : T[K];
-};
+import type { VueReactiveOptions } from "./types.js";
 
 function createCustomTransportThreadState<
   StateType extends Record<string, unknown>,
