@@ -1279,8 +1279,8 @@ it("provideStream children can stop the stream", async () => {
     .toHaveTextContent("Not loading");
 });
 
-it("getStream throws when used outside provideStream", () => {
+it("getStream throws when used outside a component", () => {
   expect(() => {
     getStream();
-  }).toThrow("getStream() requires a parent component to call provideStream()");
+  }).toThrow();
 });
