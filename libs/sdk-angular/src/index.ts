@@ -6,27 +6,11 @@ import type {
   AIMessage as CoreAIMessage,
 } from "@langchain/core/messages";
 import {
-  StreamManager,
-  MessageTupleManager,
-  PendingRunsTracker,
-  filterStream,
-  getBranchContext,
-  getMessagesMetadataMap,
-  StreamError,
-  extractInterrupts,
-  toMessageClass,
+  StreamOrchestrator,
   ensureMessageInstances,
-  ensureHistoryMessageInstances,
-  type UseStreamThread,
-  type GetConfigurableType,
-  type GetCustomEventType,
-  type GetInterruptType,
-  type GetUpdateType,
   type MessageMetadata,
   type AnyStreamOptions,
   type SubmitOptions,
-  type EventStreamEvent,
-  type RunCallbackMeta,
   type ResolveStreamOptions,
   type ResolveStreamInterface,
   type InferBag,
@@ -35,6 +19,8 @@ import {
   type UseStreamCustomOptions,
   type SubagentStreamInterface,
   type HistoryWithBaseMessages,
+  type GetConfigurableType,
+  type GetInterruptType,
 } from "@langchain/langgraph-sdk/ui";
 
 import {
@@ -44,11 +30,9 @@ import {
   type Message,
   type Interrupt,
   type BagTemplate,
-  type ThreadState,
   type ToolCallWithResult as _ToolCallWithResult,
   type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
-import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
@@ -217,22 +201,6 @@ type AngularSignalWrap<T> = {
         : Signal<T[K]>;
 };
 
-function fetchHistory<StateType extends Record<string, unknown>>(
-  client: Client,
-  threadId: string,
-  options?: { limit?: boolean | number },
-) {
-  if (options?.limit === false) {
-    return client.threads.getState<StateType>(threadId).then((state) => {
-      if (state.checkpoint == null) return [];
-      return [state];
-    });
-  }
-
-  const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads.getHistory<StateType>(threadId, { limit });
-}
-
 export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
@@ -259,15 +227,6 @@ export function useStream(options: any): any {
   return useStreamLGP(options);
 }
 
-function resolveRunMetadataStorage(
-  reconnectOnMount: AnyStreamOptions["reconnectOnMount"],
-) {
-  if (typeof globalThis.window === "undefined") return null;
-  if (reconnectOnMount === true) return globalThis.window.sessionStorage;
-  if (typeof reconnectOnMount === "function") return reconnectOnMount();
-  return null;
-}
-
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends {
@@ -277,595 +236,136 @@ export function useStreamLGP<
     UpdateType?: unknown;
   } = BagTemplate,
 >(options: AnyStreamOptions<StateType, Bag>) {
-  type UpdateType = GetUpdateType<Bag, StateType>;
-  type CustomType = GetCustomEventType<Bag>;
-  type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
-
-  const runMetadataStorage = resolveRunMetadataStorage(
-    options.reconnectOnMount,
-  );
-
-  const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
-  };
-
-  const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return { ...current, [messagesKey]: messages };
-  };
-
-  const historyLimit =
-    typeof options.fetchStateHistory === "object" &&
-    options.fetchStateHistory != null
-      ? (options.fetchStateHistory.limit ?? false)
-      : (options.fetchStateHistory ?? false);
-
-  const threadId = signal<string | undefined>(undefined);
-  let threadIdPromise: Promise<string> | null = null;
+  type InterruptType = GetInterruptType<Bag>;
 
   const client = options.client ?? new Client({ apiUrl: options.apiUrl });
 
-  const history = signal<UseStreamThread<StateType>>({
-    data: undefined,
-    error: undefined,
-    isLoading: false,
-    mutate: async () => undefined,
+  const orchestrator = new StreamOrchestrator<StateType, Bag>(options, {
+    getClient: () => client,
+    getAssistantId: () => options.assistantId,
+    getMessagesKey: () => options.messagesKey ?? "messages",
   });
 
-  async function mutate(
-    mutateId?: string,
-  ): Promise<ThreadState<StateType>[] | undefined> {
-    const tid = mutateId ?? threadId();
-    if (!tid) return undefined;
-    try {
-      const data = await fetchHistory<StateType>(client, tid, {
-        limit: historyLimit,
-      });
-      history.set({
-        data,
-        error: undefined,
-        isLoading: false,
-        mutate,
-      });
-      return data;
-    } catch (err) {
-      history.update((prev) => ({
-        ...prev,
-        error: err,
-        isLoading: false,
-      }));
-      options.onError?.(err, undefined);
-      return undefined;
-    }
-  }
+  orchestrator.initThreadId(options.threadId ?? undefined);
 
-  history.update((prev) => ({ ...prev, mutate }));
-
-  const branch = signal<string>("");
-  const branchContext = computed(() =>
-    getBranchContext(branch(), history().data ?? undefined),
-  );
-
-  const messageManager = new MessageTupleManager();
-  const stream = new StreamManager<StateType, Bag>(messageManager, {
-    throttle: options.throttle ?? false,
-    subagentToolNames: options.subagentToolNames,
-    filterSubagentMessages: options.filterSubagentMessages,
-    toMessage: toMessageClass,
-  });
-
-  const pendingRuns = new PendingRunsTracker<
-    StateType,
-    SubmitOptions<StateType, ConfigurableType>
-  >();
-  const queueEntries = signal(pendingRuns.entries);
-  const queueSize = signal(pendingRuns.size);
-
-  const historyValues = computed(
-    () =>
-      branchContext().threadHead?.values ??
-      options.initialValues ??
-      ({} as StateType),
-  );
-
-  const historyError = computed(() => {
-    const error = branchContext().threadHead?.tasks?.at(-1)?.error;
-    if (error == null) return undefined;
-    try {
-      const parsed = JSON.parse(error) as unknown;
-      if (StreamError.isStructuredError(parsed)) return new StreamError(parsed);
-      return parsed;
-    } catch {
-      // do nothing
-    }
-    return error;
-  });
-
-  const streamValues = signal<StateType | null>(stream.values);
-  const streamError = signal<unknown>(stream.error);
-  const isLoading = signal(stream.isLoading);
-
-  const values = computed(() => streamValues() ?? historyValues());
-  const error = computed(
-    () => streamError() ?? historyError() ?? history().error,
-  );
-
-  const messageMetadata = computed(() =>
-    getMessagesMetadataMap({
-      initialValues: options.initialValues,
-      history: history().data,
-      getMessages,
-      branchContext: branchContext(),
-    }),
-  );
-
-  const subagentVersion = signal(0);
+  // Angular signals
+  const version = signal(0);
 
   effect((onCleanup) => {
-    const unsubscribe = stream.subscribe(() => {
-      streamValues.set(stream.values);
-      streamError.set(stream.error);
-      isLoading.set(stream.isLoading);
-      subagentVersion.update((v) => v + 1);
+    const unsubscribe = orchestrator.subscribe(() => {
+      version.update((v) => v + 1);
     });
-
     onCleanup(() => unsubscribe());
   });
 
-  pendingRuns.subscribe(() => {
-    queueEntries.set(pendingRuns.entries);
-    queueSize.set(pendingRuns.size);
-  });
-
+  // Subagent reconstruction
   effect((onCleanup) => {
-    const hvMessages = getMessages(historyValues());
+    void version();
+    const hvMessages = orchestrator.messages;
     const should =
       options.filterSubagentMessages &&
-      !isLoading() &&
-      !history().isLoading &&
+      !orchestrator.isLoading &&
+      !orchestrator.historyData.isLoading &&
       hvMessages.length > 0;
     if (should) {
-      stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
-      // Fetch internal messages for each subagent from their subgraph checkpoints.
-      // These messages are not in the main thread state but are persisted in the
-      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      const tid = threadId();
-      if (tid) {
-        const controller = new AbortController();
-        void stream.fetchSubagentHistory(client.threads, tid, {
-          messagesKey: options.messagesKey ?? "messages",
-          signal: controller.signal,
-        });
+      const controller = orchestrator.reconstructSubagentsIfNeeded();
+      if (controller) {
         onCleanup(() => controller.abort());
       }
     }
   });
 
-  function stop() {
-    return stream.stop(historyValues(), {
-      onStop: (args) => {
-        if (runMetadataStorage && threadId()) {
-          const tid = threadId()!;
-          const runId = runMetadataStorage.getItem(`lg:stream:${tid}`);
-          if (runId) void client.runs.cancel(tid, runId);
-          runMetadataStorage.removeItem(`lg:stream:${tid}`);
-        }
-
-        options.onStop?.(args);
-      },
-    });
-  }
-
-  function setBranch(value: string) {
-    branch.set(value);
-  }
-
-  function submitDirect(
-    values: StateType,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
-  ) {
-    const currentBranchContext = branchContext();
-
-    const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
-    branch.set(
-      checkpointId != null
-        ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
-        : "",
-    );
-
-    const includeImplicitBranch =
-      historyLimit === true || typeof historyLimit === "number";
-
-    const shouldRefetch = options.onFinish != null || includeImplicitBranch;
-
-    let checkpoint =
-      submitOptions?.checkpoint ??
-      (includeImplicitBranch
-        ? currentBranchContext.threadHead?.checkpoint
-        : undefined) ??
-      undefined;
-
-    if (submitOptions?.checkpoint === null) checkpoint = undefined;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
-    if (checkpoint != null) delete checkpoint.thread_id;
-
-    const streamResumable =
-      submitOptions?.streamResumable ?? !!runMetadataStorage;
-
-    let callbackMeta: RunCallbackMeta | undefined;
-    let rejoinKey: `lg:stream:${string}` | undefined;
-    let usableThreadId: string | undefined;
-
-    return stream.start(
-      async (signal) => {
-        usableThreadId = threadId();
-        if (!usableThreadId) {
-          const threadPromise = client.threads.create({
-            threadId: submitOptions?.threadId,
-            metadata: submitOptions?.metadata,
-          });
-
-          threadIdPromise = threadPromise.then((t) => t.thread_id);
-
-          const thread = await threadPromise;
-
-          usableThreadId = thread.thread_id;
-          threadId.set(usableThreadId);
-          options.onThreadId?.(usableThreadId);
-        }
-
-        const streamMode = new Set<StreamMode>([
-          ...(submitOptions?.streamMode ?? []),
-          "values",
-          "messages-tuple",
-          "updates",
-        ]);
-        if (options.onUpdateEvent) streamMode.add("updates");
-        if (options.onCustomEvent) streamMode.add("custom");
-        if (options.onCheckpointEvent) streamMode.add("checkpoints");
-        if (options.onTaskEvent) streamMode.add("tasks");
-        if ("onDebugEvent" in options && options.onDebugEvent)
-          streamMode.add("debug");
-        if ("onLangChainEvent" in options && options.onLangChainEvent)
-          streamMode.add("events");
-
-        stream.setStreamValues(() => {
-          const prev = { ...historyValues(), ...stream.values };
-
-          if (submitOptions?.optimisticValues != null) {
-            return {
-              ...prev,
-              ...(typeof submitOptions.optimisticValues === "function"
-                ? submitOptions.optimisticValues(prev)
-                : submitOptions.optimisticValues),
-            };
-          }
-
-          return { ...prev };
-        });
-
-        return client.runs.stream(usableThreadId!, options.assistantId, {
-          input: values as Record<string, unknown>,
-          config: submitOptions?.config,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
-
-          interruptBefore: submitOptions?.interruptBefore,
-          interruptAfter: submitOptions?.interruptAfter,
-          metadata: submitOptions?.metadata,
-          multitaskStrategy: submitOptions?.multitaskStrategy,
-          onCompletion: submitOptions?.onCompletion,
-          onDisconnect:
-            submitOptions?.onDisconnect ??
-            (streamResumable ? "continue" : "cancel"),
-
-          signal,
-
-          checkpoint,
-          streamMode: [...streamMode],
-          streamSubgraphs: submitOptions?.streamSubgraphs,
-          streamResumable,
-          durability: submitOptions?.durability,
-          onRunCreated(params) {
-            callbackMeta = {
-              run_id: params.run_id,
-              thread_id: params.thread_id ?? usableThreadId!,
-            };
-
-            if (runMetadataStorage) {
-              rejoinKey = `lg:stream:${usableThreadId}`;
-              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
-            }
-
-            options.onCreated?.(callbackMeta);
-          },
-        }) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
-      },
-      {
-        getMessages,
-        setMessages,
-
-        initialValues: historyValues(),
-        callbacks: options,
-
-        async onSuccess() {
-          if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch && usableThreadId) {
-            const newHistory = await mutate(usableThreadId);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          }
-          return undefined;
-        },
-        onError: (error) => {
-          options.onError?.(error, callbackMeta);
-          submitOptions?.onError?.(error, callbackMeta);
-        },
-        onFinish: () => {},
-      },
-    );
-  }
-
-  let submitting = false;
-
-  function drainQueue() {
-    if (!isLoading() && !submitting && pendingRuns.size > 0) {
-      const next = pendingRuns.shift();
-      if (next) {
-        submitting = true;
-        void joinStream(next.id).finally(() => {
-          submitting = false;
-          drainQueue();
-        });
-      }
-    }
-  }
-
+  // Queue draining
   effect(() => {
-    drainQueue();
+    void version();
+    orchestrator.drainQueue();
   });
 
-  async function submit(
-    values: StateType,
-    submitOptions?: SubmitOptions<StateType, ConfigurableType>,
-  ) {
-    if (stream.isLoading || submitting) {
-      const shouldAbort =
-        submitOptions?.multitaskStrategy === "interrupt" ||
-        submitOptions?.multitaskStrategy === "rollback";
-
-      if (shouldAbort) {
-        submitting = true;
-        try {
-          await submitDirect(values, submitOptions);
-        } finally {
-          submitting = false;
-        }
-        return;
-      }
-
-      let usableThreadId: string | undefined = threadId();
-      if (!usableThreadId && threadIdPromise) {
-        usableThreadId = await threadIdPromise;
-      }
-      if (usableThreadId) {
-        try {
-          const run = await client.runs.create(
-            usableThreadId,
-            options.assistantId,
-            {
-              input: values as Record<string, unknown>,
-              config: submitOptions?.config,
-              context: submitOptions?.context,
-              command: submitOptions?.command,
-              interruptBefore: submitOptions?.interruptBefore,
-              interruptAfter: submitOptions?.interruptAfter,
-              metadata: submitOptions?.metadata,
-              multitaskStrategy: "enqueue",
-              streamResumable: true,
-              streamSubgraphs: submitOptions?.streamSubgraphs,
-              durability: submitOptions?.durability,
-            },
-          );
-
-          pendingRuns.add({
-            id: run.run_id,
-            values: values as Partial<StateType> | null | undefined,
-            options: submitOptions,
-            createdAt: new Date(run.created_at),
-          });
-        } catch (error) {
-          options.onError?.(error, undefined);
-          submitOptions?.onError?.(error, undefined);
-        }
-        return;
-      }
-    }
-
-    submitting = true;
-    const result = submitDirect(values, submitOptions);
-    void Promise.resolve(result).finally(() => {
-      submitting = false;
-      drainQueue();
-    });
-    return result;
-  }
-
-  async function joinStream(
-    runId: string,
-    lastEventId?: string,
-    joinOptions?: {
-      streamMode?: StreamMode | StreamMode[];
-      filter?: (event: {
-        id?: string;
-        event: StreamEvent;
-        data: unknown;
-      }) => boolean;
-    },
-  ) {
-    // eslint-disable-next-line no-param-reassign
-    lastEventId ??= "-1";
-    const tid = threadId();
-    if (!tid) return;
-
-    const callbackMeta: RunCallbackMeta = {
-      thread_id: tid,
-      run_id: runId,
-    };
-
-    await stream.start(
-      async (signal: AbortSignal) => {
-        const rawStream = client.runs.joinStream(tid, runId, {
-          signal,
-          lastEventId,
-          streamMode: joinOptions?.streamMode,
-        }) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
-
-        return joinOptions?.filter != null
-          ? filterStream(rawStream, joinOptions.filter)
-          : rawStream;
-      },
-      {
-        getMessages,
-        setMessages,
-
-        initialValues: historyValues(),
-        callbacks: options,
-        async onSuccess() {
-          runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          const newHistory = await mutate(tid);
-          const lastHead = newHistory?.at(0);
-          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
-        },
-        onError(error) {
-          options.onError?.(error, callbackMeta);
-        },
-        onFinish() {},
-      },
-    );
-  }
-
-  const shouldReconnect = !!runMetadataStorage;
+  // Auto-reconnect
+  const shouldReconnect = orchestrator.shouldReconnect;
   let hasReconnected = false;
 
   effect(() => {
-    const tid = threadId();
+    void version();
+    const tid = orchestrator.threadId;
     if (
       !hasReconnected &&
       shouldReconnect &&
-      runMetadataStorage &&
       tid &&
-      !isLoading()
+      !orchestrator.isLoading
     ) {
-      const runId = runMetadataStorage.getItem(`lg:stream:${tid}`);
-      if (runId) {
-        hasReconnected = true;
-        void joinStream(runId);
-      }
+      const reconnected = orchestrator.tryReconnect();
+      if (reconnected) hasReconnected = true;
     }
   });
 
-  const messages = computed(() =>
-    ensureMessageInstances(getMessages(values())),
-  );
+  // Computed signals
+  const values = computed(() => {
+    void version();
+    return orchestrator.values;
+  });
 
-  const toolCalls = computed(() =>
-    getToolCallsWithResults(getMessages(values())),
-  );
+  const error = computed(() => {
+    void version();
+    return orchestrator.error;
+  });
 
-  function getToolCalls(message: Message) {
-    const allToolCalls = getToolCallsWithResults(getMessages(values()));
-    return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
-  }
+  const isLoading = signal(orchestrator.isLoading);
+  effect(() => {
+    void version();
+    isLoading.set(orchestrator.isLoading);
+  });
 
-  const interrupt = computed(() =>
-    extractInterrupts<InterruptType>(values(), {
-      isLoading: isLoading(),
-      threadState: branchContext().threadHead,
-      error: error(),
-    }),
-  );
+  const branch = signal<string>("");
+  effect(() => {
+    void version();
+    const b = orchestrator.branch;
+    if (branch() !== b) branch.set(b);
+  });
+
+  const messages = computed(() => {
+    void version();
+    return ensureMessageInstances(orchestrator.messages);
+  });
+
+  const toolCalls = computed(() => {
+    void version();
+    return orchestrator.toolCalls;
+  });
+
+  const interrupt = computed(() => {
+    void version();
+    return orchestrator.interrupt;
+  });
 
   const interrupts = computed((): Interrupt<InterruptType>[] => {
-    const vals = values();
-    if (
-      vals != null &&
-      "__interrupt__" in vals &&
-      Array.isArray(vals.__interrupt__)
-    ) {
-      const valueInterrupts = vals.__interrupt__;
-      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-      return valueInterrupts;
-    }
-
-    if (isLoading()) return [];
-
-    const allTasks = branchContext().threadHead?.tasks ?? [];
-    const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
-
-    if (allInterrupts.length > 0) {
-      return allInterrupts as Interrupt<InterruptType>[];
-    }
-
-    const next = branchContext().threadHead?.next ?? [];
-    if (!next.length || error() != null) return [];
-    return [{ when: "breakpoint" }];
+    void version();
+    return orchestrator.interrupts as Interrupt<InterruptType>[];
   });
 
   const historyList = computed(() => {
-    if (historyLimit === false) {
-      throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `history`",
-      );
-    }
-    return ensureHistoryMessageInstances(
-      branchContext().flatHistory,
-      options.messagesKey ?? "messages",
-    );
+    void version();
+    return orchestrator.flatHistory;
   });
 
-  const isThreadLoading = computed(
-    () => history().isLoading && history().data == null,
-  );
+  const isThreadLoading = computed(() => {
+    void version();
+    return orchestrator.isThreadLoading;
+  });
 
   const experimentalBranchTree = computed(() => {
-    if (historyLimit === false) {
-      throw new Error(
-        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
-      );
-    }
-    return branchContext().branchTree;
+    void version();
+    return orchestrator.experimental_branchTree;
   });
 
-  function getMessagesMetadata(
-    message: Message,
-    index?: number,
-  ): MessageMetadata<StateType> | undefined {
-    const streamMetadata = messageManager.get(message.id)?.metadata;
-    const historyMetadata = messageMetadata().find(
-      (m) => m.messageId === (message.id ?? index),
-    );
-
-    if (streamMetadata != null || historyMetadata != null) {
-      return {
-        ...historyMetadata,
-        streamMetadata,
-      } as MessageMetadata<StateType>;
-    }
-
-    return undefined;
-  }
+  const queueEntries = signal(orchestrator.queueEntries);
+  const queueSize = signal(orchestrator.queueSize);
+  effect(() => {
+    void version();
+    queueEntries.set(orchestrator.queueEntries);
+    queueSize.set(orchestrator.queueSize);
+  });
 
   return {
     assistantId: options.assistantId,
@@ -876,11 +376,13 @@ export function useStreamLGP<
     isLoading,
 
     branch,
-    setBranch,
+    setBranch: orchestrator.setBranch,
 
     messages,
     toolCalls,
-    getToolCalls,
+    getToolCalls(message: Message) {
+      return orchestrator.getToolCalls(message);
+    },
 
     interrupt,
     interrupts,
@@ -889,92 +391,45 @@ export function useStreamLGP<
     isThreadLoading,
     experimental_branchTree: experimentalBranchTree,
 
-    getMessagesMetadata,
+    getMessagesMetadata(
+      message: Message,
+      index?: number,
+    ): MessageMetadata<StateType> | undefined {
+      return orchestrator.getMessagesMetadata(message, index);
+    },
 
-    submit,
-    stop,
-    joinStream,
+    submit: orchestrator.submit as (
+      values: StateType,
+      submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+    ) => Promise<void>,
+    stop: orchestrator.stop,
+    joinStream: orchestrator.joinStream,
 
     queue: {
       entries: queueEntries,
       size: queueSize,
-      async cancel(id: string) {
-        const tid = threadId();
-        const removed = pendingRuns.remove(id);
-        if (removed && tid) {
-          await client.runs.cancel(tid, id);
-        }
-        return removed;
-      },
-      async clear() {
-        const tid = threadId();
-        const removed = pendingRuns.removeAll();
-        if (tid && removed.length > 0) {
-          await Promise.all(removed.map((e) => client.runs.cancel(tid!, e.id)));
-        }
-      },
+      cancel: orchestrator.cancelQueueItem,
+      clear: orchestrator.clearQueue,
     },
 
-    switchThread(newThreadId: string | null) {
-      const current = threadId() ?? null;
-      if (newThreadId !== current) {
-        const prevThreadId = threadId();
-        threadId.set(newThreadId ?? undefined);
-        stream.clear();
-
-        const removed = pendingRuns.removeAll();
-        if (prevThreadId && removed.length > 0) {
-          void Promise.all(
-            removed.map((e) => client.runs.cancel(prevThreadId, e.id)),
-          );
-        }
-
-        if (newThreadId != null) {
-          options.onThreadId?.(newThreadId);
-        }
-      }
-    },
+    switchThread: orchestrator.switchThread,
 
     get subagents() {
-      void subagentVersion();
-      return stream.getSubagents();
+      void version();
+      return orchestrator.subagents;
     },
     get activeSubagents() {
-      void subagentVersion();
-      return stream.getActiveSubagents();
+      void version();
+      return orchestrator.activeSubagents;
     },
-    getSubagent(toolCallId: string) {
-      return stream.getSubagent(toolCallId);
-    },
-    getSubagentsByType(type: string) {
-      return stream.getSubagentsByType(type);
-    },
-    getSubagentsByMessage(messageId: string) {
-      return stream.getSubagentsByMessage(messageId);
-    },
+    getSubagent: orchestrator.getSubagent,
+    getSubagentsByType: orchestrator.getSubagentsByType,
+    getSubagentsByMessage: orchestrator.getSubagentsByMessage,
   };
 }
 
 /**
  * Injectable Angular service that wraps {@link useStream}.
- *
- * Extend this class with your own `@Injectable()` service and call
- * `super(options)` in the constructor:
- *
- * ```ts
- * \@Injectable({ providedIn: 'root' })
- * export class ChatService extends StreamService {
- *   constructor() {
- *     super({ assistantId: 'agent', apiUrl: '...' });
- *   }
- * }
- * ```
- *
- * The service exposes the same signals and methods as `useStream`
- * (e.g. `values`, `messages`, `isLoading`, `submit`, `stop`).
- *
- * Must be created within an Angular injection context (via DI or
- * `runInInjectionContext`).
  */
 @Injectable()
 export class StreamService<

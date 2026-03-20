@@ -27,3 +27,8 @@ export {
   type QueueEntry,
   type QueueInterface,
 } from "./queue.js";
+export {
+  StreamOrchestrator,
+  type OrchestratorAccessors,
+} from "./orchestrator.js";
+export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
