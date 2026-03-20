@@ -1259,10 +1259,7 @@ interface StreamServiceInstance<
   client: Client;
   assistantId: string;
   submit(
-    values:
-      | AcceptBaseMessages<Exclude<T, null | undefined>>
-      | null
-      | undefined,
+    values: AcceptBaseMessages<Exclude<T, null | undefined>> | null | undefined,
     options?: SubmitOptions<
       T extends Record<string, unknown> ? T : Record<string, unknown>,
       GetConfigurableType<Bag>
@@ -1294,9 +1291,7 @@ interface StreamServiceInstance<
   getToolCalls(
     message: BaseMessage,
   ): _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[];
-  getSubagent(
-    toolCallId: string,
-  ): ClassSubagentStreamInterface | undefined;
+  getSubagent(toolCallId: string): ClassSubagentStreamInterface | undefined;
   getSubagentsByType(type: string): ClassSubagentStreamInterface[];
   getSubagentsByMessage(messageId: string): ClassSubagentStreamInterface[];
 }
