@@ -1,5 +1,6 @@
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 import { build, type Format } from "tsdown";
 import type { PackageJson } from "type-fest";
@@ -97,6 +98,8 @@ async function buildProject(
         : false,
   };
 
+  const plugins = await getSveltePlugins(pkg, path);
+
   await build({
     entry,
     clean,
@@ -116,6 +119,65 @@ async function buildProject(
     inputOptions: {
       cwd: path,
     },
+    plugins,
     ...buildChecks,
   });
+}
+
+/**
+ * For packages with `svelte` as a peer dependency, add a rolldown
+ * transform plugin that compiles `.svelte.ts` / `.svelte.js` modules
+ * via `svelte/compiler`'s `compileModule`.
+ */
+/**
+ * For packages with `svelte` as a peer dependency, add a rolldown
+ * transform plugin that compiles `.svelte.ts` / `.svelte.js` modules
+ * via `svelte/compiler`'s `compileModule`.
+ */
+async function getSveltePlugins(
+  pkg: PackageJson,
+  pkgPath: string,
+): Promise<{ name: string; transform: (code: string, id: string) => unknown }[]> {
+  if (!pkg.peerDependencies || !("svelte" in pkg.peerDependencies)) return [];
+
+  try {
+    const pkgRequire = createRequire(resolve(pkgPath, "package.json"));
+    const svelteCompilerPath = pkgRequire.resolve("svelte/compiler");
+    const esbuildPath = pkgRequire.resolve("esbuild");
+
+    const svelteCompiler = await import(svelteCompilerPath);
+    const compileModule = svelteCompiler.compileModule ?? svelteCompiler.default?.compileModule;
+    const esbuildMod = await import(esbuildPath);
+    const transformSync = esbuildMod.transformSync ?? esbuildMod.default?.transformSync;
+
+    if (!compileModule || !transformSync) return [];
+
+    return [
+      {
+        name: "svelte-runes",
+        transform(code: string, id: string) {
+          if (id.includes("node_modules")) return undefined;
+          if (!id.endsWith(".svelte.ts") && !id.endsWith(".svelte.js"))
+            return undefined;
+
+          const stripped = id.endsWith(".svelte.ts")
+            ? transformSync(code, {
+                loader: "ts",
+                format: "esm",
+                target: "esnext",
+              }).code
+            : code;
+
+          const result = compileModule(stripped, {
+            filename: id,
+            generate: "client",
+          });
+
+          return { code: result.js.code, map: result.js.map };
+        },
+      },
+    ];
+  } catch {
+    return [];
+  }
 }

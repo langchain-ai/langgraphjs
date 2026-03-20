@@ -6,7 +6,7 @@
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
     "build": "pnpm turbo build:internal --filter=@langchain/svelte",
-    "build:internal": "tsdown",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/svelte",
     "prepublish": "pnpm build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",
@@ -48,7 +48,6 @@
     "langchain": "^1.2.30",
     "prettier": "^3.8.1",
     "svelte": "^5.53.9",
-    "tsdown": "^0.21.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
     "vitest-browser-svelte": "^2.0.2",
