@@ -849,26 +849,26 @@ it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
 
 it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
   type StreamState = { messages: Message[] };
-  const streamTransport = vi.fn<
-    UseStreamTransport<StreamState>["stream"]
-  >(async () => {
-    async function* generate(): AsyncGenerator<{
-      event: string;
-      data: unknown;
-    }> {
-      yield {
-        event: "values",
-        data: {
-          messages: [
-            { id: "human-1", type: "human", content: "Hi" },
-            { id: "ai-1", type: "ai", content: "Hello!" },
-          ],
-        },
-      };
-    }
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
 
-    return generate();
-  });
+      return generate();
+    },
+  );
 
   function CustomTransportStreamSubgraphs() {
     const thread = useStreamCustom<StreamState>({
