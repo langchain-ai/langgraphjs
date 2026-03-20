@@ -1,6 +1,8 @@
 # @langchain/angular
 
-Angular SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` function that manages streaming, state, branching, and interrupts using Angular's Signals API.
+Angular SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides an `injectStream` function that manages streaming, state, branching, and interrupts using Angular's Signals API.
+
+> **Migration note:** `useStream` has been renamed to `injectStream` to follow Angular's `inject*` naming convention. `useStream` is still available as a deprecated alias for backwards compatibility.
 
 ## Installation
 
@@ -14,7 +16,7 @@ npm install @langchain/angular @langchain/core
 
 ```typescript
 import { Component } from "@angular/core";
-import { useStream } from "@langchain/angular";
+import { injectStream } from "@langchain/angular";
 
 @Component({
   standalone: true,
@@ -34,7 +36,7 @@ import { useStream } from "@langchain/angular";
   `,
 })
 export class ChatComponent {
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
@@ -51,7 +53,7 @@ export class ChatComponent {
 }
 ```
 
-## `useStream` Options
+## `injectStream` Options
 
 | Option | Type | Description |
 |---|---|---|
@@ -105,7 +107,7 @@ interface MyState {
 
 @Component({ /* ... */ })
 export class ChatComponent {
-  stream = useStream<MyState>({
+  stream = injectStream<MyState>({
     assistantId: "my-graph",
     apiUrl: "http://localhost:2024",
   });
@@ -119,7 +121,7 @@ import type { BaseMessage } from "langchain";
 
 @Component({ /* ... */ })
 export class ChatComponent {
-  stream = useStream<
+  stream = injectStream<
     { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
@@ -136,7 +138,7 @@ export class ChatComponent {
 ```typescript
 import { Component } from "@angular/core";
 import type { BaseMessage } from "langchain";
-import { useStream } from "@langchain/angular";
+import { injectStream } from "@langchain/angular";
 
 @Component({
   standalone: true,
@@ -158,7 +160,7 @@ import { useStream } from "@langchain/angular";
   `,
 })
 export class ChatComponent {
-  stream = useStream<
+  stream = injectStream<
     { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
@@ -188,7 +190,7 @@ Enable conversation branching with `fetchStateHistory: true`:
 
 ```typescript
 import { Component } from "@angular/core";
-import { useStream } from "@langchain/angular";
+import { injectStream } from "@langchain/angular";
 
 @Component({
   standalone: true,
@@ -211,7 +213,7 @@ import { useStream } from "@langchain/angular";
   `,
 })
 export class ChatComponent {
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
     fetchStateHistory: true,
@@ -257,7 +259,7 @@ When `submit()` is called while a stream is already active, the SDK automaticall
 
 ```typescript
 import { Component } from "@angular/core";
-import { useStream } from "@langchain/angular";
+import { injectStream } from "@langchain/angular";
 
 @Component({
   standalone: true,
@@ -285,7 +287,7 @@ import { useStream } from "@langchain/angular";
   `,
 })
 export class ChatComponent {
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
@@ -318,7 +320,7 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
 
 ```typescript
 import { Component } from "@angular/core";
-import { useStream, FetchStreamTransport } from "@langchain/angular";
+import { injectStream, FetchStreamTransport } from "@langchain/angular";
 import type { BaseMessage } from "langchain";
 
 @Component({
@@ -346,7 +348,7 @@ import type { BaseMessage } from "langchain";
   `,
 })
 export class ChatComponent {
-  stream = useStream<{ messages: BaseMessage[] }>({
+  stream = injectStream<{ messages: BaseMessage[] }>({
     transport: new FetchStreamTransport({
       url: "https://my-api.example.com/stream",
     }),
@@ -371,7 +373,7 @@ export class ChatComponent {
 }
 ```
 
-The custom transport interface returns the same properties as the standard `useStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+The custom transport interface returns the same properties as the standard `injectStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
 ## Playground
 

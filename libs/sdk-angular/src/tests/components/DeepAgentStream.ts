@@ -5,7 +5,10 @@ import {
   type BaseMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { injectStream, type ClassSubagentStreamInterface } from "../../index.js";
+import {
+  injectStream,
+  type ClassSubagentStreamInterface,
+} from "../../index.js";
 import type { DeepAgentGraph } from "../fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");

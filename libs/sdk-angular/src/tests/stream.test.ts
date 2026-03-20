@@ -729,7 +729,7 @@ it("switchThread to null clears messages", async () => {
     .toHaveTextContent("0");
 });
 
-it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
+it("injectStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
   const screen = await render(CustomStreamMethodsComponent);
 
   await expect.element(screen.getByTestId("branch")).toHaveTextContent("");
@@ -748,7 +748,7 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
     .toHaveTextContent("test-branch");
 });
 
-it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+it("injectStreamCustom forwards streamSubgraphs to custom transport", async () => {
   type StreamState = { messages: BaseMessage[] };
   const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
     async () => {

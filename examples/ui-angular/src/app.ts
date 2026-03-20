@@ -1,5 +1,5 @@
 import { Component, signal } from '@angular/core';
-import { useStream } from '@langchain/angular';
+import { injectStream } from '@langchain/angular';
 import { FormsModule } from '@angular/forms';
 import type { Message } from '@langchain/langgraph-sdk';
 
@@ -24,7 +24,7 @@ import type { Message } from '@langchain/langgraph-sdk';
 export class App {
   protected message = signal('');
 
-  protected stream = useStream({
+  protected stream = injectStream({
     assistantId: 'agent',
     apiUrl: 'http://localhost:2024',
   });
