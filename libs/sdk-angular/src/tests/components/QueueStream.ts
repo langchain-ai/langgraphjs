@@ -48,7 +48,11 @@ export class QueueStreamComponent {
   queueEntriesStr() {
     return this.stream.queue
       .entries()
-      .map((e) => e.values?.messages?.[0]?.content ?? "?")
+      .map((e) => {
+        const msgs = e.values?.messages;
+        const first = Array.isArray(msgs) ? msgs[0] : undefined;
+        return first?.content ?? "?";
+      })
       .join(",");
   }
 
