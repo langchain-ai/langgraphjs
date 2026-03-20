@@ -37,8 +37,13 @@ function isCustomOptions<
 
 type UseStreamImplementation = typeof useStreamLGP | typeof useStreamCustom;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function selectStreamImplementation(options: any): UseStreamImplementation {
+type AnyUseStreamOptions =
+  | UseStreamOptions<Record<string, unknown>, BagTemplate>
+  | UseStreamCustomOptions<Record<string, unknown>, BagTemplate>;
+
+function selectStreamImplementation(
+  options: AnyUseStreamOptions,
+): UseStreamImplementation {
   return isCustomOptions(options) ? useStreamCustom : useStreamLGP;
 }
 
