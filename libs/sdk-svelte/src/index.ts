@@ -1,6 +1,5 @@
-import { writable, derived, get } from "svelte/store";
-import type { Readable } from "svelte/store";
-import { onDestroy, onMount } from "svelte";
+import { writable, derived, get, fromStore } from "svelte/store";
+import { onDestroy, onMount, setContext, getContext } from "svelte";
 
 import type {
   BaseMessage,
@@ -53,6 +52,62 @@ import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport };
+export { provideStream, getStream } from "./context.js";
+
+const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
+
+/**
+ * Provides a `useStream` return value to all descendant components via
+ * Svelte's context API. Must be called during component initialisation
+ * (i.e. at the top level of a `<script>` block).
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   import { useStream, setStreamContext } from "@langchain/svelte";
+ *
+ *   const stream = useStream({ assistantId: "agent", apiUrl: "..." });
+ *   setStreamContext(stream);
+ * </script>
+ *
+ * <ChildComponent />
+ * ```
+ */
+export function setStreamContext<T extends ReturnType<typeof useStream>>(
+  stream: T,
+): T {
+  setContext(STREAM_CONTEXT_KEY, stream);
+  return stream;
+}
+
+/**
+ * Retrieves the `useStream` instance previously provided by a parent
+ * component via {@link setStreamContext}. Must be called during component
+ * initialisation.
+ *
+ * @throws If no stream context has been set by an ancestor component.
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   import { getStreamContext } from "@langchain/svelte";
+ *
+ *   const stream = getStreamContext();
+ * </script>
+ * ```
+ */
+export function getStreamContext<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>> {
+  const ctx = getContext(STREAM_CONTEXT_KEY);
+  if (!ctx) {
+    throw new Error(
+      "getStreamContext must be used within a component that has called setStreamContext",
+    );
+  }
+  return ctx as WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+}
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -87,15 +142,15 @@ export type ClassSubagentStreamInterface<
 };
 
 /**
- * Maps a stream interface to Svelte-reactive types:
- * - `messages` becomes `Readable<BaseMessage[]>`
+ * Maps a stream interface to Svelte 5-reactive types:
+ * - `messages` becomes `BaseMessage[]`
  * - `getMessagesMetadata` accepts `BaseMessage`
- * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Readable`
+ * - `toolCalls` uses `@langchain/core` message classes
  * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
- * - `queue` properties are individually mapped (stores → `Readable`, functions unchanged)
+ * - `queue` properties are plain values and functions
  * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
  * - Functions remain unchanged
- * - All other properties are wrapped in `Readable<T>` to match Svelte's store system
+ * - All other reactive properties are exposed as plain values via getters
  */
 type WithClassMessages<T> = {
   [K in keyof T as K extends
@@ -104,7 +159,7 @@ type WithClassMessages<T> = {
     | "getSubagentsByMessage"
     ? never
     : K]: K extends "messages"
-    ? Readable<BaseMessage[]>
+    ? BaseMessage[]
     : K extends "getMessagesMetadata"
       ? (
           message: BaseMessage,
@@ -112,8 +167,8 @@ type WithClassMessages<T> = {
         ) => MessageMetadata<Record<string, unknown>> | undefined
       : K extends "toolCalls"
         ? T[K] extends (infer TC)[]
-          ? Readable<ClassToolCallWithResult<TC>[]>
-          : Readable<T[K]>
+          ? ClassToolCallWithResult<TC>[]
+          : T[K]
         : K extends "getToolCalls"
           ? T[K] extends (message: infer _M) => (infer TC)[]
             ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
@@ -124,7 +179,7 @@ type WithClassMessages<T> = {
                   ...args: infer A
                 ) => infer R
                   ? (...args: A) => R
-                  : Readable<T[K][QK]>;
+                  : T[K][QK];
               }
             : K extends "client" | "assistantId"
               ? T[K]
@@ -157,10 +212,10 @@ type WithClassMessages<T> = {
                         ) => Ret
                       : T[K]
                     : K extends "history"
-                      ? Readable<HistoryWithBaseMessages<T[K]>>
+                      ? HistoryWithBaseMessages<T[K]>
                       : T[K] extends (...args: infer A) => infer R
                         ? (...args: A) => R
-                        : Readable<T[K]>;
+                        : T[K];
 } & ("subagents" extends keyof T
   ? {
       getSubagent: T extends {
@@ -388,10 +443,6 @@ function useStreamLGP<
     if ($should) {
       const hvMessages = getMessages(get(historyValues));
       stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
-      // Fetch internal messages for each subagent from their subgraph checkpoints.
-      // These messages are not in the main thread state but are persisted in the
-      // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      // Cancel any previous in-flight fetch before starting a new one.
       fetchController?.abort();
       fetchController = new AbortController();
       const tid = get(threadId);
@@ -852,27 +903,70 @@ function useStreamLGP<
     return undefined;
   }
 
+  const subagentsStore = derived(subagentVersion, () => stream.getSubagents());
+  const activeSubagentsStore = derived(subagentVersion, () =>
+    stream.getActiveSubagents(),
+  );
+
+  const valuesRef = fromStore(values);
+  const errorRef = fromStore(error);
+  const isLoadingRef = fromStore(isLoading);
+  const isThreadLoadingRef = fromStore(isThreadLoading);
+  const branchRef = fromStore(branch);
+  const messagesRef = fromStore(messages);
+  const toolCallsRef = fromStore(toolCalls);
+  const interruptRef = fromStore(interrupt);
+  const interruptsRef = fromStore(interrupts);
+  const historyListRef = fromStore(historyList);
+  const experimentalBranchTreeRef = fromStore(experimentalBranchTree);
+  const subagentsRef = fromStore(subagentsStore);
+  const activeSubagentsRef = fromStore(activeSubagentsStore);
+  const queueEntriesRef = fromStore(queueEntries);
+  const queueSizeRef = fromStore(queueSize);
+
   return {
     assistantId: options.assistantId,
     client,
 
-    values,
-    error,
-    isLoading,
-    isThreadLoading,
+    get values() {
+      return valuesRef.current;
+    },
+    get error() {
+      return errorRef.current;
+    },
+    get isLoading() {
+      return isLoadingRef.current;
+    },
+    get isThreadLoading() {
+      return isThreadLoadingRef.current;
+    },
 
-    branch,
+    get branch() {
+      return branchRef.current;
+    },
     setBranch,
 
-    messages,
-    toolCalls,
+    get messages() {
+      return messagesRef.current;
+    },
+    get toolCalls() {
+      return toolCallsRef.current;
+    },
     getToolCalls,
 
-    interrupt,
-    interrupts,
+    get interrupt() {
+      return interruptRef.current;
+    },
+    get interrupts() {
+      return interruptsRef.current;
+    },
 
-    history: historyList,
-    experimental_branchTree: experimentalBranchTree,
+    get history() {
+      return historyListRef.current;
+    },
+    get experimental_branchTree() {
+      return experimentalBranchTreeRef.current;
+    },
 
     getMessagesMetadata,
 
@@ -881,8 +975,12 @@ function useStreamLGP<
     joinStream,
 
     queue: {
-      entries: queueEntries,
-      size: queueSize,
+      get entries() {
+        return queueEntriesRef.current;
+      },
+      get size() {
+        return queueSizeRef.current;
+      },
       async cancel(id: string) {
         const tid = get(threadId);
         const removed = pendingRuns.remove(id);
@@ -920,10 +1018,12 @@ function useStreamLGP<
       }
     },
 
-    subagents: derived(subagentVersion, () => stream.getSubagents()),
-    activeSubagents: derived(subagentVersion, () =>
-      stream.getActiveSubagents(),
-    ),
+    get subagents() {
+      return subagentsRef.current;
+    },
+    get activeSubagents() {
+      return activeSubagentsRef.current;
+    },
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);
     },

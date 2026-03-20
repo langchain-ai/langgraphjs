@@ -2,7 +2,7 @@
   import type { Message } from "@langchain/langgraph-sdk";
   import { useStream } from "@langchain/svelte";
 
-  const { messages, submit } = useStream({
+  const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
@@ -11,7 +11,7 @@
   function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
 
-    submit(
+    stream.submit(
       { messages: [{ content, type: "human" }] },
       {
         optimisticValues: (prev) => ({
@@ -30,7 +30,7 @@
   <h1>Vite + Svelte</h1>
 
   <div>
-    {#each $messages as message}
+    {#each stream.messages as message}
       <div>{message.content}</div>
     {/each}
 

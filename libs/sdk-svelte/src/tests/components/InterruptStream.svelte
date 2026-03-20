@@ -14,7 +14,7 @@
     fetchStateHistory = false,
   }: Props = $props();
 
-  const { messages, interrupt, submit } = useStream<
+  const stream = useStream<
     { messages: Message[] },
     { InterruptType: { nodeName: string } }
   >({
@@ -26,7 +26,7 @@
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -34,15 +34,15 @@
       </div>
     {/each}
   </div>
-  {#if $interrupt}
+  {#if stream.interrupt}
     <div>
       <div data-testid="interrupt">
-        {$interrupt.when ?? $interrupt.value?.nodeName}
+        {stream.interrupt.when ?? stream.interrupt.value?.nodeName}
       </div>
       <button
         data-testid="resume"
         onclick={() =>
-          void submit(null as any, { command: { resume: "Resuming" } })}
+          void stream.submit(null as any, { command: { resume: "Resuming" } })}
       >
         Resume
       </button>
@@ -51,7 +51,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit(
+      void stream.submit(
         { messages: [{ content: "Hello", type: "human" }] } as any,
         { interruptBefore: ["beforeInterrupt"] },
       )}

@@ -1,4 +1,5 @@
 import type { LocatorSelectors } from "@vitest/browser/context";
+import { Component } from "@angular/core";
 import { Client } from "@langchain/langgraph-sdk";
 import type { BaseMessage } from "langchain";
 import { it, expect, vi, inject } from "vitest";
@@ -43,7 +44,11 @@ import { QueueOnCreatedComponent } from "./components/QueueOnCreated.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
 import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
-import type { UseStreamTransport } from "../index.js";
+import { StreamServiceBasicComponent } from "./components/StreamServiceBasic.js";
+import { StreamServiceCustomTransportComponent } from "./components/StreamServiceCustomTransport.js";
+import { StreamServiceSharedComponent } from "./components/StreamServiceShared.js";
+import { ContextProviderComponent } from "./components/ContextProvider.js";
+import { injectStream, type UseStreamTransport } from "../index.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1084,4 +1089,149 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+// StreamService tests
+it("StreamService: renders initial state correctly", async () => {
+  const screen = await render(StreamServiceBasicComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+  await expect.element(screen.getByTestId("error")).not.toBeInTheDocument();
+});
+
+it("StreamService: handles message submission and streaming", async () => {
+  const screen = await render(StreamServiceBasicComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("StreamService: handles stop functionality", async () => {
+  const screen = await render(StreamServiceBasicComponent);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("StreamService: works with custom transport", async () => {
+  const screen = await render(StreamServiceCustomTransportComponent);
+
+  await expect.element(screen.getByTestId("branch")).toHaveTextContent("");
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("message-0")).toHaveTextContent("Hi");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hello!");
+
+  await screen.getByTestId("set-branch").click();
+
+  await expect
+    .element(screen.getByTestId("branch"))
+    .toHaveTextContent("test-branch");
+});
+
+it("StreamService: shares state between parent and child components", async () => {
+  const screen = await render(StreamServiceSharedComponent);
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("parent-message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("child-message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("child-message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("parent-message-count"))
+    .toHaveTextContent("2");
+});
+
+// provideStream / injectStream context tests
+it("provideStream shares stream state across child components", async () => {
+  const screen = await render(ContextProviderComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("provideStream children can submit and receive messages", async () => {
+  const screen = await render(ContextProviderComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("provideStream children can stop the stream", async () => {
+  const screen = await render(ContextProviderComponent);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("injectStream throws when used outside an injection context", () => {
+  expect(() => {
+    injectStream();
+  }).toThrow();
 });

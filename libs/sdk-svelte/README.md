@@ -1,6 +1,6 @@
 # @langchain/svelte
 
-Svelte SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` function that manages streaming, state, branching, and interrupts using Svelte stores.
+Svelte SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` function that manages streaming, state, branching, and interrupts with a Svelte 5 runes-compatible reactive API.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Svelte SDK for building AI-powered applications with [Deep Agents](https://docs.
 npm install @langchain/svelte @langchain/core
 ```
 
-**Peer dependencies:** `svelte` (^4.0.0 || ^5.0.0), `@langchain/core` (^1.0.1)
+**Peer dependencies:** `svelte` (^5.0.0), `@langchain/core` (^1.0.1)
 
 ## Quick Start
 
@@ -16,26 +16,28 @@ npm install @langchain/svelte @langchain/core
 <script lang="ts">
   import { useStream } from "@langchain/svelte";
 
-  const { messages, submit, isLoading } = useStream({
+  const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
 </script>
 
 <div>
-  {#each $messages as msg, i (msg.id ?? i)}
+  {#each stream.messages as msg, i (msg.id ?? i)}
     <div>{msg.content}</div>
   {/each}
 
   <button
-    disabled={$isLoading}
+    disabled={stream.isLoading}
     onclick={() =>
-      void submit({ messages: [{ type: "human", content: "Hello!" }] })}
+      void stream.submit({ messages: [{ type: "human", content: "Hello!" }] })}
   >
     Send
   </button>
 </div>
 ```
+
+All reactive properties (`messages`, `isLoading`, `values`, etc.) are accessed directly on the returned object — no `$` prefix needed. Avoid destructuring reactive properties; use `stream.messages` instead of `const { messages } = stream` to keep reactivity intact.
 
 ## `useStream` Options
 
@@ -57,23 +59,23 @@ npm install @langchain/svelte @langchain/core
 
 ## Return Values
 
-Reactive properties are Svelte `writable` or `derived` stores. Access their values in templates with the `$` prefix.
+All reactive properties are exposed as getters on the returned object. They update automatically and can be read directly in Svelte 5 templates without the `$` prefix.
 
 | Property | Type | Description |
 |---|---|---|
-| `values` | `Readable<StateType>` | Current graph state. |
-| `messages` | `Readable<Message[]>` | Messages from the current state. |
-| `isLoading` | `Writable<boolean>` | Whether a stream is currently active. |
-| `error` | `Readable<unknown>` | The most recent error, if any. |
-| `interrupt` | `Readable<Interrupt \| undefined>` | Current interrupt requiring user input. |
-| `branch` | `Writable<string>` | Active branch identifier. |
+| `values` | `StateType` | Current graph state. |
+| `messages` | `BaseMessage[]` | Messages from the current state. |
+| `isLoading` | `boolean` | Whether a stream is currently active. |
+| `error` | `unknown` | The most recent error, if any. |
+| `interrupt` | `Interrupt \| undefined` | Current interrupt requiring user input. |
+| `branch` | `string` | Active branch identifier. |
 | `submit(values, options?)` | `function` | Submit new input to the graph. When called while a stream is active, the run is created on the server with `multitaskStrategy: "enqueue"` and queued automatically. |
 | `stop()` | `function` | Cancel the active stream. |
 | `setBranch(branch)` | `function` | Switch to a different conversation branch. |
 | `getMessagesMetadata(msg, index?)` | `function` | Get branching and checkpoint metadata for a message. |
 | `switchThread(id)` | `(id: string \| null) => void` | Switch to a different thread. Pass `null` to start a new thread on next submit. |
-| `queue.entries` | `Readable<ReadonlyArray<QueueEntry>>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
-| `queue.size` | `Writable<number>` | Number of pending runs on the server. |
+| `queue.entries` | `ReadonlyArray<QueueEntry>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
+| `queue.size` | `number` | Number of pending runs on the server. |
 | `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
 | `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
 
@@ -91,7 +93,7 @@ Provide your state type as a generic parameter:
     context?: string;
   }
 
-  const { messages, submit } = useStream<MyState>({
+  const stream = useStream<MyState>({
     assistantId: "my-graph",
     apiUrl: "http://localhost:2024",
   });
@@ -105,7 +107,7 @@ Provide your state type as a generic parameter:
   import { useStream } from "@langchain/svelte";
   import type { BaseMessage } from "langchain";
 
-  const { interrupt, submit } = useStream<
+  const stream = useStream<
     { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
@@ -122,7 +124,7 @@ Provide your state type as a generic parameter:
   import { useStream } from "@langchain/svelte";
   import type { BaseMessage } from "langchain";
 
-  const { messages, interrupt, submit } = useStream<
+  const stream = useStream<
     { messages: BaseMessage[] },
     { InterruptType: { question: string } }
   >({
@@ -132,14 +134,14 @@ Provide your state type as a generic parameter:
 </script>
 
 <div>
-  {#each $messages as msg, i (msg.id ?? i)}
+  {#each stream.messages as msg, i (msg.id ?? i)}
     <div>{msg.content}</div>
   {/each}
 
-  {#if $interrupt}
+  {#if stream.interrupt}
     <div>
-      <p>{$interrupt.value.question}</p>
-      <button onclick={() => void submit(null, { command: { resume: "Approved" } })}>
+      <p>{stream.interrupt.value.question}</p>
+      <button onclick={() => void stream.submit(null, { command: { resume: "Approved" } })}>
         Approve
       </button>
     </div>
@@ -147,7 +149,7 @@ Provide your state type as a generic parameter:
 
   <button
     onclick={() =>
-      void submit({ messages: [{ type: "human", content: "Hello" }] })}
+      void stream.submit({ messages: [{ type: "human", content: "Hello" }] })}
   >
     Send
   </button>
@@ -162,7 +164,7 @@ Enable conversation branching with `fetchStateHistory: true`:
 <script lang="ts">
   import { useStream } from "@langchain/svelte";
 
-  const { messages, submit, getMessagesMetadata, setBranch } = useStream({
+  const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
     fetchStateHistory: true,
@@ -170,27 +172,27 @@ Enable conversation branching with `fetchStateHistory: true`:
 </script>
 
 <div>
-  {#each $messages as msg, i (msg.id ?? i)}
-    {@const metadata = getMessagesMetadata(msg, i)}
+  {#each stream.messages as msg, i (msg.id ?? i)}
+    {@const metadata = stream.getMessagesMetadata(msg, i)}
     {@const branchOptions = metadata?.branchOptions}
-    {@const branch = metadata?.branch}
+    {@const currentBranch = metadata?.branch}
 
     <div>
       <p>{msg.content}</p>
 
-      {#if branchOptions && branch}
+      {#if branchOptions && currentBranch}
         <button onclick={() => {
-          const prev = branchOptions[branchOptions.indexOf(branch) - 1];
-          if (prev) setBranch(prev);
+          const prev = branchOptions[branchOptions.indexOf(currentBranch) - 1];
+          if (prev) stream.setBranch(prev);
         }}>
           Previous
         </button>
         <span>
-          {branchOptions.indexOf(branch) + 1} / {branchOptions.length}
+          {branchOptions.indexOf(currentBranch) + 1} / {branchOptions.length}
         </span>
         <button onclick={() => {
-          const next = branchOptions[branchOptions.indexOf(branch) + 1];
-          if (next) setBranch(next);
+          const next = branchOptions[branchOptions.indexOf(currentBranch) + 1];
+          if (next) stream.setBranch(next);
         }}>
           Next
         </button>
@@ -200,7 +202,7 @@ Enable conversation branching with `fetchStateHistory: true`:
 
   <button
     onclick={() =>
-      void submit({ messages: [{ type: "human", content: "Hello" }] })}
+      void stream.submit({ messages: [{ type: "human", content: "Hello" }] })}
   >
     Send
   </button>
@@ -215,39 +217,129 @@ When `submit()` is called while a stream is already active, the SDK automaticall
 <script lang="ts">
   import { useStream } from "@langchain/svelte";
 
-  const { messages, submit, isLoading, queue, switchThread } = useStream({
+  const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
-
-  const queueSize = queue.size;
-  const queueEntries = queue.entries;
 </script>
 
 <div>
-  {#each $messages as msg, i (msg.id ?? i)}
+  {#each stream.messages as msg, i (msg.id ?? i)}
     <div>{msg.content}</div>
   {/each}
 
-  {#if $queueSize > 0}
+  {#if stream.queue.size > 0}
     <div>
-      <p>{$queueSize} message(s) queued</p>
-      <button onclick={() => void queue.clear()}>Clear Queue</button>
+      <p>{stream.queue.size} message(s) queued</p>
+      <button onclick={() => void stream.queue.clear()}>Clear Queue</button>
     </div>
   {/if}
 
   <button
-    disabled={$isLoading}
+    disabled={stream.isLoading}
     onclick={() =>
-      void submit({ messages: [{ type: "human", content: "Hello!" }] })}
+      void stream.submit({ messages: [{ type: "human", content: "Hello!" }] })}
   >
     Send
   </button>
-  <button onclick={() => switchThread(null)}>New Thread</button>
+  <button onclick={() => stream.switchThread(null)}>New Thread</button>
 </div>
 ```
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
+
+## Stream Context
+
+Use `setStreamContext` and `getStreamContext` to share a single `useStream` instance across a component tree without prop drilling. This uses Svelte's built-in `setContext` / `getContext` under the hood.
+
+### Setting context in a parent
+
+Call `setStreamContext` during component initialisation to provide the stream to all descendants:
+
+```svelte
+<script lang="ts">
+  import { useStream, setStreamContext } from "@langchain/svelte";
+  import ChatMessages from "./ChatMessages.svelte";
+  import ChatInput from "./ChatInput.svelte";
+
+  const stream = useStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+  });
+
+  setStreamContext(stream);
+</script>
+
+<ChatMessages />
+<ChatInput />
+```
+
+### Consuming context in a child
+
+Call `getStreamContext` in any descendant to retrieve the stream. The returned value has the same shape and types as the `useStream` return value:
+
+```svelte
+<script lang="ts">
+  import { getStreamContext } from "@langchain/svelte";
+
+  const stream = getStreamContext();
+</script>
+
+{#each stream.messages as msg, i (msg.id ?? i)}
+  <div>{msg.content}</div>
+{/each}
+
+{#if stream.isLoading}
+  <p>Thinking…</p>
+{/if}
+```
+
+```svelte
+<script lang="ts">
+  import { getStreamContext } from "@langchain/svelte";
+
+  const stream = getStreamContext();
+
+  let input = $state("");
+</script>
+
+<form onsubmit={(e) => { e.preventDefault(); void stream.submit({ messages: [{ type: "human", content: input }] }); input = ""; }}>
+  <input bind:value={input} />
+  <button type="submit">Send</button>
+</form>
+```
+
+### Type safety
+
+`getStreamContext` accepts the same generic parameters as `useStream` so child components can be fully typed:
+
+```svelte
+<script lang="ts">
+  import { getStreamContext } from "@langchain/svelte";
+  import type { BaseMessage } from "@langchain/core/messages";
+
+  interface MyState {
+    messages: BaseMessage[];
+    context?: string;
+  }
+
+  const stream = getStreamContext<MyState>();
+</script>
+```
+
+`setStreamContext` returns the stream it was given, so you can inline both calls:
+
+```svelte
+<script lang="ts">
+  import { useStream, setStreamContext } from "@langchain/svelte";
+
+  const stream = setStreamContext(
+    useStream({ assistantId: "agent", apiUrl: "http://localhost:2024" }),
+  );
+</script>
+```
+
+> **Note:** Both functions must be called during component initialisation (i.e. at the top level of a `<script>` block), just like Svelte's own `setContext` / `getContext`. Calling `getStreamContext` without a parent `setStreamContext` throws an error.
 
 ## Custom Transport
 
@@ -258,14 +350,7 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
   import { useStream, FetchStreamTransport } from "@langchain/svelte";
   import type { BaseMessage } from "langchain";
 
-  const {
-    messages,
-    submit,
-    isLoading,
-    branch,
-    setBranch,
-    getMessagesMetadata,
-  } = useStream<{ messages: BaseMessage[] }>({
+  const stream = useStream<{ messages: BaseMessage[] }>({
     transport: new FetchStreamTransport({
       url: "https://my-api.example.com/stream",
     }),
@@ -275,8 +360,8 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
 </script>
 
 <div>
-  {#each $messages as msg, i (msg.id ?? i)}
-    {@const metadata = getMessagesMetadata(msg, i)}
+  {#each stream.messages as msg, i (msg.id ?? i)}
+    {@const metadata = stream.getMessagesMetadata(msg, i)}
     <div>
       <p>{msg.content}</p>
       {#if metadata?.streamMetadata}
@@ -285,12 +370,12 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
     </div>
   {/each}
 
-  <p>Current branch: {$branch}</p>
+  <p>Current branch: {stream.branch}</p>
 
   <button
-    disabled={$isLoading}
+    disabled={stream.isLoading}
     onclick={() =>
-      void submit({ messages: [{ type: "human", content: "Hello!" }] })}
+      void stream.submit({ messages: [{ type: "human", content: "Hello!" }] })}
   >
     Send
   </button>
@@ -298,6 +383,96 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
 ```
 
 The custom transport interface returns the same properties as the standard `useStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+
+## Sharing State with `provideStream`
+
+When multiple components need access to the same stream (a message list, a header, an input bar), use `provideStream` and `getStream` to share a single stream instance via Svelte's context API:
+
+```svelte
+<!-- ChatContainer.svelte -->
+<script lang="ts">
+  import { provideStream } from "@langchain/svelte";
+  import ChatHeader from "./ChatHeader.svelte";
+  import MessageList from "./MessageList.svelte";
+  import MessageInput from "./MessageInput.svelte";
+
+  provideStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+  });
+</script>
+
+<ChatHeader />
+<MessageList />
+<MessageInput />
+```
+
+```svelte
+<!-- MessageList.svelte -->
+<script lang="ts">
+  import { getStream } from "@langchain/svelte";
+
+  const stream = getStream();
+</script>
+
+{#each stream.messages as msg (msg.id)}
+  <div>{msg.content}</div>
+{/each}
+```
+
+```svelte
+<!-- MessageInput.svelte -->
+<script lang="ts">
+  import { getStream } from "@langchain/svelte";
+
+  const stream = getStream();
+  let input = $state("");
+
+  function send() {
+    stream.submit({ messages: [{ type: "human", content: input }] });
+    input = "";
+  }
+</script>
+
+<form onsubmit={send}>
+  <textarea bind:value={input}></textarea>
+  <button disabled={stream.isLoading} type="submit">Send</button>
+</form>
+```
+
+```svelte
+<!-- ChatHeader.svelte -->
+<script lang="ts">
+  import { getStream } from "@langchain/svelte";
+
+  const stream = getStream();
+</script>
+
+<header>
+  <h1>Chat</h1>
+  {#if stream.isLoading}
+    <span>Thinking...</span>
+  {/if}
+  {#if stream.error}
+    <span>Error occurred</span>
+  {/if}
+</header>
+```
+
+### Multiple Agents
+
+Nest `provideStream` calls for multi-agent scenarios — Svelte's context scoping ensures each subtree gets its own stream:
+
+```svelte
+<!-- ResearchPanel.svelte -->
+<script lang="ts">
+  import { provideStream } from "@langchain/svelte";
+  provideStream({ assistantId: "researcher", apiUrl: "http://localhost:2024" });
+</script>
+
+<MessageList />
+<MessageInput />
+```
 
 ## Playground
 

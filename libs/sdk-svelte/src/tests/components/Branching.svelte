@@ -8,7 +8,7 @@
 
   const { apiUrl, assistantId = "agent" }: Props = $props();
 
-  const { submit, messages, getMessagesMetadata, setBranch } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
     fetchStateHistory: true,
@@ -17,8 +17,8 @@
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
-      {@const metadata = getMessagesMetadata(msg, i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
+      {@const metadata = stream.getMessagesMetadata(msg, i)}
       {@const checkpoint =
         metadata?.firstSeenState?.parent_checkpoint ?? undefined}
       {@const text =
@@ -26,20 +26,20 @@
           ? msg.content
           : JSON.stringify(msg.content)}
       {@const branchOptions = metadata?.branchOptions}
-      {@const branch = metadata?.branch}
+      {@const currentBranch = metadata?.branch}
       {@const branchIndex =
-        branchOptions && branch ? branchOptions.indexOf(branch) : -1}
+        branchOptions && currentBranch ? branchOptions.indexOf(currentBranch) : -1}
 
       <div data-testid={`message-${i}`}>
         <div data-testid={`content-${i}`}>{text}</div>
 
-        {#if branchOptions && branch}
+        {#if branchOptions && currentBranch}
           <div data-testid={`branch-nav-${i}`}>
             <button
               data-testid={`prev-${i}`}
               onclick={() => {
                 const prevBranch = branchOptions[branchIndex - 1];
-                if (prevBranch) setBranch(prevBranch);
+                if (prevBranch) stream.setBranch(prevBranch);
               }}
             >
               Previous
@@ -51,7 +51,7 @@
               data-testid={`next-${i}`}
               onclick={() => {
                 const nextBranch = branchOptions[branchIndex + 1];
-                if (nextBranch) setBranch(nextBranch);
+                if (nextBranch) stream.setBranch(nextBranch);
               }}
             >
               Next
@@ -63,7 +63,7 @@
           <button
             data-testid={`fork-${i}`}
             onclick={() =>
-              void submit(
+              void stream.submit(
                 {
                   messages: [
                     { type: "human", content: `Fork: ${text}` },
@@ -79,7 +79,7 @@
         {#if msg.type === "ai"}
           <button
             data-testid={`regenerate-${i}`}
-            onclick={() => void submit(undefined as any, { checkpoint })}
+            onclick={() => void stream.submit(undefined as any, { checkpoint })}
           >
             Regenerate
           </button>
@@ -90,7 +90,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit({
+      void stream.submit({
         messages: [{ content: "Hello", type: "human" }],
       } as any)}
   >

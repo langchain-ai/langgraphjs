@@ -1,6 +1,6 @@
 {
   "name": "@langchain/svelte",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Svelte integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -55,7 +55,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.27",
-    "svelte": "^4.0.0 || ^5.0.0"
+    "svelte": "^5.0.0"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

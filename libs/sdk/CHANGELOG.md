@@ -4,11 +4,11 @@
 
 ### Patch Changes
 
-- [#2199](https://github.com/langchain-ai/langgraphjs/pull/2199) [`2b77530`](https://github.com/langchain-ai/langgraphjs/commit/2b775302b6d212e72af1d169cddf6e13e6f4ddad) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - Support `onFinish` callback in custom transport, ensuring it is called when the stream completes.
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Support `onFinish` callback in custom transport, ensuring it is called when the stream completes.
 
-- [#2191](https://github.com/langchain-ai/langgraphjs/pull/2191) [`963db6f`](https://github.com/langchain-ai/langgraphjs/commit/963db6fbc775649bd63f6abb74c9c90e3f455bd5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
 
-- [#2215](https://github.com/langchain-ai/langgraphjs/pull/2215) [`a55b6fe`](https://github.com/langchain-ai/langgraphjs/commit/a55b6fe3a0e34dc15f6b2967e9a050ecfe161a98) Thanks [@Albert-Gao](https://github.com/Albert-Gao)! - Forward streamSubgraphs in custom transports
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Forward streamSubgraphs in custom transports
 
 ## 1.7.4
 

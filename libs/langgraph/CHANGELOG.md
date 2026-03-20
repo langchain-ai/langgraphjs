@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Updated dependencies [[`963db6f`](https://github.com/langchain-ai/langgraphjs/commit/963db6fbc775649bd63f6abb74c9c90e3f455bd5)]:
+- Updated dependencies [[`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634)]:
   - @langchain/langgraph@1.2.4
 
 ## 1.0.25

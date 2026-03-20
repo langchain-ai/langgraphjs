@@ -1,18 +1,24 @@
 # @langchain/react
 
-## 0.1.4
+## 0.2.0
+
+### Minor Changes
+
+- [#2224](https://github.com/langchain-ai/langgraphjs/pull/2224) [`2cb6edd`](https://github.com/langchain-ai/langgraphjs/commit/2cb6edd890d8ac0eb8d99a6e44e1f19b88b9e203) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(react): add `useSuspenseStream` hook for React Suspense / Error Boundary integration
+
+- [#2223](https://github.com/langchain-ai/langgraphjs/pull/2223) [`09b9b60`](https://github.com/langchain-ai/langgraphjs/commit/09b9b60fe5acf57d76cda19dbced995bda748204) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: add provider/context patterns for React, Vue, Angular, and Svelte SDKs
 
 ### Patch Changes
 
-- [#2199](https://github.com/langchain-ai/langgraphjs/pull/2199) [`2b77530`](https://github.com/langchain-ai/langgraphjs/commit/2b775302b6d212e72af1d169cddf6e13e6f4ddad) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - Support `onFinish` callback in custom transport, ensuring it is called when the stream completes.
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Support `onFinish` callback in custom transport, ensuring it is called when the stream completes.
 
-- [#2191](https://github.com/langchain-ai/langgraphjs/pull/2191) [`963db6f`](https://github.com/langchain-ai/langgraphjs/commit/963db6fbc775649bd63f6abb74c9c90e3f455bd5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
 
-- [#2214](https://github.com/langchain-ai/langgraphjs/pull/2214) [`bd02965`](https://github.com/langchain-ai/langgraphjs/commit/bd02965cdf63cca1b88f3fa34506d548b559de64) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(react/vue/svelte/angular): clean up Readme and dev deps
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(react/vue/svelte/angular): clean up Readme and dev deps
 
-- [#2215](https://github.com/langchain-ai/langgraphjs/pull/2215) [`a55b6fe`](https://github.com/langchain-ai/langgraphjs/commit/a55b6fe3a0e34dc15f6b2967e9a050ecfe161a98) Thanks [@Albert-Gao](https://github.com/Albert-Gao)! - Forward streamSubgraphs in custom transports
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Forward streamSubgraphs in custom transports
 
-- Updated dependencies [[`2b77530`](https://github.com/langchain-ai/langgraphjs/commit/2b775302b6d212e72af1d169cddf6e13e6f4ddad), [`963db6f`](https://github.com/langchain-ai/langgraphjs/commit/963db6fbc775649bd63f6abb74c9c90e3f455bd5), [`a55b6fe`](https://github.com/langchain-ai/langgraphjs/commit/a55b6fe3a0e34dc15f6b2967e9a050ecfe161a98)]:
+- Updated dependencies [[`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634)]:
   - @langchain/langgraph-sdk@1.7.5
 
 ## 0.1.3

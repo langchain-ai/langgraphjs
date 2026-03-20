@@ -314,6 +314,142 @@ export class ChatComponent {
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
 
+## Service Pattern
+
+For projects that prefer Angular's dependency injection, `StreamService` provides an `@Injectable()` base class that wraps `useStream`. Extend it with your own service to enable DI, testability, and shared state across components:
+
+```typescript
+import { Injectable, Component, inject } from "@angular/core";
+import { StreamService } from "@langchain/angular";
+import type { BaseMessage } from "langchain";
+
+interface ChatState {
+  messages: BaseMessage[];
+}
+
+@Injectable({ providedIn: "root" })
+export class ChatService extends StreamService<ChatState> {
+  constructor() {
+    super({
+      assistantId: "agent",
+      apiUrl: "http://localhost:2024",
+    });
+  }
+}
+
+@Component({
+  standalone: true,
+  template: `
+    <div>
+      @for (msg of chat.messages(); track msg.id ?? $index) {
+        <div>{{ str(msg.content) }}</div>
+      }
+
+      <button
+        [disabled]="chat.isLoading()"
+        (click)="onSubmit()"
+      >
+        Send
+      </button>
+    </div>
+  `,
+})
+export class ChatComponent {
+  chat = inject(ChatService);
+
+  str(v: unknown) {
+    return typeof v === "string" ? v : JSON.stringify(v);
+  }
+
+  onSubmit() {
+    void this.chat.submit({
+      messages: [{ type: "human", content: "Hello!" }],
+    });
+  }
+}
+```
+
+The service exposes the same signals and methods as `useStream` (`values`, `messages`, `isLoading`, `submit`, `stop`, etc.).
+
+### Shared State Across Components
+
+Because the service is provided through DI, multiple components can inject the same instance and share stream state:
+
+```typescript
+@Component({
+  standalone: true,
+  selector: "app-message-list",
+  template: `
+    @for (msg of chat.messages(); track msg.id ?? $index) {
+      <div>{{ msg.content }}</div>
+    }
+  `,
+})
+export class MessageListComponent {
+  chat = inject(ChatService);
+}
+
+@Component({
+  standalone: true,
+  imports: [MessageListComponent],
+  template: `
+    <app-message-list />
+    <button (click)="onSubmit()">Send</button>
+  `,
+})
+export class ChatPageComponent {
+  chat = inject(ChatService);
+
+  onSubmit() {
+    void this.chat.submit({
+      messages: [{ type: "human", content: "Hello!" }],
+    });
+  }
+}
+```
+
+### Custom Transport with StreamService
+
+```typescript
+import { Injectable } from "@angular/core";
+import { StreamService, FetchStreamTransport } from "@langchain/angular";
+import type { BaseMessage } from "langchain";
+
+@Injectable({ providedIn: "root" })
+export class CustomChatService extends StreamService<{
+  messages: BaseMessage[];
+}> {
+  constructor() {
+    super({
+      transport: new FetchStreamTransport({
+        url: "https://my-api.example.com/stream",
+      }),
+      threadId: null,
+      onThreadId: (id) => console.log("Thread created:", id),
+    });
+  }
+}
+```
+
+### Testing
+
+Services can be mocked or overridden in tests using Angular's standard DI testing utilities:
+
+```typescript
+import { TestBed } from "@angular/core/testing";
+
+const mockService = {
+  messages: signal([]),
+  isLoading: signal(false),
+  submit: vi.fn(),
+  stop: vi.fn(),
+};
+
+TestBed.configureTestingModule({
+  providers: [{ provide: ChatService, useValue: mockService }],
+});
+```
+
 ## Custom Transport
 
 Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
@@ -374,6 +510,127 @@ export class ChatComponent {
 ```
 
 The custom transport interface returns the same properties as the standard `injectStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+
+## Sharing State with `provideStream`
+
+When multiple components need the same stream (a message list, a header, an input bar), use `provideStream` and `injectStream` to share a single stream instance via Angular's dependency injection:
+
+```typescript
+import { Component } from "@angular/core";
+import { provideStream, injectStream } from "@langchain/angular";
+
+@Component({
+  selector: "app-chat-container",
+  providers: [provideStream({ assistantId: "agent", apiUrl: "http://localhost:2024" })],
+  template: `
+    <app-chat-header />
+    <app-message-list />
+    <app-message-input />
+  `,
+})
+export class ChatContainerComponent {}
+
+@Component({
+  selector: "app-chat-header",
+  template: `
+    <header>
+      <h1>Chat</h1>
+      @if (stream.isLoading()) {
+        <span>Thinking...</span>
+      }
+      @if (stream.error()) {
+        <span>Error occurred</span>
+      }
+    </header>
+  `,
+})
+export class ChatHeaderComponent {
+  stream = injectStream();
+}
+
+@Component({
+  selector: "app-message-list",
+  template: `
+    @for (msg of stream.messages(); track msg.id ?? $index) {
+      <div>{{ str(msg.content) }}</div>
+    }
+  `,
+})
+export class MessageListComponent {
+  stream = injectStream();
+
+  str(v: unknown) {
+    return typeof v === "string" ? v : JSON.stringify(v);
+  }
+}
+
+@Component({
+  selector: "app-message-input",
+  template: `
+    <button
+      [disabled]="stream.isLoading()"
+      (click)="onSubmit()"
+    >Send</button>
+  `,
+})
+export class MessageInputComponent {
+  stream = injectStream();
+
+  onSubmit() {
+    void this.stream.submit({
+      messages: [{ type: "human", content: "Hello!" }],
+    });
+  }
+}
+```
+
+### App-Level Configuration with `provideStreamDefaults`
+
+Set default configuration for all `useStream` and `injectStream` calls application-wide:
+
+```typescript
+// app.config.ts
+import { ApplicationConfig } from "@angular/core";
+import { provideStreamDefaults } from "@langchain/angular";
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideStreamDefaults({
+      apiUrl: "http://localhost:2024",
+    }),
+  ],
+};
+```
+
+Then in components, `apiUrl` is inherited automatically:
+
+```typescript
+@Component({
+  providers: [provideStream({ assistantId: "agent" })],
+  template: `...`,
+})
+export class ChatComponent {}
+```
+
+### Multiple Agents
+
+Use separate `provideStream` entries on different components — Angular's hierarchical injector ensures each subtree gets its own isolated stream:
+
+```typescript
+@Component({
+  selector: "app-research-panel",
+  providers: [provideStream({ assistantId: "researcher", apiUrl: "http://localhost:2024" })],
+  template: `<app-message-list /> <app-message-input />`,
+})
+export class ResearchPanelComponent {}
+
+@Component({
+  selector: "app-writer-panel",
+  providers: [provideStream({ assistantId: "writer", apiUrl: "http://localhost:2024" })],
+  template: `<app-message-list /> <app-message-input />`,
+})
+export class WriterPanelComponent {}
+```
 
 ## Playground
 
