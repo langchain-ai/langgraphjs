@@ -195,6 +195,30 @@ export interface UseStream<
   >;
 }
 
+/**
+ * Return type for {@link useSuspenseStream}.
+ *
+ * Identical to {@link UseStream} but without `isLoading`, `error`, and
+ * `isThreadLoading` (those states are handled by Suspense / Error Boundaries).
+ * An `isStreaming` flag is provided instead to indicate whether tokens are
+ * currently being received from the server.
+ */
+export type UseSuspenseStream<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
+> = Omit<
+  UseStream<StateType, Bag, SubagentStates>,
+  "isLoading" | "error" | "isThreadLoading"
+> & {
+  /**
+   * Whether the stream is currently receiving data from the server.
+   * Unlike Suspense-based loading, streaming is incremental and the
+   * component stays rendered throughout.
+   */
+  isStreaming: boolean;
+};
+
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,

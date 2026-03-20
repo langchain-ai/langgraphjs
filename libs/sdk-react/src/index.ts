@@ -8,10 +8,15 @@ import type {
 } from "@langchain/langgraph-sdk";
 
 export { useStream, type ClassSubagentStreamInterface } from "./stream.js";
+export {
+  useSuspenseStream,
+  invalidateSuspenseCache,
+} from "./suspense-stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
 // Legacy exports - kept for backward compatibility
 export type {
   UseStream,
+  UseSuspenseStream,
   UseStreamCustom,
   SubagentStream,
   SubagentStreamInterface,
