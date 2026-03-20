@@ -22,7 +22,7 @@ import {
   END,
 } from "@langchain/langgraph";
 import type { Message } from "@langchain/langgraph-sdk";
-import { useSuspenseStream } from "../index.js";
+import { createSuspenseCache, useSuspenseStream } from "../index.js";
 
 const SimpleGraphSchema = new StateSchema({
   messages: MessagesValue,
@@ -125,5 +125,17 @@ describe("useSuspenseStream: works with compiled graphs", () => {
     });
 
     expectTypeOf(stream).not.toHaveProperty("isLoading");
+  });
+});
+
+describe("useSuspenseStream: suspense cache option", () => {
+  test("accepts a custom suspense cache", () => {
+    const suspenseCache = createSuspenseCache();
+    const stream = useSuspenseStream<{ messages: Message[] }>({
+      assistantId: "agent",
+      suspenseCache,
+    });
+
+    expectTypeOf(stream.isStreaming).toEqualTypeOf<boolean>();
   });
 });

@@ -1,7 +1,7 @@
 import { Component } from "@angular/core";
 import type { BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -23,7 +23,7 @@ const serverUrl = inject("serverUrl");
   `,
 })
 export class StreamMetadataComponent {
-  stream = useStream({ assistantId: "agent", apiUrl: serverUrl });
+  stream = injectStream({ assistantId: "agent", apiUrl: serverUrl });
 
   str(v: unknown) {
     return typeof v === "string" ? v : JSON.stringify(v);

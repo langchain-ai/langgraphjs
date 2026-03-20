@@ -1,7 +1,7 @@
 import { Component } from "@angular/core";
 import { Client } from "@langchain/langgraph-sdk";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -41,7 +41,7 @@ const client = new Client({
   `,
 })
 export class OnRequestComponent {
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: serverUrl,
     client,

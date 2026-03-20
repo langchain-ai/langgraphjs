@@ -1,5 +1,6 @@
 import {
   computed,
+  inject,
   onScopeDispose,
   reactive,
   ref,
@@ -40,6 +41,7 @@ import {
 
 import { useStreamCustom } from "./stream.custom.js";
 import type { VueReactiveOptions } from "./types.js";
+import { LANGCHAIN_OPTIONS, type LangChainPluginOptions } from "./context.js";
 
 export { FetchStreamTransport };
 export type { VueReactiveOptions } from "./types.js";
@@ -60,12 +62,14 @@ function useStreamLGP<
     UpdateType?: unknown;
   } = BagTemplate,
 >(options: VueReactiveOptions<AnyStreamOptions<StateType, Bag>>) {
+  const pluginOptions: LangChainPluginOptions = inject(LANGCHAIN_OPTIONS, {});
+
   const client = computed(() => {
-    const c = toValue(options.client);
+    const c = toValue(options.client) ?? pluginOptions.client;
     if (c) return c;
     return new Client({
-      apiUrl: toValue(options.apiUrl),
-      apiKey: toValue(options.apiKey),
+      apiUrl: toValue(options.apiUrl) ?? pluginOptions.apiUrl,
+      apiKey: toValue(options.apiKey) ?? pluginOptions.apiKey,
       callerOptions: toValue(options.callerOptions),
       defaultHeaders: toValue(options.defaultHeaders),
     });
@@ -92,10 +96,15 @@ function useStreamLGP<
     { flush: "sync" },
   );
 
-  // Reactive wrappers that update when the orchestrator notifies
+  // Reactive wrappers backed by orchestrator subscription
   const version = shallowRef(0);
+  const subagentsRef = shallowRef(orchestrator.subagents);
+  const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
+
   const unsubscribe = orchestrator.subscribe(() => {
     version.value += 1;
+    subagentsRef.value = orchestrator.subagents;
+    activeSubagentsRef.value = orchestrator.activeSubagents;
   });
 
   onScopeDispose(() => {
@@ -141,7 +150,7 @@ function useStreamLGP<
   );
 
   // Auto-reconnect
-  let {shouldReconnect} = orchestrator;
+  let shouldReconnect = orchestrator.shouldReconnect;
   if (shouldReconnect) {
     orchestrator.tryReconnect();
   }
@@ -283,12 +292,10 @@ function useStreamLGP<
     switchThread: orchestrator.switchThread,
 
     get subagents() {
-      void version.value;
-      return orchestrator.subagents;
+      return subagentsRef.value;
     },
     get activeSubagents() {
-      void version.value;
-      return orchestrator.activeSubagents;
+      return activeSubagentsRef.value;
     },
     getSubagent: orchestrator.getSubagent,
     getSubagentsByType: orchestrator.getSubagentsByType,
@@ -312,17 +319,6 @@ export type ClassSubagentStreamInterface<
   messages: BaseMessage[];
 };
 
-/**
- * Maps a stream interface to Vue-reactive types:
- * - `messages` becomes `ComputedRef<BaseMessage[]>`
- * - `getMessagesMetadata` accepts `BaseMessage`
- * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Ref`
- * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
- * - `queue` is a `reactive()` object so nested refs auto-unwrap in templates
- * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
- * - Functions remain unchanged
- * - All other properties are wrapped in `Ref<T>` to match Vue's reactivity
- */
 type WithClassMessages<T> = {
   [K in keyof T as K extends
     | "getSubagent"

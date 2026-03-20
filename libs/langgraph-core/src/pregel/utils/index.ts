@@ -143,8 +143,15 @@ export function patchCheckpointMap(
 
 /**
  * Combine multiple abort signals into a single abort signal.
+ *
+ * On Node 20+ / modern runtimes, uses `AbortSignal.any()` which lets the
+ * runtime manage listener lifecycle — no manual dispose needed. On older
+ * runtimes, falls back to manual listener management and returns a `dispose`
+ * function that callers MUST invoke when the combined signal is no longer
+ * needed, to avoid leaking listeners on the source signals.
+ *
  * @param signals - The abort signals to combine.
- * @returns A combined abort signal and a dispose function to remove the abort listener if unused.
+ * @returns A combined abort signal and an optional dispose function.
  */
 export function combineAbortSignals(...x: (AbortSignal | undefined)[]): {
   signal: AbortSignal | undefined;
@@ -160,6 +167,14 @@ export function combineAbortSignals(...x: (AbortSignal | undefined)[]): {
     return { signal: signals[0], dispose: undefined };
   }
 
+  // AbortSignal.any() (Node 20+) handles listener cleanup automatically —
+  // the derived signal becomes GC-eligible when unreachable, even if source
+  // signals are still alive. No dispose needed.
+  if (typeof AbortSignal.any === "function") {
+    return { signal: AbortSignal.any(signals), dispose: undefined };
+  }
+
+  // Fallback for Node 18: manual listener management.
   const combinedController = new AbortController();
   const listener = () => {
     const reason = signals.find((s) => s.aborted)?.reason;

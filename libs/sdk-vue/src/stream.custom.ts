@@ -47,13 +47,15 @@ export function useStreamCustom<
   const streamValues = shallowRef<StateType | null>(null);
   const streamError = shallowRef<unknown>(undefined);
   const isLoading = shallowRef(false);
-  const subagentVersion = shallowRef(0);
+  const subagentsRef = shallowRef(orchestrator.subagents);
+  const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
 
   const unsubscribe = orchestrator.subscribe(() => {
     streamValues.value = orchestrator.streamValues;
     streamError.value = orchestrator.error;
     isLoading.value = orchestrator.isLoading;
-    subagentVersion.value += 1;
+    subagentsRef.value = orchestrator.subagents;
+    activeSubagentsRef.value = orchestrator.activeSubagents;
   });
 
   onScopeDispose(() => {
@@ -120,12 +122,12 @@ export function useStreamCustom<
     },
 
     get interrupts(): Interrupt<InterruptType>[] {
-      void subagentVersion.value;
+      void isLoading.value;
       return orchestrator.interrupts as Interrupt<InterruptType>[];
     },
 
     get interrupt(): Interrupt<InterruptType> | undefined {
-      void subagentVersion.value;
+      void isLoading.value;
       return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
     },
 
@@ -144,13 +146,11 @@ export function useStreamCustom<
     },
 
     get subagents() {
-      void subagentVersion.value;
-      return orchestrator.subagents;
+      return subagentsRef.value;
     },
 
     get activeSubagents() {
-      void subagentVersion.value;
-      return orchestrator.activeSubagents;
+      return activeSubagentsRef.value;
     },
 
     getSubagent: orchestrator.getSubagent,

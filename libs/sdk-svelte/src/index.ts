@@ -1,5 +1,5 @@
 import { writable, derived, fromStore } from "svelte/store";
-import { onDestroy , setContext, getContext } from "svelte";
+import { onDestroy, onMount, setContext, getContext } from "svelte";
 
 import type {
   BaseMessage,
@@ -30,9 +30,7 @@ import {
 } from "@langchain/langgraph-sdk";
 import { useStreamCustom } from "./stream.custom.js";
 
-
 export { FetchStreamTransport };
-export { provideStream, getStream } from "./context.js";
 
 const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
 
@@ -50,8 +48,8 @@ export function setStreamContext<T extends ReturnType<typeof useStream>>(
 
 /**
  * Retrieves the `useStream` instance previously provided by a parent
- * component via {@link setStreamContext}. Must be called during component
- * initialisation.
+ * component via {@link setStreamContext} or {@link provideStream}.
+ * Must be called during component initialisation.
  */
 export function getStreamContext<
   T = Record<string, unknown>,
@@ -64,6 +62,48 @@ export function getStreamContext<
     );
   }
   return ctx as WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+}
+
+/**
+ * Creates a shared `useStream` instance and makes it available to all
+ * descendant components via Svelte's `setContext`/`getContext`.
+ *
+ * Uses the same context key as {@link setStreamContext}/{@link getStreamContext},
+ * so both retrieval functions work interchangeably.
+ */
+export function provideStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(
+  options:
+    | ResolveStreamOptions<T, InferBag<T, Bag>>
+    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+): ReturnType<typeof useStream<T, Bag>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stream = useStream<T, Bag>(options as any);
+  setContext(STREAM_CONTEXT_KEY, stream);
+  return stream;
+}
+
+/**
+ * Retrieves the shared stream instance from the nearest ancestor that
+ * called {@link provideStream} or {@link setStreamContext}.
+ *
+ * Throws if no ancestor has provided a stream.
+ */
+export function getStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): ReturnType<typeof useStream<T, Bag>> {
+  const context = getContext(STREAM_CONTEXT_KEY);
+  if (context == null) {
+    throw new Error(
+      "getStream() requires a parent component to call provideStream(). " +
+        "Add provideStream({ assistantId: '...' }) in an ancestor component.",
+    );
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return context as any;
 }
 
 type ClassToolCallWithResult<T> =
@@ -215,7 +255,6 @@ function useStreamLGP<
 
   orchestrator.initThreadId(options.threadId ?? undefined);
 
-  // Svelte reactive stores backed by orchestrator state
   const version = writable(0);
   const unsubscribe = orchestrator.subscribe(() => {
     version.update((v) => v + 1);
@@ -227,7 +266,8 @@ function useStreamLGP<
   const shouldReconstructSubagents = derived(version, () => {
     const hvMessages = orchestrator.messages;
     if (!options.filterSubagentMessages) return false;
-    if (orchestrator.isLoading || orchestrator.historyData.isLoading) return false;
+    if (orchestrator.isLoading || orchestrator.historyData.isLoading)
+      return false;
     return hvMessages.length > 0;
   });
 
@@ -246,10 +286,13 @@ function useStreamLGP<
 
   // Auto-reconnect
   let {shouldReconnect} = orchestrator;
-  if (shouldReconnect) {
-    const reconnected = orchestrator.tryReconnect();
-    if (reconnected) shouldReconnect = false;
-  }
+
+  onMount(() => {
+    if (shouldReconnect) {
+      const reconnected = orchestrator.tryReconnect();
+      if (reconnected) shouldReconnect = false;
+    }
+  });
 
   onDestroy(() => {
     fetchController?.abort();

@@ -7,6 +7,7 @@ import {
   type GetUpdateType,
   type GetInterruptType,
   type GetConfigurableType,
+  type GetToolCallsType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import type {
@@ -15,32 +16,36 @@ import type {
   Interrupt,
 } from "@langchain/langgraph-sdk";
 
-export function useStreamCustom<
+export function injectStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamCustomOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+  type ToolCallType = GetToolCallsType<StateType>;
 
   const orchestrator = new CustomStreamOrchestrator<StateType, Bag>(options);
 
   const version = signal(0);
+  const subagentVersion = signal(0);
 
   effect((onCleanup) => {
     const unsubscribe = orchestrator.subscribe(() => {
       version.update((v) => v + 1);
+      subagentVersion.update((v) => v + 1);
     });
     onCleanup(() => unsubscribe());
   });
 
   effect(() => {
-    const loading = !orchestrator.isLoading;
     void version();
+    const loading = orchestrator.isLoading;
+    const hvMessages = orchestrator.messages;
     if (
       options.filterSubagentMessages &&
-      loading &&
-      orchestrator.messages.length > 0
+      !loading &&
+      hvMessages.length > 0
     ) {
       orchestrator.reconstructSubagentsIfNeeded();
     }
@@ -55,7 +60,10 @@ export function useStreamCustom<
 
   return {
     values,
-    error: signal<unknown>(undefined),
+    error: computed(() => {
+      void version();
+      return orchestrator.error;
+    }),
     isLoading: signal(false),
 
     stop: orchestrator.stop,
@@ -76,7 +84,7 @@ export function useStreamCustom<
     },
 
     getMessagesMetadata(
-      message: Message,
+      message: Message<ToolCallType>,
       index?: number,
     ): MessageMetadata<StateType> | undefined {
       return orchestrator.getMessagesMetadata(message, index);
@@ -111,17 +119,17 @@ export function useStreamCustom<
       return orchestrator.toolCalls;
     }),
 
-    getToolCalls(message: Message) {
+    getToolCalls(message: Message<ToolCallType>) {
       return orchestrator.getToolCalls(message);
     },
 
     get subagents() {
-      void version();
+      void subagentVersion();
       return orchestrator.subagents;
     },
 
     get activeSubagents() {
-      void version();
+      void subagentVersion();
       return orchestrator.activeSubagents;
     },
 
@@ -130,3 +138,10 @@ export function useStreamCustom<
     getSubagentsByMessage: orchestrator.getSubagentsByMessage,
   };
 }
+
+/**
+ * @deprecated Use `injectStreamCustom` instead. `useStreamCustom` will be
+ * removed in a future major version. `injectStreamCustom` follows Angular's
+ * `inject*` naming convention for injection-based patterns.
+ */
+export const useStreamCustom = injectStreamCustom;

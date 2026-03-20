@@ -18,12 +18,18 @@ import type { WithClassMessages } from "./stream.js";
 // Suspense cache
 // ---------------------------------------------------------------------------
 
-type SuspenseCacheEntry<T> =
+export type SuspenseCacheEntry<T> =
   | { status: "pending"; promise: Promise<void> }
   | { status: "resolved"; data: T }
   | { status: "rejected"; error: unknown };
 
-const threadCache = new Map<string, SuspenseCacheEntry<unknown>>();
+export type SuspenseCache = Map<string, SuspenseCacheEntry<unknown>>;
+
+const defaultSuspenseCache: SuspenseCache = new Map();
+
+export function createSuspenseCache(): SuspenseCache {
+  return new Map();
+}
 
 function getCacheKey(
   client: Client,
@@ -50,12 +56,13 @@ function fetchThreadHistory<StateType extends Record<string, unknown>>(
 }
 
 function getOrCreateCacheEntry<StateType extends Record<string, unknown>>(
+  cache: SuspenseCache,
   client: Client,
   threadId: string,
   limit: boolean | number,
 ): SuspenseCacheEntry<ThreadState<StateType>[]> {
   const key = getCacheKey(client, threadId, limit);
-  let entry = threadCache.get(key) as
+  let entry = cache.get(key) as
     | SuspenseCacheEntry<ThreadState<StateType>[]>
     | undefined;
 
@@ -64,14 +71,14 @@ function getOrCreateCacheEntry<StateType extends Record<string, unknown>>(
     // Suspense correctly waits for it and then retries the render.
     const promise = fetchThreadHistory<StateType>(client, threadId, { limit })
       .then((data) => {
-        threadCache.set(key, { status: "resolved", data });
+        cache.set(key, { status: "resolved", data });
       })
       .catch((error: unknown) => {
-        threadCache.set(key, { status: "rejected", error });
+        cache.set(key, { status: "rejected", error });
       });
 
     entry = { status: "pending", promise };
-    threadCache.set(key, entry);
+    cache.set(key, entry);
   }
 
   return entry;
@@ -98,8 +105,10 @@ function getOrCreateCacheEntry<StateType extends Record<string, unknown>>(
  * </ErrorBoundary>
  * ```
  */
-export function invalidateSuspenseCache(): void {
-  threadCache.clear();
+export function invalidateSuspenseCache(
+  cache: SuspenseCache = defaultSuspenseCache,
+): void {
+  cache.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +117,17 @@ export function invalidateSuspenseCache(): void {
 
 type WithSuspense<T> = Omit<T, "isLoading" | "error" | "isThreadLoading"> & {
   isStreaming: boolean;
+};
+
+type UseSuspenseStreamOptions<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> = ResolveStreamOptions<T, InferBag<T, Bag>> & {
+  /**
+   * Optional cache store used by Suspense history prefetching.
+   * Provide a custom cache in tests to avoid cross-test cache sharing.
+   */
+  suspenseCache?: SuspenseCache;
 };
 
 // ---------------------------------------------------------------------------
@@ -146,12 +166,13 @@ export function useSuspenseStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
+  options: UseSuspenseStreamOptions<T, InferBag<T, Bag>>,
 ): WithClassMessages<WithSuspense<ResolveStreamInterface<T, InferBag<T, Bag>>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useSuspenseStream(options: any): any {
   type StateType = Record<string, unknown>;
+  const cache: SuspenseCache = options.suspenseCache ?? defaultSuspenseCache;
 
   // ---- client (needed before useStreamLGP for cache key derivation) ----
   const client = useMemo(
@@ -189,6 +210,7 @@ export function useSuspenseStream(options: any): any {
 
   if (needsHistoryFetch) {
     cacheEntry = getOrCreateCacheEntry<StateType>(
+      cache,
       client,
       threadId,
       historyLimit,
@@ -218,7 +240,7 @@ export function useSuspenseStream(options: any): any {
           limit: historyLimit,
         });
         const key = getCacheKey(client, fetchId, historyLimit);
-        threadCache.set(key, { status: "resolved", data });
+        cache.set(key, { status: "resolved", data });
         cachedDataRef.current = data;
         setMutateVersion((v) => v + 1);
         return data;
@@ -226,7 +248,7 @@ export function useSuspenseStream(options: any): any {
         return undefined;
       }
     },
-    [client, threadId, historyLimit],
+    [cache, client, threadId, historyLimit],
   );
 
   // ---- build thread override for useStreamLGP ----
@@ -265,7 +287,7 @@ export function useSuspenseStream(options: any): any {
       // Clear cache so a subsequent retry (ErrorBoundary reset) starts
       // a fresh fetch instead of re-throwing the stale error.
       const key = getCacheKey(client, threadId!, historyLimit);
-      threadCache.delete(key);
+      cache.delete(key);
       // eslint-disable-next-line no-instanceof/no-instanceof
       throw cacheEntry.error instanceof Error
         ? cacheEntry.error
@@ -323,11 +345,21 @@ export function useSuspenseStream(options: any): any {
     submit: stream.submit,
     switchThread: stream.switchThread,
     joinStream: stream.joinStream,
-    branch: stream.branch,
+    get branch() {
+      return stream.branch;
+    },
     setBranch: stream.setBranch,
-    client: stream.client,
-    assistantId: stream.assistantId,
-    queue: stream.queue,
-    isStreaming: stream.isLoading,
+    get client() {
+      return stream.client;
+    },
+    get assistantId() {
+      return stream.assistantId;
+    },
+    get queue() {
+      return stream.queue;
+    },
+    get isStreaming() {
+      return stream.isLoading;
+    },
   };
 }

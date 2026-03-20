@@ -10,6 +10,7 @@
  */
 
 import { describe, test, expectTypeOf } from "vitest";
+import type { Signal, WritableSignal } from "@angular/core";
 import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
   AIMessage,
@@ -18,8 +19,8 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "../index.js";
+import type { Client, Message, Interrupt } from "@langchain/langgraph-sdk";
+import { useStream, StreamService } from "../index.js";
 
 // ============================================================================
 // Test State Types
@@ -357,5 +358,88 @@ describe("realistic usage patterns with class instances", () => {
 
     const toolMessages = stream.messages().filter(ToolMessage.isInstance);
     expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
+  });
+});
+
+// ============================================================================
+// Type Tests: StreamService type safety
+// ============================================================================
+
+interface ServiceState {
+  messages: Message[];
+  count: number;
+}
+
+describe("StreamService has proper type safety", () => {
+  test("values returns Signal of the state type", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.values).toEqualTypeOf<Signal<ServiceState>>();
+    expectTypeOf(svc.values()).toEqualTypeOf<ServiceState>();
+  });
+
+  test("messages returns Signal<BaseMessage[]>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.messages).toEqualTypeOf<Signal<BaseMessage[]>>();
+  });
+
+  test("isLoading returns WritableSignal<boolean>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.isLoading).toEqualTypeOf<WritableSignal<boolean>>();
+  });
+
+  test("error returns Signal<unknown>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.error).toEqualTypeOf<Signal<unknown>>();
+  });
+
+  test("branch returns WritableSignal<string>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.branch).toEqualTypeOf<WritableSignal<string>>();
+  });
+
+  test("interrupt returns Signal with Interrupt or undefined", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.interrupt).toEqualTypeOf<
+      Signal<Interrupt<unknown> | undefined>
+    >();
+  });
+
+  test("interrupts returns Signal with Interrupt array", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.interrupts).toEqualTypeOf<Signal<Interrupt<unknown>[]>>();
+  });
+
+  test("client returns Client", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.client).toEqualTypeOf<Client>();
+  });
+
+  test("assistantId returns string", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.assistantId).toEqualTypeOf<string>();
+  });
+
+  test("submit returns Promise<void>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.submit(null)).toEqualTypeOf<Promise<void>>();
+  });
+
+  test("stop returns Promise<void>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.stop()).toEqualTypeOf<Promise<void>>();
+  });
+
+  test("isThreadLoading returns Signal<boolean>", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    expectTypeOf(svc.isThreadLoading).toEqualTypeOf<Signal<boolean>>();
+  });
+
+  test("getMessagesMetadata accepts BaseMessage", () => {
+    const svc = null as unknown as StreamService<ServiceState>;
+    const msg = null as unknown as BaseMessage;
+    const metadata = svc.getMessagesMetadata(msg, 0);
+    if (metadata) {
+      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
+    }
   });
 });

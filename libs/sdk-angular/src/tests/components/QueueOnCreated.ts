@@ -1,6 +1,6 @@
 import { Component } from "@angular/core";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -30,7 +30,7 @@ const PRESETS = ["Msg1", "Msg2", "Msg3"];
 export class QueueOnCreatedComponent {
   private pending: string[] = [];
 
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: serverUrl,
     fetchStateHistory: false,
@@ -39,7 +39,7 @@ export class QueueOnCreatedComponent {
         const followUps = this.pending;
         this.pending = [];
         for (const text of followUps) {
-          this.stream.submit({
+          void this.stream.submit({
             messages: [{ content: text, type: "human" }],
           } as any);
         }

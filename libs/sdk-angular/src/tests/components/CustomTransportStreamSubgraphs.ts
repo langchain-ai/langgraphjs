@@ -1,7 +1,7 @@
 import type { BaseMessage } from "langchain";
 import { Component } from "@angular/core";
 import type { UseStreamTransport } from "../../index.js";
-import { useStreamCustom } from "../../stream.custom.js";
+import { injectStreamCustom } from "../../stream.custom.js";
 
 type StreamState = { messages: BaseMessage[] };
 
@@ -18,7 +18,7 @@ export const customStreamTransportHolder: {
   `,
 })
 export class CustomTransportStreamSubgraphsComponent {
-  stream = useStreamCustom<StreamState>({
+  stream = injectStreamCustom<StreamState>({
     transport: {
       stream: (payload) => {
         const fn = customStreamTransportHolder.stream;

@@ -1,4 +1,10 @@
-import { signal, computed, effect, Injectable } from "@angular/core";
+import {
+  signal,
+  computed,
+  effect,
+  Injectable,
+  inject as angularInject,
+} from "@angular/core";
 import type { Signal, WritableSignal } from "@angular/core";
 import type {
   BaseMessage,
@@ -30,36 +36,29 @@ import {
   type Message,
   type Interrupt,
   type BagTemplate,
-  type ToolCallWithResult as _ToolCallWithResult,
+  type ToolCallWithResult as SdkToolCallWithResult,
   type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
-import { useStreamCustom } from "./stream.custom.js";
+import type { ClassSubagentStreamInterface } from "./subagent-types.js";
+import type { StreamServiceInstance } from "./stream-service-instance.js";
+import { injectStreamCustom } from "./stream.custom.js";
+import { STREAM_INSTANCE } from "./context.js";
 
+export { injectStreamCustom, useStreamCustom } from "./stream.custom.js";
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
 export {
   provideStreamDefaults,
   provideStream,
-  injectStream,
   STREAM_DEFAULTS,
   STREAM_INSTANCE,
 } from "./context.js";
 export type { StreamDefaults } from "./context.js";
+export type { ClassSubagentStreamInterface } from "./subagent-types.js";
 
 type ClassToolCallWithResult<T> =
-  T extends _ToolCallWithResult<infer TC, unknown, unknown>
-    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+  T extends SdkToolCallWithResult<infer TC, unknown, unknown>
+    ? SdkToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
     : T;
-
-export type ClassSubagentStreamInterface<
-  StateType = Record<string, unknown>,
-  ToolCall = DefaultToolCall,
-  SubagentName extends string = string,
-> = Omit<
-  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
-  "messages"
-> & {
-  messages: BaseMessage[];
-};
 
 type WithClassMessages<T> = Omit<
   T,
@@ -201,7 +200,24 @@ type AngularSignalWrap<T> = {
         : Signal<T[K]>;
 };
 
-export function useStream<
+/**
+ * Injects the shared stream instance from the nearest ancestor that provided
+ * one via {@link provideStream}. Throws if no ancestor provides a stream
+ * instance.
+ */
+function injectStream<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+>(): AngularSignalWrap<
+  WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
+>;
+
+/**
+ * Angular entry point for LangGraph streaming. Call from a component, directive,
+ * or service field initializer to get a **Signals-based** stream controller
+ * connected to the LangGraph Platform (HTTP + threads API).
+ */
+function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
@@ -210,7 +226,10 @@ export function useStream<
   WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
 >;
 
-export function useStream<
+/**
+ * Overload for a **custom transport** (`options.transport`).
+ */
+function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
@@ -219,13 +238,36 @@ export function useStream<
   WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
 >;
 
+/**
+ * @internal Merges DI, LangGraph Platform, and custom transport overloads.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function useStream(options: any): any {
+function injectStream(options?: any): any {
+  if (arguments.length === 0) {
+    const instance = angularInject(STREAM_INSTANCE, { optional: true });
+    if (instance == null) {
+      throw new Error(
+        "injectStream() requires an ancestor component to provide a stream via provideStream(). " +
+          "Add provideStream({ assistantId: '...' }) to the providers array of a parent component, " +
+          "or use injectStream(options) directly.",
+      );
+    }
+    return instance;
+  }
   if ("transport" in options) {
-    return useStreamCustom(options);
+    return injectStreamCustom(options);
   }
   return useStreamLGP(options);
 }
+
+export { injectStream };
+
+/**
+ * @deprecated Use `injectStream` instead. `useStream` will be removed in a
+ * future major version. `injectStream` follows Angular's `inject*` naming
+ * convention for injection-based patterns.
+ */
+export const useStream = injectStream;
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -249,12 +291,13 @@ export function useStreamLGP<
 
   orchestrator.initThreadId(options.threadId ?? undefined);
 
-  // Angular signals
   const version = signal(0);
+  const subagentVersion = signal(0);
 
   effect((onCleanup) => {
     const unsubscribe = orchestrator.subscribe(() => {
       version.update((v) => v + 1);
+      subagentVersion.update((v) => v + 1);
     });
     onCleanup(() => unsubscribe());
   });
@@ -283,7 +326,7 @@ export function useStreamLGP<
   });
 
   // Auto-reconnect
-  const {shouldReconnect} = orchestrator;
+  const shouldReconnect = orchestrator.shouldReconnect;
   let hasReconnected = false;
 
   effect(() => {
@@ -300,7 +343,6 @@ export function useStreamLGP<
     }
   });
 
-  // Computed signals
   const values = computed(() => {
     void version();
     return orchestrator.values;
@@ -415,11 +457,11 @@ export function useStreamLGP<
     switchThread: orchestrator.switchThread,
 
     get subagents() {
-      void version();
+      void subagentVersion();
       return orchestrator.subagents;
     },
     get activeSubagents() {
-      void version();
+      void subagentVersion();
       return orchestrator.activeSubagents;
     },
     getSubagent: orchestrator.getSubagent,
@@ -429,15 +471,14 @@ export function useStreamLGP<
 }
 
 /**
- * Injectable Angular service that wraps {@link useStream}.
+ * Injectable Angular service that wraps {@link injectStream}.
  */
 @Injectable()
 export class StreamService<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 > {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly _stream: any;
+  private readonly _stream: StreamServiceInstance<T, Bag>;
 
   constructor(
     options:
@@ -445,7 +486,7 @@ export class StreamService<
       | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
   ) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this._stream = useStream(options as any);
+    this._stream = injectStream(options as any) as unknown as StreamServiceInstance<T, Bag>;
   }
 
   get values(): Signal<T> {
@@ -476,9 +517,7 @@ export class StreamService<
     return this._stream.interrupts;
   }
 
-  get toolCalls(): Signal<
-    _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[]
-  > {
+  get toolCalls(): Signal<SdkToolCallWithResult<DefaultToolCall>[]> {
     return this._stream.toolCalls;
   }
 
@@ -491,11 +530,11 @@ export class StreamService<
     return this._stream.queue;
   }
 
-  get subagents(): Map<string, ClassSubagentStreamInterface> {
+  get subagents(): Map<string, SubagentStreamInterface> {
     return this._stream.subagents;
   }
 
-  get activeSubagents(): ClassSubagentStreamInterface[] {
+  get activeSubagents(): SubagentStreamInterface[] {
     return this._stream.activeSubagents;
   }
 
@@ -530,7 +569,7 @@ export class StreamService<
   }
 
   stop(): void {
-    return this._stream.stop();
+    void this._stream.stop();
   }
 
   setBranch(value: string): void {
@@ -557,7 +596,7 @@ export class StreamService<
   }
 
   getMessagesMetadata(
-    message: BaseMessage,
+    message: Message,
     index?: number,
   ):
     | MessageMetadata<
@@ -568,20 +607,20 @@ export class StreamService<
   }
 
   getToolCalls(
-    message: BaseMessage,
-  ): _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[] {
+    message: Message,
+  ): SdkToolCallWithResult<DefaultToolCall>[] {
     return this._stream.getToolCalls(message);
   }
 
-  getSubagent(toolCallId: string): ClassSubagentStreamInterface | undefined {
+  getSubagent(toolCallId: string): SubagentStreamInterface | undefined {
     return this._stream.getSubagent(toolCallId);
   }
 
-  getSubagentsByType(type: string): ClassSubagentStreamInterface[] {
+  getSubagentsByType(type: string): SubagentStreamInterface[] {
     return this._stream.getSubagentsByType(type);
   }
 
-  getSubagentsByMessage(messageId: string): ClassSubagentStreamInterface[] {
+  getSubagentsByMessage(messageId: string): SubagentStreamInterface[] {
     return this._stream.getSubagentsByMessage(messageId);
   }
 }
@@ -632,7 +671,7 @@ export type {
 } from "@langchain/langgraph-sdk/ui";
 
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
-  _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
+  SdkToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
 export type {
   ToolCallState,
   DefaultToolCall,
