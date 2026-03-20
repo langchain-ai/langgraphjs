@@ -167,6 +167,7 @@ export function useStreamCustom<
           input: values,
           context: submitOptions?.context,
           command: submitOptions?.command,
+          streamSubgraphs: submitOptions?.streamSubgraphs,
           signal,
           config: {
             ...submitOptions?.config,

@@ -2,7 +2,7 @@ import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
 import { computed, defineComponent, ref } from "vue";
-import { useStream } from "../index.js";
+import { useStream, type UseStreamTransport } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import type { DeepAgentGraph } from "./fixtures/mock-server.js";
 
@@ -1919,6 +1919,74 @@ it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
       }),
     }),
     undefined,
+  );
+});
+
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<StreamState>({
+        transport: { stream: streamTransport },
+        threadId: null,
+        onThreadId: () => {},
+      });
+
+      return () => (
+        <button
+          data-testid="submit-custom-subgraphs"
+          onClick={() =>
+            void thread.submit(
+              {
+                messages: [{ type: "human", content: "Hi" } as Message],
+              },
+              { streamSubgraphs: true },
+            )
+          }
+        >
+          Submit
+        </button>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+  await screen.getByTestId("submit-custom-subgraphs").click();
+
+  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+  expect(streamTransport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: {
+        messages: [{ type: "human", content: "Hi" }],
+      },
+      streamSubgraphs: true,
+      config: expect.objectContaining({
+        configurable: expect.objectContaining({
+          thread_id: expect.any(String),
+        }),
+      }),
+    }),
   );
 });
 

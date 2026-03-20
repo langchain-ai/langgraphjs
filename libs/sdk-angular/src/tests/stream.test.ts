@@ -1,7 +1,9 @@
 import type { LocatorSelectors } from "@vitest/browser/context";
 import { Client } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "langchain";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-angular";
+
 import { BasicStreamComponent } from "./components/BasicStream.js";
 import { InitialValuesComponent } from "./components/InitialValuesStream.js";
 import { OnStopCallbackComponent } from "./components/OnStopCallback.js";
@@ -26,6 +28,10 @@ import {
   onRequestCalls,
   resetOnRequestCalls,
 } from "./components/OnRequest.js";
+import {
+  CustomTransportStreamSubgraphsComponent,
+  customStreamTransportHolder,
+} from "./components/CustomTransportStreamSubgraphs.js";
 import { CustomStreamMethodsComponent } from "./components/CustomStreamMethods.js";
 import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHistory.js";
 import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
@@ -37,6 +43,7 @@ import { QueueOnCreatedComponent } from "./components/QueueOnCreated.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
 import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
+import type { UseStreamTransport } from "../index.js";
 
 declare module "vitest-browser-angular" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -739,6 +746,55 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
   await expect
     .element(screen.getByTestId("branch"))
     .toHaveTextContent("test-branch");
+});
+
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: BaseMessage[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  customStreamTransportHolder.stream = streamTransport;
+
+  try {
+    const screen = await render(CustomTransportStreamSubgraphsComponent);
+
+    await screen.getByTestId("submit-custom-subgraphs").click();
+
+    await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+    expect(streamTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          messages: [{ type: "human", content: "Hi" }],
+        },
+        streamSubgraphs: true,
+        config: expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: expect.any(String),
+          }),
+        }),
+      }),
+    );
+  } finally {
+    delete customStreamTransportHolder.stream;
+  }
 });
 
 // Server-side queue e2e tests

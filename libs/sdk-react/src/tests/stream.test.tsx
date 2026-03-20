@@ -847,6 +847,72 @@ it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
   );
 });
 
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  function CustomTransportStreamSubgraphs() {
+    const thread = useStreamCustom<StreamState>({
+      transport: { stream: streamTransport },
+      threadId: null,
+      onThreadId: () => {},
+    });
+
+    return (
+      <button
+        data-testid="submit-custom-subgraphs"
+        onClick={() =>
+          void thread.submit(
+            {
+              messages: [{ type: "human", content: "Hi" } as Message],
+            },
+            { streamSubgraphs: true },
+          )
+        }
+      >
+        Submit
+      </button>
+    );
+  }
+
+  const screen = await render(<CustomTransportStreamSubgraphs />);
+  await screen.getByTestId("submit-custom-subgraphs").click();
+
+  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+  expect(streamTransport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: {
+        messages: [{ type: "human", content: "Hi" }],
+      },
+      streamSubgraphs: true,
+      config: expect.objectContaining({
+        configurable: expect.objectContaining({
+          thread_id: expect.any(String),
+        }),
+      }),
+    }),
+  );
+});
+
 it("server-side queue: submitting three times rapidly queues the latter two", async () => {
   const screen = await render(<QueueStream apiUrl={serverUrl} />);
 

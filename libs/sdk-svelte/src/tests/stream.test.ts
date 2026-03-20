@@ -1,4 +1,4 @@
-import { Client } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 import BasicStream from "./components/BasicStream.svelte";
@@ -22,7 +22,9 @@ import QueueOnCreated from "./components/QueueOnCreated.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
 import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
+import CustomTransportStreamSubgraphs from "./components/CustomTransportStreamSubgraphs.svelte";
 import HistoryMessages from "./components/HistoryMessages.svelte";
+import type { UseStreamTransport } from "../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -832,6 +834,51 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
   await expect
     .element(screen.getByTestId("branch"))
     .toHaveTextContent("test-branch");
+});
+
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  const screen = render(CustomTransportStreamSubgraphs, {
+    streamTransport,
+  });
+
+  await screen.getByTestId("submit-custom-subgraphs").click();
+
+  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+  expect(streamTransport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: {
+        messages: [{ type: "human", content: "Hi" }],
+      },
+      streamSubgraphs: true,
+      config: expect.objectContaining({
+        configurable: expect.objectContaining({
+          thread_id: expect.any(String),
+        }),
+      }),
+    }),
+  );
 });
 
 // Server-side queue e2e tests

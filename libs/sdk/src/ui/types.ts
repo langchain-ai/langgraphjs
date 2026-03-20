@@ -1350,6 +1350,7 @@ export interface UseStreamTransportPayload<
   context: GetConfigurableType<Bag> | undefined;
   command: Command | undefined;
   config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
+  streamSubgraphs?: boolean;
   signal: AbortSignal;
 }
 
@@ -1414,5 +1415,11 @@ export type CustomSubmitOptions<
   ConfigurableType extends Record<string, unknown> = Record<string, unknown>
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
-  "optimisticValues" | "context" | "command" | "config" | "onError" | "threadId"
+  | "optimisticValues"
+  | "context"
+  | "command"
+  | "config"
+  | "onError"
+  | "threadId"
+  | "streamSubgraphs"
 >;
