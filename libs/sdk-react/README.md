@@ -142,7 +142,11 @@ function Chat() {
 
 ### Options
 
-`useSuspenseStream` accepts the same options as `useStream` (LangGraph Platform mode). See [`useStream` Options](#usestream-options) above.
+`useSuspenseStream` accepts the same options as `useStream` (LangGraph Platform mode), plus:
+
+| Option | Type | Description |
+|---|---|---|
+| `suspenseCache` | `SuspenseCache` | Optional cache instance for Suspense history prefetching. Useful in tests to avoid cross-test cache sharing. |
 
 ### Return Values
 
@@ -210,6 +214,23 @@ import { invalidateSuspenseCache } from "@langchain/react";
     <Chat />
   </Suspense>
 </ErrorBoundary>
+```
+
+For test isolation, you can create and pass a dedicated cache instance:
+
+```tsx
+import { createSuspenseCache, useSuspenseStream } from "@langchain/react";
+
+const suspenseCache = createSuspenseCache();
+
+function Chat() {
+  const stream = useSuspenseStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+    suspenseCache,
+  });
+  // ...
+}
 ```
 
 ## Type Safety
