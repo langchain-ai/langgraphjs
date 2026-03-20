@@ -970,9 +970,10 @@ export class Pregel<
           );
         }
       }
-      throw new Error(
-        `Subgraph with namespace "${recastNamespace}" not found.`
-      );
+      // No static subgraph found for this namespace (e.g. a dynamically-created
+      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
+      // checkpointer directly with the full checkpoint_ns so callers can still
+      // read persisted state (e.g. messages) for these transient subgraphs.
     }
 
     const mergedConfig = mergeConfigs(this.config, config);
@@ -1034,9 +1035,10 @@ export class Pregel<
           return;
         }
       }
-      throw new Error(
-        `Subgraph with namespace "${recastNamespace}" not found.`
-      );
+      // No static subgraph found for this namespace (e.g. a dynamically-created
+      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
+      // checkpointer directly with the full checkpoint_ns so callers can still
+      // read persisted state (e.g. messages) for these transient subgraphs.
     }
 
     const mergedConfig = mergeConfigs(this.config, config, {
