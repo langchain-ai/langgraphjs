@@ -35,6 +35,18 @@ function isCustomOptions<
   return "transport" in options;
 }
 
+type UseStreamImplementation = typeof useStreamLGP | typeof useStreamCustom;
+
+type AnyUseStreamOptions =
+  | UseStreamOptions<Record<string, unknown>, BagTemplate>
+  | UseStreamCustomOptions<Record<string, unknown>, BagTemplate>;
+
+function selectStreamImplementation(
+  options: AnyUseStreamOptions,
+): UseStreamImplementation {
+  return isCustomOptions(options) ? useStreamCustom : useStreamLGP;
+}
+
 type ClassToolCallWithResult<T> =
   T extends ToolCallWithResult<infer TC, unknown, unknown>
     ? ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
@@ -334,14 +346,9 @@ export function useStream<
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
-  // Store this in useState to make sure we're not changing the implementation in re-renders
-  const [isCustom] = useState(isCustomOptions(options));
-
-  if (isCustom) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useStreamCustom(options);
-  }
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  return useStreamLGP(options);
+  // Keep implementation stable for the lifetime of this hook instance.
+  const [useSelectedStream] = useState(() =>
+    selectStreamImplementation(options),
+  );
+  return useSelectedStream(options);
 }

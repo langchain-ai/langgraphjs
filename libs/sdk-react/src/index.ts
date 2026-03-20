@@ -10,8 +10,10 @@ import type {
 export { useStream, type ClassSubagentStreamInterface } from "./stream.js";
 export {
   useSuspenseStream,
+  createSuspenseCache,
   invalidateSuspenseCache,
 } from "./suspense-stream.js";
+export type { SuspenseCache } from "./suspense-stream.js";
 export { FetchStreamTransport } from "./stream.custom.js";
 export { StreamProvider, useStreamContext } from "./context.js";
 export type {
