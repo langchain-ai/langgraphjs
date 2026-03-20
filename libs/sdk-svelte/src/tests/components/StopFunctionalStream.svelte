@@ -9,7 +9,7 @@
 
   const { apiUrl, assistantId = "agent", onStopMutate }: Props = $props();
 
-  const { values, isLoading, submit, stop } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
     initialValues: {
@@ -24,16 +24,16 @@
 
 <div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <div data-testid="counter">
-    {($values as any).counter}
+    {(stream.values as any).counter}
   </div>
   <div data-testid="items">
-    {($values as any).items?.join(", ")}
+    {(stream.values as any).items?.join(", ")}
   </div>
-  <button data-testid="submit" onclick={() => void submit({} as any)}>
+  <button data-testid="submit" onclick={() => void stream.submit({} as any)}>
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stop()}>Stop</button>
+  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
 </div>

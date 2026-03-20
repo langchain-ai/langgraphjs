@@ -1,4 +1,4 @@
-import { writable, derived, get } from "svelte/store";
+import { writable, derived, get, fromStore } from "svelte/store";
 import { onDestroy } from "svelte";
 import {
   StreamManager,
@@ -204,27 +204,27 @@ export function useStreamCustom<
     await submitDirect(values, submitOptions);
   }
 
-  const values = derived(
+  const valuesStore = derived(
     [streamValues],
     ([$streamValues]) => $streamValues ?? ({} as StateType),
   );
 
-  const messages = derived([streamValues], ([$streamValues]) => {
+  const messagesStore = derived([streamValues], ([$streamValues]) => {
     if (!$streamValues) return [];
     return ensureMessageInstances(getMessages($streamValues));
   });
 
-  const toolCalls = derived([streamValues], ([$streamValues]) => {
+  const toolCallsStore = derived([streamValues], ([$streamValues]) => {
     if (!$streamValues) return [];
     const msgs = getMessages($streamValues);
     return getToolCallsWithResults<ToolCallType>(msgs);
   });
 
-  const interrupt = derived([streamValues], ([$streamValues]) =>
+  const interruptStore = derived([streamValues], ([$streamValues]) =>
     extractInterrupts<InterruptType>($streamValues),
   );
 
-  const interrupts = derived(
+  const interruptsStore = derived(
     [streamValues],
     ([$streamValues]): Interrupt<InterruptType>[] => {
       if (
@@ -270,40 +270,82 @@ export function useStreamCustom<
     return undefined;
   }
 
+  const emptyEntries = writable<never[]>([]);
+  const emptySize = writable(0);
+
+  const subagentsStore = derived(subagentVersion, () => stream.getSubagents());
+  const activeSubagentsStore = derived(subagentVersion, () =>
+    stream.getActiveSubagents(),
+  );
+
+  const valuesRef = fromStore(valuesStore);
+  const errorRef = fromStore(streamError);
+  const isLoadingRef = fromStore(isLoading);
+  const branchRef = fromStore(branch);
+  const messagesRef = fromStore(messagesStore);
+  const toolCallsRef = fromStore(toolCallsStore);
+  const interruptRef = fromStore(interruptStore);
+  const interruptsRef = fromStore(interruptsStore);
+  const subagentsRef = fromStore(subagentsStore);
+  const activeSubagentsRef = fromStore(activeSubagentsStore);
+  const emptyEntriesRef = fromStore(emptyEntries);
+  const emptySizeRef = fromStore(emptySize);
+
   return {
-    values,
-    error: streamError,
-    isLoading,
+    get values() {
+      return valuesRef.current;
+    },
+    get error() {
+      return errorRef.current;
+    },
+    get isLoading() {
+      return isLoadingRef.current;
+    },
 
     stop,
     submit,
     switchThread,
 
-    branch,
+    get branch() {
+      return branchRef.current;
+    },
     setBranch,
     getMessagesMetadata,
 
     queue: {
-      entries: writable([]),
-      size: writable(0),
+      get entries() {
+        return emptyEntriesRef.current;
+      },
+      get size() {
+        return emptySizeRef.current;
+      },
       async cancel() {
         return false;
       },
       async clear() {},
     },
 
-    interrupt,
-    interrupts,
+    get interrupt() {
+      return interruptRef.current;
+    },
+    get interrupts() {
+      return interruptsRef.current;
+    },
 
-    messages,
-    toolCalls,
+    get messages() {
+      return messagesRef.current;
+    },
+    get toolCalls() {
+      return toolCallsRef.current;
+    },
     getToolCalls,
 
-    subagents: derived(subagentVersion, () => stream.getSubagents()),
-
-    activeSubagents: derived(subagentVersion, () =>
-      stream.getActiveSubagents(),
-    ),
+    get subagents() {
+      return subagentsRef.current;
+    },
+    get activeSubagents() {
+      return activeSubagentsRef.current;
+    },
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);
     },

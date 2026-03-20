@@ -11,7 +11,7 @@
   let onStopCalled = $state(false);
   let hasMutate = $state(false);
 
-  const { submit, stop } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
     onStop: (arg: any) => {
@@ -24,8 +24,8 @@
 <div>
   <div data-testid="onstop-called">{onStopCalled ? "Yes" : "No"}</div>
   <div data-testid="has-mutate">{hasMutate ? "Yes" : "No"}</div>
-  <button data-testid="submit" onclick={() => void submit({} as any)}>
+  <button data-testid="submit" onclick={() => void stream.submit({} as any)}>
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stop()}>Stop</button>
+  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
 </div>

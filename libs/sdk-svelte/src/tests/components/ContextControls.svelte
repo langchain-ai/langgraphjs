@@ -1,21 +1,21 @@
 <script lang="ts">
   import { getStream } from "../../index.js";
 
-  const { submit, stop, isLoading, error } = getStream();
+  const stream = getStream();
 </script>
 
 <div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  {#if $error}
-    <div data-testid="error">{String($error)}</div>
+  {#if stream.error}
+    <div data-testid="error">{String(stream.error)}</div>
   {/if}
   <button
     data-testid="submit"
-    onclick={() => void submit({ messages: [{ content: "Hello", type: "human" }] })}
+    onclick={() => void stream.submit({ messages: [{ content: "Hello", type: "human" }] })}
   >
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stop()}>Stop</button>
+  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
 </div>

@@ -15,16 +15,14 @@
   });
 
   setStreamContext(stream);
-
-  const { messages, isLoading, submit } = stream;
 </script>
 
 <div data-testid="parent-container">
   <div data-testid="parent-loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  <div data-testid="parent-message-count">{$messages.length}</div>
-  {#each $messages as msg, i (msg.id ?? i)}
+  <div data-testid="parent-message-count">{stream.messages.length}</div>
+  {#each stream.messages as msg, i (msg.id ?? i)}
     <div data-testid={`parent-message-${i}`}>
       {typeof msg.content === "string"
         ? msg.content
@@ -34,7 +32,7 @@
   <button
     data-testid="parent-submit"
     onclick={() =>
-      void submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+      void stream.submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
   >
     Send
   </button>

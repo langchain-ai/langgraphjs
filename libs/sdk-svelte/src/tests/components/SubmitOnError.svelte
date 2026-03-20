@@ -9,7 +9,7 @@
 
   let submitError = $state<string | null>(null);
 
-  const { isLoading, error, submit } = useStream({
+  const stream = useStream({
     assistantId: "errorAgent",
     apiUrl,
   });
@@ -17,10 +17,10 @@
 
 <div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  {#if $error}
-    <div data-testid="error">{String($error)}</div>
+  {#if stream.error}
+    <div data-testid="error">{String(stream.error)}</div>
   {/if}
   {#if submitError}
     <div data-testid="submit-error">{submitError}</div>
@@ -28,7 +28,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit(
+      void stream.submit(
         { messages: [{ content: "Hello", type: "human" }] },
         {
           onError: (err: unknown) => {
