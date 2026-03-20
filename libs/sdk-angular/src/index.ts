@@ -636,7 +636,9 @@ export function useStreamLGP<
     isLoading,
 
     branch,
-    setBranch: orchestrator.setBranch,
+    setBranch(value: string) {
+      orchestrator.setBranch(value);
+    },
 
     messages,
     toolCalls,
@@ -658,21 +660,24 @@ export function useStreamLGP<
       return orchestrator.getMessagesMetadata(message, index);
     },
 
-    submit: orchestrator.submit as (
+    submit: (
       values: StateType,
       submitOptions?: SubmitOptions<StateType, ConfigurableType>,
-    ) => Promise<void>,
-    stop: orchestrator.stop,
-    joinStream: orchestrator.joinStream,
+    ) => orchestrator.submit(values, submitOptions),
+    stop: () => orchestrator.stop(),
+    joinStream: (...args: Parameters<typeof orchestrator.joinStream>) =>
+      orchestrator.joinStream(...args),
 
     queue: {
       entries: queueEntries,
       size: queueSize,
-      cancel: orchestrator.cancelQueueItem,
-      clear: orchestrator.clearQueue,
+      cancel: (id: string) => orchestrator.cancelQueueItem(id),
+      clear: () => orchestrator.clearQueue(),
     },
 
-    switchThread: orchestrator.switchThread,
+    switchThread(newThreadId: string | null) {
+      orchestrator.switchThread(newThreadId);
+    },
 
     get subagents() {
       void subagentVersion();
@@ -682,9 +687,15 @@ export function useStreamLGP<
       void subagentVersion();
       return orchestrator.activeSubagents;
     },
-    getSubagent: orchestrator.getSubagent,
-    getSubagentsByType: orchestrator.getSubagentsByType,
-    getSubagentsByMessage: orchestrator.getSubagentsByMessage,
+    getSubagent(toolCallId: string) {
+      return orchestrator.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return orchestrator.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return orchestrator.getSubagentsByMessage(messageId);
+    },
   };
 }
 

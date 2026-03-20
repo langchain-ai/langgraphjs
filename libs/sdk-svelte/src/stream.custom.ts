@@ -83,7 +83,7 @@ export function useStreamCustom<
       return isLoadingRef.current;
     },
 
-    stop: orchestrator.stop,
+    stop: () => orchestrator.stop(),
 
     async submit(
       values: UpdateType | null | undefined,
@@ -92,7 +92,9 @@ export function useStreamCustom<
       await orchestrator.submit(values, submitOptions);
     },
 
-    switchThread: orchestrator.switchThread,
+    switchThread(newThreadId: string | null) {
+      orchestrator.switchThread(newThreadId);
+    },
 
     get branch() {
       return branchRef.current;
@@ -145,8 +147,14 @@ export function useStreamCustom<
     get activeSubagents() {
       return activeSubagentsRef.current;
     },
-    getSubagent: orchestrator.getSubagent,
-    getSubagentsByType: orchestrator.getSubagentsByType,
-    getSubagentsByMessage: orchestrator.getSubagentsByMessage,
+    getSubagent(toolCallId: string) {
+      return orchestrator.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return orchestrator.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return orchestrator.getSubagentsByMessage(messageId);
+    },
   };
 }

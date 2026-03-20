@@ -449,7 +449,9 @@ function useStreamLGP<
     get branch() {
       return branchRef.current;
     },
-    setBranch: orchestrator.setBranch,
+    setBranch(value: string) {
+      orchestrator.setBranch(value);
+    },
 
     get messages() {
       return messagesRef.current;
@@ -482,9 +484,11 @@ function useStreamLGP<
       return orchestrator.getMessagesMetadata(message, index);
     },
 
-    submit: orchestrator.submit,
-    stop: orchestrator.stop,
-    joinStream: orchestrator.joinStream,
+    submit: (...args: Parameters<typeof orchestrator.submit>) =>
+      orchestrator.submit(...args),
+    stop: () => orchestrator.stop(),
+    joinStream: (...args: Parameters<typeof orchestrator.joinStream>) =>
+      orchestrator.joinStream(...args),
 
     queue: {
       get entries() {
@@ -493,11 +497,13 @@ function useStreamLGP<
       get size() {
         return queueSizeRef.current;
       },
-      cancel: orchestrator.cancelQueueItem,
-      clear: orchestrator.clearQueue,
+      cancel: (id: string) => orchestrator.cancelQueueItem(id),
+      clear: () => orchestrator.clearQueue(),
     },
 
-    switchThread: orchestrator.switchThread,
+    switchThread(newThreadId: string | null) {
+      orchestrator.switchThread(newThreadId);
+    },
 
     get subagents() {
       return subagentsRef.current;
@@ -505,9 +511,15 @@ function useStreamLGP<
     get activeSubagents() {
       return activeSubagentsRef.current;
     },
-    getSubagent: orchestrator.getSubagent,
-    getSubagentsByType: orchestrator.getSubagentsByType,
-    getSubagentsByMessage: orchestrator.getSubagentsByMessage,
+    getSubagent(toolCallId: string) {
+      return orchestrator.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return orchestrator.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return orchestrator.getSubagentsByMessage(messageId);
+    },
   };
 }
 

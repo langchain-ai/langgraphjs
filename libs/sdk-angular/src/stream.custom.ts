@@ -58,7 +58,7 @@ export function injectStreamCustom<
     }),
     isLoading: signal(false),
 
-    stop: orchestrator.stop,
+    stop: () => orchestrator.stop(),
 
     async submit(
       values: UpdateType | null | undefined,
@@ -67,7 +67,9 @@ export function injectStreamCustom<
       await orchestrator.submit(values, submitOptions);
     },
 
-    switchThread: orchestrator.switchThread,
+    switchThread(newThreadId: string | null) {
+      orchestrator.switchThread(newThreadId);
+    },
 
     branch,
     setBranch(value: string) {
@@ -125,9 +127,15 @@ export function injectStreamCustom<
       return orchestrator.activeSubagents;
     },
 
-    getSubagent: orchestrator.getSubagent,
-    getSubagentsByType: orchestrator.getSubagentsByType,
-    getSubagentsByMessage: orchestrator.getSubagentsByMessage,
+    getSubagent(toolCallId: string) {
+      return orchestrator.getSubagent(toolCallId);
+    },
+    getSubagentsByType(type: string) {
+      return orchestrator.getSubagentsByType(type);
+    },
+    getSubagentsByMessage(messageId: string) {
+      return orchestrator.getSubagentsByMessage(messageId);
+    },
   };
 }
 
