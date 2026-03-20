@@ -281,12 +281,53 @@ export function useSuspenseStream(options: any): any {
       : new Error(String(stream.error));
   }
 
-  // ---- strip loading/error fields, expose isStreaming ----
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { isLoading, error, isThreadLoading, ...rest } = stream;
-
+  // Build return object explicitly to avoid triggering throwing getters
+  // (e.g. `history` throws when `fetchStateHistory` is not set).
   return {
-    ...rest,
+    get values() {
+      return stream.values;
+    },
+    get messages() {
+      return stream.messages;
+    },
+    get toolCalls() {
+      return stream.toolCalls;
+    },
+    get toolProgress() {
+      return stream.toolProgress;
+    },
+    getToolCalls: stream.getToolCalls.bind(stream),
+    get interrupt() {
+      return stream.interrupt;
+    },
+    get interrupts() {
+      return stream.interrupts;
+    },
+    get subagents() {
+      return stream.subagents;
+    },
+    get activeSubagents() {
+      return stream.activeSubagents;
+    },
+    getSubagent: stream.getSubagent.bind(stream),
+    getSubagentsByType: stream.getSubagentsByType.bind(stream),
+    getSubagentsByMessage: stream.getSubagentsByMessage.bind(stream),
+    getMessagesMetadata: stream.getMessagesMetadata.bind(stream),
+    get history() {
+      return stream.history;
+    },
+    get experimental_branchTree() {
+      return stream.experimental_branchTree;
+    },
+    stop: stream.stop,
+    submit: stream.submit,
+    switchThread: stream.switchThread,
+    joinStream: stream.joinStream,
+    branch: stream.branch,
+    setBranch: stream.setBranch,
+    client: stream.client,
+    assistantId: stream.assistantId,
+    queue: stream.queue,
     isStreaming: stream.isLoading,
   };
 }
