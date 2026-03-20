@@ -5,13 +5,12 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { BagTemplate } from "@langchain/langgraph-sdk";
 import type {
-  ResolveStreamInterface,
   ResolveStreamOptions,
   InferBag,
   InferStateType,
   UseStreamCustomOptions,
 } from "@langchain/langgraph-sdk/ui";
-import { useStream, type ClassSubagentStreamInterface } from "./stream.js";
+import { useStream } from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const StreamContext = createContext<any | null>(null);
