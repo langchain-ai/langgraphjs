@@ -238,14 +238,23 @@ function fetchHistory<StateType extends Record<string, unknown>>(
  * `stream.isLoading()`, and use `WritableSignal` setters where exposed (for
  * example `stream.branch` for branch selection).
  *
- * ## Typing with `createAgent` (recommended)
+ * ## Typing with `createDeepAgent`
  *
- * Pass `typeof agent` as `T` so tool calls and state infer from your agent:
+ * Expect `export const agent = createDeepAgent({ ... })` from `deepagents`. In
+ * UI code, `import { type agent } from "./agent"` (or `import type { agent }`)
+ * is a **type-only** import: it is erased when compiling, so the agent module
+ * does not run in the browser. You still pass **`typeof agent`** to
+ * `injectStream`, not `agent` alone — `agent` is a value; TypeScript only
+ * accepts it in a type position via `typeof` (otherwise: *refers to a value,
+ * but is being used as a type*). If you prefer a named type in generics, add
+ * `export type Agent = typeof agent` next to the const and use
+ * `injectStream<Agent>(...)`.
  *
  * @example
  * ```typescript
- * // agent.ts — export your agent
- * import { createAgent, tool } from "langchain";
+ * // agent.ts
+ * import { createDeepAgent } from "deepagents";
+ * import { tool } from "langchain";
  * import { z } from "zod";
  *
  * const getWeather = tool(
@@ -253,15 +262,15 @@ function fetchHistory<StateType extends Record<string, unknown>>(
  *   { name: "get_weather", schema: z.object({ location: z.string() }) },
  * );
  *
- * export const agent = createAgent({
+ * export const agent = createDeepAgent({
  *   model: "openai:gpt-4o",
  *   tools: [getWeather],
  * });
  *
- * // chat.component.ts
+ * // chat.component.ts — type-only import; no agent runtime in the frontend
  * import { Component } from "@angular/core";
  * import { injectStream } from "@langchain/angular";
- * import { agent } from "./agent";
+ * import { type agent } from "./agent";
  *
  * @Component({
  *   standalone: true,
@@ -337,17 +346,17 @@ function fetchHistory<StateType extends Record<string, unknown>>(
  * }
  * ```
  *
- * ## Deep Agents (subagent streaming, experimental)
+ * ## Subagent streaming
  *
- * For graphs that spawn subagents, set `filterSubagentMessages` and use
- * `streamSubgraphs` on `submit` to populate `stream.subagents` and related
- * helpers.
+ * For `createDeepAgent` agents with `subagents`, set `filterSubagentMessages`
+ * and use `streamSubgraphs` on `submit` to populate `stream.subagents` and
+ * related helpers.
  *
  * @example
  * ```typescript
  * import { Component } from "@angular/core";
  * import { injectStream } from "@langchain/angular";
- * import { agent } from "./agent";
+ * import { type agent } from "./agent";
  *
  * @Component({ standalone: true, template: "" })
  * export class DeepAgentChatComponent {
@@ -374,8 +383,8 @@ function fetchHistory<StateType extends Record<string, unknown>>(
  *   `submit` / `stop` / `switchThread` helpers (writable where the UI layer
  *   requires mutation).
  *
- * @template T Agent type (with `~agentTypes`) from `createAgent`, or a state
- *   shape extending `Record<string, unknown>`.
+ * @template T Agent type (with `~agentTypes`) from `createDeepAgent` or
+ *   `createAgent`, or a state shape extending `Record<string, unknown>`.
  * @template Bag Optional configuration bag:
  *   - `ConfigurableType` — `config.configurable` typing
  *   - `InterruptType` — human-in-the-loop interrupt payloads
