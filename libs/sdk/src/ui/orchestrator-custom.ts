@@ -57,28 +57,28 @@ export class CustomStreamOrchestrator<
   readonly messageManager: MessageTupleManager;
 
   // --- Internal state ---
-  private _threadId: string | null;
+  #threadId: string | null;
 
-  private _branch: string = "";
+  #branch: string = "";
 
   // --- Config ---
-  private readonly options: AnyStreamCustomOptions<StateType, Bag>;
+  readonly #options: AnyStreamCustomOptions<StateType, Bag>;
 
-  private readonly historyValues: StateType;
+  readonly #historyValues: StateType;
 
   // --- Subscription ---
-  private listeners = new Set<() => void>();
+  #listeners = new Set<() => void>();
 
-  private _version = 0;
+  #version = 0;
 
-  private _streamUnsub: (() => void) | null = null;
+  #streamUnsub: (() => void) | null = null;
 
-  private _disposed = false;
+  #disposed = false;
 
   constructor(options: AnyStreamCustomOptions<StateType, Bag>) {
-    this.options = options;
+    this.#options = options;
 
-    this._threadId = options.threadId ?? null;
+    this.#threadId = options.threadId ?? null;
 
     this.messageManager = new MessageTupleManager();
     this.stream = new StreamManager<StateType, Bag>(this.messageManager, {
@@ -88,13 +88,13 @@ export class CustomStreamOrchestrator<
       toMessage: options.toMessage ?? toMessageClass,
     });
 
-    this.historyValues = options.initialValues ?? ({} as StateType);
+    this.#historyValues = options.initialValues ?? ({} as StateType);
 
-    this._streamUnsub = this.stream.subscribe(() => {
-      this._notify();
+    this.#streamUnsub = this.stream.subscribe(() => {
+      this.#notify();
     });
 
-    const historyMessages = this._getMessages(this.historyValues);
+    const historyMessages = this.#getMessages(this.#historyValues);
     if (
       options.filterSubagentMessages &&
       !this.stream.isLoading &&
@@ -111,18 +111,18 @@ export class CustomStreamOrchestrator<
   // ---------------------------------------------------------------------------
 
   subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
+    this.#listeners.add(listener);
     return () => {
-      this.listeners.delete(listener);
+      this.#listeners.delete(listener);
     };
   };
 
-  getSnapshot = (): number => this._version;
+  getSnapshot = (): number => this.#version;
 
-  private _notify(): void {
-    if (this._disposed) return;
-    this._version += 1;
-    for (const listener of this.listeners) {
+  #notify(): void {
+    if (this.#disposed) return;
+    this.#version += 1;
+    for (const listener of this.#listeners) {
       listener();
     }
   }
@@ -135,10 +135,10 @@ export class CustomStreamOrchestrator<
    * Sync the external thread ID. Clears stream if it changed.
    */
   syncThreadId(newId: string | null): void {
-    if (newId !== this._threadId) {
-      this._threadId = newId;
+    if (newId !== this.#threadId) {
+      this.#threadId = newId;
       this.stream.clear();
-      this._notify();
+      this.#notify();
     }
   }
 
@@ -146,18 +146,15 @@ export class CustomStreamOrchestrator<
   // Helpers
   // ---------------------------------------------------------------------------
 
-  private _getMessages = (value: StateType): Message[] => {
-    const messagesKey = this.options.messagesKey ?? "messages";
+  #getMessages = (value: StateType): Message[] => {
+    const messagesKey = this.#options.messagesKey ?? "messages";
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])
       : [];
   };
 
-  private _setMessages = (
-    current: StateType,
-    messages: Message[]
-  ): StateType => {
-    const messagesKey = this.options.messagesKey ?? "messages";
+  #setMessages = (current: StateType, messages: Message[]): StateType => {
+    const messagesKey = this.#options.messagesKey ?? "messages";
     return { ...current, [messagesKey]: messages };
   };
 
@@ -182,30 +179,30 @@ export class CustomStreamOrchestrator<
   }
 
   get branch(): string {
-    return this._branch;
+    return this.#branch;
   }
 
   setBranch = (value: string): void => {
-    this._branch = value;
-    this._notify();
+    this.#branch = value;
+    this.#notify();
   };
 
   get messages(): BaseMessage[] {
     if (!this.stream.values) return [];
     return ensureMessageInstances(
-      this._getMessages(this.stream.values)
+      this.#getMessages(this.stream.values)
     ) as BaseMessage[];
   }
 
   get toolCalls() {
     if (!this.stream.values) return [];
-    return getToolCallsWithResults(this._getMessages(this.stream.values));
+    return getToolCallsWithResults(this.#getMessages(this.stream.values));
   }
 
   getToolCalls = (message: Message) => {
     if (!this.stream.values) return [];
     const allToolCalls = getToolCallsWithResults(
-      this._getMessages(this.stream.values)
+      this.#getMessages(this.stream.values)
     );
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   };
@@ -272,9 +269,9 @@ export class CustomStreamOrchestrator<
    * Reconstruct subagents if needed (e.g. on isLoading change).
    */
   reconstructSubagentsIfNeeded(): void {
-    const hvMessages = this._getMessages(this.historyValues);
+    const hvMessages = this.#getMessages(this.#historyValues);
     if (
-      this.options.filterSubagentMessages &&
+      this.#options.filterSubagentMessages &&
       !this.stream.isLoading &&
       hvMessages.length > 0
     ) {
@@ -287,7 +284,9 @@ export class CustomStreamOrchestrator<
   // ---------------------------------------------------------------------------
 
   stop = (): void => {
-    void this.stream.stop(this.historyValues, { onStop: this.options.onStop });
+    void this.stream.stop(this.#historyValues, {
+      onStop: this.#options.onStop,
+    });
   };
 
   // ---------------------------------------------------------------------------
@@ -295,10 +294,10 @@ export class CustomStreamOrchestrator<
   // ---------------------------------------------------------------------------
 
   switchThread = (newThreadId: string | null): void => {
-    if (newThreadId !== this._threadId) {
-      this._threadId = newThreadId;
+    if (newThreadId !== this.#threadId) {
+      this.#threadId = newThreadId;
       this.stream.clear();
-      this._notify();
+      this.#notify();
     }
   };
 
@@ -313,40 +312,40 @@ export class CustomStreamOrchestrator<
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
-    const currentThreadId = this.options.threadId ?? null;
-    if (currentThreadId !== this._threadId) {
-      this._threadId = currentThreadId;
+    const currentThreadId = this.#options.threadId ?? null;
+    if (currentThreadId !== this.#threadId) {
+      this.#threadId = currentThreadId;
       this.stream.clear();
     }
 
-    let usableThreadId = this._threadId ?? submitOptions?.threadId;
+    let usableThreadId = this.#threadId ?? submitOptions?.threadId;
 
     this.stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
         return {
-          ...this.historyValues,
+          ...this.#historyValues,
           ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(this.historyValues)
+            ? submitOptions.optimisticValues(this.#historyValues)
             : submitOptions.optimisticValues),
         };
       }
 
-      return { ...this.historyValues };
+      return { ...this.#historyValues };
     });
 
     await this.stream.start(
       async (signal: AbortSignal) => {
         if (!usableThreadId) {
           usableThreadId = crypto.randomUUID();
-          this._threadId = usableThreadId;
-          this.options.onThreadId?.(usableThreadId);
+          this.#threadId = usableThreadId;
+          this.#options.onThreadId?.(usableThreadId);
         }
 
         if (!usableThreadId) {
           throw new Error("Failed to obtain valid thread ID.");
         }
 
-        return this.options.transport.stream({
+        return this.#options.transport.stream({
           input: values,
           context: submitOptions?.context,
           command: submitOptions?.command,
@@ -364,15 +363,15 @@ export class CustomStreamOrchestrator<
         >;
       },
       {
-        getMessages: this._getMessages,
-        setMessages: this._setMessages,
+        getMessages: this.#getMessages,
+        setMessages: this.#setMessages,
         initialValues: {} as StateType,
-        callbacks: this.options,
+        callbacks: this.#options,
         onSuccess: () => {
           if (!usableThreadId) return undefined;
 
-          const finalValues = this.stream.values ?? this.historyValues;
-          this.options.onFinish?.(
+          const finalValues = this.stream.values ?? this.#historyValues;
+          this.#options.onFinish?.(
             createCustomTransportThreadState(finalValues, usableThreadId),
             undefined
           );
@@ -380,7 +379,7 @@ export class CustomStreamOrchestrator<
           return undefined;
         },
         onError: (error) => {
-          this.options.onError?.(error, undefined);
+          this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
       }
@@ -399,9 +398,11 @@ export class CustomStreamOrchestrator<
   // ---------------------------------------------------------------------------
 
   dispose = (): void => {
-    this._disposed = true;
-    this._streamUnsub?.();
-    this._streamUnsub = null;
-    void this.stream.stop(this.historyValues, { onStop: this.options.onStop });
+    this.#disposed = true;
+    this.#streamUnsub?.();
+    this.#streamUnsub = null;
+    void this.stream.stop(this.#historyValues, {
+      onStop: this.#options.onStop,
+    });
   };
 }
