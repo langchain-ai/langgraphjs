@@ -40,9 +40,7 @@ type ReactiveOptionKeys =
   | "messagesKey";
 
 type VueReactiveOptions<T> = {
-  [K in keyof T]: K extends ReactiveOptionKeys
-    ? MaybeRefOrGetter<T[K]>
-    : T[K];
+  [K in keyof T]: K extends ReactiveOptionKeys ? MaybeRefOrGetter<T[K]> : T[K];
 };
 
 function createCustomTransportThreadState<

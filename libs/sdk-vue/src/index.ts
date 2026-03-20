@@ -96,9 +96,7 @@ type ReactiveOptionKeys =
  * ```
  */
 export type VueReactiveOptions<T> = {
-  [K in keyof T]: K extends ReactiveOptionKeys
-    ? MaybeRefOrGetter<T[K]>
-    : T[K];
+  [K in keyof T]: K extends ReactiveOptionKeys ? MaybeRefOrGetter<T[K]> : T[K];
 };
 
 function fetchHistory<StateType extends Record<string, unknown>>(
@@ -531,42 +529,46 @@ function useStreamLGP<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
-        return client.value.runs.stream(usableThreadId!, toValue(options.assistantId), {
-          input: values as Record<string, unknown>,
-          config: submitOptions?.config,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
+        return client.value.runs.stream(
+          usableThreadId!,
+          toValue(options.assistantId),
+          {
+            input: values as Record<string, unknown>,
+            config: submitOptions?.config,
+            context: submitOptions?.context,
+            command: submitOptions?.command,
 
-          interruptBefore: submitOptions?.interruptBefore,
-          interruptAfter: submitOptions?.interruptAfter,
-          metadata: submitOptions?.metadata,
-          multitaskStrategy: submitOptions?.multitaskStrategy,
-          onCompletion: submitOptions?.onCompletion,
-          onDisconnect:
-            submitOptions?.onDisconnect ??
-            (streamResumable ? "continue" : "cancel"),
+            interruptBefore: submitOptions?.interruptBefore,
+            interruptAfter: submitOptions?.interruptAfter,
+            metadata: submitOptions?.metadata,
+            multitaskStrategy: submitOptions?.multitaskStrategy,
+            onCompletion: submitOptions?.onCompletion,
+            onDisconnect:
+              submitOptions?.onDisconnect ??
+              (streamResumable ? "continue" : "cancel"),
 
-          signal,
+            signal,
 
-          checkpoint,
-          streamMode,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
-          streamResumable,
-          durability: submitOptions?.durability,
-          onRunCreated(params) {
-            callbackMeta = {
-              run_id: params.run_id,
-              thread_id: params.thread_id ?? usableThreadId!,
-            };
+            checkpoint,
+            streamMode,
+            streamSubgraphs: submitOptions?.streamSubgraphs,
+            streamResumable,
+            durability: submitOptions?.durability,
+            onRunCreated(params) {
+              callbackMeta = {
+                run_id: params.run_id,
+                thread_id: params.thread_id ?? usableThreadId!,
+              };
 
-            if (runMetadataStorage) {
-              rejoinKey = `lg:stream:${usableThreadId}`;
-              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
-            }
+              if (runMetadataStorage) {
+                rejoinKey = `lg:stream:${usableThreadId}`;
+                runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+              }
 
-            options.onCreated?.(callbackMeta);
+              options.onCreated?.(callbackMeta);
+            },
           },
-        }) as AsyncGenerator<
+        ) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
       },
@@ -757,7 +759,7 @@ function useStreamLGP<
     }
     return ensureHistoryMessageInstances(
       branchContext.value.flatHistory,
-      options.messagesKey ?? "messages",
+      toValue(options.messagesKey) ?? "messages",
     );
   });
 
