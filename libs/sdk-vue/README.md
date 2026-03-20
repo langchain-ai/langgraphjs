@@ -291,6 +291,109 @@ const {
 
 The custom transport interface returns the same properties as the standard `useStream` composable, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
+## Sharing State with `provideStream`
+
+When multiple components need access to the same stream (a message list, a header, an input bar), use `provideStream` and `useStreamContext` to share a single stream instance via Vue's `provide`/`inject`:
+
+```vue
+<!-- ChatContainer.vue -->
+<script setup lang="ts">
+import { provideStream } from "@langchain/vue";
+
+provideStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+});
+</script>
+
+<template>
+  <ChatHeader />
+  <MessageList />
+  <MessageInput />
+</template>
+```
+
+```vue
+<!-- MessageList.vue -->
+<script setup lang="ts">
+import { useStreamContext } from "@langchain/vue";
+
+const { messages } = useStreamContext();
+</script>
+
+<template>
+  <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    {{ msg.content }}
+  </div>
+</template>
+```
+
+```vue
+<!-- MessageInput.vue -->
+<script setup lang="ts">
+import { useStreamContext } from "@langchain/vue";
+import { ref } from "vue";
+
+const { submit, isLoading } = useStreamContext();
+const input = ref("");
+
+function send() {
+  submit({ messages: [{ type: "human", content: input.value }] });
+  input.value = "";
+}
+</script>
+
+<template>
+  <form @submit.prevent="send">
+    <textarea v-model="input" />
+    <button :disabled="isLoading.value" type="submit">Send</button>
+  </form>
+</template>
+```
+
+### App-Level Configuration with `LangChainPlugin`
+
+Use the Vue plugin to set default configuration for all `useStream` calls:
+
+```typescript
+import { createApp } from "vue";
+import { LangChainPlugin } from "@langchain/vue";
+import App from "./App.vue";
+
+const app = createApp(App);
+app.use(LangChainPlugin, {
+  apiUrl: "http://localhost:2024",
+});
+app.mount("#app");
+```
+
+Then in any component, `apiUrl` is inherited automatically:
+
+```vue
+<script setup lang="ts">
+import { useStream } from "@langchain/vue";
+
+const stream = useStream({ assistantId: "agent" });
+</script>
+```
+
+### Multiple Agents
+
+Nest `provideStream` calls for multi-agent scenarios — Vue's `provide`/`inject` scoping ensures each subtree gets its own stream:
+
+```vue
+<!-- ResearchPanel.vue -->
+<script setup lang="ts">
+import { provideStream } from "@langchain/vue";
+provideStream({ assistantId: "researcher", apiUrl: "http://localhost:2024" });
+</script>
+
+<template>
+  <MessageList />
+  <MessageInput />
+</template>
+```
+
 ## Playground
 
 For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).
