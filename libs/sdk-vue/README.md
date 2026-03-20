@@ -24,12 +24,12 @@ const { messages, submit, isLoading } = useStream({
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       {{ msg.content }}
     </div>
 
     <button
-      :disabled="isLoading.value"
+      :disabled="isLoading"
       @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
     >
       Send
@@ -58,7 +58,7 @@ const { messages, submit, isLoading } = useStream({
 
 ## Return Values
 
-All reactive properties are Vue `computed` or `ref` values.
+All reactive properties are Vue `computed` or `ref` values that [auto-unwrap](https://vuejs.org/guide/essentials/reactivity-fundamentals.html#ref-unwrapping-in-templates) in `<template>` blocks — use them directly (e.g. `messages`, not `messages.value`). The `queue` object is `reactive`, so its nested properties also auto-unwrap in templates.
 
 | Property | Type | Description |
 |---|---|---|
@@ -73,8 +73,8 @@ All reactive properties are Vue `computed` or `ref` values.
 | `setBranch(branch)` | `function` | Switch to a different conversation branch. |
 | `getMessagesMetadata(msg, index?)` | `function` | Get branching and checkpoint metadata for a message. |
 | `switchThread(id)` | `(id: string \| null) => void` | Switch to a different thread. Pass `null` to start a new thread on next submit. |
-| `queue.entries` | `Ref<ReadonlyArray<QueueEntry>>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
-| `queue.size` | `Ref<number>` | Number of pending runs on the server. |
+| `queue.entries` | `ReadonlyArray<QueueEntry>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
+| `queue.size` | `number` | Number of pending runs on the server. |
 | `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
 | `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
 
@@ -134,12 +134,12 @@ const { messages, interrupt, submit } = useStream<
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       {{ msg.content }}
     </div>
 
-    <div v-if="interrupt.value">
-      <p>{{ interrupt.value.value.question }}</p>
+    <div v-if="interrupt">
+      <p>{{ interrupt.value.question }}</p>
       <button @click="submit(null, { command: { resume: 'Approved' } })">
         Approve
       </button>
@@ -171,7 +171,7 @@ const { messages, submit, getMessagesMetadata, setBranch } = useStream({
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       <p>{{ msg.content }}</p>
 
       <template v-if="getMessagesMetadata(msg, i)?.branchOptions">
@@ -221,17 +221,17 @@ const { messages, submit, isLoading, queue, switchThread } = useStream({
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       {{ msg.content }}
     </div>
 
-    <div v-if="queue.size.value > 0">
-      <p>{{ queue.size.value }} message(s) queued</p>
+    <div v-if="queue.size > 0">
+      <p>{{ queue.size }} message(s) queued</p>
       <button @click="queue.clear()">Clear Queue</button>
     </div>
 
     <button
-      :disabled="isLoading.value"
+      :disabled="isLoading"
       @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
     >
       Send
@@ -270,17 +270,17 @@ const {
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       <p>{{ msg.content }}</p>
       <span v-if="getMessagesMetadata(msg, i)?.streamMetadata">
         Node: {{ getMessagesMetadata(msg, i)?.streamMetadata?.langgraph_node }}
       </span>
     </div>
 
-    <p>Current branch: {{ branch.value }}</p>
+    <p>Current branch: {{ branch }}</p>
 
     <button
-      :disabled="isLoading.value"
+      :disabled="isLoading"
       @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
     >
       Send

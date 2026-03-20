@@ -1,6 +1,7 @@
 import {
   computed,
   onScopeDispose,
+  reactive,
   ref,
   shallowRef,
   watch,
@@ -782,7 +783,7 @@ function useStreamLGP<
     stop,
     joinStream,
 
-    queue: {
+    queue: reactive({
       entries: queueEntries,
       size: queueSize,
       async cancel(id: string) {
@@ -800,7 +801,7 @@ function useStreamLGP<
           await Promise.all(removed.map((e) => client.runs.cancel(tid, e.id)));
         }
       },
-    },
+    }),
 
     switchThread(newThreadId: string | null) {
       const current = threadId.value ?? null;
@@ -864,7 +865,7 @@ export type ClassSubagentStreamInterface<
  * - `getMessagesMetadata` accepts `BaseMessage`
  * - `toolCalls` uses `@langchain/core` message classes, wrapped in `Ref`
  * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
- * - `queue` properties are individually mapped (reactive → `Ref`, functions unchanged)
+ * - `queue` is a `reactive()` object so nested refs auto-unwrap in templates
  * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
  * - Functions remain unchanged
  * - All other properties are wrapped in `Ref<T>` to match Vue's reactivity
@@ -896,7 +897,7 @@ type WithClassMessages<T> = {
                   ...args: infer A
                 ) => infer R
                   ? (...args: A) => R
-                  : Ref<T[K][QK]>;
+                  : T[K][QK];
               }
             : K extends "client" | "assistantId"
               ? T[K]
