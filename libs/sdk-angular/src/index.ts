@@ -1221,6 +1221,87 @@ export function useStreamLGP<
 }
 
 /**
+ * Internal interface describing the shape returned by {@link useStream}
+ * after `AngularSignalWrap` and `WithClassMessages` transformations.
+ *
+ * Defined explicitly (rather than derived from `ResolveStreamInterface`)
+ * because the latter is a conditional type that TypeScript cannot resolve
+ * when `T` is still a generic parameter.
+ */
+interface StreamServiceInstance<
+  T = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> {
+  values: Signal<T>;
+  messages: Signal<BaseMessage[]>;
+  isLoading: WritableSignal<boolean>;
+  error: Signal<unknown>;
+  branch: WritableSignal<string>;
+  interrupt: Signal<Interrupt<GetInterruptType<Bag>> | undefined>;
+  interrupts: Signal<Interrupt<GetInterruptType<Bag>>[]>;
+  toolCalls: Signal<
+    _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[]
+  >;
+  queue: AngularQueueInterface<{
+    entries: readonly {
+      id: string;
+      values: Partial<T> | null | undefined;
+    }[];
+    size: number;
+    cancel: (id: string) => Promise<boolean>;
+    clear: () => Promise<void>;
+  }>;
+  subagents: Map<string, ClassSubagentStreamInterface>;
+  activeSubagents: ClassSubagentStreamInterface[];
+  history: Signal<unknown>;
+  isThreadLoading: Signal<boolean>;
+  experimental_branchTree: Signal<unknown>;
+  client: Client;
+  assistantId: string;
+  submit(
+    values:
+      | AcceptBaseMessages<Exclude<T, null | undefined>>
+      | null
+      | undefined,
+    options?: SubmitOptions<
+      T extends Record<string, unknown> ? T : Record<string, unknown>,
+      GetConfigurableType<Bag>
+    >,
+  ): Promise<void>;
+  stop(): Promise<void>;
+  setBranch(value: string): void;
+  switchThread(newThreadId: string | null): void;
+  joinStream(
+    runId: string,
+    lastEventId?: string,
+    options?: {
+      streamMode?: StreamMode | StreamMode[];
+      filter?: (event: {
+        id?: string;
+        event: StreamEvent;
+        data: unknown;
+      }) => boolean;
+    },
+  ): Promise<void>;
+  getMessagesMetadata(
+    message: BaseMessage,
+    index?: number,
+  ):
+    | MessageMetadata<
+        T extends Record<string, unknown> ? T : Record<string, unknown>
+      >
+    | undefined;
+  getToolCalls(
+    message: BaseMessage,
+  ): _ToolCallWithResult<DefaultToolCall, CoreToolMessage, CoreAIMessage>[];
+  getSubagent(
+    toolCallId: string,
+  ): ClassSubagentStreamInterface | undefined;
+  getSubagentsByType(type: string): ClassSubagentStreamInterface[];
+  getSubagentsByMessage(messageId: string): ClassSubagentStreamInterface[];
+}
+
+/**
  * Injectable Angular service that wraps {@link useStream}.
  *
  * Extend this class with your own `@Injectable()` service and call
@@ -1246,14 +1327,16 @@ export class StreamService<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 > {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly _stream: any;
+  private readonly _stream: StreamServiceInstance<T, Bag>;
 
   constructor(
     options:
       | ResolveStreamOptions<T, InferBag<T, Bag>>
       | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
   ) {
+    // The union of option types doesn't match either useStream overload
+    // directly, so we cast the argument. The result is typed via
+    // StreamServiceInstance which captures the post-transformation shape.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this._stream = useStream(options as any);
   }
@@ -1335,11 +1418,11 @@ export class StreamService<
       T extends Record<string, unknown> ? T : Record<string, unknown>,
       GetConfigurableType<Bag>
     >,
-  ): ReturnType<typeof this._stream.submit> {
+  ): Promise<void> {
     return this._stream.submit(values, options);
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     return this._stream.stop();
   }
 
