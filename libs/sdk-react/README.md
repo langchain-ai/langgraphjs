@@ -80,6 +80,138 @@ function Chat() {
 | `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
 | `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
 
+## `useSuspenseStream`
+
+`useSuspenseStream` is a companion hook to `useStream` that integrates with React's [Suspense](https://react.dev/reference/react/Suspense) and [Error Boundary](https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary) protocols. Instead of handling loading and error states inside your component, you declare them in parent boundaries:
+
+```tsx
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+import { useSuspenseStream } from "@langchain/react";
+
+function App() {
+  return (
+    <ErrorBoundary
+      fallback={({ error, resetErrorBoundary }) => (
+        <div>
+          <p>{error.message}</p>
+          <button onClick={resetErrorBoundary}>Retry</button>
+        </div>
+      )}
+    >
+      <Suspense fallback={<Spinner />}>
+        <Chat />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function Chat() {
+  // No isLoading/error checks needed — Suspense and ErrorBoundary handle them.
+  const { messages, submit, isStreaming } = useSuspenseStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+  });
+
+  return (
+    <div>
+      {messages.map((msg, i) => (
+        <div key={msg.id ?? i}>{msg.content}</div>
+      ))}
+      {isStreaming && <TypingIndicator />}
+
+      <button
+        onClick={() =>
+          void submit({
+            messages: [{ type: "human", content: "Hello!" }],
+          })
+        }
+      >
+        Send
+      </button>
+    </div>
+  );
+}
+```
+
+### How it works
+
+- **Suspends** while the initial thread history is loading (e.g. when a `threadId` is provided and the thread data is being fetched). The nearest `<Suspense>` boundary renders its fallback during this time.
+- **Throws errors** to the nearest Error Boundary when the stream encounters an error outside of active streaming.
+- **Does not suspend during streaming.** Streaming is incremental — messages arrive progressively and the UI must update in real time. The `isStreaming` flag indicates whether tokens are currently arriving.
+
+### Options
+
+`useSuspenseStream` accepts the same options as `useStream` (LangGraph Platform mode). See [`useStream` Options](#usestream-options) above.
+
+### Return Values
+
+The return type is identical to `useStream` except:
+
+| Removed | Reason |
+|---|---|
+| `isLoading` | Replaced by `isStreaming`; initial loading is handled by Suspense. |
+| `error` | Thrown to the nearest Error Boundary instead. |
+| `isThreadLoading` | Handled by Suspense (the component suspends until the thread is ready). |
+
+| Added | Type | Description |
+|---|---|---|
+| `isStreaming` | `boolean` | `true` while the stream is receiving data. The component is never suspended during streaming. |
+
+All other properties (`messages`, `submit`, `stop`, `interrupt`, `branch`, `switchThread`, `queue`, etc.) are unchanged.
+
+### Thread-switching with Suspense
+
+`useSuspenseStream` works naturally with thread switching. When the `threadId` changes, the component suspends while the new thread's history loads, and `<Suspense>` shows a smooth skeleton/fallback transition:
+
+```tsx
+function App() {
+  const [threadId, setThreadId] = useState<string | null>(null);
+
+  return (
+    <div className="flex">
+      <ThreadSidebar onSelect={setThreadId} />
+
+      <Suspense fallback={<ThreadSkeleton />}>
+        <ChatPanel threadId={threadId} />
+      </Suspense>
+    </div>
+  );
+}
+
+function ChatPanel({ threadId }: { threadId: string | null }) {
+  const { messages, submit, isStreaming } = useSuspenseStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+    threadId,
+  });
+
+  return <MessageList messages={messages} />;
+}
+```
+
+### Error recovery
+
+When an error is thrown to an Error Boundary, call `invalidateSuspenseCache()` in the boundary's reset handler so the retry triggers a fresh data fetch:
+
+```tsx
+import { invalidateSuspenseCache } from "@langchain/react";
+
+<ErrorBoundary
+  onReset={() => invalidateSuspenseCache()}
+  fallbackRender={({ error, resetErrorBoundary }) => (
+    <div>
+      <p>{error.message}</p>
+      <button onClick={resetErrorBoundary}>Retry</button>
+    </div>
+  )}
+>
+  <Suspense fallback={<Spinner />}>
+    <Chat />
+  </Suspense>
+</ErrorBoundary>
+```
+
 ## Type Safety
 
 ### With `createAgent`

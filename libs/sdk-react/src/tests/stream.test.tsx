@@ -22,6 +22,9 @@ import { QueueOnCreated } from "./components/QueueOnCreated.js";
 import { SubmitOnError } from "./components/SubmitOnError.js";
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
 import { HistoryMessages } from "./components/HistoryMessages.js";
+import { SuspenseBasicStream } from "./components/SuspenseBasicStream.js";
+import { SuspenseErrorStream } from "./components/SuspenseErrorStream.js";
+import { SuspenseWithThreadId } from "./components/SuspenseWithThreadId.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1211,4 +1214,73 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+// =====================================================================
+// useSuspenseStream tests
+// =====================================================================
+
+it("useSuspenseStream: renders without suspense when no threadId", async () => {
+  const screen = await render(<SuspenseBasicStream apiUrl={serverUrl} />);
+
+  // Without a threadId, there is nothing to load; the component
+  // should render immediately (no suspense fallback).
+  await expect
+    .element(screen.getByTestId("streaming"))
+    .toHaveTextContent("Not streaming");
+  await expect
+    .element(screen.getByTestId("suspense-fallback"))
+    .not.toBeInTheDocument();
+});
+
+it("useSuspenseStream: handles submit and streaming", async () => {
+  const screen = await render(<SuspenseBasicStream apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("streaming"))
+    .toHaveTextContent("Not streaming");
+});
+
+it("useSuspenseStream: throws to error boundary on stream error", async () => {
+  const screen = await render(<SuspenseErrorStream apiUrl={serverUrl} />);
+
+  // Submit triggers the errorAgent which throws
+  await screen.getByTestId("submit").click();
+
+  // The error should propagate to the ErrorBoundary
+  await expect.element(screen.getByTestId("error-boundary")).toBeVisible();
+});
+
+it("useSuspenseStream: suspends when loading existing thread", async () => {
+  const screen = await render(<SuspenseWithThreadId apiUrl={serverUrl} />);
+
+  // Create a thread first
+  await screen.getByTestId("create-thread").click();
+
+  // Wait for the thread ID to appear
+  await expect
+    .element(screen.getByTestId("thread-id"))
+    .not.toHaveTextContent("none");
+
+  // Submit a message to populate the thread
+  await screen.getByTestId("submit").click();
+
+  // Wait for streaming to complete
+  await expect
+    .element(screen.getByTestId("streaming"))
+    .toHaveTextContent("Not streaming");
+
+  // Verify messages appeared
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .not.toHaveTextContent("0");
 });

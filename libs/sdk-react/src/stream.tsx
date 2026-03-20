@@ -56,7 +56,7 @@ export type ClassSubagentStreamInterface<
  * instead of plain Message objects for the `messages` property, and remaps
  * tool call types to use @langchain/core message classes.
  */
-type WithClassMessages<T> = Omit<
+export type WithClassMessages<T> = Omit<
   T,
   | "messages"
   | "history"
