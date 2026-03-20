@@ -49,8 +49,9 @@ import {
   type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
-import { useStreamCustom } from "./stream.custom.js";
+import { injectStreamCustom } from "./stream.custom.js";
 
+export { injectStreamCustom, useStreamCustom } from "./stream.custom.js";
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
 
 type ClassToolCallWithResult<T> =
@@ -225,7 +226,7 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
-export function useStream<
+export function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
@@ -234,7 +235,7 @@ export function useStream<
   WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
 >;
 
-export function useStream<
+export function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
@@ -244,12 +245,19 @@ export function useStream<
 >;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function useStream(options: any): any {
+export function injectStream(options: any): any {
   if ("transport" in options) {
-    return useStreamCustom(options);
+    return injectStreamCustom(options);
   }
   return useStreamLGP(options);
 }
+
+/**
+ * @deprecated Use `injectStream` instead. `useStream` will be removed in a
+ * future major version. `injectStream` follows Angular's `inject*` naming
+ * convention for injection-based patterns.
+ */
+export const useStream = injectStream;
 
 function resolveRunMetadataStorage(
   reconnectOnMount: AnyStreamOptions["reconnectOnMount"],

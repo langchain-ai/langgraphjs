@@ -1,7 +1,7 @@
 import { Component } from "@angular/core";
 import type { Message } from "@langchain/langgraph-sdk";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -31,7 +31,7 @@ const serverUrl = inject("serverUrl");
   `,
 })
 export class InterruptComponent {
-  stream = useStream<
+  stream = injectStream<
     { messages: Message[] },
     { InterruptType: { nodeName: string } }
   >({ assistantId: "interruptAgent", apiUrl: serverUrl });

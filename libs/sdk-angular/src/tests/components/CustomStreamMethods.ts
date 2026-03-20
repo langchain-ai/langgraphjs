@@ -1,6 +1,6 @@
 import type { BaseMessage } from "langchain";
 import { Component } from "@angular/core";
-import { useStreamCustom } from "../../stream.custom.js";
+import { injectStreamCustom } from "../../stream.custom.js";
 
 const transport = {
   async stream() {
@@ -58,7 +58,7 @@ const transport = {
   `,
 })
 export class CustomStreamMethodsComponent {
-  stream = useStreamCustom<{ messages: BaseMessage[] }>({
+  stream = injectStreamCustom<{ messages: BaseMessage[] }>({
     transport: transport as any,
     threadId: null,
     onThreadId: () => {},

@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -24,7 +24,7 @@ const serverUrl = inject("serverUrl");
 export class MessageRemovalComponent {
   onRender = input<((msgs: string[]) => void) | undefined>(undefined);
 
-  stream = useStream({
+  stream = injectStream({
     assistantId: "removeMessageAgent",
     apiUrl: serverUrl,
     throttle: false,

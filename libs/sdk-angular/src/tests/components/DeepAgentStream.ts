@@ -5,7 +5,7 @@ import {
   type BaseMessage,
   ToolMessage,
 } from "@langchain/core/messages";
-import { useStream, type ClassSubagentStreamInterface } from "../../index.js";
+import { injectStream, type ClassSubagentStreamInterface } from "../../index.js";
 import type { DeepAgentGraph } from "../fixtures/mock-server.js";
 
 const serverUrl = inject("serverUrl");
@@ -94,7 +94,7 @@ const serverUrl = inject("serverUrl");
   `,
 })
 export class DeepAgentStreamComponent {
-  stream = useStream<DeepAgentGraph>({
+  stream = injectStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl: serverUrl,
     filterSubagentMessages: true,

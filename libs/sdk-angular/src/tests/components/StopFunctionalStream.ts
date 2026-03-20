@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -22,7 +22,7 @@ const serverUrl = inject("serverUrl");
 export class StopFunctionalComponent {
   onStopMutate = input<(prev: any) => any>((prev) => prev);
 
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: serverUrl,
     initialValues: { counter: 5, items: ["item1", "item2"] },
