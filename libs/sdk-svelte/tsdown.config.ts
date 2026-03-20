@@ -1,5 +1,6 @@
 import { defineConfig } from "tsdown";
 import { compileModule } from "svelte/compiler";
+import { transformSync } from "esbuild";
 
 export default defineConfig({
   entry: ["./src/index.ts"],
@@ -38,8 +39,16 @@ export default defineConfig({
         )
           return undefined;
 
-        const result = compileModule(code, {
-          filename: id.replace(/\.ts$/, ".svelte.ts"),
+        const stripped = id.endsWith(".ts")
+          ? transformSync(code, {
+              loader: "ts",
+              format: "esm",
+              target: "esnext",
+            }).code
+          : code;
+
+        const result = compileModule(stripped, {
+          filename: id.replace(/\.ts$/, ".svelte.js"),
           generate: "client",
         });
 
