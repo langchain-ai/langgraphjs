@@ -29,9 +29,6 @@ function createOptions(
 }
 
 describe("CustomStreamOrchestrator", () => {
-  // ---------------------------------------------------------------------------
-  // Construction & initial state
-  // ---------------------------------------------------------------------------
   describe("construction", () => {
     it("initialises with default state", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -97,9 +94,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Subscription
-  // ---------------------------------------------------------------------------
   describe("subscription", () => {
     it("notifies listeners on branch change", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -153,9 +147,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Thread ID sync
-  // ---------------------------------------------------------------------------
   describe("syncThreadId", () => {
     it("clears stream and notifies on change", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
@@ -189,9 +180,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Branch management
-  // ---------------------------------------------------------------------------
   describe("branch management", () => {
     it("setBranch updates branch", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -204,9 +192,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Switch thread
-  // ---------------------------------------------------------------------------
   describe("switchThread", () => {
     it("updates threadId and clears stream", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
@@ -251,9 +236,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Stop
-  // ---------------------------------------------------------------------------
   describe("stop", () => {
     it("calls stream.stop", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -270,9 +252,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Submit
-  // ---------------------------------------------------------------------------
   describe("submit", () => {
     it("calls transport.stream with correct params", async () => {
       const transport = createMockTransport([
@@ -386,9 +365,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Subagents
-  // ---------------------------------------------------------------------------
   describe("subagents", () => {
     it("returns empty subagents initially", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -432,9 +408,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Messages metadata
-  // ---------------------------------------------------------------------------
   describe("getMessagesMetadata", () => {
     it("returns undefined when no metadata available", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -453,9 +426,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Interrupts
-  // ---------------------------------------------------------------------------
   describe("interrupts", () => {
     it("returns empty array when no stream values", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());
@@ -467,9 +437,6 @@ describe("CustomStreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Dispose
-  // ---------------------------------------------------------------------------
   describe("dispose", () => {
     it("stops the stream on dispose", () => {
       const orch = new CustomStreamOrchestrator<TestState>(createOptions());

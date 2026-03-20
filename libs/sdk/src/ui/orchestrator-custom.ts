@@ -22,6 +22,12 @@ import type {
   SubagentStreamInterface,
 } from "./types.js";
 
+/**
+ * Create a custom transport thread state.
+ * @param values - The values to use.
+ * @param threadId - The ID of the thread to use.
+ * @returns The custom transport thread state.
+ */
 function createCustomTransportThreadState<
   StateType extends Record<string, unknown>
 >(values: StateType, threadId: string): ThreadState<StateType> {
@@ -51,28 +57,18 @@ export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > {
-  // --- Managers ---
   readonly stream: StreamManager<StateType, Bag>;
-
   readonly messageManager: MessageTupleManager;
 
-  // --- Internal state ---
   #threadId: string | null;
-
   #branch: string = "";
 
-  // --- Config ---
   readonly #options: AnyStreamCustomOptions<StateType, Bag>;
-
   readonly #historyValues: StateType;
 
-  // --- Subscription ---
   #listeners = new Set<() => void>();
-
   #version = 0;
-
   #streamUnsub: (() => void) | null = null;
-
   #disposed = false;
 
   constructor(options: AnyStreamCustomOptions<StateType, Bag>) {
@@ -106,10 +102,6 @@ export class CustomStreamOrchestrator<
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Subscription
-  // ---------------------------------------------------------------------------
-
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
     return () => {
@@ -127,10 +119,6 @@ export class CustomStreamOrchestrator<
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Thread ID management
-  // ---------------------------------------------------------------------------
-
   /**
    * Sync the external thread ID. Clears stream if it changed.
    */
@@ -141,10 +129,6 @@ export class CustomStreamOrchestrator<
       this.#notify();
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
 
   #getMessages = (value: StateType): Message[] => {
     const messagesKey = this.#options.messagesKey ?? "messages";
@@ -157,10 +141,6 @@ export class CustomStreamOrchestrator<
     const messagesKey = this.#options.messagesKey ?? "messages";
     return { ...current, [messagesKey]: messages };
   };
-
-  // ---------------------------------------------------------------------------
-  // Computed values
-  // ---------------------------------------------------------------------------
 
   get values(): StateType {
     return this.stream.values ?? ({} as StateType);
@@ -241,10 +221,6 @@ export class CustomStreamOrchestrator<
     return undefined;
   };
 
-  // ---------------------------------------------------------------------------
-  // Subagents
-  // ---------------------------------------------------------------------------
-
   get subagents(): Map<string, SubagentStreamInterface> {
     return this.stream.getSubagents();
   }
@@ -279,19 +255,11 @@ export class CustomStreamOrchestrator<
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Stop
-  // ---------------------------------------------------------------------------
-
   stop = (): void => {
     void this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });
   };
-
-  // ---------------------------------------------------------------------------
-  // Switch thread
-  // ---------------------------------------------------------------------------
 
   switchThread = (newThreadId: string | null): void => {
     if (newThreadId !== this.#threadId) {
@@ -300,10 +268,6 @@ export class CustomStreamOrchestrator<
       this.#notify();
     }
   };
-
-  // ---------------------------------------------------------------------------
-  // Submit
-  // ---------------------------------------------------------------------------
 
   submitDirect = async (
     values: GetUpdateType<Bag, StateType> | null | undefined,
@@ -392,10 +356,6 @@ export class CustomStreamOrchestrator<
   ): Promise<void> => {
     await this.submitDirect(values, submitOptions);
   };
-
-  // ---------------------------------------------------------------------------
-  // Cleanup
-  // ---------------------------------------------------------------------------
 
   dispose = (): void => {
     this.#disposed = true;

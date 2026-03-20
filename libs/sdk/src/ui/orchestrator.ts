@@ -38,6 +38,13 @@ interface RunMetadataStorage {
   removeItem(key: `lg:stream:${string}`): void;
 }
 
+/**
+ * Fetch the history of a thread.
+ * @param client - The client to use.
+ * @param threadId - The ID of the thread to fetch the history of.
+ * @param options - The options to use.
+ * @returns The history of the thread.
+ */
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
@@ -54,6 +61,11 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
+/**
+ * Resolve the run metadata storage.
+ * @param reconnectOnMount - The reconnect on mount option.
+ * @returns The run metadata storage.
+ */
 function resolveRunMetadataStorage(
   reconnectOnMount: boolean | (() => RunMetadataStorage) | undefined
 ): RunMetadataStorage | null {
@@ -63,6 +75,11 @@ function resolveRunMetadataStorage(
   return null;
 }
 
+/**
+ * Resolve the callback stream modes.
+ * @param options - The options to use.
+ * @returns The callback stream modes.
+ */
 function resolveCallbackStreamModes<
   S extends Record<string, unknown>,
   B extends BagTemplate
@@ -102,51 +119,31 @@ export class StreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > {
-  // --- Managers ---
   readonly stream: StreamManager<StateType, Bag>;
-
   readonly messageManager: MessageTupleManager;
-
   readonly pendingRuns: PendingRunsTracker<
     StateType,
     SubmitOptions<StateType, GetConfigurableType<Bag>>
   >;
 
-  // --- Internal state ---
   #threadId: string | undefined;
-
   #threadIdPromise: Promise<string> | null = null;
-
   #threadIdStreaming: string | null = null;
-
   #history: UseStreamThread<StateType>;
-
   #branch: string = "";
-
   #submitting = false;
 
-  // --- Config ---
   readonly #options: AnyStreamOptions<StateType, Bag>;
-
   readonly #accessors: OrchestratorAccessors;
-
   readonly historyLimit: boolean | number;
-
   readonly #runMetadataStorage: RunMetadataStorage | null;
-
   readonly #callbackStreamModes: StreamMode[];
-
   readonly #trackedStreamModes: StreamMode[] = [];
 
-  // --- Subscription ---
   #listeners = new Set<() => void>();
-
   #version = 0;
-
   #streamUnsub: (() => void) | null = null;
-
   #queueUnsub: (() => void) | null = null;
-
   #disposed = false;
 
   constructor(
@@ -197,10 +194,6 @@ export class StreamOrchestrator<
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Subscription
-  // ---------------------------------------------------------------------------
-
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
     return () => {
@@ -217,10 +210,6 @@ export class StreamOrchestrator<
       listener();
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Thread ID management
-  // ---------------------------------------------------------------------------
 
   get threadId(): string | undefined {
     return this.#threadId;
@@ -272,10 +261,6 @@ export class StreamOrchestrator<
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // History management
-  // ---------------------------------------------------------------------------
-
   get historyData(): UseStreamThread<StateType> {
     return this.#history;
   }
@@ -320,10 +305,6 @@ export class StreamOrchestrator<
     this.#fetchHistoryForThread(threadId);
   }
 
-  // ---------------------------------------------------------------------------
-  // Branch management
-  // ---------------------------------------------------------------------------
-
   get branch(): string {
     return this.#branch;
   }
@@ -337,10 +318,6 @@ export class StreamOrchestrator<
   get branchContext() {
     return getBranchContext(this.#branch, this.#history.data ?? undefined);
   }
-
-  // ---------------------------------------------------------------------------
-  // Computed values
-  // ---------------------------------------------------------------------------
 
   #getMessages = (value: StateType): Message[] => {
     const messagesKey = this.#accessors.getMessagesKey();
@@ -498,10 +475,6 @@ export class StreamOrchestrator<
     return undefined;
   };
 
-  // ---------------------------------------------------------------------------
-  // Queue
-  // ---------------------------------------------------------------------------
-
   get queueEntries() {
     return this.pendingRuns.entries;
   }
@@ -528,10 +501,6 @@ export class StreamOrchestrator<
       );
     }
   };
-
-  // ---------------------------------------------------------------------------
-  // Subagents
-  // ---------------------------------------------------------------------------
 
   get subagents(): Map<string, SubagentStreamInterface> {
     return this.stream.getSubagents();
@@ -588,10 +557,6 @@ export class StreamOrchestrator<
     return null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Stream mode tracking
-  // ---------------------------------------------------------------------------
-
   trackStreamMode = (...modes: StreamMode[]): void => {
     for (const mode of modes) {
       if (!this.#trackedStreamModes.includes(mode)) {
@@ -599,10 +564,6 @@ export class StreamOrchestrator<
       }
     }
   };
-
-  // ---------------------------------------------------------------------------
-  // Stop
-  // ---------------------------------------------------------------------------
 
   stop = (): void => {
     void this.stream.stop(this.historyValues, {
@@ -620,10 +581,6 @@ export class StreamOrchestrator<
       },
     });
   };
-
-  // ---------------------------------------------------------------------------
-  // Join stream
-  // ---------------------------------------------------------------------------
 
   joinStream = async (
     runId: string,
@@ -687,10 +644,6 @@ export class StreamOrchestrator<
       }
     );
   };
-
-  // ---------------------------------------------------------------------------
-  // Submit
-  // ---------------------------------------------------------------------------
 
   submitDirect = (
     values: StateType,
@@ -932,10 +885,6 @@ export class StreamOrchestrator<
     return result;
   };
 
-  // ---------------------------------------------------------------------------
-  // Switch thread
-  // ---------------------------------------------------------------------------
-
   switchThread = (newThreadId: string | null): void => {
     const current = this.#threadId ?? null;
     if (newThreadId !== current) {
@@ -961,10 +910,6 @@ export class StreamOrchestrator<
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // Auto-reconnect
-  // ---------------------------------------------------------------------------
-
   /**
    * Attempt to reconnect to a previously running stream.
    * Returns true if a reconnection was initiated.
@@ -985,10 +930,6 @@ export class StreamOrchestrator<
   get shouldReconnect(): boolean {
     return !!this.#runMetadataStorage;
   }
-
-  // ---------------------------------------------------------------------------
-  // Cleanup
-  // ---------------------------------------------------------------------------
 
   dispose = (): void => {
     this.#disposed = true;

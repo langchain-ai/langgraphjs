@@ -70,9 +70,6 @@ describe("StreamOrchestrator", () => {
     accessors = createAccessors(client);
   });
 
-  // ---------------------------------------------------------------------------
-  // Construction & initial state
-  // ---------------------------------------------------------------------------
   describe("construction", () => {
     it("initialises with default state", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -131,9 +128,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Subscription
-  // ---------------------------------------------------------------------------
   describe("subscription", () => {
     it("notifies listeners on state changes", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -184,9 +178,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Thread ID management
-  // ---------------------------------------------------------------------------
   describe("thread ID management", () => {
     it("setThreadId updates threadId and triggers history fetch", async () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -277,9 +268,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // History management
-  // ---------------------------------------------------------------------------
   describe("history management", () => {
     it("fetches history and updates historyData on success", async () => {
       const historyEntries = [
@@ -379,9 +367,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Branch management
-  // ---------------------------------------------------------------------------
   describe("branch management", () => {
     it("setBranch updates branch and notifies", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -417,9 +402,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Computed values
-  // ---------------------------------------------------------------------------
   describe("computed values", () => {
     it("error falls through history error chain", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -491,9 +473,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Queue management
-  // ---------------------------------------------------------------------------
   describe("queue management", () => {
     it("cancelQueueItem removes entry and cancels on server", async () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -555,9 +534,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Switch thread
-  // ---------------------------------------------------------------------------
   describe("switchThread", () => {
     it("updates threadId and clears stream", () => {
       const onThreadId = vi.fn();
@@ -631,9 +607,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Stop
-  // ---------------------------------------------------------------------------
   describe("stop", () => {
     it("calls stream.stop", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -673,9 +646,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Reconnect
-  // ---------------------------------------------------------------------------
   describe("auto-reconnect", () => {
     it("shouldReconnect is false without reconnectOnMount", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -700,9 +670,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Stream mode tracking
-  // ---------------------------------------------------------------------------
   describe("stream mode tracking", () => {
     it("trackStreamMode adds unique modes", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -722,9 +689,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Dispose
-  // ---------------------------------------------------------------------------
   describe("dispose", () => {
     it("stops notifications after dispose", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -745,9 +709,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Subagents
-  // ---------------------------------------------------------------------------
   describe("subagents", () => {
     it("returns empty subagents initially", () => {
       const orch = new StreamOrchestrator<TestState>(
@@ -806,9 +767,6 @@ describe("StreamOrchestrator", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Messages metadata
-  // ---------------------------------------------------------------------------
   describe("getMessagesMetadata", () => {
     it("returns undefined when no metadata available", () => {
       const orch = new StreamOrchestrator<TestState>(
