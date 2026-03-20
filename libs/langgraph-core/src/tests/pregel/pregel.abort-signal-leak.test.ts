@@ -14,27 +14,28 @@ beforeAll(() => {
  * monkey-patch addEventListener/removeEventListener on the specific
  * signal instance to track adds/removes.
  */
-function trackSignalListeners(signal: AbortSignal) {
+function trackSignalListeners(abortSignal: AbortSignal) {
   const counts = { add: 0, remove: 0 };
+  const tracked = abortSignal;
 
-  const origAdd = signal.addEventListener.bind(signal);
-  const origRemove = signal.removeEventListener.bind(signal);
+  const origAdd = tracked.addEventListener.bind(tracked);
+  const origRemove = tracked.removeEventListener.bind(tracked);
 
-  signal.addEventListener = function (
+  tracked.addEventListener = function (
     type: string,
-    listener: any,
-    options?: any
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
   ) {
-    if (type === "abort") counts.add++;
+    if (type === "abort") counts.add += 1;
     return origAdd(type, listener, options);
   };
 
-  signal.removeEventListener = function (
+  tracked.removeEventListener = function (
     type: string,
-    listener: any,
-    options?: any
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
   ) {
-    if (type === "abort") counts.remove++;
+    if (type === "abort") counts.remove += 1;
     return origRemove(type, listener, options);
   };
 
@@ -201,7 +202,7 @@ describe("AbortSignal listener leak", () => {
 
     // Run 10 sequential invocations, simulating multiple requests
     // reusing the same AbortController (like a server with a request-scoped signal)
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 10; i += 1) {
       await graph.invoke(
         { value: 0 },
         {
@@ -223,7 +224,9 @@ describe("AbortSignal listener leak", () => {
   });
 
   it("should fully reclaim memory after each invocation (memory profiling)", async () => {
-    const gc = globalThis.gc;
+    const { gc } = globalThis as typeof globalThis & {
+      gc?: () => void;
+    };
     if (!gc) {
       console.log(
         `  ⚠ Skipping heap assertion — run with NODE_OPTIONS="--expose-gc" for precise measurement`
@@ -245,7 +248,7 @@ describe("AbortSignal listener leak", () => {
     const controller = new AbortController();
 
     // Warm up — let V8 JIT compile and stabilize heap
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 5; i += 1) {
       await graph.invoke(
         { value: 0 },
         {
@@ -260,7 +263,7 @@ describe("AbortSignal listener leak", () => {
     // each time — no cumulative growth.
     const deltas: number[] = [];
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 10; i += 1) {
       if (gc) gc();
       const before = process.memoryUsage().heapUsed;
 
