@@ -73,9 +73,9 @@ const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
  * <ChildComponent />
  * ```
  */
-export function setStreamContext<
-  T extends ReturnType<typeof useStream>,
->(stream: T): T {
+export function setStreamContext<T extends ReturnType<typeof useStream>>(
+  stream: T,
+): T {
   setContext(STREAM_CONTEXT_KEY, stream);
   return stream;
 }
@@ -99,7 +99,9 @@ export function setStreamContext<
 export function getStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
->(): WithClassMessages<ResolveStreamInterface<StateType, InferBag<StateType, Bag>>> {
+>(): WithClassMessages<
+  ResolveStreamInterface<StateType, InferBag<StateType, Bag>>
+> {
   const ctx = getContext(STREAM_CONTEXT_KEY);
   if (!ctx) {
     throw new Error(
