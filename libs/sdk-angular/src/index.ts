@@ -52,6 +52,14 @@ import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useStreamCustom } from "./stream.custom.js";
 
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
+export {
+  provideStreamDefaults,
+  provideStream,
+  injectStream,
+  STREAM_DEFAULTS,
+  STREAM_INSTANCE,
+} from "./context.js";
+export type { StreamDefaults } from "./context.js";
 
 type ClassToolCallWithResult<T> =
   T extends _ToolCallWithResult<infer TC, unknown, unknown>
