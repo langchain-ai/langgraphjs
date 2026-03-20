@@ -38,6 +38,18 @@ const STREAM_CONTEXT_KEY = Symbol.for("langchain:stream-context");
  * Provides a `useStream` return value to all descendant components via
  * Svelte's context API. Must be called during component initialisation
  * (i.e. at the top level of a `<script>` block).
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   import { useStream, setStreamContext } from "@langchain/svelte";
+ *
+ *   const stream = useStream({ assistantId: "agent", apiUrl: "..." });
+ *   setStreamContext(stream);
+ * </script>
+ *
+ * <ChildComponent />
+ * ```
  */
 export function setStreamContext<T extends ReturnType<typeof useStream>>(
   stream: T,
@@ -50,6 +62,17 @@ export function setStreamContext<T extends ReturnType<typeof useStream>>(
  * Retrieves the `useStream` instance previously provided by a parent
  * component via {@link setStreamContext} or {@link provideStream}.
  * Must be called during component initialisation.
+ *
+ * @throws If no stream context has been set by an ancestor component.
+ *
+ * @example
+ * ```svelte
+ * <script lang="ts">
+ *   import { getStreamContext } from "@langchain/svelte";
+ *
+ *   const stream = getStreamContext();
+ * </script>
+ * ```
  */
 export function getStreamContext<
   T = Record<string, unknown>,
@@ -68,8 +91,30 @@ export function getStreamContext<
  * Creates a shared `useStream` instance and makes it available to all
  * descendant components via Svelte's `setContext`/`getContext`.
  *
+ * Call this in a parent component's `<script>` block. Children access
+ * the shared stream via {@link getStream}.
+ *
  * Uses the same context key as {@link setStreamContext}/{@link getStreamContext},
  * so both retrieval functions work interchangeably.
+ *
+ * @example
+ * ```svelte
+ * <!-- ChatContainer.svelte -->
+ * <script lang="ts">
+ *   import { provideStream } from "@langchain/svelte";
+ *
+ *   provideStream({
+ *     assistantId: "agent",
+ *     apiUrl: "http://localhost:2024",
+ *   });
+ * </script>
+ *
+ * <ChatHeader />
+ * <MessageList />
+ * <MessageInput />
+ * ```
+ *
+ * @returns The stream instance (same as calling `useStream` directly).
  */
 export function provideStream<
   T = Record<string, unknown>,
@@ -90,6 +135,20 @@ export function provideStream<
  * called {@link provideStream} or {@link setStreamContext}.
  *
  * Throws if no ancestor has provided a stream.
+ *
+ * @example
+ * ```svelte
+ * <!-- MessageList.svelte -->
+ * <script lang="ts">
+ *   import { getStream } from "@langchain/svelte";
+ *
+ *   const stream = getStream();
+ * </script>
+ *
+ * {#each stream.messages as msg (msg.id)}
+ *   <div>{msg.content}</div>
+ * {/each}
+ * ```
  */
 export function getStream<
   T = Record<string, unknown>,
@@ -122,6 +181,17 @@ export type ClassSubagentStreamInterface<
   messages: BaseMessage[];
 };
 
+/**
+ * Maps a stream interface to Svelte 5-reactive types:
+ * - `messages` becomes `BaseMessage[]`
+ * - `getMessagesMetadata` accepts `BaseMessage`
+ * - `toolCalls` uses `@langchain/core` message classes
+ * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
+ * - `queue` properties are plain values and functions
+ * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
+ * - Functions remain unchanged
+ * - All other reactive properties are exposed as plain values via getters
+ */
 type WithClassMessages<T> = {
   [K in keyof T as K extends
     | "getSubagent"
