@@ -1,7 +1,7 @@
 import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-react";
-import type { UseStreamTransport } from "../index.js";
+import { useStreamContext, type UseStreamTransport } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import { BasicStream } from "./components/BasicStream.js";
 import { InitialValuesStream } from "./components/InitialValuesStream.js";
@@ -25,6 +25,7 @@ import { HistoryMessages } from "./components/HistoryMessages.js";
 import { SuspenseBasicStream } from "./components/SuspenseBasicStream.js";
 import { SuspenseErrorStream } from "./components/SuspenseErrorStream.js";
 import { SuspenseWithThreadId } from "./components/SuspenseWithThreadId.js";
+import { ContextProvider } from "./components/ContextProvider.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1283,4 +1284,68 @@ it("useSuspenseStream: suspends when loading existing thread", async () => {
   await expect
     .element(screen.getByTestId("message-count"))
     .not.toHaveTextContent("0");
+});
+
+// =====================================================================
+// StreamProvider / useStreamContext tests
+// =====================================================================
+
+it("StreamProvider shares stream state across child components", async () => {
+  const screen = await render(<ContextProvider apiUrl={serverUrl} />);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("StreamProvider children can submit and receive messages", async () => {
+  const screen = await render(<ContextProvider apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("StreamProvider children can stop the stream", async () => {
+  const screen = await render(<ContextProvider apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("useStreamContext throws when used outside StreamProvider", async () => {
+  function Orphan() {
+    try {
+      useStreamContext();
+      return <div data-testid="result">no-error</div>;
+    } catch (e: unknown) {
+      const msg =
+        e != null && typeof e === "object" && "message" in e
+          ? String((e as { message: unknown }).message)
+          : "unknown";
+      return <div data-testid="result">{msg}</div>;
+    }
+  }
+
+  const screen = await render(<Orphan />);
+  await expect
+    .element(screen.getByTestId("result"))
+    .toHaveTextContent("useStreamContext must be used within a <StreamProvider>");
 });
