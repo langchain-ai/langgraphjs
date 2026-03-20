@@ -279,8 +279,10 @@ function useStreamLGP<
     }
   });
 
-  // Queue draining
-  const unsubDrain = version.subscribe(() => {
+  // Queue draining - must track isLoading specifically (not just version)
+  // so the drain fires exactly when stream transitions from loading → idle
+  const isLoadingForDrain = derived(version, () => orchestrator.isLoading);
+  const unsubDrain = isLoadingForDrain.subscribe(() => {
     orchestrator.drainQueue();
   });
 
@@ -303,14 +305,21 @@ function useStreamLGP<
   });
 
   // Derived stores
-  const valuesStore = derived(version, () => orchestrator.values);
+  const valuesStore = derived(version, () => {
+    orchestrator.trackStreamMode("values");
+    return orchestrator.values;
+  });
   const errorStore = derived(version, () => orchestrator.error);
   const isLoadingStore = derived(version, () => orchestrator.isLoading);
   const branchStore = derived(version, () => orchestrator.branch);
-  const messagesStore = derived(version, () =>
-    ensureMessageInstances(orchestrator.messages),
-  );
-  const toolCallsStore = derived(version, () => orchestrator.toolCalls);
+  const messagesStore = derived(version, () => {
+    orchestrator.trackStreamMode("messages-tuple", "values");
+    return ensureMessageInstances(orchestrator.messages);
+  });
+  const toolCallsStore = derived(version, () => {
+    orchestrator.trackStreamMode("messages-tuple", "values");
+    return orchestrator.toolCalls;
+  });
   const interruptStore = derived(version, () => orchestrator.interrupt);
   const interruptsStore = derived(version, () => orchestrator.interrupts);
   const historyListStore = derived(version, () => orchestrator.flatHistory);
@@ -322,11 +331,14 @@ function useStreamLGP<
     version,
     () => orchestrator.experimental_branchTree,
   );
-  const subagentsStore = derived(version, () => orchestrator.subagents);
-  const activeSubagentsStore = derived(
-    version,
-    () => orchestrator.activeSubagents,
-  );
+  const subagentsStore = derived(version, () => {
+    orchestrator.trackStreamMode("updates", "messages-tuple");
+    return orchestrator.subagents;
+  });
+  const activeSubagentsStore = derived(version, () => {
+    orchestrator.trackStreamMode("updates", "messages-tuple");
+    return orchestrator.activeSubagents;
+  });
   const queueEntriesStore = derived(version, () => orchestrator.queueEntries);
   const queueSizeStore = derived(version, () => orchestrator.queueSize);
 

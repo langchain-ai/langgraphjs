@@ -319,9 +319,14 @@ export function useStreamLGP<
     }
   });
 
-  // Queue draining
-  effect(() => {
+  // Queue draining - track isLoading changes specifically so the drain
+  // fires exactly when stream transitions from loading → idle
+  const isLoadingForDrain = computed(() => {
     void version();
+    return orchestrator.isLoading;
+  });
+  effect(() => {
+    void isLoadingForDrain();
     orchestrator.drainQueue();
   });
 
@@ -340,6 +345,7 @@ export function useStreamLGP<
 
   const values = computed(() => {
     void version();
+    orchestrator.trackStreamMode("values");
     return orchestrator.values;
   });
 
@@ -363,11 +369,13 @@ export function useStreamLGP<
 
   const messages = computed(() => {
     void version();
+    orchestrator.trackStreamMode("messages-tuple", "values");
     return ensureMessageInstances(orchestrator.messages);
   });
 
   const toolCalls = computed(() => {
     void version();
+    orchestrator.trackStreamMode("messages-tuple", "values");
     return orchestrator.toolCalls;
   });
 
@@ -565,8 +573,8 @@ export class StreamService<
     return this._stream.submit(values, options);
   }
 
-  stop(): void {
-    void this._stream.stop();
+  async stop(): Promise<void> {
+    await this._stream.stop();
   }
 
   setBranch(value: string): void {
@@ -593,18 +601,18 @@ export class StreamService<
   }
 
   getMessagesMetadata(
-    message: Message,
+    message: BaseMessage,
     index?: number,
   ):
     | MessageMetadata<
         T extends Record<string, unknown> ? T : Record<string, unknown>
       >
     | undefined {
-    return this._stream.getMessagesMetadata(message, index);
+    return this._stream.getMessagesMetadata(message as Message, index);
   }
 
-  getToolCalls(message: Message): SdkToolCallWithResult<DefaultToolCall>[] {
-    return this._stream.getToolCalls(message);
+  getToolCalls(message: BaseMessage): SdkToolCallWithResult<DefaultToolCall>[] {
+    return this._stream.getToolCalls(message as Message);
   }
 
   getSubagent(toolCallId: string): SubagentStreamInterface | undefined {
