@@ -1,5 +1,14 @@
 # @langchain/react
 
+## 0.2.1
+
+### Patch Changes
+
+- [#2228](https://github.com/langchain-ai/langgraphjs/pull/2228) [`07e9044`](https://github.com/langchain-ai/langgraphjs/commit/07e9044487aeed6f6b40b2b49a52615cda90dcc1) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Fix @langchain/react hook dispatch and Suspense cache ergonomics
+
+- Updated dependencies [[`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b)]:
+  - @langchain/langgraph-sdk@1.8.0
+
 ## 0.2.0
 
 ### Minor Changes

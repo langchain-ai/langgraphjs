@@ -1,5 +1,18 @@
 # @langchain/svelte
 
+## 0.3.0
+
+### Minor Changes
+
+- [#2227](https://github.com/langchain-ai/langgraphjs/pull/2227) [`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: extract shared orchestrator to eliminate duplicated code across SDK packages
+
+### Patch Changes
+
+- [#2231](https://github.com/langchain-ai/langgraphjs/pull/2231) [`bb9cc3a`](https://github.com/langchain-ai/langgraphjs/commit/bb9cc3a57dac69feb30244e439026c5059ac8ba0) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(svelte): consolidate dual context systems into single shared key
+
+- Updated dependencies [[`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b)]:
+  - @langchain/langgraph-sdk@1.8.0
+
 ## 0.2.0
 
 ### Minor Changes

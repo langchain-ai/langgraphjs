@@ -1,5 +1,18 @@
 # @langchain/vue
 
+## 0.3.0
+
+### Minor Changes
+
+- [#2227](https://github.com/langchain-ai/langgraphjs/pull/2227) [`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: extract shared orchestrator to eliminate duplicated code across SDK packages
+
+### Patch Changes
+
+- [#2230](https://github.com/langchain-ai/langgraphjs/pull/2230) [`11acfc1`](https://github.com/langchain-ai/langgraphjs/commit/11acfc137b65c7e28c3fab61444c00db3e4be229) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(vue): integrate LangChainPlugin with useStream and fix subagent reactivity
+
+- Updated dependencies [[`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b)]:
+  - @langchain/langgraph-sdk@1.8.0
+
 ## 0.2.0
 
 ### Minor Changes
