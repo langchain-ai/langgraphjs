@@ -603,7 +603,7 @@ export class StreamOrchestrator<
     return getMessagesMetadataMap({
       initialValues: this.#options.initialValues,
       history: this.#history.data,
-      getMessages: this.#getMessages,
+      getMessages: (value: StateType) => this.#getMessages(value),
       branchContext: this.branchContext,
     });
   }
@@ -847,8 +847,8 @@ export class StreamOrchestrator<
           : rawStream;
       },
       {
-        getMessages: this.#getMessages,
-        setMessages: this.#setMessages,
+        getMessages: (value: StateType) => this.#getMessages(value),
+        setMessages: (current: StateType, messages: Message[]) => this.#setMessages(current, messages),
         initialValues: this.historyValues,
         callbacks: this.#options,
         onSuccess: async () => {
@@ -1003,8 +1003,8 @@ export class StreamOrchestrator<
         >;
       },
       {
-        getMessages: this.#getMessages,
-        setMessages: this.#setMessages,
+        getMessages: (value: StateType) => this.#getMessages(value),
+        setMessages: (current: StateType, messages: Message[]) => this.#setMessages(current, messages),
         initialValues: this.historyValues,
         callbacks: this.#options,
 
