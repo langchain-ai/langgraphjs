@@ -63,13 +63,15 @@ export function useStreamCustom<
   const streamError = shallowRef<unknown>(stream.error);
   const isLoading = shallowRef(stream.isLoading);
 
-  const subagentVersion = shallowRef(0);
+  const subagentsRef = shallowRef(stream.getSubagents());
+  const activeSubagentsRef = shallowRef(stream.getActiveSubagents());
 
   const unsubscribe = stream.subscribe(() => {
     streamValues.value = stream.values;
     streamError.value = stream.error;
     isLoading.value = stream.isLoading;
-    subagentVersion.value += 1;
+    subagentsRef.value = stream.getSubagents();
+    activeSubagentsRef.value = stream.getActiveSubagents();
   });
 
   const branch = ref<string>("");
@@ -314,13 +316,11 @@ export function useStreamCustom<
     },
 
     get subagents() {
-      void subagentVersion.value;
-      return stream.getSubagents();
+      return subagentsRef.value;
     },
 
     get activeSubagents() {
-      void subagentVersion.value;
-      return stream.getActiveSubagents();
+      return activeSubagentsRef.value;
     },
 
     getSubagent(toolCallId: string) {

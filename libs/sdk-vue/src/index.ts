@@ -1,5 +1,6 @@
 import {
   computed,
+  inject,
   onScopeDispose,
   reactive,
   ref,
@@ -62,6 +63,7 @@ import {
 } from "@langchain/langgraph-sdk";
 
 import { useStreamCustom } from "./stream.custom.js";
+import { LANGCHAIN_OPTIONS } from "./context.js";
 import type { VueReactiveOptions } from "./types.js";
 
 export { FetchStreamTransport };
@@ -104,6 +106,8 @@ function useStreamLGP<
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
 
+  const pluginOptions = inject(LANGCHAIN_OPTIONS, {});
+
   const runMetadataStorage = (() => {
     if (typeof window === "undefined") return null;
     const storage = options.reconnectOnMount;
@@ -135,11 +139,11 @@ function useStreamLGP<
   let threadIdStreaming: string | null = null;
 
   const client = computed(() => {
-    const c = toValue(options.client);
+    const c = toValue(options.client) ?? pluginOptions.client;
     if (c) return c;
     return new Client({
-      apiUrl: toValue(options.apiUrl),
-      apiKey: toValue(options.apiKey),
+      apiUrl: toValue(options.apiUrl) ?? pluginOptions.apiUrl,
+      apiKey: toValue(options.apiKey) ?? pluginOptions.apiKey,
       callerOptions: toValue(options.callerOptions),
       defaultHeaders: toValue(options.defaultHeaders),
     });
@@ -292,13 +296,15 @@ function useStreamLGP<
     }),
   );
 
-  const subagentVersion = shallowRef(0);
+  const subagentsRef = shallowRef(stream.getSubagents());
+  const activeSubagentsRef = shallowRef(stream.getActiveSubagents());
 
   const unsubscribe = stream.subscribe(() => {
     streamValues.value = stream.values;
     streamError.value = stream.error;
     isLoading.value = stream.isLoading;
-    subagentVersion.value += 1;
+    subagentsRef.value = stream.getSubagents();
+    activeSubagentsRef.value = stream.getActiveSubagents();
   });
 
   const unsubQueue = pendingRuns.subscribe(() => {
@@ -855,12 +861,10 @@ function useStreamLGP<
     },
 
     get subagents() {
-      void subagentVersion.value;
-      return stream.getSubagents();
+      return subagentsRef.value;
     },
     get activeSubagents() {
-      void subagentVersion.value;
-      return stream.getActiveSubagents();
+      return activeSubagentsRef.value;
     },
     getSubagent(toolCallId: string) {
       return stream.getSubagent(toolCallId);
