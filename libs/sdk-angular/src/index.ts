@@ -1221,7 +1221,7 @@ export function useStreamLGP<
 }
 
 /**
- * Internal interface describing the shape returned by {@link useStream}
+ * Internal interface describing the shape returned by {@link injectStream}
  * after `AngularSignalWrap` and `WithClassMessages` transformations.
  *
  * Defined explicitly (rather than derived from `ResolveStreamInterface`)
@@ -1297,7 +1297,7 @@ interface StreamServiceInstance<
 }
 
 /**
- * Injectable Angular service that wraps {@link useStream}.
+ * Injectable Angular service that wraps {@link injectStream}.
  *
  * Extend this class with your own `@Injectable()` service and call
  * `super(options)` in the constructor:
@@ -1311,7 +1311,7 @@ interface StreamServiceInstance<
  * }
  * ```
  *
- * The service exposes the same signals and methods as `useStream`
+ * The service exposes the same signals and methods as `injectStream`
  * (e.g. `values`, `messages`, `isLoading`, `submit`, `stop`).
  *
  * Must be created within an Angular injection context (via DI or
@@ -1329,11 +1329,11 @@ export class StreamService<
       | ResolveStreamOptions<T, InferBag<T, Bag>>
       | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
   ) {
-    // The union of option types doesn't match either useStream overload
+    // The union of option types doesn't match either injectStream overload
     // directly, so we cast the argument. The result is typed via
     // StreamServiceInstance which captures the post-transformation shape.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this._stream = useStream(options as any);
+    this._stream = injectStream(options as any);
   }
 
   get values(): Signal<T> {
