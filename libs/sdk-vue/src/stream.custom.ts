@@ -1,4 +1,4 @@
-import { onScopeDispose, ref, shallowRef, watch } from "vue";
+import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import {
   StreamManager,
   MessageTupleManager,
@@ -21,6 +21,7 @@ import type {
   Interrupt,
   ThreadState,
 } from "@langchain/langgraph-sdk";
+import type { VueReactiveOptions } from "./types.js";
 
 function createCustomTransportThreadState<
   StateType extends Record<string, unknown>,
@@ -44,7 +45,7 @@ function createCustomTransportThreadState<
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
->(options: AnyStreamCustomOptions<StateType, Bag>) {
+>(options: VueReactiveOptions<AnyStreamCustomOptions<StateType, Bag>>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
@@ -73,10 +74,10 @@ export function useStreamCustom<
 
   const branch = ref<string>("");
 
-  let threadId: string | null = options.threadId ?? null;
+  let threadId: string | null = toValue(options.threadId) ?? null;
 
   watch(
-    () => options.threadId,
+    () => toValue(options.threadId),
     (newId) => {
       const resolved = newId ?? null;
       if (resolved !== threadId) {
@@ -88,14 +89,14 @@ export function useStreamCustom<
   );
 
   const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = toValue(options.messagesKey) ?? "messages";
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])
       : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = toValue(options.messagesKey) ?? "messages";
     return { ...current, [messagesKey]: messages };
   };
 
@@ -147,7 +148,7 @@ export function useStreamCustom<
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) {
-    const currentThreadId = options.threadId ?? null;
+    const currentThreadId = toValue(options.threadId) ?? null;
     if (currentThreadId !== threadId) {
       threadId = currentThreadId;
       stream.clear();

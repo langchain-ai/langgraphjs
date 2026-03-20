@@ -4,6 +4,7 @@ import {
   reactive,
   ref,
   shallowRef,
+  toValue,
   watch,
   type ComputedRef,
   type Ref,
@@ -61,8 +62,10 @@ import {
 } from "@langchain/langgraph-sdk";
 
 import { useStreamCustom } from "./stream.custom.js";
+import type { VueReactiveOptions } from "./types.js";
 
 export { FetchStreamTransport };
+export type { VueReactiveOptions } from "./types.js";
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -88,7 +91,7 @@ function useStreamLGP<
     CustomEventType?: unknown;
     UpdateType?: unknown;
   } = BagTemplate,
->(options: AnyStreamOptions<StateType, Bag>) {
+>(options: VueReactiveOptions<AnyStreamOptions<StateType, Bag>>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
@@ -103,12 +106,12 @@ function useStreamLGP<
   })();
 
   const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = toValue(options.messagesKey) ?? "messages";
     return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = toValue(options.messagesKey) ?? "messages";
     return { ...current, [messagesKey]: messages };
   };
 
@@ -118,11 +121,22 @@ function useStreamLGP<
       ? (options.fetchStateHistory.limit ?? false)
       : (options.fetchStateHistory ?? false);
 
-  const threadId = ref<string | undefined>(options.threadId ?? undefined);
+  const threadId = ref<string | undefined>(
+    toValue(options.threadId) ?? undefined,
+  );
   let threadIdPromise: Promise<string> | null = null;
   let threadIdStreaming: string | null = null;
 
-  const client = options.client ?? new Client({ apiUrl: options.apiUrl });
+  const client = computed(() => {
+    const c = toValue(options.client);
+    if (c) return c;
+    return new Client({
+      apiUrl: toValue(options.apiUrl),
+      apiKey: toValue(options.apiKey),
+      callerOptions: toValue(options.callerOptions),
+      defaultHeaders: toValue(options.defaultHeaders),
+    });
+  });
 
   const history = shallowRef<UseStreamThread<StateType>>({
     data: undefined,
@@ -137,7 +151,7 @@ function useStreamLGP<
     const tid = mutateId ?? threadId.value;
     if (!tid) return undefined;
     try {
-      const data = await fetchHistory<StateType>(client, tid, {
+      const data = await fetchHistory<StateType>(client.value, tid, {
         limit: historyLimit,
       });
       history.value = {
@@ -174,7 +188,7 @@ function useStreamLGP<
   });
 
   watch(
-    () => options.threadId,
+    () => toValue(options.threadId),
     (newId) => {
       const resolved = newId ?? undefined;
       if (resolved !== threadId.value) {
@@ -313,8 +327,8 @@ function useStreamLGP<
         const tid = threadId.value;
         if (tid) {
           const controller = new AbortController();
-          void stream.fetchSubagentHistory(client.threads, tid, {
-            messagesKey: options.messagesKey ?? "messages",
+          void stream.fetchSubagentHistory(client.value.threads, tid, {
+            messagesKey: toValue(options.messagesKey) ?? "messages",
             signal: controller.signal,
           });
           onCleanup(() => controller.abort());
@@ -331,7 +345,7 @@ function useStreamLGP<
           const runId = runMetadataStorage.getItem(
             `lg:stream:${threadId.value}`,
           );
-          if (runId) void client.runs.cancel(threadId.value, runId);
+          if (runId) void client.value.runs.cancel(threadId.value, runId);
           runMetadataStorage.removeItem(`lg:stream:${threadId.value}`);
         }
 
@@ -368,7 +382,7 @@ function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
-        const rawStream = client.runs.joinStream(threadId.value!, runId, {
+        const rawStream = client.value.runs.joinStream(threadId.value!, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
@@ -442,7 +456,7 @@ function useStreamLGP<
           threadIdStreaming = usableThreadId;
         }
         if (!usableThreadId) {
-          const threadPromise = client.threads.create({
+          const threadPromise = client.value.threads.create({
             threadId: submitOptions?.threadId,
             metadata: submitOptions?.metadata,
           });
@@ -483,42 +497,46 @@ function useStreamLGP<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
-        return client.runs.stream(usableThreadId!, options.assistantId, {
-          input: values as Record<string, unknown>,
-          config: submitOptions?.config,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
+        return client.value.runs.stream(
+          usableThreadId!,
+          toValue(options.assistantId),
+          {
+            input: values as Record<string, unknown>,
+            config: submitOptions?.config,
+            context: submitOptions?.context,
+            command: submitOptions?.command,
 
-          interruptBefore: submitOptions?.interruptBefore,
-          interruptAfter: submitOptions?.interruptAfter,
-          metadata: submitOptions?.metadata,
-          multitaskStrategy: submitOptions?.multitaskStrategy,
-          onCompletion: submitOptions?.onCompletion,
-          onDisconnect:
-            submitOptions?.onDisconnect ??
-            (streamResumable ? "continue" : "cancel"),
+            interruptBefore: submitOptions?.interruptBefore,
+            interruptAfter: submitOptions?.interruptAfter,
+            metadata: submitOptions?.metadata,
+            multitaskStrategy: submitOptions?.multitaskStrategy,
+            onCompletion: submitOptions?.onCompletion,
+            onDisconnect:
+              submitOptions?.onDisconnect ??
+              (streamResumable ? "continue" : "cancel"),
 
-          signal,
+            signal,
 
-          checkpoint,
-          streamMode,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
-          streamResumable,
-          durability: submitOptions?.durability,
-          onRunCreated(params) {
-            callbackMeta = {
-              run_id: params.run_id,
-              thread_id: params.thread_id ?? usableThreadId!,
-            };
+            checkpoint,
+            streamMode,
+            streamSubgraphs: submitOptions?.streamSubgraphs,
+            streamResumable,
+            durability: submitOptions?.durability,
+            onRunCreated(params) {
+              callbackMeta = {
+                run_id: params.run_id,
+                thread_id: params.thread_id ?? usableThreadId!,
+              };
 
-            if (runMetadataStorage) {
-              rejoinKey = `lg:stream:${usableThreadId}`;
-              runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
-            }
+              if (runMetadataStorage) {
+                rejoinKey = `lg:stream:${usableThreadId}`;
+                runMetadataStorage.setItem(rejoinKey, callbackMeta.run_id);
+              }
 
-            options.onCreated?.(callbackMeta);
+              options.onCreated?.(callbackMeta);
+            },
           },
-        }) as AsyncGenerator<
+        ) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
       },
@@ -604,9 +622,9 @@ function useStreamLGP<
       }
       if (usableThreadId) {
         try {
-          const run = await client.runs.create(
+          const run = await client.value.runs.create(
             usableThreadId,
-            options.assistantId,
+            toValue(options.assistantId),
             {
               input: values as Record<string, unknown>,
               config: submitOptions?.config,
@@ -709,7 +727,7 @@ function useStreamLGP<
     }
     return ensureHistoryMessageInstances(
       branchContext.value.flatHistory,
-      options.messagesKey ?? "messages",
+      toValue(options.messagesKey) ?? "messages",
     );
   });
 
@@ -727,8 +745,12 @@ function useStreamLGP<
   });
 
   return {
-    assistantId: options.assistantId,
-    client,
+    get assistantId() {
+      return toValue(options.assistantId);
+    },
+    get client() {
+      return client.value;
+    },
 
     values,
     error,
@@ -790,7 +812,7 @@ function useStreamLGP<
         const tid = threadId.value;
         const removed = pendingRuns.remove(id);
         if (removed && tid) {
-          await client.runs.cancel(tid, id);
+          await client.value.runs.cancel(tid, id);
         }
         return removed;
       },
@@ -798,7 +820,9 @@ function useStreamLGP<
         const tid = threadId.value;
         const removed = pendingRuns.removeAll();
         if (tid && removed.length > 0) {
-          await Promise.all(removed.map((e) => client.runs.cancel(tid, e.id)));
+          await Promise.all(
+            removed.map((e) => client.value.runs.cancel(tid, e.id)),
+          );
         }
       },
     }),
@@ -813,7 +837,7 @@ function useStreamLGP<
         const removed = pendingRuns.removeAll();
         if (prevThreadId && removed.length > 0) {
           void Promise.all(
-            removed.map((e) => client.runs.cancel(prevThreadId, e.id)),
+            removed.map((e) => client.value.runs.cancel(prevThreadId, e.id)),
           );
         }
 
@@ -966,14 +990,16 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
+  options: VueReactiveOptions<ResolveStreamOptions<T, InferBag<T, Bag>>>,
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+  options: VueReactiveOptions<
+    UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+  >,
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -983,6 +1009,8 @@ export function useStream(options: any): any {
   }
   return useStreamLGP(options);
 }
+
+export type { MaybeRefOrGetter } from "vue";
 
 export type {
   BaseStream,
