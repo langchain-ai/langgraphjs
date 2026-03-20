@@ -468,7 +468,7 @@ function useStreamLGP<
     streamValues = stream.values;
     streamError = stream.error;
     isLoadingState = stream.isLoading;
-    subagentVersion++;
+    subagentVersion += 1;
   });
 
   const unsubQueue = pendingRuns.subscribe(() => {
@@ -476,17 +476,17 @@ function useStreamLGP<
     queueSize = pendingRuns.size;
   });
 
-  let branchContext = $derived(
+  const branchContext = $derived(
     getBranchContext(branch, historyState.data ?? undefined),
   );
 
-  let historyValues = $derived(
+  const historyValues = $derived(
     branchContext.threadHead?.values ??
       options.initialValues ??
       ({} as StateType),
   );
 
-  let historyError = $derived.by(() => {
+  const historyError = $derived.by(() => {
     const error = branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
@@ -499,13 +499,11 @@ function useStreamLGP<
     return error;
   });
 
-  let values = $derived(streamValues ?? historyValues);
+  const values = $derived(streamValues ?? historyValues);
 
-  let error = $derived(
-    streamError ?? historyError ?? historyState.error,
-  );
+  const error = $derived(streamError ?? historyError ?? historyState.error);
 
-  let messageMetadataMap = $derived(
+  const messageMetadataMap = $derived(
     getMessagesMetadataMap({
       initialValues: options.initialValues,
       history: historyState.data,
@@ -514,7 +512,7 @@ function useStreamLGP<
     }),
   );
 
-  let shouldReconstructSubagents = $derived.by(() => {
+  const shouldReconstructSubagents = $derived.by(() => {
     if (!options.filterSubagentMessages) return false;
     if (isLoadingState || historyState.isLoading) return false;
     const hvMessages = getMessages(historyValues);
@@ -883,11 +881,11 @@ function useStreamLGP<
     }
   });
 
-  let messages = $derived(
+  const messages = $derived(
     ensureMessageInstances(getMessages(streamValues ?? historyValues)),
   );
 
-  let interrupt = $derived(
+  const interrupt = $derived(
     extractInterrupts<InterruptType>(streamValues, {
       isLoading: isLoadingState,
       threadState: branchContext.threadHead,
@@ -895,7 +893,7 @@ function useStreamLGP<
     }),
   );
 
-  let interrupts = $derived.by(() => {
+  const interrupts = $derived.by(() => {
     const vals = streamValues ?? historyValues;
     if (
       vals != null &&
@@ -918,7 +916,7 @@ function useStreamLGP<
     return [{ when: "breakpoint" }];
   });
 
-  let toolCalls = $derived(
+  const toolCalls = $derived(
     getToolCallsWithResults(getMessages(streamValues ?? historyValues)),
   );
 
@@ -928,7 +926,7 @@ function useStreamLGP<
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   }
 
-  let historyList = $derived.by(() => {
+  const historyList = $derived.by(() => {
     if (historyLimit === false) {
       throw new Error(
         "`fetchStateHistory` must be set to `true` to use `history`",
@@ -940,11 +938,11 @@ function useStreamLGP<
     );
   });
 
-  let isThreadLoading = $derived(
+  const isThreadLoading = $derived(
     historyState.isLoading && historyState.data == null,
   );
 
-  let experimentalBranchTree = $derived.by(() => {
+  const experimentalBranchTree = $derived.by(() => {
     if (historyLimit === false) {
       throw new Error(
         "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
@@ -973,12 +971,12 @@ function useStreamLGP<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let _subagentTrigger = $derived(subagentVersion);
-  let subagentsValue = $derived.by(() => {
+  const _subagentTrigger = $derived(subagentVersion);
+  const subagentsValue = $derived.by(() => {
     void _subagentTrigger;
     return stream.getSubagents();
   });
-  let activeSubagentsValue = $derived.by(() => {
+  const activeSubagentsValue = $derived.by(() => {
     void _subagentTrigger;
     return stream.getActiveSubagents();
   });

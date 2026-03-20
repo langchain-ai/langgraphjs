@@ -74,7 +74,7 @@ export function useStreamCustom<
     streamValues = stream.values;
     streamError = stream.error;
     isLoadingState = stream.isLoading;
-    subagentVersion++;
+    subagentVersion += 1;
   });
 
   onDestroy(() => {
@@ -203,24 +203,24 @@ export function useStreamCustom<
     await submitDirect(submitValues, submitOptions);
   }
 
-  let valuesComputed = $derived(streamValues ?? ({} as StateType));
+  const valuesComputed = $derived(streamValues ?? ({} as StateType));
 
-  let messagesComputed = $derived.by(() => {
+  const messagesComputed = $derived.by(() => {
     if (!streamValues) return [];
     return ensureMessageInstances(getMessages(streamValues));
   });
 
-  let toolCallsComputed = $derived.by(() => {
+  const toolCallsComputed = $derived.by(() => {
     if (!streamValues) return [];
     const msgs = getMessages(streamValues);
     return getToolCallsWithResults<ToolCallType>(msgs);
   });
 
-  let interruptComputed = $derived(
+  const interruptComputed = $derived(
     extractInterrupts<InterruptType>(streamValues),
   );
 
-  let interruptsComputed = $derived.by((): Interrupt<InterruptType>[] => {
+  const interruptsComputed = $derived.by((): Interrupt<InterruptType>[] => {
     if (
       streamValues != null &&
       "__interrupt__" in streamValues &&
@@ -263,12 +263,12 @@ export function useStreamCustom<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let _subagentTrigger = $derived(subagentVersion);
-  let subagentsComputed = $derived.by(() => {
+  const _subagentTrigger = $derived(subagentVersion);
+  const subagentsComputed = $derived.by(() => {
     void _subagentTrigger;
     return stream.getSubagents();
   });
-  let activeSubagentsComputed = $derived.by(() => {
+  const activeSubagentsComputed = $derived.by(() => {
     void _subagentTrigger;
     return stream.getActiveSubagents();
   });
