@@ -1,12 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { v4 as uuidv4 } from "uuid";
-import {
-  Annotation,
-  END,
-  MemorySaver,
-  START,
-  StateGraph,
-} from "../../web.js";
+import { Annotation, END, MemorySaver, START, StateGraph } from "../../web.js";
 import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
 
 beforeAll(() => {
@@ -29,7 +23,7 @@ function trackSignalListeners(signal: AbortSignal) {
   signal.addEventListener = function (
     type: string,
     listener: any,
-    options?: any,
+    options?: any
   ) {
     if (type === "abort") counts.add++;
     return origAdd(type, listener, options);
@@ -38,7 +32,7 @@ function trackSignalListeners(signal: AbortSignal) {
   signal.removeEventListener = function (
     type: string,
     listener: any,
-    options?: any,
+    options?: any
   ) {
     if (type === "abort") counts.remove++;
     return origRemove(type, listener, options);
@@ -78,7 +72,7 @@ describe("AbortSignal listener leak", () => {
       {
         signal: controller.signal,
         configurable: { thread_id: uuidv4() },
-      },
+      }
     );
 
     // After the graph completes, all abort listeners added to the
@@ -86,7 +80,7 @@ describe("AbortSignal listener leak", () => {
     const leaked = counts.add - counts.remove;
 
     console.log(
-      `  Signal listeners: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`,
+      `  Signal listeners: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`
     );
 
     // Allow a small tolerance (1-2 for the top-level combine), but
@@ -124,7 +118,7 @@ describe("AbortSignal listener leak", () => {
           Array.from({ length: NUM_SUBGRAPHS }, async () => {
             const result = await subgraph.invoke({ value: 0 });
             return result.value;
-          }),
+          })
         );
         return { results };
       })
@@ -140,13 +134,13 @@ describe("AbortSignal listener leak", () => {
       {
         signal: controller.signal,
         configurable: { thread_id: uuidv4() },
-      },
+      }
     );
 
     const leaked = counts.add - counts.remove;
 
     console.log(
-      `  Signal listeners: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`,
+      `  Signal listeners: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`
     );
 
     // Should not scale with NUM_SUBGRAPHS * STEPS_PER_SUBGRAPH
@@ -173,7 +167,7 @@ describe("AbortSignal listener leak", () => {
       {
         signal: controller.signal,
         configurable: { thread_id: uuidv4() },
-      },
+      }
     );
 
     // Consume the stream fully
@@ -185,7 +179,7 @@ describe("AbortSignal listener leak", () => {
     const leaked = counts.add - counts.remove;
 
     console.log(
-      `  Signal listeners after stream: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`,
+      `  Signal listeners after stream: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`
     );
 
     expect(leaked).toBeLessThanOrEqual(2);
@@ -213,14 +207,14 @@ describe("AbortSignal listener leak", () => {
         {
           signal: controller.signal,
           configurable: { thread_id: uuidv4() },
-        },
+        }
       );
     }
 
     const leaked = counts.add - counts.remove;
 
     console.log(
-      `  After 10 invocations: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`,
+      `  After 10 invocations: ${counts.add} added, ${counts.remove} removed, ${leaked} leaked`
     );
 
     // Critical: leaked listeners should NOT scale with number of invocations
@@ -232,7 +226,7 @@ describe("AbortSignal listener leak", () => {
     const gc = globalThis.gc;
     if (!gc) {
       console.log(
-        `  ⚠ Skipping heap assertion — run with NODE_OPTIONS="--expose-gc" for precise measurement`,
+        `  ⚠ Skipping heap assertion — run with NODE_OPTIONS="--expose-gc" for precise measurement`
       );
     }
 
@@ -257,7 +251,7 @@ describe("AbortSignal listener leak", () => {
         {
           signal: controller.signal,
           configurable: { thread_id: uuidv4() },
-        },
+        }
       );
     }
 
@@ -275,7 +269,7 @@ describe("AbortSignal listener leak", () => {
         {
           signal: controller.signal,
           configurable: { thread_id: uuidv4() },
-        },
+        }
       );
 
       if (gc) gc();
@@ -283,14 +277,13 @@ describe("AbortSignal listener leak", () => {
       deltas.push(after - before);
     }
 
-    const avgDeltaKB =
-      deltas.reduce((a, b) => a + b, 0) / deltas.length / 1024;
+    const avgDeltaKB = deltas.reduce((a, b) => a + b, 0) / deltas.length / 1024;
     const maxDeltaKB = Math.max(...deltas) / 1024;
 
     console.log(
       `  Per-invocation heap delta (10 runs): ` +
         `avg ${avgDeltaKB > 0 ? "+" : ""}${avgDeltaKB.toFixed(1)} KB, ` +
-        `max ${maxDeltaKB > 0 ? "+" : ""}${maxDeltaKB.toFixed(1)} KB`,
+        `max ${maxDeltaKB > 0 ? "+" : ""}${maxDeltaKB.toFixed(1)} KB`
     );
 
     // With --expose-gc, each invocation should leave the heap at roughly
