@@ -97,20 +97,16 @@ export function setStreamContext<T extends ReturnType<typeof useStream>>(
  * ```
  */
 export function getStreamContext<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
+  T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
->(): WithClassMessages<
-  ResolveStreamInterface<StateType, InferBag<StateType, Bag>>
-> {
+>(): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>> {
   const ctx = getContext(STREAM_CONTEXT_KEY);
   if (!ctx) {
     throw new Error(
       "getStreamContext must be used within a component that has called setStreamContext",
     );
   }
-  return ctx as WithClassMessages<
-    ResolveStreamInterface<StateType, InferBag<StateType, Bag>>
-  >;
+  return ctx as WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 }
 
 function fetchHistory<StateType extends Record<string, unknown>>(
