@@ -1,5 +1,5 @@
 import { resolve, extname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build, type Format } from "tsdown";
 import type { PackageJson } from "type-fest";
@@ -10,6 +10,64 @@ import type { CompilePackageOptions } from "./types.js";
 
 const __dirname = fileURLToPath(import.meta.url);
 const root = resolve(__dirname, "..", "..", "..");
+
+/**
+ * Rolldown plugin that compiles `.svelte.ts` / `.svelte.js` modules
+ * via the Svelte compiler's `compileModule` API. This enables the use
+ * of Svelte 5 runes (`$state`, `$derived`, `$effect`, …) in library
+ * source files without requiring the full Vite Svelte plugin.
+ *
+ * TypeScript is stripped first via `ts.transpileModule`, then the
+ * result is passed through `svelte/compiler.compileModule`.
+ */
+async function svelteModulePlugin(packagePath: string) {
+  const svelteCompilerUrl = pathToFileURL(
+    resolve(packagePath, "node_modules", "svelte", "compiler", "index.js"),
+  ).href;
+  const typescriptUrl = pathToFileURL(
+    resolve(packagePath, "node_modules", "typescript", "lib", "typescript.js"),
+  ).href;
+
+  type CompileModule = (
+    source: string,
+    options: { filename: string; generate: string },
+  ) => { js: { code: string; map: unknown } };
+
+  const svelteCompiler = await import(svelteCompilerUrl);
+  const compileModule: CompileModule =
+    svelteCompiler.compileModule ?? svelteCompiler.default?.compileModule;
+
+  const tsModule = await import(typescriptUrl);
+  const ts = (tsModule.default ?? tsModule) as typeof import("typescript");
+
+  return {
+    name: "svelte-module",
+    transform(code: string, id: string) {
+      if (!id.endsWith(".svelte.ts") && !id.endsWith(".svelte.js")) {
+        return null;
+      }
+
+      let jsCode = code;
+      if (id.endsWith(".svelte.ts")) {
+        const stripped = ts.transpileModule(code, {
+          compilerOptions: {
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ESNext,
+            moduleResolution: ts.ModuleResolutionKind.Bundler,
+          },
+          fileName: id,
+        });
+        jsCode = stripped.outputText;
+      }
+
+      const result = compileModule(jsCode, {
+        filename: id,
+        generate: "client",
+      });
+      return { code: result.js.code, map: result.js.map };
+    },
+  };
+}
 
 export async function compilePackages(opts: CompilePackageOptions) {
   const packages = await findWorkspacePackages(root, opts);
@@ -97,6 +155,14 @@ async function buildProject(
         : false,
   };
 
+  const plugins: Awaited<ReturnType<typeof svelteModulePlugin>>[] = [];
+  if (
+    (pkg.peerDependencies && "svelte" in pkg.peerDependencies) ||
+    (pkg.dependencies && "svelte" in pkg.dependencies)
+  ) {
+    plugins.push(await svelteModulePlugin(path));
+  }
+
   await build({
     entry,
     clean,
@@ -116,6 +182,7 @@ async function buildProject(
     inputOptions: {
       cwd: path,
     },
+    plugins,
     ...buildChecks,
   });
 }

@@ -6,7 +6,7 @@
   "scripts": {
     "clean": "rm -rf dist/ dist-cjs/",
     "build": "pnpm turbo build:internal --filter=@langchain/svelte",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/svelte",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/svelte && node scripts/fix-svelte-dist.mjs",
     "prepublish": "pnpm build",
     "format:check": "prettier --check src",
     "format": "prettier --write src",

@@ -1,4 +1,3 @@
-import { writable, derived, fromStore } from "svelte/store";
 import { onDestroy } from "svelte";
 import {
   CustomStreamOrchestrator,
@@ -20,11 +19,11 @@ export function useStreamCustom<
   type ConfigurableType = GetConfigurableType<Bag>;
   const orchestrator = new CustomStreamOrchestrator<StateType, Bag>(options);
 
-  const version = writable(0);
-  const branch = writable<string>("");
+  let version = $state(0);
+  let branchValue = $state("");
 
   const unsubscribe = orchestrator.subscribe(() => {
-    version.update((v) => v + 1);
+    version++;
   });
 
   onDestroy(() => {
@@ -32,64 +31,72 @@ export function useStreamCustom<
     orchestrator.dispose();
   });
 
-  const valuesStore = derived(version, () => orchestrator.values);
+  // Fresh references for arrays/objects so Svelte 5's strict
+  // equality check (===) correctly detects mutations.
 
-  const messagesStore = derived(version, () => orchestrator.messages);
+  const values = $derived.by(() => {
+    void version;
+    return { ...orchestrator.values };
+  });
 
-  const toolCallsStore = derived(version, () => orchestrator.toolCalls);
+  const messagesValue = $derived.by(() => {
+    void version;
+    return Array.from(orchestrator.messages);
+  });
 
-  const interruptStore = derived(
-    version,
-    () => orchestrator.interrupt as Interrupt<InterruptType> | undefined,
-  );
+  const toolCallsValue = $derived.by(() => {
+    void version;
+    return Array.from(orchestrator.toolCalls);
+  });
 
-  const interruptsStore = derived(
-    version,
-    () => orchestrator.interrupts as Interrupt<InterruptType>[],
-  );
+  const interruptValue = $derived.by(() => {
+    void version;
+    return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
+  });
 
-  const subagentsStore = derived(version, () => orchestrator.subagents);
-  const activeSubagentsStore = derived(
-    version,
-    () => orchestrator.activeSubagents,
-  );
+  const interruptsValue = $derived.by(() => {
+    void version;
+    return Array.from(orchestrator.interrupts) as Interrupt<InterruptType>[];
+  });
 
-  const emptyEntries = writable<never[]>([]);
-  const emptySize = writable(0);
+  const subagentsValue = $derived.by(() => {
+    void version;
+    return new Map(orchestrator.subagents);
+  });
 
-  const valuesRef = fromStore(valuesStore);
-  const errorRef = fromStore(derived(version, () => orchestrator.error));
-  const isLoadingRef = fromStore(
-    derived(version, () => orchestrator.isLoading),
-  );
-  const branchRef = fromStore(branch);
-  const messagesRef = fromStore(messagesStore);
-  const toolCallsRef = fromStore(toolCallsStore);
-  const interruptRef = fromStore(interruptStore);
-  const interruptsRef = fromStore(interruptsStore);
-  const subagentsRef = fromStore(subagentsStore);
-  const activeSubagentsRef = fromStore(activeSubagentsStore);
-  const emptyEntriesRef = fromStore(emptyEntries);
-  const emptySizeRef = fromStore(emptySize);
+  const activeSubagentsValue = $derived.by(() => {
+    void version;
+    return Array.from(orchestrator.activeSubagents);
+  });
+
+  const errorValue = $derived.by(() => {
+    void version;
+    return orchestrator.error;
+  });
+
+  const isLoadingValue = $derived.by(() => {
+    void version;
+    return orchestrator.isLoading;
+  });
 
   return {
     get values() {
-      return valuesRef.current;
+      return values;
     },
     get error() {
-      return errorRef.current;
+      return errorValue;
     },
     get isLoading() {
-      return isLoadingRef.current;
+      return isLoadingValue;
     },
 
     stop: () => orchestrator.stop(),
 
     async submit(
-      values: UpdateType | null | undefined,
+      submitValues: UpdateType | null | undefined,
       submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
     ) {
-      await orchestrator.submit(values, submitOptions);
+      await orchestrator.submit(submitValues, submitOptions);
     },
 
     switchThread(newThreadId: string | null) {
@@ -97,10 +104,10 @@ export function useStreamCustom<
     },
 
     get branch() {
-      return branchRef.current;
+      return branchValue;
     },
     setBranch(value: string) {
-      branch.set(value);
+      branchValue = value;
       orchestrator.setBranch(value);
     },
 
@@ -113,10 +120,10 @@ export function useStreamCustom<
 
     queue: {
       get entries() {
-        return emptyEntriesRef.current;
+        return [] as never[];
       },
       get size() {
-        return emptySizeRef.current;
+        return 0;
       },
       async cancel() {
         return false;
@@ -125,27 +132,27 @@ export function useStreamCustom<
     },
 
     get interrupt() {
-      return interruptRef.current;
+      return interruptValue;
     },
     get interrupts() {
-      return interruptsRef.current;
+      return interruptsValue;
     },
 
     get messages() {
-      return messagesRef.current;
+      return messagesValue;
     },
     get toolCalls() {
-      return toolCallsRef.current;
+      return toolCallsValue;
     },
     getToolCalls(message: Message) {
       return orchestrator.getToolCalls(message);
     },
 
     get subagents() {
-      return subagentsRef.current;
+      return subagentsValue;
     },
     get activeSubagents() {
-      return activeSubagentsRef.current;
+      return activeSubagentsValue;
     },
     getSubagent(toolCallId: string) {
       return orchestrator.getSubagent(toolCallId);

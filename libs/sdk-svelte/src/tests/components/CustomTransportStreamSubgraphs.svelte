@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Message } from "@langchain/langgraph-sdk";
   import type { UseStreamTransport } from "../../index.js";
-  import { useStreamCustom } from "../../stream.custom.js";
+  import { useStreamCustom } from "../../stream.custom.svelte.js";
 
   type StreamState = { messages: Message[] };
 
