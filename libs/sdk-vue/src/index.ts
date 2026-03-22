@@ -96,7 +96,10 @@ function useStreamLGP<
     { flush: "sync" },
   );
 
-  // Reactive wrappers backed by orchestrator subscription
+  // Monotonically increasing counter bumped on every orchestrator update.
+  // Computed properties read `version.value` (via `void version.value`)
+  // solely to register a reactive dependency, so Vue knows to invalidate
+  // their cached values when the orchestrator state changes.
   const version = shallowRef(0);
   const subagentsRef = shallowRef(orchestrator.subagents);
   const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
@@ -168,7 +171,16 @@ function useStreamLGP<
     },
   );
 
-  // Computed values
+  // Cached computed properties derived from the orchestrator.
+  //
+  // The orchestrator is not itself reactive — it is a plain object whose
+  // state is mutated in place. To bridge it into Vue's reactivity system
+  // we bump `version` (a shallowRef) inside the orchestrator's subscribe
+  // callback. Each computed below reads `version.value` (via `void`) to
+  // register it as a dependency. When `version` increments, Vue marks
+  // every computed that depends on it as dirty, causing a re-evaluation
+  // on the next access. The `void` operator discards the unused value
+  // and signals this intent to future readers.
   const values = computed(() => {
     void version.value;
     return orchestrator.values;
