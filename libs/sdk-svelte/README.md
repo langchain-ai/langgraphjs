@@ -339,7 +339,7 @@ Call `getStreamContext` in any descendant to retrieve the stream. The returned v
 </script>
 ```
 
-> **Note:** Both functions must be called during component initialisation (i.e. at the top level of a `<script>` block), just like Svelte's own `setContext` / `getContext`. Calling `getStreamContext` without a parent `setStreamContext` throws an error.
+> **Note:** `setStreamContext`, `provideStream`, and `getStreamContext` must be called during component initialisation (i.e. at the top level of a `<script>` block), just like Svelte's own `setContext` / `getContext`. Calling `getStreamContext` without a parent `setStreamContext` or `provideStream` throws an error.
 
 ## Custom Transport
 
@@ -386,7 +386,7 @@ The custom transport interface returns the same properties as the standard `useS
 
 ## Sharing State with `provideStream`
 
-When multiple components need access to the same stream (a message list, a header, an input bar), use `provideStream` and `getStream` to share a single stream instance via Svelte's context API:
+`provideStream` is a convenience wrapper that creates a `useStream` instance and provides it to all descendant components in one call. Children retrieve the shared stream via `getStreamContext`:
 
 ```svelte
 <!-- ChatContainer.svelte -->
@@ -410,9 +410,9 @@ When multiple components need access to the same stream (a message list, a heade
 ```svelte
 <!-- MessageList.svelte -->
 <script lang="ts">
-  import { getStream } from "@langchain/svelte";
+  import { getStreamContext } from "@langchain/svelte";
 
-  const stream = getStream();
+  const stream = getStreamContext();
 </script>
 
 {#each stream.messages as msg (msg.id)}
@@ -423,9 +423,9 @@ When multiple components need access to the same stream (a message list, a heade
 ```svelte
 <!-- MessageInput.svelte -->
 <script lang="ts">
-  import { getStream } from "@langchain/svelte";
+  import { getStreamContext } from "@langchain/svelte";
 
-  const stream = getStream();
+  const stream = getStreamContext();
   let input = $state("");
 
   function send() {
@@ -443,9 +443,9 @@ When multiple components need access to the same stream (a message list, a heade
 ```svelte
 <!-- ChatHeader.svelte -->
 <script lang="ts">
-  import { getStream } from "@langchain/svelte";
+  import { getStreamContext } from "@langchain/svelte";
 
-  const stream = getStream();
+  const stream = getStreamContext();
 </script>
 
 <header>

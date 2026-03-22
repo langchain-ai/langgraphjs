@@ -23,6 +23,8 @@ module.exports = {
     "*.cjs",
     "*.d.ts",
     "*.svelte",
+    "*.svelte.ts",
+    "*.svelte.js",
   ],
   rules: {
     "no-process-env": 2,

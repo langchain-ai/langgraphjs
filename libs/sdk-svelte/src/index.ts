@@ -1,5 +1,4 @@
-import { writable, derived, fromStore } from "svelte/store";
-import { onDestroy, onMount, setContext, getContext } from "svelte";
+import { setContext, getContext } from "svelte";
 
 import type {
   BaseMessage,
@@ -7,11 +6,8 @@ import type {
   AIMessage as CoreAIMessage,
 } from "@langchain/core/messages";
 import {
-  StreamOrchestrator,
   FetchStreamTransport,
-  ensureMessageInstances,
   type MessageMetadata,
-  type AnyStreamOptions,
   type ResolveStreamInterface,
   type ResolveStreamOptions,
   type InferBag,
@@ -21,14 +17,14 @@ import {
   type SubagentStreamInterface,
   type HistoryWithBaseMessages,
 } from "@langchain/langgraph-sdk/ui";
-import {
-  Client,
-  type BagTemplate,
-  type Message,
-  type ToolCallWithResult as _ToolCallWithResult,
-  type DefaultToolCall,
+import type {
+  BagTemplate,
+  Message,
+  ToolCallWithResult as _ToolCallWithResult,
+  DefaultToolCall,
 } from "@langchain/langgraph-sdk";
-import { useStreamCustom } from "./stream.custom.js";
+import { useStreamCustom } from "./stream.custom.svelte.js";
+import { useStreamLGP } from "./stream.svelte.js";
 
 export { FetchStreamTransport };
 
@@ -81,7 +77,7 @@ export function getStreamContext<
   const ctx = getContext(STREAM_CONTEXT_KEY);
   if (!ctx) {
     throw new Error(
-      "getStreamContext must be used within a component that has called setStreamContext",
+      "getStreamContext must be used within a component that has called setStreamContext or provideStream",
     );
   }
   return ctx as WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
@@ -92,10 +88,7 @@ export function getStreamContext<
  * descendant components via Svelte's `setContext`/`getContext`.
  *
  * Call this in a parent component's `<script>` block. Children access
- * the shared stream via {@link getStream}.
- *
- * Uses the same context key as {@link setStreamContext}/{@link getStreamContext},
- * so both retrieval functions work interchangeably.
+ * the shared stream via {@link getStreamContext}.
  *
  * @example
  * ```svelte
@@ -103,7 +96,7 @@ export function getStreamContext<
  * <script lang="ts">
  *   import { provideStream } from "@langchain/svelte";
  *
- *   provideStream({
+ *   const stream = provideStream({
  *     assistantId: "agent",
  *     apiUrl: "http://localhost:2024",
  *   });
@@ -131,38 +124,15 @@ export function provideStream<
 }
 
 /**
- * Retrieves the shared stream instance from the nearest ancestor that
- * called {@link provideStream} or {@link setStreamContext}.
- *
- * Throws if no ancestor has provided a stream.
- *
- * @example
- * ```svelte
- * <!-- MessageList.svelte -->
- * <script lang="ts">
- *   import { getStream } from "@langchain/svelte";
- *
- *   const stream = getStream();
- * </script>
- *
- * {#each stream.messages as msg (msg.id)}
- *   <div>{msg.content}</div>
- * {/each}
- * ```
+ * @deprecated Use {@link getStreamContext} instead. `getStream` is an
+ * alias kept for backward compatibility. Both functions share the same
+ * context key and are fully interchangeable.
  */
 export function getStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(): ReturnType<typeof useStream<T, Bag>> {
-  const context = getContext(STREAM_CONTEXT_KEY);
-  if (context == null) {
-    throw new Error(
-      "getStream() requires a parent component to call provideStream(). " +
-        "Add provideStream({ assistantId: '...' }) in an ancestor component.",
-    );
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return context as any;
+  return getStreamContext<T, Bag>() as ReturnType<typeof useStream<T, Bag>>;
 }
 
 type ClassToolCallWithResult<T> =
@@ -304,223 +274,6 @@ export function useStream(options: any): any {
     return useStreamCustom(options);
   }
   return useStreamLGP(options);
-}
-
-function useStreamLGP<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate,
->(options: AnyStreamOptions<StateType, Bag>) {
-  const client = options.client ?? new Client({ apiUrl: options.apiUrl });
-
-  const orchestrator = new StreamOrchestrator<StateType, Bag>(options, {
-    getClient: () => client,
-    getAssistantId: () => options.assistantId,
-    getMessagesKey: () => options.messagesKey ?? "messages",
-  });
-
-  orchestrator.initThreadId(options.threadId ?? undefined);
-
-  const version = writable(0);
-  const unsubscribe = orchestrator.subscribe(() => {
-    version.update((v) => v + 1);
-  });
-
-  let fetchController: AbortController | null = null;
-
-  // Subagent reconstruction
-  const shouldReconstructSubagents = derived(version, () => {
-    const hvMessages = orchestrator.messages;
-    if (!options.filterSubagentMessages) return false;
-    if (orchestrator.isLoading || orchestrator.historyData.isLoading)
-      return false;
-    return hvMessages.length > 0;
-  });
-
-  const unsubReconstruct = shouldReconstructSubagents.subscribe(($should) => {
-    if ($should) {
-      fetchController?.abort();
-      const controller = orchestrator.reconstructSubagentsIfNeeded();
-      fetchController = controller;
-    }
-  });
-
-  // Queue draining - must track isLoading specifically (not just version)
-  // so the drain fires exactly when stream transitions from loading → idle
-  const isLoadingForDrain = derived(version, () => orchestrator.isLoading);
-  const unsubDrain = isLoadingForDrain.subscribe(() => {
-    orchestrator.drainQueue();
-  });
-
-  // Auto-reconnect
-  let { shouldReconnect } = orchestrator;
-
-  onMount(() => {
-    if (shouldReconnect) {
-      const reconnected = orchestrator.tryReconnect();
-      if (reconnected) shouldReconnect = false;
-    }
-  });
-
-  onDestroy(() => {
-    fetchController?.abort();
-    unsubscribe();
-    unsubReconstruct();
-    unsubDrain();
-    orchestrator.dispose();
-  });
-
-  // Derived stores
-  const valuesStore = derived(version, () => {
-    orchestrator.trackStreamMode("values");
-    return orchestrator.values;
-  });
-  const errorStore = derived(version, () => orchestrator.error);
-  const isLoadingStore = derived(version, () => orchestrator.isLoading);
-  const branchStore = derived(version, () => orchestrator.branch);
-  const messagesStore = derived(version, () => {
-    orchestrator.trackStreamMode("messages-tuple", "values");
-    return ensureMessageInstances(orchestrator.messages);
-  });
-  const toolCallsStore = derived(version, () => {
-    orchestrator.trackStreamMode("messages-tuple", "values");
-    return orchestrator.toolCalls;
-  });
-  const interruptStore = derived(version, () => orchestrator.interrupt);
-  const interruptsStore = derived(version, () => orchestrator.interrupts);
-  const historyListStore = derived(version, () => orchestrator.flatHistory);
-  const isThreadLoadingStore = derived(
-    version,
-    () => orchestrator.isThreadLoading,
-  );
-  const experimentalBranchTreeStore = derived(
-    version,
-    () => orchestrator.experimental_branchTree,
-  );
-  const subagentsStore = derived(version, () => {
-    orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.subagents;
-  });
-  const activeSubagentsStore = derived(version, () => {
-    orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.activeSubagents;
-  });
-  const queueEntriesStore = derived(version, () => orchestrator.queueEntries);
-  const queueSizeStore = derived(version, () => orchestrator.queueSize);
-
-  // fromStore adapters for Svelte 5
-  const valuesRef = fromStore(valuesStore);
-  const errorRef = fromStore(errorStore);
-  const isLoadingRef = fromStore(isLoadingStore);
-  const branchRef = fromStore(branchStore);
-  const messagesRef = fromStore(messagesStore);
-  const toolCallsRef = fromStore(toolCallsStore);
-  const interruptRef = fromStore(interruptStore);
-  const interruptsRef = fromStore(interruptsStore);
-  const historyListRef = fromStore(historyListStore);
-  const isThreadLoadingRef = fromStore(isThreadLoadingStore);
-  const experimentalBranchTreeRef = fromStore(experimentalBranchTreeStore);
-  const subagentsRef = fromStore(subagentsStore);
-  const activeSubagentsRef = fromStore(activeSubagentsStore);
-  const queueEntriesRef = fromStore(queueEntriesStore);
-  const queueSizeRef = fromStore(queueSizeStore);
-
-  return {
-    assistantId: options.assistantId,
-    client,
-
-    get values() {
-      return valuesRef.current;
-    },
-    get error() {
-      return errorRef.current;
-    },
-    get isLoading() {
-      return isLoadingRef.current;
-    },
-    get isThreadLoading() {
-      return isThreadLoadingRef.current;
-    },
-
-    get branch() {
-      return branchRef.current;
-    },
-    setBranch(value: string) {
-      orchestrator.setBranch(value);
-    },
-
-    get messages() {
-      return messagesRef.current;
-    },
-    get toolCalls() {
-      return toolCallsRef.current;
-    },
-    getToolCalls(message: Message) {
-      return orchestrator.getToolCalls(message);
-    },
-
-    get interrupt() {
-      return interruptRef.current;
-    },
-    get interrupts() {
-      return interruptsRef.current;
-    },
-
-    get history() {
-      return historyListRef.current;
-    },
-    get experimental_branchTree() {
-      return experimentalBranchTreeRef.current;
-    },
-
-    getMessagesMetadata(
-      message: Message,
-      index?: number,
-    ): MessageMetadata<StateType> | undefined {
-      return orchestrator.getMessagesMetadata(message, index);
-    },
-
-    submit: (...args: Parameters<typeof orchestrator.submit>) =>
-      orchestrator.submit(...args),
-    stop: () => orchestrator.stop(),
-    joinStream: (...args: Parameters<typeof orchestrator.joinStream>) =>
-      orchestrator.joinStream(...args),
-
-    queue: {
-      get entries() {
-        return queueEntriesRef.current;
-      },
-      get size() {
-        return queueSizeRef.current;
-      },
-      cancel: (id: string) => orchestrator.cancelQueueItem(id),
-      clear: () => orchestrator.clearQueue(),
-    },
-
-    switchThread(newThreadId: string | null) {
-      orchestrator.switchThread(newThreadId);
-    },
-
-    get subagents() {
-      return subagentsRef.current;
-    },
-    get activeSubagents() {
-      return activeSubagentsRef.current;
-    },
-    getSubagent(toolCallId: string) {
-      return orchestrator.getSubagent(toolCallId);
-    },
-    getSubagentsByType(type: string) {
-      return orchestrator.getSubagentsByType(type);
-    },
-    getSubagentsByMessage(messageId: string) {
-      return orchestrator.getSubagentsByMessage(messageId);
-    },
-  };
 }
 
 export type {

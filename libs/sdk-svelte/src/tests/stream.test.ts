@@ -27,7 +27,7 @@ import HistoryMessages from "./components/HistoryMessages.svelte";
 import StreamContextParent from "./components/StreamContextParent.svelte";
 import StreamContextOrphan from "./components/StreamContextOrphan.svelte";
 import ContextProvider from "./components/ContextProvider.svelte";
-import { getStream, type UseStreamTransport } from "../index.js";
+import { getStreamContext, type UseStreamTransport } from "../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1232,7 +1232,7 @@ it("getStreamContext throws when no parent has set context", async () => {
     );
 });
 
-// provideStream / getStream context tests
+// provideStream / getStreamContext context tests
 it("provideStream shares stream state across child components", async () => {
   const screen = render(ContextProvider, {
     apiUrl: serverUrl,
@@ -1279,8 +1279,8 @@ it("provideStream children can stop the stream", async () => {
     .toHaveTextContent("Not loading");
 });
 
-it("getStream throws when used outside a component", () => {
+it("getStreamContext throws when used outside a component", () => {
   expect(() => {
-    getStream();
+    getStreamContext();
   }).toThrow();
 });

@@ -1,4 +1,5 @@
 import { resolve, extname } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import { build, type Format } from "tsdown";
@@ -10,6 +11,54 @@ import type { CompilePackageOptions } from "./types.js";
 
 const __dirname = fileURLToPath(import.meta.url);
 const root = resolve(__dirname, "..", "..", "..");
+
+/**
+ * Rolldown plugin that compiles `.svelte.ts` / `.svelte.js` modules
+ * via the Svelte compiler's `compileModule` API. This enables the use
+ * of Svelte 5 runes (`$state`, `$derived`, `$effect`, …) in library
+ * source files without requiring the full Vite Svelte plugin.
+ *
+ * TypeScript is stripped first via `ts.transpileModule`, then the
+ * result is passed through `svelte/compiler.compileModule`.
+ */
+function svelteModulePlugin(packagePath: string) {
+  const require = createRequire(resolve(packagePath, "package.json"));
+  const { compileModule } = require("svelte/compiler") as {
+    compileModule: (
+      source: string,
+      options: { filename: string; generate: string },
+    ) => { js: { code: string; map: unknown } };
+  };
+  const ts = require("typescript") as typeof import("typescript");
+
+  return {
+    name: "svelte-module",
+    transform(code: string, id: string) {
+      if (!id.endsWith(".svelte.ts") && !id.endsWith(".svelte.js")) {
+        return null;
+      }
+
+      let jsCode = code;
+      if (id.endsWith(".svelte.ts")) {
+        const stripped = ts.transpileModule(code, {
+          compilerOptions: {
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ESNext,
+            moduleResolution: ts.ModuleResolutionKind.Bundler,
+          },
+          fileName: id,
+        });
+        jsCode = stripped.outputText;
+      }
+
+      const result = compileModule(jsCode, {
+        filename: id,
+        generate: "client",
+      });
+      return { code: result.js.code, map: result.js.map };
+    },
+  };
+}
 
 export async function compilePackages(opts: CompilePackageOptions) {
   const packages = await findWorkspacePackages(root, opts);
@@ -97,6 +146,14 @@ async function buildProject(
         : false,
   };
 
+  const plugins: ReturnType<typeof svelteModulePlugin>[] = [];
+  if (
+    (pkg.peerDependencies && "svelte" in pkg.peerDependencies) ||
+    (pkg.dependencies && "svelte" in pkg.dependencies)
+  ) {
+    plugins.push(svelteModulePlugin(path));
+  }
+
   await build({
     entry,
     clean,
@@ -116,6 +173,7 @@ async function buildProject(
     inputOptions: {
       cwd: path,
     },
+    plugins,
     ...buildChecks,
   });
 }
