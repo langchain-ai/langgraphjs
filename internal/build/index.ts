@@ -1,4 +1,5 @@
-import { resolve, extname } from "node:path";
+import { resolve, extname, dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build, type Format } from "tsdown";
@@ -16,6 +17,11 @@ const root = resolve(__dirname, "..", "..", "..");
  * via the Svelte compiler's `compileModule` API. This enables the use
  * of Svelte 5 runes (`$state`, `$derived`, `$effect`, …) in library
  * source files without requiring the full Vite Svelte plugin.
+ *
+ * The plugin uses `resolveId` + `load` to remap `.svelte.ts` source
+ * files to clean module IDs (without `.svelte`), so that rolldown
+ * outputs plain `.js` / `.cjs` files that downstream Svelte Vite
+ * plugins won't attempt to re-compile.
  *
  * TypeScript is stripped first via `ts.transpileModule`, then the
  * result is passed through `svelte/compiler.compileModule`.
@@ -40,28 +46,48 @@ async function svelteModulePlugin(packagePath: string) {
   const tsModule = await import(typescriptUrl);
   const ts = (tsModule.default ?? tsModule) as typeof import("typescript");
 
+  const svelteModuleIds = new Set<string>();
+
   return {
     name: "svelte-module",
+
+    resolveId(source: string, importer: string | undefined) {
+      if (!importer || !source.includes(".svelte.")) return null;
+
+      const importerDir = dirname(importer);
+      const svelteTsPath = resolve(
+        importerDir,
+        source.replace(/\.js$/, ".ts"),
+      );
+      const cleanId = svelteTsPath.replace(/\.svelte\.ts$/, ".ts");
+
+      svelteModuleIds.add(cleanId);
+      return cleanId;
+    },
+
+    load(id: string) {
+      if (!svelteModuleIds.has(id)) return null;
+
+      const svelteFile = id.replace(/\.ts$/, ".svelte.ts");
+      return readFileSync(svelteFile, "utf8");
+    },
+
     transform(code: string, id: string) {
-      if (!id.endsWith(".svelte.ts") && !id.endsWith(".svelte.js")) {
-        return null;
-      }
+      if (!svelteModuleIds.has(id)) return null;
 
-      let jsCode = code;
-      if (id.endsWith(".svelte.ts")) {
-        const stripped = ts.transpileModule(code, {
-          compilerOptions: {
-            module: ts.ModuleKind.ESNext,
-            target: ts.ScriptTarget.ESNext,
-            moduleResolution: ts.ModuleResolutionKind.Bundler,
-          },
-          fileName: id,
-        });
-        jsCode = stripped.outputText;
-      }
+      const svelteFile = id.replace(/\.ts$/, ".svelte.ts");
 
-      const result = compileModule(jsCode, {
-        filename: id,
+      const stripped = ts.transpileModule(code, {
+        compilerOptions: {
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.Bundler,
+        },
+        fileName: svelteFile,
+      });
+
+      const result = compileModule(stripped.outputText, {
+        filename: svelteFile,
         generate: "client",
       });
       return { code: result.js.code, map: result.js.map };
