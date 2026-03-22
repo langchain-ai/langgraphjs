@@ -31,19 +31,22 @@ export function useStreamCustom<
     orchestrator.dispose();
   });
 
+  // Fresh references for arrays/objects so Svelte 5's strict
+  // equality check (===) correctly detects mutations.
+
   const values = $derived.by(() => {
     void version;
-    return orchestrator.values;
+    return { ...orchestrator.values };
   });
 
   const messagesValue = $derived.by(() => {
     void version;
-    return orchestrator.messages;
+    return Array.from(orchestrator.messages);
   });
 
   const toolCallsValue = $derived.by(() => {
     void version;
-    return orchestrator.toolCalls;
+    return Array.from(orchestrator.toolCalls);
   });
 
   const interruptValue = $derived.by(() => {
@@ -53,17 +56,17 @@ export function useStreamCustom<
 
   const interruptsValue = $derived.by(() => {
     void version;
-    return orchestrator.interrupts as Interrupt<InterruptType>[];
+    return Array.from(orchestrator.interrupts) as Interrupt<InterruptType>[];
   });
 
   const subagentsValue = $derived.by(() => {
     void version;
-    return orchestrator.subagents;
+    return new Map(orchestrator.subagents);
   });
 
   const activeSubagentsValue = $derived.by(() => {
     void version;
-    return orchestrator.activeSubagents;
+    return Array.from(orchestrator.activeSubagents);
   });
 
   const errorValue = $derived.by(() => {

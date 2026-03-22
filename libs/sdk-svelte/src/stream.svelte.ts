@@ -80,11 +80,20 @@ export function useStreamLGP<
     orchestrator.dispose();
   });
 
-  // Reactive derived values via Svelte 5 runes
+  // Reactive derived values via Svelte 5 runes.
+  //
+  // Svelte 5 $derived uses strict equality (===) to decide whether
+  // dependents need re-rendering.  Svelte 4's derived stores used
+  // safe_not_equal, which always treated objects/arrays as "changed"
+  // regardless of reference identity.  Because the orchestrator may
+  // return the same object/array reference after mutating it in place,
+  // we produce fresh references here so that $derived correctly
+  // propagates changes to template expressions.
+
   const values = $derived.by(() => {
     void version;
     orchestrator.trackStreamMode("values");
-    return orchestrator.values;
+    return { ...orchestrator.values };
   });
 
   const error = $derived.by(() => {
@@ -111,7 +120,7 @@ export function useStreamLGP<
   const toolCalls = $derived.by(() => {
     void version;
     orchestrator.trackStreamMode("messages-tuple", "values");
-    return orchestrator.toolCalls;
+    return Array.from(orchestrator.toolCalls);
   });
 
   const interrupt = $derived.by(() => {
@@ -121,12 +130,12 @@ export function useStreamLGP<
 
   const interrupts = $derived.by(() => {
     void version;
-    return orchestrator.interrupts;
+    return Array.from(orchestrator.interrupts);
   });
 
   const historyList = $derived.by(() => {
     void version;
-    return orchestrator.flatHistory;
+    return Array.from(orchestrator.flatHistory);
   });
 
   const isThreadLoading = $derived.by(() => {
@@ -142,18 +151,18 @@ export function useStreamLGP<
   const subagents = $derived.by(() => {
     void version;
     orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.subagents;
+    return new Map(orchestrator.subagents);
   });
 
   const activeSubagents = $derived.by(() => {
     void version;
     orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.activeSubagents;
+    return Array.from(orchestrator.activeSubagents);
   });
 
   const queueEntries = $derived.by(() => {
     void version;
-    return orchestrator.queueEntries;
+    return Array.from(orchestrator.queueEntries);
   });
 
   const queueSize = $derived.by(() => {
