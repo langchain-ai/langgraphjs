@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useStreamCustom } from "../../stream.custom.js";
+  import { useStreamCustom } from "../../stream.custom.svelte.js";
   import type { Message } from "@langchain/langgraph-sdk";
 
   interface Props {
