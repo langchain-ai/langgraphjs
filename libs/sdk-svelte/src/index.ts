@@ -19,7 +19,6 @@ import {
 } from "@langchain/langgraph-sdk/ui";
 import type {
   BagTemplate,
-  Message,
   ToolCallWithResult as _ToolCallWithResult,
   DefaultToolCall,
 } from "@langchain/langgraph-sdk";
