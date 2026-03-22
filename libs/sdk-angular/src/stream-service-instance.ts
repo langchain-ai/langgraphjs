@@ -61,8 +61,8 @@ export interface StreamServiceInstance<
     cancel: (id: string) => Promise<boolean>;
     clear: () => Promise<void>;
   }>;
-  subagents: Map<string, SubagentStreamInterface>;
-  activeSubagents: SubagentStreamInterface[];
+  subagents: Signal<ReadonlyMap<string, SubagentStreamInterface>>;
+  activeSubagents: Signal<readonly SubagentStreamInterface[]>;
   history: Signal<unknown>;
   isThreadLoading: Signal<boolean>;
   experimental_branchTree: Signal<unknown>;

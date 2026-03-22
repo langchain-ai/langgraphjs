@@ -106,7 +106,7 @@ export class DeepAgentStreamComponent {
   toolCallStates = new Set<string>();
 
   sortedSubagents() {
-    const sorted = [...this.stream.subagents.values()].sort(
+    const sorted = [...this.stream.subagents().values()].sort(
       (a: ClassSubagentStreamInterface, b: ClassSubagentStreamInterface) =>
         (a.toolCall?.args?.subagent_type ?? "").localeCompare(
           b.toolCall?.args?.subagent_type ?? "",

@@ -12,7 +12,9 @@ import type {
   InferStateType,
   UseStreamCustomOptions,
 } from "@langchain/langgraph-sdk/ui";
-import { useStream } from "./index.js";
+import type { StreamServiceInstance } from "./stream-service-instance.js";
+import { useStreamLGP } from "./stream.lgp.js";
+import { injectStreamCustom } from "./stream.custom.js";
 
 /**
  * Configuration defaults for `useStream` and `injectStream` calls.
@@ -38,8 +40,7 @@ export const STREAM_DEFAULTS = new InjectionToken<StreamDefaults>(
  * Injection token for a shared stream instance.
  * Provide via `provideStream()` at the component level.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const STREAM_INSTANCE = new InjectionToken<any>(
+export const STREAM_INSTANCE = new InjectionToken<StreamServiceInstance>(
   "LANGCHAIN_STREAM_INSTANCE",
 );
 
@@ -123,8 +124,12 @@ export function provideStream<
         apiUrl: (options as Record<string, unknown>).apiUrl ?? defaults?.apiUrl,
         client: (options as Record<string, unknown>).client ?? defaults?.client,
       };
+      if ("transport" in merged) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return injectStreamCustom(merged as any);
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return useStream(merged as any);
+      return useStreamLGP(merged as any);
     },
   };
 }
