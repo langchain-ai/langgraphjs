@@ -86,29 +86,30 @@ export function useStreamCustom<
 
   // Cached computed properties — unlike plain getters, `computed()` only
   // recomputes when a tracked dependency changes, and caches the result
-  // between reads.
+  // between reads. Getters below unwrap `.value` so callers see plain
+  // values (matching the original API surface).
   //
-  // `void isLoading.value` / `void streamValues.value` accesses the ref
-  // solely to register it as a dependency of the computed, so that Vue
+  // `void isLoading.value` / reading `streamValues.value` accesses the
+  // ref solely to register it as a dependency of the computed, so Vue
   // knows to invalidate the cached value when the orchestrator pushes an
   // update. The `void` operator discards the unused value and signals
   // intent to future readers.
-  const interrupts = computed(() => {
+  const interruptsComputed = computed(() => {
     void isLoading.value;
     return orchestrator.interrupts as Interrupt<InterruptType>[];
   });
 
-  const interrupt = computed(() => {
+  const interruptComputed = computed(() => {
     void isLoading.value;
     return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
   });
 
-  const messages = computed(() => {
+  const messagesComputed = computed(() => {
     if (!streamValues.value) return [];
     return ensureMessageInstances(orchestrator.messages);
   });
 
-  const toolCalls = computed(() => {
+  const toolCallsComputed = computed(() => {
     if (!streamValues.value) return [];
     return orchestrator.toolCalls;
   });
@@ -157,10 +158,18 @@ export function useStreamCustom<
       clear: async () => {},
     }),
 
-    interrupts,
-    interrupt,
-    messages,
-    toolCalls,
+    get interrupts(): Interrupt<InterruptType>[] {
+      return interruptsComputed.value;
+    },
+    get interrupt(): Interrupt<InterruptType> | undefined {
+      return interruptComputed.value;
+    },
+    get messages() {
+      return messagesComputed.value;
+    },
+    get toolCalls() {
+      return toolCallsComputed.value;
+    },
 
     getToolCalls(message: Message) {
       return orchestrator.getToolCalls(message);
