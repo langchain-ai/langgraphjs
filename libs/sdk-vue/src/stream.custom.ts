@@ -1,4 +1,12 @@
-import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
+import {
+  computed,
+  onScopeDispose,
+  reactive,
+  ref,
+  shallowRef,
+  toValue,
+  watch,
+} from "vue";
 import {
   CustomStreamOrchestrator,
   ensureMessageInstances,
@@ -76,6 +84,39 @@ export function useStreamCustom<
     { immediate: true },
   );
 
+  // Cached computed properties — unlike plain getters, `computed()` only
+  // recomputes when a tracked dependency changes, and caches the result
+  // between reads. Getters below unwrap `.value` so callers see plain
+  // values (matching the original API surface).
+  //
+  // `void isLoading.value` / reading `streamValues.value` accesses the
+  // ref solely to register it as a dependency of the computed, so Vue
+  // knows to invalidate the cached value when the orchestrator pushes an
+  // update. The `void` operator discards the unused value and signals
+  // intent to future readers.
+  const interruptsComputed = computed(() => {
+    void isLoading.value;
+    return orchestrator.interrupts as Interrupt<InterruptType>[];
+  });
+
+  const interruptComputed = computed(() => {
+    void isLoading.value;
+    return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
+  });
+
+  const messagesComputed = computed(() => {
+    if (!streamValues.value) return [];
+    return ensureMessageInstances(orchestrator.messages);
+  });
+
+  const toolCallsComputed = computed(() => {
+    if (!streamValues.value) return [];
+    return orchestrator.toolCalls;
+  });
+
+  const queueEntries = shallowRef<unknown[]>([]);
+  const queueSize = shallowRef(0);
+
   return {
     get values() {
       return streamValues.value ?? ({} as StateType);
@@ -110,33 +151,24 @@ export function useStreamCustom<
       return orchestrator.getMessagesMetadata(message, index);
     },
 
-    queue: {
-      entries: [],
-      size: 0,
-      async cancel() {
-        return false;
-      },
-      async clear() {},
-    },
+    queue: reactive({
+      entries: queueEntries,
+      size: queueSize,
+      cancel: async () => false,
+      clear: async () => {},
+    }),
 
     get interrupts(): Interrupt<InterruptType>[] {
-      void isLoading.value;
-      return orchestrator.interrupts as Interrupt<InterruptType>[];
+      return interruptsComputed.value;
     },
-
     get interrupt(): Interrupt<InterruptType> | undefined {
-      void isLoading.value;
-      return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
+      return interruptComputed.value;
     },
-
     get messages() {
-      if (!streamValues.value) return [];
-      return ensureMessageInstances(orchestrator.messages);
+      return messagesComputed.value;
     },
-
     get toolCalls() {
-      if (!streamValues.value) return [];
-      return orchestrator.toolCalls;
+      return toolCallsComputed.value;
     },
 
     getToolCalls(message: Message) {
