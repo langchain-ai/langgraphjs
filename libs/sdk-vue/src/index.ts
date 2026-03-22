@@ -29,6 +29,8 @@ import {
   type UseStreamCustomOptions,
   type SubagentStreamInterface,
   type HistoryWithBaseMessages,
+  type ClassToolCallWithResult,
+  type ClassSubagentStreamInterface,
 } from "@langchain/langgraph-sdk/ui";
 
 import {
@@ -327,21 +329,7 @@ function useStreamLGP<
   };
 }
 
-type ClassToolCallWithResult<T> =
-  T extends _ToolCallWithResult<infer TC, unknown, unknown>
-    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
-    : T;
-
-export type ClassSubagentStreamInterface<
-  StateType = Record<string, unknown>,
-  ToolCall = DefaultToolCall,
-  SubagentName extends string = string,
-> = Omit<
-  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
-  "messages"
-> & {
-  messages: BaseMessage[];
-};
+export type { ClassSubagentStreamInterface } from "@langchain/langgraph-sdk/ui";
 
 type WithClassMessages<T> = {
   [K in keyof T as K extends
