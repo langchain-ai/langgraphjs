@@ -4,10 +4,7 @@ import type {
   AIMessage as CoreAIMessage,
 } from "@langchain/core/messages";
 
-import type {
-  ToolCallWithResult,
-  DefaultToolCall,
-} from "../types.messages.js";
+import type { ToolCallWithResult, DefaultToolCall } from "../types.messages.js";
 import type {
   SubagentStreamInterface,
   AcceptBaseMessages,
@@ -25,10 +22,13 @@ import type { HistoryWithBaseMessages } from "./messages.js";
  * `ensureMessageInstances`; this type reflects that conversion at the
  * type level.
  */
-export type ClassToolCallWithResult<T> =
-  T extends ToolCallWithResult<infer TC, unknown, unknown>
-    ? ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
-    : T;
+export type ClassToolCallWithResult<T> = T extends ToolCallWithResult<
+  infer TC,
+  unknown,
+  unknown
+>
+  ? ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
+  : T;
 
 /**
  * Subagent stream interface with `messages` typed as `BaseMessage[]`
@@ -40,7 +40,7 @@ export type ClassToolCallWithResult<T> =
 export type ClassSubagentStreamInterface<
   StateType = Record<string, unknown>,
   ToolCall = DefaultToolCall,
-  SubagentName extends string = string,
+  SubagentName extends string = string
 > = Omit<
   SubagentStreamInterface<StateType, ToolCall, SubagentName>,
   "messages"
@@ -83,7 +83,7 @@ export type WithClassMessages<T> = Omit<
   messages: BaseMessage[];
   getMessagesMetadata: (
     message: BaseMessage,
-    index?: number,
+    index?: number
   ) => MessageMetadata<Record<string, unknown>> | undefined;
 } & ("history" extends keyof T
     ? { history: HistoryWithBaseMessages<T["history"]> }
@@ -98,7 +98,7 @@ export type WithClassMessages<T> = Omit<
                 | AcceptBaseMessages<Exclude<V, null | undefined>>
                 | null
                 | undefined,
-              options?: O,
+              options?: O
             ) => Ret
           : never;
       }
@@ -140,23 +140,23 @@ export type WithClassMessages<T> = Omit<
           : never;
         getSubagent: T extends {
           getSubagent: (
-            id: string,
+            id: string
           ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
         }
           ? (
-              toolCallId: string,
+              toolCallId: string
             ) => ClassSubagentStreamInterface<S, TC, N> | undefined
           : never;
         getSubagentsByType: T extends {
           getSubagentsByType: (
-            type: string,
+            type: string
           ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
         }
           ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
           : never;
         getSubagentsByMessage: T extends {
           getSubagentsByMessage: (
-            id: string,
+            id: string
           ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
         }
           ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
