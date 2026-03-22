@@ -1,6 +1,5 @@
 import { resolve, extname } from "node:path";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build, type Format } from "tsdown";
 import type { PackageJson } from "type-fest";
@@ -21,15 +20,25 @@ const root = resolve(__dirname, "..", "..", "..");
  * TypeScript is stripped first via `ts.transpileModule`, then the
  * result is passed through `svelte/compiler.compileModule`.
  */
-function svelteModulePlugin(packagePath: string) {
-  const require = createRequire(resolve(packagePath, "package.json"));
-  const { compileModule } = require("svelte/compiler") as {
-    compileModule: (
-      source: string,
-      options: { filename: string; generate: string },
-    ) => { js: { code: string; map: unknown } };
-  };
-  const ts = require("typescript") as typeof import("typescript");
+async function svelteModulePlugin(packagePath: string) {
+  const svelteCompilerUrl = pathToFileURL(
+    resolve(packagePath, "node_modules", "svelte", "compiler", "index.js"),
+  ).href;
+  const typescriptUrl = pathToFileURL(
+    resolve(packagePath, "node_modules", "typescript", "lib", "typescript.js"),
+  ).href;
+
+  type CompileModule = (
+    source: string,
+    options: { filename: string; generate: string },
+  ) => { js: { code: string; map: unknown } };
+
+  const svelteCompiler = await import(svelteCompilerUrl);
+  const compileModule: CompileModule =
+    svelteCompiler.compileModule ?? svelteCompiler.default?.compileModule;
+
+  const tsModule = await import(typescriptUrl);
+  const ts = (tsModule.default ?? tsModule) as typeof import("typescript");
 
   return {
     name: "svelte-module",
@@ -146,12 +155,12 @@ async function buildProject(
         : false,
   };
 
-  const plugins: ReturnType<typeof svelteModulePlugin>[] = [];
+  const plugins: Awaited<ReturnType<typeof svelteModulePlugin>>[] = [];
   if (
     (pkg.peerDependencies && "svelte" in pkg.peerDependencies) ||
     (pkg.dependencies && "svelte" in pkg.dependencies)
   ) {
-    plugins.push(svelteModulePlugin(path));
+    plugins.push(await svelteModulePlugin(path));
   }
 
   await build({
