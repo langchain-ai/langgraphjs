@@ -2,7 +2,6 @@ import { writable, derived, fromStore } from "svelte/store";
 import { onDestroy, onMount, setContext, getContext } from "svelte";
 
 import type {
-  BaseMessage,
   ToolMessage as CoreToolMessage,
   AIMessage as CoreAIMessage,
 } from "@langchain/core/messages";
@@ -16,10 +15,8 @@ import {
   type ResolveStreamOptions,
   type InferBag,
   type InferStateType,
-  type AcceptBaseMessages,
   type UseStreamCustomOptions,
-  type SubagentStreamInterface,
-  type HistoryWithBaseMessages,
+  type WithClassMessages,
 } from "@langchain/langgraph-sdk/ui";
 import {
   Client,
@@ -165,124 +162,7 @@ export function getStream<
   return context as any;
 }
 
-type ClassToolCallWithResult<T> =
-  T extends _ToolCallWithResult<infer TC, unknown, unknown>
-    ? _ToolCallWithResult<TC, CoreToolMessage, CoreAIMessage>
-    : T;
-
-export type ClassSubagentStreamInterface<
-  StateType = Record<string, unknown>,
-  ToolCall = DefaultToolCall,
-  SubagentName extends string = string,
-> = Omit<
-  SubagentStreamInterface<StateType, ToolCall, SubagentName>,
-  "messages"
-> & {
-  messages: BaseMessage[];
-};
-
-/**
- * Maps a stream interface to Svelte 5-reactive types:
- * - `messages` becomes `BaseMessage[]`
- * - `getMessagesMetadata` accepts `BaseMessage`
- * - `toolCalls` uses `@langchain/core` message classes
- * - `getToolCalls` accepts `CoreAIMessage`, returns class-based tool call results
- * - `queue` properties are plain values and functions
- * - `client`, `assistantId`, `subagents`, `activeSubagents` remain unwrapped
- * - Functions remain unchanged
- * - All other reactive properties are exposed as plain values via getters
- */
-type WithClassMessages<T> = {
-  [K in keyof T as K extends
-    | "getSubagent"
-    | "getSubagentsByType"
-    | "getSubagentsByMessage"
-    ? never
-    : K]: K extends "messages"
-    ? BaseMessage[]
-    : K extends "getMessagesMetadata"
-      ? (
-          message: BaseMessage,
-          index?: number,
-        ) => MessageMetadata<Record<string, unknown>> | undefined
-      : K extends "toolCalls"
-        ? T[K] extends (infer TC)[]
-          ? ClassToolCallWithResult<TC>[]
-          : T[K]
-        : K extends "getToolCalls"
-          ? T[K] extends (message: infer _M) => (infer TC)[]
-            ? (message: CoreAIMessage) => ClassToolCallWithResult<TC>[]
-            : T[K]
-          : K extends "queue"
-            ? {
-                [QK in keyof T[K]]: T[K][QK] extends (
-                  ...args: infer A
-                ) => infer R
-                  ? (...args: A) => R
-                  : T[K][QK];
-              }
-            : K extends "client" | "assistantId"
-              ? T[K]
-              : K extends "subagents"
-                ? T[K] extends Map<
-                    string,
-                    SubagentStreamInterface<infer S, infer TC, infer N>
-                  >
-                  ? Map<string, ClassSubagentStreamInterface<S, TC, N>>
-                  : T[K]
-                : K extends "activeSubagents"
-                  ? T[K] extends SubagentStreamInterface<
-                      infer S,
-                      infer TC,
-                      infer N
-                    >[]
-                    ? ClassSubagentStreamInterface<S, TC, N>[]
-                    : T[K]
-                  : K extends "submit"
-                    ? T[K] extends (
-                        values: infer V,
-                        options?: infer O,
-                      ) => infer Ret
-                      ? (
-                          values:
-                            | AcceptBaseMessages<Exclude<V, null | undefined>>
-                            | null
-                            | undefined,
-                          options?: O,
-                        ) => Ret
-                      : T[K]
-                    : K extends "history"
-                      ? HistoryWithBaseMessages<T[K]>
-                      : T[K] extends (...args: infer A) => infer R
-                        ? (...args: A) => R
-                        : T[K];
-} & ("subagents" extends keyof T
-  ? {
-      getSubagent: T extends {
-        getSubagent: (
-          id: string,
-        ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
-      }
-        ? (
-            toolCallId: string,
-          ) => ClassSubagentStreamInterface<S, TC, N> | undefined
-        : never;
-      getSubagentsByType: T extends {
-        getSubagentsByType: (
-          type: string,
-        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
-      }
-        ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
-        : never;
-      getSubagentsByMessage: T extends {
-        getSubagentsByMessage: (
-          id: string,
-        ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
-      }
-        ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
-        : never;
-    }
-  : unknown);
+export type { ClassSubagentStreamInterface } from "@langchain/langgraph-sdk/ui";
 
 export function useStream<
   T = Record<string, unknown>,

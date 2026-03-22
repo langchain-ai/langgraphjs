@@ -1,5 +1,10 @@
 export type * from "./types.js";
 export type * from "./stream/index.js";
+export type {
+  ClassToolCallWithResult,
+  ClassSubagentStreamInterface,
+  WithClassMessages,
+} from "./class-messages.js";
 export type { Sequence } from "./branching.js";
 export {
   MessageTupleManager,
