@@ -32,39 +32,36 @@ export function useStreamLGP<
   orchestrator.initThreadId(options.threadId ?? undefined);
 
   let version = $state(0);
-  const unsubscribe = orchestrator.subscribe(() => {
-    version++;
-  });
-
   let fetchController: AbortController | null = null;
 
-  // Subagent reconstruction: only trigger when conditions change
-  const shouldReconstruct = $derived.by(() => {
-    void version;
-    const hvMessages = orchestrator.messages;
-    if (!options.filterSubagentMessages) return false;
-    if (orchestrator.isLoading || orchestrator.historyData.isLoading)
-      return false;
-    return hvMessages.length > 0;
-  });
+  // Track previous values for edge-triggered side effects.
+  // These must fire synchronously with state changes (not deferred
+  // to $effect) to match the timing of store .subscribe() callbacks.
+  let prevIsLoading = orchestrator.isLoading;
+  let prevShouldReconstruct = false;
 
-  $effect(() => {
-    if (shouldReconstruct) {
-      fetchController?.abort();
-      const controller = orchestrator.reconstructSubagentsIfNeeded();
-      fetchController = controller;
+  const unsubscribe = orchestrator.subscribe(() => {
+    version++;
+
+    // Queue draining: fire when isLoading transitions
+    const nowLoading = orchestrator.isLoading;
+    if (nowLoading !== prevIsLoading) {
+      prevIsLoading = nowLoading;
+      orchestrator.drainQueue();
     }
-  });
 
-  // Queue draining: fires when isLoading transitions
-  const isLoadingForDrain = $derived.by(() => {
-    void version;
-    return orchestrator.isLoading;
-  });
+    // Subagent reconstruction: fire when condition becomes true
+    const shouldReconstruct =
+      !!options.filterSubagentMessages &&
+      !orchestrator.isLoading &&
+      !orchestrator.historyData.isLoading &&
+      orchestrator.messages.length > 0;
 
-  $effect(() => {
-    void isLoadingForDrain;
-    orchestrator.drainQueue();
+    if (shouldReconstruct && !prevShouldReconstruct) {
+      fetchController?.abort();
+      fetchController = orchestrator.reconstructSubagentsIfNeeded();
+    }
+    prevShouldReconstruct = shouldReconstruct;
   });
 
   // Auto-reconnect
