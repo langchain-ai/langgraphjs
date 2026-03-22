@@ -25,11 +25,13 @@ export function injectStreamCustom<
 
   const version = signal(0);
   const subagentVersion = signal(0);
+  const isLoading = signal(orchestrator.isLoading);
 
   effect((onCleanup) => {
     const unsubscribe = orchestrator.subscribe(() => {
       version.update((v) => v + 1);
       subagentVersion.update((v) => v + 1);
+      isLoading.set(orchestrator.isLoading);
     });
     onCleanup(() => unsubscribe());
   });
@@ -56,7 +58,7 @@ export function injectStreamCustom<
       void version();
       return orchestrator.error;
     }),
-    isLoading: signal(false),
+    isLoading,
 
     stop: () => orchestrator.stop(),
 
