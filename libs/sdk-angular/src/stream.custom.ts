@@ -117,15 +117,20 @@ export function injectStreamCustom<
       return orchestrator.getToolCalls(message);
     },
 
-    get subagents() {
+    subagents: computed(() => {
       void subagentVersion();
-      return orchestrator.subagents;
-    },
+      return orchestrator.subagents as ReadonlyMap<
+        string,
+        typeof orchestrator.subagents extends Map<string, infer V> ? V : never
+      >;
+    }),
 
-    get activeSubagents() {
+    activeSubagents: computed(() => {
       void subagentVersion();
-      return orchestrator.activeSubagents;
-    },
+      return orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
+        ? V
+        : never)[];
+    }),
 
     getSubagent(toolCallId: string) {
       return orchestrator.getSubagent(toolCallId);
