@@ -18,7 +18,7 @@ type Values = Record<string, unknown>;
 
 function createThreadState(
   values: Values,
-  overrides: Partial<ThreadState<Values>> = {}
+  overrides: Partial<ThreadState<Values>> = {},
 ): ThreadState<Values> {
   return {
     values,
@@ -137,7 +137,7 @@ describe("ensureHistoryMessageInstances", () => {
             checkpoint_ns: "",
             checkpoint_map: null,
           },
-        }
+        },
       ),
       createThreadState(
         { messages: [plainHuman, plainAI, plainTool] },
@@ -154,7 +154,7 @@ describe("ensureHistoryMessageInstances", () => {
             checkpoint_ns: "",
             checkpoint_map: null,
           },
-        }
+        },
       ),
     ];
 
@@ -214,10 +214,10 @@ describe("ensureHistoryMessageInstances", () => {
 
     expect(history[0].values.messages).toBe(originalMessages);
     expect(typeof (history[0].values.messages as Message[])[0].type).toBe(
-      "string"
+      "string",
     );
     expect((history[0].values.messages as Message[])[0]).not.toBeInstanceOf(
-      HumanMessageChunk
+      HumanMessageChunk,
     );
   });
 });
@@ -254,10 +254,10 @@ describe("base SDK history returns plain Message dicts (no class instances)", ()
     expect(msgs[1]).not.toBeInstanceOf(AIMessageChunk);
 
     expect(typeof (msgs[0] as Record<string, unknown>).getType).toBe(
-      "undefined"
+      "undefined",
     );
     expect(typeof (msgs[1] as Record<string, unknown>).getType).toBe(
-      "undefined"
+      "undefined",
     );
 
     expect(msgs[0].type).toBe("human");
@@ -287,7 +287,7 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
           checkpoint_ns: "",
           checkpoint_map: null,
         },
-      }
+      },
     ),
     createThreadState(
       {
@@ -301,7 +301,7 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
           checkpoint_map: null,
         },
         parent_checkpoint: null,
-      }
+      },
     ),
   ];
 
@@ -316,10 +316,10 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
     expect(messages).toHaveLength(2);
 
     expect(typeof (messages[0] as Record<string, unknown>).getType).toBe(
-      "undefined"
+      "undefined",
     );
     expect(typeof (messages[1] as Record<string, unknown>).getType).toBe(
-      "undefined"
+      "undefined",
     );
     expect(messages[0]).not.toBeInstanceOf(HumanMessageChunk);
     expect(messages[1]).not.toBeInstanceOf(AIMessageChunk);

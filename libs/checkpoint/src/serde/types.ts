@@ -8,7 +8,7 @@ export const RESUME = "__resume__";
 export interface ChannelProtocol<
   ValueType = unknown,
   UpdateType = unknown,
-  CheckpointType = unknown
+  CheckpointType = unknown,
 > {
   ValueType: ValueType;
 

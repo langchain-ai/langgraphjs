@@ -27,7 +27,7 @@ import {
  */
 export class LanggraphZodMetaRegistry<
   Meta extends SchemaMeta = SchemaMeta,
-  Schema extends $ZodType = $ZodType
+  Schema extends $ZodType = $ZodType,
 > extends $ZodRegistry<Meta & { [key: string]: unknown }, Schema> {
   /**
    * Creates a new LanggraphZodMetaRegistry instance.
@@ -53,7 +53,6 @@ export class LanggraphZodMetaRegistry<
     if (firstMeta && !firstMeta?.default) {
       const defaultValueGetter = getInteropZodDefaultGetter(schema);
       if (defaultValueGetter != null) {
-        // eslint-disable-next-line no-param-reassign
         firstMeta.default = defaultValueGetter;
       }
     }
@@ -67,19 +66,15 @@ declare module "zod/v4" {
   export interface ZodType<
     out Output = unknown,
     out Input = unknown,
-    out Internals extends core.$ZodTypeInternals<
-      Output,
-      Input
-    > = core.$ZodTypeInternals<Output, Input>
+    out Internals extends core.$ZodTypeInternals<Output, Input> =
+      core.$ZodTypeInternals<Output, Input>,
   > extends core.$ZodType<Output, Input, Internals> {
     register<
       R extends LanggraphZodMetaRegistry,
       TOutput = core.output<this>,
       TInput = core.input<this>,
-      TInternals extends core.$ZodTypeInternals<
-        TOutput,
-        TInput
-      > = core.$ZodTypeInternals<TOutput, TInput>
+      TInternals extends core.$ZodTypeInternals<TOutput, TInput> =
+        core.$ZodTypeInternals<TOutput, TInput>,
     >(
       registry: R,
       meta: SchemaMeta<TOutput, TInput>
@@ -91,19 +86,15 @@ declare module "zod/v4-mini" {
   export interface ZodMiniType<
     out Output = unknown,
     out Input = unknown,
-    out Internals extends core.$ZodTypeInternals<
-      Output,
-      Input
-    > = core.$ZodTypeInternals<Output, Input>
+    out Internals extends core.$ZodTypeInternals<Output, Input> =
+      core.$ZodTypeInternals<Output, Input>,
   > extends core.$ZodType<Output, Input, Internals> {
     register<
       R extends LanggraphZodMetaRegistry,
       TOutput = core.output<this>,
       TInput = core.input<this>,
-      TInternals extends core.$ZodTypeInternals<
-        TOutput,
-        TInput
-      > = core.$ZodTypeInternals<TOutput, TInput>
+      TInternals extends core.$ZodTypeInternals<TOutput, TInput> =
+        core.$ZodTypeInternals<TOutput, TInput>,
     >(
       registry: R,
       meta: SchemaMeta<TOutput, TInput>

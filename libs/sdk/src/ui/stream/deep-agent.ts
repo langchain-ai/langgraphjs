@@ -91,7 +91,7 @@ export interface UseDeepAgentStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > extends UseAgentStream<StateType, ToolCall, Bag> {
   /**
    * All currently active and completed subagent streams.
@@ -162,7 +162,7 @@ export interface UseDeepAgentStream<
    * ```
    */
   getSubagent: (
-    toolCallId: string
+    toolCallId: string,
   ) =>
     | SubagentStreamInterface<
         SubagentStates[keyof SubagentStates],
@@ -203,17 +203,16 @@ export interface UseDeepAgentStream<
      * TypeScript infers the state type from SubagentStates[TName].
      */
     <TName extends keyof SubagentStates & string>(
-      type: TName
+      type: TName,
     ): SubagentStreamInterface<SubagentStates[TName], ToolCall, TName>[];
 
     /**
      * Overload for unknown names - returns untyped streams.
      * Used when the subagent name is not known at compile time.
      */
-    (type: string): SubagentStreamInterface<
-      Record<string, unknown>,
-      ToolCall
-    >[];
+    (
+      type: string,
+    ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[];
   };
 
   /**
@@ -242,7 +241,7 @@ export interface UseDeepAgentStream<
    * ```
    */
   getSubagentsByMessage: (
-    messageId: string
+    messageId: string,
   ) => SubagentStreamInterface<
     SubagentStates[keyof SubagentStates],
     ToolCall,
@@ -276,7 +275,7 @@ export interface UseDeepAgentStream<
  */
 export interface UseDeepAgentStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > extends UseAgentStreamOptions<StateType, Bag> {
   /**
    * Tool names that indicate subagent invocation.

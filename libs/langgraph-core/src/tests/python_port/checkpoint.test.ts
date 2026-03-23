@@ -1134,7 +1134,6 @@ describe("Checkpoint Tests (Python port)", () => {
           }, this.sleep);
         });
 
-        // eslint-disable-next-line no-instanceof/no-instanceof
         if (this.rtn instanceof Error) {
           throw this.rtn;
         } else {

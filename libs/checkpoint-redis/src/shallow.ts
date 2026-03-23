@@ -665,10 +665,9 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     const sanitized: any = {};
     for (const [key, value] of Object.entries(metadata)) {
       // Remove null characters from keys and string values
-      // eslint-disable-next-line no-control-regex
+
       const sanitizedKey = key.replace(/\x00/g, "");
       sanitized[sanitizedKey] =
-        // eslint-disable-next-line no-control-regex
         typeof value === "string" ? value.replace(/\x00/g, "") : value;
     }
     return sanitized as CheckpointMetadata;

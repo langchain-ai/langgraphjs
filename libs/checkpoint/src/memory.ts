@@ -132,7 +132,6 @@ export class MemorySaver extends BaseCheckpointSaver {
     } else {
       const checkpoints = this.storage[thread_id]?.[checkpoint_ns];
       if (checkpoints !== undefined) {
-        // eslint-disable-next-line prefer-destructuring
         checkpoint_id = Object.keys(checkpoints).sort((a, b) =>
           b.localeCompare(a)
         )[0];
@@ -199,7 +198,6 @@ export class MemorySaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
-    // eslint-disable-next-line prefer-const
     let { before, limit, filter } = options ?? {};
     const threadIds = config.configurable?.thread_id
       ? [config.configurable?.thread_id]

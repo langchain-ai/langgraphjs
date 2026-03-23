@@ -11,7 +11,7 @@ export function findLast<T>(array: T[], predicate: (item: T) => boolean) {
 
 export async function* filterStream<T, TReturn>(
   stream: AsyncGenerator<T, TReturn>,
-  filter: (event: T) => boolean
+  filter: (event: T) => boolean,
 ): AsyncGenerator<T, TReturn> {
   while (true) {
     const { value, done } = await stream.next();

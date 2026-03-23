@@ -750,7 +750,6 @@ export function useStreamLGP<
   ) => {
     setToolProgressMap(new Map());
 
-    // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     if (!threadId) return;
 
@@ -823,7 +822,6 @@ export function useStreamLGP<
   // Drain pending server-side runs when the stream finishes
   useEffect(() => {
     drainQueueRef.current();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream.isLoading, pendingRuns.size]);
 
   const reconnectKey = useMemo(() => {

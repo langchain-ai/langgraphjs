@@ -9,7 +9,7 @@ const textEncoder = new TextEncoder();
  * "Controller is already closed" errors in tests
  */
 const createSSEResponseBody = (
-  chunks: Array<{ id?: string; event: string; data: unknown }>
+  chunks: Array<{ id?: string; event: string; data: unknown }>,
 ): ReadableStream<Uint8Array> => {
   const sseLines = chunks.flatMap((chunk) => {
     const lines: string[] = [];
@@ -41,7 +41,7 @@ const createSSEResponseBody = (
  */
 const createErroringSSEResponseBody = (
   chunks: Array<{ id?: string; event: string; data: unknown }>,
-  error: Error
+  error: Error,
 ): ReadableStream<Uint8Array> => {
   const sseLines = chunks.flatMap((chunk) => {
     const lines: string[] = [];
@@ -114,7 +114,7 @@ describe("Client streaming with retry", () => {
             "content-type": "text/event-stream",
             "content-location": "/threads/thread-1/runs/run-1",
           },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -142,7 +142,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -171,7 +171,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -197,7 +197,7 @@ describe("Client streaming with retry", () => {
             "content-type": "text/event-stream",
             "content-location": "/threads/thread-1/runs/run-123",
           },
-        })
+        }),
       );
 
       const onRunCreated = vi.fn();
@@ -222,7 +222,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -267,8 +267,8 @@ describe("Client streaming with retry", () => {
                   "content-type": "text/event-stream",
                   location: locationPath,
                 },
-              }
-            )
+              },
+            ),
           );
         }
 
@@ -283,8 +283,8 @@ describe("Client streaming with retry", () => {
                 "content-type": "text/event-stream",
                 location: locationPath,
               },
-            }
-          )
+            },
+          ),
         );
       });
 
@@ -317,7 +317,7 @@ describe("Client streaming with retry", () => {
             new Response(
               createErroringSSEResponseBody(
                 [{ id: "1", event: "values", data: { step: 1 } }],
-                new TypeError("terminated")
+                new TypeError("terminated"),
               ),
               {
                 status: 200,
@@ -325,8 +325,8 @@ describe("Client streaming with retry", () => {
                   "content-type": "text/event-stream",
                   location: locationPath,
                 },
-              }
-            )
+              },
+            ),
           );
         }
 
@@ -345,8 +345,8 @@ describe("Client streaming with retry", () => {
                 "content-type": "text/event-stream",
                 location: locationPath,
               },
-            }
-          )
+            },
+          ),
         );
       });
 
@@ -376,7 +376,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.joinStream("thread-1", "run-1");
@@ -401,7 +401,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.joinStream("thread-1", "run-1", {
@@ -424,7 +424,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.joinStream("thread-1", "run-1", {
@@ -449,7 +449,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.threads.joinStream("thread-1");
@@ -473,7 +473,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.threads.joinStream("thread-1", {
@@ -503,7 +503,7 @@ describe("Client streaming with retry", () => {
         new Response(createSSEResponseBody(chunks), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -532,7 +532,7 @@ describe("Client streaming with retry", () => {
         new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { "content-type": "application/json" },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -547,7 +547,7 @@ describe("Client streaming with retry", () => {
         new Response(JSON.stringify({}), {
           status: 200,
           headers: { "content-type": "application/json" },
-        })
+        }),
       );
 
       const stream = client.runs.stream("thread-1", "assistant-1", {
@@ -555,7 +555,7 @@ describe("Client streaming with retry", () => {
       });
 
       await expect(gatherStream(stream)).rejects.toThrow(
-        "Expected response header Content-Type to contain 'text/event-stream'"
+        "Expected response header Content-Type to contain 'text/event-stream'",
       );
     });
   });

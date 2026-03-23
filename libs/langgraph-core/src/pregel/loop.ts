@@ -270,7 +270,6 @@ export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tasks: Record<string, PregelExecutableTask<any, any>> = {};
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stream: IterableReadableWritableStream;
 
   checkpointerPromises: Set<Promise<unknown>> = new Set();
@@ -592,7 +591,7 @@ export class PregelLoop {
           if (c === TASKS && _isSend(v)) {
             return [c, sanitizeUntrackedValuesInSend(v, this.channels)] as [
               string,
-              unknown
+              unknown,
             ];
           }
           return [c, v] as [string, unknown];

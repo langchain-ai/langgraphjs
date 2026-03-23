@@ -1,5 +1,4 @@
-/* eslint-disable no-promise-executor-return */
-/* eslint-disable import/no-extraneous-dependencies */
+/*  */
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
@@ -118,8 +117,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
   }
 
   withStructuredOutput<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    RunOutput extends Record<string, any> = Record<string, any>
+    RunOutput extends Record<string, any> = Record<string, any>,
   >(_: unknown) {
     if (!this.structuredResponse) {
       throw new Error("No structured response provided");

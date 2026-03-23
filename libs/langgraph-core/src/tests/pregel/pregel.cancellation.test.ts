@@ -49,7 +49,7 @@ describe("Pregel AbortSignal", () => {
 
         for (const [invokeId, log] of Object.entries(b)) {
           const existing = a[invokeId] ?? new Set<string>();
-          // eslint-disable-next-line no-param-reassign
+
           result[invokeId] = new Set([...existing, ...log]);
         }
 

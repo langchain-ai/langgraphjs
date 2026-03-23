@@ -1,0 +1,19 @@
+{
+  "name": "@langchain/eslint",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-react-hooks": "^7.0.1"
+  },
+  "peerDependencies": {
+    "eslint": "^10.0.3"
+  }
+}

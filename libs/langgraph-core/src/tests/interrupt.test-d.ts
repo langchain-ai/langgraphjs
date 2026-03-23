@@ -27,7 +27,7 @@ it("interrupt only invoke", () => {
   const actual = all(interrupt<"input:single">);
   expectTypeOf(actual).toEqualTypeOf<{
     InputType: "input:single";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     OutputType: any;
   }>();
 });

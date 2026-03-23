@@ -1416,7 +1416,6 @@ it("interrupts (fetchStateHistory: true)", async () => {
 it("exposes toolCalls property", async () => {
   const TestComponent = defineComponent({
     setup() {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,

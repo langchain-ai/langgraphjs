@@ -51,7 +51,7 @@ import type { QueueInterface } from "../queue.js";
 export interface BaseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ToolCall = DefaultToolCall,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   /**
    * The current state values of the stream.
@@ -113,7 +113,7 @@ export interface BaseStream<
    */
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
   ) => Promise<void>;
 
   /**
@@ -150,7 +150,7 @@ export interface BaseStream<
    */
   getMessagesMetadata: (
     message: Message<ToolCall>,
-    index?: number
+    index?: number,
   ) => MessageMetadata<StateType> | undefined;
 
   /**
@@ -186,7 +186,7 @@ export interface BaseStream<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) => Promise<void>;
 
   /**

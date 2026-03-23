@@ -89,10 +89,8 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     }
 
     if (messageId !== message.id) {
-      // eslint-disable-next-line no-param-reassign
       message.id = messageId;
 
-      // eslint-disable-next-line no-param-reassign
       message.lc_kwargs.id = messageId;
     }
 

@@ -47,15 +47,14 @@ interface FetchStreamTransportOptions {
    */
   onRequest?: (
     url: string,
-    init: RequestInit
+    init: RequestInit,
   ) => Promise<RequestInit> | RequestInit;
 }
 
 export class FetchStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> implements UseStreamTransport<StateType, Bag>
-{
+  Bag extends BagTemplate = BagTemplate,
+> implements UseStreamTransport<StateType, Bag> {
   constructor(private readonly options: FetchStreamTransportOptions) {}
 
   async stream(payload: {
@@ -79,7 +78,7 @@ export class FetchStreamTransport<
     if (this.options.onRequest) {
       requestInit = await this.options.onRequest(
         this.options.apiUrl,
-        requestInit
+        requestInit,
       );
     }
     const fetchFn = this.options.fetch ?? fetch;
@@ -100,7 +99,7 @@ export class FetchStreamTransport<
 }
 
 function createCustomTransportThreadState<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(values: StateType, threadId: string): ThreadState<StateType> {
   return {
     values,
@@ -120,9 +119,9 @@ function createCustomTransportThreadState<
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: AnyStreamCustomOptions<StateType, Bag>
+  options: AnyStreamCustomOptions<StateType, Bag>,
 ): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -137,13 +136,13 @@ export function useStreamCustom<
         throttle: options.throttle ?? false,
         subagentToolNames: options.subagentToolNames,
         filterSubagentMessages: options.filterSubagentMessages,
-      })
+      }),
   );
 
   useSyncExternalStore(
     stream.subscribe,
     stream.getSnapshot,
-    stream.getSnapshot
+    stream.getSnapshot,
   );
 
   const [threadId, onThreadId] = useControllableThreadId(options);
@@ -196,7 +195,7 @@ export function useStreamCustom<
 
   const submit = async (
     values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
+    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
   ) => {
     let usableThreadId = threadId;
 
@@ -255,7 +254,7 @@ export function useStreamCustom<
           const finalValues = stream.values ?? historyValues;
           options.onFinish?.(
             createCustomTransportThreadState(finalValues, usableThreadId),
-            undefined
+            undefined,
           );
 
           return undefined;
@@ -263,7 +262,7 @@ export function useStreamCustom<
         onError(error) {
           options.onError?.(error, undefined);
         },
-      }
+      },
     );
   };
 

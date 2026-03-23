@@ -42,7 +42,6 @@ export class LastValue<Value> extends BaseChannel<Value, Value, Value> {
       );
     }
 
-    // eslint-disable-next-line prefer-destructuring
     this.value = [values[values.length - 1]];
     return true;
   }
@@ -98,7 +97,7 @@ export class LastValueAfterFinish<Value> extends BaseChannel<
     }
 
     this.finished = false;
-    // eslint-disable-next-line prefer-destructuring
+
     this.value = [values[values.length - 1]];
     return true;
   }

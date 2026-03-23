@@ -34,7 +34,7 @@ interface ValidSequence<StateType = any> {
 }
 
 export function getBranchSequence<StateType extends Record<string, unknown>>(
-  history: ThreadState<StateType>[]
+  history: ThreadState<StateType>[],
 ) {
   const nodeIds = new Set<string>();
   const childrenMap: Record<string, ThreadState<StateType>[]> = {};
@@ -86,7 +86,7 @@ export function getBranchSequence<StateType extends Record<string, unknown>>(
               seen.add(current);
 
               const children = (childrenMap[current] ?? []).flatMap(
-                (i) => i.checkpoint?.checkpoint_id ?? []
+                (i) => i.checkpoint?.checkpoint_id ?? [],
               );
 
               lastId = maxId(lastId, ...children);
@@ -160,7 +160,7 @@ type BranchByCheckpoint = Record<
 export function getBranchView<StateType extends Record<string, unknown>>(
   sequence: Sequence<StateType>,
   paths: string[][],
-  branch: string
+  branch: string,
 ) {
   const path = branch.split(PATH_SEP);
   const pathMap: Record<string, string[][]> = {};
@@ -188,7 +188,7 @@ export function getBranchView<StateType extends Record<string, unknown>>(
       branchByCheckpoint[checkpointId] = {
         branch: item.path.join(PATH_SEP),
         branchOptions: (item.path.length > 0
-          ? pathMap[item.path.at(-2) ?? ROOT_ID] ?? []
+          ? (pathMap[item.path.at(-2) ?? ROOT_ID] ?? [])
           : []
         ).map((p) => p.join(PATH_SEP)),
       };
@@ -214,13 +214,13 @@ export function getBranchView<StateType extends Record<string, unknown>>(
 
 export function getBranchContext<StateType extends Record<string, unknown>>(
   branch: string,
-  history: ThreadState<StateType>[] | undefined
+  history: ThreadState<StateType>[] | undefined,
 ) {
   const { rootSequence: branchTree, paths } = getBranchSequence(history ?? []);
   const { history: flatHistory, branchByCheckpoint } = getBranchView(
     branchTree,
     paths,
-    branch
+    branch,
   );
 
   return {
@@ -232,7 +232,7 @@ export function getBranchContext<StateType extends Record<string, unknown>>(
 }
 
 export function getMessagesMetadataMap<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(options: {
   initialValues: StateType | null | undefined;
   history: ThreadState<StateType>[] | null | undefined;
@@ -260,7 +260,7 @@ export function getMessagesMetadataMap<
         options
           .getMessages(state.values)
           .map((m, idx) => m.id ?? idx)
-          .includes(messageId)
+          .includes(messageId),
     );
 
     const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;

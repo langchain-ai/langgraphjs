@@ -11,7 +11,7 @@ type TestState = {
 };
 
 type MutateFn = (
-  update: Partial<TestState> | ((prev: TestState) => Partial<TestState>) | null
+  update: Partial<TestState> | ((prev: TestState) => Partial<TestState>) | null,
 ) => void;
 
 // Helper to create a mock async generator
@@ -76,7 +76,7 @@ describe("StreamManager", () => {
       const messageId = "test-msg-id";
       messageManager.add(
         { id: messageId, content: "test", type: "human" },
-        undefined
+        undefined,
       );
 
       const events = [
@@ -87,7 +87,7 @@ describe("StreamManager", () => {
             {},
           ] as [
             { id: string; content: string; type: string },
-            Record<string, unknown>
+            Record<string, unknown>,
           ],
         },
       ];
@@ -165,7 +165,7 @@ describe("StreamManager", () => {
         callbacks: {
           onUpdateEvent: (
             _data: Partial<TestState>,
-            options: { mutate: MutateFn; namespace: string[] | undefined }
+            options: { mutate: MutateFn; namespace: string[] | undefined },
           ) => {
             capturedMutate = options.mutate;
             // Call mutate with a callback that returns null (edge case)
@@ -202,7 +202,7 @@ describe("StreamManager", () => {
         callbacks: {
           onUpdateEvent: (
             _data: Partial<TestState>,
-            options: { mutate: MutateFn; namespace: string[] | undefined }
+            options: { mutate: MutateFn; namespace: string[] | undefined },
           ) => {
             // Call mutate with null directly
             options.mutate(null);
@@ -268,7 +268,7 @@ describe("StreamManager", () => {
           toolCallId: "call_1234",
           input: '{"query":"SF"}',
         },
-        { namespace: undefined, mutate: expect.any(Function) }
+        { namespace: undefined, mutate: expect.any(Function) },
       );
       expect(onToolEvent).toHaveBeenNthCalledWith(
         2,
@@ -278,7 +278,7 @@ describe("StreamManager", () => {
           toolCallId: "call_1234",
           output: "60 degrees",
         },
-        { namespace: undefined, mutate: expect.any(Function) }
+        { namespace: undefined, mutate: expect.any(Function) },
       );
     });
   });
@@ -512,7 +512,7 @@ describe("StreamManager", () => {
           ...baseOptions,
           onSuccess: vi.fn(() => undefined),
         },
-        { abortPrevious: true }
+        { abortPrevious: true },
       );
 
       // Wait for the queue to fully drain
@@ -581,7 +581,7 @@ describe("StreamManager", () => {
       mgr.start(
         action2,
         { ...baseOptions, onSuccess: onSuccess2 },
-        { abortPrevious: true }
+        { abortPrevious: true },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -610,14 +610,14 @@ describe("StreamManager", () => {
           getMessages: (values: TestState) => values.messages ?? [],
           setMessages: (
             current: TestState,
-            messages: TestState["messages"]
+            messages: TestState["messages"],
           ) => ({ ...current, messages }),
           initialValues: { messages: [] } as TestState,
           callbacks: {},
           onSuccess,
           onError,
         },
-        { abortPrevious: true }
+        { abortPrevious: true },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -706,7 +706,7 @@ describe("StreamManager", () => {
 
   describe("subagent message conversion via toMessage", () => {
     function createSubagentManager(
-      toMessage?: (chunk: CoreBaseMessage) => CoreBaseMessage
+      toMessage?: (chunk: CoreBaseMessage) => CoreBaseMessage,
     ) {
       return new SubagentManager({
         subagentToolNames: ["task"],

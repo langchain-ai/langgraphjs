@@ -13,7 +13,6 @@ class FakeRemoteGraph extends RemoteGraph {
     return ["langgraph", "pregel", "RemoteGraph"];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override async invoke(_state: any, config?: any) {
     this.receivedThreadIds.push(config?.configurable?.thread_id);
     return { messages: [new AIMessage({ content: "remote result" })] };

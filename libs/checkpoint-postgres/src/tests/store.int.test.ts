@@ -1,4 +1,3 @@
-/* eslint-disable no-process-env */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import pg from "pg";
 import { PostgresStore } from "../store/index.js";

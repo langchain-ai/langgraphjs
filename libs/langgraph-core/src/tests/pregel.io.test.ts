@@ -209,7 +209,7 @@ describe("mapOutputValues", () => {
   it("should return a Generator that yields a single value", () => {
     // set up test
     const outputChannels = "someOutputChannelName2";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const pendingWrites: Array<[string, any]> = [
       ["someOutputChannelName1", 1],
       ["someOutputChannelName2", 2],
@@ -237,7 +237,7 @@ describe("mapOutputValues", () => {
   it("should return a Generator that yields an object", () => {
     // set up test
     const outputChannels = ["someOutputChannelName1", "someOutputChannelName2"];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const pendingWrites: Array<[string, any]> = [
       ["someOutputChannelName1", 1],
       ["someOutputChannelName2", 2],
@@ -270,7 +270,7 @@ describe("mapOutputValues", () => {
     // set up test
     const outputChannels = "someOutputChannelName1";
     const outputChannelsList = ["someOutputChannelName1"];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const pendingWrites: Array<[string, any]> = [
       ["someOutputChannelName2", 2],
       ["someOutputChannelName2", 3],

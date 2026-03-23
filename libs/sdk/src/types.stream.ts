@@ -224,7 +224,7 @@ export type EventsStreamEvent = {
           | "tool"
           | "retriever"
           | "prompt"}_${"start" | "stream" | "end"}`
-      | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+      | (string & {});
     name: string;
     tags: string[];
     run_id: string;
@@ -295,7 +295,7 @@ type GetStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown
+  TCustomType = unknown,
 > =
   | {
       values: ValuesStreamEvent<TStateType>;
@@ -317,7 +317,7 @@ type GetSubgraphsStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown
+  TCustomType = unknown,
 > =
   | {
       values: SubgraphValuesStreamEvent<TStateType>;
@@ -340,7 +340,7 @@ export type TypedAsyncGenerator<
   TSubgraphs extends boolean = false,
   TStateType = unknown,
   TUpdateType = TStateType,
-  TCustomType = unknown
+  TCustomType = unknown,
 > = AsyncGenerator<
   TSubgraphs extends true
     ? GetSubgraphsStreamModeMap<

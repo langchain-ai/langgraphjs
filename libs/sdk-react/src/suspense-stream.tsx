@@ -280,7 +280,6 @@ export function useSuspenseStream(options: any): any {
   // state, so we skip it.
   if (needsHistoryFetch && cacheEntry && !stream.isLoading) {
     if (cacheEntry.status === "pending") {
-      // eslint-disable-next-line @typescript-eslint/no-throw-literal
       throw cacheEntry.promise;
     }
     if (cacheEntry.status === "rejected") {

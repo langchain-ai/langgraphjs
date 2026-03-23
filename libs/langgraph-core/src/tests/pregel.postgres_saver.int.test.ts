@@ -1,4 +1,3 @@
-/* eslint-disable no-process-env */
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import pg from "pg";
 import { runPregelTests } from "./pregel.test.js";

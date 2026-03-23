@@ -31,7 +31,6 @@ export function SubmitOnError({ apiUrl }: Props) {
             {
               onError: (error: unknown) => {
                 setSubmitError(
-                  // eslint-disable-next-line no-instanceof/no-instanceof
                   error instanceof Error ? error.message : String(error),
                 );
               },

@@ -67,7 +67,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
     response: Response;
     stream: ReadableStream<T>;
   }>,
-  options: StreamWithRetryOptions = {}
+  options: StreamWithRetryOptions = {},
 ): AsyncGenerator<T> {
   const maxRetries = options.maxRetries ?? 5;
   let attempt = 0;
@@ -85,7 +85,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
 
       // Make request - initial if no reconnect path, reconnect otherwise
       const { response, stream } = await makeRequest(
-        reconnectPath ? { lastEventId, reconnectPath } : undefined
+        reconnectPath ? { lastEventId, reconnectPath } : undefined,
       );
 
       // Check for Location header (server-provided reconnection path)
@@ -98,7 +98,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
       const contentType = response.headers.get("content-type")?.split(";")[0];
       if (contentType && !contentType.includes("text/event-stream")) {
         throw new Error(
-          `Expected response header Content-Type to contain 'text/event-stream', got '${contentType}'`
+          `Expected response header Content-Type to contain 'text/event-stream', got '${contentType}'`,
         );
       }
 

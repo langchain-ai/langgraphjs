@@ -54,7 +54,7 @@ describe("AsyncCaller", () => {
       const caller = new AsyncCaller({ maxRetries: 3 });
 
       const successfulCallable = vi.fn(() =>
-        Promise.resolve({ data: "success" })
+        Promise.resolve({ data: "success" }),
       );
 
       const result = await caller.call(successfulCallable);
@@ -66,7 +66,7 @@ describe("AsyncCaller", () => {
       const caller = new AsyncCaller({ maxRetries: 3 });
 
       const successfulCallable = vi.fn((a: number, b: string) =>
-        Promise.resolve(`${a}-${b}`)
+        Promise.resolve(`${a}-${b}`),
       );
 
       const result = await caller.call(successfulCallable, 42, "test");
@@ -85,7 +85,7 @@ describe("AsyncCaller", () => {
           text: () => Promise.resolve(""),
           json: () => Promise.resolve({}),
           headers: new Headers(),
-        } as Response)
+        } as Response),
       );
 
       const caller = new AsyncCaller({
@@ -106,7 +106,7 @@ describe("AsyncCaller", () => {
           statusText: "Internal Server Error",
           text: () => Promise.resolve("Server error"),
           headers: new Headers(),
-        } as Response)
+        } as Response),
       );
 
       const caller = new AsyncCaller({
@@ -115,7 +115,7 @@ describe("AsyncCaller", () => {
       });
 
       await expect(caller.fetch("http://example.com/api")).rejects.toThrow(
-        /HTTP 500/
+        /HTTP 500/,
       );
     });
   });
@@ -169,7 +169,7 @@ describe("AsyncCaller", () => {
       const failingCallable = vi.fn(() => Promise.reject(responseError));
 
       await expect(caller.call(failingCallable)).rejects.toThrow(
-        "HTTP 400: Invalid parameters"
+        "HTTP 400: Invalid parameters",
       );
     });
   });

@@ -278,12 +278,12 @@ export type OperationResults<Tuple extends readonly Operation[]> = {
   [K in keyof Tuple]: Tuple[K] extends PutOperation
     ? void
     : Tuple[K] extends SearchOperation
-    ? SearchItem[]
-    : Tuple[K] extends GetOperation
-    ? Item | null
-    : Tuple[K] extends ListNamespacesOperation
-    ? string[][]
-    : never;
+      ? SearchItem[]
+      : Tuple[K] extends GetOperation
+        ? Item | null
+        : Tuple[K] extends ListNamespacesOperation
+          ? string[][]
+          : never;
 };
 
 /**

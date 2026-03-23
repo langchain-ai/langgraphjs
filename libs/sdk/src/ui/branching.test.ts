@@ -325,7 +325,7 @@ const history = [
 
 const node = (
   value: ThreadState | number | undefined,
-  paths: (ThreadState | number | undefined)[] = []
+  paths: (ThreadState | number | undefined)[] = [],
 ) => ({
   type: "node",
   value: typeof value === "number" ? history.at(value) : value,
@@ -348,9 +348,9 @@ it("full tree", async () => {
     .toMatchObject(
       expect.arrayContaining(
         [[5], [5, 4], [5, 3], [2]].map((p) =>
-          p.map((i) => history.at(i)?.checkpoint?.checkpoint_id)
-        )
-      )
+          p.map((i) => history.at(i)?.checkpoint?.checkpoint_id),
+        ),
+      ),
     );
 
   expect
@@ -361,11 +361,11 @@ it("full tree", async () => {
         fork(
           sequence(
             node(5, [5]),
-            fork(sequence(node(4, [5, 4])), sequence(node(3, [5, 3])))
+            fork(sequence(node(4, [5, 4])), sequence(node(3, [5, 3]))),
           ),
-          sequence(node(2, [2]), node(1, [2]), node(0, [2]))
-        )
-      )
+          sequence(node(2, [2]), node(1, [2]), node(0, [2])),
+        ),
+      ),
     );
 });
 
@@ -398,35 +398,35 @@ it("partial tree", async () => {
   expect(getBranchSequence(history.slice(0, 6))).toMatchObject({
     paths: expect.arrayContaining(
       [[5], [5, 4], [5, 3], [2]].map((p) =>
-        p.map((i) => history.at(i)?.checkpoint?.checkpoint_id)
-      )
+        p.map((i) => history.at(i)?.checkpoint?.checkpoint_id),
+      ),
     ),
     rootSequence: sequence(
       fork(
         sequence(
           node(5, [5]),
-          fork(sequence(node(4, [5, 4])), sequence(node(3, [5, 3])))
+          fork(sequence(node(4, [5, 4])), sequence(node(3, [5, 3]))),
         ),
-        sequence(node(2, [2]), node(1, [2]), node(0, [2]))
-      )
+        sequence(node(2, [2]), node(1, [2]), node(0, [2])),
+      ),
     ),
   });
 
   expect(getBranchSequence(history.slice(0, 7))).toMatchObject({
     paths: expect.arrayContaining(
       [[5], [5, 4], [5, 3], [2]].map((p) =>
-        p.map((i) => history.at(i)?.checkpoint?.checkpoint_id)
-      )
+        p.map((i) => history.at(i)?.checkpoint?.checkpoint_id),
+      ),
     ),
     rootSequence: sequence(
       node(6),
       fork(
         sequence(
           node(5, [5]),
-          fork(sequence(node(4, [5, 4])), sequence(node(3, [5, 3])))
+          fork(sequence(node(4, [5, 4])), sequence(node(3, [5, 3]))),
         ),
-        sequence(node(2, [2]), node(1, [2]), node(0, [2]))
-      )
+        sequence(node(2, [2]), node(1, [2]), node(0, [2])),
+      ),
     ),
   });
 });

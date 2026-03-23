@@ -24,7 +24,7 @@ describe.each([["global"], ["mocked"]])(
             }),
           text: () => Promise.resolve(""),
           headers: new Headers({}),
-        })
+        }),
       );
       overriddenFetch = vi.fn(() =>
         Promise.resolve({
@@ -37,7 +37,7 @@ describe.each([["global"], ["mocked"]])(
             }),
           text: () => Promise.resolve(""),
           headers: new Headers({}),
-        })
+        }),
       );
       expectedFetchMock =
         description === "mocked" ? overriddenFetch : globalFetchMock;
@@ -88,7 +88,7 @@ describe.each([["global"], ["mocked"]])(
             headers: expect.objectContaining({
               "x-api-key": "custom-value",
             }),
-          })
+          }),
         );
       });
 
@@ -117,7 +117,7 @@ describe.each([["global"], ["mocked"]])(
               "x-custom": "custom-value",
               "x-override": "custom-value",
             }),
-          })
+          }),
         );
 
         vi.clearAllMocks();
@@ -138,7 +138,7 @@ describe.each([["global"], ["mocked"]])(
               "x-api-key": "test-api-key",
               "x-default": "default-value",
             }),
-          })
+          }),
         );
         expect(expectedFetchMock).not.toHaveBeenCalledWith(
           expect.any(String),
@@ -147,7 +147,7 @@ describe.each([["global"], ["mocked"]])(
               "x-null": null,
               "x-undefined": undefined,
             }),
-          })
+          }),
         );
       });
 
@@ -168,7 +168,7 @@ describe.each([["global"], ["mocked"]])(
               "x-custom": "custom-value",
               "x-multi": "value1, value2",
             }),
-          })
+          }),
         );
       });
 
@@ -194,7 +194,7 @@ describe.each([["global"], ["mocked"]])(
               "x-custom": "custom-value",
               "x-multi": "value1, value2",
             }),
-          })
+          }),
         );
       });
     });
@@ -218,7 +218,7 @@ describe.each([["global"], ["mocked"]])(
             headers: expect.objectContaining({
               "x-api-key": "env-api-key",
             }),
-          })
+          }),
         );
 
         const client2 = new Client({ apiKey: undefined });
@@ -231,7 +231,7 @@ describe.each([["global"], ["mocked"]])(
             headers: expect.objectContaining({
               "x-api-key": "env-api-key",
             }),
-          })
+          }),
         );
 
         getEnvSpy.mockRestore();
@@ -254,7 +254,7 @@ describe.each([["global"], ["mocked"]])(
             headers: expect.not.objectContaining({
               "x-api-key": expect.anything(),
             }),
-          })
+          }),
         );
 
         getEnvSpy.mockRestore();
@@ -279,11 +279,11 @@ describe.each([["global"], ["mocked"]])(
             headers: expect.objectContaining({
               "x-api-key": "explicit-api-key",
             }),
-          })
+          }),
         );
 
         getEnvSpy.mockRestore();
       });
     });
-  }
+  },
 );

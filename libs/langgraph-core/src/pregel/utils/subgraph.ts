@@ -5,7 +5,6 @@ import {
 } from "@langchain/core/runnables";
 import type { PregelInterface } from "../types.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isRunnableSequence(
   x: RunnableSequence | Runnable
 ): x is RunnableSequence {

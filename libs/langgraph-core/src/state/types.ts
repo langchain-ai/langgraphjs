@@ -5,7 +5,8 @@ import type {
 } from "@standard-schema/spec";
 
 interface CombinedProps<Input = unknown, Output = Input>
-  extends StandardSchemaV1.Props<Input, Output>,
+  extends
+    StandardSchemaV1.Props<Input, Output>,
     StandardJSONSchemaV1.Props<Input, Output> {}
 
 /**

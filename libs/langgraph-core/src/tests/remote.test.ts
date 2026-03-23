@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import type { RunnableConfig } from "@langchain/core/runnables";

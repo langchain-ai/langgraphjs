@@ -17,7 +17,7 @@ export type StreamEvent =
   | "messages/metadata"
   | "messages/complete"
   | "messages"
-  | (string & {}); // eslint-disable-line @typescript-eslint/ban-types
+  | (string & {});
 
 export interface Send {
   node: string;
@@ -168,7 +168,7 @@ export interface RunsInvokePayload {
 
 export interface RunsStreamPayload<
   TStreamMode extends StreamMode | StreamMode[] = [],
-  TSubgraphs extends boolean = false
+  TSubgraphs extends boolean = false,
 > extends RunsInvokePayload {
   /**
    * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.

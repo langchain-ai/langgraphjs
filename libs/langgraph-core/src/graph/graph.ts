@@ -49,7 +49,7 @@ import { isPregelLike } from "../pregel/utils/subgraph.js";
 export interface BranchOptions<
   IO,
   N extends string,
-  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
+  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig,
 > {
   source: N;
   path: RunnableLike<IO, BranchPathReturnValue, CallOptions>;
@@ -71,7 +71,7 @@ type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
 export class Branch<
   IO,
   N extends string,
-  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
+  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig,
 > {
   path: Runnable<IO, BranchPathReturnValue>;
 
@@ -86,10 +86,13 @@ export class Branch<
       );
     }
     this.ends = Array.isArray(options.pathMap)
-      ? options.pathMap.reduce((acc, n) => {
-          acc[n] = n;
-          return acc;
-        }, {} as Record<string, N | typeof END>)
+      ? options.pathMap.reduce(
+          (acc, n) => {
+            acc[n] = n;
+            return acc;
+          },
+          {} as Record<string, N | typeof END>
+        )
       : options.pathMap;
   }
 
@@ -185,7 +188,7 @@ export class Graph<
     RunInput,
     RunOutput
   >,
-  C extends StateDefinition = StateDefinition
+  C extends StateDefinition = StateDefinition,
 > {
   nodes: Record<N, NodeSpecType>;
 
@@ -220,7 +223,7 @@ export class Graph<
       | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions
+          options?: AddNodeOptions,
         ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
@@ -235,7 +238,7 @@ export class Graph<
       | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions
+          options?: AddNodeOptions,
         ]
       | [
           nodes:
@@ -243,8 +246,8 @@ export class Graph<
             | [
                 key: K,
                 action: NodeAction<NodeInput, NodeOutput, C>,
-                options?: AddNodeOptions
-              ][]
+                options?: AddNodeOptions,
+              ][],
         ]
   ): Graph<N | K, RunInput, RunOutput> {
     function isMutlipleNodes(
@@ -255,15 +258,15 @@ export class Graph<
         | [
             key: K,
             action: NodeAction<NodeInput, RunOutput, C>,
-            options?: AddNodeOptions
+            options?: AddNodeOptions,
           ][],
-      options?: AddNodeOptions
+      options?: AddNodeOptions,
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
     }
 
     const nodes = (
-      isMutlipleNodes(args) // eslint-disable-line no-nested-ternary
+      isMutlipleNodes(args)
         ? Array.isArray(args[0])
           ? args[0]
           : Object.entries(args[0])
@@ -559,7 +562,7 @@ export class CompiledGraph<
   OutputType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
   NodeReturnType = unknown,
   CommandType = unknown,
-  StreamCustomType = any // eslint-disable-line @typescript-eslint/no-explicit-any
+  StreamCustomType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
@@ -712,7 +715,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<State, Update>
+      NodeSpec<State, Update>,
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
@@ -749,14 +752,14 @@ export class CompiledGraph<
           }
 
           // TODO: Remove default name once we stop supporting core 0.2.0
-          // eslint-disable-next-line no-inner-declarations
+
           function _isRunnableInterface(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             thing: any
           ): thing is RunnableInterface {
             return thing ? thing.lc_runnable : false;
           }
-          // eslint-disable-next-line no-inner-declarations
+
           function _nodeDataStr(
             id: string | undefined,
             data: RunnableInterface | RunnableIOSchema
@@ -845,7 +848,7 @@ export class CompiledGraph<
     }
     for (const [key, node] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<State, Update>
+      NodeSpec<State, Update>,
     ][]) {
       if (node.ends !== undefined) {
         for (const end of node.ends) {
@@ -910,7 +913,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<State, Update>
+      NodeSpec<State, Update>,
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
@@ -945,14 +948,14 @@ export class CompiledGraph<
           }
 
           // TODO: Remove default name once we stop supporting core 0.2.0
-          // eslint-disable-next-line no-inner-declarations
+
           function _isRunnableInterface(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             thing: any
           ): thing is RunnableInterface {
             return thing ? thing.lc_runnable : false;
           }
-          // eslint-disable-next-line no-inner-declarations
+
           function _nodeDataStr(
             id: string | undefined,
             data: RunnableInterface | RunnableIOSchema

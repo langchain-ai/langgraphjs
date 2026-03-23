@@ -10,7 +10,7 @@ const textEncoder = new TextEncoder();
  * "Controller is already closed" errors in tests
  */
 const createSSEStream = (
-  chunks: Array<{ id?: string; event: string; data: unknown }>
+  chunks: Array<{ id?: string; event: string; data: unknown }>,
 ): ReadableStream<{ id?: string; event: string; data: unknown }> => {
   // Convert chunks to SSE format
   const sseLines = chunks.flatMap((chunk) => {
@@ -46,7 +46,7 @@ const createSSEStream = (
  */
 const createErroringStream = (
   chunks: Array<{ id?: string; event: string; data: unknown }>,
-  error: Error
+  error: Error,
 ): ReadableStream<{ id?: string; event: string; data: unknown }> => {
   let index = 0;
   return new ReadableStream({
@@ -65,7 +65,7 @@ const createErroringStream = (
  * Helper to gather all chunks from an async generator
  */
 const gatherGenerator = async <T>(
-  generator: AsyncGenerator<T>
+  generator: AsyncGenerator<T>,
 ): Promise<T[]> => {
   const results: T[] = [];
   for await (const chunk of generator) {
@@ -131,7 +131,7 @@ describe("streamWithRetry", () => {
               didError = true;
               const stream = createErroringStream(
                 chunks1,
-                new TypeError("network error")
+                new TypeError("network error"),
               );
               return { response: mockResponse, stream };
             }
@@ -146,7 +146,7 @@ describe("streamWithRetry", () => {
           }
 
           return { response: mockResponse, stream: createSSEStream(chunks1) };
-        }
+        },
       );
 
       const generator = streamWithRetry(makeRequest);
@@ -171,7 +171,7 @@ describe("streamWithRetry", () => {
       const makeRequest = vi.fn(async () => {
         const stream = createErroringStream(
           chunks1,
-          new TypeError("non retryable error")
+          new TypeError("non retryable error"),
         );
 
         const responseWithoutLocation = new Response(null, {
@@ -204,11 +204,11 @@ describe("streamWithRetry", () => {
             : [{ id: "1", event: "msg", data: {} }];
           const stream = createErroringStream(
             chunks,
-            new TypeError("persistent network error")
+            new TypeError("persistent network error"),
           );
 
           return { response: mockResponse, stream };
-        }
+        },
       );
 
       const generator = streamWithRetry(makeRequest, {
@@ -228,7 +228,7 @@ describe("streamWithRetry", () => {
       const error = await errorPromise;
       expect(error).toBeInstanceOf(MaxReconnectAttemptsError);
       expect(error.message).toBe(
-        "Exceeded maximum SSE reconnection attempts (2)"
+        "Exceeded maximum SSE reconnection attempts (2)",
       );
     });
 
@@ -247,7 +247,7 @@ describe("streamWithRetry", () => {
               didError = true;
               const stream = createErroringStream(
                 chunks1,
-                new TypeError("network error")
+                new TypeError("network error"),
               );
               return { response: mockResponse, stream };
             }
@@ -263,7 +263,7 @@ describe("streamWithRetry", () => {
           }
 
           return { response: mockResponse, stream: createSSEStream(chunks1) };
-        }
+        },
       );
 
       const generator = streamWithRetry(makeRequest);
@@ -297,7 +297,7 @@ describe("streamWithRetry", () => {
       const generator = streamWithRetry(makeRequest);
 
       await expect(gatherGenerator(generator)).rejects.toThrow(
-        "Expected response header Content-Type to contain 'text/event-stream'"
+        "Expected response header Content-Type to contain 'text/event-stream'",
       );
     });
 
@@ -381,7 +381,7 @@ describe("streamWithRetry", () => {
       const makeRequest = vi.fn(async () => {
         const stream = createErroringStream(
           [{ id: "1", event: "msg", data: {} }],
-          new TypeError("network error")
+          new TypeError("network error"),
         );
 
         return { response: mockResponse, stream };
@@ -484,7 +484,7 @@ describe("streamWithRetry", () => {
         // Non-TypeError error should not trigger retry
         const stream = createErroringStream(
           [{ id: "1", event: "msg", data: {} }],
-          new Error("Non-network error")
+          new Error("Non-network error"),
         );
 
         return { response: testResponse, stream };
@@ -495,7 +495,7 @@ describe("streamWithRetry", () => {
       });
 
       await expect(gatherGenerator(generator)).rejects.toThrow(
-        "Non-network error"
+        "Non-network error",
       );
       expect(makeRequest).toHaveBeenCalledTimes(1);
       expect(makeRequest).toHaveBeenCalledWith(undefined);

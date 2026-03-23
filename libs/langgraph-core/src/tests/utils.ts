@@ -1,5 +1,4 @@
-/* eslint-disable no-promise-executor-return */
-/* eslint-disable import/no-extraneous-dependencies */
+/*  */
 import { expect, it } from "vitest";
 import { Graph as DrawableGraph } from "@langchain/core/runnables/graph";
 import {
@@ -141,7 +140,6 @@ class AnyStringSame {
   }
 
   asymmetricMatch(other: unknown) {
-    // eslint-disable-next-line no-instanceof/no-instanceof
     if (!(typeof other === "string" || other instanceof String)) {
       return false;
     }
@@ -304,10 +302,9 @@ export function skipIf(condition: () => boolean): typeof it | typeof it.skip {
 export async function dumpDebugStream<
   Nn extends StrRecord<string, PregelNode>,
   Cc extends StrRecord<string, BaseChannel>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ContextType extends Record<string, any> = StrRecord<string, any>,
   InputType = PregelInputType,
-  OutputType = PregelOutputType
+  OutputType = PregelOutputType,
 >(
   graph: Pregel<Nn, Cc, ContextType, InputType, OutputType>,
   input: InputType,

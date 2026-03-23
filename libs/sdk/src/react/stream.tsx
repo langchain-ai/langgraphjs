@@ -13,27 +13,27 @@ import type {
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
   options:
     | UseStreamOptions<StateType, Bag>
-    | UseStreamCustomOptions<StateType, Bag>
+    | UseStreamCustomOptions<StateType, Bag>,
 ): options is UseStreamCustomOptions<StateType, Bag> {
   return "transport" in options;
 }
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
 ): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
 ): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

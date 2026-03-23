@@ -20,7 +20,7 @@ function createMockTransport(events: unknown[] = []) {
 }
 
 function createOptions(
-  overrides?: Partial<AnyStreamCustomOptions<TestState>>
+  overrides?: Partial<AnyStreamCustomOptions<TestState>>,
 ): AnyStreamCustomOptions<TestState> {
   return {
     transport: createMockTransport(),
@@ -51,7 +51,7 @@ describe("CustomStreamOrchestrator", () => {
         messages: [{ id: "1", content: "hi", type: "human" }],
       };
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ initialValues: initial })
+        createOptions({ initialValues: initial }),
       );
 
       // Before streaming, values come from stream (null) so returns {}
@@ -62,7 +62,7 @@ describe("CustomStreamOrchestrator", () => {
 
     it("accepts a custom threadId", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ threadId: "t-42" })
+        createOptions({ threadId: "t-42" }),
       );
 
       // threadId is internal, but syncThreadId with same value is a no-op
@@ -85,7 +85,7 @@ describe("CustomStreamOrchestrator", () => {
         createOptions({
           initialValues: initial,
           filterSubagentMessages: true,
-        })
+        }),
       );
 
       expect(orch.subagents.size).toBe(0);
@@ -150,7 +150,7 @@ describe("CustomStreamOrchestrator", () => {
   describe("syncThreadId", () => {
     it("clears stream and notifies on change", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ threadId: "t1" })
+        createOptions({ threadId: "t1" }),
       );
       const listener = vi.fn();
       orch.subscribe(listener);
@@ -167,7 +167,7 @@ describe("CustomStreamOrchestrator", () => {
 
     it("is a no-op when threadId unchanged", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ threadId: "t1" })
+        createOptions({ threadId: "t1" }),
       );
       const listener = vi.fn();
       orch.subscribe(listener);
@@ -195,7 +195,7 @@ describe("CustomStreamOrchestrator", () => {
   describe("switchThread", () => {
     it("updates threadId and clears stream", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ threadId: "t1" })
+        createOptions({ threadId: "t1" }),
       );
 
       const clearSpy = vi.spyOn(orch.stream, "clear");
@@ -209,7 +209,7 @@ describe("CustomStreamOrchestrator", () => {
 
     it("switchThread to same value is a no-op", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ threadId: "t1" })
+        createOptions({ threadId: "t1" }),
       );
       const listener = vi.fn();
       orch.subscribe(listener);
@@ -223,7 +223,7 @@ describe("CustomStreamOrchestrator", () => {
 
     it("switchThread to null clears", () => {
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ threadId: "t1" })
+        createOptions({ threadId: "t1" }),
       );
       const listener = vi.fn();
       orch.subscribe(listener);
@@ -263,7 +263,7 @@ describe("CustomStreamOrchestrator", () => {
       const onThreadId = vi.fn();
 
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ transport, onThreadId, threadId: null })
+        createOptions({ transport, onThreadId, threadId: null }),
       );
 
       await orch.submit({
@@ -283,7 +283,7 @@ describe("CustomStreamOrchestrator", () => {
       const onThreadId = vi.fn();
 
       const orch = new CustomStreamOrchestrator<TestState>(
-        createOptions({ transport, onThreadId, threadId: "existing-thread" })
+        createOptions({ transport, onThreadId, threadId: "existing-thread" }),
       );
 
       await orch.submit({ messages: [] });
@@ -309,7 +309,7 @@ describe("CustomStreamOrchestrator", () => {
           transport,
           onFinish,
           threadId: "t1",
-        })
+        }),
       );
 
       await orch.submit({ messages: [] });
@@ -332,7 +332,7 @@ describe("CustomStreamOrchestrator", () => {
           transport,
           onError,
           threadId: "t1",
-        })
+        }),
       );
 
       await orch.submit({ messages: [] });
@@ -350,7 +350,7 @@ describe("CustomStreamOrchestrator", () => {
           transport,
           threadId: "t1",
           initialValues: { messages: [] },
-        })
+        }),
       );
 
       const setStreamValuesSpy = vi.spyOn(orch.stream, "setStreamValues");

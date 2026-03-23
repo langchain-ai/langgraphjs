@@ -98,7 +98,7 @@ export interface StreamBase<
   StateType = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   InterruptType = unknown,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > {
   /**
    * The current state values of the stream.
@@ -133,7 +133,7 @@ export interface StreamBase<
    * @returns Array of tool calls initiated by the message.
    */
   getToolCalls: (
-    message: AIMessage<ToolCall>
+    message: AIMessage<ToolCall>,
   ) => ToolCallWithResult<ToolCall>[];
 
   /**
@@ -178,7 +178,7 @@ export interface StreamBase<
    * @returns The subagent stream, or undefined if not found.
    */
   getSubagent: (
-    toolCallId: string
+    toolCallId: string,
   ) =>
     | SubagentStreamInterface<
         SubagentStates[keyof SubagentStates],
@@ -206,13 +206,12 @@ export interface StreamBase<
   getSubagentsByType: {
     // Overload for known subagent names - returns typed streams
     <TName extends keyof SubagentStates & string>(
-      type: TName
+      type: TName,
     ): SubagentStreamInterface<SubagentStates[TName], ToolCall, TName>[];
     // Overload for unknown names - returns untyped streams
-    (type: string): SubagentStreamInterface<
-      Record<string, unknown>,
-      ToolCall
-    >[];
+    (
+      type: string,
+    ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[];
   };
 
   /**
@@ -240,7 +239,7 @@ export interface StreamBase<
    * ```
    */
   getSubagentsByMessage: (
-    messageId: string
+    messageId: string,
   ) => SubagentStreamInterface<
     SubagentStates[keyof SubagentStates],
     ToolCall,
@@ -297,7 +296,7 @@ export interface SubagentApi<Iface = SubagentStreamInterface> {
 export interface SubagentStreamInterface<
   StateType = Record<string, unknown>,
   ToolCall = DefaultToolCall,
-  SubagentName extends string = string
+  SubagentName extends string = string,
 > extends StreamBase<StateType, ToolCall> {
   /** Unique identifier (the tool call ID) */
   id: string;
@@ -356,16 +355,17 @@ export interface SubagentStreamInterface<
  */
 export type SubagentStream<
   T = Record<string, unknown>,
-  ToolCall = DefaultToolCall
-> = IsDeepAgentLike<T> extends true
-  ? SubagentStreamInterface<
-      SubagentStateMap<T, InferAgentToolCalls<T>>[InferSubagentNames<T>],
-      InferAgentToolCalls<T>,
-      InferSubagentNames<T>
-    >
-  : IsAgentLike<T> extends true
-  ? SubagentStreamInterface<InferAgentState<T>, InferAgentToolCalls<T>>
-  : SubagentStreamInterface<T, ToolCall>;
+  ToolCall = DefaultToolCall,
+> =
+  IsDeepAgentLike<T> extends true
+    ? SubagentStreamInterface<
+        SubagentStateMap<T, InferAgentToolCalls<T>>[InferSubagentNames<T>],
+        InferAgentToolCalls<T>,
+        InferSubagentNames<T>
+      >
+    : IsAgentLike<T> extends true
+      ? SubagentStreamInterface<InferAgentState<T>, InferAgentToolCalls<T>>
+      : SubagentStreamInterface<T, ToolCall>;
 
 // ============================================================================
 // Agent Type Extraction Helpers
@@ -425,7 +425,7 @@ export interface AgentMiddlewareLike<
   TSchema = unknown,
   TContextSchema = unknown,
   TFullContext = unknown,
-  TTools = unknown
+  TTools = unknown,
 > {
   name: string;
   stateSchema?: TSchema;
@@ -442,10 +442,8 @@ export interface AgentMiddlewareLike<
  * Uses structural matching against AgentMiddleware to extract the state schema
  * type parameter, similar to how langchain's InferMiddlewareState works.
  */
-type SafeInferInteropZodInput<T> = InferInteropZodInput<T> extends never
-  ? // eslint-disable-next-line @typescript-eslint/ban-types
-    {}
-  : InferInteropZodInput<T>;
+type SafeInferInteropZodInput<T> =
+  InferInteropZodInput<T> extends never ? {} : InferInteropZodInput<T>;
 
 type InferMiddlewareState<T> =
   // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema
@@ -453,13 +451,11 @@ type InferMiddlewareState<T> =
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
       TSchema extends Record<string, any>
       ? SafeInferInteropZodInput<TSchema>
-      : // eslint-disable-next-line @typescript-eslint/ban-types
-        {}
+      : {}
     : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
-    T extends { stateSchema: infer S }
-    ? SafeInferInteropZodInput<S>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
-      {};
+      T extends { stateSchema: infer S }
+      ? SafeInferInteropZodInput<S>
+      : {};
 
 /**
  * Helper type to detect if a type is `any`.
@@ -482,34 +478,33 @@ type IsAny<T> = 0 extends 1 & T ? true : false;
 export type InferMiddlewareStatesFromArray<T> =
   // Guard against `any` type - any extends everything so would match first branch incorrectly
   IsAny<T> extends true
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
+    ? {}
     : // Handle undefined/null
-    T extends undefined | null
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : // Handle empty readonly array
-    T extends readonly []
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : // Handle empty mutable array
-    T extends []
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : // Handle readonly tuple [First, ...Rest]
-    T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
-    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
-    : // Handle mutable tuple [First, ...Rest]
-    T extends [infer First, ...infer Rest extends unknown[]]
-    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
-    : // Handle readonly array of union type
-    T extends readonly (infer U)[]
-    ? InferMiddlewareState<U>
-    : // Handle mutable array of union type
-    T extends (infer U)[]
-    ? InferMiddlewareState<U>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
-      {};
+      T extends undefined | null
+      ? {}
+      : // Handle empty readonly array
+        T extends readonly []
+        ? {}
+        : // Handle empty mutable array
+          T extends []
+          ? {}
+          : // Handle readonly tuple [First, ...Rest]
+            T extends readonly [
+                infer First,
+                ...infer Rest extends readonly unknown[],
+              ]
+            ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+            : // Handle mutable tuple [First, ...Rest]
+              T extends [infer First, ...infer Rest extends unknown[]]
+              ? InferMiddlewareState<First> &
+                  InferMiddlewareStatesFromArray<Rest>
+              : // Handle readonly array of union type
+                T extends readonly (infer U)[]
+                ? InferMiddlewareState<U>
+                : // Handle mutable array of union type
+                  T extends (infer U)[]
+                  ? InferMiddlewareState<U>
+                  : {};
 
 /**
  * Infer the complete merged state from an agent, including:
@@ -549,31 +544,26 @@ type BaseAgentState<ToolCall = DefaultToolCall> = {
 type InferStructuredResponse<Response> = Response extends {
   __responseFormatUndefined: true;
 }
-  ? // eslint-disable-next-line @typescript-eslint/ban-types
-    {}
+  ? {}
   : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Response extends Record<string, any>
-  ? { structuredResponse: Response }
-  : // eslint-disable-next-line @typescript-eslint/ban-types
-    {};
+    Response extends Record<string, any>
+    ? { structuredResponse: Response }
+    : {};
 
 export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? ExtractAgentConfig<T> extends never
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
+    ? {}
     : BaseAgentState<InferAgentToolCalls<T>> &
         (ExtractAgentConfig<T>["State"] extends undefined
-          ? // eslint-disable-next-line @typescript-eslint/ban-types
-            {}
+          ? {}
           : SafeInferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
         InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]> &
         InferStructuredResponse<ExtractAgentConfig<T>["Response"]>
   : T extends { "~RunOutput": infer RunOutput }
-  ? RunOutput
-  : T extends { messages: unknown }
-  ? T
-  : // eslint-disable-next-line @typescript-eslint/ban-types
-    {};
+    ? RunOutput
+    : T extends { messages: unknown }
+      ? T
+      : {};
 
 /**
  * Helper type to infer schema input type, supporting both Zod v3 and v4.
@@ -582,12 +572,12 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
  * - Zod v4 uses `_zod.input` property
  * - Zod v3 uses `_input` property
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type InferToolSchemaInput<S> = S extends { _zod: { input: infer Args } }
   ? Args
   : S extends { _input: infer Args }
-  ? Args
-  : never;
+    ? Args
+    : never;
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool.
@@ -596,15 +586,15 @@ type InferToolSchemaInput<S> = S extends { _zod: { input: infer Args } }
  * 1. `_call` method signature (may fail when `_call` is `protected`)
  * 2. `schema` property with self-contained Zod v3/v4 inference
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type InferToolInput<T> = T extends {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _call: (arg: infer Args, ...rest: any[]) => any;
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferToolSchemaInput<S>
-  : never;
+    ? InferToolSchemaInput<S>
+    : never;
 
 /**
  * Helper type to check if a type is a literal string (not generic `string`).
@@ -613,8 +603,8 @@ type InferToolInput<T> = T extends {
 type IsLiteralString<T> = string extends T
   ? false
   : T extends string
-  ? true
-  : false;
+    ? true
+    : false;
 
 /**
  * Extract a tool call type from a single tool.
@@ -634,9 +624,9 @@ type ToolCallFromAgentTool<T> = T extends { name: infer N }
         ? Args extends never
           ? never
           : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          Args extends Record<string, any>
-          ? { name: N; args: Args; id?: string; type?: "tool_call" }
-          : never
+            Args extends Record<string, any>
+            ? { name: N; args: Args; id?: string; type?: "tool_call" }
+            : never
         : never
       : never // Filter out generic `string` names
     : never
@@ -739,8 +729,8 @@ export type ExtractSubAgentMiddleware<T> = T extends {
   ? M extends readonly AgentMiddlewareLike[]
     ? M
     : M extends AgentMiddlewareLike[]
-    ? M
-    : readonly []
+      ? M
+      : readonly []
   : readonly [];
 
 /**
@@ -753,9 +743,10 @@ export type ExtractSubAgentMiddleware<T> = T extends {
  * // Subagents is the readonly tuple of subagent definitions
  * ```
  */
-export type InferDeepAgentSubagents<T> = ExtractDeepAgentConfig<T> extends never
-  ? never
-  : ExtractDeepAgentConfig<T>["Subagents"];
+export type InferDeepAgentSubagents<T> =
+  ExtractDeepAgentConfig<T> extends never
+    ? never
+    : ExtractDeepAgentConfig<T>["Subagents"];
 
 /**
  * Helper type to extract a subagent by name from a DeepAgent.
@@ -774,14 +765,12 @@ export type InferDeepAgentSubagents<T> = ExtractDeepAgentConfig<T> extends never
  * type Researcher = InferSubagentByName<typeof agent, "researcher">;
  * ```
  */
-export type InferSubagentByName<
-  T,
-  TName extends string
-> = InferDeepAgentSubagents<T> extends readonly (infer SA)[]
-  ? SA extends { name: TName }
-    ? SA
-    : never
-  : never;
+export type InferSubagentByName<T, TName extends string> =
+  InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+    ? SA extends { name: TName }
+      ? SA
+      : never
+    : never;
 
 /**
  * Base state type for subagents.
@@ -816,13 +805,14 @@ export type BaseSubagentState<ToolCall = DefaultToolCall> = {
 export type InferSubagentState<
   T,
   TName extends string,
-  ToolCall = DefaultToolCall
-> = InferSubagentByName<T, TName> extends never
-  ? Record<string, unknown>
-  : InferSubagentByName<T, TName> extends infer SA
-  ? BaseSubagentState<ToolCall> &
-      InferMiddlewareStatesFromArray<ExtractSubAgentMiddleware<SA>>
-  : Record<string, unknown>;
+  ToolCall = DefaultToolCall,
+> =
+  InferSubagentByName<T, TName> extends never
+    ? Record<string, unknown>
+    : InferSubagentByName<T, TName> extends infer SA
+      ? BaseSubagentState<ToolCall> &
+          InferMiddlewareStatesFromArray<ExtractSubAgentMiddleware<SA>>
+      : Record<string, unknown>;
 
 /**
  * Extract all subagent names as a string union from a DeepAgent.
@@ -887,15 +877,16 @@ export type SubagentStateMap<T, ToolCall = DefaultToolCall> = {
  * while DefaultToolCall has `name: string`. We check if `string extends TC["name"]` -
  * if true, it's DefaultToolCall; if false, it's a custom type with literal names.
  */
-type ExtractToolCallFromMessageUnion<M> = M extends AIMessage<infer TC>
-  ? TC extends { name: infer N }
-    ? // If string extends N, then N is just `string` (DefaultToolCall)
-      // If not, N is a literal type like "get_weather" (custom type)
-      string extends N
-      ? never
-      : TC
-    : never
-  : never;
+type ExtractToolCallFromMessageUnion<M> =
+  M extends AIMessage<infer TC>
+    ? TC extends { name: infer N }
+      ? // If string extends N, then N is just `string` (DefaultToolCall)
+        // If not, N is a literal type like "get_weather" (custom type)
+        string extends N
+        ? never
+        : TC
+      : never
+    : never;
 
 /**
  * Extract the tool call type from a StateType's messages property.
@@ -916,13 +907,13 @@ type ExtractToolCallFromMessageUnion<M> = M extends AIMessage<infer TC>
  * ```
  */
 export type ExtractToolCallsFromState<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 > = StateType extends { messages: infer Messages }
   ? Messages extends readonly (infer M)[]
     ? ExtractToolCallFromMessageUnion<M>
     : Messages extends (infer M)[]
-    ? ExtractToolCallFromMessageUnion<M>
-    : never
+      ? ExtractToolCallFromMessageUnion<M>
+      : never
   : never;
 
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
@@ -956,7 +947,7 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
 
 export type GetUpdateType<
   Bag extends BagTemplate,
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 > = Bag extends { UpdateType: unknown }
   ? Bag["UpdateType"]
   : Partial<StateType>;
@@ -971,13 +962,14 @@ export type GetUpdateType<
  * stream.submit({ messages: [new HumanMessage("hello")] });
  * ```
  */
-export type AcceptBaseMessages<T> = T extends Record<string, unknown>
-  ? {
-      [K in keyof T]: K extends "messages"
-        ? T[K] | BaseMessage | BaseMessage[]
-        : T[K];
-    }
-  : T;
+export type AcceptBaseMessages<T> =
+  T extends Record<string, unknown>
+    ? {
+        [K in keyof T]: K extends "messages"
+          ? T[K] | BaseMessage | BaseMessage[]
+          : T[K];
+      }
+    : T;
 
 export type GetConfigurableType<Bag extends BagTemplate> = Bag extends {
   ConfigurableType: Record<string, unknown>;
@@ -1033,13 +1025,13 @@ export interface UseStreamThread<StateType extends Record<string, unknown>> {
   error: unknown;
   isLoading: boolean;
   mutate: (
-    mutateId?: string
+    mutateId?: string,
   ) => Promise<ThreadState<StateType>[] | null | undefined>;
 }
 
 export interface UseStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   /**
    * The ID of the assistant to use.
@@ -1089,7 +1081,7 @@ export interface UseStreamOptions<
    */
   onFinish?: (
     state: ThreadState<StateType>,
-    run: RunCallbackMeta | undefined
+    run: RunCallbackMeta | undefined,
   ) => void;
 
   /**
@@ -1105,9 +1097,9 @@ export interface UseStreamOptions<
     options: {
       namespace: string[] | undefined;
       mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>),
       ) => void;
-    }
+    },
   ) => void;
 
   /**
@@ -1118,9 +1110,9 @@ export interface UseStreamOptions<
     options: {
       namespace: string[] | undefined;
       mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>),
       ) => void;
-    }
+    },
   ) => void;
 
   /**
@@ -1140,7 +1132,7 @@ export interface UseStreamOptions<
    */
   onDebugEvent?: (
     data: DebugStreamEvent["data"],
-    options: { namespace: string[] | undefined }
+    options: { namespace: string[] | undefined },
   ) => void;
 
   /**
@@ -1148,7 +1140,7 @@ export interface UseStreamOptions<
    */
   onCheckpointEvent?: (
     data: CheckpointsStreamEvent<StateType>["data"],
-    options: { namespace: string[] | undefined }
+    options: { namespace: string[] | undefined },
   ) => void;
 
   /**
@@ -1156,7 +1148,7 @@ export interface UseStreamOptions<
    */
   onTaskEvent?: (
     data: TasksStreamEvent<StateType, GetUpdateType<Bag, StateType>>["data"],
-    options: { namespace: string[] | undefined }
+    options: { namespace: string[] | undefined },
   ) => void;
 
   /**
@@ -1167,9 +1159,9 @@ export interface UseStreamOptions<
     options: {
       namespace: string[] | undefined;
       mutate: (
-        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>),
       ) => void;
-    }
+    },
   ) => void;
 
   /**
@@ -1193,7 +1185,7 @@ export interface UseStreamOptions<
    */
   onStop?: (options: {
     mutate: (
-      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+      update: Partial<StateType> | ((prev: StateType) => Partial<StateType>),
     ) => void;
   }) => void;
 
@@ -1260,7 +1252,7 @@ export interface UseStreamOptions<
  */
 export type AnyStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > = UseStreamOptions<StateType, Bag> & {
   // Agent-specific options (optional, only present for agent types)
   subagentToolNames?: string[];
@@ -1279,7 +1271,7 @@ type ConfigWithConfigurable<ConfigurableType extends Record<string, unknown>> =
 
 export interface SubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ContextType extends Record<string, unknown> = Record<string, unknown>
+  ContextType extends Record<string, unknown> = Record<string, unknown>,
 > {
   config?: ConfigWithConfigurable<ContextType>;
   context?: ContextType;
@@ -1344,7 +1336,7 @@ export interface SubmitOptions<
  */
 export interface UseStreamTransportPayload<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   input: GetUpdateType<Bag, StateType> | null | undefined;
   context: GetConfigurableType<Bag> | undefined;
@@ -1360,16 +1352,16 @@ export interface UseStreamTransportPayload<
  */
 export interface UseStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   stream: (
-    payload: UseStreamTransportPayload<StateType, Bag>
+    payload: UseStreamTransportPayload<StateType, Bag>,
   ) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
 }
 
 export type UseStreamCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > = Pick<
   UseStreamOptions<StateType, Bag>,
   | "messagesKey"
@@ -1402,7 +1394,7 @@ export type UseStreamCustomOptions<
  */
 export type AnyStreamCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > = UseStreamCustomOptions<StateType, Bag> & {
   // Agent-specific options (optional, only present for agent types)
   subagentToolNames?: string[];
@@ -1412,7 +1404,7 @@ export type AnyStreamCustomOptions<
 
 export type CustomSubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ConfigurableType extends Record<string, unknown> = Record<string, unknown>
+  ConfigurableType extends Record<string, unknown> = Record<string, unknown>,
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
   | "optimisticValues"

@@ -19,11 +19,12 @@ import type { ThreadState } from "../schema.js";
  * Used by framework SDKs to reflect that `ensureHistoryMessageInstances`
  * converts plain message objects to class instances at runtime.
  */
-export type StateWithBaseMessages<S> = S extends Record<string, unknown>
-  ? "messages" extends keyof S
-    ? Omit<S, "messages"> & { messages: BaseMessage[] }
-    : S
-  : S;
+export type StateWithBaseMessages<S> =
+  S extends Record<string, unknown>
+    ? "messages" extends keyof S
+      ? Omit<S, "messages"> & { messages: BaseMessage[] }
+      : S
+    : S;
 
 /**
  * Maps a `ThreadState<StateType>[]` so that the `messages` field inside
@@ -34,7 +35,7 @@ export type HistoryWithBaseMessages<T> = T extends ThreadState<infer S>[]
   : T;
 
 export function tryConvertToChunk(
-  message: BaseMessage | BaseMessageChunk
+  message: BaseMessage | BaseMessageChunk,
 ): BaseMessageChunk | null {
   try {
     if (isBaseMessageChunk(message)) return message;
@@ -45,7 +46,7 @@ export function tryConvertToChunk(
 }
 
 export function tryCoerceMessageLikeToMessage(
-  message: Omit<Message, "type"> & { type: string }
+  message: Omit<Message, "type"> & { type: string },
 ): BaseMessage | BaseMessageChunk {
   if (message.type === "human" || message.type === "user") {
     return new HumanMessageChunk(message);
@@ -89,12 +90,11 @@ export class MessageTupleManager {
 
   add(
     serialized: Message,
-    metadata: Record<string, unknown> | undefined
+    metadata: Record<string, unknown> | undefined,
   ): string | null {
     // TODO: this is sometimes sent from the API
     // figure out how to prevent this or move this to LC.js
     if (serialized.type.endsWith("MessageChunk")) {
-      // eslint-disable-next-line no-param-reassign
       serialized.type = serialized.type
         .slice(0, -"MessageChunk".length)
         .toLowerCase() as Message["type"];
@@ -107,7 +107,7 @@ export class MessageTupleManager {
     if (!id) {
       console.warn(
         "No message ID found for chunk, ignoring in state",
-        serialized
+        serialized,
       );
       return null;
     }
@@ -155,14 +155,14 @@ export const toMessageClass = (chunk: BaseMessage): BaseMessage => chunk;
  * via {@link tryCoerceMessageLikeToMessage}.
  */
 export function ensureMessageInstances(
-  messages: (Message | BaseMessage)[]
+  messages: (Message | BaseMessage)[],
 ): (BaseMessage | BaseMessageChunk)[] {
   return messages.map((msg) => {
     if (typeof (msg as BaseMessage).getType === "function") {
       return msg as BaseMessage;
     }
     return tryCoerceMessageLikeToMessage(
-      msg as Omit<Message, "type"> & { type: string }
+      msg as Omit<Message, "type"> & { type: string },
     );
   });
 }
@@ -173,10 +173,10 @@ export function ensureMessageInstances(
  * shallow-copied states whose messages have been coerced.
  */
 export function ensureHistoryMessageInstances<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(
   history: ThreadState<StateType>[],
-  messagesKey: string = "messages"
+  messagesKey: string = "messages",
 ): ThreadState<StateType>[] {
   return history.map((state) => {
     if (state.values == null) return state;

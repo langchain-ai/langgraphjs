@@ -99,15 +99,15 @@ describe("_deserializeCommandSendObjectGraph", () => {
 
   it("handles cycles in object tree gracefully", () => {
     // Create an object with a cycle
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const objA: any = { name: "A" };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const objB: any = { name: "B" };
     objA.ref = objB;
     objB.ref = objA; // Creates a cycle
 
     // This should not throw
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const result = _deserializeCommandSendObjectGraph(objA) as any;
 
     // Verify structure
@@ -133,11 +133,10 @@ describe("_deserializeCommandSendObjectGraph", () => {
   });
 
   it("handles complex nested objects with multiple cycles", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const obj1: any = { id: 1 };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const obj2: any = { id: 2 };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const obj3: any = { id: 3 };
 
     obj1.ref = obj2;
@@ -145,7 +144,6 @@ describe("_deserializeCommandSendObjectGraph", () => {
     obj3.ref = obj1; // Cycle back to obj1
     obj3.selfRef = obj3; // Self-reference
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = _deserializeCommandSendObjectGraph(obj1) as any;
 
     // Verify structure

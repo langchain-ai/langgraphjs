@@ -29,7 +29,7 @@ import type {
  */
 function computeToolCallState(
   result: ToolMessage | undefined,
-  impliedCompleted: boolean
+  impliedCompleted: boolean,
 ): ToolCallState {
   if (result) return result.status === "error" ? "error" : "completed";
   if (impliedCompleted) return "completed";
@@ -37,7 +37,7 @@ function computeToolCallState(
 }
 
 export function getToolCallsWithResults<ToolCall = DefaultToolCall>(
-  messages: Message<ToolCall>[]
+  messages: Message<ToolCall>[],
 ): ToolCallWithResult<ToolCall>[] {
   const results: ToolCallWithResult<ToolCall>[] = [];
 

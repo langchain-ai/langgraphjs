@@ -4,10 +4,10 @@ import { BaseStore } from "@langchain/langgraph-checkpoint";
 type RunnableFunc<
   RunInput,
   RunOutput,
-  CallOptions extends RunnableConfig = RunnableConfig
+  CallOptions extends RunnableConfig = RunnableConfig,
 > = (
   input: RunInput,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   options: CallOptions
 ) => RunOutput | Promise<RunOutput>;
 
@@ -18,7 +18,7 @@ type RunnableMapLike<RunInput, RunOutput> = {
 export type RunnableLike<
   RunInput,
   RunOutput,
-  CallOptions extends RunnableConfig = RunnableConfig
+  CallOptions extends RunnableConfig = RunnableConfig,
 > =
   | RunnableInterface<RunInput, RunOutput, CallOptions>
   | RunnableFunc<RunInput, RunOutput, CallOptions>
@@ -29,7 +29,7 @@ type IsEqual<T, U> = [T] extends [U] ? ([U] extends [T] ? true : false) : false;
 export interface Runtime<
   ContextType = Record<string, unknown>,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > {
   configurable?: ContextType;
 
@@ -73,7 +73,8 @@ export interface Runtime<
 
 export interface LangGraphRunnableConfig<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType extends Record<string, any> = Record<string, any>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-> extends RunnableConfig<ContextType>,
+  ContextType extends Record<string, any> = Record<string, any>,
+>
+  extends
+    RunnableConfig<ContextType>,
     Partial<Runtime<ContextType, unknown, unknown>> {}

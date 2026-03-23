@@ -13,7 +13,7 @@ export function isBaseChannel(obj: unknown): obj is BaseChannel {
 export abstract class BaseChannel<
   ValueType = unknown,
   UpdateType = unknown,
-  CheckpointType = unknown
+  CheckpointType = unknown,
 > {
   ValueType: ValueType;
 

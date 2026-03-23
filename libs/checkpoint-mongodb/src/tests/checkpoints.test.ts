@@ -26,7 +26,7 @@ const createMockClient = () => ({
 describe("MongoDBSaver", () => {
   it("should set client metadata", async () => {
     const client = createMockClient();
-    // eslint-disable-next-line no-new
+
     new MongoDBSaver({ client: client as unknown as MongoClient });
     expect(client.appendMetadata).toHaveBeenCalledWith({
       name: "langgraphjs_checkpoint_saver",
@@ -40,7 +40,6 @@ describe("MongoDBSaver", () => {
         client: client as unknown as MongoClient,
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const op = (saver as any).timestampOp;
       expect(op).toEqual({});
     });
@@ -52,7 +51,6 @@ describe("MongoDBSaver", () => {
         enableTimestamps: true,
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const op = (saver as any).timestampOp;
       expect(op).toEqual({ $currentDate: { upserted_at: true } });
     });

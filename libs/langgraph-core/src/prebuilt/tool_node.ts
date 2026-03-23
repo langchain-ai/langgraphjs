@@ -212,7 +212,6 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected async run(input: unknown, config: RunnableConfig): Promise<T> {
     let outputs: (ToolMessage | Command)[];
 

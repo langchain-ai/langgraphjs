@@ -38,7 +38,6 @@ export class EphemeralValue<Value> extends BaseChannel<Value, Value, Value> {
       );
     }
 
-    // eslint-disable-next-line prefer-destructuring
     this.value = [values[values.length - 1]];
     return true;
   }

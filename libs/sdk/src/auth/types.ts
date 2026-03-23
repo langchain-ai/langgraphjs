@@ -103,7 +103,7 @@ interface ThreadDelete {
 interface ThreadSearch {
   thread_id?: Maybe<string>;
   ids?: Maybe<string[]>;
-  status?: Maybe<"idle" | "busy" | "interrupted" | "error" | (string & {})>; // eslint-disable-line @typescript-eslint/ban-types
+  status?: Maybe<"idle" | "busy" | "interrupted" | "error" | (string & {})>;
   metadata?: Maybe<Record<string, unknown>>;
   values?: Maybe<Record<string, unknown>>;
   limit?: Maybe<number>;
@@ -336,7 +336,7 @@ type CallbackParameter<
   Resource extends string = string,
   Action extends string = string,
   Value = unknown,
-  TUser extends BaseUser = BaseUser
+  TUser extends BaseUser = BaseUser,
 > = {
   event: Event;
   resource: Resource;
@@ -358,15 +358,15 @@ type ContextMap = {
 
 type ActionCallbackParameter<
   T extends keyof ActionType,
-  TUser extends BaseUser = BaseUser
+  TUser extends BaseUser = BaseUser,
 > = ContextMap[ActionType[T]] & { user: TUser };
 type AuthCallbackParameter<
   T extends keyof EventValueMap,
-  TUser extends BaseUser = BaseUser
+  TUser extends BaseUser = BaseUser,
 > = ContextMap[T] & { user: TUser };
 type ResourceCallbackParameter<
   T extends keyof ResourceType,
-  TUser extends BaseUser = BaseUser
+  TUser extends BaseUser = BaseUser,
 > = ContextMap[ResourceType[T]] & { user: TUser };
 
 export type Filters<TKey extends string | number | symbol> = {
@@ -381,31 +381,30 @@ type OnKey = keyof ResourceType | keyof ActionType | keyof EventValueMap;
 
 type OnSingleParameter<
   T extends OnKey,
-  TUser extends BaseUser = BaseUser
+  TUser extends BaseUser = BaseUser,
 > = T extends keyof ResourceType
   ? ResourceCallbackParameter<T, TUser>
   : T extends keyof ActionType
-  ? ActionCallbackParameter<T, TUser>
-  : T extends keyof EventValueMap
-  ? AuthCallbackParameter<T, TUser>
-  : never;
+    ? ActionCallbackParameter<T, TUser>
+    : T extends keyof EventValueMap
+      ? AuthCallbackParameter<T, TUser>
+      : never;
 
 type OnParameter<
   T extends "*" | OnKey | OnKey[],
-  TUser extends BaseUser = BaseUser
+  TUser extends BaseUser = BaseUser,
 > = T extends OnKey[]
   ? OnSingleParameter<T[number], TUser>
   : T extends "*"
-  ? AuthCallbackParameter<keyof EventValueMap, TUser>
-  : T extends OnKey
-  ? OnSingleParameter<T, TUser>
-  : never;
+    ? AuthCallbackParameter<keyof EventValueMap, TUser>
+    : T extends OnKey
+      ? OnSingleParameter<T, TUser>
+      : never;
 
 export type AnyCallback = {
-  (request: CallbackParameter):
-    | void
-    | PromiseMaybe<boolean>
-    | PromiseMaybe<Filters<string>>;
+  (
+    request: CallbackParameter,
+  ): void | PromiseMaybe<boolean> | PromiseMaybe<Filters<string>>;
 };
 
 export type CallbackEvent = "*" | OnKey | OnKey[];
@@ -413,10 +412,9 @@ export type CallbackEvent = "*" | OnKey | OnKey[];
 export type OnCallback<
   T extends CallbackEvent,
   TUser extends BaseUser = BaseUser,
-  TMetadata extends Record<string, unknown> = Record<string, unknown>
+  TMetadata extends Record<string, unknown> = Record<string, unknown>,
 > = {
-  (request: OnParameter<T, TUser>):
-    | void
-    | PromiseMaybe<boolean>
-    | PromiseMaybe<Filters<keyof TMetadata>>;
+  (
+    request: OnParameter<T, TUser>,
+  ): void | PromiseMaybe<boolean> | PromiseMaybe<Filters<keyof TMetadata>>;
 };

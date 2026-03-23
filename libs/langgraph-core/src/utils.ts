@@ -65,10 +65,8 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
   }
 
   async invoke(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: I,
     options?: Partial<RunnableConfig> | undefined
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<O> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let returnValue: any;
@@ -111,14 +109,14 @@ export function prefixGenerator<T>(
 
 export function prefixGenerator<
   T,
-  Prefix extends string | undefined = undefined
+  Prefix extends string | undefined = undefined,
 >(
   generator: Generator<T>,
   prefix?: Prefix | undefined
 ): Generator<Prefix extends string ? [Prefix, T] : T>;
 export function* prefixGenerator<
   T,
-  Prefix extends string | undefined = undefined
+  Prefix extends string | undefined = undefined,
 >(
   generator: Generator<T>,
   prefix?: Prefix | undefined

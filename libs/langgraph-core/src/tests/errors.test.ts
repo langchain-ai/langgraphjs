@@ -1,4 +1,3 @@
-/* eslint-disable prefer-template */
 import { it, expect } from "vitest";
 import {
   Annotation,

@@ -29,7 +29,7 @@ const DEFAULT_SUBAGENT_TOOL_NAMES = ["task"];
  * @returns True if this is a subagent namespace
  */
 export function isSubagentNamespace(
-  namespace: string[] | string | undefined
+  namespace: string[] | string | undefined,
 ): boolean {
   if (!namespace) return false;
 
@@ -52,7 +52,7 @@ export function isSubagentNamespace(
  * @returns The tool call ID, or undefined if not found
  */
 export function extractToolCallIdFromNamespace(
-  namespace: string[] | undefined
+  namespace: string[] | undefined,
 ): string | undefined {
   if (!namespace || namespace.length === 0) return undefined;
 
@@ -74,7 +74,7 @@ export function extractToolCallIdFromNamespace(
  * @returns The depth (0 for main agent, 1+ for subagents)
  */
 export function calculateDepthFromNamespace(
-  namespace: string[] | undefined
+  namespace: string[] | undefined,
 ): number {
   if (!namespace) return 0;
   return namespace.filter((s) => s.startsWith("tools:")).length;
@@ -90,7 +90,7 @@ export function calculateDepthFromNamespace(
  * @returns The parent tool call ID, or null if this is a top-level subagent
  */
 export function extractParentIdFromNamespace(
-  namespace: string[] | undefined
+  namespace: string[] | undefined,
 ): string | null {
   if (!namespace || namespace.length < 2) return null;
 
@@ -182,7 +182,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
   constructor(options?: SubagentManagerOptions) {
     this.subagentToolNames = new Set(
-      options?.subagentToolNames ?? DEFAULT_SUBAGENT_TOOL_NAMES
+      options?.subagentToolNames ?? DEFAULT_SUBAGENT_TOOL_NAMES,
     );
     this.onSubagentChange = options?.onSubagentChange;
     this.toMessage = options?.toMessage ?? toMessageDict;
@@ -222,7 +222,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * This ensures consistency with UseStream interface.
    */
   private createSubagentStream(
-    base: SubagentStreamBase<ToolCall>
+    base: SubagentStreamBase<ToolCall>,
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
     const { messages } = base;
     const allToolCalls = getToolCallsWithResults<ToolCall>(messages);
@@ -237,7 +237,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
       // Method to get tool calls for a specific message
       getToolCalls: (
-        message: AIMessage<ToolCall>
+        message: AIMessage<ToolCall>,
       ): ToolCallWithResult<ToolCall>[] => {
         return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
       },
@@ -284,7 +284,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   matchSubgraphToSubagent(
     namespaceId: string,
-    description: string
+    description: string,
   ): string | undefined {
     // Skip if we already have a mapping
     if (this.namespaceToToolCallId.has(namespaceId)) {
@@ -417,7 +417,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Adds messages and derived properties.
    */
   private buildExecution(
-    base: SubagentStreamBase<ToolCall>
+    base: SubagentStreamBase<ToolCall>,
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
     // Get fresh messages from the streaming manager (populated during live streaming).
     // Fall back to base.messages, which is populated by updateSubagentFromSubgraphState
@@ -468,7 +468,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Get a specific subagent by tool call ID.
    */
   getSubagent(
-    toolCallId: string
+    toolCallId: string,
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall> | undefined {
     const subagent = this.subagents.get(toolCallId);
     return subagent ? this.buildExecution(subagent) : undefined;
@@ -478,7 +478,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Get all subagents of a specific type.
    */
   getSubagentsByType(
-    type: string
+    type: string,
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[] {
     return [...this.subagents.values()]
       .filter((s) => s.toolCall.args.subagent_type === type)
@@ -492,7 +492,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * @returns Array of subagent streams triggered by that message.
    */
   getSubagentsByMessage(
-    messageId: string
+    messageId: string,
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[] {
     return [...this.subagents.values()]
       .filter((s) => s.aiMessageId === messageId && this.isValidSubagent(s))
@@ -504,7 +504,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * During streaming, args might come as a string that needs parsing.
    */
   private parseArgs(
-    args: Record<string, unknown> | string | undefined
+    args: Record<string, unknown> | string | undefined,
   ): Record<string, unknown> {
     if (!args) return {};
     if (typeof args === "string") {
@@ -532,7 +532,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       name: string;
       args: Record<string, unknown> | string;
     }>,
-    aiMessageId?: string | null
+    aiMessageId?: string | null,
   ): void {
     let hasChanges = false;
 
@@ -666,7 +666,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     toolCallId: string,
     options?: {
       namespace?: string[];
-    }
+    },
   ): void {
     const existing = this.subagents.get(toolCallId);
     if (!existing) return;
@@ -712,7 +712,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   addMessageToSubagent(
     namespaceId: string,
     serialized: Message<DefaultToolCall>,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): void {
     // First, try to match this namespace to an existing subagent
     // For human messages (which contain the description), try to establish the mapping
@@ -771,7 +771,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   updateSubagentValues(
     namespaceId: string,
-    values: Record<string, unknown>
+    values: Record<string, unknown>,
   ): void {
     // Resolve the actual tool call ID from the namespace mapping
     const toolCallId = this.getToolCallIdFromNamespace(namespaceId);
@@ -803,7 +803,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   complete(
     toolCallId: string,
     result: string,
-    status: "complete" | "error" = "complete"
+    status: "complete" | "error" = "complete",
   ): void {
     const existing = this.subagents.get(toolCallId);
     if (!existing) return;
@@ -840,7 +840,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   processToolMessage(
     toolCallId: string,
     content: string,
-    status: "success" | "error" = "success"
+    status: "success" | "error" = "success",
   ): void {
     const existing = this.subagents.get(toolCallId);
     if (!existing) return;
@@ -848,7 +848,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     this.complete(
       toolCallId,
       content,
-      status === "success" ? "complete" : "error"
+      status === "success" ? "complete" : "error",
     );
   }
 
@@ -876,7 +876,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   reconstructFromMessages(
     messages: Message<DefaultToolCall>[],
-    options?: { skipIfPopulated?: boolean }
+    options?: { skipIfPopulated?: boolean },
   ): void {
     // Skip if we already have subagents (from active streaming)
     if (options?.skipIfPopulated && this.subagents.size > 0) {
@@ -943,7 +943,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         // Check if we have a result for this tool call
         const toolResult = toolResults.get(toolCall.id);
         const isComplete = !!toolResult;
-        // eslint-disable-next-line no-nested-ternary
+
         const status: SubagentStatus = isComplete
           ? toolResult.status === "error"
             ? "error"
@@ -995,7 +995,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   updateSubagentFromSubgraphState(
     toolCallId: string,
     messages: Message[],
-    values?: Record<string, unknown>
+    values?: Record<string, unknown>,
   ): boolean {
     const subagent = this.subagents.get(toolCallId);
     if (!subagent) return false;

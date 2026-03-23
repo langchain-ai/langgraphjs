@@ -1,10 +1,5 @@
-/* eslint-disable no-process-env */
-/* eslint-disable no-promise-executor-return */
-/* eslint-disable no-instanceof/no-instanceof */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-template */
-/* eslint-disable no-param-reassign */
+/*  */
+
 import {
   it,
   expect,
@@ -744,7 +739,6 @@ export function runPregelTests(
         channel2,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const writes: Array<[string, any]> = [];
 
       // call method / assertions
@@ -789,7 +783,6 @@ export function runPregelTests(
         channel2,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const writes: Array<[string, any]> = [
         ["channel1", 100],
         ["channel2", 200],
@@ -847,7 +840,6 @@ export function runPregelTests(
         channel2: lastValueChannel2,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pendingWrites: Array<[keyof typeof channels, any]> = [
         ["channel1", "channel1valueUpdated!"],
       ];
@@ -896,7 +888,7 @@ export function runPregelTests(
       };
 
       // LastValue channel can only be updated with one value at a time
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const pendingWrites: Array<[keyof typeof channels, any]> = [
         ["channel1", "channel1valueUpdated!"],
         ["channel1", "channel1valueUpdatedAgain!"],
@@ -2660,7 +2652,7 @@ graph TD;
       // set up top level graph
       type State = {
         myKey: string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         neverCalled: any;
       };
 
@@ -2680,7 +2672,7 @@ graph TD;
         .compile();
 
       // call method / assertions
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
@@ -2719,7 +2711,7 @@ graph TD;
       // set up top level graph
       type State = {
         myKey: string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         neverCalled: any;
       };
 
@@ -2739,7 +2731,7 @@ graph TD;
         .compile();
 
       // call method / assertions
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const neverCalled = vi.fn((_: any) => {
         throw new Error("This should never be called");
       });
@@ -2757,7 +2749,6 @@ graph TD;
 
     it("Conditional edges is optional", async () => {
       type GraphState = {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         keys: Record<string, any>;
       };
       const nodeOne = (state: GraphState) => {
@@ -4495,7 +4486,7 @@ graph TD;
           if (!erroredOnce) {
             erroredOnce = true;
             const error = new Error("I will be retried");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             (error as any).status = 500;
             throw error;
           }
@@ -4503,7 +4494,7 @@ graph TD;
         if (total > 8) {
           nonRetryableErrorCount += 1;
           const error = new Error("Total is too large");
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           (error as any).status = 400;
           throw error;
         }
@@ -5684,7 +5675,6 @@ graph TD;
     ).rejects.toThrowError("thread_id");
 
     async function last<T>(iter: AsyncIterableIterator<T>): Promise<T> {
-      // eslint-disable-next-line no-undef-init
       let value: T | undefined = undefined;
       for await (value of iter) {
         // do nothing
@@ -10247,7 +10237,6 @@ graph TD;
           .array(z3.string())
           .default(() => [])
           .langgraph.reducer(
-            // eslint-disable-next-line no-nested-ternary
             (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
             z3.union([z3.string(), z3.array(z3.string())])
           ),
@@ -10324,9 +10313,7 @@ graph TD;
         items: withLangGraph(z4.array(z4.string()), {
           reducer: {
             schema: z4.union([z4.string(), z4.array(z4.string())]),
-            fn: (a, b) =>
-              // eslint-disable-next-line no-nested-ternary
-              a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
+            fn: (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
           },
           default: (): string[] => [],
         }),
@@ -11158,7 +11145,6 @@ graph TD;
             .array(z3.string())
             .default(() => ["default"])
             .langgraph.reducer(
-              // eslint-disable-next-line no-nested-ternary
               (a, b) => a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
               z3.union([z3.string(), z3.array(z3.string())])
             ),
@@ -11191,7 +11177,6 @@ graph TD;
           items: withLangGraph(z4.array(z4.string()), {
             reducer: {
               fn: (a, b) =>
-                // eslint-disable-next-line no-nested-ternary
                 a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
               schema: z4.union([z4.string(), z4.array(z4.string())]),
             },
@@ -11316,7 +11301,6 @@ graph TD;
             reducer: {
               schema: z4.union([z4.string(), z4.array(z4.string())]),
               fn: (a, b) =>
-                // eslint-disable-next-line no-nested-ternary
                 a.concat(Array.isArray(b) ? b : b != null ? [b] : []),
             },
             default: () => ["default"],

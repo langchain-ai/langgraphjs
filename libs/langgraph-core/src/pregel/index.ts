@@ -1,4 +1,3 @@
-/* eslint-disable no-param-reassign */
 import {
   _coerceToRunnable,
   getCallbackManagerForConfig,
@@ -295,7 +294,7 @@ export type { PregelInputType, PregelOptions, PregelOutputType };
 class PartialRunnable<
   RunInput,
   RunOutput,
-  CallOptions extends RunnableConfig
+  CallOptions extends RunnableConfig,
 > extends Runnable<RunInput, RunOutput, CallOptions> {
   lc_namespace = ["langgraph", "pregel"];
 
@@ -382,19 +381,19 @@ class PartialRunnable<
  * @typeParam OutputType - Type of output values produced by the graph
  */
 export class Pregel<
-    Nodes extends StrRecord<string, PregelNode>,
-    Channels extends StrRecord<string, BaseChannel>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ContextType extends Record<string, any> = StrRecord<string, any>,
-    InputType = PregelInputType,
-    OutputType = PregelOutputType,
-    StreamUpdatesType = InputType,
-    StreamValuesType = OutputType,
-    NodeReturnType = unknown,
-    CommandType = CommandInstance,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    StreamCustom = any
-  >
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = StrRecord<string, any>,
+  InputType = PregelInputType,
+  OutputType = PregelOutputType,
+  StreamUpdatesType = InputType,
+  StreamValuesType = OutputType,
+  NodeReturnType = unknown,
+  CommandType = CommandInstance,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StreamCustom = any,
+>
   extends PartialRunnable<
     InputType | CommandType | null,
     OutputType,
@@ -1106,7 +1105,7 @@ export class Pregel<
       // remove task_ids from checkpoint_ns
       const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
       // find the subgraph with the matching name
-      // eslint-disable-next-line no-unreachable-loop
+
       for await (const [, pregel] of this.getSubgraphsAsync(
         recastNamespace,
         true
@@ -1484,7 +1483,6 @@ export class Pregel<
       }> = [];
 
       if (updates.length === 1) {
-        // eslint-disable-next-line prefer-const
         let { values, asNode, taskId } = updates[0];
         if (asNode === undefined && Object.keys(this.nodes).length === 1) {
           // if only one node, use it
@@ -1511,13 +1509,11 @@ export class Pregel<
           // if two nodes updated the state at the same time, it's ambiguous
           if (lastSeenByNode) {
             if (lastSeenByNode.length === 1) {
-              // eslint-disable-next-line prefer-destructuring
               asNode = lastSeenByNode[0][1];
             } else if (
               lastSeenByNode[lastSeenByNode.length - 1][0] !==
               lastSeenByNode[lastSeenByNode.length - 2][0]
             ) {
-              // eslint-disable-next-line prefer-destructuring
               asNode = lastSeenByNode[lastSeenByNode.length - 1][1];
             }
           }
@@ -1724,7 +1720,7 @@ export class Pregel<
     BaseStore | undefined, // store
     boolean, // stream mode single
     BaseCache | undefined, // node cache
-    Durability // durability
+    Durability, // durability
   ] {
     const {
       debug,
@@ -1843,7 +1839,7 @@ export class Pregel<
   override async stream<
     TStreamMode extends StreamMode | StreamMode[] | undefined,
     TSubgraphs extends boolean,
-    TEncoding extends "text/event-stream" | undefined
+    TEncoding extends "text/event-stream" | undefined,
   >(
     input: InputType | CommandType | null,
     options?: Partial<
@@ -1977,7 +1973,9 @@ export class Pregel<
   ): AsyncGenerator<PregelOutputType> {
     // Skip LGP encoding option is `streamEvents` is used
     const streamEncoding =
-      "version" in (options ?? {}) ? undefined : options?.encoding ?? undefined;
+      "version" in (options ?? {})
+        ? undefined
+        : (options?.encoding ?? undefined);
     const streamSubgraphs = options?.subgraphs;
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (

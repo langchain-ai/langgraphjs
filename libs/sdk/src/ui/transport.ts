@@ -30,15 +30,14 @@ interface FetchStreamTransportOptions {
    */
   onRequest?: (
     url: string,
-    init: RequestInit
+    init: RequestInit,
   ) => Promise<RequestInit> | RequestInit;
 }
 
 export class FetchStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> implements UseStreamTransport<StateType, Bag>
-{
+  Bag extends BagTemplate = BagTemplate,
+> implements UseStreamTransport<StateType, Bag> {
   constructor(private readonly options: FetchStreamTransportOptions) {}
 
   async stream(payload: {
@@ -62,7 +61,7 @@ export class FetchStreamTransport<
     if (this.options.onRequest) {
       requestInit = await this.options.onRequest(
         this.options.apiUrl,
-        requestInit
+        requestInit,
       );
     }
     const fetchFn = this.options.fetch ?? fetch;

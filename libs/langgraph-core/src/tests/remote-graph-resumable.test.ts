@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Client } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "../pregel/remote.js";

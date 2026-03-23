@@ -9,7 +9,6 @@ function isWindows() {
 }
 
 function isCI() {
-  // eslint-disable-next-line no-process-env
   return (process.env.CI ?? "").toLowerCase() === "true";
 }
 

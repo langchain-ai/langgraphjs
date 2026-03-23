@@ -9,9 +9,9 @@ import type {
 } from "./types.js";
 
 export class Auth<
-  TExtra = {}, // eslint-disable-line @typescript-eslint/ban-types
+  TExtra = {},
   TAuthReturn extends BaseAuthReturn = BaseAuthReturn,
-  TUser extends BaseUser = ToUserLike<TAuthReturn>
+  TUser extends BaseUser = ToUserLike<TAuthReturn>,
 > {
   /**
    * @internal
@@ -23,7 +23,7 @@ export class Auth<
   } = {};
 
   authenticate<T extends BaseAuthReturn>(
-    cb: AuthenticateCallback<T>
+    cb: AuthenticateCallback<T>,
   ): Auth<TExtra, T> {
     this["~handlerCache"].authenticate = cb;
     return this as unknown as Auth<TExtra, T>;

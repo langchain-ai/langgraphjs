@@ -72,11 +72,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
 
         logs.push("This won't print if cancelled");
       } catch (error) {
-        if (
-          // eslint-disable-next-line no-instanceof/no-instanceof
-          error instanceof Error &&
-          error.message === "AbortError"
-        ) {
+        if (error instanceof Error && error.message === "AbortError") {
           logs.push("Context was cancelled");
         }
         await manager.exit(error as Error);
@@ -142,7 +138,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
         }, 1000);
 
         // Only set up abort handler if config has a signal
-        // eslint-disable-next-line no-instanceof/no-instanceof
+
         if (config?.signal instanceof AbortSignal) {
           const abortHandler = () => {
             innerTaskCancelled = true;
@@ -205,7 +201,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
         }, 1000);
 
         // Only set up abort handler if config has a signal
-        // eslint-disable-next-line no-instanceof/no-instanceof
+
         if (config?.signal instanceof AbortSignal) {
           const abortHandler = () => {
             innerTaskCancelled = true;
@@ -684,7 +680,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
         }, 1000);
 
         // Only set up abort handler if config has a signal
-        // eslint-disable-next-line no-instanceof/no-instanceof
+
         if (config?.signal instanceof AbortSignal) {
           const abortHandler = () => {
             innerTaskCancelled = true;
@@ -784,7 +780,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
               }, 1500);
 
               // Only set up abort handler if config has a signal
-              // eslint-disable-next-line no-instanceof/no-instanceof
+
               if (config?.signal instanceof AbortSignal) {
                 const abortHandler = () => {
                   this.cancelled = true;
@@ -919,7 +915,7 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
               }, 1500);
 
               // Only set up abort handler if config has a signal
-              // eslint-disable-next-line no-instanceof/no-instanceof
+
               if (config?.signal instanceof AbortSignal) {
                 const abortHandler = () => {
                   this.cancelled = true;

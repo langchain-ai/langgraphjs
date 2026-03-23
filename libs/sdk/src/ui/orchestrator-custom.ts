@@ -29,7 +29,7 @@ import type {
  * @returns The custom transport thread state.
  */
 function createCustomTransportThreadState<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(values: StateType, threadId: string): ThreadState<StateType> {
   return {
     values,
@@ -55,7 +55,7 @@ function createCustomTransportThreadState<
  */
 export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   readonly stream: StreamManager<StateType, Bag>;
 
@@ -219,7 +219,7 @@ export class CustomStreamOrchestrator<
   get messages(): BaseMessage[] {
     if (!this.stream.values) return [];
     return ensureMessageInstances(
-      this.#getMessages(this.stream.values)
+      this.#getMessages(this.stream.values),
     ) as BaseMessage[];
   }
 
@@ -241,7 +241,7 @@ export class CustomStreamOrchestrator<
   getToolCalls(message: Message) {
     if (!this.stream.values) return [];
     const allToolCalls = getToolCallsWithResults(
-      this.#getMessages(this.stream.values)
+      this.#getMessages(this.stream.values),
     );
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   }
@@ -284,7 +284,7 @@ export class CustomStreamOrchestrator<
    */
   getMessagesMetadata(
     message: Message,
-    index?: number
+    index?: number,
   ): MessageMetadata<StateType> | undefined {
     const streamMetadata = this.messageManager.get(message.id)?.metadata;
     if (streamMetadata != null) {
@@ -393,7 +393,7 @@ export class CustomStreamOrchestrator<
    */
   async submitDirect(
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -459,7 +459,7 @@ export class CustomStreamOrchestrator<
           const finalValues = this.stream.values ?? this.#historyValues;
           this.#options.onFinish?.(
             createCustomTransportThreadState(finalValues, usableThreadId),
-            undefined
+            undefined,
           );
 
           return undefined;
@@ -468,7 +468,7 @@ export class CustomStreamOrchestrator<
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
-      }
+      },
     );
   }
 
@@ -484,7 +484,7 @@ export class CustomStreamOrchestrator<
    */
   async submit(
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
   ): Promise<void> {
     await this.submitDirect(values, submitOptions);
   }

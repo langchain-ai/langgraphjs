@@ -1,4 +1,4 @@
-/* eslint-disable import/no-extraneous-dependencies */
+/*  */
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 

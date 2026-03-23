@@ -1332,7 +1332,7 @@ describe("Graph Structure Tests (Python port)", () => {
         }
 
         // Extract second part of tuples
-        // eslint-disable-next-line no-param-reassign
+
         y = tupleArray.map(([, second]) => second);
       }
 
@@ -1481,7 +1481,7 @@ describe("Graph Structure Tests (Python port)", () => {
         }
 
         // Extract second part of tuples
-        // eslint-disable-next-line no-param-reassign
+
         y = tupleArray.map(([, second]) => second);
       }
 
@@ -1637,7 +1637,7 @@ describe("Graph Structure Tests (Python port)", () => {
         }
 
         // Extract second part of tuples
-        // eslint-disable-next-line no-param-reassign
+
         y = tupleArray.map(([, second]) => second);
       }
 
@@ -1788,7 +1788,7 @@ describe("Graph Structure Tests (Python port)", () => {
         }
 
         // Extract second part of tuples
-        // eslint-disable-next-line no-param-reassign
+
         y = tupleArray.map(([, second]) => second);
       }
 
@@ -2330,7 +2330,7 @@ describe("Graph Structure Tests (Python port)", () => {
     };
 
     // Collect namespaces and checkpoints
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const streamNs: Record<string, any[]> = {};
 
     for (const [ns, e] of events) {
@@ -2350,7 +2350,7 @@ describe("Graph Structure Tests (Python port)", () => {
     expect(Object.keys(streamNs)).toContain(""); // Root namespace
 
     // Get history for each namespace
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const historyNs: Record<string, StateSnapshot[]> = {};
 
     for (const nsKey of Object.keys(streamNs)) {
@@ -2463,9 +2463,8 @@ describe("Graph Structure Tests (Python port)", () => {
   it("should handle parent commands", async () => {
     // Import necessary components for messaging
     const { HumanMessage } = await import("@langchain/core/messages");
-    const { MessagesAnnotation } = await import(
-      "../../graph/messages_annotation.js"
-    );
+    const { MessagesAnnotation } =
+      await import("../../graph/messages_annotation.js");
 
     // Create a tool that returns a parent command
     const getUserName = (): Command => {

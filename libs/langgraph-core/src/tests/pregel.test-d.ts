@@ -1,5 +1,3 @@
-/* eslint-disable no-constant-condition */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import "../graph/zod/plugin.js";
 import { z } from "zod/v3";
 import { z as z4 } from "zod/v4";
@@ -102,7 +100,7 @@ it("state graph annotation", async () => {
         one?: { foo: "one" };
         two?: { foo: "two" };
         three?: { foo: "three" };
-      }
+      },
     ][]
   >();
 
@@ -121,7 +119,7 @@ it("state graph annotation", async () => {
         one?: { foo: "one" };
         two?: { foo: "two" };
         three?: { foo: "three" };
-      }
+      },
     ][]
   >();
 
@@ -137,7 +135,7 @@ it("state graph annotation", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | ["values", { foo: string[] }]
     )[]
@@ -159,7 +157,7 @@ it("state graph annotation", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | [string[], "values", { foo: string[] }]
     )[]
@@ -183,7 +181,7 @@ it("state graph annotation", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
@@ -195,7 +193,7 @@ it("state graph annotation", async () => {
           { id: string; name: string } & (
             | { input: unknown }
             | { result: [string, unknown][] }
-          )
+          ),
         ]
       | ["tools", Record<string, unknown>]
     )[]
@@ -348,9 +346,14 @@ it("state graph context", async () => {
 
 it("state graph zod", async () => {
   const state = z.object({
-    foo: z.array(z.string()).langgraph.reducer((state, update) => {
-      return Array.isArray(update) ? [...state, ...update] : [...state, update];
-    }, z.union([z.string(), z.array(z.string())])),
+    foo: z.array(z.string()).langgraph.reducer(
+      (state, update) => {
+        return Array.isArray(update)
+          ? [...state, ...update]
+          : [...state, update];
+      },
+      z.union([z.string(), z.array(z.string())])
+    ),
   });
 
   const graph = new StateGraph(state)
@@ -406,7 +409,7 @@ it("state graph zod", async () => {
   ).toExtend<
     [
       "updates",
-      { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }
+      { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } },
     ][]
   >();
 
@@ -418,7 +421,7 @@ it("state graph zod", async () => {
     [
       string[],
       "updates",
-      { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } }
+      { one?: { foo: "one" }; two?: { foo: "two" }; three?: { foo: "three" } },
     ][]
   >();
 
@@ -434,7 +437,7 @@ it("state graph zod", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | ["values", { foo: string[] }]
     )[]
@@ -456,7 +459,7 @@ it("state graph zod", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | [string[], "values", { foo: string[] }]
     )[]
@@ -480,7 +483,7 @@ it("state graph zod", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | ["values", { foo: string[] }]
       | ["debug", Record<string, any>]
@@ -492,7 +495,7 @@ it("state graph zod", async () => {
           { id: string; name: string } & (
             | { input: unknown }
             | { result: [string, unknown][] }
-          )
+          ),
         ]
       | ["tools", Record<string, unknown>]
     )[]
@@ -517,7 +520,7 @@ it("state graph zod", async () => {
             one?: { foo: "one" };
             two?: { foo: "two" };
             three?: { foo: "three" };
-          }
+          },
         ]
       | [string[], "values", { foo: string[] }]
       | [string[], "debug", Record<string, any>]
@@ -530,7 +533,7 @@ it("state graph zod", async () => {
           { id: string; name: string } & (
             | { input: unknown }
             | { result: [string, unknown][] }
-          )
+          ),
         ]
       | [string[], "tools", Record<string, unknown>]
     )[]

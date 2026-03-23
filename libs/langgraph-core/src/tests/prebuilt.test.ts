@@ -1,6 +1,3 @@
-/* eslint-disable no-process-env */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-return-assign */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { StructuredTool, tool } from "@langchain/core/tools";
 
@@ -3288,14 +3285,12 @@ describe("_getModel", () => {
     expect(await _getModel(configurableModel.bindTools([tool1]))).toBe(model);
 
     const configurableSeq = RunnableSequence.from([
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       configurableModel as any,
       RunnableLambda.from((message) => message),
     ]);
     expect(await _getModel(configurableSeq)).toBe(model);
 
     const configurableSeqWithTools = RunnableSequence.from([
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       configurableModel.bindTools([tool1]) as any,
       RunnableLambda.from((message) => message),
     ]);

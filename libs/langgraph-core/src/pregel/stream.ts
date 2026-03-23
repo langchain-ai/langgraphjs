@@ -42,7 +42,7 @@ type ToolRunInfo = {
  * {@link cancel} is called.
  */
 export class IterableReadableStreamWithAbortSignal<
-  T
+  T,
 > extends IterableReadableStream<T> {
   protected _abortController: AbortController;
 

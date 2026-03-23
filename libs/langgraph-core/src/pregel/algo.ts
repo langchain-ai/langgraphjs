@@ -1,4 +1,3 @@
-/* eslint-disable no-param-reassign */
 import {
   mergeConfigs,
   patchConfig,
@@ -453,7 +452,7 @@ export type NextTaskExtraFieldsWithoutStore = NextTaskExtraFields & {
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
@@ -466,7 +465,7 @@ export function _prepareNextTasks<
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
@@ -484,7 +483,7 @@ export function _prepareNextTasks<
  */
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
@@ -544,7 +543,7 @@ export function _prepareNextTasks<
 
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: SimpleTaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -558,7 +557,7 @@ export function _prepareSingleTask<
 
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -572,7 +571,7 @@ export function _prepareSingleTask<
 
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -590,7 +589,7 @@ export function _prepareSingleTask<
  */
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -656,7 +655,7 @@ export function _prepareSingleTask<
             callbacks: manager?.getChild(`graph:step:${step}`),
             configurable: {
               [CONFIG_KEY_TASK_ID]: id,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
               [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                 _localWrite(
                   (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
@@ -800,7 +799,7 @@ export function _prepareSingleTask<
               callbacks: manager?.getChild(`graph:step:${step}`),
               configurable: {
                 [CONFIG_KEY_TASK_ID]: taskId,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
                 [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                   _localWrite(
                     (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
@@ -972,7 +971,7 @@ export function _prepareSingleTask<
                 callbacks: manager?.getChild(`graph:step:${step}`),
                 configurable: {
                   [CONFIG_KEY_TASK_ID]: taskId,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
                   [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                     _localWrite(
                       (items: PendingWrite<keyof Cc>[]) => {

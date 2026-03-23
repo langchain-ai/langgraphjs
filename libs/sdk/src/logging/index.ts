@@ -52,6 +52,6 @@ export const getLogger = (): Logger => {
   throw new Error(
     "Logger not available in current environment. " +
       "This method requires LangGraph Platform environment where a global logger is automatically registered. " +
-      "If you're developing locally, consider using `console.log` or a local logging library instead."
+      "If you're developing locally, consider using `console.log` or a local logging library instead.",
   );
 };

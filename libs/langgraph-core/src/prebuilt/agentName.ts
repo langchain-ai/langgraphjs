@@ -133,7 +133,7 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
           // don't include empty content blocks that were added because there was no text block to modify
           if (nameMatch && (!contentMatch || contentMatch[1] === "")) {
             // capture name from text block
-            // eslint-disable-next-line prefer-destructuring
+
             updatedName = nameMatch[1];
             return false;
           }
@@ -151,7 +151,7 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
           }
 
           // capture name from text block
-          // eslint-disable-next-line prefer-destructuring
+
           updatedName = nameMatch[1];
 
           return {
@@ -170,9 +170,8 @@ export function _removeInlineAgentName<T extends BaseMessage>(message: T): T {
       return message;
     }
 
-    // eslint-disable-next-line prefer-destructuring
     updatedName = nameMatch[1];
-    // eslint-disable-next-line prefer-destructuring
+
     updatedContent = contentMatch[1];
   }
 

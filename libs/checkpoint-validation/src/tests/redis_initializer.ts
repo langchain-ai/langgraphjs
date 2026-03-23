@@ -1,4 +1,4 @@
-/* eslint-disable import/no-extraneous-dependencies */
+/*  */
 import { RedisSaver } from "@langchain/langgraph-checkpoint-redis";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { createClient } from "redis";

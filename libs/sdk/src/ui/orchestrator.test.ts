@@ -53,7 +53,7 @@ function createAccessors(client: Client): OrchestratorAccessors {
 }
 
 function createOptions(
-  overrides?: Partial<AnyStreamOptions<TestState>>
+  overrides?: Partial<AnyStreamOptions<TestState>>,
 ): AnyStreamOptions<TestState> {
   return {
     assistantId: "test-assistant",
@@ -74,7 +74,7 @@ describe("StreamOrchestrator", () => {
     it("initialises with default state", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.threadId).toBeUndefined();
@@ -95,7 +95,7 @@ describe("StreamOrchestrator", () => {
       };
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ initialValues: initial }),
-        accessors
+        accessors,
       );
 
       expect(orch.values).toEqual(initial);
@@ -107,21 +107,21 @@ describe("StreamOrchestrator", () => {
     it("computes historyLimit from fetchStateHistory", () => {
       const orchFalse = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: false }),
-        accessors
+        accessors,
       );
       expect(orchFalse.historyLimit).toBe(false);
       orchFalse.dispose();
 
       const orchTrue = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: true }),
-        accessors
+        accessors,
       );
       expect(orchTrue.historyLimit).toBe(true);
       orchTrue.dispose();
 
       const orchObj = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: { limit: 5 } }),
-        accessors
+        accessors,
       );
       expect(orchObj.historyLimit).toBe(5);
       orchObj.dispose();
@@ -132,7 +132,7 @@ describe("StreamOrchestrator", () => {
     it("notifies listeners on state changes", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       const listener = vi.fn();
 
@@ -147,7 +147,7 @@ describe("StreamOrchestrator", () => {
     it("returns unsubscribe function", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       const listener = vi.fn();
 
@@ -165,7 +165,7 @@ describe("StreamOrchestrator", () => {
     it("getSnapshot increments on changes", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       const v0 = orch.getSnapshot();
@@ -182,7 +182,7 @@ describe("StreamOrchestrator", () => {
     it("setThreadId updates threadId and triggers history fetch", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: true }),
-        accessors
+        accessors,
       );
 
       const listener = vi.fn();
@@ -205,7 +205,7 @@ describe("StreamOrchestrator", () => {
     it("setThreadId to same value is a no-op", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       orch.setThreadId("t1");
@@ -222,7 +222,7 @@ describe("StreamOrchestrator", () => {
     it("setThreadId to undefined clears history", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.setThreadId("t1");
 
@@ -237,7 +237,7 @@ describe("StreamOrchestrator", () => {
     it("initThreadId fetches history for the given thread", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: true }),
-        accessors
+        accessors,
       );
 
       orch.initThreadId("init-thread");
@@ -256,7 +256,7 @@ describe("StreamOrchestrator", () => {
     it("initThreadId with undefined does not fetch", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       orch.initThreadId(undefined);
@@ -287,12 +287,12 @@ describe("StreamOrchestrator", () => {
         },
       ];
       (client.threads.getHistory as ReturnType<typeof vi.fn>).mockResolvedValue(
-        historyEntries
+        historyEntries,
       );
 
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: true }),
-        accessors
+        accessors,
       );
 
       orch.initThreadId("t1");
@@ -312,13 +312,13 @@ describe("StreamOrchestrator", () => {
     it("handles history fetch error", async () => {
       const error = new Error("Network error");
       (client.threads.getHistory as ReturnType<typeof vi.fn>).mockRejectedValue(
-        error
+        error,
       );
       const onError = vi.fn();
 
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ onError, fetchStateHistory: true }),
-        accessors
+        accessors,
       );
 
       orch.initThreadId("t-err");
@@ -336,7 +336,7 @@ describe("StreamOrchestrator", () => {
     it("uses getState when historyLimit is false", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: false }),
-        accessors
+        accessors,
       );
 
       orch.initThreadId("t1");
@@ -351,12 +351,12 @@ describe("StreamOrchestrator", () => {
 
     it("isThreadLoading is true while loading with no data", () => {
       (client.threads.getHistory as ReturnType<typeof vi.fn>).mockReturnValue(
-        new Promise(() => {})
+        new Promise(() => {}),
       );
 
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: true }),
-        accessors
+        accessors,
       );
 
       orch.initThreadId("t1");
@@ -371,7 +371,7 @@ describe("StreamOrchestrator", () => {
     it("setBranch updates branch and notifies", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       const listener = vi.fn();
       orch.subscribe(listener);
@@ -387,7 +387,7 @@ describe("StreamOrchestrator", () => {
     it("setBranch with same value is a no-op", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       orch.setBranch("x");
@@ -406,7 +406,7 @@ describe("StreamOrchestrator", () => {
     it("error falls through history error chain", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.error).toBeUndefined();
@@ -417,7 +417,7 @@ describe("StreamOrchestrator", () => {
     it("interrupts returns empty when loading", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.interrupts).toEqual([]);
@@ -428,11 +428,11 @@ describe("StreamOrchestrator", () => {
     it("flatHistory throws when fetchStateHistory is false", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: false }),
-        accessors
+        accessors,
       );
 
       expect(() => orch.flatHistory).toThrow(
-        "`fetchStateHistory` must be set to `true` to use `history`"
+        "`fetchStateHistory` must be set to `true` to use `history`",
       );
 
       orch.dispose();
@@ -441,11 +441,11 @@ describe("StreamOrchestrator", () => {
     it("experimental_branchTree throws when fetchStateHistory is false", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ fetchStateHistory: false }),
-        accessors
+        accessors,
       );
 
       expect(() => orch.experimental_branchTree).toThrow(
-        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`"
+        "`fetchStateHistory` must be set to `true` to use `experimental_branchTree`",
       );
 
       orch.dispose();
@@ -456,14 +456,14 @@ describe("StreamOrchestrator", () => {
         ...accessors,
         getMessagesKey: () => "chat",
       };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const orch = new StreamOrchestrator<any>(
         {
           assistantId: "test",
           initialValues: { chat: [{ id: "1", content: "yo", type: "human" }] },
         } as any,
-        customAccessors
+        customAccessors,
       );
       /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -477,7 +477,7 @@ describe("StreamOrchestrator", () => {
     it("cancelQueueItem removes entry and cancels on server", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
 
@@ -501,7 +501,7 @@ describe("StreamOrchestrator", () => {
     it("cancelQueueItem returns false for unknown id", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
 
@@ -516,7 +516,7 @@ describe("StreamOrchestrator", () => {
     it("clearQueue removes all entries and cancels on server", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
 
@@ -539,7 +539,7 @@ describe("StreamOrchestrator", () => {
       const onThreadId = vi.fn();
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ onThreadId }),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
 
@@ -557,7 +557,7 @@ describe("StreamOrchestrator", () => {
     it("switchThread to null resets threadId", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
 
@@ -571,7 +571,7 @@ describe("StreamOrchestrator", () => {
     it("switchThread to same value is a no-op", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
       const listener = vi.fn();
@@ -588,7 +588,7 @@ describe("StreamOrchestrator", () => {
     it("switchThread cancels pending queue entries", async () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       orch.initThreadId("t1");
 
@@ -611,7 +611,7 @@ describe("StreamOrchestrator", () => {
     it("calls stream.stop", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       const stopSpy = vi
@@ -629,13 +629,13 @@ describe("StreamOrchestrator", () => {
       const onStop = vi.fn();
       const orch = new StreamOrchestrator<TestState>(
         createOptions({ onStop }),
-        accessors
+        accessors,
       );
 
       vi.spyOn(orch.stream, "stop").mockImplementation(
         async (_values, opts) => {
           opts?.onStop?.({ mutate: vi.fn() });
-        }
+        },
       );
 
       orch.stop();
@@ -650,7 +650,7 @@ describe("StreamOrchestrator", () => {
     it("shouldReconnect is false without reconnectOnMount", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.shouldReconnect).toBe(false);
@@ -661,7 +661,7 @@ describe("StreamOrchestrator", () => {
     it("tryReconnect returns false when no storage", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.tryReconnect()).toBe(false);
@@ -674,7 +674,7 @@ describe("StreamOrchestrator", () => {
     it("trackStreamMode adds unique modes", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       orch.trackStreamMode("messages-tuple");
@@ -693,7 +693,7 @@ describe("StreamOrchestrator", () => {
     it("stops notifications after dispose", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
       const listener = vi.fn();
       orch.subscribe(listener);
@@ -713,7 +713,7 @@ describe("StreamOrchestrator", () => {
     it("returns empty subagents initially", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.subagents.size).toBe(0);
@@ -725,7 +725,7 @@ describe("StreamOrchestrator", () => {
     it("getSubagent returns undefined for unknown id", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.getSubagent("unknown")).toBeUndefined();
@@ -736,7 +736,7 @@ describe("StreamOrchestrator", () => {
     it("getSubagentsByType returns empty array", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.getSubagentsByType("researcher")).toEqual([]);
@@ -747,7 +747,7 @@ describe("StreamOrchestrator", () => {
     it("getSubagentsByMessage returns empty array", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.getSubagentsByMessage("msg-1")).toEqual([]);
@@ -758,7 +758,7 @@ describe("StreamOrchestrator", () => {
     it("reconstructSubagentsIfNeeded returns null when conditions not met", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       expect(orch.reconstructSubagentsIfNeeded()).toBeNull();
@@ -771,7 +771,7 @@ describe("StreamOrchestrator", () => {
     it("returns undefined when no metadata available", () => {
       const orch = new StreamOrchestrator<TestState>(
         createOptions(),
-        accessors
+        accessors,
       );
 
       /* eslint-disable @typescript-eslint/no-explicit-any */

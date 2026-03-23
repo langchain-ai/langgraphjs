@@ -20,7 +20,7 @@ export const META_EXTRAS_DESCRIPTION_PREFIX = "lg:";
 /** @internal */
 export type ReducedZodChannel<
   T extends InteropZodType,
-  TReducerSchema extends InteropZodType
+  TReducerSchema extends InteropZodType,
 > = T & {
   lg_reducer_schema: TReducerSchema;
 };
@@ -28,7 +28,7 @@ export type ReducedZodChannel<
 /** @internal */
 export type InteropZodToStateDefinition<
   T extends InteropZodObject,
-  TShape = InteropZodObjectShape<T>
+  TShape = InteropZodObjectShape<T>,
 > = {
   [key in keyof TShape]: TShape[key] extends ReducedZodChannel<
     infer Schema,
@@ -40,13 +40,13 @@ export type InteropZodToStateDefinition<
         : never
       : never
     : TShape[key] extends InteropZodType<infer V, infer U>
-    ? BaseChannel<V, U>
-    : never;
+      ? BaseChannel<V, U>
+      : never;
 };
 
 export type UpdateType<
   T extends InteropZodObject,
-  TShape = InteropZodObjectShape<T>
+  TShape = InteropZodObjectShape<T>,
 > = {
   [key in keyof TShape]?: TShape[key] extends ReducedZodChannel<
     infer Schema,
@@ -58,8 +58,8 @@ export type UpdateType<
         : never
       : never
     : TShape[key] extends InteropZodType<unknown, infer U>
-    ? U
-    : never;
+      ? U
+      : never;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -227,7 +227,7 @@ export class SchemaMetaRegistry {
       ).map(([key, schema]) => {
         const meta = this.get(schema);
         let outputSchema = effects.withReducerSchema
-          ? meta?.reducer?.schema ?? schema
+          ? (meta?.reducer?.schema ?? schema)
           : schema;
         if (
           effects.withJsonSchemaExtrasAsDescription &&
@@ -268,7 +268,7 @@ export const schemaMetaRegistry = new SchemaMetaRegistry();
 export function withLangGraph<
   TValue,
   TUpdate,
-  TSchema extends InteropZodType<TValue>
+  TSchema extends InteropZodType<TValue>,
 >(
   schema: TSchema,
   meta: SchemaMeta<TValue, TUpdate> & { reducer?: undefined }
@@ -276,7 +276,7 @@ export function withLangGraph<
 export function withLangGraph<
   TValue,
   TUpdate,
-  TSchema extends InteropZodType<TValue>
+  TSchema extends InteropZodType<TValue>,
 >(
   schema: TSchema,
   meta: SchemaMeta<TValue, TUpdate>
@@ -284,7 +284,7 @@ export function withLangGraph<
 export function withLangGraph<
   TValue,
   TUpdate,
-  TSchema extends InteropZodType<TValue>
+  TSchema extends InteropZodType<TValue>,
 >(
   schema: TSchema,
   meta: SchemaMeta<TValue, TUpdate>
@@ -292,7 +292,6 @@ export function withLangGraph<
   if (meta.reducer && !meta.default) {
     const defaultValueGetter = getInteropZodDefaultGetter(schema);
     if (defaultValueGetter != null) {
-      // eslint-disable-next-line no-param-reassign
       meta.default = defaultValueGetter;
     }
   }
