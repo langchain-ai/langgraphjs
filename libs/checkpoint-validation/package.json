@@ -40,7 +40,6 @@
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
-    "@langchain/eslint": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/langgraph-checkpoint-mongodb": "workspace:*",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",

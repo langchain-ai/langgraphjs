@@ -39,7 +39,6 @@
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
-    "@langchain/eslint": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",

@@ -37,7 +37,6 @@
     "@langchain/core": "^1.0.1"
   },
   "devDependencies": {
-    "@langchain/eslint": "workspace:*",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/uuid": "^10",

@@ -41,7 +41,6 @@
     "@langchain/openai": "^1.0.0"
   },
   "devDependencies": {
-    "@langchain/eslint": "workspace:*",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.0.0",
     "@langchain/scripts": "^0.1.3",

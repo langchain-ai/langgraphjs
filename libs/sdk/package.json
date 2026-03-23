@@ -29,7 +29,6 @@
   },
   "devDependencies": {
     "@langchain/core": "^1.1.28",
-    "@langchain/eslint": "workspace:*",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",

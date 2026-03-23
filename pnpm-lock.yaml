@@ -1361,9 +1361,6 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/scripts':
         specifier: '>=0.1.3 <0.2.0'
         version: 0.1.4
@@ -1407,9 +1404,6 @@ importers:
         specifier: ^6.21.0
         version: 6.21.0(socks@2.8.7)
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
@@ -1459,9 +1453,6 @@ importers:
         specifier: ^8.12.0
         version: 8.20.0
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
@@ -1514,9 +1505,6 @@ importers:
         specifier: ^13.0.0
         version: 13.0.0
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
@@ -1566,9 +1554,6 @@ importers:
         specifier: ^12.6.0
         version: 12.6.2
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
@@ -1624,9 +1609,6 @@ importers:
         specifier: ^4.3.5
         version: 4.3.6
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
@@ -1746,9 +1728,6 @@ importers:
         specifier: ^3.x
         version: 3.25.1(zod@4.3.6)
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@tsconfig/recommended':
         specifier: ^1.0.3
         version: 1.0.13
@@ -1986,9 +1965,6 @@ importers:
       '@langchain/core':
         specifier: '>=1.1.27'
         version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph-checkpoint-postgres':
         specifier: workspace:*
         version: link:../checkpoint-postgres
@@ -2080,9 +2056,6 @@ importers:
         specifier: ^4.3.5
         version: 4.3.6
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
@@ -2135,9 +2108,6 @@ importers:
         specifier: ^4.3.5
         version: 4.3.6
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
@@ -2184,9 +2154,6 @@ importers:
         specifier: ^4.3.5
         version: 4.3.6
     devDependencies:
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
@@ -2279,9 +2246,6 @@ importers:
       '@langchain/core':
         specifier: '>=1.1.27'
         version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/scripts':
         specifier: ^0.1.4
         version: 0.1.4
@@ -2367,9 +2331,6 @@ importers:
       '@langchain/core':
         specifier: '>=1.1.27'
         version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:^
         version: link:../langgraph-core
@@ -2440,9 +2401,6 @@ importers:
       '@langchain/core':
         specifier: '>=1.1.27'
         version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:^
         version: link:../langgraph-core
@@ -2513,9 +2471,6 @@ importers:
       '@langchain/core':
         specifier: '>=1.1.27'
         version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:^
         version: link:../langgraph-core
@@ -2583,9 +2538,6 @@ importers:
       '@langchain/core':
         specifier: '>=1.1.27'
         version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
-      '@langchain/eslint':
-        specifier: workspace:*
-        version: link:../../internal/eslint
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
@@ -22324,7 +22276,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
       '@types/node': 25.4.0
-      '@vitest/browser-webdriverio': 4.0.18(msw@2.12.10(@types/node@25.4.0)(typescript@5.9.3))(vite@7.3.1(@types/node@25.4.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass@1.97.3)(tsx@4.21.0)(yaml@2.8.2))(vitest@4.0.18)(webdriverio@9.25.0)
+      '@vitest/browser-webdriverio': 4.0.18(msw@2.12.10(@types/node@25.4.0)(typescript@5.9.3))(vite@8.0.0(@types/node@25.4.0)(esbuild@0.27.3)(jiti@2.6.1)(sass@1.97.3)(tsx@4.21.0)(yaml@2.8.2))(vitest@4.0.18)(webdriverio@9.25.0)
     transitivePeerDependencies:
       - jiti
       - less

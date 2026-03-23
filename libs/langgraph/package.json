@@ -42,7 +42,6 @@
     }
   },
   "devDependencies": {
-    "@langchain/eslint": "workspace:*",
     "@tsconfig/recommended": "^1.0.3",
     "dpdm": "^3.12.0",
     "eslint": "^10.0.3",
