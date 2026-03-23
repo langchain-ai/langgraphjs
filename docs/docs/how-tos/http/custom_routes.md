@@ -110,6 +110,49 @@ With this configuration:
 
     When the module path doesn't start with `.` or `/`, it is resolved as an npm package import. Install the package in your project's `package.json` and reference it directly (e.g., `"my-extension-package:app"`).
 
+### Cross-language apps (Python + JavaScript)
+
+`http.apps` supports both JavaScript and Python apps in the same deployment. The language is auto-detected from the file extension:
+
+- `.ts`, `.js`, `.mts`, `.mjs` files are loaded as Hono apps (in-process)
+- `.py` files are launched as ASGI apps via `uvicorn` in a subprocess and proxied through the main server
+
+This means you can mix a JS agent graph with a Python extension (or vice versa), all behind the same port:
+
+```json
+{
+  "graphs": {
+    "agent": "./src/agent.ts:graph"
+  },
+  "http": {
+    "apps": {
+      "/dashboard": "./src/dashboard.ts:app",
+      "/webhooks": "./integrations/webhooks.py:app"
+    }
+  }
+}
+```
+
+Where `webhooks.py` is a standard ASGI app (e.g., built with [FastAPI](https://fastapi.tiangolo.com/) or [Starlette](https://www.starlette.io/)):
+
+```python
+# ./integrations/webhooks.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/slack")
+async def slack_webhook(request):
+    body = await request.json()
+    return {"received": body}
+```
+
+With this config, `POST /webhooks/slack` routes through to the Python app while JS routes and the LangGraph API remain in the main Node.js process.
+
+!!! note "Python requirements"
+
+    Python apps require `uvicorn` and your web framework (e.g., `fastapi`) to be installed. In Docker deployments this is handled automatically; for local `langgraph dev`, ensure Python 3 and the required packages are installed in your environment.
+
 ## Deploying
 
 You can deploy this app as-is to the managed LangGraph Cloud or to your self-hosted platform.

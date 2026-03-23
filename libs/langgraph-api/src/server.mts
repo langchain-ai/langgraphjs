@@ -116,9 +116,14 @@ export async function startServer(
   }
   const callbacks = await Promise.all(initCalls);
 
+  const appCleanups: Array<() => Promise<void>> = [];
+
   const cleanup = async () => {
     logger.info(`Flushing to persistent storage, exiting...`);
-    await Promise.all(callbacks.map((c) => c.flush()));
+    await Promise.all([
+      ...callbacks.map((c) => c.flush()),
+      ...appCleanups.map((fn) => fn()),
+    ]);
   };
 
   // Register global logger that can be consumed via SDK
@@ -198,8 +203,12 @@ export async function startServer(
 
   if (options.http?.app) {
     logger.info(`Loading HTTP app from ${options.http.app}`);
-    const { api } = await registerHttp(options.http.app, { cwd: options.cwd });
-    app.route("/", api);
+    const { api: httpApp, cleanup: httpCleanup } = await registerHttp(
+      options.http.app,
+      { cwd: options.cwd }
+    );
+    app.route("/", httpApp);
+    if (httpCleanup) appCleanups.push(httpCleanup);
   }
 
   if (options.http?.apps) {
@@ -209,11 +218,12 @@ export async function startServer(
         .map(([p]) => p)
         .join(", ")}`
     );
-    const apps = await registerHttpApps(options.http.apps, {
+    const registeredApps = await registerHttpApps(options.http.apps, {
       cwd: options.cwd,
     });
-    for (const { prefix, api } of apps) {
+    for (const { prefix, api, cleanup: appCleanup } of registeredApps) {
       app.route(prefix, api);
+      if (appCleanup) appCleanups.push(appCleanup);
     }
   }
 
