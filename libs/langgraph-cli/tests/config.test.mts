@@ -387,6 +387,34 @@ describe("config to docker", () => {
     `);
   });
 
+  it("js with http apps", async () => {
+    const graphs = { agent: "./graphs/agent.js:graph" };
+    const config = getConfig({
+      dockerfile_lines: [],
+      env: {},
+      node_version: "20" as const,
+      graphs,
+      http: {
+        app: "./app.ts:app",
+        apps: {
+          "/dashboard": "./dashboard.ts:app",
+          "/ext": "my-extension:app",
+        },
+      },
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toContain(
+      `ENV LANGGRAPH_HTTP='${JSON.stringify(config.http)}'`
+    );
+    expect(actual).toContain(`ENV LANGSERVE_GRAPHS=`);
+  });
+
   it("description", async () => {
     const graphs = {
       agent: { path: "./graphs/agent.js:graph", description: "My agent" },
@@ -1184,5 +1212,37 @@ it("node config and python config", () => {
     graphs: { agent: "./agent.js:graph" },
     env: {},
     api_version: "0.7.29-rc1",
+  });
+
+  // http.apps config
+  expect(
+    getConfig({
+      node_version: "20",
+      graphs: { agent: "./agent.js:graph" },
+      http: {
+        app: "./app.ts:app",
+        apps: {
+          "/dashboard": "./dashboard.ts:app",
+          "/ext": "my-extension:app",
+        },
+      },
+    })
+  ).toEqual({
+    node_version: "20",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+    http: {
+      app: "./app.ts:app",
+      apps: {
+        "/dashboard": "./dashboard.ts:app",
+        "/ext": "my-extension:app",
+      },
+      disable_assistants: false,
+      disable_threads: false,
+      disable_runs: false,
+      disable_store: false,
+      disable_meta: false,
+    },
   });
 });

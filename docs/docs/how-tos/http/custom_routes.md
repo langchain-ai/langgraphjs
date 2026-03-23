@@ -62,6 +62,54 @@ If you navigate to `localhost:2024/hello` in your browser (2024 is the default d
 
     The routes you create in the app are given priority over the system defaults, meaning you can shadow and redefine the behavior of any default endpoint.
 
+## Multiple apps
+
+You can mount multiple Hono apps at different path prefixes using `http.apps`. This is useful for composing third-party extensions, dashboards, or integrations alongside your agent's built-in API.
+
+Each entry in `http.apps` maps a URL path prefix to an app module path. The module path uses the same `file:export` format as `http.app`, and also supports npm package references.
+
+### Example
+
+Suppose you have a local dashboard app and want to mount a third-party extension from an npm package:
+
+```typescript
+// ./src/dashboard/app.ts
+import { Hono } from "hono";
+
+export const app = new Hono();
+
+app.get("/", (c) => c.json({ status: "ok", agents: ["agent"] }));
+app.get("/metrics", (c) => c.json({ runs: 42 }));
+```
+
+Configure them in `langgraph.json`:
+
+```json
+{
+  "graphs": {
+    "agent": "./src/agent/graph.ts:graph"
+  },
+  "http": {
+    "app": "./src/agent/app.ts:app",
+    "apps": {
+      "/dashboard": "./src/dashboard/app.ts:app",
+      "/ext": "my-extension-package:app"
+    }
+  }
+}
+```
+
+With this configuration:
+
+- Routes from `http.app` are mounted at `/` (root), as before.
+- The dashboard app's routes are available under `/dashboard/` (e.g., `/dashboard/metrics`).
+- The extension's routes are available under `/ext/`.
+- The built-in LangGraph API (`/runs`, `/threads`, etc.) remains available at the root.
+
+!!! tip "npm packages as apps"
+
+    When the module path doesn't start with `.` or `/`, it is resolved as an npm package import. Install the package in your project's `package.json` and reference it directly (e.g., `"my-extension-package:app"`).
+
 ## Deploying
 
 You can deploy this app as-is to the managed LangGraph Cloud or to your self-hosted platform.

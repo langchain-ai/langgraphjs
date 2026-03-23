@@ -58,6 +58,7 @@ const BaseConfigSchema = z.object({
   http: z
     .object({
       app: z.string().optional(),
+      apps: z.record(z.string()).optional(),
       disable_assistants: z.boolean().default(false),
       disable_threads: z.boolean().default(false),
       disable_runs: z.boolean().default(false),

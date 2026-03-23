@@ -25,7 +25,7 @@ import { FileSystemOps } from "./storage/ops.mjs";
 import { store as graphStore } from "./storage/store.mjs";
 import { auth } from "./auth/custom.mjs";
 import { registerAuth } from "./auth/index.mjs";
-import { registerHttp } from "./http/custom.mjs";
+import { registerHttp, registerHttpApps } from "./http/custom.mjs";
 import { cors, ensureContentType } from "./http/middleware.mjs";
 import { bindLoopbackFetch } from "./loopback.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
@@ -54,6 +54,7 @@ export const StartServerSchema = z.object({
   http: z
     .object({
       app: z.string().optional(),
+      apps: z.record(z.string()).optional(),
       disable_assistants: z.boolean().default(false),
       disable_threads: z.boolean().default(false),
       disable_runs: z.boolean().default(false),
@@ -199,6 +200,21 @@ export async function startServer(
     logger.info(`Loading HTTP app from ${options.http.app}`);
     const { api } = await registerHttp(options.http.app, { cwd: options.cwd });
     app.route("/", api);
+  }
+
+  if (options.http?.apps) {
+    const entries = Object.entries(options.http.apps);
+    logger.info(
+      `Loading ${entries.length} HTTP app(s): ${entries
+        .map(([p]) => p)
+        .join(", ")}`
+    );
+    const apps = await registerHttpApps(options.http.apps, {
+      cwd: options.cwd,
+    });
+    for (const { prefix, api } of apps) {
+      app.route(prefix, api);
+    }
   }
 
   app.use(ensureContentType());

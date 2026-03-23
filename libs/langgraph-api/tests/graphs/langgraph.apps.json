@@ -1,0 +1,17 @@
+{
+  "node_version": "20",
+  "graphs": {
+    "agent": "./agent.mts:graph",
+    "agent_simple": "./agent_simple.mts:graph"
+  },
+  "http": {
+    "app": "./http.mts:app",
+    "apps": {
+      "/dashboard": "./dashboard.mts:app",
+      "/ext": "./extension.mts:app"
+    }
+  },
+  "env": {
+    "LANGGRAPH_CONFIG": "{\"agent\": {\"configurable\": {\"model_name\": \"openai\"}}}"
+  }
+}

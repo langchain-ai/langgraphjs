@@ -15,6 +15,7 @@ export async function spawnServer(
       auth?: { path?: string; disable_studio_auth?: boolean };
       http?: {
         app?: string;
+        apps?: Record<string, string>;
         disable_assistants?: boolean;
         disable_threads?: boolean;
         disable_runs?: boolean;
