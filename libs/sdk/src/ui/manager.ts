@@ -757,10 +757,7 @@ export class StreamManager<
       // interrupts don't linger.  Fresh interrupts will be accumulated
       // from the values events of the new stream below.
       this.setStreamValues((prev) => {
-        if (
-          prev &&
-          "__interrupt__" in prev
-        ) {
+        if (prev && "__interrupt__" in prev) {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { __interrupt__, ...rest } = prev;
           return rest as StateType;
@@ -926,15 +923,15 @@ export class StreamManager<
                 __interrupt__?: Array<{ id?: string }>;
               };
               const prevInterrupts = (
-                prev as (StateType & { __interrupt__?: Array<{ id?: string }> }) | null
+                prev as
+                  | (StateType & { __interrupt__?: Array<{ id?: string }> })
+                  | null
               )?.__interrupt__;
               if (
                 Array.isArray(prevInterrupts) &&
                 Array.isArray(interruptData.__interrupt__)
               ) {
-                const existingIds = new Set(
-                  prevInterrupts.map((i) => i.id)
-                );
+                const existingIds = new Set(prevInterrupts.map((i) => i.id));
                 const newInterrupts = interruptData.__interrupt__.filter(
                   (i) => !existingIds.has(i.id)
                 );
