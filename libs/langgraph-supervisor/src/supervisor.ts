@@ -31,7 +31,10 @@ export type { AgentNameMode };
 export { withAgentName };
 
 type OutputMode = "full_history" | "last_message";
-const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set(["ChatOpenAI"]);
+const PROVIDERS_WITH_PARALLEL_TOOL_CALLS_PARAM = new Set([
+  "ChatOpenAI",
+  "ChatMiniMax",
+]);
 
 // type guards
 type ChatModelWithBindTools = BaseChatModel & {
