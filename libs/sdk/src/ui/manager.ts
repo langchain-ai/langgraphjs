@@ -931,9 +931,11 @@ export class StreamManager<
                 Array.isArray(prevInterrupts) &&
                 Array.isArray(interruptData.__interrupt__)
               ) {
-                const existingIds = new Set(prevInterrupts.map((i) => i.id));
+                const existingIds = new Set(
+                  prevInterrupts.map((i) => i.id).filter((id) => id != null)
+                );
                 const newInterrupts = interruptData.__interrupt__.filter(
-                  (i) => !existingIds.has(i.id)
+                  (i) => i.id == null || !existingIds.has(i.id)
                 );
                 (merged as Record<string, unknown>).__interrupt__ = [
                   ...prevInterrupts,
