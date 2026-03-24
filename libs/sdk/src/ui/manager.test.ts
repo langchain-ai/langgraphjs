@@ -492,6 +492,7 @@ describe("StreamManager", () => {
       };
       expect(values.__interrupt__).toHaveLength(2);
     });
+
     it("should preserve __interrupt__ across non-interrupt values events", async () => {
       // A non-interrupt values event arrives after an interrupt values event.
       // The __interrupt__ field must not be wiped.
