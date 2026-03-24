@@ -184,3 +184,120 @@ export async function gatherIterator<T>(
   }
   return out;
 }
+
+export interface MemorySnapshot {
+  /** Heap used in bytes */
+  heapUsed: number;
+  /** Total heap allocated in bytes */
+  heapTotal: number;
+  /** Resident set size in bytes */
+  rss: number;
+  /** External C++ objects bound to JS objects */
+  external: number;
+  /** ArrayBuffers + SharedArrayBuffers */
+  arrayBuffers: number;
+}
+
+export interface MemoryDelta {
+  before: MemorySnapshot;
+  after: MemorySnapshot;
+  delta: {
+    heapUsed: number;
+    heapTotal: number;
+    rss: number;
+    external: number;
+    arrayBuffers: number;
+  };
+}
+
+/**
+ * Force garbage collection if --expose-gc is enabled, then return
+ * a snapshot of process.memoryUsage(). Without --expose-gc, GC is
+ * not forced and the numbers will include unreachable garbage.
+ */
+export function takeMemorySnapshot(): MemorySnapshot {
+  if (typeof globalThis.gc === "function") {
+    globalThis.gc();
+  }
+  const m = process.memoryUsage();
+  return {
+    heapUsed: m.heapUsed,
+    heapTotal: m.heapTotal,
+    rss: m.rss,
+    external: m.external,
+    arrayBuffers: m.arrayBuffers,
+  };
+}
+
+/**
+ * Run an async function and measure the heap delta around it.
+ * Forces GC before and after (if available) for more accurate results.
+ */
+export async function measureMemory(
+  fn: () => Promise<void>
+): Promise<MemoryDelta> {
+  const before = takeMemorySnapshot();
+  await fn();
+  const after = takeMemorySnapshot();
+  return {
+    before,
+    after,
+    delta: {
+      heapUsed: after.heapUsed - before.heapUsed,
+      heapTotal: after.heapTotal - before.heapTotal,
+      rss: after.rss - before.rss,
+      external: after.external - before.external,
+      arrayBuffers: after.arrayBuffers - before.arrayBuffers,
+    },
+  };
+}
+
+/**
+ * Format bytes to a human-readable string (e.g. "12.34 MB").
+ */
+export function formatBytes(bytes: number): string {
+  const sign = bytes < 0 ? "-" : "";
+  const abs = Math.abs(bytes);
+  if (abs < 1024) return `${sign}${abs} B`;
+  if (abs < 1024 * 1024) return `${sign}${(abs / 1024).toFixed(2)} KB`;
+  return `${sign}${(abs / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Run a graph for multiple turns on the same thread (simulating a
+ * multi-turn conversation), returning memory snapshots after each turn.
+ * This is the core utility for detecting memory growth over time.
+ */
+export async function runMultiTurnMemoryProfile(
+  graphFactory: (checkpointer?: MemorySaverType) => AnyStateGraph,
+  turnInputs: Record<string, unknown>[],
+  options?: { checkpointer?: MemorySaverType }
+): Promise<{ turns: MemorySnapshot[]; deltas: number[] }> {
+  const graph = graphFactory(options?.checkpointer);
+  const threadId = randomUUID();
+  const snapshots: MemorySnapshot[] = [];
+
+  snapshots.push(takeMemorySnapshot());
+
+  for (const input of turnInputs) {
+    await gatherIterator(
+      graph.stream(input, {
+        configurable: { thread_id: threadId },
+        recursionLimit: 1000000000,
+      })
+    );
+    snapshots.push(takeMemorySnapshot());
+  }
+
+  const deltas: number[] = [];
+  for (let i = 1; i < snapshots.length; i++) {
+    deltas.push(snapshots[i].heapUsed - snapshots[i - 1].heapUsed);
+  }
+
+  return { turns: snapshots, deltas };
+}
+
+// We need the type but avoid importing the class at module level to keep
+// things flexible for callers who may or may not use a checkpointer.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MemorySaverType = any;

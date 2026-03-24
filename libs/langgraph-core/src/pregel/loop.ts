@@ -273,11 +273,32 @@ export class PregelLoop {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stream: IterableReadableWritableStream;
 
-  checkpointerPromises: Promise<unknown>[] = [];
+  checkpointerPromises: Set<Promise<unknown>> = new Set();
 
   isNested: boolean;
 
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Track a checkpointer promise, removing it from the set on success.
+   * Failed promises are kept so that Promise.all() in the finally block
+   * of _streamIterator can surface the error.
+   *
+   * @internal
+   */
+  protected _trackCheckpointerPromise(promise: Promise<unknown>) {
+    const tracked = promise.then(
+      (value) => {
+        this.checkpointerPromises.delete(tracked);
+        return value;
+      },
+      (error) => {
+        // Keep failed promises in the set so errors surface via Promise.all()
+        throw error;
+      }
+    );
+    this.checkpointerPromises.add(tracked);
+  }
 
   store?: AsyncBatchedStore;
 
@@ -526,7 +547,7 @@ export class PregelLoop {
         );
       }
     );
-    this.checkpointerPromises.push(this._checkpointerChainedPromise);
+    this._trackCheckpointerPromise(this._checkpointerChainedPromise);
   }
 
   /**
@@ -594,7 +615,7 @@ export class PregelLoop {
     });
 
     if (this.durability !== "exit" && this.checkpointer != null) {
-      this.checkpointerPromises.push(
+      this._trackCheckpointerPromise(
         // Use sanitized writes for checkpointer
         this.checkpointer.putWrites(config, writesToSave, taskId)
       );
@@ -1274,7 +1295,7 @@ export class PregelLoop {
 
     // submit writes to checkpointer
     for (const [tid, ws] of Object.entries(byTask)) {
-      this.checkpointerPromises.push(
+      this._trackCheckpointerPromise(
         this.checkpointer.putWrites(config, ws, tid)
       );
     }
