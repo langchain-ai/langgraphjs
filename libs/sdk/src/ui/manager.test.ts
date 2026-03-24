@@ -455,6 +455,43 @@ describe("StreamManager", () => {
       expect(values.__interrupt__).toHaveLength(1);
     });
 
+    it("should accumulate interrupts that have no id field", async () => {
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ value: "approve A?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ value: "approve B?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+      expect(onError).not.toHaveBeenCalled();
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(2);
+    });
     it("should preserve __interrupt__ across non-interrupt values events", async () => {
       // A non-interrupt values event arrives after an interrupt values event.
       // The __interrupt__ field must not be wiped.
