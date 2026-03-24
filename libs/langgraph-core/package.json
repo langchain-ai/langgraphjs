@@ -91,6 +91,7 @@
   },
   "exports": {
     ".": {
+      "browser": "./dist/web.js",
       "input": "./src/index.ts",
       "typedoc": "./src/index.ts",
       "import": {
