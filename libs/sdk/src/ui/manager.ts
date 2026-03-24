@@ -926,10 +926,7 @@ export class StreamManager<
               )?.__interrupt__;
 
               let interrupts = interruptData.__interrupt__;
-              if (
-                Array.isArray(prevInterrupts) &&
-                Array.isArray(interrupts)
-              ) {
+              if (Array.isArray(prevInterrupts) && Array.isArray(interrupts)) {
                 const existingIds = new Set(
                   prevInterrupts.map((i) => i.id).filter((id) => id != null)
                 );
