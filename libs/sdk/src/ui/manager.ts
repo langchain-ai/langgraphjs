@@ -919,30 +919,31 @@ export class StreamManager<
               __interrupt__?: Array<{ id?: string }>;
             };
             this.setStreamValues((prev) => {
-              const merged = { ...prev, ...interruptData } as StateType & {
-                __interrupt__?: Array<{ id?: string }>;
-              };
               const prevInterrupts = (
                 prev as
                   | (StateType & { __interrupt__?: Array<{ id?: string }> })
                   | null
               )?.__interrupt__;
+
+              let interrupts = interruptData.__interrupt__;
               if (
                 Array.isArray(prevInterrupts) &&
-                Array.isArray(interruptData.__interrupt__)
+                Array.isArray(interrupts)
               ) {
                 const existingIds = new Set(
                   prevInterrupts.map((i) => i.id).filter((id) => id != null)
                 );
-                const newInterrupts = interruptData.__interrupt__.filter(
+                const newInterrupts = interrupts.filter(
                   (i) => i.id == null || !existingIds.has(i.id)
                 );
-                (merged as Record<string, unknown>).__interrupt__ = [
-                  ...prevInterrupts,
-                  ...newInterrupts,
-                ];
+                interrupts = [...prevInterrupts, ...newInterrupts];
               }
-              return merged;
+
+              return {
+                ...prev,
+                ...interruptData,
+                __interrupt__: interrupts,
+              } as StateType;
             });
           } else {
             // Non-interrupt values events must not wipe accumulated
