@@ -954,8 +954,7 @@ export class StreamManager<
                 "__interrupt__" in prev &&
                 Array.isArray(
                   (prev as Record<string, unknown>).__interrupt__
-                ) &&
-                !(data && typeof data === "object" && "__interrupt__" in data)
+                )
               ) {
                 return {
                   ...(data as StateType),
