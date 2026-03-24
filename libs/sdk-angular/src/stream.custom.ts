@@ -1,218 +1,90 @@
 import { signal, computed, effect } from "@angular/core";
 import {
-  StreamManager,
-  MessageTupleManager,
-  extractInterrupts,
-  toMessageClass,
+  CustomStreamOrchestrator,
   ensureMessageInstances,
-  type EventStreamEvent,
+  type AnyStreamCustomOptions,
+  type CustomSubmitOptions,
   type GetUpdateType,
-  type GetCustomEventType,
   type GetInterruptType,
   type GetConfigurableType,
   type GetToolCallsType,
-  type AnyStreamCustomOptions,
-  type CustomSubmitOptions,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
-import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 
-export function useStreamCustom<
+export function injectStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamCustomOptions<StateType, Bag>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
-  type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
   type ToolCallType = GetToolCallsType<StateType>;
 
-  const messageManager = new MessageTupleManager();
-  const stream = new StreamManager<StateType, Bag>(messageManager, {
-    throttle: options.throttle ?? false,
-    subagentToolNames: options.subagentToolNames,
-    filterSubagentMessages: options.filterSubagentMessages,
-    toMessage: toMessageClass,
-  });
+  const orchestrator = new CustomStreamOrchestrator<StateType, Bag>(options);
 
-  const streamValues = signal<StateType | null>(stream.values);
-  const streamError = signal<unknown>(stream.error);
-  const isLoading = signal(stream.isLoading);
-
+  const version = signal(0);
   const subagentVersion = signal(0);
+  const isLoading = signal(orchestrator.isLoading);
 
   effect((onCleanup) => {
-    const unsubscribe = stream.subscribe(() => {
-      streamValues.set(stream.values);
-      streamError.set(stream.error);
-      isLoading.set(stream.isLoading);
+    const unsubscribe = orchestrator.subscribe(() => {
+      version.update((v) => v + 1);
       subagentVersion.update((v) => v + 1);
+      isLoading.set(orchestrator.isLoading);
     });
-
     onCleanup(() => unsubscribe());
   });
 
-  let threadId: string | null = options.threadId ?? null;
-
-  const branch = signal<string>("");
-
-  const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey])
-      ? (value[messagesKey] as Message[])
-      : [];
-  };
-
-  const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return { ...current, [messagesKey]: messages };
-  };
-
-  const historyValues = options.initialValues ?? ({} as StateType);
-
-  const historyMessages = getMessages(historyValues);
-  const shouldReconstructSubagents =
-    options.filterSubagentMessages &&
-    !stream.isLoading &&
-    historyMessages.length > 0;
-
   effect(() => {
-    const loading = isLoading();
-    const hvMessages = getMessages(historyValues);
-    const should =
-      options.filterSubagentMessages && !loading && hvMessages.length > 0;
-    if (should) {
-      stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+    void version();
+    const loading = orchestrator.isLoading;
+    const hvMessages = orchestrator.messages;
+    if (options.filterSubagentMessages && !loading && hvMessages.length > 0) {
+      orchestrator.reconstructSubagentsIfNeeded();
     }
   });
 
-  if (shouldReconstructSubagents) {
-    stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
-  }
+  const values = computed(() => {
+    void version();
+    return orchestrator.values;
+  });
 
-  function switchThread(newThreadId: string | null) {
-    if (newThreadId !== threadId) {
-      threadId = newThreadId;
-      stream.clear();
-    }
-  }
-
-  function stop() {
-    return stream.stop(historyValues, { onStop: options.onStop });
-  }
-
-  async function submitDirect(
-    values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
-  ) {
-    const currentThreadId = options.threadId ?? null;
-    if (currentThreadId !== threadId) {
-      threadId = currentThreadId;
-      stream.clear();
-    }
-
-    let usableThreadId = threadId ?? submitOptions?.threadId;
-
-    stream.setStreamValues(() => {
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...historyValues,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(historyValues)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...historyValues };
-    });
-
-    await stream.start(
-      async (signal: AbortSignal) => {
-        if (!usableThreadId) {
-          usableThreadId = crypto.randomUUID();
-          threadId = usableThreadId;
-          options.onThreadId?.(usableThreadId);
-        }
-
-        if (!usableThreadId) {
-          throw new Error("Failed to obtain valid thread ID.");
-        }
-
-        return options.transport.stream({
-          input: values,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
-          signal,
-          config: {
-            ...submitOptions?.config,
-            configurable: {
-              thread_id: usableThreadId,
-              ...submitOptions?.config?.configurable,
-            } as unknown as GetConfigurableType<Bag>,
-          },
-        }) as Promise<
-          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
-        >;
-      },
-      {
-        getMessages,
-        setMessages,
-
-        initialValues: {} as StateType,
-        callbacks: options,
-
-        onSuccess: () => undefined,
-        onError(error) {
-          options.onError?.(error, undefined);
-          submitOptions?.onError?.(error, undefined);
-        },
-      },
-    );
-  }
-
-  async function submit(
-    values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
-  ) {
-    await submitDirect(values, submitOptions);
-  }
-
-  const values = computed(() => streamValues() ?? ({} as StateType));
-
-  function setBranch(value: string) {
-    branch.set(value);
-  }
-
-  function getMessagesMetadata(
-    message: Message<ToolCallType>,
-    index?: number,
-  ): MessageMetadata<StateType> | undefined {
-    const streamMetadata = messageManager.get(message.id)?.metadata;
-    if (streamMetadata != null) {
-      return {
-        messageId: message.id ?? String(index),
-        firstSeenState: undefined,
-        branch: undefined,
-        branchOptions: undefined,
-        streamMetadata,
-      } as MessageMetadata<StateType>;
-    }
-    return undefined;
-  }
+  const branch = signal<string>("");
 
   return {
     values,
-    error: streamError,
+    error: computed(() => {
+      void version();
+      return orchestrator.error;
+    }),
     isLoading,
 
-    stop,
-    submit,
-    switchThread,
+    stop: () => orchestrator.stop(),
+
+    async submit(
+      values: UpdateType | null | undefined,
+      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+    ) {
+      await orchestrator.submit(values, submitOptions);
+    },
+
+    switchThread(newThreadId: string | null) {
+      orchestrator.switchThread(newThreadId);
+    },
 
     branch,
-    setBranch,
-    getMessagesMetadata,
+    setBranch(value: string) {
+      branch.set(value);
+      orchestrator.setBranch(value);
+    },
+
+    getMessagesMetadata(
+      message: Message<ToolCallType>,
+      index?: number,
+    ): MessageMetadata<StateType> | undefined {
+      return orchestrator.getMessagesMetadata(message, index);
+    },
 
     queue: {
       entries: signal([]),
@@ -224,65 +96,59 @@ export function useStreamCustom<
     },
 
     interrupts: computed((): Interrupt<InterruptType>[] => {
-      const vals = streamValues();
-      if (
-        vals != null &&
-        "__interrupt__" in vals &&
-        Array.isArray(vals.__interrupt__)
-      ) {
-        const valueInterrupts = vals.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
-      }
-
-      return [];
+      void version();
+      return orchestrator.interrupts as Interrupt<InterruptType>[];
     }),
 
     interrupt: computed((): Interrupt<InterruptType> | undefined => {
-      return extractInterrupts<InterruptType>(streamValues());
+      void version();
+      return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
     }),
 
     messages: computed(() => {
-      const vals = streamValues();
-      if (!vals) return [];
-      return ensureMessageInstances(getMessages(vals));
+      void version();
+      return ensureMessageInstances(orchestrator.messages);
     }),
 
     toolCalls: computed(() => {
-      const vals = streamValues();
-      if (!vals) return [];
-      const msgs = getMessages(vals);
-      return getToolCallsWithResults<ToolCallType>(msgs);
+      void version();
+      return orchestrator.toolCalls;
     }),
 
     getToolCalls(message: Message<ToolCallType>) {
-      const vals = streamValues();
-      if (!vals) return [];
-      const msgs = getMessages(vals);
-      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
-      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+      return orchestrator.getToolCalls(message);
     },
 
-    get subagents() {
+    subagents: computed(() => {
       void subagentVersion();
-      return stream.getSubagents();
-    },
+      return orchestrator.subagents as ReadonlyMap<
+        string,
+        typeof orchestrator.subagents extends Map<string, infer V> ? V : never
+      >;
+    }),
 
-    get activeSubagents() {
+    activeSubagents: computed(() => {
       void subagentVersion();
-      return stream.getActiveSubagents();
-    },
+      return orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
+        ? V
+        : never)[];
+    }),
 
     getSubagent(toolCallId: string) {
-      return stream.getSubagent(toolCallId);
+      return orchestrator.getSubagent(toolCallId);
     },
-
     getSubagentsByType(type: string) {
-      return stream.getSubagentsByType(type);
+      return orchestrator.getSubagentsByType(type);
     },
-
     getSubagentsByMessage(messageId: string) {
-      return stream.getSubagentsByMessage(messageId);
+      return orchestrator.getSubagentsByMessage(messageId);
     },
   };
 }
+
+/**
+ * @deprecated Use `injectStreamCustom` instead. `useStreamCustom` will be
+ * removed in a future major version. `injectStreamCustom` follows Angular's
+ * `inject*` naming convention for injection-based patterns.
+ */
+export const useStreamCustom = injectStreamCustom;

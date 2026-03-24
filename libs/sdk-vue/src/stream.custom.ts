@@ -1,220 +1,121 @@
-import { onScopeDispose, ref, shallowRef, watch } from "vue";
 import {
-  StreamManager,
-  MessageTupleManager,
-  extractInterrupts,
-  toMessageClass,
+  computed,
+  onScopeDispose,
+  reactive,
+  ref,
+  shallowRef,
+  toValue,
+  watch,
+} from "vue";
+import {
+  CustomStreamOrchestrator,
   ensureMessageInstances,
-  type EventStreamEvent,
-  type GetUpdateType,
-  type GetCustomEventType,
-  type GetInterruptType,
-  type GetConfigurableType,
   type AnyStreamCustomOptions,
   type CustomSubmitOptions,
+  type GetUpdateType,
+  type GetInterruptType,
+  type GetConfigurableType,
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
-import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
+import type { VueReactiveOptions } from "./types.js";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
->(options: AnyStreamCustomOptions<StateType, Bag>) {
+>(options: VueReactiveOptions<AnyStreamCustomOptions<StateType, Bag>>) {
   type UpdateType = GetUpdateType<Bag, StateType>;
-  type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
 
-  const messageManager = new MessageTupleManager();
-  const stream = new StreamManager<StateType, Bag>(messageManager, {
-    throttle: options.throttle ?? false,
-    subagentToolNames: options.subagentToolNames,
-    filterSubagentMessages: options.filterSubagentMessages,
-    toMessage: toMessageClass,
-  });
-
-  const streamValues = shallowRef<StateType | null>(stream.values);
-  const streamError = shallowRef<unknown>(stream.error);
-  const isLoading = shallowRef(stream.isLoading);
-
-  const subagentVersion = shallowRef(0);
-
-  const unsubscribe = stream.subscribe(() => {
-    streamValues.value = stream.values;
-    streamError.value = stream.error;
-    isLoading.value = stream.isLoading;
-    subagentVersion.value += 1;
-  });
+  const orchestrator = new CustomStreamOrchestrator<StateType, Bag>(
+    options as unknown as AnyStreamCustomOptions<StateType, Bag>,
+  );
 
   const branch = ref<string>("");
 
-  let threadId: string | null = options.threadId ?? null;
+  let threadId: string | null = toValue(options.threadId) ?? null;
 
   watch(
-    () => options.threadId,
+    () => toValue(options.threadId),
     (newId) => {
       const resolved = newId ?? null;
       if (resolved !== threadId) {
         threadId = resolved;
-        stream.clear();
+        orchestrator.syncThreadId(resolved);
       }
     },
     { flush: "sync" },
   );
 
-  const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey])
-      ? (value[messagesKey] as Message[])
-      : [];
-  };
+  const streamValues = shallowRef<StateType | null>(null);
+  const streamError = shallowRef<unknown>(undefined);
+  const isLoading = shallowRef(false);
+  const subagentsRef = shallowRef(orchestrator.subagents);
+  const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
 
-  const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
-    return { ...current, [messagesKey]: messages };
-  };
-
-  const historyValues = options.initialValues ?? ({} as StateType);
+  const unsubscribe = orchestrator.subscribe(() => {
+    streamValues.value = orchestrator.streamValues;
+    streamError.value = orchestrator.error;
+    isLoading.value = orchestrator.isLoading;
+    subagentsRef.value = orchestrator.subagents;
+    activeSubagentsRef.value = orchestrator.activeSubagents;
+  });
 
   onScopeDispose(() => {
     unsubscribe();
-    void stream.stop(historyValues, { onStop: options.onStop });
+    orchestrator.dispose();
   });
-
-  const historyMessages = getMessages(historyValues);
-  // @ts-expect-error used in watch callback below
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const shouldReconstructSubagents =
-    options.filterSubagentMessages &&
-    !stream.isLoading &&
-    historyMessages.length > 0;
 
   watch(
     () => ({
       should:
         options.filterSubagentMessages &&
         !isLoading.value &&
-        getMessages(historyValues).length > 0,
-      len: getMessages(historyValues).length,
+        streamValues.value != null &&
+        orchestrator.messages.length > 0,
+      len: orchestrator.messages.length,
     }),
     ({ should }) => {
       if (should) {
-        stream.reconstructSubagents(getMessages(historyValues), {
-          skipIfPopulated: true,
-        });
+        orchestrator.reconstructSubagentsIfNeeded();
       }
     },
     { immediate: true },
   );
 
-  function switchThread(newThreadId: string | null) {
-    if (newThreadId !== threadId) {
-      threadId = newThreadId;
-      stream.clear();
-    }
-  }
+  // Cached computed properties — unlike plain getters, `computed()` only
+  // recomputes when a tracked dependency changes, and caches the result
+  // between reads. Getters below unwrap `.value` so callers see plain
+  // values (matching the original API surface).
+  //
+  // `void isLoading.value` / reading `streamValues.value` accesses the
+  // ref solely to register it as a dependency of the computed, so Vue
+  // knows to invalidate the cached value when the orchestrator pushes an
+  // update. The `void` operator discards the unused value and signals
+  // intent to future readers.
+  const interruptsComputed = computed(() => {
+    void isLoading.value;
+    return orchestrator.interrupts as Interrupt<InterruptType>[];
+  });
 
-  function stop() {
-    return stream.stop(historyValues, { onStop: options.onStop });
-  }
+  const interruptComputed = computed(() => {
+    void isLoading.value;
+    return orchestrator.interrupt as Interrupt<InterruptType> | undefined;
+  });
 
-  async function submitDirect(
-    values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
-  ) {
-    const currentThreadId = options.threadId ?? null;
-    if (currentThreadId !== threadId) {
-      threadId = currentThreadId;
-      stream.clear();
-    }
+  const messagesComputed = computed(() => {
+    if (!streamValues.value) return [];
+    return ensureMessageInstances(orchestrator.messages);
+  });
 
-    let usableThreadId = threadId ?? submitOptions?.threadId;
+  const toolCallsComputed = computed(() => {
+    if (!streamValues.value) return [];
+    return orchestrator.toolCalls;
+  });
 
-    stream.setStreamValues(() => {
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...historyValues,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(historyValues)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...historyValues };
-    });
-
-    await stream.start(
-      async (signal: AbortSignal) => {
-        if (!usableThreadId) {
-          usableThreadId = crypto.randomUUID();
-          threadId = usableThreadId;
-          options.onThreadId?.(usableThreadId);
-        }
-
-        if (!usableThreadId) {
-          throw new Error("Failed to obtain valid thread ID.");
-        }
-
-        return options.transport.stream({
-          input: values,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
-          signal,
-          config: {
-            ...submitOptions?.config,
-            configurable: {
-              thread_id: usableThreadId,
-              ...submitOptions?.config?.configurable,
-            } as unknown as GetConfigurableType<Bag>,
-          },
-        }) as Promise<
-          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
-        >;
-      },
-      {
-        getMessages,
-        setMessages,
-
-        initialValues: {} as StateType,
-        callbacks: options,
-
-        onSuccess: () => undefined,
-        onError(error) {
-          options.onError?.(error, undefined);
-          submitOptions?.onError?.(error, undefined);
-        },
-      },
-    );
-  }
-
-  async function submit(
-    values: UpdateType | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
-  ) {
-    await submitDirect(values, submitOptions);
-  }
-
-  function setBranch(value: string) {
-    branch.value = value;
-  }
-
-  function getMessagesMetadata(
-    message: Message,
-    index?: number,
-  ): MessageMetadata<StateType> | undefined {
-    const streamMetadata = messageManager.get(message.id)?.metadata;
-    if (streamMetadata != null) {
-      return {
-        messageId: message.id ?? String(index),
-        firstSeenState: undefined,
-        branch: undefined,
-        branchOptions: undefined,
-        streamMetadata,
-      } as MessageMetadata<StateType>;
-    }
-    return undefined;
-  }
+  const queueEntries = shallowRef<unknown[]>([]);
+  const queueSize = shallowRef(0);
 
   return {
     get values() {
@@ -224,79 +125,72 @@ export function useStreamCustom<
     error: streamError,
     isLoading,
 
-    stop,
-    submit,
-    switchThread,
+    stop: () => orchestrator.stop(),
+
+    submit: async (
+      values: UpdateType | null | undefined,
+      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+    ) => {
+      await orchestrator.submit(values, submitOptions);
+    },
+
+    switchThread(newThreadId: string | null) {
+      orchestrator.switchThread(newThreadId);
+    },
 
     branch,
-    setBranch,
-    getMessagesMetadata,
-
-    queue: {
-      entries: [],
-      size: 0,
-      async cancel() {
-        return false;
-      },
-      async clear() {},
+    setBranch(value: string) {
+      branch.value = value;
+      orchestrator.setBranch(value);
     },
+
+    getMessagesMetadata(
+      message: Message,
+      index?: number,
+    ): MessageMetadata<StateType> | undefined {
+      return orchestrator.getMessagesMetadata(message, index);
+    },
+
+    queue: reactive({
+      entries: queueEntries,
+      size: queueSize,
+      cancel: async () => false,
+      clear: async () => {},
+    }),
 
     get interrupts(): Interrupt<InterruptType>[] {
-      if (
-        streamValues.value != null &&
-        "__interrupt__" in streamValues.value &&
-        Array.isArray(streamValues.value.__interrupt__)
-      ) {
-        const valueInterrupts = streamValues.value.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
-      }
-
-      return [];
+      return interruptsComputed.value;
     },
-
     get interrupt(): Interrupt<InterruptType> | undefined {
-      return extractInterrupts<InterruptType>(streamValues.value);
+      return interruptComputed.value;
     },
-
     get messages() {
-      if (!streamValues.value) return [];
-      return ensureMessageInstances(getMessages(streamValues.value));
+      return messagesComputed.value;
     },
-
     get toolCalls() {
-      if (!streamValues.value) return [];
-      return getToolCallsWithResults(getMessages(streamValues.value));
+      return toolCallsComputed.value;
     },
 
     getToolCalls(message: Message) {
-      if (!streamValues.value) return [];
-      const allToolCalls = getToolCallsWithResults(
-        getMessages(streamValues.value),
-      );
-      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+      return orchestrator.getToolCalls(message);
     },
 
     get subagents() {
-      void subagentVersion.value;
-      return stream.getSubagents();
+      return subagentsRef.value;
     },
 
     get activeSubagents() {
-      void subagentVersion.value;
-      return stream.getActiveSubagents();
+      return activeSubagentsRef.value;
     },
 
     getSubagent(toolCallId: string) {
-      return stream.getSubagent(toolCallId);
+      return orchestrator.getSubagent(toolCallId);
     },
-
     getSubagentsByType(type: string) {
-      return stream.getSubagentsByType(type);
+      return orchestrator.getSubagentsByType(type);
     },
-
     getSubagentsByMessage(messageId: string) {
-      return stream.getSubagentsByMessage(messageId);
+      return orchestrator.getSubagentsByMessage(messageId);
     },
   };
 }

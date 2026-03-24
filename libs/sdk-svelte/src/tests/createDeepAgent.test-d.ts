@@ -2,7 +2,7 @@
  * Type tests for `useStream` with DeepAgent types.
  *
  * Validates that:
- * - stream.messages is BaseMessage[] (React-specific class instances)
+ * - stream.messages is BaseMessage[] (Svelte-specific class instances)
  * - stream.toolCalls is correctly typed from deep agent tools
  * - stream.values contains the expected agent state
  * - stream.subagents contains the right types for subagents
@@ -24,7 +24,6 @@ import {
   type ContentBlock,
 } from "langchain";
 import { createDeepAgent } from "deepagents";
-import { get } from "svelte/store";
 
 import { useStream } from "../index.js";
 
@@ -128,10 +127,9 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const messages = get(stream.messages);
-    expectTypeOf(messages).toExtend<BaseMessage[]>();
-    expectTypeOf(messages[0]).toExtend<BaseMessage>();
-    const firstMsg = messages[0];
+    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
+    expectTypeOf(stream.messages[0]).toExtend<BaseMessage>();
+    const firstMsg = stream.messages[0];
     if (AIMessage.isInstance(firstMsg)) {
       expectTypeOf(firstMsg.tool_calls).toExtend<
         | {
@@ -156,7 +154,7 @@ describe("deep agent", () => {
       fetchStateHistory: true,
     });
 
-    const state = get(stream.history)[0];
+    const state = stream.history[0];
     expectTypeOf(state.values).toHaveProperty("messages");
     expectTypeOf(state.values.todos).toEqualTypeOf<
       {
@@ -177,8 +175,8 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
-    expectTypeOf(get(stream.values).todos).toEqualTypeOf<
+    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(stream.values.todos).toEqualTypeOf<
       {
         content: string;
         status: "completed" | "in_progress" | "pending";
@@ -189,14 +187,14 @@ describe("deep agent", () => {
           id: string;
         }[]
     >();
-    expectTypeOf(get(stream.values).count).toEqualTypeOf<number>();
-    expectTypeOf(get(stream.values).files).toEqualTypeOf<
+    expectTypeOf(stream.values.count).toEqualTypeOf<number>();
+    expectTypeOf(stream.values.files).toEqualTypeOf<
       {
         path: string;
         content: string;
       }[]
     >();
-    expectTypeOf(get(stream.values).notes).toEqualTypeOf<
+    expectTypeOf(stream.values.notes).toEqualTypeOf<
       {
         title: string;
         body: string;
@@ -210,7 +208,7 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const tc = get(stream.toolCalls)[0];
+    const tc = stream.toolCalls[0];
     expectTypeOf(tc.call.name).toEqualTypeOf<"get_weather" | "search_web">();
     expectTypeOf(tc.call.args).toEqualTypeOf<
       | {
@@ -232,7 +230,7 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const msg = get(stream.messages)[0];
+    const msg = stream.messages[0];
     if (AIMessage.isInstance(msg)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolCalls = stream.getToolCalls(msg as any);

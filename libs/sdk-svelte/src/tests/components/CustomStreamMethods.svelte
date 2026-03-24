@@ -42,19 +42,17 @@
     },
   };
 
-  const thread = useStreamCustom<{ messages: Message[] }>({
+  const stream = useStreamCustom<{ messages: Message[] }>({
     transport: transport as any,
     threadId: null,
     onThreadId: () => {},
   });
-
-  const { messages, isLoading, branch } = thread;
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
-      {@const metadata = thread.getMessagesMetadata(msg as any, i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
+      {@const metadata = stream.getMessagesMetadata(msg as any, i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -68,19 +66,19 @@
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  <div data-testid="branch">{$branch}</div>
+  <div data-testid="branch">{stream.branch}</div>
   <button
     data-testid="submit"
     onclick={() =>
-      void thread.submit({ messages: [{ type: "human", content: "Hi" }] } as any)}
+      void stream.submit({ messages: [{ type: "human", content: "Hi" }] } as any)}
   >
     Submit
   </button>
   <button
     data-testid="set-branch"
-    onclick={() => thread.setBranch("test-branch")}
+    onclick={() => stream.setBranch("test-branch")}
   >
     Set Branch
   </button>

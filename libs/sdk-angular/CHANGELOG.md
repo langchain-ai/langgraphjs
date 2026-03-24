@@ -1,5 +1,41 @@
 # @langchain/angular
 
+## 0.3.0
+
+### Minor Changes
+
+- [#2227](https://github.com/langchain-ai/langgraphjs/pull/2227) [`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: extract shared orchestrator to eliminate duplicated code across SDK packages
+
+- [#2226](https://github.com/langchain-ai/langgraphjs/pull/2226) [`13d117e`](https://github.com/langchain-ai/langgraphjs/commit/13d117ec90f6cf2f5d11584d298d32bb3ff160e1) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(angular): use `injectStream`/`injectStreamCustom`
+
+### Patch Changes
+
+- Updated dependencies [[`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b)]:
+  - @langchain/langgraph-sdk@1.8.0
+
+## 0.2.0
+
+### Minor Changes
+
+- [#2223](https://github.com/langchain-ai/langgraphjs/pull/2223) [`09b9b60`](https://github.com/langchain-ai/langgraphjs/commit/09b9b60fe5acf57d76cda19dbced995bda748204) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: add provider/context patterns for React, Vue, Angular, and Svelte SDKs
+
+- [#2219](https://github.com/langchain-ai/langgraphjs/pull/2219) [`dbbc943`](https://github.com/langchain-ai/langgraphjs/commit/dbbc943ca45dc4523fbdf6a1852c04053eda3541) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(angular): add StreamService @Injectable() class
+
+### Patch Changes
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Support `onFinish` callback in custom transport, ensuring it is called when the stream completes.
+
+- [#2217](https://github.com/langchain-ai/langgraphjs/pull/2217) [`5460157`](https://github.com/langchain-ai/langgraphjs/commit/5460157725af77b4703e6c21fd260141ca6dcbf1) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add Angular 21 to @angular/core peer dependency range
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(react/vue/svelte/angular): clean up Readme and dev deps
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Forward streamSubgraphs in custom transports
+
+- Updated dependencies [[`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634)]:
+  - @langchain/langgraph-sdk@1.7.5
+
 ## 0.1.3
 
 ### Patch Changes

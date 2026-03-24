@@ -1,4 +1,4 @@
-import { Client } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 import BasicStream from "./components/BasicStream.svelte";
@@ -22,7 +22,12 @@ import QueueOnCreated from "./components/QueueOnCreated.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
 import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
+import CustomTransportStreamSubgraphs from "./components/CustomTransportStreamSubgraphs.svelte";
 import HistoryMessages from "./components/HistoryMessages.svelte";
+import StreamContextParent from "./components/StreamContextParent.svelte";
+import StreamContextOrphan from "./components/StreamContextOrphan.svelte";
+import ContextProvider from "./components/ContextProvider.svelte";
+import { getStream, type UseStreamTransport } from "../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -834,6 +839,51 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
     .toHaveTextContent("test-branch");
 });
 
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  const screen = render(CustomTransportStreamSubgraphs, {
+    streamTransport,
+  });
+
+  await screen.getByTestId("submit-custom-subgraphs").click();
+
+  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+  expect(streamTransport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: {
+        messages: [{ type: "human", content: "Hi" }],
+      },
+      streamSubgraphs: true,
+      config: expect.objectContaining({
+        configurable: expect.objectContaining({
+          thread_id: expect.any(String),
+        }),
+      }),
+    }),
+  );
+});
+
 // Server-side queue e2e tests
 it("server-side queue: submitting three times rapidly queues the latter two", async () => {
   const screen = render(QueueStream, { apiUrl: serverUrl });
@@ -1123,4 +1173,114 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+// Stream context tests (main branch)
+it("setStreamContext / getStreamContext shares stream with child components", async () => {
+  const screen = render(StreamContextParent, {
+    apiUrl: serverUrl,
+  });
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-message-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("parent-submit").click();
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("parent-message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("parent-message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("child-message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("child-message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("parent-loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("child-loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("getStreamContext throws when no parent has set context", async () => {
+  const screen = render(StreamContextOrphan);
+
+  await expect
+    .element(screen.getByTestId("orphan-error"))
+    .toHaveTextContent(
+      "getStreamContext must be used within a component that has called setStreamContext",
+    );
+});
+
+// provideStream / getStream context tests
+it("provideStream shares stream state across child components", async () => {
+  const screen = render(ContextProvider, {
+    apiUrl: serverUrl,
+  });
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("provideStream children can submit and receive messages", async () => {
+  const screen = render(ContextProvider, {
+    apiUrl: serverUrl,
+  });
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("provideStream children can stop the stream", async () => {
+  const screen = render(ContextProvider, {
+    apiUrl: serverUrl,
+  });
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("getStream throws when used outside a component", () => {
+  expect(() => {
+    getStream();
+  }).toThrow();
 });

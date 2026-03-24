@@ -34,6 +34,7 @@ import type {
   ExtractAgentConfig,
   InferSubagentState,
   InferSubagentNames,
+  UseStreamTransport,
 } from "../ui/types.js";
 import type { ResolveStreamOptions } from "../ui/stream/index.js";
 
@@ -695,6 +696,37 @@ describe("useStream.values state inference", () => {
 
     const stream = useStream<DirectState>({
       assistantId: "direct",
+    });
+
+    expectTypeOf(stream.values).toEqualTypeOf<DirectState>();
+    expectTypeOf(stream.values.customField).toEqualTypeOf<string>();
+  });
+
+  test("accepts onFinish with custom transport options", () => {
+    type DirectState = { messages: Message[]; customField: string };
+
+    const transport: UseStreamTransport<DirectState> = {
+      async stream() {
+        async function* generator(): AsyncGenerator<{
+          event: string;
+          data: unknown;
+        }> {
+          yield {
+            event: "values",
+            data: {
+              messages: [],
+              customField: "done",
+            },
+          };
+        }
+
+        return generator();
+      },
+    };
+
+    const stream = useStream<DirectState>({
+      transport,
+      onFinish() {},
     });
 
     expectTypeOf(stream.values).toEqualTypeOf<DirectState>();

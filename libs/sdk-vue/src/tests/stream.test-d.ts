@@ -13,6 +13,7 @@
  */
 
 import { describe, test, expectTypeOf } from "vitest";
+import { computed, ref } from "vue";
 import type { ComputedRef, Ref } from "vue";
 import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
@@ -344,5 +345,77 @@ describe("realistic usage patterns with class instances", () => {
 
     const toolMessages = stream.messages.value.filter(ToolMessage.isInstance);
     expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
+  });
+});
+
+// ============================================================================
+// Type Tests: MaybeRefOrGetter reactive options
+// ============================================================================
+
+describe("useStream accepts MaybeRefOrGetter for reactive options", () => {
+  test("accepts plain string for assistantId", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+  });
+
+  test("accepts Ref<string> for assistantId", () => {
+    const assistantId = ref("agent");
+    const stream = useStream<BasicState>({
+      assistantId,
+    });
+
+    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+  });
+
+  test("accepts getter for assistantId", () => {
+    const stream = useStream<BasicState>({
+      assistantId: () => "agent",
+    });
+
+    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+  });
+
+  test("accepts ComputedRef for apiUrl", () => {
+    const apiUrl = computed(() => "http://localhost:8000");
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+      apiUrl,
+    });
+
+    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+  });
+
+  test("accepts Ref for threadId", () => {
+    const threadId = ref<string | null>(null);
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+      threadId,
+    });
+
+    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+  });
+
+  test("accepts getter for messagesKey", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+      messagesKey: () => "messages",
+    });
+
+    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+  });
+
+  test("callbacks remain plain function types", () => {
+    useStream<BasicState>({
+      assistantId: "agent",
+      onError: (error) => {
+        expectTypeOf(error).toBeUnknown();
+      },
+      onThreadId: (id) => {
+        expectTypeOf(id).toBeString();
+      },
+    });
   });
 });

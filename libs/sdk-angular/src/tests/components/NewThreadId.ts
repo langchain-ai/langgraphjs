@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 import { inject } from "vitest";
-import { useStream } from "../../index.js";
+import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -20,7 +20,7 @@ export class NewThreadIdComponent {
 
   onThreadIdCb = input<((threadId: string) => void) | undefined>(undefined);
 
-  stream = useStream({
+  stream = injectStream({
     assistantId: "agent",
     apiUrl: serverUrl,
     threadId: null,

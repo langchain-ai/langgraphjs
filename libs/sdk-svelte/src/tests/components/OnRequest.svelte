@@ -10,7 +10,7 @@
 
   const { apiUrl, assistantId = "agent", client }: Props = $props();
 
-  const { submit, messages } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
     client,
@@ -19,7 +19,7 @@
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -30,7 +30,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit(
+      void stream.submit(
         { messages: [{ content: "Hello", type: "human" }] } as any,
       )}
   >

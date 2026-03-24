@@ -2,7 +2,12 @@ import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
 import { computed, defineComponent, ref } from "vue";
-import { useStream } from "../index.js";
+import {
+  useStream,
+  provideStream,
+  useStreamContext,
+  type UseStreamTransport,
+} from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import type { DeepAgentGraph } from "./fixtures/mock-server.js";
 
@@ -1820,6 +1825,176 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
     .toHaveTextContent("test-branch");
 });
 
+it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
+  const onFinish = vi.fn();
+  const transport = {
+    async stream(payload: {
+      config?: { configurable?: { thread_id?: string } };
+    }) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human`,
+                type: "human",
+                content: "Hello from custom transport",
+              },
+              {
+                id: `${threadId}-ai`,
+                type: "ai",
+                content: "Finished",
+              },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  };
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+        onFinish,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {thread.isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit({
+                messages: [{ type: "human", content: "Hi" }],
+              } as any)
+            }
+          >
+            Submit
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  expect(onFinish).toHaveBeenCalledTimes(1);
+  expect(onFinish).toHaveBeenCalledWith(
+    expect.objectContaining({
+      values: expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            content: "Hello from custom transport",
+            type: "human",
+          }),
+          expect.objectContaining({
+            content: "Finished",
+            type: "ai",
+          }),
+        ]),
+      }),
+      next: [],
+      tasks: [],
+      created_at: null,
+      parent_checkpoint: null,
+      checkpoint: expect.objectContaining({
+        thread_id: expect.any(String),
+        checkpoint_id: null,
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      }),
+    }),
+    undefined,
+  );
+});
+
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<StreamState>({
+        transport: { stream: streamTransport },
+        threadId: null,
+        onThreadId: () => {},
+      });
+
+      return () => (
+        <button
+          data-testid="submit-custom-subgraphs"
+          onClick={() =>
+            void thread.submit(
+              {
+                messages: [{ type: "human", content: "Hi" } as Message],
+              },
+              { streamSubgraphs: true },
+            )
+          }
+        >
+          Submit
+        </button>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+  await screen.getByTestId("submit-custom-subgraphs").click();
+
+  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+  expect(streamTransport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: {
+        messages: [{ type: "human", content: "Hi" }],
+      },
+      streamSubgraphs: true,
+      config: expect.objectContaining({
+        configurable: expect.objectContaining({
+          thread_id: expect.any(String),
+        }),
+      }),
+    }),
+  );
+});
+
 // Server-side queue e2e tests
 const VueQueueStreamComponent = defineComponent({
   setup() {
@@ -1843,11 +2018,9 @@ const VueQueueStreamComponent = defineComponent({
           {stream.isLoading.value ? "Loading..." : "Not loading"}
         </div>
         <div data-testid="message-count">{stream.messages.value.length}</div>
-        <div data-testid="queue-size">
-          {(stream as any).queue?.size?.value ?? 0}
-        </div>
+        <div data-testid="queue-size">{(stream as any).queue?.size ?? 0}</div>
         <div data-testid="queue-entries">
-          {((stream as any).queue?.entries?.value ?? [])
+          {((stream as any).queue?.entries ?? [])
             .map((e: { values?: { messages?: { content?: string }[] } }) => {
               const msgs = e.values?.messages;
               return msgs?.[0]?.content ?? "?";
@@ -1882,7 +2055,7 @@ const VueQueueStreamComponent = defineComponent({
           data-testid="cancel-first"
           onClick={() => {
             const q = (stream as any).queue;
-            const first = q?.entries?.value?.[0];
+            const first = q?.entries?.[0];
             if (first && q) void q.cancel(first.id);
           }}
         >
@@ -2481,4 +2654,228 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+it("provideStream shares stream state across child components", async () => {
+  const MessageList = defineComponent({
+    setup() {
+      const { messages } = useStreamContext();
+      return () => (
+        <div data-testid="messages">
+          {messages.value.map((msg: any, i: number) => (
+            <div key={msg.id ?? i} data-testid={`message-${i}`}>
+              {typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content)}
+            </div>
+          ))}
+        </div>
+      );
+    },
+  });
+
+  const StatusBar = defineComponent({
+    setup() {
+      const { isLoading, error } = useStreamContext();
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          {error.value ? (
+            <div data-testid="error">{String(error.value)}</div>
+          ) : null}
+        </div>
+      );
+    },
+  });
+
+  const SubmitButton = defineComponent({
+    setup() {
+      const { submit, stop } = useStreamContext();
+      return () => (
+        <div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const Parent = defineComponent({
+    setup() {
+      provideStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+      return () => (
+        <div>
+          <MessageList />
+          <StatusBar />
+          <SubmitButton />
+        </div>
+      );
+    },
+  });
+
+  const screen = render(Parent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("provideStream children can submit and receive messages", async () => {
+  const MessageList = defineComponent({
+    setup() {
+      const { messages } = useStreamContext();
+      return () => (
+        <div data-testid="messages">
+          {messages.value.map((msg: any, i: number) => (
+            <div key={msg.id ?? i} data-testid={`message-${i}`}>
+              {typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content)}
+            </div>
+          ))}
+        </div>
+      );
+    },
+  });
+
+  const Controls = defineComponent({
+    setup() {
+      const { submit, stop, isLoading } = useStreamContext();
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const Parent = defineComponent({
+    setup() {
+      provideStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+      return () => (
+        <div>
+          <MessageList />
+          <Controls />
+        </div>
+      );
+    },
+  });
+
+  const screen = render(Parent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("provideStream children can stop the stream", async () => {
+  const Controls = defineComponent({
+    setup() {
+      const { submit, stop, isLoading } = useStreamContext();
+      return () => (
+        <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
+          <button data-testid="stop" onClick={() => void stop()}>
+            Stop
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const Parent = defineComponent({
+    setup() {
+      provideStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+      });
+      return () => <Controls />;
+    },
+  });
+
+  const screen = render(Parent);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("useStreamContext throws when used outside provideStream", async () => {
+  const Orphan = defineComponent({
+    setup() {
+      try {
+        useStreamContext();
+        return () => <div data-testid="result">no-error</div>;
+      } catch (e: any) {
+        return () => (
+          <div data-testid="result">
+            {e instanceof Error ? e.message : "unknown"}
+          </div>
+        );
+      }
+    },
+  });
+
+  const screen = render(Orphan);
+  await expect
+    .element(screen.getByTestId("result"))
+    .toHaveTextContent(
+      "useStreamContext() requires a parent component to call provideStream()",
+    );
 });

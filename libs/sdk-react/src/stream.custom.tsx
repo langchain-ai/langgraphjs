@@ -28,11 +28,35 @@ import {
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import type { BaseMessage } from "@langchain/core/messages";
-import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
+import type {
+  BagTemplate,
+  Message,
+  Interrupt,
+  ThreadState,
+} from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStreamCustom } from "./types.js";
 
 export { FetchStreamTransport };
+
+function createCustomTransportThreadState<
+  StateType extends Record<string, unknown>,
+>(values: StateType, threadId: string): ThreadState<StateType> {
+  return {
+    values,
+    next: [],
+    tasks: [],
+    metadata: undefined,
+    created_at: null,
+    checkpoint: {
+      thread_id: threadId,
+      checkpoint_id: null,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    },
+    parent_checkpoint: null,
+  };
+}
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -163,6 +187,7 @@ export function useStreamCustom<
           input: values,
           context: submitOptions?.context,
           command: submitOptions?.command,
+          streamSubgraphs: submitOptions?.streamSubgraphs,
           signal,
           config: {
             ...submitOptions?.config,
@@ -182,7 +207,17 @@ export function useStreamCustom<
         initialValues: {} as StateType,
         callbacks: options,
 
-        onSuccess: () => undefined,
+        onSuccess: () => {
+          if (!usableThreadId) return undefined;
+
+          const finalValues = stream.values ?? historyValues;
+          options.onFinish?.(
+            createCustomTransportThreadState(finalValues, usableThreadId),
+            undefined,
+          );
+
+          return undefined;
+        },
         onError(error) {
           options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);

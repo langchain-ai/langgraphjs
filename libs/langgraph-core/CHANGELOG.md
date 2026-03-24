@@ -1,5 +1,30 @@
 # @langchain/langgraph
 
+## 1.2.5
+
+### Patch Changes
+
+- [#2213](https://github.com/langchain-ai/langgraphjs/pull/2213) [`a09932a`](https://github.com/langchain-ai/langgraphjs/commit/a09932a203062d52e98e6dc5fd80ab572b123700) Thanks [@hntrl](https://github.com/hntrl)! - fix(core): prevent AbortSignal listener leak in stream() and streamEvents()
+
+  `Pregel.stream()` and `streamEvents()` called `combineAbortSignals()` but discarded the `dispose` function, leaking one abort listener on the caller's signal per invocation. Over many invocations this caused unbounded memory growth as each leaked listener retained references to its associated graph execution state.
+
+  - Use `AbortSignal.any()` on Node 20+ which handles listener lifecycle automatically via GC
+  - Fall back to manual listener management on Node 18, with proper `dispose()` called when the stream completes or is cancelled
+
+- [#2210](https://github.com/langchain-ai/langgraphjs/pull/2210) [`4d2e948`](https://github.com/langchain-ai/langgraphjs/commit/4d2e9483208e105b7c45ab1cbc8ac8d540fbb23d) Thanks [@jackjin1997](https://github.com/jackjin1997)! - Fix `AnyValue.update()` returning `false` instead of `true` when values are received, aligning with all other channel implementations.
+
+- Updated dependencies [[`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b)]:
+  - @langchain/langgraph-sdk@1.8.0
+
+## 1.2.4
+
+### Patch Changes
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
+
+- Updated dependencies [[`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634)]:
+  - @langchain/langgraph-sdk@1.7.5
+
 ## 1.2.3
 
 ### Patch Changes

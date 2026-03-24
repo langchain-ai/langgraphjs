@@ -1,6 +1,8 @@
-import { Client } from "@langchain/langgraph-sdk";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-react";
+import { useStreamContext, type UseStreamTransport } from "../index.js";
+import { useStreamCustom } from "../stream.custom.js";
 import { BasicStream } from "./components/BasicStream.js";
 import { InitialValuesStream } from "./components/InitialValuesStream.js";
 import { StopMutateStream } from "./components/StopMutateStream.js";
@@ -20,6 +22,10 @@ import { QueueOnCreated } from "./components/QueueOnCreated.js";
 import { SubmitOnError } from "./components/SubmitOnError.js";
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
 import { HistoryMessages } from "./components/HistoryMessages.js";
+import { SuspenseBasicStream } from "./components/SuspenseBasicStream.js";
+import { SuspenseErrorStream } from "./components/SuspenseErrorStream.js";
+import { SuspenseWithThreadId } from "./components/SuspenseWithThreadId.js";
+import { ContextProvider } from "./components/ContextProvider.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -744,6 +750,173 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
     .toHaveTextContent("test-branch");
 });
 
+it("useStreamCustom calls onFinish with a synthetic thread state", async () => {
+  const onFinish = vi.fn();
+  type StreamState = { messages: Message[] };
+  const transport: UseStreamTransport<StreamState> = {
+    async stream(payload) {
+      const threadId = payload.config?.configurable?.thread_id ?? "unknown";
+
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              {
+                id: `${threadId}-human`,
+                type: "human",
+                content: "Hello from custom transport",
+              },
+              {
+                id: `${threadId}-ai`,
+                type: "ai",
+                content: "Finished",
+              },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  };
+
+  function OnFinishCustomStream() {
+    const thread = useStreamCustom<StreamState>({
+      transport,
+      threadId: null,
+      onThreadId: () => {},
+      onFinish,
+    });
+
+    return (
+      <div>
+        <div data-testid="loading">
+          {thread.isLoading ? "Loading..." : "Not loading"}
+        </div>
+        <button
+          data-testid="submit"
+          onClick={() => {
+            const input = {
+              messages: [{ type: "human", content: "Hi" }],
+            } satisfies StreamState;
+
+            void thread.submit(input);
+          }}
+        >
+          Submit
+        </button>
+      </div>
+    );
+  }
+
+  const screen = await render(<OnFinishCustomStream />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  expect(onFinish).toHaveBeenCalledTimes(1);
+  expect(onFinish).toHaveBeenCalledWith(
+    expect.objectContaining({
+      values: expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            content: "Hello from custom transport",
+            type: "human",
+          }),
+          expect.objectContaining({
+            content: "Finished",
+            type: "ai",
+          }),
+        ]),
+      }),
+      next: [],
+      tasks: [],
+      created_at: null,
+      parent_checkpoint: null,
+      checkpoint: expect.objectContaining({
+        thread_id: expect.any(String),
+        checkpoint_id: null,
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      }),
+    }),
+    undefined,
+  );
+});
+
+it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "Hi" },
+              { id: "ai-1", type: "ai", content: "Hello!" },
+            ],
+          },
+        };
+      }
+
+      return generate();
+    },
+  );
+
+  function CustomTransportStreamSubgraphs() {
+    const thread = useStreamCustom<StreamState>({
+      transport: { stream: streamTransport },
+      threadId: null,
+      onThreadId: () => {},
+    });
+
+    return (
+      <button
+        data-testid="submit-custom-subgraphs"
+        onClick={() =>
+          void thread.submit(
+            {
+              messages: [{ type: "human", content: "Hi" } as Message],
+            },
+            { streamSubgraphs: true },
+          )
+        }
+      >
+        Submit
+      </button>
+    );
+  }
+
+  const screen = await render(<CustomTransportStreamSubgraphs />);
+  await screen.getByTestId("submit-custom-subgraphs").click();
+
+  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
+  expect(streamTransport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: {
+        messages: [{ type: "human", content: "Hi" }],
+      },
+      streamSubgraphs: true,
+      config: expect.objectContaining({
+        configurable: expect.objectContaining({
+          thread_id: expect.any(String),
+        }),
+      }),
+    }),
+  );
+});
+
 it("server-side queue: submitting three times rapidly queues the latter two", async () => {
   const screen = await render(<QueueStream apiUrl={serverUrl} />);
 
@@ -1042,4 +1215,139 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("history-message-types"))
     .toHaveTextContent(/ai/);
+});
+
+// =====================================================================
+// useSuspenseStream tests
+// =====================================================================
+
+it("useSuspenseStream: renders without suspense when no threadId", async () => {
+  const screen = await render(<SuspenseBasicStream apiUrl={serverUrl} />);
+
+  // Without a threadId, there is nothing to load; the component
+  // should render immediately (no suspense fallback).
+  await expect
+    .element(screen.getByTestId("streaming"))
+    .toHaveTextContent("Not streaming");
+  await expect
+    .element(screen.getByTestId("suspense-fallback"))
+    .not.toBeInTheDocument();
+});
+
+it("useSuspenseStream: handles submit and streaming", async () => {
+  const screen = await render(<SuspenseBasicStream apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("streaming"))
+    .toHaveTextContent("Not streaming");
+});
+
+it("useSuspenseStream: throws to error boundary on stream error", async () => {
+  const screen = await render(<SuspenseErrorStream apiUrl={serverUrl} />);
+
+  // Submit triggers the errorAgent which throws
+  await screen.getByTestId("submit").click();
+
+  // The error should propagate to the ErrorBoundary
+  await expect.element(screen.getByTestId("error-boundary")).toBeVisible();
+});
+
+it("useSuspenseStream: suspends when loading existing thread", async () => {
+  const screen = await render(<SuspenseWithThreadId apiUrl={serverUrl} />);
+
+  // Create a thread first
+  await screen.getByTestId("create-thread").click();
+
+  // Wait for the thread ID to appear
+  await expect
+    .element(screen.getByTestId("thread-id"))
+    .not.toHaveTextContent("none");
+
+  // Submit a message to populate the thread
+  await screen.getByTestId("submit").click();
+
+  // Wait for streaming to complete
+  await expect
+    .element(screen.getByTestId("streaming"))
+    .toHaveTextContent("Not streaming");
+
+  // Verify messages appeared
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .not.toHaveTextContent("0");
+});
+
+// =====================================================================
+// StreamProvider / useStreamContext tests
+// =====================================================================
+
+it("StreamProvider shares stream state across child components", async () => {
+  const screen = await render(<ContextProvider apiUrl={serverUrl} />);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("message-0")).not.toBeInTheDocument();
+});
+
+it("StreamProvider children can submit and receive messages", async () => {
+  const screen = await render(<ContextProvider apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("StreamProvider children can stop the stream", async () => {
+  const screen = await render(<ContextProvider apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+  await screen.getByTestId("stop").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("useStreamContext throws when used outside StreamProvider", async () => {
+  function Orphan() {
+    try {
+      useStreamContext();
+      return <div data-testid="result">no-error</div>;
+    } catch (e: unknown) {
+      const msg =
+        e != null && typeof e === "object" && "message" in e
+          ? String((e as { message: unknown }).message)
+          : "unknown";
+      return <div data-testid="result">{msg}</div>;
+    }
+  }
+
+  const screen = await render(<Orphan />);
+  await expect
+    .element(screen.getByTestId("result"))
+    .toHaveTextContent(
+      "useStreamContext must be used within a <StreamProvider>",
+    );
 });

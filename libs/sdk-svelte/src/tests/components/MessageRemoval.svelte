@@ -14,14 +14,14 @@
     onRender,
   }: Props = $props();
 
-  const { messages, isLoading, submit } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
     throttle: false,
   });
 
   $effect(() => {
-    const rawMessages = $messages.map(
+    const rawMessages = stream.messages.map(
       (msg: Message) =>
         `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`,
     );
@@ -31,10 +31,10 @@
 
 <div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       {@const content = `${msg.type}: ${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`}
       <div data-testid={`message-${i}`}>
         <span>{content}</span>
@@ -44,7 +44,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+      void stream.submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
   >
     Send
   </button>

@@ -1,6 +1,6 @@
 # @langchain/react
 
-React SDK for building AI-powered applications with [LangChain](https://js.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraphjs/). Provides a `useStream` hook that manages streaming, state, branching, and interrupts out of the box.
+React SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` hook that manages streaming, state, branching, and interrupts out of the box.
 
 ## Installation
 
@@ -8,7 +8,7 @@ React SDK for building AI-powered applications with [LangChain](https://js.langc
 npm install @langchain/react @langchain/core
 ```
 
-**Peer dependencies:** `react` (^18 || ^19), `react-dom` (^18 || ^19), `@langchain/core` (^1.0.1)
+**Peer dependencies:** `react` (^18 || ^19), `@langchain/core` (^1.1.27)
 
 ## Quick Start
 
@@ -79,6 +79,159 @@ function Chat() {
 | `queue.size` | `number` | Number of pending runs on the server. |
 | `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
 | `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
+
+## `useSuspenseStream`
+
+`useSuspenseStream` is a companion hook to `useStream` that integrates with React's [Suspense](https://react.dev/reference/react/Suspense) and [Error Boundary](https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary) protocols. Instead of handling loading and error states inside your component, you declare them in parent boundaries:
+
+```tsx
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+import { useSuspenseStream } from "@langchain/react";
+
+function App() {
+  return (
+    <ErrorBoundary
+      fallback={({ error, resetErrorBoundary }) => (
+        <div>
+          <p>{error.message}</p>
+          <button onClick={resetErrorBoundary}>Retry</button>
+        </div>
+      )}
+    >
+      <Suspense fallback={<Spinner />}>
+        <Chat />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function Chat() {
+  // No isLoading/error checks needed — Suspense and ErrorBoundary handle them.
+  const { messages, submit, isStreaming } = useSuspenseStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+  });
+
+  return (
+    <div>
+      {messages.map((msg, i) => (
+        <div key={msg.id ?? i}>{msg.content}</div>
+      ))}
+      {isStreaming && <TypingIndicator />}
+
+      <button
+        onClick={() =>
+          void submit({
+            messages: [{ type: "human", content: "Hello!" }],
+          })
+        }
+      >
+        Send
+      </button>
+    </div>
+  );
+}
+```
+
+### How it works
+
+- **Suspends** while the initial thread history is loading (e.g. when a `threadId` is provided and the thread data is being fetched). The nearest `<Suspense>` boundary renders its fallback during this time.
+- **Throws errors** to the nearest Error Boundary when the stream encounters an error outside of active streaming.
+- **Does not suspend during streaming.** Streaming is incremental — messages arrive progressively and the UI must update in real time. The `isStreaming` flag indicates whether tokens are currently arriving.
+
+### Options
+
+`useSuspenseStream` accepts the same options as `useStream` (LangGraph Platform mode), plus:
+
+| Option | Type | Description |
+|---|---|---|
+| `suspenseCache` | `SuspenseCache` | Optional cache instance for Suspense history prefetching. Useful in tests to avoid cross-test cache sharing. |
+
+### Return Values
+
+The return type is identical to `useStream` except:
+
+| Removed | Reason |
+|---|---|
+| `isLoading` | Replaced by `isStreaming`; initial loading is handled by Suspense. |
+| `error` | Thrown to the nearest Error Boundary instead. |
+| `isThreadLoading` | Handled by Suspense (the component suspends until the thread is ready). |
+
+| Added | Type | Description |
+|---|---|---|
+| `isStreaming` | `boolean` | `true` while the stream is receiving data. The component is never suspended during streaming. |
+
+All other properties (`messages`, `submit`, `stop`, `interrupt`, `branch`, `switchThread`, `queue`, etc.) are unchanged.
+
+### Thread-switching with Suspense
+
+`useSuspenseStream` works naturally with thread switching. When the `threadId` changes, the component suspends while the new thread's history loads, and `<Suspense>` shows a smooth skeleton/fallback transition:
+
+```tsx
+function App() {
+  const [threadId, setThreadId] = useState<string | null>(null);
+
+  return (
+    <div className="flex">
+      <ThreadSidebar onSelect={setThreadId} />
+
+      <Suspense fallback={<ThreadSkeleton />}>
+        <ChatPanel threadId={threadId} />
+      </Suspense>
+    </div>
+  );
+}
+
+function ChatPanel({ threadId }: { threadId: string | null }) {
+  const { messages, submit, isStreaming } = useSuspenseStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+    threadId,
+  });
+
+  return <MessageList messages={messages} />;
+}
+```
+
+### Error recovery
+
+When an error is thrown to an Error Boundary, call `invalidateSuspenseCache()` in the boundary's reset handler so the retry triggers a fresh data fetch:
+
+```tsx
+import { invalidateSuspenseCache } from "@langchain/react";
+
+<ErrorBoundary
+  onReset={() => invalidateSuspenseCache()}
+  fallbackRender={({ error, resetErrorBoundary }) => (
+    <div>
+      <p>{error.message}</p>
+      <button onClick={resetErrorBoundary}>Retry</button>
+    </div>
+  )}
+>
+  <Suspense fallback={<Spinner />}>
+    <Chat />
+  </Suspense>
+</ErrorBoundary>
+```
+
+For test isolation, you can create and pass a dedicated cache instance:
+
+```tsx
+import { createSuspenseCache, useSuspenseStream } from "@langchain/react";
+
+const suspenseCache = createSuspenseCache();
+
+function Chat() {
+  const stream = useSuspenseStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+    suspenseCache,
+  });
+  // ...
+}
+```
 
 ## Type Safety
 
@@ -327,31 +480,110 @@ function Chat() {
 }
 ```
 
-The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management.
+The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
-## React UI (Advanced)
+## Sharing State with `StreamProvider`
 
-The `@langchain/react/react-ui` sub-package provides utilities for rendering server-defined UI components:
+When multiple components in a tree need access to the same stream (a message list, a header with loading status, an input bar), use `StreamProvider` and `useStreamContext` to avoid prop drilling:
 
 ```tsx
-import { useStreamContext, LoadExternalComponent } from "@langchain/react/react-ui";
-import { uiMessageReducer } from "@langchain/react/react-ui";
-import type { UIMessage } from "@langchain/react/react-ui";
+import { StreamProvider, useStreamContext } from "@langchain/react";
+
+function App() {
+  return (
+    <StreamProvider assistantId="agent" apiUrl="http://localhost:2024">
+      <ChatHeader />
+      <MessageList />
+      <MessageInput />
+    </StreamProvider>
+  );
+}
+
+function ChatHeader() {
+  const { isLoading, error } = useStreamContext();
+  return (
+    <header>
+      <h1>Chat</h1>
+      {isLoading && <span>Thinking...</span>}
+      {error != null && <span>Error occurred</span>}
+    </header>
+  );
+}
+
+function MessageList() {
+  const { messages, getMessagesMetadata } = useStreamContext();
+  return (
+    <div>
+      {messages.map((msg, i) => (
+        <div key={msg.id ?? i}>{msg.content}</div>
+      ))}
+    </div>
+  );
+}
+
+function MessageInput() {
+  const { submit, isLoading } = useStreamContext();
+  return (
+    <button
+      disabled={isLoading}
+      onClick={() =>
+        void submit({
+          messages: [{ type: "human", content: "Hello!" }],
+        })
+      }
+    >
+      Send
+    </button>
+  );
+}
 ```
 
-- **`useStreamContext`** - Access the stream context from deeply nested components
-- **`LoadExternalComponent`** - Render UI components defined by the server
-- **`uiMessageReducer`** - Reducer for managing UI message state
+### Type Safety with `StreamProvider`
 
-A server-side helper is also available:
+Pass agent or state types to both `StreamProvider` and `useStreamContext`:
 
 ```tsx
-import { typedUi } from "@langchain/react/react-ui/server";
+import type { agent } from "./agent";
+
+function App() {
+  return (
+    <StreamProvider<typeof agent>
+      assistantId="agent"
+      apiUrl="http://localhost:2024"
+    >
+      <Chat />
+    </StreamProvider>
+  );
+}
+
+function Chat() {
+  const { toolCalls } = useStreamContext<typeof agent>();
+  // toolCalls are fully typed from the agent's tools
+}
+```
+
+### Multiple Agents
+
+Nest providers for multi-agent scenarios — each subtree gets its own isolated stream:
+
+```tsx
+function MultiAgentApp() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <StreamProvider assistantId="researcher" apiUrl="http://localhost:2024">
+        <ResearchPanel />
+      </StreamProvider>
+      <StreamProvider assistantId="writer" apiUrl="http://localhost:2024">
+        <WriterPanel />
+      </StreamProvider>
+    </div>
+  );
+}
 ```
 
 ## Playground
 
-For complete end-to-end examples with full agentic UIs, visit the [LangGraph Playground](https://github.com/langchain-ai/langgraphjs).
+For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).
 
 ## License
 

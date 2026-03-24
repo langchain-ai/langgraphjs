@@ -1,6 +1,6 @@
 # @langchain/vue
 
-Vue SDK for building AI-powered applications with [LangChain](https://js.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraphjs/). Provides a `useStream` composable that manages streaming, state, branching, and interrupts using Vue's reactivity system.
+Vue SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` composable that manages streaming, state, branching, and interrupts using Vue's reactivity system.
 
 ## Installation
 
@@ -24,12 +24,12 @@ const { messages, submit, isLoading } = useStream({
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       {{ msg.content }}
     </div>
 
     <button
-      :disabled="isLoading.value"
+      :disabled="isLoading"
       @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
     >
       Send
@@ -58,7 +58,7 @@ const { messages, submit, isLoading } = useStream({
 
 ## Return Values
 
-All reactive properties are Vue `computed` or `ref` values.
+All reactive properties are Vue `computed` or `ref` values that [auto-unwrap](https://vuejs.org/guide/essentials/reactivity-fundamentals.html#ref-unwrapping-in-templates) in `<template>` blocks — use them directly (e.g. `messages`, not `messages.value`). The `queue` object is `reactive`, so its nested properties also auto-unwrap in templates.
 
 | Property | Type | Description |
 |---|---|---|
@@ -73,8 +73,8 @@ All reactive properties are Vue `computed` or `ref` values.
 | `setBranch(branch)` | `function` | Switch to a different conversation branch. |
 | `getMessagesMetadata(msg, index?)` | `function` | Get branching and checkpoint metadata for a message. |
 | `switchThread(id)` | `(id: string \| null) => void` | Switch to a different thread. Pass `null` to start a new thread on next submit. |
-| `queue.entries` | `Ref<ReadonlyArray<QueueEntry>>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
-| `queue.size` | `Ref<number>` | Number of pending runs on the server. |
+| `queue.entries` | `ReadonlyArray<QueueEntry>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
+| `queue.size` | `number` | Number of pending runs on the server. |
 | `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
 | `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
 
@@ -134,12 +134,12 @@ const { messages, interrupt, submit } = useStream<
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       {{ msg.content }}
     </div>
 
-    <div v-if="interrupt.value">
-      <p>{{ interrupt.value.value.question }}</p>
+    <div v-if="interrupt">
+      <p>{{ interrupt.value.question }}</p>
       <button @click="submit(null, { command: { resume: 'Approved' } })">
         Approve
       </button>
@@ -171,7 +171,7 @@ const { messages, submit, getMessagesMetadata, setBranch } = useStream({
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       <p>{{ msg.content }}</p>
 
       <template v-if="getMessagesMetadata(msg, i)?.branchOptions">
@@ -221,17 +221,17 @@ const { messages, submit, isLoading, queue, switchThread } = useStream({
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       {{ msg.content }}
     </div>
 
-    <div v-if="queue.size.value > 0">
-      <p>{{ queue.size.value }} message(s) queued</p>
+    <div v-if="queue.size > 0">
+      <p>{{ queue.size }} message(s) queued</p>
       <button @click="queue.clear()">Clear Queue</button>
     </div>
 
     <button
-      :disabled="isLoading.value"
+      :disabled="isLoading"
       @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
     >
       Send
@@ -270,17 +270,17 @@ const {
 
 <template>
   <div>
-    <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    <div v-for="(msg, i) in messages" :key="msg.id ?? i">
       <p>{{ msg.content }}</p>
       <span v-if="getMessagesMetadata(msg, i)?.streamMetadata">
         Node: {{ getMessagesMetadata(msg, i)?.streamMetadata?.langgraph_node }}
       </span>
     </div>
 
-    <p>Current branch: {{ branch.value }}</p>
+    <p>Current branch: {{ branch }}</p>
 
     <button
-      :disabled="isLoading.value"
+      :disabled="isLoading"
       @click="submit({ messages: [{ type: 'human', content: 'Hello!' }] })"
     >
       Send
@@ -289,11 +289,114 @@ const {
 </template>
 ```
 
-The custom transport interface returns the same properties as the standard `useStream` composable, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management.
+The custom transport interface returns the same properties as the standard `useStream` composable, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+
+## Sharing State with `provideStream`
+
+When multiple components need access to the same stream (a message list, a header, an input bar), use `provideStream` and `useStreamContext` to share a single stream instance via Vue's `provide`/`inject`:
+
+```vue
+<!-- ChatContainer.vue -->
+<script setup lang="ts">
+import { provideStream } from "@langchain/vue";
+
+provideStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+});
+</script>
+
+<template>
+  <ChatHeader />
+  <MessageList />
+  <MessageInput />
+</template>
+```
+
+```vue
+<!-- MessageList.vue -->
+<script setup lang="ts">
+import { useStreamContext } from "@langchain/vue";
+
+const { messages } = useStreamContext();
+</script>
+
+<template>
+  <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+    {{ msg.content }}
+  </div>
+</template>
+```
+
+```vue
+<!-- MessageInput.vue -->
+<script setup lang="ts">
+import { useStreamContext } from "@langchain/vue";
+import { ref } from "vue";
+
+const { submit, isLoading } = useStreamContext();
+const input = ref("");
+
+function send() {
+  submit({ messages: [{ type: "human", content: input.value }] });
+  input.value = "";
+}
+</script>
+
+<template>
+  <form @submit.prevent="send">
+    <textarea v-model="input" />
+    <button :disabled="isLoading.value" type="submit">Send</button>
+  </form>
+</template>
+```
+
+### App-Level Configuration with `LangChainPlugin`
+
+Use the Vue plugin to set default configuration for all `useStream` calls:
+
+```typescript
+import { createApp } from "vue";
+import { LangChainPlugin } from "@langchain/vue";
+import App from "./App.vue";
+
+const app = createApp(App);
+app.use(LangChainPlugin, {
+  apiUrl: "http://localhost:2024",
+});
+app.mount("#app");
+```
+
+Then in any component, `apiUrl` is inherited automatically:
+
+```vue
+<script setup lang="ts">
+import { useStream } from "@langchain/vue";
+
+const stream = useStream({ assistantId: "agent" });
+</script>
+```
+
+### Multiple Agents
+
+Nest `provideStream` calls for multi-agent scenarios — Vue's `provide`/`inject` scoping ensures each subtree gets its own stream:
+
+```vue
+<!-- ResearchPanel.vue -->
+<script setup lang="ts">
+import { provideStream } from "@langchain/vue";
+provideStream({ assistantId: "researcher", apiUrl: "http://localhost:2024" });
+</script>
+
+<template>
+  <MessageList />
+  <MessageInput />
+</template>
+```
 
 ## Playground
 
-For complete end-to-end examples with full agentic UIs, visit the [LangGraph Playground](https://github.com/langchain-ai/langgraphjs).
+For complete end-to-end examples with full agentic UIs, visit the [LangChain UI Playground](https://docs.langchain.com/playground).
 
 ## License
 

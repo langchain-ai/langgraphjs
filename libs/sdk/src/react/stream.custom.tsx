@@ -18,7 +18,7 @@ import type { UseStreamCustom } from "./types.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
-import { Interrupt } from "../schema.js";
+import { Interrupt, type ThreadState } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
@@ -96,6 +96,25 @@ export class FetchStreamTransport<
 
     return IterableReadableStream.fromReadableStream(stream);
   }
+}
+
+function createCustomTransportThreadState<
+  StateType extends Record<string, unknown>
+>(values: StateType, threadId: string): ThreadState<StateType> {
+  return {
+    values,
+    next: [],
+    tasks: [],
+    metadata: undefined,
+    created_at: null,
+    checkpoint: {
+      thread_id: threadId,
+      checkpoint_id: null,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    },
+    parent_checkpoint: null,
+  };
 }
 
 export function useStreamCustom<
@@ -229,7 +248,17 @@ export function useStreamCustom<
         initialValues: {} as StateType,
         callbacks: options,
 
-        onSuccess: () => undefined,
+        onSuccess: () => {
+          if (!usableThreadId) return undefined;
+
+          const finalValues = stream.values ?? historyValues;
+          options.onFinish?.(
+            createCustomTransportThreadState(finalValues, usableThreadId),
+            undefined
+          );
+
+          return undefined;
+        },
         onError(error) {
           options.onError?.(error, undefined);
         },

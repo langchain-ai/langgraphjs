@@ -1,6 +1,6 @@
 {
   "name": "@langchain/svelte",
-  "version": "0.1.3",
+  "version": "0.3.0",
   "description": "Svelte integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -30,15 +30,13 @@
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
     "@langchain/langgraph-checkpoint": "workspace:^",
-    "@langchain/scripts": "^0.1.4",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
-    "@tsconfig/recommended": "^1.0.13",
     "@types/node": "^25.4.0",
     "@typescript-eslint/eslint-plugin": "^6.12.0",
     "@typescript-eslint/parser": "^6.12.0",
     "@vitest/browser": "^4.0.18",
     "@vitest/browser-webdriverio": "^4.0.18",
-    "deepagents": "^1.8.1",
+    "deepagents": "^1.8.3",
     "eslint": "^8.33.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.6.0",
@@ -57,7 +55,7 @@
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.27",
-    "svelte": "^4.0.0 || ^5.0.0"
+    "svelte": "^5.0.0"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

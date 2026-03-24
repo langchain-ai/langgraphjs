@@ -24,13 +24,11 @@
     threadId,
     onThreadId,
   });
-
-  const { isLoading } = stream;
 </script>
 
 <div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <div data-testid="thread-id">Client ready</div>
   <button

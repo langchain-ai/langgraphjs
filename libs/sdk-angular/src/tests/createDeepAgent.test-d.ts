@@ -259,7 +259,7 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const subagent = [...stream.subagents.values()][0];
+    const subagent = [...stream.subagents().values()][0];
     expectTypeOf(subagent.id).toEqualTypeOf<string>();
     expectTypeOf(subagent.status).toEqualTypeOf<
       "pending" | "running" | "complete" | "error"
@@ -288,7 +288,7 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const subagent = [...stream.subagents.values()][0];
+    const subagent = [...stream.subagents().values()][0];
     expectTypeOf(subagent.messages).toBeArray();
   });
 

@@ -419,8 +419,12 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   private buildExecution(
     base: SubagentStreamBase<ToolCall>
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
-    // Get fresh messages from the manager
-    const messages = this.getMessagesForSubagent(base.id);
+    // Get fresh messages from the streaming manager (populated during live streaming).
+    // Fall back to base.messages, which is populated by updateSubagentFromSubgraphState
+    // when restoring history after page reload.
+    const streamingMessages = this.getMessagesForSubagent(base.id);
+    const messages =
+      streamingMessages.length > 0 ? streamingMessages : base.messages;
     return this.createSubagentStream({
       ...base,
       messages,
@@ -879,7 +883,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       return;
     }
 
-    // Build a map of tool_call_id -> tool message content for quick lookup
+    // Build a map of tool_call_id -> tool message data for quick lookup
     const toolResults = new Map<
       string,
       { content: string; status: "success" | "error" }
@@ -946,7 +950,9 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
             : "complete"
           : "running";
 
-        // Create the subagent execution
+        // Create the subagent execution stub. Messages and namespace are empty
+        // here; fetchSubagentHistory will derive the subgraph checkpoint_ns by
+        // inspecting intermediate history tasks and populate messages async.
         const execution: SubagentStreamBase<ToolCall> = {
           id: toolCall.id,
           toolCall: subagentToolCall,
@@ -956,7 +962,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
             isComplete && status === "complete" ? toolResult.content : null,
           error: isComplete && status === "error" ? toolResult.content : null,
           namespace: [],
-          messages: [], // Internal messages are not available from history
+          messages: [], // Restored asynchronously via fetchSubagentHistory
           aiMessageId: (message.id as string) ?? null,
           parentId: null,
           depth: 0,
@@ -972,6 +978,36 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     if (hasChanges) {
       this.onSubagentChange?.();
     }
+  }
+
+  /**
+   * Update a reconstructed subagent's messages and values from its subgraph checkpoint state.
+   *
+   * This is called after fetching the subgraph's history to restore the internal
+   * conversation that was lost on page refresh. Only updates if messages are
+   * currently empty (does not overwrite live streaming data).
+   *
+   * @param toolCallId - The tool call ID identifying the subagent
+   * @param messages - Messages from the subgraph's latest checkpoint
+   * @param values - Full state values from the subgraph's latest checkpoint
+   * @returns true if the subagent was updated, false otherwise
+   */
+  updateSubagentFromSubgraphState(
+    toolCallId: string,
+    messages: Message[],
+    values?: Record<string, unknown>
+  ): boolean {
+    const subagent = this.subagents.get(toolCallId);
+    if (!subagent) return false;
+    // Don't overwrite messages from active streaming
+    if (subagent.messages.length > 0) return false;
+    if (messages.length === 0) return false;
+
+    subagent.messages = messages as Message<ToolCall>[];
+    if (values != null) subagent.values = values;
+
+    this.onSubagentChange?.();
+    return true;
   }
 
   /**
