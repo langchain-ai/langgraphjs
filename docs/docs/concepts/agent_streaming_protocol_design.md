@@ -15,7 +15,9 @@
 - [4. Why WebDriver BiDi Is the Right Structural Model](#4-why-webdriver-bidi-is-the-right-structural-model)
 - [5. Why Not A2A or ACP](#5-why-not-a2a-or-acp)
 - [6. Proposed Protocol Design](#6-proposed-protocol-design)
-- [7. Migration Path](#7-migration-path)
+- [7. Multimodal Streaming](#7-multimodal-streaming)
+- [8. Comparison to Other Streaming Protocols](#8-comparison-to-other-streaming-protocols)
+- [9. Migration Path](#9-migration-path)
 
 ---
 
@@ -26,6 +28,14 @@ scenarios, a single root agent may spawn **hundreds of concurrent subagents**,
 each producing streaming output (LLM tokens, tool calls, state updates, custom
 events). The frontend needs to consume this data in real time without performance
 degradation.
+
+Additionally, agents are becoming **multimodal**. In a single run, subagent A
+may stream text tokens, subagent B may produce a real-time audio stream
+(e.g., voice synthesis, audio analysis), and subagent C may generate video
+frames or image artifacts. The protocol must handle these heterogeneous
+modalities — each with fundamentally different data formats, bandwidth
+requirements, and latency constraints — within the same hierarchical
+streaming architecture.
 
 The current streaming architecture has several bottlenecks at this scale:
 
@@ -439,7 +449,7 @@ SubscribeParams = {
 }
 
 Channel = "values" / "updates" / "messages" / "tools" /
-          "custom" / "lifecycle" / "debug" / "checkpoints"
+          "custom" / "lifecycle" / "debug" / "checkpoints" / "media"
 
 ; --- Agent module (mirrors BiDi browsingContext) ---
 
@@ -542,6 +552,7 @@ Channels map to the existing `StreamMode` values plus new lifecycle events:
 | `tools` | Tool lifecycle events | `{ event: "start"\|"end"\|"error", name: string, ... }` |
 | `custom` | User-defined payloads | `unknown` |
 | `lifecycle` | **New**: Subagent lifecycle | `{ event: "spawned"\|"running"\|"completed"\|"failed"\|"interrupted", agentId: string }` |
+| `media` | **New**: Binary media streams | `media.streamStart` / `media.streamEnd` / `media.artifact` events + binary frames (see [section 7](#7-multimodal-streaming)) |
 | `debug` | Verbose execution traces | `Record<string, unknown>` |
 | `checkpoints` | Checkpoint metadata | `{ values, next, config, metadata, ... }` |
 
@@ -654,7 +665,422 @@ Before subscribing, clients can discover the current agent tree:
 
 ---
 
-## 7. Migration Path
+## 7. Multimodal Streaming
+
+### 7.1 The Problem
+
+Today's streaming protocols — including LangGraph's current implementation —
+treat all output as JSON-serializable text. This assumption breaks when agents
+produce binary media:
+
+| Modality | Data Format | Bandwidth | Latency Requirement |
+|----------|-------------|-----------|---------------------|
+| Text (LLM tokens) | UTF-8 / JSON | ~1-10 KB/s | Tolerant (~100ms chunks) |
+| Audio (speech synthesis, analysis) | PCM / Opus / MP3 binary | ~32-128 KB/s | Strict (~20-50ms for real-time) |
+| Video (screen capture, generation) | H.264 / VP8 / raw frames | ~500 KB-5 MB/s | Strict (~33ms for 30fps) |
+| Images (generated artifacts) | PNG / JPEG / WebP binary | ~50-500 KB per image | Tolerant (whole-file delivery) |
+
+A protocol that forces audio through `JSON.stringify(base64Encode(pcmBuffer))`
+adds ~33% size overhead from Base64, plus JSON serialization/parsing cost on
+every frame. At 128 KB/s of raw audio, that becomes ~170 KB/s on the wire with
+Base64 — and the CPU cost of encoding/decoding dwarfs the actual audio
+processing.
+
+### 7.2 Mixed-Mode Framing
+
+WebSocket natively supports two frame types: **text** (opcode 0x1, UTF-8) and
+**binary** (opcode 0x2, raw bytes). Our protocol uses both:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    WebSocket Connection                      │
+├─────────────────────────────┬───────────────────────────────┤
+│     Text Frames (JSON)      │      Binary Frames            │
+│                             │                               │
+│  Commands, responses,       │  Audio chunks, video frames,  │
+│  text/tool/lifecycle events │  image data, file artifacts   │
+└─────────────────────────────┴───────────────────────────────┘
+```
+
+**Binary frame header** (fixed 16-byte prefix on every binary frame):
+
+```
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+├─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│  Stream ID (32-bit)         │  Sequence (32-bit)              │
+├─────────────────────────────┼───────────────────────────────  │
+│  Timestamp µs (32-bit)      │  Payload length (32-bit)        │
+├─────────────────────────────┼─────────────────────────────────┤
+│  Payload (variable length)                                    │
+└───────────────────────────────────────────────────────────────┘
+```
+
+- **Stream ID**: Maps to a media stream opened via a JSON command (see below).
+  The client can correlate this to a namespace + modality.
+- **Sequence**: Monotonically increasing per stream, enabling gap detection
+  and reordering if needed.
+- **Timestamp**: Microsecond offset from stream start, enabling synchronized
+  playback across streams.
+- **Payload**: Raw media bytes (PCM samples, encoded video frames, image data).
+
+This design avoids Base64 overhead entirely. A 20ms chunk of 24kHz 16-bit PCM
+audio is 960 bytes of payload + 16 bytes of header = 976 bytes total, compared
+to ~1,300 bytes with Base64+JSON wrapping.
+
+### 7.3 Media Stream Lifecycle
+
+Media streams are opened and closed via JSON commands on the text channel,
+following BiDi's pattern of commands that set up stateful resources:
+
+```typescript
+// Server → Client: a subagent has started producing audio
+{
+  type: "event",
+  method: "media.streamStart",
+  params: {
+    namespace: ["agent_b"],
+    streamId: 42,
+    mediaType: "audio",
+    codec: "pcm_s16le",
+    sampleRate: 24000,
+    channels: 1,
+    metadata: { voice: "alloy", language: "en-US" }
+  }
+}
+
+// Binary frames with streamId=42 follow...
+
+// Server → Client: audio stream completed
+{
+  type: "event",
+  method: "media.streamEnd",
+  params: {
+    namespace: ["agent_b"],
+    streamId: 42,
+    reason: "completed",
+    durationMs: 4500
+  }
+}
+```
+
+For video and images:
+
+```typescript
+// Video stream from a screen-capture subagent
+{
+  type: "event",
+  method: "media.streamStart",
+  params: {
+    namespace: ["agent_c"],
+    streamId: 43,
+    mediaType: "video",
+    codec: "h264",
+    width: 1280,
+    height: 720,
+    frameRate: 30
+  }
+}
+
+// Single image artifact (non-streaming)
+{
+  type: "event",
+  method: "media.artifact",
+  params: {
+    namespace: ["agent_d"],
+    streamId: 44,
+    mediaType: "image",
+    mimeType: "image/png",
+    width: 1024,
+    height: 768,
+    sizeBytes: 245760
+  }
+}
+// Followed by binary frame(s) with streamId=44, then media.streamEnd
+```
+
+### 7.4 Subscription Model for Multimodal Streams
+
+The subscription system extends naturally. Clients subscribe to media channels
+the same way they subscribe to text channels:
+
+```typescript
+// Subscribe to audio from agent_b and text from agent_a
+{
+  id: 10,
+  method: "subscription.subscribe",
+  params: {
+    channels: ["messages"],
+    namespaces: [["agent_a"]]
+  }
+}
+{
+  id: 11,
+  method: "subscription.subscribe",
+  params: {
+    channels: ["media"],
+    namespaces: [["agent_b"]],
+    mediaTypes: ["audio"]          // Only audio, not video
+  }
+}
+```
+
+A client that only wants text never receives binary frames. A monitoring
+dashboard subscribes to `lifecycle` globally to see all agents, then
+selectively subscribes to `media` for the specific agent the user clicks on.
+
+### 7.5 SSE Transport Fallback for Media
+
+SSE cannot carry binary frames. When the transport is SSE (no WebSocket), media
+data falls back to one of:
+
+| Strategy | Mechanism | Trade-off |
+|----------|-----------|-----------|
+| **Base64 inline** | Media chunks sent as Base64-encoded JSON events | +33% overhead, works everywhere |
+| **Parallel binary channel** | Server provides a URL per media stream; client opens a `fetch()` stream for binary data | Zero encoding overhead, requires CORS and separate connection management |
+| **Upgrade hint** | Server sends a `transport.upgradeAvailable` event suggesting WebSocket | Client can decide to upgrade for media-heavy workloads |
+
+The in-process transport passes `ArrayBuffer` / `Buffer` objects directly with
+no serialization.
+
+### 7.6 Synchronized Multimodal Playback
+
+When subagent B produces audio and subagent A produces the corresponding text
+transcript, the client needs to synchronize them. The protocol supports this
+via **correlation IDs** in event metadata:
+
+```typescript
+// Text event with correlation to audio stream
+{
+  type: "event",
+  method: "messages.delta",
+  params: {
+    namespace: ["agent_b"],
+    timestamp: 1711454400000,
+    data: {
+      message: { content: "Hello, how can I help?", type: "ai" },
+      metadata: {
+        correlatedStreamId: 42,       // Links to audio stream 42
+        audioOffsetMs: 0,             // This text corresponds to audio at 0ms
+        audioEndMs: 2100              // Through 2100ms
+      }
+    }
+  }
+}
+```
+
+This enables the frontend to highlight text as audio plays, or to seek audio
+when the user clicks a text segment.
+
+### 7.7 CDDL Extensions for Multimodal
+
+```cddl
+; --- Media module ---
+
+media.streamStart = {
+  type: "event",
+  method: "media.streamStart",
+  params: MediaStreamStartParams,
+}
+
+MediaStreamStartParams = {
+  namespace: [* text],
+  streamId: js-uint,
+  mediaType: MediaType,
+  codec: text,
+  ? sampleRate: uint,             ; Audio: samples per second
+  ? channels: uint,               ; Audio: channel count
+  ? width: uint,                  ; Video/image: pixel width
+  ? height: uint,                 ; Video/image: pixel height
+  ? frameRate: uint,              ; Video: frames per second
+  ? mimeType: text,               ; Image: MIME type
+  ? sizeBytes: uint,              ; Image: total size (for progress)
+  ? metadata: {* text => any},    ; Codec-specific metadata
+}
+
+MediaType = "audio" / "video" / "image"
+
+media.streamEnd = {
+  type: "event",
+  method: "media.streamEnd",
+  params: MediaStreamEndParams,
+}
+
+MediaStreamEndParams = {
+  namespace: [* text],
+  streamId: js-uint,
+  reason: "completed" / "failed" / "cancelled",
+  ? durationMs: uint,
+  ? error: text,
+}
+
+media.artifact = {
+  type: "event",
+  method: "media.artifact",
+  params: MediaStreamStartParams,  ; Same shape, used for non-streaming media
+}
+
+; Binary frame header (not JSON — fixed 16 bytes before payload)
+; BinaryFrameHeader = [
+;   streamId: uint32,
+;   sequence: uint32,
+;   timestampMicros: uint32,
+;   payloadLength: uint32,
+; ]
+
+; Extended subscription params
+SubscribeParams //= {
+  channels: [+ Channel],
+  ? namespaces: [* [* text]],
+  ? depth: uint,
+  ? mediaTypes: [+ MediaType],    ; Filter media by type
+}
+
+Channel /= "media"               ; Add media to channel choices
+```
+
+---
+
+## 8. Comparison to Other Streaming Protocols
+
+### 8.1 Vercel AI SDK Stream Protocol
+
+The [Vercel AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol)
+defines two streaming protocols: a plain-text stream and a "data stream"
+using SSE. The data stream protocol sends typed JSON events
+(`text-delta`, `tool-input-start`, `tool-output-available`, `file`, etc.)
+over SSE.
+
+| Dimension | Vercel AI SDK | Agent Streaming Protocol |
+|-----------|---------------|--------------------------|
+| **Scope** | Single LLM call → single frontend component | Hierarchical multi-agent system → multiple frontend consumers |
+| **Architecture** | Flat event stream, one message at a time | Namespace tree with subscription-based filtering |
+| **Multi-agent** | No concept of subagents or concurrent tasks | First-class namespace hierarchy, lifecycle tracking |
+| **Filtering** | None — client receives all events | Server-side subscription filtering by namespace + channel + depth |
+| **Direction** | Unidirectional (SSE only) | Bidirectional (WebSocket primary, SSE fallback) |
+| **Media** | `file` part with URL reference; no binary streaming | Native binary frames for audio/video with zero Base64 overhead |
+| **Backpressure** | None | Configurable per-connection flow control |
+| **Reconnection** | Client-side retry via `chatResume` | Protocol-level reconnect with event buffer replay |
+| **Schema** | Implicit TypeScript types, no formal grammar | CDDL formal grammar → codegen for JS, Python, Java |
+| **Transport** | SSE only | WebSocket + SSE + in-process |
+
+**Why our protocol is better for multi-agent streaming**:
+
+The Vercel AI SDK protocol is designed for a specific, simpler problem: one LLM
+call producing one response stream consumed by one React hook (`useChat`). It
+has no concept of multiple concurrent agents, no way to subscribe to a subset
+of a complex execution, and no support for binary media streaming. When you
+have 200 subagents running concurrently and the user wants to watch 3 of them,
+the Vercel protocol would require 200 separate SSE connections (one per agent)
+or a single connection flooding the client with all events. Our protocol handles
+this with a single connection plus server-side subscription filtering.
+
+The Vercel protocol also lacks a formal schema. Its event types (`text-delta`,
+`tool-input-start`, etc.) are defined implicitly through TypeScript code and
+documentation examples. With implementations in JS, Python, and Java, we need
+a single canonical grammar (CDDL) from which all language bindings are
+generated — not three manually-synchronized type definitions.
+
+### 8.2 Anthropic Messages Streaming
+
+Anthropic's [Messages API streaming](https://docs.anthropic.com/claude/reference/streaming)
+uses SSE with typed events (`message_start`, `content_block_start`,
+`content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`).
+
+| Dimension | Anthropic Streaming | Agent Streaming Protocol |
+|-----------|---------------------|--------------------------|
+| **Scope** | Single API call | Multi-agent hierarchy |
+| **Architecture** | Linear event sequence (start → deltas → stop) | Tree-structured events with concurrent branches |
+| **Multi-agent** | None | First-class |
+| **Content types** | `text`, `tool_use`, `thinking` blocks | Text, tools, state, lifecycle, custom, media (audio/video/image) |
+| **Binary media** | Not supported | Native binary frames |
+| **Filtering** | None | Subscription-based |
+| **Direction** | Unidirectional | Bidirectional |
+
+**Why our protocol is better**: Anthropic's protocol is an LLM API protocol,
+not an agent protocol. It models a single model call with a linear sequence of
+content blocks. There is no concept of nested execution, concurrent tasks, or
+selective observation. It is the right design for "stream one model response"
+and the wrong design for "stream a tree of 200 concurrent agent executions."
+
+### 8.3 OpenAI Realtime API
+
+OpenAI's [Realtime API](https://platform.openai.com/docs/guides/realtime-websocket)
+uses WebSocket with JSON events for text and Base64-encoded audio within JSON
+payloads. It also supports WebRTC for browser-side audio.
+
+| Dimension | OpenAI Realtime | Agent Streaming Protocol |
+|-----------|-----------------|--------------------------|
+| **Scope** | Single real-time conversation session | Multi-agent hierarchy |
+| **Architecture** | Session with conversation items | Namespace tree with subscription filtering |
+| **Multi-agent** | None | First-class |
+| **Audio format** | Base64 in JSON (WebSocket) or WebRTC media tracks | Native binary frames — zero Base64 overhead |
+| **Video** | Not supported (input only via images) | Native binary video streaming |
+| **Filtering** | None — session receives all events | Subscription-based |
+| **Session limits** | 60-minute maximum | No inherent session limit |
+| **Binary efficiency** | Base64 adds ~33% overhead on every audio chunk | Raw binary frames with 16-byte header |
+
+**Why our protocol is better**: OpenAI's Realtime API is built for one
+conversation with one model. Its audio handling (Base64 in JSON) adds
+unnecessary overhead that becomes significant at scale — 200 concurrent
+audio-producing subagents would generate ~33% more wire traffic than necessary.
+Our protocol uses native WebSocket binary frames with a minimal fixed header,
+and the subscription model means a client only receives audio from the
+subagents it's actively listening to.
+
+### 8.4 A2A Protocol (Revisited for Multimodal)
+
+A2A supports multimodal content through its `Part` abstraction (text, file,
+structured data), but:
+
+| Dimension | A2A | Agent Streaming Protocol |
+|-----------|-----|--------------------------|
+| **Media delivery** | File `Part` with inline Base64 or URI reference | Native binary frames with stream lifecycle |
+| **Streaming media** | Not supported — files are delivered as complete artifacts | Real-time binary streaming with sequence numbers and timestamps |
+| **Audio sync** | No concept | Correlation IDs linking text ↔ audio timestamps |
+| **Modality filtering** | None | `mediaTypes` filter in subscription |
+| **Concurrent streams** | One task = one stream | Multiple named binary streams per connection, scoped to namespace |
+
+**Why our protocol is better for multimodal**: A2A treats media as artifacts —
+complete files delivered after the fact. It has no concept of real-time audio
+streaming, frame-by-frame video delivery, or synchronized multimodal playback.
+An agent producing live speech cannot stream audio through A2A in real time; it
+must complete the audio, package it as a file Part, and deliver it as a finished
+artifact.
+
+### 8.5 Summary: Protocol Positioning
+
+```
+                    Multi-agent           Single-agent
+                    ┌─────────────────────┬──────────────────────┐
+                    │                     │                      │
+  Real-time         │  ★ Agent Streaming  │  OpenAI Realtime     │
+  multimodal        │    Protocol         │                      │
+  (audio/video)     │                     │                      │
+                    ├─────────────────────┼──────────────────────┤
+                    │                     │                      │
+  Text/tool         │  ★ Agent Streaming  │  Vercel AI SDK       │
+  streaming         │    Protocol         │  Anthropic Messages  │
+                    │                     │                      │
+                    ├─────────────────────┼──────────────────────┤
+                    │                     │                      │
+  Inter-agent       │  A2A                │                      │
+  (opaque)          │                     │                      │
+                    │                     │                      │
+                    └─────────────────────┴──────────────────────┘
+```
+
+Our protocol occupies the upper-left quadrant: **multi-agent, real-time,
+multimodal**. No existing protocol covers this space. The Vercel AI SDK,
+Anthropic, and OpenAI protocols are single-agent solutions. A2A is multi-agent
+but opaque and non-streaming for media. Our BiDi-modeled protocol with native
+binary frames is purpose-built for the scenario where hundreds of heterogeneous
+subagents stream text, audio, and video simultaneously to a frontend that
+selectively observes a subset of them.
+
+---
+
+## 9. Migration Path
 
 ### Phase 1: Server-Side Filtering (Non-Breaking)
 
@@ -699,22 +1125,37 @@ requiring a bounded event buffer and per-connection flow control state.
 - Per-connection backpressure state in `IterableReadableWritableStream`
 - Reconnection protocol implementation
 
+### Phase 5: Multimodal Streaming
+
+Add the `media` channel with binary frame support. This requires the WebSocket
+transport from Phase 2.
+
+**Changes required**:
+- Binary frame header serialization/deserialization (16-byte fixed prefix)
+- `media.streamStart` / `media.streamEnd` / `media.artifact` event handling
+- Stream ID registry mapping stream IDs to namespace + media metadata
+- `mediaTypes` filter in subscription params
+- SSE fallback strategy (Base64 inline or parallel binary channel)
+- Correlation ID support for synchronized multimodal playback
+- CDDL schema extensions for media types
+
 ---
 
 ## Appendix A: Protocol Comparison Matrix
 
-| Dimension | Current LangGraph | WebDriver BiDi | A2A | **Proposed (BiDi-modeled)** |
-|-----------|------------------|----------------|-----|---------------------------|
-| **Transport** | SSE / in-process | WebSocket | HTTP + SSE | WebSocket + SSE + in-process |
-| **Direction** | Unidirectional | Bidirectional | Unidirectional (SSE) + HTTP | Bidirectional (WS) / Uni + HTTP (SSE) |
-| **Filtering** | Client-side | Server-side (subscription) | None (per-task streams) | Server-side (subscription) — same as BiDi |
-| **Namespace model** | Flat array (checkpoint_ns) | Context tree | Flat (task ID) | Hierarchical namespace tree — adapted from BiDi context tree |
-| **Scoping** | All-or-nothing (subgraphs: true/false) | Per-context + per-module | Per-task | Per-namespace + per-channel + depth — mirrors BiDi scoping |
-| **Lifecycle** | Implicit (stream end) | Session lifecycle | Task state machine | Subagent lifecycle events — extends BiDi with A2A-style states |
-| **Backpressure** | None | None | None | Configurable per-connection — new for high-throughput agents |
-| **Reconnection** | None | Session restore | tasks/resubscribe | Event buffer + reconnect — adapted from A2A |
-| **Discovery** | None | browsingContext.getTree | Agent Cards | agent.getTree — adapted from BiDi |
-| **Schema** | TypeScript types | CDDL | JSON Schema / OpenAPI | CDDL → generated types for JS, Python, Java |
+| Dimension | Current LangGraph | WebDriver BiDi | A2A | Vercel AI SDK | Anthropic | OpenAI Realtime | **Proposed (BiDi-modeled)** |
+|-----------|------------------|----------------|-----|---------------|-----------|-----------------|---------------------------|
+| **Scope** | Multi-agent | Browser automation | Inter-agent | Single LLM call | Single LLM call | Single session | Multi-agent |
+| **Transport** | SSE / in-process | WebSocket | HTTP + SSE | SSE | SSE | WebSocket / WebRTC | WebSocket + SSE + in-process |
+| **Direction** | Unidirectional | Bidirectional | Uni (SSE) + HTTP | Unidirectional | Unidirectional | Bidirectional | Bidirectional |
+| **Filtering** | Client-side | Server-side (subscription) | None | None | None | None | Server-side (subscription) |
+| **Namespace model** | Flat array | Context tree | Flat (task ID) | None | None | None | Hierarchical namespace tree |
+| **Multimodal** | Text only | N/A | File Parts (artifacts) | `file` URL ref | Text + tool blocks | Base64 audio in JSON | Native binary frames |
+| **Binary streaming** | No | No | No | No | No | Base64 (+33% overhead) | Yes (16-byte header) |
+| **Audio/Video** | No | No | No | No | No | Audio only (Base64) | Audio + video + image |
+| **Backpressure** | None | None | None | None | None | None | Configurable per-connection |
+| **Reconnection** | None | Session restore | tasks/resubscribe | Client-side chatResume | None | None | Event buffer + reconnect |
+| **Schema** | TS types | CDDL | JSON Schema | Implicit TS | Implicit | OpenAPI | CDDL → JS, Python, Java |
 
 ## Appendix B: Performance Estimates
 
@@ -731,7 +1172,7 @@ For a scenario with 200 concurrent subagents, each producing ~50 events/second:
 The 20-200x reduction in client-side processing is the primary performance win,
 achieved by server-side subscription filtering alone (Phase 1).
 
-## Appendix C: Comparison to Existing Streaming Systems
+## Appendix C: Comparison to Other Transport Options
 
 ### Why Not Just Use GraphQL Subscriptions?
 
@@ -739,18 +1180,31 @@ GraphQL subscriptions offer field-level filtering and are a viable transport
 option. However, they add a query language layer that is unnecessary when the
 event schema is well-defined and the filtering model is namespace + channel
 based. The proposed protocol is simpler, has no query parsing overhead, and
-maps directly to LangGraph's internal concepts.
+maps directly to LangGraph's internal concepts. GraphQL also has no native
+binary frame support — media would still require Base64 encoding or out-of-band
+delivery.
 
 ### Why Not gRPC Streaming?
 
-gRPC bidirectional streaming would work well technically but limits browser
-compatibility (requires gRPC-Web proxy), adds protobuf compilation steps, and
-conflicts with the existing SSE-based ecosystem. The proposed protocol achieves
-similar capabilities over standard WebSocket/HTTP.
+gRPC bidirectional streaming would work well technically and handles binary data
+natively via protobuf. However, it limits browser compatibility (requires
+gRPC-Web proxy), adds protobuf compilation steps, and conflicts with the
+existing SSE-based ecosystem. The proposed protocol achieves similar
+capabilities over standard WebSocket/HTTP with broader platform reach.
+
+### Why Not WebRTC for Media?
+
+WebRTC is excellent for peer-to-peer audio/video but adds significant
+complexity (ICE negotiation, STUN/TURN servers, codec negotiation) that is
+unnecessary in a client-server agent streaming scenario. Our binary frames over
+WebSocket provide sufficient performance for server-generated media without the
+peer-to-peer infrastructure overhead. For latency-critical voice applications
+(sub-20ms), a future protocol extension could add WebRTC as an optional media
+transport alongside WebSocket binary frames.
 
 ### Relationship to Model Context Protocol (MCP)
 
 MCP connects agents to tools and data sources. It is complementary to this
-protocol—MCP handles tool/resource access while the agent streaming protocol
+protocol — MCP handles tool/resource access while the agent streaming protocol
 handles real-time execution observability. They operate at different layers
 and do not conflict.
