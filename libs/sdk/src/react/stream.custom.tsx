@@ -18,6 +18,7 @@ import type { UseStreamCustom } from "./types.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
+import { normalizeInterruptsList } from "../ui/interrupts.js";
 import { Interrupt, type ThreadState } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
@@ -285,7 +286,9 @@ export function useStreamCustom<
       ) {
         const valueInterrupts = stream.values.__interrupt__;
         if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
+        return normalizeInterruptsList(
+          valueInterrupts as Interrupt<InterruptType>[]
+        );
       }
 
       return [];

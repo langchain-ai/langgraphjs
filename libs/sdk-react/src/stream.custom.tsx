@@ -13,6 +13,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
+  normalizeInterruptsList,
   FetchStreamTransport,
   toMessageClass,
   ensureMessageInstances,
@@ -273,7 +274,9 @@ export function useStreamCustom<
       ) {
         const valueInterrupts = stream.values.__interrupt__;
         if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
+        return normalizeInterruptsList(
+          valueInterrupts as Interrupt<InterruptType>[],
+        );
       }
 
       return [];

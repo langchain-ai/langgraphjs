@@ -9,7 +9,7 @@ import {
   toMessageClass,
   ensureMessageInstances,
 } from "./messages.js";
-import { extractInterrupts } from "./interrupts.js";
+import { extractInterrupts, normalizeInterruptsList } from "./interrupts.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type {
   AnyStreamCustomOptions,
@@ -259,7 +259,9 @@ export class CustomStreamOrchestrator<
     ) {
       const valueInterrupts = this.stream.values.__interrupt__;
       if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-      return valueInterrupts;
+      return normalizeInterruptsList(
+        valueInterrupts as Interrupt<GetInterruptType<Bag>>[]
+      );
     }
     return [];
   }

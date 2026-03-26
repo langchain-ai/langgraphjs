@@ -16,7 +16,7 @@ import {
 import { PendingRunsTracker } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
-import { extractInterrupts } from "./interrupts.js";
+import { extractInterrupts, normalizeInterruptsList } from "./interrupts.js";
 import { unique, filterStream } from "./utils.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type {
@@ -524,7 +524,9 @@ export class StreamOrchestrator<
     if (v != null && "__interrupt__" in v && Array.isArray(v.__interrupt__)) {
       const valueInterrupts = v.__interrupt__;
       if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-      return valueInterrupts;
+      return normalizeInterruptsList(
+        valueInterrupts as Interrupt<GetInterruptType<Bag>>[]
+      );
     }
 
     if (this.isLoading) return [];
@@ -533,7 +535,9 @@ export class StreamOrchestrator<
     const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
     if (allInterrupts.length > 0) {
-      return allInterrupts as Interrupt<GetInterruptType<Bag>>[];
+      return normalizeInterruptsList(
+        allInterrupts as Interrupt<GetInterruptType<Bag>>[]
+      );
     }
 
     const next = this.branchContext.threadHead?.next ?? [];
