@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph": minor
+"@langchain/langgraph": patch
 ---
 
 feat: add browser support for interrupt, writer, and other Node-only exports
