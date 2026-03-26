@@ -1248,9 +1248,15 @@ importers:
 
   internal/bench:
     dependencies:
+      '@langchain/core':
+        specifier: '>=1.1.27'
+        version: 1.1.31(@opentelemetry/api@1.9.0)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../../libs/langgraph-core
+      '@langchain/langgraph-checkpoint':
+        specifier: workspace:*
+        version: link:../../libs/checkpoint
       '@tsconfig/recommended':
         specifier: ^1.0.2
         version: 1.0.13
@@ -1266,6 +1272,9 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@18.19.130)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.32.0)(msw@2.12.10(@types/node@18.19.130)(typescript@5.9.3))(sass@1.97.3)(tsx@4.21.0)(yaml@2.8.2)
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.6
 
   internal/build:
     dependencies:

@@ -6,16 +6,21 @@
   "scripts": {
     "format": "prettier --write src",
     "lint": "prettier --check src",
-    "bench": "vitest bench"
+    "bench": "vitest bench",
+    "bench:memory": "NODE_OPTIONS=--expose-gc vitest run src/memory.bench.test.ts",
+    "bench:throughput": "vitest bench src/index.bench.test.ts"
   },
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
+    "@langchain/core": "^0.3.0",
     "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "prettier": "^2.8.3",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "^3.24.0"
   }
 }
