@@ -103,8 +103,15 @@ builder
             const envPath = path.resolve(projectCwd, configEnv);
             newWatch.push(envPath);
 
-            const envData = await fs.readFile(envPath, "utf-8");
-            populate(env as Record<string, string>, parse(envData));
+            const envData = await fs.readFile(envPath, "utf-8").catch(() => {
+              logger.warn(
+                `Env file "${configEnv}" not found. Continuing without it.`
+              );
+              return null;
+            });
+            if (envData != null) {
+              populate(env as Record<string, string>, parse(envData));
+            }
           } else if (Array.isArray(configEnv)) {
             throw new Error("Env storage is not supported by CLI.");
           } else if (typeof configEnv === "object") {
