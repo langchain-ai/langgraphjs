@@ -17,7 +17,12 @@ export {
 export { StreamManager, type EventStreamEvent } from "./manager.js";
 export { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 export { StreamError } from "./errors.js";
-export { extractInterrupts } from "./interrupts.js";
+export {
+  extractInterrupts,
+  normalizeInterruptForClient,
+  normalizeInterruptsList,
+} from "./interrupts.js";
+export { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";
 export { unique, findLast, filterStream } from "./utils.js";
 export {

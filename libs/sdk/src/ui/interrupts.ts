@@ -1,4 +1,29 @@
+import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 import { Interrupt, ThreadState } from "../schema.js";
+
+/**
+ * Rewrites Python/API snake_case on interrupt `value` to JS camelCase for HITL.
+ */
+export function normalizeInterruptForClient<T = unknown>(
+  interrupt: Interrupt<T>
+): Interrupt<T> {
+  if (interrupt.value === undefined) {
+    return interrupt;
+  }
+  return {
+    ...interrupt,
+    value: normalizeHitlInterruptPayload(interrupt.value) as T,
+  };
+}
+
+/**
+ * Applies {@link normalizeInterruptForClient} to each interrupt.
+ */
+export function normalizeInterruptsList<T = unknown>(
+  interrupts: Interrupt<T>[]
+): Interrupt<T>[] {
+  return interrupts.map((i) => normalizeInterruptForClient(i));
+}
 
 export function extractInterrupts<InterruptType = unknown>(
   values: unknown,
@@ -14,12 +39,17 @@ export function extractInterrupts<InterruptType = unknown>(
     "__interrupt__" in values &&
     Array.isArray(values.__interrupt__)
   ) {
-    const valueInterrupts = values.__interrupt__;
+    const valueInterrupts = values.__interrupt__ as Interrupt<InterruptType>[];
     if (valueInterrupts.length === 0) return { when: "breakpoint" };
-    if (valueInterrupts.length === 1) return valueInterrupts[0];
+    if (valueInterrupts.length === 1) {
+      return normalizeInterruptForClient(valueInterrupts[0]);
+    }
 
     // TODO: fix the typing of interrupts if multiple interrupts are returned
-    return valueInterrupts as unknown as Interrupt<InterruptType> | undefined;
+    const normalized = valueInterrupts.map((i) =>
+      normalizeInterruptForClient(i)
+    );
+    return normalized as unknown as Interrupt<InterruptType> | undefined;
   }
 
   // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
@@ -34,5 +64,7 @@ export function extractInterrupts<InterruptType = unknown>(
   }
 
   // Return only the current interrupt
-  return interrupts.at(-1) as Interrupt<InterruptType> | undefined;
+  return normalizeInterruptForClient(
+    interrupts.at(-1) as Interrupt<InterruptType>
+  );
 }

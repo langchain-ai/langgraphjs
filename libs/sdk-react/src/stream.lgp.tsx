@@ -32,6 +32,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
+  normalizeInterruptsList,
   toMessageClass,
   ensureMessageInstances,
   ensureHistoryMessageInstances,
@@ -907,7 +908,9 @@ export function useStreamLGP<
       ) {
         const valueInterrupts = values.__interrupt__;
         if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
+        return normalizeInterruptsList(
+          valueInterrupts as Interrupt<InterruptType>[],
+        );
       }
 
       // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
@@ -918,7 +921,9 @@ export function useStreamLGP<
       const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
       if (allInterrupts.length > 0) {
-        return allInterrupts as Interrupt<InterruptType>[];
+        return normalizeInterruptsList(
+          allInterrupts as Interrupt<InterruptType>[],
+        );
       }
 
       // check if there's a next task present (breakpoint-style interrupt)
