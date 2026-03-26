@@ -50,7 +50,7 @@
     "tar": "^7.4.3",
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
-    "yaml": "^2.7.0",
+    "yaml": "^2.8.3",
     "zod": "^3.25.76 || ^4"
   },
   "devDependencies": {
