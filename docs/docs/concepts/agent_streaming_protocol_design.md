@@ -8,12 +8,12 @@
 
 - [1. Problem Statement](#1-problem-statement)
 - [2. Current Streaming Architecture](#2-current-streaming-architecture)
-- [3. Protocol Comparison](#3-protocol-comparison)
+- [3. Protocol Landscape](#3-protocol-landscape)
   - [3.1 WebDriver BiDi](#31-webdriver-bidi)
   - [3.2 A2A (Agent-to-Agent)](#32-a2a-agent-to-agent)
   - [3.3 ACP (Agent Communication Protocol)](#33-acp-agent-communication-protocol)
-- [4. Analysis of the WebDriver BiDi Approach](#4-analysis-of-the-webdriver-bidi-approach)
-- [5. Recommended Approach](#5-recommended-approach)
+- [4. Why WebDriver BiDi Is the Right Structural Model](#4-why-webdriver-bidi-is-the-right-structural-model)
+- [5. Why Not A2A or ACP](#5-why-not-a2a-or-acp)
 - [6. Proposed Protocol Design](#6-proposed-protocol-design)
 - [7. Migration Path](#7-migration-path)
 
@@ -96,7 +96,7 @@ but degrades at scale.
 
 ---
 
-## 3. Protocol Comparison
+## 3. Protocol Landscape
 
 ### 3.1 WebDriver BiDi
 
@@ -162,120 +162,140 @@ by A2A's JSON-RPC approach.
 
 ---
 
-## 4. Analysis of the WebDriver BiDi Approach
+## 4. Why WebDriver BiDi Is the Right Structural Model
 
-### What Makes BiDi a Strong Analogy
+### The Core Insight
 
-The intuition to model agent streaming after WebDriver BiDi is well-founded.
-The structural parallels are strong:
+WebDriver BiDi solved the same fundamental problem in a different domain: a
+**tree of concurrent contexts** (browser tabs, iframes, workers) producing
+**heterogeneous event streams** (network, DOM, console, script) that a remote
+client needs to observe **selectively**. Before BiDi, WebDriver Classic was
+request/response only — the client had to poll for changes, exactly like
+our current `subgraphs: true` all-or-nothing streaming.
 
-| WebDriver BiDi | Agent Streaming |
-|----------------|-----------------|
+The structural mapping between domains is direct:
+
+| WebDriver BiDi | Agent Streaming Protocol |
+|----------------|--------------------------|
 | Browser session | Agent run / thread |
-| Browsing context tree | Subagent hierarchy (namespace tree) |
-| Modules (network, script, DOM) | Stream modes (messages, tools, updates, custom) |
-| `session.subscribe` with context filter | Subscribe to specific subagent + event type |
-| Events scoped to context | Events scoped to namespace |
-| Async command IDs | Concurrent subagent task tracking |
-| WebSocket transport | WebSocket transport |
+| Browsing context tree | Subagent namespace tree (`checkpoint_ns`) |
+| Modules (`network`, `script`, `log`) | Channels (`messages`, `tools`, `updates`, `custom`) |
+| `session.subscribe` with context filter | Subscribe to channels on specific namespace prefixes |
+| Events scoped to browsing context | Events scoped to namespace |
+| Async command IDs | Concurrent command tracking |
+| WebSocket transport | WebSocket (primary) + SSE + in-process |
 
-### Where BiDi Fits Well
+This is not a loose analogy. The context tree → subscription → filtered events
+pipeline is exactly the architecture we need, adapted to different domain
+primitives.
 
-1. **Subscription-based filtering** is the single most impactful pattern for
-   high fan-out scenarios. Today, a client watching 1 subagent out of 200 still
-   receives all 200 subagents' events. Server-side filtering based on
-   subscriptions would reduce wire traffic by orders of magnitude.
+### BiDi Patterns We Adopt Directly
 
-2. **Bidirectional communication** enables the client to dynamically adjust
-   subscriptions as the agent hierarchy evolves—subscribing to new subagents
-   as they spawn, unsubscribing from completed ones.
+1. **Subscription-based event filtering** — the single most impactful pattern.
+   BiDi clients call `session.subscribe({events: ["network.responseStarted"],
+   contexts: ["ctx-123"]})` and the server filters at the source. Our protocol
+   does the same: subscribe to `messages` on namespace `["agent_1"]` and
+   receive only matching events. A client watching 1 subagent out of 200
+   never sees the other 199.
 
-3. **Module-based organization** maps cleanly to LangGraph's existing stream
-   modes, giving a principled way to extend the protocol with new event types.
+2. **Bidirectional communication** — BiDi uses WebSocket so the client can
+   adjust subscriptions while events flow. Our protocol does the same:
+   subscribe to new subagents as they spawn, unsubscribe from completed ones,
+   all without interrupting the event stream.
 
-4. **Per-context scoping** directly translates to per-namespace scoping in
-   LangGraph's checkpoint namespace system.
+3. **Module-based extensibility** — BiDi organizes protocol surface into
+   modules, each defining its own commands and events. Our protocol maps
+   this to channels (stream modes), giving a principled extension mechanism.
+   Adding a new event type means adding a new channel, not changing the
+   protocol framing.
 
-### Where BiDi Does Not Fit
+4. **Context tree discovery** — BiDi provides `browsingContext.getTree()` to
+   inspect the context hierarchy. Our protocol provides `agent.getTree()` to
+   inspect the subagent namespace hierarchy. Both enable clients to understand
+   the current structure before subscribing.
 
-1. **Complexity budget**: WebDriver BiDi is a 300+ page specification designed
-   for browser automation across vendors. Agent streaming does not need CDDL
-   formal grammars, capability negotiation matrices, or the full session
-   lifecycle complexity. Over-engineering the protocol would slow adoption.
+5. **Per-context scoping with subscription IDs** — BiDi returns a subscription
+   ID from `session.subscribe` and supports targeted `session.unsubscribe`.
+   Our protocol mirrors this exactly.
 
-2. **Transport assumption**: BiDi mandates WebSocket. Agent streaming must also
-   support SSE (for environments where WebSocket is unavailable, e.g., some
-   serverless platforms, CDN edge functions) and in-process consumption (the
-   common case for LangGraph.js where graph and consumer share a process).
+6. **Command/response framing with concurrent commands** — BiDi commands carry
+   a numeric `id` and responses reference it, allowing multiple commands
+   in-flight. Our protocol uses the same framing for subscription management
+   and hierarchy queries.
 
-3. **Command model**: BiDi's command/response model (with numeric IDs and
-   out-of-order responses) is designed for browser automation commands. Agent
-   streaming is primarily **event-driven**—the main interaction pattern is
-   "subscribe and receive events," not "send commands and await responses."
+### Adaptations for the Agent Domain
 
-4. **No task lifecycle**: BiDi has no concept of task state machines. Agent
-   streaming needs to know when a subagent is `running`, `waiting`, `completed`,
-   or `failed`—this is where A2A's task lifecycle is more relevant.
+We follow BiDi's structure but adapt the following for the agent streaming
+domain:
+
+| Aspect | BiDi | Our Adaptation | Rationale |
+|--------|------|----------------|-----------|
+| **Transport** | WebSocket only | WebSocket + SSE + in-process | Agent streaming must work in serverless/edge (no WebSocket) and in-process (zero serialization overhead). |
+| **Specification style** | CDDL formal grammar, 300+ pages | TypeScript types + JSON Schema, focused spec | We control both ends; formal grammar adds friction without interop benefit. |
+| **Context tree** | Browsing contexts, realms, navigations | Namespace tree with lifecycle states | Agent namespaces need lifecycle tracking (`spawned` → `running` → `completed` / `failed`), which BiDi contexts do not have. |
+| **Event volume** | Moderate (DOM/network events) | Very high (LLM tokens at hundreds of concurrent streams) | Requires backpressure and flow control not present in BiDi. |
+| **Reconnection** | Session restore (full state) | Event buffer + selective replay | Agent runs can be long-lived; full state replay is impractical, bounded event buffers are practical. |
+| **Capability negotiation** | Complex `session.new` capabilities object | Minimal — transport selection is sufficient | No cross-vendor interop requirement eliminates capability negotiation complexity. |
+
+The lifecycle states and reconnection mechanisms draw on patterns proven in
+A2A's task state machine (`submitted` → `working` → `completed` / `failed`)
+and `tasks/resubscribe`. These fill a gap that BiDi's session model does not
+address: long-running tasks with observable state transitions.
 
 ---
 
-## 5. Recommended Approach
+## 5. Why Not A2A or ACP
 
-### Hybrid Protocol: BiDi-Inspired Subscriptions + A2A-Inspired Task Lifecycle
+A2A and ACP (now merged into A2A) are the other major agent protocol efforts.
+They were designed for a fundamentally different problem.
 
-Neither WebDriver BiDi, A2A, nor ACP should be adopted wholesale. Instead,
-the agent streaming protocol should **selectively adopt the strongest patterns**
-from each:
+### Wrong Abstraction Level
 
-| Pattern | Source | Rationale |
-|---------|--------|-----------|
-| **Subscription-based event filtering** | WebDriver BiDi | Core mechanism for solving high fan-out. Server filters at source, client receives only what it asked for. |
-| **Hierarchical namespace scoping** | WebDriver BiDi (context tree) + LangGraph (checkpoint_ns) | Already exists in LangGraph; formalize it as a first-class protocol concept like BiDi's browsing contexts. |
-| **Module/channel separation** | WebDriver BiDi (modules) | Map to stream modes. Subscribe to `messages` from one subagent and `tools` from another. |
-| **Task lifecycle states** | A2A | Subagents have observable lifecycle states (`spawned` → `running` → `completed` / `failed` / `interrupted`). |
-| **Resubscription / reconnection** | A2A | Allow clients to reconnect to an active run and resume receiving events from the last known position. |
-| **Transport agnosticism** | Original design | Support WebSocket (bidirectional), SSE (unidirectional), and in-process (direct async iteration). |
-| **JSON-RPC-like framing** | A2A | Lightweight request/response framing for subscription management, not a full JSON-RPC implementation. |
+A2A is an **inter-agent** protocol for cross-organization communication. Its
+core principle is **opaque execution** — agents collaborate without sharing
+internal state, tools, or prompts. Only inputs and outputs cross the boundary.
 
-### Why NOT Adopt A2A or ACP Directly
+Our problem is **intra-system observability**. We own both the agent runtime
+and the frontend, and we explicitly need to expose internal execution details:
+every LLM token, every tool call, every state mutation, for the specific
+subagents the user is watching. Opaque execution is the opposite of what we
+need.
 
-1. **Wrong abstraction level**: A2A/ACP are **inter-agent** protocols designed
-   for cross-organization agent collaboration with opaque execution. Our problem
-   is **intra-system streaming**—we own both the agent runtime and the frontend,
-   and we explicitly need to expose internal execution details (LLM tokens,
-   tool calls, state mutations).
+### No Namespace Hierarchy
 
-2. **Opaque execution is the opposite of what we need**: A2A intentionally
-   hides agent internals. A frontend streaming protocol needs to expose the
-   full execution trace—every token, every tool call, every state update—for
-   the specific subagents the user is watching.
+A2A tasks are flat, identified by a single task ID. There is no concept of a
+task tree, nested scoping, or hierarchical subscriptions. Agent streaming needs
+to represent and navigate `root → agent_1 → researcher → llm_call` as a
+queryable tree — exactly what BiDi's context tree provides.
 
-3. **No namespace hierarchy**: A2A tasks are flat. There is no concept of a
-   task tree or hierarchical scoping. Agent streaming needs to represent
-   `root → agent_1 → researcher → llm_call` as a navigable hierarchy.
+### Unidirectional Streaming
 
-4. **SSE-only streaming**: A2A's streaming is SSE-only and unidirectional. The
-   client cannot dynamically adjust what it's subscribed to without making
-   separate HTTP requests. For real-time subscription management in high
-   fan-out scenarios, bidirectional communication is strongly preferred.
+A2A streaming uses SSE, which is server→client only. The client cannot
+dynamically adjust subscriptions without making separate HTTP requests to a
+control endpoint. BiDi's WebSocket model — where subscription commands and
+events share a single bidirectional connection — is a better fit for
+interactive subscription management at high fan-out.
 
-### Why NOT Adopt WebDriver BiDi Directly
+### What We Do Take From A2A
 
-1. **Excessive specification surface**: BiDi defines 9+ modules, 50+ commands,
-   and 30+ event types for browser automation. Agent streaming needs ~5 event
-   channels and ~4 subscription management operations.
+Two A2A patterns are worth incorporating because they address gaps in BiDi's
+model:
 
-2. **Wrong domain model**: BiDi's primitives are browsing contexts, realms,
-   and navigation. Translating these to agents, tasks, and state would create
-   a confusing impedance mismatch.
+| Pattern | Why |
+|---------|-----|
+| **Task lifecycle states** | BiDi browsing contexts don't have lifecycle state machines. Subagents need `spawned` → `running` → `completed` / `failed` / `interrupted` states so the frontend can track progress and clean up subscriptions. |
+| **Resubscription** | `tasks/resubscribe` allows reconnecting to an active stream after disconnect. BiDi assumes persistent WebSocket sessions; agent runs can outlive connection lifetimes. |
 
-3. **No ecosystem leverage**: Unlike WebDriver where BiDi compliance enables
-   cross-browser automation, there is no existing ecosystem of BiDi-compatible
-   agent tools that would benefit from strict compliance.
+These augment the BiDi structure rather than replacing it.
 
 ---
 
 ## 6. Proposed Protocol Design
+
+The protocol follows WebDriver BiDi's architecture — bidirectional connection,
+subscription-based event delivery, modular channels, hierarchical context
+scoping — adapted to the agent execution domain with lifecycle tracking,
+multi-transport support, and high-throughput flow control.
 
 ### 6.1 Transport Layer
 
@@ -301,7 +321,10 @@ The protocol is transport-agnostic with three supported transports:
 
 ### 6.2 Message Format
 
-All messages follow a minimal framing inspired by JSON-RPC and BiDi:
+Messages follow BiDi's three-type framing: **commands** (client → server),
+**command responses** (server → client), and **events** (server → client).
+Like BiDi, commands carry a numeric `id` for correlation and can be in-flight
+concurrently:
 
 ```typescript
 // Client → Server (commands)
@@ -346,7 +369,9 @@ and all deeper descendants.
 
 ### 6.4 Subscription Management
 
-Modeled after WebDriver BiDi's `session.subscribe` but simplified:
+Follows BiDi's `session.subscribe` / `session.unsubscribe` pattern, with
+channels (our modules) and namespaces (our browsing contexts) as the two
+filtering dimensions:
 
 ```typescript
 // Subscribe to specific channels on specific namespaces
@@ -560,17 +585,17 @@ requiring a bounded event buffer and per-connection flow control state.
 
 ## Appendix A: Protocol Comparison Matrix
 
-| Dimension | Current LangGraph | WebDriver BiDi | A2A | **Proposed** |
-|-----------|------------------|----------------|-----|--------------|
+| Dimension | Current LangGraph | WebDriver BiDi | A2A | **Proposed (BiDi-modeled)** |
+|-----------|------------------|----------------|-----|---------------------------|
 | **Transport** | SSE / in-process | WebSocket | HTTP + SSE | WebSocket + SSE + in-process |
 | **Direction** | Unidirectional | Bidirectional | Unidirectional (SSE) + HTTP | Bidirectional (WS) / Uni + HTTP (SSE) |
-| **Filtering** | Client-side | Server-side (subscription) | None (per-task streams) | Server-side (subscription) |
-| **Namespace model** | Flat array (checkpoint_ns) | Context tree | Flat (task ID) | Hierarchical namespace tree |
-| **Scoping** | All-or-nothing (subgraphs: true/false) | Per-context + per-module | Per-task | Per-namespace + per-channel + depth |
-| **Lifecycle** | Implicit (stream end) | Session lifecycle | Task state machine | Subagent lifecycle events |
-| **Backpressure** | None | None | None | Configurable per-connection |
-| **Reconnection** | None | Session restore | tasks/resubscribe | Event buffer + reconnect |
-| **Discovery** | None | browsingContext.getTree | Agent Cards | agent.getTree |
+| **Filtering** | Client-side | Server-side (subscription) | None (per-task streams) | Server-side (subscription) — same as BiDi |
+| **Namespace model** | Flat array (checkpoint_ns) | Context tree | Flat (task ID) | Hierarchical namespace tree — adapted from BiDi context tree |
+| **Scoping** | All-or-nothing (subgraphs: true/false) | Per-context + per-module | Per-task | Per-namespace + per-channel + depth — mirrors BiDi scoping |
+| **Lifecycle** | Implicit (stream end) | Session lifecycle | Task state machine | Subagent lifecycle events — extends BiDi with A2A-style states |
+| **Backpressure** | None | None | None | Configurable per-connection — new for high-throughput agents |
+| **Reconnection** | None | Session restore | tasks/resubscribe | Event buffer + reconnect — adapted from A2A |
+| **Discovery** | None | browsingContext.getTree | Agent Cards | agent.getTree — adapted from BiDi |
 | **Schema** | TypeScript types | CDDL | JSON Schema / OpenAPI | TypeScript types + JSON Schema |
 
 ## Appendix B: Performance Estimates
