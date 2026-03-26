@@ -48,21 +48,16 @@ export class IterableReadableStreamWithAbortSignal<
 
   protected _innerReader: ReadableStreamDefaultReader<T>;
 
-  protected _disposeSignal?: () => void;
-
   /**
    * @param readableStream - The stream to wrap.
    * @param abortController - The abort controller to use. Optional. One will be created if not provided.
-   * @param disposeSignal - Optional cleanup function to remove abort signal listeners when the stream is done.
    */
   constructor(
     readableStream: ReadableStream<T>,
-    abortController?: AbortController,
-    disposeSignal?: () => void
+    abortController?: AbortController
   ) {
     const reader = readableStream.getReader();
     const ac = abortController ?? new AbortController();
-    const dispose = disposeSignal;
     super({
       start(controller: ReadableStreamDefaultController<T>) {
         return pump();
@@ -71,7 +66,6 @@ export class IterableReadableStreamWithAbortSignal<
             // When no more data needs to be consumed, close the stream
             if (done) {
               controller.close();
-              dispose?.();
               return;
             }
             // Enqueue the next data chunk into our target stream
@@ -83,7 +77,6 @@ export class IterableReadableStreamWithAbortSignal<
     });
     this._abortController = ac;
     this._innerReader = reader;
-    this._disposeSignal = disposeSignal;
   }
 
   /**
@@ -94,7 +87,6 @@ export class IterableReadableStreamWithAbortSignal<
   override async cancel(reason?: unknown) {
     this._abortController.abort(reason);
     this._innerReader.releaseLock();
-    this._disposeSignal?.();
   }
 
   /**

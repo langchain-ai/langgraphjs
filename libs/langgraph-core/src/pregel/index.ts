@@ -1877,13 +1877,11 @@ export class Pregel<
     // and override if it is passed as an explicit param in `options`.
     const abortController = new AbortController();
 
-    const { signal: combinedSignal, dispose: disposeCombinedSignal } =
-      combineAbortSignals(options?.signal, abortController.signal);
-
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
-      signal: combinedSignal,
+      signal: combineAbortSignals(options?.signal, abortController.signal)
+        .signal,
     };
 
     const stream = await super.stream(input, config);
@@ -1891,8 +1889,7 @@ export class Pregel<
       options?.encoding === "text/event-stream"
         ? toEventStream(stream)
         : stream,
-      abortController,
-      disposeCombinedSignal
+      abortController
     );
   }
 
@@ -1925,9 +1922,6 @@ export class Pregel<
   ): IterableReadableStream<StreamEvent | Uint8Array> {
     const abortController = new AbortController();
 
-    const { signal: combinedSignal, dispose: disposeCombinedSignal } =
-      combineAbortSignals(options?.signal, abortController.signal);
-
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
@@ -1936,13 +1930,13 @@ export class Pregel<
 
       // extend the callbacks with the ones from the config
       callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
-      signal: combinedSignal,
+      signal: combineAbortSignals(options?.signal, abortController.signal)
+        .signal,
     };
 
     return new IterableReadableStreamWithAbortSignal(
       super.streamEvents(input, config, streamOptions),
-      abortController,
-      disposeCombinedSignal
+      abortController
     );
   }
 
