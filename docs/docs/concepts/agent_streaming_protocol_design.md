@@ -17,6 +17,7 @@
 - [6. Proposed Protocol Design](#6-proposed-protocol-design)
 - [7. Multimodal Streaming](#7-multimodal-streaming)
 - [8. Comparison to Other Streaming Protocols](#8-comparison-to-other-streaming-protocols)
+  - [8.5 Codex Multi-Agent ("Collab") Architecture](#85-codex-multi-agent-collab-architecture)
 - [9. Migration Path](#9-migration-path)
 
 ---
@@ -540,6 +541,23 @@ against active subscriptions before serializing and sending. This is the key
 performance optimization: chunks that no client has subscribed to are **never
 serialized or transmitted**.
 
+**Event replay on new subscriptions**: When a client subscribes to a namespace
+mid-run, the server replays buffered events for that namespace so the client
+sees the full history — not just events from the subscription point forward.
+This is modeled after Codex's `ThreadEventStore` pattern, where switching to a
+child agent replays all stored events to reconstruct the conversation. The
+subscribe response indicates how many events were replayed:
+
+```typescript
+{
+  id: 1,
+  result: {
+    subscriptionId: "sub_abc123",
+    replayedEvents: 47              // Events replayed from buffer
+  }
+}
+```
+
 ### 6.6 Event Channels (Modules)
 
 Channels map to the existing `StreamMode` values plus new lifecycle events:
@@ -620,6 +638,15 @@ Inspired by A2A's `tasks/resubscribe`, the protocol supports reconnection:
 This requires a bounded event buffer on the server (configurable, default
 1000 events). Events beyond the buffer are lost; the server signals this
 with `restored: false` and the client can request a full state snapshot.
+
+**Snapshot + drain**: During reconnection (and during event replay on new
+subscriptions), there is a race between replaying buffered events and new
+events arriving. The server must: (1) take a snapshot of the buffer,
+(2) replay the snapshot, (3) drain any events that arrived during replay
+before switching to live delivery. This prevents the client from missing
+events that arrived between the snapshot and the live stream activation.
+This pattern is borrowed from Codex's `drain_active_thread_events()` which
+handles the same race condition when switching thread views.
 
 ### 6.9 Hierarchy Discovery
 
@@ -1048,7 +1075,108 @@ An agent producing live speech cannot stream audio through A2A in real time; it
 must complete the audio, package it as a file Part, and deliver it as a finished
 artifact.
 
-### 8.5 Summary: Protocol Positioning
+### 8.5 Codex Multi-Agent ("Collab") Architecture
+
+OpenAI's [Codex CLI](https://github.com/openai/codex) implements a
+multi-agent system (codenamed "Collab") where a parent agent spawns child
+agents as independent threads, each with its own LLM context, tool access,
+and sandbox. The system is implemented in Rust and exposes five tool
+functions to the LLM: `spawn_agent`, `send_input`, `wait`, `resume_agent`,
+and `close_agent`.
+
+#### Event Streaming Architecture
+
+Codex's TUI rendering pipeline for multi-agent events reveals several
+design patterns directly relevant to our protocol:
+
+```
+CodexThread (parent)  ──┐
+CodexThread (child 1) ──┤──→ ThreadEventChannel ──→ ThreadEventStore ──→ ┐
+CodexThread (child 2) ──┘                                                │
+                                                                         ▼
+                                                              tokio::select! {
+                                                                app_event_rx,      // primary thread
+                                                                active_thread_rx,  // viewed thread
+                                                                tui_events,        // keyboard/mouse
+                                                                thread_created_rx, // new child spawns
+                                                              }
+                                                                         │
+                                                                         ▼
+                                                                    ChatWidget
+```
+
+Each child thread gets a `ThreadEventChannel` with three components:
+
+| Component | Purpose |
+|-----------|---------|
+| `sender` (mpsc) | Sends live events to the active view channel |
+| `receiver` (mpsc) | Taken when thread becomes the active view |
+| `store` (shared) | Persists ALL events regardless of active view (for replay) |
+
+The `store.active` flag controls whether events are forwarded to the mpsc
+channel or only buffered. When a user switches to viewing a different
+agent, the store replays all historical events to reconstruct the
+conversation.
+
+#### Useful Patterns for Our Protocol
+
+**1. Buffered event stores with replay** — Codex stores all events for every
+thread, not just the active one. When the user switches to a child agent's
+view, the full event history is replayed. This is directly applicable to our
+protocol: a client that subscribes to a new namespace mid-run should receive
+a replay of that namespace's events (analogous to our `subscription.reconnect`
+with event buffer, but applied to first-time subscriptions too).
+
+**2. Active/inactive multiplexing** — Rather than delivering all threads'
+events simultaneously, Codex only forwards events from the "active" thread
+through the mpsc channel. Non-active threads still capture events in the
+store. This is the same optimization as our subscription-based filtering:
+the server only serializes and sends events for subscribed namespaces, but
+internally all events are still captured (for later replay, reconnection,
+or subscription changes).
+
+**3. Begin/End event pairs** — Codex emits paired events
+(`CollabAgentSpawnBegin` / `CollabAgentSpawnEnd`, `CollabWaitingBegin` /
+`CollabWaitingEnd`, etc.). The `Begin` events are typically no-ops in
+rendering; only `End` events carry the final status. Our protocol's
+`lifecycle` channel should adopt this pattern: emit `lifecycle.begin`
+when an operation starts (for progress indicators) and `lifecycle.end`
+with the final status.
+
+**4. Completion watchers** — when a child agent is spawned, a background
+task (`completion_watcher`) subscribes to the child's status via a
+`tokio::watch` channel. When the child reaches a terminal state, the
+parent is notified by injecting a message into its conversation context.
+Our `lifecycle` channel serves the same purpose at the protocol level:
+clients (and parent agents) receive `lifecycle.completed` events without
+polling.
+
+**5. Thread switching with snapshot + drain** — Codex's thread-switch
+algorithm takes a snapshot, replays it, then drains any events that arrived
+during replay. This prevents a race condition where events are missed
+between snapshot and activation. Our reconnection protocol (section 6.8)
+should account for this same race: after replaying missed events, drain
+any new events that arrived during replay before switching to live
+streaming.
+
+#### Limitations of the Codex Approach
+
+| Limitation | Our Protocol's Solution |
+|------------|-------------------------|
+| **Single-viewer** — only one thread can be "active" at a time in the TUI | Subscription-based: client can subscribe to N namespaces simultaneously |
+| **Local only** — `ThreadEventChannel` is an in-process mpsc channel; no network protocol | Transport-agnostic: WebSocket + SSE + in-process |
+| **No selective event types** — viewer gets all event types from the active thread | Channel-based filtering: subscribe to `messages` from one namespace and `tools` from another |
+| **No binary media** — all events are JSON protocol messages | Mixed-mode framing with native binary frames |
+| **No backpressure** — mpsc channel has fixed capacity; no flow control negotiation | Configurable backpressure strategies per connection |
+| **No reconnection** — in-process only; no concept of disconnected clients | Event buffer + `subscription.reconnect` |
+
+The Codex architecture validates our core design intuition — the
+event-per-thread-with-store-and-active-view pattern is structurally the same
+as our subscription-per-namespace-with-buffer-and-filtering pattern, but our
+protocol generalizes it for network transport, multiple simultaneous views,
+channel-level filtering, binary media, and cross-language implementations.
+
+### 8.6 Summary: Protocol Positioning
 
 ```
                     Multi-agent           Single-agent
@@ -1061,7 +1189,12 @@ artifact.
                     │                     │                      │
   Text/tool         │  ★ Agent Streaming  │  Vercel AI SDK       │
   streaming         │    Protocol         │  Anthropic Messages  │
+  (networked)       │                     │                      │
+                    ├─────────────────────┼──────────────────────┤
                     │                     │                      │
+  Text/tool         │  Codex Collab       │                      │
+  streaming         │  (in-process only)  │                      │
+  (local)           │                     │                      │
                     ├─────────────────────┼──────────────────────┤
                     │                     │                      │
   Inter-agent       │  A2A                │                      │
@@ -1071,12 +1204,13 @@ artifact.
 ```
 
 Our protocol occupies the upper-left quadrant: **multi-agent, real-time,
-multimodal**. No existing protocol covers this space. The Vercel AI SDK,
-Anthropic, and OpenAI protocols are single-agent solutions. A2A is multi-agent
-but opaque and non-streaming for media. Our BiDi-modeled protocol with native
-binary frames is purpose-built for the scenario where hundreds of heterogeneous
-subagents stream text, audio, and video simultaneously to a frontend that
-selectively observes a subset of them.
+multimodal, networked**. Codex's Collab system validates the multi-agent
+event streaming pattern but is constrained to in-process mpsc channels with
+single-viewer semantics. The Vercel AI SDK, Anthropic, and OpenAI protocols
+are single-agent solutions. A2A is multi-agent but opaque and non-streaming
+for media. Our BiDi-modeled protocol generalizes the Codex pattern for
+network transport, multiple simultaneous views, channel-level filtering,
+binary media, and cross-language implementations.
 
 ---
 
@@ -1143,19 +1277,19 @@ transport from Phase 2.
 
 ## Appendix A: Protocol Comparison Matrix
 
-| Dimension | Current LangGraph | WebDriver BiDi | A2A | Vercel AI SDK | Anthropic | OpenAI Realtime | **Proposed (BiDi-modeled)** |
-|-----------|------------------|----------------|-----|---------------|-----------|-----------------|---------------------------|
-| **Scope** | Multi-agent | Browser automation | Inter-agent | Single LLM call | Single LLM call | Single session | Multi-agent |
-| **Transport** | SSE / in-process | WebSocket | HTTP + SSE | SSE | SSE | WebSocket / WebRTC | WebSocket + SSE + in-process |
-| **Direction** | Unidirectional | Bidirectional | Uni (SSE) + HTTP | Unidirectional | Unidirectional | Bidirectional | Bidirectional |
-| **Filtering** | Client-side | Server-side (subscription) | None | None | None | None | Server-side (subscription) |
-| **Namespace model** | Flat array | Context tree | Flat (task ID) | None | None | None | Hierarchical namespace tree |
-| **Multimodal** | Text only | N/A | File Parts (artifacts) | `file` URL ref | Text + tool blocks | Base64 audio in JSON | Native binary frames |
-| **Binary streaming** | No | No | No | No | No | Base64 (+33% overhead) | Yes (16-byte header) |
-| **Audio/Video** | No | No | No | No | No | Audio only (Base64) | Audio + video + image |
-| **Backpressure** | None | None | None | None | None | None | Configurable per-connection |
-| **Reconnection** | None | Session restore | tasks/resubscribe | Client-side chatResume | None | None | Event buffer + reconnect |
-| **Schema** | TS types | CDDL | JSON Schema | Implicit TS | Implicit | OpenAPI | CDDL → JS, Python, Java |
+| Dimension | Current LangGraph | WebDriver BiDi | A2A | Vercel AI SDK | Anthropic | OpenAI Realtime | Codex Collab | **Proposed (BiDi-modeled)** |
+|-----------|------------------|----------------|-----|---------------|-----------|-----------------|--------------|---------------------------|
+| **Scope** | Multi-agent | Browser automation | Inter-agent | Single LLM call | Single LLM call | Single session | Multi-agent (local) | Multi-agent (networked) |
+| **Transport** | SSE / in-process | WebSocket | HTTP + SSE | SSE | SSE | WebSocket / WebRTC | In-process mpsc | WebSocket + SSE + in-process |
+| **Direction** | Unidirectional | Bidirectional | Uni (SSE) + HTTP | Unidirectional | Unidirectional | Bidirectional | Bidirectional (in-process) | Bidirectional |
+| **Filtering** | Client-side | Server-side (subscription) | None | None | None | None | Active thread only (single-viewer) | Server-side (subscription, multi-viewer) |
+| **Namespace model** | Flat array | Context tree | Flat (task ID) | None | None | None | Flat thread IDs | Hierarchical namespace tree |
+| **Event buffering** | None | N/A | None | None | None | None | Per-thread store + replay | Per-namespace buffer + replay |
+| **Multimodal** | Text only | N/A | File Parts (artifacts) | `file` URL ref | Text + tool blocks | Base64 audio in JSON | Text only | Native binary frames |
+| **Binary streaming** | No | No | No | No | No | Base64 (+33% overhead) | No | Yes (16-byte header) |
+| **Backpressure** | None | None | None | None | None | None | Fixed mpsc capacity | Configurable per-connection |
+| **Reconnection** | None | Session restore | tasks/resubscribe | Client-side chatResume | None | None | Resume from rollout file | Event buffer + reconnect |
+| **Schema** | TS types | CDDL | JSON Schema | Implicit TS | Implicit | OpenAPI | Rust types | CDDL → JS, Python, Java |
 
 ## Appendix B: Performance Estimates
 
