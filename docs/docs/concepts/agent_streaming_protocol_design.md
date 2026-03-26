@@ -231,7 +231,7 @@ domain:
 | Aspect | BiDi | Our Adaptation | Rationale |
 |--------|------|----------------|-----------|
 | **Transport** | WebSocket only | WebSocket + SSE + in-process | Agent streaming must work in serverless/edge (no WebSocket) and in-process (zero serialization overhead). |
-| **Specification style** | CDDL formal grammar, 300+ pages | TypeScript types + JSON Schema, focused spec | We control both ends; formal grammar adds friction without interop benefit. |
+| **Specification style** | CDDL formal grammar, 300+ pages | CDDL formal grammar, focused spec | With JS, Python, and Java implementations, CDDL provides a single source of truth for code generation across all three runtimes — same benefit BiDi gets across browser vendors. Spec scope is much smaller (~5 channels, ~4 commands vs BiDi's 9+ modules, 50+ commands). |
 | **Context tree** | Browsing contexts, realms, navigations | Namespace tree with lifecycle states | Agent namespaces need lifecycle tracking (`spawned` → `running` → `completed` / `failed`), which BiDi contexts do not have. |
 | **Event volume** | Moderate (DOM/network events) | Very high (LLM tokens at hundreds of concurrent streams) | Requires backpressure and flow control not present in BiDi. |
 | **Reconnection** | Session restore (full state) | Event buffer + selective replay | Agent runs can be long-lived; full state replay is impractical, bounded event buffers are practical. |
@@ -324,7 +324,8 @@ The protocol is transport-agnostic with three supported transports:
 Messages follow BiDi's three-type framing: **commands** (client → server),
 **command responses** (server → client), and **events** (server → client).
 Like BiDi, commands carry a numeric `id` for correlation and can be in-flight
-concurrently:
+concurrently. The canonical definitions are in CDDL (section 6.3); TypeScript
+interfaces shown here are illustrative:
 
 ```typescript
 // Client → Server (commands)
@@ -352,7 +353,124 @@ interface ProtocolEvent {
 }
 ```
 
-### 6.3 Namespace Model
+### 6.3 Schema Definition (CDDL)
+
+Following BiDi, the protocol is formally defined using CDDL (Concise Data
+Definition Language, [RFC 8610](https://www.rfc-editor.org/rfc/rfc8610)).
+With LangGraph implementations in JavaScript, Python, and Java, CDDL serves
+as the single source of truth from which language-specific types are generated:
+
+```
+┌──────────────┐
+│  protocol.cddl │   ← Single source of truth
+└──────┬───────┘
+       │
+  ┌────┼────────────────┐
+  │    │                 │
+  ▼    ▼                 ▼
+ TS   Python            Java
+types  dataclasses/      records/
+       TypedDicts        classes
+```
+
+The CDDL definition covers the same three message types shown above, plus all
+channel-specific payload shapes. Example:
+
+```cddl
+; --- Message framing (mirrors BiDi) ---
+
+Command = {
+  id: js-uint,
+  method: text,
+  params: {* text => any},
+}
+
+CommandResponse = {
+  type: "success",
+  id: js-uint,
+  result: ResultData,
+}
+
+ErrorResponse = {
+  type: "error",
+  id: js-uint,
+  error: ErrorCode,
+  message: text,
+  ? stacktrace: text,
+}
+
+Event = {
+  type: "event",
+  method: text,
+  params: EventParams,
+}
+
+EventParams = {
+  namespace: [* text],           ; Subagent hierarchy path
+  timestamp: uint,               ; Server timestamp (ms)
+  data: any,                     ; Channel-specific payload
+}
+
+; --- Commands ---
+
+CommandData = (
+  SubscriptionCommand //
+  FlowCommand //
+  AgentCommand
+)
+
+; --- Subscription module (mirrors BiDi session.subscribe) ---
+
+SubscriptionCommand = (
+  subscription.subscribe //
+  subscription.unsubscribe //
+  subscription.reconnect
+)
+
+subscription.subscribe = {
+  method: "subscription.subscribe",
+  params: SubscribeParams,
+}
+
+SubscribeParams = {
+  channels: [+ Channel],
+  ? namespaces: [* [* text]],    ; Prefix-match these namespace paths
+  ? depth: uint,                 ; Max depth below prefix
+}
+
+Channel = "values" / "updates" / "messages" / "tools" /
+          "custom" / "lifecycle" / "debug" / "checkpoints"
+
+; --- Agent module (mirrors BiDi browsingContext) ---
+
+agent.getTree = {
+  method: "agent.getTree",
+  params: { runId: text },
+}
+
+AgentTreeNode = {
+  namespace: [* text],
+  status: AgentStatus,
+  graphName: text,
+  children: [* AgentTreeNode],
+}
+
+AgentStatus = "spawned" / "running" / "completed" / "failed" / "interrupted"
+
+; --- Shared ---
+
+js-uint = 0..9007199254740991
+ErrorCode = "invalid_argument" / "unknown_command" / "unknown_error" /
+            "no_such_run" / "no_such_subscription" / "no_such_namespace"
+ResultData = any
+```
+
+This is intentionally compact compared to BiDi's full grammar — the agent
+streaming domain has far fewer primitives. The CDDL file is the contract;
+TypeScript interfaces, Python dataclasses, and Java records are generated
+artifacts.
+
+### 6.4 Namespace Model
 
 Namespaces are hierarchical arrays representing the subagent tree:
 
@@ -367,7 +485,7 @@ Namespace subscriptions support **prefix matching**: subscribing to
 `["agent_1"]` receives events from `["agent_1"]`, `["agent_1", "researcher"]`,
 and all deeper descendants.
 
-### 6.4 Subscription Management
+### 6.5 Subscription Management
 
 Follows BiDi's `session.subscribe` / `session.unsubscribe` pattern, with
 channels (our modules) and namespaces (our browsing contexts) as the two
@@ -412,7 +530,7 @@ against active subscriptions before serializing and sending. This is the key
 performance optimization: chunks that no client has subscribed to are **never
 serialized or transmitted**.
 
-### 6.5 Event Channels (Modules)
+### 6.6 Event Channels (Modules)
 
 Channels map to the existing `StreamMode` values plus new lifecycle events:
 
@@ -433,7 +551,7 @@ the frontend to:
 - Track which subagents are active vs. completed
 - Display a real-time hierarchy view of the agent tree
 
-### 6.6 Backpressure and Flow Control
+### 6.7 Backpressure and Flow Control
 
 For high fan-out scenarios, the protocol includes flow control mechanisms:
 
@@ -457,7 +575,7 @@ For high fan-out scenarios, the protocol includes flow control mechanisms:
 | `pause-producer` | Apply backpressure to the stream (slow down production) | Debugging / detailed analysis |
 | `sample` | Deliver every Nth event when under pressure, with a summary count | High-volume LLM token streams |
 
-### 6.7 Reconnection and Resubscription
+### 6.8 Reconnection and Resubscription
 
 Inspired by A2A's `tasks/resubscribe`, the protocol supports reconnection:
 
@@ -492,7 +610,7 @@ This requires a bounded event buffer on the server (configurable, default
 1000 events). Events beyond the buffer are lost; the server signals this
 with `restored: false` and the client can request a full state snapshot.
 
-### 6.8 Hierarchy Discovery
+### 6.9 Hierarchy Discovery
 
 Before subscribing, clients can discover the current agent tree:
 
@@ -596,7 +714,7 @@ requiring a bounded event buffer and per-connection flow control state.
 | **Backpressure** | None | None | None | Configurable per-connection — new for high-throughput agents |
 | **Reconnection** | None | Session restore | tasks/resubscribe | Event buffer + reconnect — adapted from A2A |
 | **Discovery** | None | browsingContext.getTree | Agent Cards | agent.getTree — adapted from BiDi |
-| **Schema** | TypeScript types | CDDL | JSON Schema / OpenAPI | TypeScript types + JSON Schema |
+| **Schema** | TypeScript types | CDDL | JSON Schema / OpenAPI | CDDL → generated types for JS, Python, Java |
 
 ## Appendix B: Performance Estimates
 
