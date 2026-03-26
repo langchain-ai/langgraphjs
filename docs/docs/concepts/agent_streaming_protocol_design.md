@@ -16,9 +16,11 @@
 - [5. Why Not A2A or ACP](#5-why-not-a2a-or-acp)
 - [6. Proposed Protocol Design](#6-proposed-protocol-design)
 - [7. Multimodal Streaming](#7-multimodal-streaming)
-- [8. Comparison to Other Streaming Protocols](#8-comparison-to-other-streaming-protocols)
-  - [8.5 Codex Multi-Agent ("Collab") Architecture](#85-codex-multi-agent-collab-architecture)
-- [9. Migration Path](#9-migration-path)
+- [8. Extended Protocol Modules](#8-extended-protocol-modules)
+- [9. Enabling Scenarios](#9-enabling-scenarios)
+- [10. Comparison to Other Streaming Protocols](#10-comparison-to-other-streaming-protocols)
+  - [10.5 Codex Multi-Agent ("Collab") Architecture](#105-codex-multi-agent-collab-architecture)
+- [11. Migration Path](#11-migration-path)
 
 ---
 
@@ -968,9 +970,653 @@ Channel /= "media"               ; Add media to channel choices
 
 ---
 
-## 8. Comparison to Other Streaming Protocols
+## 8. Extended Protocol Modules
 
-### 8.1 Vercel AI SDK Stream Protocol
+The core protocol (sections 6-7) handles event streaming, subscriptions, and
+media. But a next-generation agent streaming protocol must also handle the
+**full surface area** of agent-frontend interaction. Deep Agents connect to
+sandboxes, produce file artifacts, execute shell commands, read and write
+state stores, require human input, and consume resources that cost money.
+All of these should be observable and interactive through the same protocol
+connection — not through separate REST APIs with different auth, different
+error handling, and different transport semantics.
+
+Following BiDi's modular architecture, each capability is a **module** with
+its own commands and events, sharing the same connection, subscription model,
+and CDDL schema.
+
+### 8.1 Resource Module — File System Access
+
+Deep Agents running in sandboxes (Modal, Daytona, E2B, local VFS) operate on
+file systems that the frontend needs to observe and interact with. Today this
+requires separate REST APIs or MCP tool calls. The protocol should make file
+system access a first-class module.
+
+**Commands** (client → server):
+
+```typescript
+// Browse a directory in a subagent's sandbox
+{
+  id: 20,
+  method: "resource.list",
+  params: {
+    namespace: ["agent_1"],          // Which subagent's sandbox
+    path: "/workspace/src",
+    depth: 2,                        // Recurse 2 levels
+    includeMetadata: true            // Size, modified time, permissions
+  }
+}
+
+// Read a file from a subagent's sandbox
+{
+  id: 21,
+  method: "resource.read",
+  params: {
+    namespace: ["agent_1"],
+    path: "/workspace/src/index.ts",
+    encoding: "utf-8",              // Or "binary" for raw bytes
+    range: { startLine: 1, endLine: 50 }  // Optional partial read
+  }
+}
+
+// Write a file (human-in-the-loop: user edits a file the agent wrote)
+{
+  id: 22,
+  method: "resource.write",
+  params: {
+    namespace: ["agent_1"],
+    path: "/workspace/src/config.ts",
+    content: "export const API_KEY = '...';\n",
+    encoding: "utf-8"
+  }
+}
+
+// Download a binary file (agent-generated artifact)
+{
+  id: 23,
+  method: "resource.download",
+  params: {
+    namespace: ["agent_2"],
+    path: "/workspace/output/report.pdf"
+  }
+}
+// Response provides a streamId; binary frames follow with the file data
+```
+
+**Events** (server → client):
+
+```typescript
+// File system change notification (agent wrote/deleted/moved a file)
+{
+  type: "event",
+  method: "resource.changed",
+  params: {
+    namespace: ["agent_1"],
+    timestamp: 1711454400000,
+    data: {
+      changes: [
+        { type: "created", path: "/workspace/src/new-module.ts", sizeBytes: 2340 },
+        { type: "modified", path: "/workspace/src/index.ts", sizeBytes: 5120 },
+        { type: "deleted", path: "/workspace/src/old-module.ts" }
+      ]
+    }
+  }
+}
+```
+
+**Subscription**: `channels: ["resource"]` on a namespace. The client receives
+file change notifications as the agent works. Combined with `messages` and
+`tools`, this gives a complete picture: the agent decided to create a file
+(visible in `messages`), called a tool to write it (visible in `tools`), and
+the file appeared on disk (visible in `resource`).
+
+### 8.2 Terminal Module — Shell Output Streaming
+
+Agents executing shell commands produce stdout/stderr streams that frontends
+need to display in real time. Today, command output is captured as a single
+tool result string after execution completes. The terminal module streams it
+live.
+
+**Events**:
+
+```typescript
+// Shell command started
+{
+  type: "event",
+  method: "terminal.started",
+  params: {
+    namespace: ["agent_1"],
+    timestamp: 1711454400000,
+    data: {
+      terminalId: "term_1",
+      command: "npm run build",
+      cwd: "/workspace",
+      env: { NODE_ENV: "production" }  // Sanitized, no secrets
+    }
+  }
+}
+
+// Streaming stdout/stderr chunks
+{
+  type: "event",
+  method: "terminal.output",
+  params: {
+    namespace: ["agent_1"],
+    timestamp: 1711454400050,
+    data: {
+      terminalId: "term_1",
+      stream: "stdout",               // or "stderr"
+      text: "Building project...\n"
+    }
+  }
+}
+
+// Command completed
+{
+  type: "event",
+  method: "terminal.exited",
+  params: {
+    namespace: ["agent_1"],
+    timestamp: 1711454405000,
+    data: {
+      terminalId: "term_1",
+      exitCode: 0,
+      durationMs: 5000
+    }
+  }
+}
+```
+
+**Commands** (client → server):
+
+```typescript
+// Send input to a running terminal (e.g., answering a prompt)
+{
+  id: 30,
+  method: "terminal.input",
+  params: {
+    namespace: ["agent_1"],
+    terminalId: "term_1",
+    text: "y\n"
+  }
+}
+
+// Kill a running command
+{
+  id: 31,
+  method: "terminal.kill",
+  params: {
+    namespace: ["agent_1"],
+    terminalId: "term_1",
+    signal: "SIGTERM"
+  }
+}
+```
+
+### 8.3 Input Module — Human-in-the-Loop
+
+LangGraph has `interrupt()` and `Command({ resume })` for human-in-the-loop.
+Today this requires a separate API call to resume the thread. The protocol
+should handle the full HITL lifecycle in-band.
+
+**Events** (server → client):
+
+```typescript
+// Agent is requesting human input
+{
+  type: "event",
+  method: "input.requested",
+  params: {
+    namespace: ["agent_1", "researcher"],
+    timestamp: 1711454400000,
+    data: {
+      interruptId: "int_abc123",
+      type: "approval",                // or "text", "choice", "form"
+      prompt: "Agent wants to delete 47 files. Approve?",
+      schema: {                        // JSON Schema for structured input
+        type: "object",
+        properties: {
+          approved: { type: "boolean" },
+          reason: { type: "string" }
+        },
+        required: ["approved"]
+      },
+      timeout: 300000                  // Auto-reject after 5 minutes
+    }
+  }
+}
+```
+
+**Commands** (client → server):
+
+```typescript
+// Respond to an interrupt
+{
+  id: 40,
+  method: "input.respond",
+  params: {
+    namespace: ["agent_1", "researcher"],
+    interruptId: "int_abc123",
+    response: { approved: true, reason: "Looks correct" }
+  }
+}
+
+// Inject unsolicited input (user types while agent is running)
+{
+  id: 41,
+  method: "input.inject",
+  params: {
+    namespace: ["agent_1"],
+    message: { role: "user", content: "Actually, also check the tests" }
+  }
+}
+```
+
+This replaces the pattern of making a separate `POST /threads/:id/runs` call
+with a `Command({ resume })` — the interaction happens on the same connection
+with the same subscription context.
+
+### 8.4 State Module — Store and Checkpoint Access
+
+LangGraph's `BaseStore` (cross-thread KV with namespaces and vector search)
+and checkpointer (per-thread state snapshots) are currently only accessible
+via REST APIs. The protocol should expose them as observable, streamable
+resources.
+
+**Commands**:
+
+```typescript
+// Read current graph state for a namespace
+{
+  id: 50,
+  method: "state.get",
+  params: {
+    namespace: ["agent_1"],
+    keys: ["messages", "plan", "progress"]  // Specific keys, or omit for all
+  }
+}
+
+// Query the cross-thread store
+{
+  id: 51,
+  method: "state.storeSearch",
+  params: {
+    storeNamespace: ["user_123", "memories"],
+    query: "previous research on quantum computing",
+    limit: 5
+  }
+}
+
+// Write to the store (user provides context)
+{
+  id: 52,
+  method: "state.storePut",
+  params: {
+    storeNamespace: ["user_123", "preferences"],
+    key: "output_format",
+    value: { format: "markdown", verbosity: "concise" }
+  }
+}
+
+// Browse checkpoint history (time-travel)
+{
+  id: 53,
+  method: "state.listCheckpoints",
+  params: {
+    namespace: [],                    // Root agent
+    limit: 20,
+    before: "checkpoint_xyz"          // Pagination cursor
+  }
+}
+
+// Fork from a historical checkpoint
+{
+  id: 54,
+  method: "state.fork",
+  params: {
+    checkpointId: "checkpoint_abc",
+    input: { messages: [{ role: "user", content: "Try a different approach" }] }
+  }
+}
+```
+
+**Events**:
+
+```typescript
+// State mutation notification (agent's graph state changed)
+{
+  type: "event",
+  method: "state.updated",
+  params: {
+    namespace: ["agent_1"],
+    timestamp: 1711454400000,
+    data: {
+      keys: ["plan", "progress"],     // Which keys changed
+      checkpoint: "checkpoint_xyz"     // Corresponding checkpoint
+    }
+  }
+}
+
+// Store write notification (agent wrote to long-term memory)
+{
+  type: "event",
+  method: "state.storeChanged",
+  params: {
+    namespace: ["agent_1"],
+    timestamp: 1711454400000,
+    data: {
+      storeNamespace: ["user_123", "findings"],
+      key: "quantum_research_v2",
+      operation: "put"
+    }
+  }
+}
+```
+
+### 8.5 Usage Module — Cost and Token Tracking
+
+At scale (hundreds of subagents), cost visibility is critical. The protocol
+should stream usage data so the frontend can display real-time cost dashboards,
+set budgets, and halt runaway agents.
+
+**Events**:
+
+```typescript
+// Per-LLM-call usage (emitted after each model invocation)
+{
+  type: "event",
+  method: "usage.llmCall",
+  params: {
+    namespace: ["agent_1", "researcher"],
+    timestamp: 1711454400000,
+    data: {
+      model: "gpt-4o",
+      provider: "openai",
+      inputTokens: 4200,
+      outputTokens: 850,
+      cachedTokens: 1200,
+      costUsd: 0.0234,               // Computed cost
+      latencyMs: 1340,
+      requestId: "req_abc123"
+    }
+  }
+}
+
+// Aggregate usage snapshot (periodic summary)
+{
+  type: "event",
+  method: "usage.summary",
+  params: {
+    namespace: [],                    // Root level = entire run
+    timestamp: 1711454400000,
+    data: {
+      totalInputTokens: 142000,
+      totalOutputTokens: 38000,
+      totalCostUsd: 1.47,
+      byModel: {
+        "gpt-4o": { calls: 45, costUsd: 1.12 },
+        "gpt-4o-mini": { calls: 230, costUsd: 0.35 }
+      },
+      byNamespace: {
+        "agent_1": { calls: 12, costUsd: 0.34 },
+        "agent_2": { calls: 28, costUsd: 0.89 }
+      }
+    }
+  }
+}
+```
+
+**Commands**:
+
+```typescript
+// Set a cost budget for the run (server enforces)
+{
+  id: 60,
+  method: "usage.setBudget",
+  params: {
+    maxCostUsd: 5.00,
+    action: "pause"                   // or "cancel" when budget exceeded
+  }
+}
+
+// Set a per-subagent budget
+{
+  id: 61,
+  method: "usage.setBudget",
+  params: {
+    namespace: ["agent_3"],
+    maxCostUsd: 0.50,
+    action: "cancel"
+  }
+}
+```
+
+### 8.6 Artifact Module — Structured Output Registry
+
+Agents produce outputs that are not state mutations or stream events: generated
+reports, code files, images, data tables, diagrams. These are **artifacts** —
+named, typed, versioned outputs that the frontend needs to discover, display,
+and download. Unlike `resource.changed` (which tracks file system mutations),
+artifacts are semantic outputs that agents explicitly declare.
+
+**Events**:
+
+```typescript
+// Agent declares a new artifact
+{
+  type: "event",
+  method: "artifact.created",
+  params: {
+    namespace: ["agent_1", "writer"],
+    timestamp: 1711454400000,
+    data: {
+      artifactId: "art_report_v1",
+      type: "document",               // or "code", "image", "data", "diagram"
+      title: "Quantum Computing Research Report",
+      mimeType: "text/markdown",
+      sizeBytes: 14200,
+      version: 1,
+      metadata: { sections: 5, wordCount: 2400 },
+      resourcePath: "/workspace/output/report.md"  // Optional: file path
+    }
+  }
+}
+
+// Agent updated an existing artifact
+{
+  type: "event",
+  method: "artifact.updated",
+  params: {
+    namespace: ["agent_1", "writer"],
+    timestamp: 1711454410000,
+    data: {
+      artifactId: "art_report_v1",
+      version: 2,
+      changes: "Added conclusion section",
+      sizeBytes: 18400
+    }
+  }
+}
+```
+
+**Commands**:
+
+```typescript
+// List all artifacts produced by a namespace subtree
+{
+  id: 70,
+  method: "artifact.list",
+  params: {
+    namespace: ["agent_1"],           // Includes descendants
+    types: ["document", "code"]       // Filter by type
+  }
+}
+
+// Fetch artifact content (inline for small, streamId for large/binary)
+{
+  id: 71,
+  method: "artifact.get",
+  params: {
+    artifactId: "art_report_v1",
+    version: 2                        // Specific version, or omit for latest
+  }
+}
+```
+
+### 8.7 Module Summary
+
+| Module | Channel | Commands | Events | Purpose |
+|--------|---------|----------|--------|---------|
+| **subscription** | — | `subscribe`, `unsubscribe`, `reconnect` | — | Filtering and connection management |
+| **agent** | `lifecycle` | `getTree` | `spawned`, `running`, `completed`, `failed` | Hierarchy discovery and lifecycle |
+| **messages** | `messages` | — | LLM token deltas | Text streaming |
+| **tools** | `tools` | — | Tool start/end/error | Tool observability |
+| **media** | `media` | — | `streamStart`, `streamEnd`, `artifact` + binary frames | Audio/video/image |
+| **resource** | `resource` | `list`, `read`, `write`, `download` | `changed` | File system access |
+| **terminal** | `terminal` | `input`, `kill` | `started`, `output`, `exited` | Shell execution |
+| **input** | `input` | `respond`, `inject` | `requested` | Human-in-the-loop |
+| **state** | `state` | `get`, `storeSearch`, `storePut`, `listCheckpoints`, `fork` | `updated`, `storeChanged` | Graph state and store access |
+| **usage** | `usage` | `setBudget` | `llmCall`, `summary` | Cost and token tracking |
+| **artifact** | `artifact` | `list`, `get` | `created`, `updated` | Structured output registry |
+| **flow** | — | `setCapacity` | — | Backpressure control |
+| **values** | `values` | — | Full state snapshots | State after each step |
+| **updates** | `updates` | — | Per-node deltas | Incremental state |
+| **custom** | `custom` | — | User-defined payloads | Extension point |
+| **debug** | `debug` | — | Verbose traces | Development |
+| **checkpoints** | `checkpoints` | — | Checkpoint metadata | Persistence observability |
+
+This gives **16 channels** and **~20 commands** — substantially more than the
+initial ~5 channels / ~4 commands, but each module is independently subscribable.
+A simple chat frontend subscribes to `messages` only. A full IDE-like agent
+workspace subscribes to everything. The protocol supports both without
+penalizing either.
+
+---
+
+## 9. Enabling Scenarios
+
+The full protocol unlocks scenarios that no existing agent streaming system
+supports. Each scenario below requires multiple modules working together over
+a single protocol connection.
+
+### 9.1 Agent IDE — Full Observability Workspace
+
+A frontend that provides IDE-level visibility into agent execution:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Agent IDE                                                   │
+├──────────────┬──────────────┬───────────────┬───────────────┤
+│  Agent Tree  │  Chat View   │  File Explorer│  Terminal     │
+│  (lifecycle) │  (messages,  │  (resource)   │  (terminal)   │
+│              │   tools)     │               │               │
+│  ● root      │  User: ...   │  📁 src/      │  $ npm build  │
+│  ├ agent_1 ● │  Agent: ...  │  ├ index.ts ★ │  > Building.. │
+│  │ └ res. ✓  │  🔧 search() │  ├ utils.ts   │  > Done.      │
+│  └ agent_2 ● │  Agent: ...  │  └ test.ts ★  │               │
+│              │              │  ★ = changed   │  Exit: 0      │
+├──────────────┴──────────────┼───────────────┴───────────────┤
+│  Artifacts                  │  Usage                        │
+│  (artifact)                 │  (usage)                      │
+│                             │                               │
+│  📄 Report v2    14.2 KB    │  Total: $1.47 (142K in/38K out│
+│  💻 module.ts    2.3 KB     │  agent_1: $0.34 (12 calls)    │
+│  📊 data.csv     45.1 KB    │  agent_2: $0.89 (28 calls)    │
+└─────────────────────────────┴───────────────────────────────┘
+```
+
+**Protocol usage**: Single WebSocket connection. Agent tree panel subscribes to
+`lifecycle` globally. Chat panel subscribes to `messages` + `tools` on the
+selected namespace. File explorer subscribes to `resource` on the active
+agent's namespace. Terminal panel subscribes to `terminal`. Artifacts panel
+subscribes to `artifact` globally. Usage panel subscribes to `usage` globally.
+Clicking a different agent in the tree updates the `messages` and `resource`
+subscriptions without disconnecting.
+
+### 9.2 Deep Agent with Sandbox File Access
+
+A deep agent running in a Modal/Daytona sandbox writes code, runs tests,
+and produces artifacts. The user can browse and edit files in the sandbox
+through the same protocol connection:
+
+1. Agent writes `/workspace/src/api.ts` → `resource.changed` event fires
+2. User clicks the file in the UI → `resource.read` command fetches content
+3. User edits a line → `resource.write` command updates the file
+4. Agent runs `npm test` → `terminal.started` + `terminal.output` stream live
+5. Tests fail → `terminal.exited` with exitCode 1
+6. Agent reads its own test output (internally), fixes the code
+7. Agent writes updated file → `resource.changed` fires again
+8. Agent runs tests again → pass → agent declares `artifact.created`
+
+The entire interaction happens over one WebSocket connection with
+appropriate channel subscriptions. No separate REST API calls, no
+separate auth tokens, no separate error handling.
+
+### 9.3 Collaborative Human-Agent Editing
+
+Multiple humans and agents collaborating on a document:
+
+1. Agent A produces report draft → `artifact.created` (version 1)
+2. User reads artifact via `artifact.get`, reviews it
+3. User sends feedback via `input.inject` to agent A
+4. Agent A revises → `artifact.updated` (version 2)
+5. Meanwhile, agent B is researching a related topic (subscribed via `lifecycle`)
+6. Agent B completes → `lifecycle.completed` with results
+7. Agent A incorporates agent B's findings → `artifact.updated` (version 3)
+8. User approves final version via `input.respond`
+
+The `artifact` module's versioning lets the frontend show diff views between
+versions, while the `lifecycle` + `messages` channels provide the narrative
+of how and why each version was created.
+
+### 9.4 Cost-Controlled Parallel Research
+
+A supervisor agent spawns 50 research subagents, each with a budget:
+
+1. Frontend subscribes to `lifecycle` and `usage` globally
+2. Supervisor spawns agents → 50 `lifecycle.spawned` events
+3. Frontend sends `usage.setBudget` for each agent ($0.10 each)
+4. `usage.llmCall` events stream in real-time; frontend shows a cost dashboard
+5. Agent 17 hits its budget → server auto-pauses it; `lifecycle.interrupted`
+6. User reviews agent 17's partial results via `state.get`, decides to increase budget
+7. User sends `usage.setBudget` with higher limit → agent resumes
+8. As agents complete, frontend unsubscribes from their namespaces (no wasted bandwidth)
+9. `usage.summary` provides final cost breakdown by agent
+
+### 9.5 Multimodal Agent with Live Audio + File Artifacts
+
+An agent that processes audio input, produces text analysis, and generates
+charts:
+
+1. Client subscribes to `media` (audio) + `messages` (text) + `artifact` (charts)
+   on namespace `["analyzer"]`
+2. Audio stream flows in via binary frames (input from user's microphone)
+3. Agent transcribes audio → `messages` events with correlation IDs linking
+   to audio timestamps
+4. Agent analyzes content → `messages` with intermediate reasoning
+5. Agent generates chart → `artifact.created` (type: "image")
+6. Client fetches chart via `artifact.get` → binary frames with PNG data
+7. Audio + text + chart are synchronized in the UI via correlation IDs
+   and timestamps
+
+### 9.6 Time-Travel Debugging
+
+A developer debugging a failed agent run:
+
+1. Frontend subscribes to `state` + `lifecycle` + `messages` + `tools`
+2. Uses `state.listCheckpoints` to browse the checkpoint history
+3. Identifies the checkpoint where things went wrong
+4. Uses `state.fork` to create a new run from that checkpoint with
+   different input
+5. Subscribes to the forked run's namespace
+6. Watches the forked execution alongside the original
+7. Compares artifacts between original and forked runs
+
+---
+
+## 10. Comparison to Other Streaming Protocols
+
+### 10.1 Vercel AI SDK Stream Protocol
 
 The [Vercel AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol)
 defines two streaming protocols: a plain-text stream and a "data stream"
@@ -1008,7 +1654,7 @@ documentation examples. With implementations in JS, Python, and Java, we need
 a single canonical grammar (CDDL) from which all language bindings are
 generated — not three manually-synchronized type definitions.
 
-### 8.2 Anthropic Messages Streaming
+### 10.2 Anthropic Messages Streaming
 
 Anthropic's [Messages API streaming](https://docs.anthropic.com/claude/reference/streaming)
 uses SSE with typed events (`message_start`, `content_block_start`,
@@ -1030,7 +1676,7 @@ content blocks. There is no concept of nested execution, concurrent tasks, or
 selective observation. It is the right design for "stream one model response"
 and the wrong design for "stream a tree of 200 concurrent agent executions."
 
-### 8.3 OpenAI Realtime API
+### 10.3 OpenAI Realtime API
 
 OpenAI's [Realtime API](https://platform.openai.com/docs/guides/realtime-websocket)
 uses WebSocket with JSON events for text and Base64-encoded audio within JSON
@@ -1055,7 +1701,7 @@ Our protocol uses native WebSocket binary frames with a minimal fixed header,
 and the subscription model means a client only receives audio from the
 subagents it's actively listening to.
 
-### 8.4 A2A Protocol (Revisited for Multimodal)
+### 10.4 A2A Protocol (Revisited for Multimodal)
 
 A2A supports multimodal content through its `Part` abstraction (text, file,
 structured data), but:
@@ -1075,7 +1721,7 @@ An agent producing live speech cannot stream audio through A2A in real time; it
 must complete the audio, package it as a file Part, and deliver it as a finished
 artifact.
 
-### 8.5 Codex Multi-Agent ("Collab") Architecture
+### 10.5 Codex Multi-Agent ("Collab") Architecture
 
 OpenAI's [Codex CLI](https://github.com/openai/codex) implements a
 multi-agent system (codenamed "Collab") where a parent agent spawns child
@@ -1176,7 +1822,7 @@ as our subscription-per-namespace-with-buffer-and-filtering pattern, but our
 protocol generalizes it for network transport, multiple simultaneous views,
 channel-level filtering, binary media, and cross-language implementations.
 
-### 8.6 Summary: Protocol Positioning
+### 10.6 Summary: Protocol Positioning
 
 ```
                     Multi-agent           Single-agent
@@ -1214,7 +1860,7 @@ binary media, and cross-language implementations.
 
 ---
 
-## 9. Migration Path
+## 11. Migration Path
 
 ### Phase 1: Server-Side Filtering (Non-Breaking)
 
@@ -1273,6 +1919,27 @@ transport from Phase 2.
 - Correlation ID support for synchronized multimodal playback
 - CDDL schema extensions for media types
 
+### Phase 6: Extended Modules
+
+Add the `resource`, `terminal`, `input`, `state`, `usage`, and `artifact`
+modules. These can be implemented incrementally — each module is independent
+and subscribable separately.
+
+**Recommended order** (by impact and dependency):
+1. **`input`** — highest immediate value; replaces out-of-band HITL API calls
+2. **`terminal`** — high value for deep agent/sandbox use cases
+3. **`resource`** — enables file browsing and editing in agent sandboxes
+4. **`artifact`** — structured output registry for generated content
+5. **`state`** — store/checkpoint access and time-travel debugging
+6. **`usage`** — cost tracking and budget enforcement
+
+**Changes required per module**:
+- CDDL schema for module commands and events
+- Command handler registration in the protocol server
+- Event emission from the appropriate runtime layer (Pregel, tools, sandbox)
+- Client SDK methods for each command
+- Subscription channel registration
+
 ---
 
 ## Appendix A: Protocol Comparison Matrix
@@ -1287,6 +1954,12 @@ transport from Phase 2.
 | **Event buffering** | None | N/A | None | None | None | None | Per-thread store + replay | Per-namespace buffer + replay |
 | **Multimodal** | Text only | N/A | File Parts (artifacts) | `file` URL ref | Text + tool blocks | Base64 audio in JSON | Text only | Native binary frames |
 | **Binary streaming** | No | No | No | No | No | Base64 (+33% overhead) | No | Yes (16-byte header) |
+| **File system access** | No | N/A | No | No | No | No | Via tools (not protocol) | `resource` module (list/read/write/download + change events) |
+| **Terminal streaming** | No | N/A | No | No | No | No | Via events (protocol) | `terminal` module (live stdout/stderr + input/kill) |
+| **Human-in-the-loop** | Separate API | N/A | No | No | No | No | Via tools | `input` module (request/respond/inject in-band) |
+| **State/store access** | Separate API | N/A | No | No | No | No | No | `state` module (get/search/fork/checkpoint history) |
+| **Cost tracking** | No | N/A | No | No | No | No | No | `usage` module (per-call + summary + budgets) |
+| **Artifact registry** | No | N/A | File Parts | No | No | No | No | `artifact` module (typed, versioned, discoverable) |
 | **Backpressure** | None | None | None | None | None | None | Fixed mpsc capacity | Configurable per-connection |
 | **Reconnection** | None | Session restore | tasks/resubscribe | Client-side chatResume | None | None | Resume from rollout file | Event buffer + reconnect |
 | **Schema** | TS types | CDDL | JSON Schema | Implicit TS | Implicit | OpenAPI | Rust types | CDDL → JS, Python, Java |
