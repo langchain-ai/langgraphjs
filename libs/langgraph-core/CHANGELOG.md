@@ -1,5 +1,20 @@
 # @langchain/langgraph
 
+## 1.2.6
+
+### Patch Changes
+
+- [#2241](https://github.com/langchain-ai/langgraphjs/pull/2241) [`6ee23e8`](https://github.com/langchain-ai/langgraphjs/commit/6ee23e819b5da43a5a0c62560f85a9037a427630) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - feat: add browser support for interrupt, writer, and other Node-only exports
+
+  Export `interrupt`, `writer`, `pushMessage`, `getStore`, `getWriter`, `getConfig`, `getPreviousState`, `getCurrentTaskInput` from `web.ts` and add a `"browser"` condition to the `"."` package export so browser bundlers resolve to `web.js` instead of pulling in `node:async_hooks`.
+
+- [#2245](https://github.com/langchain-ai/langgraphjs/pull/2245) [`77af976`](https://github.com/langchain-ai/langgraphjs/commit/77af97650c0f1671338911994c2e355b29489528) Thanks [@hntrl](https://github.com/hntrl)! - revert abort signal change that was causing problematic errors
+
+- [#2242](https://github.com/langchain-ai/langgraphjs/pull/2242) [`bdcf290`](https://github.com/langchain-ai/langgraphjs/commit/bdcf290198ce5cea4367ee8c9f1cbbbcf14d05e4) Thanks [@hntrl](https://github.com/hntrl)! - clean up resolved checkpointer promises to reduce memory retention
+
+- Updated dependencies [[`88726df`](https://github.com/langchain-ai/langgraphjs/commit/88726dfe222aed64e5cd5dfa6f77f886b5a0d205), [`7dfcbff`](https://github.com/langchain-ai/langgraphjs/commit/7dfcbffd4805b2b4cc41f07f30be57ed732786b4)]:
+  - @langchain/langgraph-sdk@1.8.1
+
 ## 1.2.5
 
 ### Patch Changes

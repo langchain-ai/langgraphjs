@@ -1,5 +1,16 @@
 # @langchain/vue
 
+## 0.3.1
+
+### Patch Changes
+
+- [#2237](https://github.com/langchain-ai/langgraphjs/pull/2237) [`88726df`](https://github.com/langchain-ai/langgraphjs/commit/88726dfe222aed64e5cd5dfa6f77f886b5a0d205) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Extract shared `WithClassMessages<T>` type to `@langchain/langgraph-sdk/ui`
+
+- [#2236](https://github.com/langchain-ai/langgraphjs/pull/2236) [`4a80eef`](https://github.com/langchain-ai/langgraphjs/commit/4a80eefa4463b2043b50892b1ad460b6aa0a168c) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(vue): use computed() and reactive refs in custom transport
+
+- Updated dependencies [[`88726df`](https://github.com/langchain-ai/langgraphjs/commit/88726dfe222aed64e5cd5dfa6f77f886b5a0d205), [`7dfcbff`](https://github.com/langchain-ai/langgraphjs/commit/7dfcbffd4805b2b4cc41f07f30be57ed732786b4)]:
+  - @langchain/langgraph-sdk@1.8.1
+
 ## 0.3.0
 
 ### Minor Changes

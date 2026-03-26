@@ -1,5 +1,18 @@
 # @langchain/angular
 
+## 0.3.1
+
+### Patch Changes
+
+- [#2237](https://github.com/langchain-ai/langgraphjs/pull/2237) [`88726df`](https://github.com/langchain-ai/langgraphjs/commit/88726dfe222aed64e5cd5dfa6f77f886b5a0d205) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Extract shared `WithClassMessages<T>` type to `@langchain/langgraph-sdk/ui`
+
+- [#2235](https://github.com/langchain-ai/langgraphjs/pull/2235) [`1b597f1`](https://github.com/langchain-ai/langgraphjs/commit/1b597f124e8557cef86f98670ca594237e0040cf) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(@langchain/angular): resolve non-idiomatic patterns
+
+- [#2234](https://github.com/langchain-ai/langgraphjs/pull/2234) [`c52ba27`](https://github.com/langchain-ai/langgraphjs/commit/c52ba278ebcaab7ee098e4afae00d120aca96ef7) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(angular): sync isLoading signal in custom transport
+
+- Updated dependencies [[`88726df`](https://github.com/langchain-ai/langgraphjs/commit/88726dfe222aed64e5cd5dfa6f77f886b5a0d205), [`7dfcbff`](https://github.com/langchain-ai/langgraphjs/commit/7dfcbffd4805b2b4cc41f07f30be57ed732786b4)]:
+  - @langchain/langgraph-sdk@1.8.1
+
 ## 0.3.0
 
 ### Minor Changes
