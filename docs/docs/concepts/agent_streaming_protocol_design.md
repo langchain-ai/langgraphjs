@@ -20,7 +20,6 @@
 - [9. Enabling Scenarios](#9-enabling-scenarios)
 - [10. Comparison to Other Streaming Protocols](#10-comparison-to-other-streaming-protocols)
   - [10.5 Codex Multi-Agent ("Collab") Architecture](#105-codex-multi-agent-collab-architecture)
-- [11. Migration Path](#11-migration-path)
 
 ---
 
@@ -1070,20 +1069,20 @@ file change notifications as the agent works. Combined with `messages` and
 (visible in `messages`), called a tool to write it (visible in `tools`), and
 the file appeared on disk (visible in `resource`).
 
-### 8.2 Terminal Module — Shell Output Streaming
+### 8.2 Sandbox Module — Shell Output Streaming
 
-Agents executing shell commands produce stdout/stderr streams that frontends
-need to display in real time. Today, command output is captured as a single
-tool result string after execution completes. The terminal module streams it
-live.
+Agents executing shell commands in sandboxed environments (Modal, Daytona,
+E2B, local VFS) produce stdout/stderr streams that frontends need to display
+in real time. Today, command output is captured as a single tool result string
+after execution completes. The sandbox module streams it live.
 
 **Events**:
 
 ```typescript
-// Shell command started
+// Shell command started in sandbox
 {
   type: "event",
-  method: "terminal.started",
+  method: "sandbox.started",
   params: {
     namespace: ["agent_1"],
     timestamp: 1711454400000,
@@ -1099,7 +1098,7 @@ live.
 // Streaming stdout/stderr chunks
 {
   type: "event",
-  method: "terminal.output",
+  method: "sandbox.output",
   params: {
     namespace: ["agent_1"],
     timestamp: 1711454400050,
@@ -1114,7 +1113,7 @@ live.
 // Command completed
 {
   type: "event",
-  method: "terminal.exited",
+  method: "sandbox.exited",
   params: {
     namespace: ["agent_1"],
     timestamp: 1711454405000,
@@ -1130,10 +1129,10 @@ live.
 **Commands** (client → server):
 
 ```typescript
-// Send input to a running terminal (e.g., answering a prompt)
+// Send input to a running command (e.g., answering a prompt)
 {
   id: 30,
-  method: "terminal.input",
+  method: "sandbox.input",
   params: {
     namespace: ["agent_1"],
     terminalId: "term_1",
@@ -1144,7 +1143,7 @@ live.
 // Kill a running command
 {
   id: 31,
-  method: "terminal.kill",
+  method: "sandbox.kill",
   params: {
     namespace: ["agent_1"],
     terminalId: "term_1",
@@ -1391,79 +1390,7 @@ set budgets, and halt runaway agents.
 }
 ```
 
-### 8.6 Artifact Module — Structured Output Registry
-
-Agents produce outputs that are not state mutations or stream events: generated
-reports, code files, images, data tables, diagrams. These are **artifacts** —
-named, typed, versioned outputs that the frontend needs to discover, display,
-and download. Unlike `resource.changed` (which tracks file system mutations),
-artifacts are semantic outputs that agents explicitly declare.
-
-**Events**:
-
-```typescript
-// Agent declares a new artifact
-{
-  type: "event",
-  method: "artifact.created",
-  params: {
-    namespace: ["agent_1", "writer"],
-    timestamp: 1711454400000,
-    data: {
-      artifactId: "art_report_v1",
-      type: "document",               // or "code", "image", "data", "diagram"
-      title: "Quantum Computing Research Report",
-      mimeType: "text/markdown",
-      sizeBytes: 14200,
-      version: 1,
-      metadata: { sections: 5, wordCount: 2400 },
-      resourcePath: "/workspace/output/report.md"  // Optional: file path
-    }
-  }
-}
-
-// Agent updated an existing artifact
-{
-  type: "event",
-  method: "artifact.updated",
-  params: {
-    namespace: ["agent_1", "writer"],
-    timestamp: 1711454410000,
-    data: {
-      artifactId: "art_report_v1",
-      version: 2,
-      changes: "Added conclusion section",
-      sizeBytes: 18400
-    }
-  }
-}
-```
-
-**Commands**:
-
-```typescript
-// List all artifacts produced by a namespace subtree
-{
-  id: 70,
-  method: "artifact.list",
-  params: {
-    namespace: ["agent_1"],           // Includes descendants
-    types: ["document", "code"]       // Filter by type
-  }
-}
-
-// Fetch artifact content (inline for small, streamId for large/binary)
-{
-  id: 71,
-  method: "artifact.get",
-  params: {
-    artifactId: "art_report_v1",
-    version: 2                        // Specific version, or omit for latest
-  }
-}
-```
-
-### 8.7 Module Summary
+### 8.6 Module Summary
 
 | Module | Channel | Commands | Events | Purpose |
 |--------|---------|----------|--------|---------|
@@ -1473,11 +1400,10 @@ artifacts are semantic outputs that agents explicitly declare.
 | **tools** | `tools` | — | Tool start/end/error | Tool observability |
 | **media** | `media` | — | `streamStart`, `streamEnd`, `artifact` + binary frames | Audio/video/image |
 | **resource** | `resource` | `list`, `read`, `write`, `download` | `changed` | File system access |
-| **terminal** | `terminal` | `input`, `kill` | `started`, `output`, `exited` | Shell execution |
+| **sandbox** | `sandbox` | `input`, `kill` | `started`, `output`, `exited` | Shell execution in sandboxed environments |
 | **input** | `input` | `respond`, `inject` | `requested` | Human-in-the-loop |
 | **state** | `state` | `get`, `storeSearch`, `storePut`, `listCheckpoints`, `fork` | `updated`, `storeChanged` | Graph state and store access |
 | **usage** | `usage` | `setBudget` | `llmCall`, `summary` | Cost and token tracking |
-| **artifact** | `artifact` | `list`, `get` | `created`, `updated` | Structured output registry |
 | **flow** | — | `setCapacity` | — | Backpressure control |
 | **values** | `values` | — | Full state snapshots | State after each step |
 | **updates** | `updates` | — | Per-node deltas | Incremental state |
@@ -1485,7 +1411,7 @@ artifacts are semantic outputs that agents explicitly declare.
 | **debug** | `debug` | — | Verbose traces | Development |
 | **checkpoints** | `checkpoints` | — | Checkpoint metadata | Persistence observability |
 
-This gives **16 channels** and **~20 commands** — substantially more than the
+This gives **15 channels** and **~18 commands** — substantially more than the
 initial ~5 channels / ~4 commands, but each module is independently subscribable.
 A simple chat frontend subscribes to `messages` only. A full IDE-like agent
 workspace subscribes to everything. The protocol supports both without
@@ -1507,67 +1433,67 @@ A frontend that provides IDE-level visibility into agent execution:
 ┌─────────────────────────────────────────────────────────────┐
 │  Agent IDE                                                   │
 ├──────────────┬──────────────┬───────────────┬───────────────┤
-│  Agent Tree  │  Chat View   │  File Explorer│  Terminal     │
-│  (lifecycle) │  (messages,  │  (resource)   │  (terminal)   │
+│  Agent Tree  │  Chat View   │  File Explorer│  Sandbox      │
+│  (lifecycle) │  (messages,  │  (resource)   │  (sandbox)    │
 │              │   tools)     │               │               │
 │  ● root      │  User: ...   │  📁 src/      │  $ npm build  │
 │  ├ agent_1 ● │  Agent: ...  │  ├ index.ts ★ │  > Building.. │
 │  │ └ res. ✓  │  🔧 search() │  ├ utils.ts   │  > Done.      │
 │  └ agent_2 ● │  Agent: ...  │  └ test.ts ★  │               │
 │              │              │  ★ = changed   │  Exit: 0      │
-├──────────────┴──────────────┼───────────────┴───────────────┤
-│  Artifacts                  │  Usage                        │
-│  (artifact)                 │  (usage)                      │
-│                             │                               │
-│  📄 Report v2    14.2 KB    │  Total: $1.47 (142K in/38K out│
-│  💻 module.ts    2.3 KB     │  agent_1: $0.34 (12 calls)    │
-│  📊 data.csv     45.1 KB    │  agent_2: $0.89 (28 calls)    │
-└─────────────────────────────┴───────────────────────────────┘
+├──────────────┴──────────────┴───────────────┼───────────────┤
+│                                              │  Usage        │
+│                                              │  (usage)      │
+│                                              │               │
+│                                              │  $1.47 total  │
+│                                              │  142K in      │
+│                                              │  38K out      │
+└──────────────────────────────────────────────┴───────────────┘
 ```
 
 **Protocol usage**: Single WebSocket connection. Agent tree panel subscribes to
 `lifecycle` globally. Chat panel subscribes to `messages` + `tools` on the
 selected namespace. File explorer subscribes to `resource` on the active
-agent's namespace. Terminal panel subscribes to `terminal`. Artifacts panel
-subscribes to `artifact` globally. Usage panel subscribes to `usage` globally.
-Clicking a different agent in the tree updates the `messages` and `resource`
-subscriptions without disconnecting.
+agent's namespace. Sandbox panel subscribes to `sandbox`. Usage panel subscribes
+to `usage` globally. Clicking a different agent in the tree updates the
+`messages` and `resource` subscriptions without disconnecting.
 
 ### 9.2 Deep Agent with Sandbox File Access
 
 A deep agent running in a Modal/Daytona sandbox writes code, runs tests,
-and produces artifacts. The user can browse and edit files in the sandbox
-through the same protocol connection:
+and iterates. The user can browse and edit files in the sandbox through
+the same protocol connection:
 
 1. Agent writes `/workspace/src/api.ts` → `resource.changed` event fires
 2. User clicks the file in the UI → `resource.read` command fetches content
 3. User edits a line → `resource.write` command updates the file
-4. Agent runs `npm test` → `terminal.started` + `terminal.output` stream live
-5. Tests fail → `terminal.exited` with exitCode 1
+4. Agent runs `npm test` → `sandbox.started` + `sandbox.output` stream live
+5. Tests fail → `sandbox.exited` with exitCode 1
 6. Agent reads its own test output (internally), fixes the code
 7. Agent writes updated file → `resource.changed` fires again
-8. Agent runs tests again → pass → agent declares `artifact.created`
+8. Agent runs tests again → pass
 
 The entire interaction happens over one WebSocket connection with
 appropriate channel subscriptions. No separate REST API calls, no
 separate auth tokens, no separate error handling.
 
-### 9.3 Collaborative Human-Agent Editing
+### 9.3 Human-Agent Collaboration with Sandbox
 
-Multiple humans and agents collaborating on a document:
+A user working alongside an agent that writes code in a sandbox:
 
-1. Agent A produces report draft → `artifact.created` (version 1)
-2. User reads artifact via `artifact.get`, reviews it
-3. User sends feedback via `input.inject` to agent A
-4. Agent A revises → `artifact.updated` (version 2)
-5. Meanwhile, agent B is researching a related topic (subscribed via `lifecycle`)
-6. Agent B completes → `lifecycle.completed` with results
-7. Agent A incorporates agent B's findings → `artifact.updated` (version 3)
-8. User approves final version via `input.respond`
+1. Agent writes a first draft of `/workspace/src/api.ts` → `resource.changed`
+2. User browses the file via `resource.read`, spots an issue
+3. User edits the file directly via `resource.write`
+4. User sends feedback via `input.inject`: "I fixed the auth header, now run tests"
+5. Agent runs `npm test` → `sandbox.started` + `sandbox.output` streams live
+6. Meanwhile, agent B is researching the API docs (subscribed via `lifecycle`)
+7. Agent B completes → `lifecycle.completed` with findings
+8. Agent A incorporates findings, writes updated code → `resource.changed`
+9. Agent runs tests again → `sandbox.exited` with exitCode 0
 
-The `artifact` module's versioning lets the frontend show diff views between
-versions, while the `lifecycle` + `messages` channels provide the narrative
-of how and why each version was created.
+The `resource`, `sandbox`, and `input` channels give the user full
+read-write access to the agent's workspace, while `lifecycle` +
+`messages` provide the narrative of what the agent is doing and why.
 
 ### 9.4 Cost-Controlled Parallel Research
 
@@ -1583,21 +1509,21 @@ A supervisor agent spawns 50 research subagents, each with a budget:
 8. As agents complete, frontend unsubscribes from their namespaces (no wasted bandwidth)
 9. `usage.summary` provides final cost breakdown by agent
 
-### 9.5 Multimodal Agent with Live Audio + File Artifacts
+### 9.5 Multimodal Agent with Live Audio + Generated Files
 
 An agent that processes audio input, produces text analysis, and generates
-charts:
+output files:
 
-1. Client subscribes to `media` (audio) + `messages` (text) + `artifact` (charts)
+1. Client subscribes to `media` (audio) + `messages` (text) + `resource`
    on namespace `["analyzer"]`
 2. Audio stream flows in via binary frames (input from user's microphone)
 3. Agent transcribes audio → `messages` events with correlation IDs linking
    to audio timestamps
 4. Agent analyzes content → `messages` with intermediate reasoning
-5. Agent generates chart → `artifact.created` (type: "image")
-6. Client fetches chart via `artifact.get` → binary frames with PNG data
-7. Audio + text + chart are synchronized in the UI via correlation IDs
-   and timestamps
+5. Agent generates a chart, writes it to sandbox → `resource.changed`
+6. Client fetches chart via `resource.read` (binary encoding)
+7. Audio + text + file changes are synchronized in the UI via correlation
+   IDs and timestamps
 
 ### 9.6 Time-Travel Debugging
 
@@ -1610,7 +1536,7 @@ A developer debugging a failed agent run:
    different input
 5. Subscribes to the forked run's namespace
 6. Watches the forked execution alongside the original
-7. Compares artifacts between original and forked runs
+7. Compares state and file outputs between original and forked runs
 
 ---
 
@@ -1860,88 +1786,6 @@ binary media, and cross-language implementations.
 
 ---
 
-## 11. Migration Path
-
-### Phase 1: Server-Side Filtering (Non-Breaking)
-
-Add subscription-based filtering to the existing SSE transport. Clients that
-don't send subscriptions receive all events (current behavior). Clients that
-subscribe receive only matching events.
-
-**Changes required**:
-- New `SubscriptionRegistry` class in `pregel/stream.ts`
-- Modify `toEventStream` to check subscriptions before emitting
-- Add HTTP POST endpoint for subscription management (SSE transport)
-
-### Phase 2: WebSocket Transport
-
-Add WebSocket as an alternative transport alongside SSE. The same protocol
-messages work on both transports; WebSocket simply enables bidirectional
-communication without a separate HTTP control channel.
-
-**Changes required**:
-- New `WebSocketStreamTransport` class
-- Protocol message serialization/deserialization
-- Connection lifecycle management
-
-### Phase 3: Lifecycle Channel and Hierarchy Discovery
-
-Add the `lifecycle` event channel and `agent.getTree` command. This enables
-dynamic subscription UIs where the frontend discovers the subagent tree and
-subscribes to specific branches.
-
-**Changes required**:
-- Emit lifecycle events from `PregelLoop` when tasks start/complete
-- Maintain a namespace tree structure in `PregelRunner`
-- Implement `agent.getTree` command handler
-
-### Phase 4: Backpressure and Reconnection
-
-Add flow control and reconnection support. This is the most invasive change,
-requiring a bounded event buffer and per-connection flow control state.
-
-**Changes required**:
-- Event buffer with configurable retention
-- Per-connection backpressure state in `IterableReadableWritableStream`
-- Reconnection protocol implementation
-
-### Phase 5: Multimodal Streaming
-
-Add the `media` channel with binary frame support. This requires the WebSocket
-transport from Phase 2.
-
-**Changes required**:
-- Binary frame header serialization/deserialization (16-byte fixed prefix)
-- `media.streamStart` / `media.streamEnd` / `media.artifact` event handling
-- Stream ID registry mapping stream IDs to namespace + media metadata
-- `mediaTypes` filter in subscription params
-- SSE fallback strategy (Base64 inline or parallel binary channel)
-- Correlation ID support for synchronized multimodal playback
-- CDDL schema extensions for media types
-
-### Phase 6: Extended Modules
-
-Add the `resource`, `terminal`, `input`, `state`, `usage`, and `artifact`
-modules. These can be implemented incrementally — each module is independent
-and subscribable separately.
-
-**Recommended order** (by impact and dependency):
-1. **`input`** — highest immediate value; replaces out-of-band HITL API calls
-2. **`terminal`** — high value for deep agent/sandbox use cases
-3. **`resource`** — enables file browsing and editing in agent sandboxes
-4. **`artifact`** — structured output registry for generated content
-5. **`state`** — store/checkpoint access and time-travel debugging
-6. **`usage`** — cost tracking and budget enforcement
-
-**Changes required per module**:
-- CDDL schema for module commands and events
-- Command handler registration in the protocol server
-- Event emission from the appropriate runtime layer (Pregel, tools, sandbox)
-- Client SDK methods for each command
-- Subscription channel registration
-
----
-
 ## Appendix A: Protocol Comparison Matrix
 
 | Dimension | Current LangGraph | WebDriver BiDi | A2A | Vercel AI SDK | Anthropic | OpenAI Realtime | Codex Collab | **Proposed (BiDi-modeled)** |
@@ -1955,11 +1799,10 @@ and subscribable separately.
 | **Multimodal** | Text only | N/A | File Parts (artifacts) | `file` URL ref | Text + tool blocks | Base64 audio in JSON | Text only | Native binary frames |
 | **Binary streaming** | No | No | No | No | No | Base64 (+33% overhead) | No | Yes (16-byte header) |
 | **File system access** | No | N/A | No | No | No | No | Via tools (not protocol) | `resource` module (list/read/write/download + change events) |
-| **Terminal streaming** | No | N/A | No | No | No | No | Via events (protocol) | `terminal` module (live stdout/stderr + input/kill) |
+| **Sandbox shell** | No | N/A | No | No | No | No | Via events (protocol) | `sandbox` module (live stdout/stderr + input/kill) |
 | **Human-in-the-loop** | Separate API | N/A | No | No | No | No | Via tools | `input` module (request/respond/inject in-band) |
 | **State/store access** | Separate API | N/A | No | No | No | No | No | `state` module (get/search/fork/checkpoint history) |
 | **Cost tracking** | No | N/A | No | No | No | No | No | `usage` module (per-call + summary + budgets) |
-| **Artifact registry** | No | N/A | File Parts | No | No | No | No | `artifact` module (typed, versioned, discoverable) |
 | **Backpressure** | None | None | None | None | None | None | Fixed mpsc capacity | Configurable per-connection |
 | **Reconnection** | None | Session restore | tasks/resubscribe | Client-side chatResume | None | None | Resume from rollout file | Event buffer + reconnect |
 | **Schema** | TS types | CDDL | JSON Schema | Implicit TS | Implicit | OpenAPI | Rust types | CDDL → JS, Python, Java |
