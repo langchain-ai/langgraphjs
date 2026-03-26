@@ -15,10 +15,7 @@ describe("normalizeHitlInterruptPayload", () => {
       ],
       review_configs: [{ allowed_decisions: ["approve", "reject"] }],
     };
-    const out = normalizeHitlInterruptPayload(raw) as Record<
-      string,
-      unknown
-    >;
+    const out = normalizeHitlInterruptPayload(raw) as Record<string, unknown>;
     expect(out.action_requests).toBeUndefined();
     expect(out.actionRequests).toHaveLength(1);
     expect((out.actionRequests as Record<string, unknown>[])[0]).toEqual({
@@ -36,10 +33,7 @@ describe("normalizeHitlInterruptPayload", () => {
       actionRequests: [{ name: "x", args: {} }],
       reviewConfigs: [{ allowedDecisions: ["approve"] }],
     };
-    const out = normalizeHitlInterruptPayload(raw) as Record<
-      string,
-      unknown
-    >;
+    const out = normalizeHitlInterruptPayload(raw) as Record<string, unknown>;
     expect(out).toEqual(raw);
   });
 
@@ -48,10 +42,7 @@ describe("normalizeHitlInterruptPayload", () => {
       actionRequests: [{ name: "camel", args: {} }],
       action_requests: [{ action_name: "snake", args: {} }],
     };
-    const out = normalizeHitlInterruptPayload(raw) as Record<
-      string,
-      unknown
-    >;
+    const out = normalizeHitlInterruptPayload(raw) as Record<string, unknown>;
     expect((out.actionRequests as { name: string }[])[0].name).toBe("camel");
   });
 
@@ -67,9 +58,7 @@ describe("normalizeInterruptForClient", () => {
     const i = normalizeInterruptForClient({
       id: "1",
       value: {
-        action_requests: [
-          { action_name: "t", args: {}, description: "" },
-        ],
+        action_requests: [{ action_name: "t", args: {}, description: "" }],
         review_configs: [{ allowed_decisions: ["approve"] }],
       },
     });

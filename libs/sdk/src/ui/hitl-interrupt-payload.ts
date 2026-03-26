@@ -26,11 +26,7 @@ function aliasSnakeToCamel(
   return next;
 }
 
-function mapArrayAlias(
-  raw: unknown,
-  camel: string,
-  snake: string
-): unknown {
+function mapArrayAlias(raw: unknown, camel: string, snake: string): unknown {
   if (!Array.isArray(raw)) return raw;
   return raw.map((item) => aliasSnakeToCamel(item, camel, snake));
 }
