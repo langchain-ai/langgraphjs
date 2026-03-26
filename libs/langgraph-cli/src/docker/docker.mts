@@ -382,6 +382,7 @@ export async function configToDocker(
       `ENV LANGGRAPH_UI_CONFIG='${JSON.stringify(config.ui_config)}'`,
     !!config.store && `ENV LANGGRAPH_STORE='${JSON.stringify(config.store)}'`,
     !!config.auth && `ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`,
+    !!config.http && `ENV LANGGRAPH_HTTP='${JSON.stringify(config.http)}'`,
     !!localDeps.workingDir && `WORKDIR ${localDeps.workingDir}`,
     "node_version" in config
       ? [

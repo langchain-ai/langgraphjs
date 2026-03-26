@@ -413,6 +413,73 @@ describe("config to docker", () => {
       RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
     `);
   });
+
+  it("js with http settings", async () => {
+    const graphs = { agent: "./graphs/agent.js:graph" };
+    const config = getConfig({
+      dockerfile_lines: [],
+      env: {},
+      node_version: "20" as const,
+      graphs,
+      http: {
+        app: "./src/app.ts:app",
+        disable_assistants: true,
+        cors: { allow_origins: ["https://example.com"] },
+      },
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toEqual(dedenter`
+      FROM langchain/langgraphjs-api:20
+      ADD . /deps/unit_tests
+      ENV LANGSERVE_GRAPHS='{"agent":"./graphs/agent.js:graph"}'
+      ENV LANGGRAPH_HTTP='{"app":"./src/app.ts:app","disable_assistants":true,"disable_threads":false,"disable_runs":false,"disable_store":false,"disable_meta":false,"cors":{"allow_origins":["https://example.com"]}}'
+      WORKDIR /deps/unit_tests
+      RUN npm i
+      RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+    `);
+  });
+
+  it("python with http settings", async () => {
+    const graphs = { agent: "./agent.py:graph" };
+    const config = getConfig({
+      ...DEFAULT_CONFIG,
+      dependencies: ["."],
+      graphs,
+      http: {
+        disable_threads: true,
+        cors: { allow_origins: ["*"], allow_credentials: false },
+      },
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toEqual(dedenter`
+      FROM langchain/langgraph-api:3.11
+      ADD . /deps/__outer_unit_tests/unit_tests
+      RUN set -ex && \
+          for line in '[project]' \
+                      'name = "unit_tests"' \
+                      'version = "0.1"' \
+                      '[tool.setuptools.package-data]' \
+                      '"*" = ["**/*"]'; do \
+              echo "$$line" >> /deps/__outer_unit_tests/pyproject.toml; \
+          done
+      RUN --mount=type=cache,target=/root/.cache/pip PYTHONDONTWRITEBYTECODE=1 pip install -c /api/constraints.txt -e /deps/*
+      ENV LANGSERVE_GRAPHS='{"agent":"/deps/__outer_unit_tests/unit_tests/agent.py:graph"}'
+      ENV LANGGRAPH_HTTP='{"disable_assistants":false,"disable_threads":true,"disable_runs":false,"disable_store":false,"disable_meta":false,"cors":{"allow_origins":["*"],"allow_credentials":false}}'
+      WORKDIR /deps/__outer_unit_tests/unit_tests
+    `);
+  });
 });
 
 describe("config to compose", () => {
