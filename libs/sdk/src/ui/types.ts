@@ -1086,6 +1086,10 @@ export interface UseStreamOptions<
 
   /**
    * Callback that is called when the stream is finished.
+   *
+   * If you declare no parameters (side effects only), the SDK skips an extra
+   * post-stream `getHistory` when branching history is disabled, so loading
+   * ends as soon as the run stream completes.
    */
   onFinish?: (
     state: ThreadState<StateType>,
