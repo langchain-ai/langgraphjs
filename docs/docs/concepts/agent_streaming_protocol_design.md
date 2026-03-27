@@ -18,8 +18,9 @@
 - [7. Multimodal Streaming](#7-multimodal-streaming)
 - [8. Extended Protocol Modules](#8-extended-protocol-modules)
 - [9. Enabling Scenarios](#9-enabling-scenarios)
-- [10. Comparison to Other Streaming Protocols](#10-comparison-to-other-streaming-protocols)
-  - [10.5 Codex Multi-Agent ("Collab") Architecture](#105-codex-multi-agent-collab-architecture)
+- [10. Implementation Assessment](#10-implementation-assessment)
+- [11. Comparison to Other Streaming Protocols](#11-comparison-to-other-streaming-protocols)
+  - [11.5 Codex Multi-Agent ("Collab") Architecture](#115-codex-multi-agent-collab-architecture)
 
 ---
 
@@ -1748,9 +1749,200 @@ A developer debugging a failed agent run:
 
 ---
 
-## 10. Comparison to Other Streaming Protocols
+## 10. Implementation Assessment
 
-### 10.1 Vercel AI SDK Stream Protocol
+This section maps the proposed protocol to the existing LangGraph.js codebase,
+identifying exactly where changes are needed, what can be reused, and where
+the hard problems are.
+
+### 10.1 What Already Exists
+
+The codebase is surprisingly well-prepared. Many protocol concepts already
+have direct implementation counterparts:
+
+| Protocol Concept | Existing Implementation | Gap |
+|------------------|------------------------|-----|
+| **Namespace hierarchy** | `checkpointNamespace` in `PregelLoop` (split from `checkpoint_ns`) | Already exists; needs to be promoted from internal to protocol-visible |
+| **Stream modes as channels** | `StreamMode` type, `stream.modes` set, `_emit` filters by mode | Direct mapping; extend the set with new channel names |
+| **Subgraph event merging** | `createDuplexStream` + `CONFIG_KEY_STREAM` injection | Already works; subscription filtering layers on top |
+| **Event shape** | `StreamChunk = [namespace, mode, payload]` | Already the right shape; protocol events wrap this with timestamp |
+| **SSE encoding** | `toEventStream()` with `event: mode\|ns` format | Works today; subscription filtering goes upstream |
+| **Callback-based handlers** | `StreamMessagesHandler`, `StreamToolsHandler` push to stream | Extend pattern for new channels |
+| **Custom writer** | `config.writer` → `stream.push([ns, "custom", chunk])` | Already the right pattern for custom channels |
+| **Interrupt/resume** | `interrupt()` → `GraphInterrupt` → `Command({ resume })` | Full HITL flow exists; protocol wraps it in-band |
+| **Store access** | `BaseStore` with namespace KV + vector search | Full API exists; protocol exposes it as commands |
+| **Checkpoint history** | `checkpointer.list()`, `getState()`, `updateState()` | Exists in SDK; protocol wraps as `state.*` commands |
+| **SSE retry + resume** | `streamWithRetry` tracks `lastEventId`, `Last-Event-ID` header | Foundation for `subscription.reconnect` |
+| **SDK client structure** | `Client` facade with sub-clients (`runs`, `threads`, `store`) | Natural extension point for protocol client |
+
+### 10.2 Core Runtime Changes (langgraph-core)
+
+#### Subscription Registry — New Component
+
+The most significant new component. Sits between `_emit` and `stream.push`:
+
+```
+  PregelLoop._emit()
+       │
+       ▼
+  SubscriptionRegistry.dispatch(namespace, mode, payload)
+       │
+       ├── subscription A matches? → stream A .push()
+       ├── subscription B matches? → stream B .push()
+       └── no match → drop (never serialized)
+```
+
+**Where it hooks in**: `IterableReadableWritableStream.push()` at
+`stream.ts:141`. Today every chunk goes through `passthroughFn` then
+`controller.enqueue`. The registry replaces this with per-subscription
+dispatch.
+
+**Complexity**: Medium. The registry itself is a simple data structure
+(list of `{ id, channels, namespaces, depth }` with prefix matching).
+The harder part is that `createDuplexStream` in `loop.ts:151-162`
+currently fans out by mode only — it needs to also carry subscription
+context so nested subgraphs only push to matching subscriptions.
+
+#### Event Buffer — New Component
+
+Stores recent events for replay on new subscriptions and reconnection.
+Bounded ring buffer with configurable capacity.
+
+**Where it hooks in**: Between `SubscriptionRegistry.dispatch` and the
+actual stream push. Every event that passes any subscription is also
+appended to the buffer. On new subscription, matching events from the
+buffer are replayed.
+
+**Complexity**: Low for the buffer itself. The snapshot-drain race
+condition (from Codex analysis) adds subtlety: during replay, new events
+must be queued and drained after replay completes before switching to
+live delivery.
+
+#### Lifecycle Events — Small Extension
+
+Emit `lifecycle.spawned` / `lifecycle.completed` / `lifecycle.failed`
+events from existing code paths.
+
+**Where it hooks in**:
+- **Spawned**: `PregelLoop.initialize()` at `loop.ts:405` — when a
+  nested graph's stream is duplexed, emit a lifecycle event.
+- **Completed/Failed**: `PregelRunner._commit()` at `runner.ts:359` —
+  task completion already calls `nodeFinished` callback (line 380).
+  Extend this to emit lifecycle events to the stream.
+
+**Complexity**: Low. The integration points already exist; this is
+adding `stream.push([ns, "lifecycle", { event: "..." }])` calls.
+
+#### Session Wrapper — New Component
+
+The `createSession()` API from section 6.1.1. Wraps `_streamIterator`
+with subscription management and command dispatch.
+
+**Where it hooks in**: New file alongside `pregel/index.ts`. Calls
+`_streamIterator` internally, wraps the returned stream with a
+`SubscriptionRegistry`, and exposes typed methods.
+
+**Complexity**: Medium. The Session needs to manage the lifecycle of
+subscriptions (create/destroy async iterators), handle the
+concurrent-consumers pattern (multiple `for await` loops on different
+subscriptions), and clean up when the run completes.
+
+### 10.3 Compatibility with `graph.stream()`
+
+`graph.stream()` continues to work unchanged. Internally, it becomes
+equivalent to:
+
+```typescript
+// What graph.stream(input, { streamMode: ["messages"], subgraphs: true }) does:
+const session = createSession(graph, { input, config });
+const globalSub = session.subscribe(["messages"]);  // No namespace filter = global
+for await (const event of globalSub) {
+  yield formatForBackwardCompat(event, streamMode, subgraphs);
+}
+```
+
+The existing `_streamIterator` at `index.ts:2181-2205` already does
+mode filtering and yield-shape formatting. The session wraps this
+without changing it.
+
+### 10.4 Changes by File
+
+| File | Change | Scope |
+|------|--------|-------|
+| `pregel/stream.ts` | Add `SubscriptionRegistry`, `EventBuffer` classes. Modify `push()` to dispatch through registry. | ~200-300 lines new |
+| `pregel/loop.ts` | Emit lifecycle events from `initialize()`. Pass subscription context through `createDuplexStream`. | ~30 lines modified |
+| `pregel/runner.ts` | Emit lifecycle events from `_commit()`. | ~10 lines added |
+| `pregel/index.ts` | Add `createSession()` factory. Wire `SubscriptionRegistry` into `_streamIterator`. | ~150 lines new |
+| `pregel/types.ts` | Add new `StreamMode` values (`"lifecycle"`, `"resource"`, `"sandbox"`, `"input"`, `"state"`, `"usage"`). Add `SubscriptionOptions` type. | ~30 lines added |
+| `pregel/session.ts` | **New file**: `Session` class with `subscribe()`, command methods, cleanup. | ~300-400 lines new |
+| `pregel/protocol/` | **New directory**: Command handlers for `resource.*`, `sandbox.*`, `input.*`, `state.*`, `usage.*`. Each is an independent module. | ~100-200 lines per module |
+
+### 10.5 What Is Hard
+
+**1. Subscription-aware duplex streaming** — The current `createDuplexStream`
+fans out by mode only. Adding namespace-aware filtering to the fan-out
+path without breaking the subgraph event merging semantics requires
+careful thought. The nested stream needs to know which subscriptions
+exist at the root level so it can skip pushing events that no one is
+listening to.
+
+**2. Multiple concurrent async iterators** — The `Session.subscribe()`
+API returns independent async iterators. JavaScript's `ReadableStream`
+supports only one reader at a time. The session needs to either use
+a pub/sub pattern internally (one producer, N consumers via separate
+queues) or create separate `ReadableStream` instances per subscription.
+The `IterableReadableWritableStream` class would need to be extended or
+complemented with a multi-consumer variant.
+
+**3. Sandbox and resource integration** — The `resource.*` and
+`sandbox.*` modules depend on having access to the agent's execution
+environment (file system, shell). For in-process agents, this is
+straightforward (Node.js `fs` and `child_process`). For remote agents
+running in Modal/Daytona/E2B, it requires a bridge between the protocol
+server and the sandbox API. This bridge is deployment-specific and
+cannot be fully specified in `langgraph-core`.
+
+**4. Binary frame support** — WebSocket binary frames require a
+WebSocket transport implementation, which does not exist in the codebase
+today (it's SSE-only). The `ws` library or the native `WebSocket` API
+would need to be integrated for the server side. The 16-byte binary
+header serialization is trivial, but the transport layer is new
+infrastructure.
+
+### 10.6 What Is Straightforward
+
+**1. Lifecycle events** — Just `stream.push()` calls at existing
+integration points. The `nodeFinished` callback pattern in `runner.ts`
+already demonstrates the exact hook.
+
+**2. Input module** — `interrupt()` and `Command({ resume })` already
+implement the full HITL flow. The protocol's `input.requested` /
+`input.respond` is a thin wrapper that emits the interrupt as a
+protocol event and routes the response back as a `Command`.
+
+**3. State module** — `BaseStore` already has `get`, `search`, `put`,
+`listNamespaces`. The checkpointer has `list()` for checkpoint history.
+These are direct pass-throughs from protocol commands to existing APIs.
+
+**4. Usage module** — Token/cost data is available in LangChain's
+callback metadata (`ls_provider`, `ls_model_name`, token counts). The
+`StreamMessagesHandler` already extracts metadata from callbacks. A
+`StreamUsageHandler` following the same pattern would capture usage
+data and emit `usage.llmCall` events.
+
+**5. Event buffer** — A bounded array with an append cursor. The
+replay logic is: filter buffer by subscription criteria, yield matches,
+then drain any new events that arrived during replay.
+
+**6. Backward compatibility** — `graph.stream()` doesn't change. The
+new API is additive. Existing tests continue to pass without
+modification.
+
+---
+
+## 11. Comparison to Other Streaming Protocols
+
+### 11.1 Vercel AI SDK Stream Protocol
 
 The [Vercel AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol)
 defines two streaming protocols: a plain-text stream and a "data stream"
@@ -1788,7 +1980,7 @@ documentation examples. With implementations in JS, Python, and Java, we need
 a single canonical grammar (CDDL) from which all language bindings are
 generated — not three manually-synchronized type definitions.
 
-### 10.2 Anthropic Messages Streaming
+### 11.2 Anthropic Messages Streaming
 
 Anthropic's [Messages API streaming](https://docs.anthropic.com/claude/reference/streaming)
 uses SSE with typed events (`message_start`, `content_block_start`,
@@ -1810,7 +2002,7 @@ content blocks. There is no concept of nested execution, concurrent tasks, or
 selective observation. It is the right design for "stream one model response"
 and the wrong design for "stream a tree of 200 concurrent agent executions."
 
-### 10.3 OpenAI Realtime API
+### 11.3 OpenAI Realtime API
 
 OpenAI's [Realtime API](https://platform.openai.com/docs/guides/realtime-websocket)
 uses WebSocket with JSON events for text and Base64-encoded audio within JSON
@@ -1835,7 +2027,7 @@ Our protocol uses native WebSocket binary frames with a minimal fixed header,
 and the subscription model means a client only receives audio from the
 subagents it's actively listening to.
 
-### 10.4 A2A Protocol (Revisited for Multimodal)
+### 11.4 A2A Protocol (Revisited for Multimodal)
 
 A2A supports multimodal content through its `Part` abstraction (text, file,
 structured data), but:
@@ -1855,7 +2047,7 @@ An agent producing live speech cannot stream audio through A2A in real time; it
 must complete the audio, package it as a file Part, and deliver it as a finished
 artifact.
 
-### 10.5 Codex Multi-Agent ("Collab") Architecture
+### 11.5 Codex Multi-Agent ("Collab") Architecture
 
 OpenAI's [Codex CLI](https://github.com/openai/codex) implements a
 multi-agent system (codenamed "Collab") where a parent agent spawns child
@@ -1956,7 +2148,7 @@ as our subscription-per-namespace-with-buffer-and-filtering pattern, but our
 protocol generalizes it for network transport, multiple simultaneous views,
 channel-level filtering, binary media, and cross-language implementations.
 
-### 10.6 Summary: Protocol Positioning
+### 11.6 Summary: Protocol Positioning
 
 ```
                     Multi-agent           Single-agent
