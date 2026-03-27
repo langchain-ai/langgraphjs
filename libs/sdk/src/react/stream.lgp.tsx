@@ -494,8 +494,7 @@ export function useStreamLGP<
       historyLimit === true || typeof historyLimit === "number";
 
     const shouldRefetch =
-      includeImplicitBranch ||
-      onFinishRequiresThreadState(options.onFinish);
+      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
@@ -638,7 +637,7 @@ export function useStreamLGP<
           ) {
             options.onFinish(
               undefined as unknown as ThreadState<StateType>,
-              callbackMeta,
+              callbackMeta
             );
           }
 
@@ -720,7 +719,7 @@ export function useStreamLGP<
             ) {
               options.onFinish(
                 undefined as unknown as ThreadState<StateType>,
-                callbackMeta,
+                callbackMeta
               );
             }
             return;

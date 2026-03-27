@@ -505,8 +505,7 @@ export function useStreamLGP<
 
     const shouldRefetch =
       // Latest checkpoint head for branching / onFinish(state, …)
-      includeImplicitBranch ||
-      onFinishRequiresThreadState(options.onFinish);
+      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
