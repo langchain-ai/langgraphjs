@@ -793,7 +793,7 @@ export function useStreamLGP<
         const valueInterrupts = values.__interrupt__;
         if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
         return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+          valueInterrupts as Interrupt<InterruptType>[],
         );
       }
 
@@ -806,7 +806,7 @@ export function useStreamLGP<
 
       if (allInterrupts.length > 0) {
         return normalizeInterruptsList(
-          allInterrupts as Interrupt<InterruptType>[]
+          allInterrupts as Interrupt<InterruptType>[],
         );
       }
 

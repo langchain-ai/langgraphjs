@@ -286,7 +286,7 @@ export function useStreamCustom<
         const valueInterrupts = stream.values.__interrupt__;
         if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
         return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+          valueInterrupts as Interrupt<InterruptType>[],
         );
       }
 

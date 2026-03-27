@@ -260,7 +260,7 @@ export class CustomStreamOrchestrator<
       const valueInterrupts = this.stream.values.__interrupt__;
       if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
       return normalizeInterruptsList(
-        valueInterrupts as Interrupt<GetInterruptType<Bag>>[]
+        valueInterrupts as Interrupt<GetInterruptType<Bag>>[],
       );
     }
     return [];

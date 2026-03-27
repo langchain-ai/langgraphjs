@@ -5,7 +5,7 @@ import { Interrupt, ThreadState } from "../schema.js";
  * Rewrites Python/API snake_case on interrupt `value` to JS camelCase for HITL.
  */
 export function normalizeInterruptForClient<T = unknown>(
-  interrupt: Interrupt<T>
+  interrupt: Interrupt<T>,
 ): Interrupt<T> {
   if (interrupt.value === undefined) {
     return interrupt;
@@ -20,7 +20,7 @@ export function normalizeInterruptForClient<T = unknown>(
  * Applies {@link normalizeInterruptForClient} to each interrupt.
  */
 export function normalizeInterruptsList<T = unknown>(
-  interrupts: Interrupt<T>[]
+  interrupts: Interrupt<T>[],
 ): Interrupt<T>[] {
   return interrupts.map((i) => normalizeInterruptForClient(i));
 }
@@ -47,7 +47,7 @@ export function extractInterrupts<InterruptType = unknown>(
 
     // TODO: fix the typing of interrupts if multiple interrupts are returned
     const normalized = valueInterrupts.map((i) =>
-      normalizeInterruptForClient(i)
+      normalizeInterruptForClient(i),
     );
     return normalized as unknown as Interrupt<InterruptType> | undefined;
   }
@@ -65,6 +65,6 @@ export function extractInterrupts<InterruptType = unknown>(
 
   // Return only the current interrupt
   return normalizeInterruptForClient(
-    interrupts.at(-1) as Interrupt<InterruptType>
+    interrupts.at(-1) as Interrupt<InterruptType>,
   );
 }

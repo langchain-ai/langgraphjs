@@ -10,7 +10,7 @@
 function aliasSnakeToCamel(
   item: unknown,
   camel: string,
-  snake: string
+  snake: string,
 ): unknown {
   if (item === null || typeof item !== "object" || Array.isArray(item)) {
     return item;
@@ -70,7 +70,7 @@ export function normalizeHitlInterruptPayload(value: unknown): unknown {
     next.actionRequests = mapArrayAlias(
       actionRequestsRaw,
       "name",
-      "action_name"
+      "action_name",
     );
   }
   const reviewConfigsRaw = obj.reviewConfigs ?? obj.review_configs;
@@ -78,7 +78,7 @@ export function normalizeHitlInterruptPayload(value: unknown): unknown {
     next.reviewConfigs = mapArrayAlias(
       reviewConfigsRaw,
       "allowedDecisions",
-      "allowed_decisions"
+      "allowed_decisions",
     );
   }
   return next;

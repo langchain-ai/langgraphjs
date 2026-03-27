@@ -525,7 +525,7 @@ export class StreamOrchestrator<
       const valueInterrupts = v.__interrupt__;
       if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
       return normalizeInterruptsList(
-        valueInterrupts as Interrupt<GetInterruptType<Bag>>[]
+        valueInterrupts as Interrupt<GetInterruptType<Bag>>[],
       );
     }
 
@@ -536,7 +536,7 @@ export class StreamOrchestrator<
 
     if (allInterrupts.length > 0) {
       return normalizeInterruptsList(
-        allInterrupts as Interrupt<GetInterruptType<Bag>>[]
+        allInterrupts as Interrupt<GetInterruptType<Bag>>[],
       );
     }
 
