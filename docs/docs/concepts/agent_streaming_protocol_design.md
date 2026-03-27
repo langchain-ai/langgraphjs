@@ -325,11 +325,219 @@ The protocol is transport-agnostic with three supported transports:
 ```
 
 - **WebSocket**: Full bidirectional. Client sends subscription commands,
-  server pushes events. Preferred for interactive frontends.
+  server pushes events. Preferred for interactive frontends. A JS client
+  library connects to the protocol endpoint, analogous to how Puppeteer
+  connects to Chrome DevTools via the CDP WebSocket.
 - **SSE + HTTP**: Server pushes events via SSE. Client manages subscriptions
   via HTTP POST to a control endpoint. Works in serverless/edge environments.
-- **In-Process**: Direct `AsyncIterableIterator` consumption with a
-  programmatic subscription API. Zero serialization overhead.
+- **In-Process**: Direct programmatic API when the graph and consumer share
+  a process. Zero serialization overhead. See section 6.1.1 below.
+
+#### 6.1.1 In-Process Transport
+
+The in-process transport is the primary interface for developers running
+agents locally — in scripts, notebooks, CLI tools, test suites, and backend
+services. The protocol concepts (subscriptions, channels, namespaces,
+commands) map to a native API that feels like a natural evolution of the
+current `graph.stream()`, not like a network client.
+
+**Relationship to `graph.stream()`**:
+
+Today, `graph.stream()` returns a flat async iterator that yields all events
+matching the requested `streamMode`. The in-process transport wraps the same
+execution with a `Session` object that exposes the full protocol surface:
+
+```typescript
+import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
+import { createSession } from "@langchain/langgraph/protocol";
+
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode("agent", agentNode)
+  .addNode("tools", toolNode)
+  .addEdge("__start__", "agent")
+  .compile();
+
+// A session wraps a graph run with the full protocol API.
+// It is the in-process equivalent of a WebSocket connection.
+const session = createSession(graph, {
+  input: { messages: [{ role: "user", content: "Research quantum computing" }] },
+  config: { configurable: { thread_id: "thread_1" } },
+});
+```
+
+**Subscriptions — same model, typed API**:
+
+Instead of serializing `{ method: "subscription.subscribe", params: ... }`
+as JSON, the in-process API exposes typed methods. Each returns a typed
+async iterator — no JSON parsing, no string matching, no manual
+deserialization:
+
+```typescript
+// Subscribe to LLM tokens from the root agent only
+const messages = session.subscribe("messages");
+
+// Subscribe to tool events from a specific subagent
+const tools = session.subscribe("tools", {
+  namespaces: [["agent_1", "researcher"]],
+});
+
+// Subscribe to sandbox output globally
+const sandbox = session.subscribe("sandbox");
+
+// Subscribe to lifecycle events to discover new subagents
+const lifecycle = session.subscribe("lifecycle");
+
+// Subscribe to multiple channels at once
+const everything = session.subscribe(["messages", "tools", "lifecycle"]);
+```
+
+Each subscription returns a typed `AsyncIterable` that yields only
+matching events — the same server-side filtering that happens on the
+WebSocket path, but without serialization:
+
+```typescript
+// Consuming a subscription is a standard async for loop
+for await (const event of messages) {
+  // event is typed: { namespace: string[], timestamp: number, data: MessageDelta }
+  console.log(`[${event.namespace.join("/")}] ${event.data.content}`);
+}
+```
+
+**Multiple concurrent subscriptions**:
+
+Unlike the current `graph.stream()` which yields one interleaved stream,
+subscriptions are independent iterators. A frontend (or test, or script)
+can consume them concurrently:
+
+```typescript
+const session = createSession(graph, { input, config });
+
+// Three independent typed streams, consumed in parallel
+const messages = session.subscribe("messages", { namespaces: [["agent_1"]] });
+const tools = session.subscribe("tools", { namespaces: [["agent_1"]] });
+const lifecycle = session.subscribe("lifecycle");
+
+// Process them concurrently
+await Promise.all([
+  (async () => {
+    for await (const event of messages) {
+      renderToken(event.data);
+    }
+  })(),
+  (async () => {
+    for await (const event of tools) {
+      renderToolCall(event.data);
+    }
+  })(),
+  (async () => {
+    for await (const event of lifecycle) {
+      if (event.data.event === "spawned") {
+        // Dynamically subscribe to the new subagent's messages
+        const sub = session.subscribe("messages", {
+          namespaces: [event.data.namespace],
+        });
+        consumeSubagentMessages(sub);
+      }
+    }
+  })(),
+]);
+```
+
+**Commands — same surface, method calls**:
+
+Protocol commands map to methods on the session object:
+
+```typescript
+// Browse the subagent's sandbox filesystem
+const files = await session.resource.list(["agent_1"], "/workspace/src");
+
+// Read a file the agent wrote
+const content = await session.resource.read(["agent_1"], "/workspace/src/api.ts");
+
+// Send human-in-the-loop response
+session.on("input.requested", async (event) => {
+  await session.input.respond(event.interruptId, { approved: true });
+});
+
+// Inject user input mid-run
+await session.input.inject(["agent_1"], {
+  role: "user",
+  content: "Also check the error handling",
+});
+
+// Get the current agent tree
+const tree = await session.agent.getTree();
+
+// Query cross-thread memory
+const memories = await session.state.storeSearch(
+  ["user_123", "memories"],
+  { query: "quantum computing" }
+);
+
+// Set a cost budget
+await session.usage.setBudget({ maxCostUsd: 5.0, action: "pause" });
+
+// Fork from a checkpoint (time-travel)
+const forked = await session.state.fork("checkpoint_abc", { input: newInput });
+```
+
+**Backward compatibility with `graph.stream()`**:
+
+The current `graph.stream()` API continues to work unchanged. It is
+equivalent to creating a session with a global subscription to the
+requested stream modes:
+
+```typescript
+// These two are equivalent:
+
+// Current API (unchanged)
+for await (const chunk of await graph.stream(input, {
+  streamMode: ["messages", "updates"],
+  subgraphs: true,
+})) {
+  const [namespace, mode, data] = chunk;
+}
+
+// New API (session with global subscription)
+const session = createSession(graph, { input });
+for await (const event of session.subscribe(["messages", "updates"])) {
+  const { namespace, channel, data } = event;
+}
+```
+
+The difference is that `session` also gives you `subscribe()` with
+namespace filtering, `resource.*`, `sandbox.*`, `input.*`, `state.*`,
+`usage.*` — none of which exist on the current `graph.stream()` return
+value.
+
+**How it connects to the WebSocket/SSE path**:
+
+The in-process `Session` and the network `ProtocolServer` share the
+same `SubscriptionRegistry`, the same event buffer, and the same
+command dispatch. The only difference is the transport:
+
+```
+                                 ┌─────────────────────┐
+  graph.stream() ──────────────→ │                     │
+                                 │  SubscriptionRegistry│
+  createSession() ─────────────→ │  + EventBuffer      │ ← Same core
+                                 │  + CommandDispatch   │
+  WebSocket client ────────────→ │                     │
+                                 │                     │
+  SSE + HTTP client ───────────→ │                     │
+                                 └─────────────────────┘
+                                         │
+                                 ┌───────┴───────┐
+                                 │               │
+                              In-process     Serialized
+                              (typed objects) (JSON over
+                                              WS/SSE)
+```
+
+This means any feature built for the protocol (a new module, a new
+channel, a new command) automatically works in-process, over WebSocket,
+and over SSE. There is no "network-only" or "local-only" capability —
+the protocol is the API.
 
 ### 6.2 Message Format
 
