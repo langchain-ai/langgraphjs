@@ -1,5 +1,14 @@
 # @langchain/langgraph-cli
 
+## 1.1.17
+
+### Patch Changes
+
+- [#2247](https://github.com/langchain-ai/langgraphjs/pull/2247) [`9874420`](https://github.com/langchain-ai/langgraphjs/commit/9874420019199a7064501b53b9407bd23dc752f9) Thanks [@jdrogers940](https://github.com/jdrogers940)! - Respect when http config is set. Also don't log an error when .env file is missing.
+
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.1.17
+
 ## 1.1.16
 
 ### Patch Changes
