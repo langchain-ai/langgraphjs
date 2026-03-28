@@ -24,7 +24,12 @@ export {
 } from "./interrupts.js";
 export { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";
-export { unique, findLast, filterStream } from "./utils.js";
+export {
+  unique,
+  findLast,
+  filterStream,
+  onFinishRequiresThreadState,
+} from "./utils.js";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,

@@ -36,6 +36,7 @@ import {
   toMessageClass,
   ensureMessageInstances,
   ensureHistoryMessageInstances,
+  onFinishRequiresThreadState,
   PendingRunsTracker,
   type EventStreamEvent,
   type AnyStreamOptions,
@@ -503,11 +504,8 @@ export function useStreamLGP<
       historyLimit === true || typeof historyLimit === "number";
 
     const shouldRefetch =
-      // We're expecting the whole thread state in onFinish
-      options.onFinish != null ||
-      // We're fetching history, thus we need the latest checkpoint
-      // to ensure we're not accidentally submitting to a wrong branch
-      includeImplicitBranch;
+      // Latest checkpoint head for branching / onFinish(state, …)
+      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
@@ -648,6 +646,14 @@ export function useStreamLGP<
               options.onFinish?.(lastHead, callbackMeta);
               return null;
             }
+          } else if (
+            options.onFinish != null &&
+            !onFinishRequiresThreadState(options.onFinish)
+          ) {
+            options.onFinish(
+              undefined as unknown as ThreadState<StateType>,
+              callbackMeta,
+            );
           }
 
           return undefined;
@@ -759,6 +765,12 @@ export function useStreamLGP<
       run_id: runId,
     };
 
+    const includeImplicitBranchJoin =
+      historyLimit === true || typeof historyLimit === "number";
+    const shouldRefetchJoin =
+      includeImplicitBranchJoin ||
+      onFinishRequiresThreadState(options.onFinish);
+
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
@@ -788,6 +800,18 @@ export function useStreamLGP<
         },
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
+          if (!shouldRefetchJoin) {
+            if (
+              options.onFinish != null &&
+              !onFinishRequiresThreadState(options.onFinish)
+            ) {
+              options.onFinish(
+                undefined as unknown as ThreadState<StateType>,
+                callbackMeta,
+              );
+            }
+            return;
+          }
           const newHistory = await history.mutate(threadId);
           const lastHead = newHistory?.at(0);
           if (lastHead) options.onFinish?.(lastHead, callbackMeta);

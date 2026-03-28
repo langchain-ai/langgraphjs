@@ -1013,11 +1013,15 @@ it("accepts newThreadId option without errors", async () => {
   await expect.poll(() => spy).toHaveBeenCalledWith(predeterminedThreadId);
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(predeterminedThreadId);
-  expect(thread.metadata).toMatchObject({
-    graph_id: "agent",
-    assistant_id: "agent",
-  });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(predeterminedThreadId);
+      return thread.metadata;
+    })
+    .toMatchObject({
+      graph_id: "agent",
+      assistant_id: "agent",
+    });
 });
 
 it("branching", async () => {

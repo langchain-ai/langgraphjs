@@ -17,7 +17,7 @@ import { PendingRunsTracker } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
 import { extractInterrupts, normalizeInterruptsList } from "./interrupts.js";
-import { unique, filterStream } from "./utils.js";
+import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type {
   UseStreamThread,
@@ -834,6 +834,12 @@ export class StreamOrchestrator<
       run_id: runId,
     };
 
+    const includeImplicitBranch =
+      this.historyLimit === true || typeof this.historyLimit === "number";
+    const shouldRefetchJoin =
+      includeImplicitBranch ||
+      onFinishRequiresThreadState(this.#options.onFinish);
+
     const client = this.#accessors.getClient();
 
     await this.stream.start(
@@ -858,6 +864,18 @@ export class StreamOrchestrator<
         callbacks: this.#options,
         onSuccess: async () => {
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
+          if (!shouldRefetchJoin) {
+            if (
+              this.#options.onFinish != null &&
+              !onFinishRequiresThreadState(this.#options.onFinish)
+            ) {
+              this.#options.onFinish(
+                undefined as unknown as ThreadState<StateType>,
+                callbackMeta
+              );
+            }
+            return;
+          }
           const newHistory = await this.#mutate(tid);
           const lastHead = newHistory?.at(0);
           if (lastHead) this.#options.onFinish?.(lastHead, callbackMeta);
@@ -901,7 +919,8 @@ export class StreamOrchestrator<
       this.historyLimit === true || typeof this.historyLimit === "number";
 
     const shouldRefetch =
-      this.#options.onFinish != null || includeImplicitBranch;
+      includeImplicitBranch ||
+      onFinishRequiresThreadState(this.#options.onFinish);
 
     let checkpoint =
       submitOptions?.checkpoint ??
@@ -1024,6 +1043,14 @@ export class StreamOrchestrator<
               this.#options.onFinish?.(lastHead, callbackMeta);
               return null;
             }
+          } else if (
+            this.#options.onFinish != null &&
+            !onFinishRequiresThreadState(this.#options.onFinish)
+          ) {
+            this.#options.onFinish(
+              undefined as unknown as ThreadState<StateType>,
+              callbackMeta
+            );
           }
           return undefined;
         },
