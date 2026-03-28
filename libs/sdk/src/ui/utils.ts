@@ -8,10 +8,9 @@
  * JavaScript; if you need the thread state, declare at least one non-default
  * parameter (e.g. `(state)` or `(_state, run)`).
  */
-export function onFinishRequiresThreadState(
-  onFinish: ((...args: unknown[]) => void) | undefined | null
-): boolean {
-  return onFinish != null && onFinish.length > 0;
+export function onFinishRequiresThreadState(onFinish: unknown): boolean {
+  if (typeof onFinish !== "function") return false;
+  return onFinish.length > 0;
 }
 
 export function unique<T>(array: T[]) {
