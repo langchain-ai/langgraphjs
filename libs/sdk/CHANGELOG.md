@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.8.2
+
+### Patch Changes
+
+- [#2250](https://github.com/langchain-ai/langgraphjs/pull/2250) [`8eaf410`](https://github.com/langchain-ai/langgraphjs/commit/8eaf41069264753947e5c9633b567e589dc0e532) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): skip post-stream getHistory for zero-arity onFinish
+
 ## 1.8.1
 
 ### Patch Changes
