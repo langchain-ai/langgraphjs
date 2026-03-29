@@ -251,7 +251,8 @@ export type UseStreamCustom<
   switchThread: (newThreadId: string | null) => void;
 
   /**
-   * Server-side submission queue. Always empty for custom transport hooks.
+   * Submission queue for custom transport hooks.
+   * Uses local FIFO queueing while a custom transport stream is active.
    */
   queue: QueueInterface<
     StateType,

@@ -87,12 +87,16 @@ export function injectStreamCustom<
     },
 
     queue: {
-      entries: signal([]),
-      size: signal(0),
-      async cancel() {
-        return false;
-      },
-      async clear() {},
+      entries: computed(() => {
+        void version();
+        return orchestrator.queueEntries;
+      }),
+      size: computed(() => {
+        void version();
+        return orchestrator.queueSize;
+      }),
+      cancel: (id: string) => orchestrator.cancelQueueItem(id),
+      clear: () => orchestrator.clearQueue(),
     },
 
     interrupts: computed((): Interrupt<InterruptType>[] => {

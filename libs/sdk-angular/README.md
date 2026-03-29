@@ -509,7 +509,7 @@ export class ChatComponent {
 }
 ```
 
-The custom transport interface returns the same properties as the standard `injectStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+The custom transport interface returns the same API surface as the standard `injectStream` function, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, `queue`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch`, `setBranch`, and `switchThread` provide local state management; and `queue` is a local FIFO queue of pending submissions while a custom transport stream is active (entries use locally generated IDs rather than LangGraph Platform run IDs). `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
 ## Sharing State with `provideStream`
 

@@ -289,7 +289,7 @@ const {
 </template>
 ```
 
-The custom transport interface returns the same properties as the standard `useStream` composable, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+The custom transport interface returns the same top-level API shape as the standard `useStream` composable, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, `queue`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management; and `queue` uses local FIFO buffering while a custom transport stream is active rather than LangGraph Platform's server-managed run queue. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
 ## Sharing State with `provideStream`
 

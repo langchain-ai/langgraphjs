@@ -53,6 +53,8 @@ export function useStreamCustom<
   const isLoading = shallowRef(false);
   const subagentsRef = shallowRef(orchestrator.subagents);
   const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
+  const queueEntries = shallowRef(orchestrator.queueEntries);
+  const queueSize = shallowRef(orchestrator.queueSize);
 
   const unsubscribe = orchestrator.subscribe(() => {
     streamValues.value = orchestrator.streamValues;
@@ -60,6 +62,8 @@ export function useStreamCustom<
     isLoading.value = orchestrator.isLoading;
     subagentsRef.value = orchestrator.subagents;
     activeSubagentsRef.value = orchestrator.activeSubagents;
+    queueEntries.value = orchestrator.queueEntries;
+    queueSize.value = orchestrator.queueSize;
   });
 
   onScopeDispose(() => {
@@ -114,9 +118,6 @@ export function useStreamCustom<
     return orchestrator.toolCalls;
   });
 
-  const queueEntries = shallowRef<unknown[]>([]);
-  const queueSize = shallowRef(0);
-
   return {
     get values() {
       return streamValues.value ?? ({} as StateType);
@@ -154,8 +155,8 @@ export function useStreamCustom<
     queue: reactive({
       entries: queueEntries,
       size: queueSize,
-      cancel: async () => false,
-      clear: async () => {},
+      cancel: (id: string) => orchestrator.cancelQueueItem(id),
+      clear: () => orchestrator.clearQueue(),
     }),
 
     get interrupts(): Interrupt<InterruptType>[] {

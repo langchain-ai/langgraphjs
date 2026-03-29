@@ -11,6 +11,7 @@ import {
 } from "./messages.js";
 import { extractInterrupts, normalizeInterruptsList } from "./interrupts.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
+import { PendingRunsTracker } from "./queue.js";
 import type {
   AnyStreamCustomOptions,
   CustomSubmitOptions,
@@ -57,6 +58,11 @@ export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate
 > {
+  readonly pendingRuns = new PendingRunsTracker<
+    StateType,
+    CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+  >();
+
   readonly stream: StreamManager<StateType, Bag>;
 
   readonly messageManager: MessageTupleManager;
@@ -75,7 +81,11 @@ export class CustomStreamOrchestrator<
 
   #streamUnsub: (() => void) | null = null;
 
+  #queueUnsub: (() => void) | null = null;
+
   #disposed = false;
+
+  #submitting = false;
 
   /**
    * Create a new {@link CustomStreamOrchestrator} instance.
@@ -99,6 +109,9 @@ export class CustomStreamOrchestrator<
     this.#historyValues = options.initialValues ?? ({} as StateType);
 
     this.#streamUnsub = this.stream.subscribe(() => {
+      this.#notify();
+    });
+    this.#queueUnsub = this.pendingRuns.subscribe(() => {
       this.#notify();
     });
 
@@ -154,6 +167,7 @@ export class CustomStreamOrchestrator<
     if (newId !== this.#threadId) {
       this.#threadId = newId;
       this.stream.clear();
+      this.pendingRuns.removeAll();
       this.#notify();
     }
   }
@@ -199,6 +213,16 @@ export class CustomStreamOrchestrator<
   /** The current branch identifier. */
   get branch(): string {
     return this.#branch;
+  }
+
+  /** The list of pending queued submissions. */
+  get queueEntries() {
+    return this.pendingRuns.entries;
+  }
+
+  /** The number of queued submissions. */
+  get queueSize() {
+    return this.pendingRuns.size;
   }
 
   /**
@@ -340,6 +364,22 @@ export class CustomStreamOrchestrator<
   }
 
   /**
+   * Cancel and remove a specific queued submission.
+   *
+   * @returns `true` if the queued submission existed.
+   */
+  async cancelQueueItem(id: string): Promise<boolean> {
+    return this.pendingRuns.remove(id);
+  }
+
+  /**
+   * Remove all queued submissions.
+   */
+  async clearQueue(): Promise<void> {
+    this.pendingRuns.removeAll();
+  }
+
+  /**
    * Reconstruct subagent streams from history values when subagent
    * filtering is enabled and the stream is not currently loading.
    * This is a no-op if subagents are already populated.
@@ -375,6 +415,7 @@ export class CustomStreamOrchestrator<
     if (newThreadId !== this.#threadId) {
       this.#threadId = newThreadId;
       this.stream.clear();
+      this.pendingRuns.removeAll();
       this.#notify();
     }
   }
@@ -398,13 +439,13 @@ export class CustomStreamOrchestrator<
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
-    const currentThreadId = this.#options.threadId ?? null;
+    const currentThreadId = submitOptions?.threadId ?? this.#threadId;
     if (currentThreadId !== this.#threadId) {
       this.#threadId = currentThreadId;
       this.stream.clear();
     }
 
-    let usableThreadId = this.#threadId ?? submitOptions?.threadId;
+    let usableThreadId = this.#threadId;
 
     this.stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
@@ -475,8 +516,8 @@ export class CustomStreamOrchestrator<
   /**
    * Submit input values and start a new stream run.
    *
-   * Delegates to {@link submitDirect}. Override or wrap this method
-   * in framework adapters to add queuing or other middleware.
+   * Runs queued submissions locally when a custom transport stream is already
+   * active. Queued submissions are replayed FIFO once the active stream ends.
    *
    * @param values - The input values to send, or `null`/`undefined` for
    *   a resume-style invocation.
@@ -486,7 +527,40 @@ export class CustomStreamOrchestrator<
     values: GetUpdateType<Bag, StateType> | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<void> {
-    await this.submitDirect(values, submitOptions);
+    if (this.stream.isLoading || this.#submitting) {
+      this.pendingRuns.add({
+        id: crypto.randomUUID(),
+        values: values as Partial<StateType> | null | undefined,
+        options: submitOptions,
+        createdAt: new Date(),
+      });
+      return;
+    }
+
+    this.#submitting = true;
+    try {
+      await this.submitDirect(values, submitOptions);
+    } finally {
+      this.#submitting = false;
+      void this.#drainQueue();
+    }
+  }
+
+  async #drainQueue(): Promise<void> {
+    if (this.stream.isLoading || this.#submitting) return;
+    const next = this.pendingRuns.shift();
+    if (!next) return;
+
+    this.#submitting = true;
+    try {
+      await this.submitDirect(
+        next.values as GetUpdateType<Bag, StateType> | null | undefined,
+        next.options
+      );
+    } finally {
+      this.#submitting = false;
+      void this.#drainQueue();
+    }
   }
 
   /**
@@ -497,7 +571,9 @@ export class CustomStreamOrchestrator<
   dispose(): void {
     this.#disposed = true;
     this.#streamUnsub?.();
+    this.#queueUnsub?.();
     this.#streamUnsub = null;
+    this.#queueUnsub = null;
     void this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });

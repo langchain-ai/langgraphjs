@@ -363,6 +363,239 @@ describe("CustomStreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("uses the switched thread ID for later submits", async () => {
+      const transport = createMockTransport([
+        { event: "values", data: { messages: [] } },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: null,
+        })
+      );
+
+      orch.switchThread("switched-thread");
+      await orch.submit({ messages: [] });
+
+      const call = transport.stream.mock.calls[0][0];
+      expect(call.config?.configurable?.thread_id).toBe("switched-thread");
+
+      orch.dispose();
+    });
+
+    it("queues submissions locally and drains them FIFO", async () => {
+      let releaseFirst: (() => void) | undefined;
+      const seenInputs: string[] = [];
+      const transport = {
+        stream: vi.fn().mockImplementation(async (payload) => {
+          const content =
+            (payload.input as TestState | undefined)?.messages?.[0]?.content ?? "";
+          seenInputs.push(content);
+
+          if (content === "Msg1") {
+            await new Promise<void>((resolve) => {
+              releaseFirst = resolve;
+            });
+          }
+
+          async function* generate(): AsyncGenerator<{
+            event: string;
+            data: unknown;
+          }> {
+            yield {
+              event: "values",
+              data: {
+                messages:
+                  (payload.input as TestState | undefined)?.messages ?? [],
+              },
+            };
+          }
+
+          return generate();
+        }),
+      };
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+        })
+      );
+
+      const firstSubmit = orch.submit({
+        messages: [{ id: "1", content: "Msg1", type: "human" }],
+      });
+      await vi.waitFor(() => {
+        expect(orch.isLoading).toBe(true);
+      });
+
+      await orch.submit({
+        messages: [{ id: "2", content: "Msg2", type: "human" }],
+      });
+      await orch.submit({
+        messages: [{ id: "3", content: "Msg3", type: "human" }],
+      });
+
+      await vi.waitFor(() => {
+        expect(orch.queueSize).toBe(2);
+      });
+      expect(orch.queueEntries.map((entry) => entry.values?.messages?.[0]?.content)).toEqual([
+        "Msg2",
+        "Msg3",
+      ]);
+
+      releaseFirst?.();
+      await firstSubmit;
+
+      await vi.waitFor(() => {
+        expect(transport.stream).toHaveBeenCalledTimes(3);
+        expect(orch.queueSize).toBe(0);
+      });
+      expect(seenInputs).toEqual(["Msg1", "Msg2", "Msg3"]);
+
+      orch.dispose();
+    });
+
+    it("cancelQueueItem removes a queued custom transport submission", async () => {
+      let releaseFirst: (() => void) | undefined;
+      const seenInputs: string[] = [];
+      const transport = {
+        stream: vi.fn().mockImplementation(async (payload) => {
+          const content =
+            (payload.input as TestState | undefined)?.messages?.[0]?.content ?? "";
+          seenInputs.push(content);
+
+          if (content === "Msg1") {
+            await new Promise<void>((resolve) => {
+              releaseFirst = resolve;
+            });
+          }
+
+          async function* generate(): AsyncGenerator<{
+            event: string;
+            data: unknown;
+          }> {
+            yield {
+              event: "values",
+              data: {
+                messages:
+                  (payload.input as TestState | undefined)?.messages ?? [],
+              },
+            };
+          }
+
+          return generate();
+        }),
+      };
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+        })
+      );
+
+      const firstSubmit = orch.submit({
+        messages: [{ id: "1", content: "Msg1", type: "human" }],
+      });
+      await vi.waitFor(() => {
+        expect(orch.isLoading).toBe(true);
+      });
+
+      await orch.submit({
+        messages: [{ id: "2", content: "Msg2", type: "human" }],
+      });
+      await orch.submit({
+        messages: [{ id: "3", content: "Msg3", type: "human" }],
+      });
+
+      await vi.waitFor(() => {
+        expect(orch.queueSize).toBe(2);
+      });
+
+      const removed = await orch.cancelQueueItem(orch.queueEntries[0].id);
+      expect(removed).toBe(true);
+      expect(orch.queueEntries.map((entry) => entry.values?.messages?.[0]?.content)).toEqual([
+        "Msg3",
+      ]);
+
+      releaseFirst?.();
+      await firstSubmit;
+
+      await vi.waitFor(() => {
+        expect(transport.stream).toHaveBeenCalledTimes(2);
+        expect(orch.queueSize).toBe(0);
+      });
+      expect(seenInputs).toEqual(["Msg1", "Msg3"]);
+
+      orch.dispose();
+    });
+
+    it("clearQueue drops queued custom transport submissions", async () => {
+      let releaseFirst: (() => void) | undefined;
+      const transport = {
+        stream: vi.fn().mockImplementation(async (payload) => {
+          const content =
+            (payload.input as TestState | undefined)?.messages?.[0]?.content ?? "";
+
+          if (content === "Msg1") {
+            await new Promise<void>((resolve) => {
+              releaseFirst = resolve;
+            });
+          }
+
+          async function* generate(): AsyncGenerator<{
+            event: string;
+            data: unknown;
+          }> {
+            yield {
+              event: "values",
+              data: {
+                messages:
+                  (payload.input as TestState | undefined)?.messages ?? [],
+              },
+            };
+          }
+
+          return generate();
+        }),
+      };
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+        })
+      );
+
+      const firstSubmit = orch.submit({
+        messages: [{ id: "1", content: "Msg1", type: "human" }],
+      });
+      await vi.waitFor(() => {
+        expect(orch.isLoading).toBe(true);
+      });
+
+      await orch.submit({
+        messages: [{ id: "2", content: "Msg2", type: "human" }],
+      });
+      await orch.submit({
+        messages: [{ id: "3", content: "Msg3", type: "human" }],
+      });
+
+      await vi.waitFor(() => {
+        expect(orch.queueSize).toBe(2);
+      });
+
+      await orch.clearQueue();
+      expect(orch.queueSize).toBe(0);
+
+      releaseFirst?.();
+      await firstSubmit;
+
+      await vi.waitFor(() => {
+        expect(transport.stream).toHaveBeenCalledTimes(1);
+      });
+
+      orch.dispose();
+    });
   });
 
   describe("subagents", () => {

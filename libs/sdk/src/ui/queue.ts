@@ -1,15 +1,23 @@
 import type { SubmitOptions, CustomSubmitOptions } from "./types.js";
 
 /**
- * A single queued submission entry representing a server-side pending run.
- * Each entry corresponds to a run created on the server via
- * `client.runs.create()` with `multitaskStrategy: "enqueue"`.
+ * A single queued submission entry.
+ *
+ * In LangGraph Platform mode, entries correspond to pending server-side runs
+ * created via `client.runs.create()` with `multitaskStrategy: "enqueue"`.
+ * In custom transport mode, entries represent locally queued submissions that
+ * will be replayed FIFO once the active stream completes.
  */
 export interface QueueEntry<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
 > {
-  /** Server-side run ID (from `client.runs.create()`) */
+  /**
+   * Queue entry identifier.
+   *
+   * In LangGraph Platform mode, this is the server run ID. In custom
+   * transport mode, this is a locally generated queue item ID.
+   */
   id: string;
 
   /** The state update values passed to submit() */
@@ -24,7 +32,7 @@ export interface QueueEntry<
 
 /**
  * Reactive interface exposed to framework consumers for observing
- * and managing the server-side submission queue.
+ * and managing the submission queue.
  */
 export interface QueueInterface<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -36,18 +44,18 @@ export interface QueueInterface<
   /** Number of pending entries */
   readonly size: number;
 
-  /** Cancel a specific pending run by its server run ID. Returns true if found and cancelled. */
+  /** Cancel and remove a specific queued entry. Returns true if found. */
   cancel: (id: string) => Promise<boolean>;
 
-  /** Cancel all pending runs on the server and clear the queue. */
+  /** Clear all queued entries. */
   clear: () => Promise<void>;
 }
 
 /**
- * Tracks pending server-side runs created via `multitaskStrategy: "enqueue"`.
+ * Tracks pending queued submissions.
  *
- * Uses the same subscribe/getSnapshot pattern as StreamManager
- * to integrate with framework-specific reactivity systems.
+ * Uses the same subscribe/getSnapshot pattern as StreamManager to integrate
+ * with framework-specific reactivity systems.
  */
 export class PendingRunsTracker<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -88,7 +96,7 @@ export class PendingRunsTracker<
 
   /**
    * Remove all entries from the tracker.
-   * @returns The removed entries (for server-side cancellation).
+   * @returns The removed entries.
    */
   removeAll = (): QueueEntry<StateType, OptionsType>[] => {
     if (this.pending.length === 0) return [];

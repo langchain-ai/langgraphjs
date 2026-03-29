@@ -54,8 +54,8 @@ export function useStreamCustom<
     () => orchestrator.activeSubagents,
   );
 
-  const emptyEntries = writable<never[]>([]);
-  const emptySize = writable(0);
+  const queueEntriesStore = derived(version, () => orchestrator.queueEntries);
+  const queueSizeStore = derived(version, () => orchestrator.queueSize);
 
   const valuesRef = fromStore(valuesStore);
   const errorRef = fromStore(derived(version, () => orchestrator.error));
@@ -69,8 +69,8 @@ export function useStreamCustom<
   const interruptsRef = fromStore(interruptsStore);
   const subagentsRef = fromStore(subagentsStore);
   const activeSubagentsRef = fromStore(activeSubagentsStore);
-  const emptyEntriesRef = fromStore(emptyEntries);
-  const emptySizeRef = fromStore(emptySize);
+  const queueEntriesRef = fromStore(queueEntriesStore);
+  const queueSizeRef = fromStore(queueSizeStore);
 
   return {
     get values() {
@@ -113,15 +113,17 @@ export function useStreamCustom<
 
     queue: {
       get entries() {
-        return emptyEntriesRef.current;
+        return queueEntriesRef.current;
       },
       get size() {
-        return emptySizeRef.current;
+        return queueSizeRef.current;
       },
-      async cancel() {
-        return false;
+      async cancel(id: string) {
+        return orchestrator.cancelQueueItem(id);
       },
-      async clear() {},
+      async clear() {
+        await orchestrator.clearQueue();
+      },
     },
 
     get interrupt() {

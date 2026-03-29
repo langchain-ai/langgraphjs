@@ -480,7 +480,7 @@ function Chat() {
 }
 ```
 
-The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
+The custom transport interface returns the same API shape as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, `queue`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. The `queue` surface is implemented locally in the client and replays submissions FIFO while a custom transport stream is active, so queue entry IDs are local queue item IDs rather than LangGraph Platform run IDs. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
 
 ## Sharing State with `StreamProvider`
 
