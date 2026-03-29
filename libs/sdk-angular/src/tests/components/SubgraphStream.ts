@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, input } from "@angular/core";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 
@@ -35,13 +35,26 @@ export function resetSubgraphCalls() {
   `,
 })
 export class SubgraphStreamComponent {
+  onCheckpointEvent = input<((...args: any[]) => void) | undefined>(undefined);
+  onUpdateEvent = input<((...args: any[]) => void) | undefined>(undefined);
+  onCustomEvent = input<((...args: any[]) => void) | undefined>(undefined);
+
   stream = injectStream({
     assistantId: "parentAgent",
     apiUrl: serverUrl,
-    onCheckpointEvent: (...args: any[]) => checkpointCalls.push(args),
+    onCheckpointEvent: (...args: any[]) => {
+      checkpointCalls.push(args);
+      this.onCheckpointEvent()?.(...args);
+    },
     onTaskEvent: (...args: any[]) => taskCalls.push(args),
-    onUpdateEvent: (...args: any[]) => updateCalls.push(args),
-    onCustomEvent: (...args: any[]) => customCalls.push(args),
+    onUpdateEvent: (...args: any[]) => {
+      updateCalls.push(args);
+      this.onUpdateEvent()?.(...args);
+    },
+    onCustomEvent: (...args: any[]) => {
+      customCalls.push(args);
+      this.onCustomEvent()?.(...args);
+    },
   });
 
   str(v: unknown) {
