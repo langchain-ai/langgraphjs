@@ -139,7 +139,7 @@ const { messages, interrupt, submit } = useStream<
     </div>
 
     <div v-if="interrupt">
-      <p>{{ interrupt.value.question }}</p>
+      <p>{{ interrupt.question }}</p>
       <button @click="submit(null, { command: { resume: 'Approved' } })">
         Approve
       </button>
@@ -322,7 +322,7 @@ const { messages } = useStreamContext();
 </script>
 
 <template>
-  <div v-for="(msg, i) in messages.value" :key="msg.id ?? i">
+  <div v-for="(msg, i) in messages" :key="msg.id ?? i">
     {{ msg.content }}
   </div>
 </template>
@@ -346,7 +346,7 @@ function send() {
 <template>
   <form @submit.prevent="send">
     <textarea v-model="input" />
-    <button :disabled="isLoading.value" type="submit">Send</button>
+    <button :disabled="isLoading" type="submit">Send</button>
   </form>
 </template>
 ```
