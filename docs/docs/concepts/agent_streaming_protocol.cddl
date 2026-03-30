@@ -1,0 +1,1042 @@
+; ==========================================================================
+; LangGraph Agent Streaming Protocol — CDDL Schema (Draft)
+;
+; Concise Data Definition Language (RFC 8610) specification for the
+; LangGraph Agent Streaming Protocol. This file is the single source
+; of truth from which TypeScript, Python, and Java types are generated.
+;
+; Modeled after WebDriver BiDi (W3C). See agent_streaming_protocol_design.md
+; for the full design rationale.
+;
+; Status: DRAFT
+; Version: 0.1.0
+; ==========================================================================
+
+
+; ==========================================================================
+; 1. Shared Primitives
+; ==========================================================================
+
+js-int = -9007199254740991..9007199254740991
+js-uint = 0..9007199254740991
+
+Namespace = [* text]
+
+Extensible = (* text => any)
+
+Timestamp = uint                        ; Milliseconds since Unix epoch
+
+
+; ==========================================================================
+; 2. Top-Level Message Framing
+;
+; Three message types flow over the connection, mirroring BiDi:
+;   Command         — client → server
+;   CommandResponse — server → client (success)
+;   ErrorResponse   — server → client (failure)
+;   Event           — server → client (unsolicited)
+; ==========================================================================
+
+; --- Client → Server ---
+
+Command = {
+  id: js-uint,
+  CommandData,
+  Extensible,
+}
+
+CommandData = (
+  SubscriptionCommand //
+  FlowCommand //
+  AgentCommand //
+  ResourceCommand //
+  SandboxCommand //
+  InputCommand //
+  StateCommand //
+  UsageCommand
+)
+
+; --- Server → Client ---
+
+Message = (
+  CommandResponse /
+  ErrorResponse /
+  Event
+)
+
+CommandResponse = {
+  type: "success",
+  id: js-uint,
+  result: ResultData,
+  Extensible,
+}
+
+ErrorResponse = {
+  type: "error",
+  id: js-uint / null,
+  error: ErrorCode,
+  message: text,
+  ? stacktrace: text,
+  Extensible,
+}
+
+Event = {
+  type: "event",
+  EventData,
+  Extensible,
+}
+
+; --- Result / Error enums ---
+
+ResultData = (
+  SubscriptionResult //
+  AgentResult //
+  ResourceResult //
+  SandboxResult //
+  InputResult //
+  StateResult //
+  UsageResult //
+  EmptyResult
+)
+
+EmptyResult = { Extensible }
+
+ErrorCode = "invalid_argument"
+          / "unknown_command"
+          / "unknown_error"
+          / "no_such_run"
+          / "no_such_subscription"
+          / "no_such_namespace"
+          / "no_such_resource"
+          / "no_such_terminal"
+          / "no_such_interrupt"
+          / "no_such_checkpoint"
+          / "budget_exceeded"
+          / "permission_denied"
+          / "not_supported"
+
+
+; ==========================================================================
+; 3. Channels
+;
+; Each channel corresponds to a subscribable event stream. Clients
+; include channel names in subscription.subscribe to select which
+; event types to receive.
+; ==========================================================================
+
+Channel = "values"
+        / "updates"
+        / "messages"
+        / "tools"
+        / "custom"
+        / "lifecycle"
+        / "media"
+        / "resource"
+        / "sandbox"
+        / "input"
+        / "state"
+        / "usage"
+        / "debug"
+        / "checkpoints"
+        / "tasks"
+
+
+; ==========================================================================
+; 4. Subscription Module
+;
+; Mirrors BiDi session.subscribe / session.unsubscribe. The core
+; mechanism for server-side event filtering.
+; ==========================================================================
+
+SubscriptionCommand = (
+  subscription.subscribe //
+  subscription.unsubscribe //
+  subscription.reconnect
+)
+
+; --- subscription.subscribe ---
+
+subscription.subscribe = {
+  method: "subscription.subscribe",
+  params: SubscribeParams,
+}
+
+SubscribeParams = {
+  channels: [+ Channel],
+  ? namespaces: [* Namespace],          ; Prefix-match these namespace paths
+  ? depth: uint,                        ; Max depth below namespace prefix
+  ? mediaTypes: [+ MediaType],          ; Filter media channel by modality
+}
+
+SubscribeResult = {
+  subscriptionId: text,
+  ? replayedEvents: uint,              ; Events replayed from buffer
+}
+
+; --- subscription.unsubscribe ---
+
+subscription.unsubscribe = {
+  method: "subscription.unsubscribe",
+  params: UnsubscribeParams,
+}
+
+UnsubscribeParams = {
+  subscriptionId: text,
+}
+
+; --- subscription.reconnect ---
+
+subscription.reconnect = {
+  method: "subscription.reconnect",
+  params: ReconnectParams,
+}
+
+ReconnectParams = {
+  runId: text,
+  ? lastEventId: text,                 ; Last event the client processed
+  ? subscriptions: [* text],           ; Subscription IDs to restore
+}
+
+ReconnectResult = {
+  restored: bool,
+  ? missedEvents: uint,
+  ? currentNamespaces: [* AgentStatusEntry],
+}
+
+AgentStatusEntry = {
+  namespace: Namespace,
+  status: AgentStatus,
+}
+
+SubscriptionResult = SubscribeResult / ReconnectResult / EmptyResult
+
+
+; ==========================================================================
+; 5. Flow Module
+;
+; Backpressure and flow control.
+; ==========================================================================
+
+FlowCommand = flow.setCapacity
+
+flow.setCapacity = {
+  method: "flow.setCapacity",
+  params: FlowCapacityParams,
+}
+
+FlowCapacityParams = {
+  maxBufferSize: uint,
+  strategy: FlowStrategy,
+}
+
+FlowStrategy = "drop-oldest"
+             / "pause-producer"
+             / "sample"
+
+
+; ==========================================================================
+; 6. Agent Module
+;
+; Hierarchy discovery and lifecycle tracking. Mirrors BiDi
+; browsingContext module.
+; ==========================================================================
+
+AgentCommand = agent.getTree
+
+; --- agent.getTree ---
+
+agent.getTree = {
+  method: "agent.getTree",
+  params: AgentGetTreeParams,
+}
+
+AgentGetTreeParams = {
+  ? runId: text,
+}
+
+AgentTreeNode = {
+  namespace: Namespace,
+  status: AgentStatus,
+  graphName: text,
+  ? children: [* AgentTreeNode],
+  ? metadata: {* text => any},
+}
+
+AgentResult = {
+  tree: AgentTreeNode,
+}
+
+AgentStatus = "spawned"
+            / "running"
+            / "completed"
+            / "failed"
+            / "interrupted"
+
+; --- Lifecycle events (server → client) ---
+
+EventData = (
+  LifecycleEvent //
+  MessagesEvent //
+  ToolsEvent //
+  MediaEvent //
+  ResourceEvent //
+  SandboxEvent //
+  InputEvent //
+  StateEvent //
+  UsageEvent //
+  ValuesEvent //
+  UpdatesEvent //
+  CustomEvent //
+  DebugEvent //
+  CheckpointsEvent //
+  TasksEvent
+)
+
+LifecycleEvent = {
+  method: "lifecycle",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: LifecycleData,
+  },
+}
+
+LifecycleData = {
+  event: AgentStatus,
+  ? graphName: text,
+  ? error: text,
+  ? result: any,
+}
+
+
+; ==========================================================================
+; 7. Messages Module
+;
+; LLM token streaming.
+; ==========================================================================
+
+MessagesEvent = {
+  method: "messages",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: MessagesData,
+  },
+}
+
+MessagesData = {
+  message: MessageContent,
+  ? metadata: {* text => any},
+  ? correlatedStreamId: js-uint,        ; Links to a media stream
+  ? audioOffsetMs: uint,                ; Sync: audio start offset
+  ? audioEndMs: uint,                   ; Sync: audio end offset
+}
+
+MessageContent = {
+  content: text,
+  type: "ai" / "human" / "system" / "tool" / "function",
+  ? id: text,
+  ? name: text,
+  ? tool_calls: [* ToolCall],
+  ? tool_call_id: text,
+  Extensible,
+}
+
+ToolCall = {
+  id: text,
+  name: text,
+  args: any,
+  ? type: text,
+}
+
+
+; ==========================================================================
+; 8. Tools Module
+;
+; Tool lifecycle observability.
+; ==========================================================================
+
+ToolsEvent = {
+  method: "tools",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: ToolsData,
+  },
+}
+
+ToolsData = {
+  event: "on_tool_start" / "on_tool_end" / "on_tool_error" / "on_tool_event",
+  name: text,
+  ? toolCallId: text,
+  ? input: any,
+  ? output: any,
+  ? error: text,
+  Extensible,
+}
+
+
+; ==========================================================================
+; 9. Media Module
+;
+; Audio, video, and image streaming. JSON events manage stream lifecycle;
+; binary frames carry the actual media payload.
+; ==========================================================================
+
+MediaEvent = (
+  media.streamStart //
+  media.streamEnd //
+  media.artifact
+)
+
+MediaType = "audio" / "video" / "image"
+
+; --- media.streamStart ---
+
+media.streamStart = {
+  method: "media.streamStart",
+  params: MediaStreamStartParams,
+}
+
+MediaStreamStartParams = {
+  namespace: Namespace,
+  timestamp: Timestamp,
+  streamId: js-uint,
+  mediaType: MediaType,
+  codec: text,
+  ? sampleRate: uint,                   ; Audio: samples per second
+  ? channels: uint,                     ; Audio: channel count (1=mono, 2=stereo)
+  ? width: uint,                        ; Video/image: pixel width
+  ? height: uint,                       ; Video/image: pixel height
+  ? frameRate: uint,                    ; Video: frames per second
+  ? mimeType: text,                     ; Image: MIME type
+  ? sizeBytes: uint,                    ; Total size when known (for progress)
+  ? metadata: {* text => any},          ; Codec-specific or voice metadata
+}
+
+; --- media.streamEnd ---
+
+media.streamEnd = {
+  method: "media.streamEnd",
+  params: MediaStreamEndParams,
+}
+
+MediaStreamEndParams = {
+  namespace: Namespace,
+  timestamp: Timestamp,
+  streamId: js-uint,
+  reason: "completed" / "failed" / "cancelled",
+  ? durationMs: uint,
+  ? error: text,
+}
+
+; --- media.artifact (non-streaming media, e.g. single image) ---
+
+media.artifact = {
+  method: "media.artifact",
+  params: MediaStreamStartParams,       ; Same shape as streamStart
+}
+
+; --- Binary frame header (not JSON — fixed 16 bytes on the wire) ---
+;
+; This is transmitted as raw bytes in WebSocket binary frames, not as
+; JSON. CDDL is used here only for documentation; implementations
+; serialize/deserialize manually.
+;
+; BinaryFrameHeader = (
+;   streamId: uint32,                   ; Maps to media.streamStart streamId
+;   sequence: uint32,                   ; Monotonic per stream, for gap detection
+;   timestampMicros: uint32,            ; Microsecond offset from stream start
+;   payloadLength: uint32,              ; Byte count of following payload
+; )
+;
+; Total: 16 bytes header + payloadLength bytes payload per binary frame.
+
+
+; ==========================================================================
+; 10. Resource Module
+;
+; File system access to agent sandboxes.
+; ==========================================================================
+
+ResourceCommand = (
+  resource.list //
+  resource.read //
+  resource.write //
+  resource.download
+)
+
+; --- resource.list ---
+
+resource.list = {
+  method: "resource.list",
+  params: ResourceListParams,
+}
+
+ResourceListParams = {
+  namespace: Namespace,
+  path: text,
+  ? depth: uint,                        ; Recurse N levels (default: 1)
+  ? includeMetadata: bool,              ; Include size, mtime, permissions
+}
+
+ResourceEntry = {
+  name: text,
+  path: text,
+  type: "file" / "directory" / "symlink",
+  ? sizeBytes: uint,
+  ? modifiedAt: Timestamp,
+  ? permissions: text,                  ; Unix-style e.g. "rwxr-xr-x"
+  ? children: [* ResourceEntry],        ; When depth > 1
+}
+
+ResourceListResult = {
+  entries: [* ResourceEntry],
+}
+
+; --- resource.read ---
+
+resource.read = {
+  method: "resource.read",
+  params: ResourceReadParams,
+}
+
+ResourceReadParams = {
+  namespace: Namespace,
+  path: text,
+  ? encoding: "utf-8" / "binary",      ; Default: utf-8
+  ? range: LineRange,                   ; Partial read
+}
+
+LineRange = {
+  startLine: uint,
+  endLine: uint,
+}
+
+ResourceReadResult = {
+  content: text / null,                 ; Text content (utf-8) or null for binary
+  ? streamId: js-uint,                  ; For binary: content delivered via binary frames
+  ? sizeBytes: uint,
+  ? mimeType: text,
+}
+
+; --- resource.write ---
+
+resource.write = {
+  method: "resource.write",
+  params: ResourceWriteParams,
+}
+
+ResourceWriteParams = {
+  namespace: Namespace,
+  path: text,
+  content: text,
+  ? encoding: "utf-8",
+  ? createDirectories: bool,            ; mkdir -p parent directories
+}
+
+; --- resource.download ---
+
+resource.download = {
+  method: "resource.download",
+  params: ResourceDownloadParams,
+}
+
+ResourceDownloadParams = {
+  namespace: Namespace,
+  path: text,
+}
+
+ResourceDownloadResult = {
+  streamId: js-uint,                    ; Binary frames follow with file data
+  sizeBytes: uint,
+  mimeType: text,
+}
+
+ResourceResult = ResourceListResult / ResourceReadResult
+               / ResourceDownloadResult / EmptyResult
+
+; --- Resource events (server → client) ---
+
+ResourceEvent = {
+  method: "resource.changed",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: ResourceChangedData,
+  },
+}
+
+ResourceChangedData = {
+  changes: [+ ResourceChange],
+}
+
+ResourceChange = {
+  type: "created" / "modified" / "deleted" / "moved",
+  path: text,
+  ? sizeBytes: uint,
+  ? oldPath: text,                      ; For "moved" type
+}
+
+
+; ==========================================================================
+; 11. Sandbox Module
+;
+; Shell command execution in sandboxed agent environments.
+; ==========================================================================
+
+SandboxCommand = (
+  sandbox.input //
+  sandbox.kill
+)
+
+; --- sandbox.input ---
+
+sandbox.input = {
+  method: "sandbox.input",
+  params: SandboxInputParams,
+}
+
+SandboxInputParams = {
+  namespace: Namespace,
+  terminalId: text,
+  text: text,
+}
+
+; --- sandbox.kill ---
+
+sandbox.kill = {
+  method: "sandbox.kill",
+  params: SandboxKillParams,
+}
+
+SandboxKillParams = {
+  namespace: Namespace,
+  terminalId: text,
+  ? signal: text,                       ; Default: "SIGTERM"
+}
+
+SandboxResult = EmptyResult
+
+; --- Sandbox events (server → client) ---
+
+SandboxEvent = (
+  sandbox.started //
+  sandbox.output //
+  sandbox.exited
+)
+
+sandbox.started = {
+  method: "sandbox.started",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: SandboxStartedData,
+  },
+}
+
+SandboxStartedData = {
+  terminalId: text,
+  command: text,
+  ? cwd: text,
+  ? env: {* text => text},             ; Sanitized, no secrets
+}
+
+sandbox.output = {
+  method: "sandbox.output",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: SandboxOutputData,
+  },
+}
+
+SandboxOutputData = {
+  terminalId: text,
+  stream: "stdout" / "stderr",
+  text: text,
+}
+
+sandbox.exited = {
+  method: "sandbox.exited",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: SandboxExitedData,
+  },
+}
+
+SandboxExitedData = {
+  terminalId: text,
+  exitCode: int,
+  ? durationMs: uint,
+  ? signal: text,                       ; If killed by signal
+}
+
+
+; ==========================================================================
+; 12. Input Module
+;
+; Human-in-the-loop. Wraps LangGraph's interrupt() / Command({ resume })
+; as in-band protocol messages.
+; ==========================================================================
+
+InputCommand = (
+  input.respond //
+  input.inject
+)
+
+; --- input.respond ---
+
+input.respond = {
+  method: "input.respond",
+  params: InputRespondParams,
+}
+
+InputRespondParams = {
+  namespace: Namespace,
+  interruptId: text,
+  response: any,
+}
+
+; --- input.inject ---
+
+input.inject = {
+  method: "input.inject",
+  params: InputInjectParams,
+}
+
+InputInjectParams = {
+  namespace: Namespace,
+  message: MessageContent,
+}
+
+InputResult = EmptyResult
+
+; --- Input events (server → client) ---
+
+InputEvent = {
+  method: "input.requested",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: InputRequestedData,
+  },
+}
+
+InputRequestedData = {
+  interruptId: text,
+  type: "approval" / "text" / "choice" / "form",
+  prompt: text,
+  ? schema: any,                        ; JSON Schema for structured input
+  ? choices: [* text],                  ; For "choice" type
+  ? default: any,                       ; Default value
+  ? timeout: uint,                      ; Auto-reject after N ms
+}
+
+
+; ==========================================================================
+; 13. State Module
+;
+; Graph state, cross-thread store, and checkpoint access.
+; ==========================================================================
+
+StateCommand = (
+  state.get //
+  state.storeSearch //
+  state.storePut //
+  state.listCheckpoints //
+  state.fork
+)
+
+; --- state.get ---
+
+state.get = {
+  method: "state.get",
+  params: StateGetParams,
+}
+
+StateGetParams = {
+  namespace: Namespace,
+  ? keys: [* text],                     ; Specific state keys, or omit for all
+}
+
+StateGetResult = {
+  values: {* text => any},
+  ? checkpoint: CheckpointRef,
+}
+
+; --- state.storeSearch ---
+
+state.storeSearch = {
+  method: "state.storeSearch",
+  params: StoreSearchParams,
+}
+
+StoreSearchParams = {
+  storeNamespace: [* text],             ; Store namespace (not agent namespace)
+  ? query: text,                        ; Natural-language / vector query
+  ? filter: {* text => any},            ; Key-value filter
+  ? limit: uint,                        ; Max results (default: 10)
+  ? offset: uint,                       ; Pagination offset
+}
+
+StoreSearchResult = {
+  items: [* StoreItem],
+}
+
+StoreItem = {
+  namespace: [* text],
+  key: text,
+  value: {* text => any},
+  ? score: float32,                     ; Relevance score for vector queries
+  ? createdAt: text,                    ; ISO 8601 timestamp
+  ? updatedAt: text,                    ; ISO 8601 timestamp
+}
+
+; --- state.storePut ---
+
+state.storePut = {
+  method: "state.storePut",
+  params: StorePutParams,
+}
+
+StorePutParams = {
+  storeNamespace: [* text],
+  key: text,
+  value: {* text => any},
+  ? index: bool / [* text],            ; Indexing control
+  ? ttl: uint,                          ; Time-to-live in seconds
+}
+
+; --- state.listCheckpoints ---
+
+state.listCheckpoints = {
+  method: "state.listCheckpoints",
+  params: ListCheckpointsParams,
+}
+
+ListCheckpointsParams = {
+  ? namespace: Namespace,
+  ? limit: uint,
+  ? before: text,                       ; Cursor for pagination
+}
+
+ListCheckpointsResult = {
+  checkpoints: [* CheckpointSummary],
+}
+
+CheckpointSummary = {
+  id: text,
+  timestamp: text,                      ; ISO 8601
+  step: uint,
+  ? nodeName: text,                     ; Node that produced this checkpoint
+  ? metadata: {* text => any},
+}
+
+CheckpointRef = {
+  id: text,
+  ? ns: text,
+}
+
+; --- state.fork ---
+
+state.fork = {
+  method: "state.fork",
+  params: StateForkParams,
+}
+
+StateForkParams = {
+  checkpointId: text,
+  ? input: any,                         ; Input for the forked run
+  ? config: {* text => any},            ; Config overrides
+}
+
+StateForkResult = {
+  runId: text,
+  threadId: text,
+}
+
+StateResult = StateGetResult / StoreSearchResult
+            / ListCheckpointsResult / StateForkResult / EmptyResult
+
+; --- State events (server → client) ---
+
+StateEvent = (
+  state.updated //
+  state.storeChanged
+)
+
+state.updated = {
+  method: "state.updated",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: StateUpdatedData,
+  },
+}
+
+StateUpdatedData = {
+  keys: [* text],                       ; Which state keys changed
+  ? checkpoint: text,                   ; Corresponding checkpoint ID
+}
+
+state.storeChanged = {
+  method: "state.storeChanged",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: StoreChangedData,
+  },
+}
+
+StoreChangedData = {
+  storeNamespace: [* text],
+  key: text,
+  operation: "put" / "delete",
+}
+
+
+; ==========================================================================
+; 14. Usage Module
+;
+; Cost tracking, token usage, and budget enforcement.
+; ==========================================================================
+
+UsageCommand = usage.setBudget
+
+; --- usage.setBudget ---
+
+usage.setBudget = {
+  method: "usage.setBudget",
+  params: UsageBudgetParams,
+}
+
+UsageBudgetParams = {
+  ? namespace: Namespace,               ; Per-agent budget; omit for run-wide
+  maxCostUsd: float32,
+  action: "pause" / "cancel",          ; What to do when budget exceeded
+}
+
+UsageResult = EmptyResult
+
+; --- Usage events (server → client) ---
+
+UsageEvent = (
+  usage.llmCall //
+  usage.summary
+)
+
+usage.llmCall = {
+  method: "usage.llmCall",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: LlmCallUsageData,
+  },
+}
+
+LlmCallUsageData = {
+  model: text,
+  ? provider: text,
+  inputTokens: uint,
+  outputTokens: uint,
+  ? cachedTokens: uint,
+  ? costUsd: float32,
+  ? latencyMs: uint,
+  ? requestId: text,
+}
+
+usage.summary = {
+  method: "usage.summary",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: UsageSummaryData,
+  },
+}
+
+UsageSummaryData = {
+  totalInputTokens: uint,
+  totalOutputTokens: uint,
+  ? totalCostUsd: float32,
+  ? byModel: {* text => ModelUsage},
+  ? byNamespace: {* text => NamespaceUsage},
+}
+
+ModelUsage = {
+  calls: uint,
+  ? costUsd: float32,
+}
+
+NamespaceUsage = {
+  calls: uint,
+  ? costUsd: float32,
+}
+
+
+; ==========================================================================
+; 15. Passthrough Channels (values, updates, custom, debug, checkpoints, tasks)
+;
+; These channels carry payloads defined by the LangGraph runtime rather
+; than by this protocol. Their event shapes are intentionally open
+; (payload is `any`) because they depend on the user's graph state schema.
+; ==========================================================================
+
+ValuesEvent = {
+  method: "values",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: any,                          ; Full graph state after step
+  },
+}
+
+UpdatesEvent = {
+  method: "updates",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: any,                          ; Per-node state delta
+  },
+}
+
+CustomEvent = {
+  method: "custom",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: any,                          ; User-defined payload via config.writer
+  },
+}
+
+DebugEvent = {
+  method: "debug",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: {
+      step: uint,
+      type: "checkpoint" / "task" / "task_result",
+      ? payload: any,
+    },
+  },
+}
+
+CheckpointsEvent = {
+  method: "checkpoints",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: any,                          ; Checkpoint metadata
+  },
+}
+
+TasksEvent = {
+  method: "tasks",
+  params: {
+    namespace: Namespace,
+    timestamp: Timestamp,
+    data: any,                          ; Task creation or result
+  },
+}

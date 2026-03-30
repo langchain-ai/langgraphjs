@@ -579,7 +579,12 @@ interface ProtocolEvent {
 Following BiDi, the protocol is formally defined using CDDL (Concise Data
 Definition Language, [RFC 8610](https://www.rfc-editor.org/rfc/rfc8610)).
 With LangGraph implementations in JavaScript, Python, and Java, CDDL serves
-as the single source of truth from which language-specific types are generated:
+as the single source of truth from which language-specific types are generated.
+
+The full draft CDDL schema is in
+[`agent_streaming_protocol.cddl`](./agent_streaming_protocol.cddl) (covers
+all 15 channels, all commands, all event types, and all result shapes).
+The excerpt below shows the core framing and subscription module:
 
 ```
 ┌──────────────┐
