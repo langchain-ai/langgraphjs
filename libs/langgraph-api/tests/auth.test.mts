@@ -89,7 +89,7 @@ it.skipIf(process.version.startsWith("v18."))(
     const user1 = await createJwtClient("johndoe", ["me", "assistants:write"]);
 
     await user1.assistants.create({ graphId: "agent" });
-    let thread = await user1.threads.create();
+    const thread = await user1.threads.create();
     let history = await user1.threads.getHistory(thread.thread_id);
     expect(history).toEqual([]);
 

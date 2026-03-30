@@ -338,7 +338,7 @@ describe("assistants", () => {
   });
 
   it("count assistants", async () => {
-    let count = await client.assistants.count();
+    const count = await client.assistants.count();
     expect(count).toBeGreaterThanOrEqual(11);
   });
 
@@ -424,7 +424,7 @@ describe("assistants", () => {
   });
 
   it("config from env", async () => {
-    let search = await client.assistants.search({
+    const search = await client.assistants.search({
       graphId: "agent",
       metadata: { created_by: "system" },
     });
@@ -1577,7 +1577,7 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    let chunks = await gatherIterator(
+    const chunks = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         input: {
           messages: [{ role: "human", content: "SF", id: "initial-message" }],
@@ -1644,7 +1644,7 @@ describe("subgraphs", () => {
       },
     ]);
 
-    let state = await client.threads.getState(thread.thread_id);
+    const state = await client.threads.getState(thread.thread_id);
     expect(state.next).toEqual(["weather_graph"]);
     expect(state.tasks).toEqual([
       {
@@ -2144,7 +2144,7 @@ describe("command update state", () => {
       config: globalConfig,
     });
 
-    let stream = await gatherIterator(
+    const stream = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         command: { update: { keyOne: "value3", keyTwo: "value4" } },
         config: globalConfig,
@@ -2152,7 +2152,7 @@ describe("command update state", () => {
     );
     expect(stream.filter((chunk) => chunk.event === "error")).toEqual([]);
 
-    let state = await client.threads.getState<StateSchema>(thread.thread_id);
+    const state = await client.threads.getState<StateSchema>(thread.thread_id);
     expect(state.values).toMatchObject({ keyOne: "value3", keyTwo: "value4" });
   });
 

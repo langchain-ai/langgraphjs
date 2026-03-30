@@ -200,7 +200,7 @@ function extend(target: any, ..._: any[]): any {
 
   const to = Object(target);
 
-  for (var index = 1; index < arguments.length; index++) {
+  for (let index = 1; index < arguments.length; index++) {
     const nextSource = arguments[index];
 
     if (nextSource != null) {
@@ -343,7 +343,7 @@ function addSimpleType(def: Definition, type: JSONSchema7TypeName): boolean {
     def.type = type;
   } else if (typeof def.type !== "string") {
     if (
-      !(def.type as Object[]).every((val) => {
+      !(def.type as object[]).every((val) => {
         return typeof val === "string";
       })
     ) {
@@ -372,7 +372,7 @@ function makeNullable(def: Definition): Definition {
       union.push({ type: "null" });
     } else {
       const subdef: DefinitionIndex = {};
-      for (var k in def as any) {
+      for (const k in def as any) {
         if (def.hasOwnProperty(k)) {
           subdef[k] = def[k as keyof Definition];
           delete def[k as keyof typeof def];
@@ -654,7 +654,7 @@ class JsonSchemaGenerator {
           text = "true";
         }
       } else if (name === "TJS" && text.startsWith("-")) {
-        let match: string[] | RegExpExecArray | null = new RegExp(
+        const match: string[] | RegExpExecArray | null = new RegExp(
           REGEX_TJS_JSDOC
         ).exec(originalText);
         if (match) {
@@ -993,7 +993,7 @@ class JsonSchemaGenerator {
       node.kind === ts.SyntaxKind.EnumDeclaration
         ? (node as ts.EnumDeclaration).members
         : ts.factory.createNodeArray([node as ts.EnumMember]);
-    var enumValues: (number | boolean | string | null)[] = [];
+    const enumValues: (number | boolean | string | null)[] = [];
     const enumTypes: JSONSchema7TypeName[] = [];
 
     const addType = (type: JSONSchema7TypeName) => {
@@ -1776,7 +1776,7 @@ class JsonSchemaGenerator {
         >((acc, [key, value]) => {
           if (
             annotationKeywords[key as keyof typeof annotationKeywords] &&
-            typeof value !== undefined
+            typeof value !== "undefined"
           ) {
             acc[key] = value;
           }
@@ -1985,7 +1985,7 @@ export function buildGenerator(
         const baseTypes = nodeType.getBaseTypes() || [];
 
         baseTypes.forEach((baseType) => {
-          var baseName = tc.typeToString(
+          const baseName = tc.typeToString(
             baseType,
             undefined,
             ts.TypeFormatFlags.UseFullyQualifiedType

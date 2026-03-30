@@ -2463,9 +2463,8 @@ describe("Graph Structure Tests (Python port)", () => {
   it("should handle parent commands", async () => {
     // Import necessary components for messaging
     const { HumanMessage } = await import("@langchain/core/messages");
-    const { MessagesAnnotation } = await import(
-      "../../graph/messages_annotation.js"
-    );
+    const { MessagesAnnotation } =
+      await import("../../graph/messages_annotation.js");
 
     // Create a tool that returns a parent command
     const getUserName = (): Command => {

@@ -93,7 +93,7 @@ export async function startServer(
   }
 
   logger.info(`Initializing storage...`);
-  let initCalls: Promise<FileSystemPersistence<unknown>>[] = [
+  const initCalls: Promise<FileSystemPersistence<unknown>>[] = [
     checkpointer.initialize(options.cwd),
     graphStore.initialize(options.cwd),
   ];

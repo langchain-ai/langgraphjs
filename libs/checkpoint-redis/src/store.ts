@@ -397,10 +397,10 @@ export class RedisStore {
         this.indexConfig.distanceType === "cosine"
           ? "COSINE"
           : this.indexConfig.distanceType === "l2"
-          ? "L2"
-          : this.indexConfig.distanceType === "ip"
-          ? "IP"
-          : "COSINE";
+            ? "L2"
+            : this.indexConfig.distanceType === "ip"
+              ? "IP"
+              : "COSINE";
 
       // Build schema with correct vector syntax
       const vectorSchema: Record<string, any> = {

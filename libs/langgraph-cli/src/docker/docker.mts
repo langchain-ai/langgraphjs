@@ -183,7 +183,7 @@ async function updateGraphPaths(
     const importStr = typeof graphDef === "string" ? graphDef : graphDef.path;
     const description =
       typeof graphDef === "string" ? undefined : graphDef.description;
-    let [moduleStr, attrStr] = importStr.split(":", 2);
+    const [moduleStr, attrStr] = importStr.split(":", 2);
     if (!moduleStr || !attrStr) {
       throw new Error(
         `Import string "${importStr}" must be in format "<module>:<attribute>".`

@@ -361,7 +361,7 @@ class BaseClient {
    * Handles both initial requests and reconnections with SSE.
    */
   protected async *streamWithRetry<
-    T extends { id?: string; event: string; data: unknown }
+    T extends { id?: string; event: string; data: unknown },
   >(config: {
     endpoint: string;
     method?: string;
@@ -392,7 +392,7 @@ class BaseClient {
           : config.headers;
 
       // Prepare fetch options
-      let [url, init] = this.prepareFetchOptions(requestEndpoint, {
+      const [url, init] = this.prepareFetchOptions(requestEndpoint, {
         method,
         timeoutMs: null,
         signal: config.signal,
@@ -959,7 +959,7 @@ export class AssistantsClient extends BaseClient {
 
 export class ThreadsClient<
   TStateType = DefaultValues,
-  TUpdateType = TStateType
+  TUpdateType = TStateType,
 > extends BaseClient {
   /**
    * Get a thread by ID.
@@ -1409,11 +1409,11 @@ export class ThreadsClient<
 export class RunsClient<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
-  TCustomEventType = unknown
+  TCustomEventType = unknown,
 > extends BaseClient {
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false
+    TSubgraphs extends boolean = false,
   >(
     threadId: null,
     assistantId: string,
@@ -1431,7 +1431,7 @@ export class RunsClient<
 
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false
+    TSubgraphs extends boolean = false,
   >(
     threadId: string,
     assistantId: string,
@@ -1453,7 +1453,7 @@ export class RunsClient<
    */
   async *stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false
+    TSubgraphs extends boolean = false,
   >(
     threadId: string | null,
     assistantId: string,
@@ -2156,7 +2156,7 @@ class UiClient extends BaseClient {
     return UiClient.getOrCached(
       `${this.apiUrl}-${assistantId}-${agentName}`,
       async () => {
-        let [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
+        const [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
           headers: {
             Accept: "text/html",
             "Content-Type": "application/json",
@@ -2176,7 +2176,7 @@ class UiClient extends BaseClient {
 export class Client<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
-  TCustomEventType = unknown
+  TCustomEventType = unknown,
 > {
   /**
    * The client for interacting with assistants.
