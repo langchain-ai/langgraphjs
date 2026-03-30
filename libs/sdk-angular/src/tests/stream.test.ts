@@ -327,6 +327,42 @@ it("streamSubgraphs: true", async () => {
   ]);
 });
 
+it("handles subgraph streaming with event callbacks", async () => {
+  const onCheckpointEvent = vi.fn();
+  const onUpdateEvent = vi.fn();
+  const onCustomEvent = vi.fn();
+
+  const screen = await render(SubgraphStreamComponent, {
+    inputs: {
+      onCheckpointEvent,
+      onUpdateEvent,
+      onCustomEvent,
+    },
+  });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .poll(() => onCheckpointEvent.mock.calls.length)
+    .toBeGreaterThanOrEqual(6);
+
+  expect(
+    onCheckpointEvent.mock.calls.some(
+      (call: any[]) => call[1]?.namespace !== undefined,
+    ),
+  ).toBe(true);
+
+  expect(onUpdateEvent.mock.calls.length).toBeGreaterThanOrEqual(1);
+  expect(onCustomEvent.mock.calls.length).toBeGreaterThanOrEqual(1);
+});
+
 it("streamMetadata", async () => {
   const screen = await render(StreamMetadataComponent);
 
