@@ -226,7 +226,7 @@ export interface PregelOptions<
   TEncoding extends "text/event-stream" | undefined =
     | "text/event-stream"
     | undefined
-> extends RunnableConfig<ContextType> {
+> extends RunnableConfig {
   /**
    * Controls what information is streamed during graph execution.
    * Multiple modes can be enabled simultaneously.
