@@ -15,12 +15,19 @@ explicitly:
 // In-process: opt in via createSession
 import { createSession } from "@langchain/langgraph/protocol";
 
-// SDK: opt in via v2 client
-import { Client } from "@langchain/langgraph-sdk/v2";
+// Frontend hooks: opt in via protocol transport
+import { useStream } from "@langchain/react";
+import { ProtocolStreamTransport } from "@langchain/react/protocol";
+
+const stream = useStream({
+  transport: new ProtocolStreamTransport({ url: "ws://localhost:2024/v2/runs" }),
+  // ... existing useStream options work unchanged
+});
 
 // Server: opt in via v2 endpoint prefix
-// POST /v2/runs/stream  → WebSocket upgrade or SSE with subscriptions
-// POST /runs/stream      → unchanged v1 behavior
+// GET  /v2/runs/:runId/ws     → WebSocket upgrade
+// GET  /v2/runs/:runId/stream → SSE with subscription commands via POST
+// POST /runs/stream           → unchanged v1 behavior
 ```
 
 The v2 surface lives in new files and new subpath exports. No existing file
@@ -44,7 +51,23 @@ libs/
 │
 ├── sdk/                     (@langchain/langgraph-sdk)
 │   └── src/
-│       └── v2/              ← NEW directory: v2 client
+│       └── protocol/        ← NEW directory: protocol client + transport
+│
+├── sdk-react/               (@langchain/react)
+│   └── src/
+│       └── protocol.tsx     ← NEW: ProtocolStreamTransport for React
+│
+├── sdk-vue/                 (@langchain/vue)
+│   └── src/
+│       └── protocol.ts      ← NEW: ProtocolStreamTransport for Vue
+│
+├── sdk-svelte/              (@langchain/svelte)
+│   └── src/
+│       └── protocol.ts      ← NEW: ProtocolStreamTransport for Svelte
+│
+├── sdk-angular/             (@langchain/angular)
+│   └── src/
+│       └── protocol.ts      ← NEW: ProtocolStreamTransport for Angular
 │
 └── langgraph/               (langgraph — re-export wrapper)
     └── src/
@@ -56,9 +79,51 @@ libs/
 | Package | Subpath | Content |
 |---------|---------|---------|
 | `@langchain/langgraph` | `./protocol` | `createSession`, `Session`, subscription types, protocol types |
-| `@langchain/langgraph-sdk` | `./v2` | `ProtocolClient`, typed subscription methods |
+| `@langchain/langgraph-sdk` | `./protocol` | `ProtocolClient` (WebSocket/SSE), shared protocol transport logic |
+| `@langchain/react` | `./protocol` | `ProtocolStreamTransport` — `UseStreamTransport` impl for React's `useStream` |
+| `@langchain/vue` | `./protocol` | `ProtocolStreamTransport` — for Vue's `useStream` composable |
+| `@langchain/svelte` | `./protocol` | `ProtocolStreamTransport` — for Svelte's `useStream` store |
+| `@langchain/angular` | `./protocol` | `ProtocolStreamTransport` — for Angular's stream service |
 | `@langchain/langgraph-api` | `./v2` | v2 route handlers (WebSocket + SSE) |
 | `langgraph` | `./protocol` | Re-export from `@langchain/langgraph/protocol` |
+
+### Frontend Integration via `UseStreamTransport`
+
+The framework SDKs (React, Vue, Svelte, Angular) already support custom
+transports via the `UseStreamTransport` interface. Each `useStream` hook
+selects between `useStreamLGP` (default LangGraph Platform transport) and
+`useStreamCustom` (custom transport) based on whether a `transport` option
+is provided.
+
+The v2 protocol integrates through this existing pattern. Each framework
+SDK gets a `ProtocolStreamTransport` that implements `UseStreamTransport`
+using the protocol's WebSocket connection:
+
+```typescript
+// In any framework (React example shown)
+import { useStream } from "@langchain/react";
+import { ProtocolStreamTransport } from "@langchain/react/protocol";
+
+const stream = useStream({
+  transport: new ProtocolStreamTransport({
+    url: "ws://localhost:2024/v2/runs",
+  }),
+  // All existing useStream options work unchanged:
+  // threadId, onThreadId, messagesKey, onError, onFinish, etc.
+});
+
+// Additional protocol features available on the transport:
+stream.transport.subscribe("lifecycle");
+stream.transport.resource.list(["agent_1"], "/workspace/src");
+```
+
+The `ProtocolStreamTransport` internally manages the WebSocket connection,
+translates protocol events into the SSE-shaped `{ event, data }` format
+that `useStream`'s orchestrator expects, and exposes additional protocol
+features (subscriptions, commands) as extra methods on the transport
+instance. This means existing `useStream` rendering logic (messages,
+interrupts, tool calls, subagent streams) works unchanged — the protocol
+transport is a drop-in replacement for the default SSE transport.
 
 ---
 
@@ -91,8 +156,23 @@ libs/langgraph-core/src/pregel/protocol/
 
 ### 3.1 `protocol/types.ts`
 
-Protocol-level types derived from the CDDL schema. These are the TypeScript
-equivalent of what CDDL codegen would produce:
+Protocol-level types are **generated** from the CDDL schema using
+[`cddl2ts`](https://github.com/webdriverio/cddl/tree/main/packages/cddl2ts),
+the same tool the WebDriver BiDi project uses to generate TypeScript types
+from their CDDL spec. The generation is a build-time step:
+
+```bash
+npx cddl2ts ./docs/docs/concepts/agent_streaming_protocol.cddl > \
+  ./libs/langgraph-core/src/pregel/protocol/types.generated.ts
+```
+
+The generated types are checked into the repository (not generated on every
+build) so that consumers don't need the `cddl2ts` toolchain. When the CDDL
+schema changes, a maintainer re-runs the generation and commits the result.
+Python and Java types are generated from the same `.cddl` file using
+equivalent tools for those languages.
+
+The generated output looks like:
 
 ```typescript
 export interface ProtocolEvent<T = unknown> {
@@ -439,21 +519,25 @@ app.route("/", v2);
 
 ---
 
-## 5. New Files in `sdk`
+## 5. New Files in `sdk` and Framework SDKs
 
-The SDK gets a v2 client that understands the protocol.
+### 5.1 Protocol Client (`libs/sdk/src/protocol/`)
+
+The shared protocol client lives in `@langchain/langgraph-sdk` and handles
+WebSocket connection management, command dispatch, and binary frame
+parsing. It is framework-agnostic.
 
 ```
-libs/sdk/src/v2/
-├── index.ts                 Entry point — exports ProtocolClient
-├── client.ts                ProtocolClient — WebSocket or SSE connection
-├── subscription.ts          Typed subscription iterators
-└── types.ts                 v2-specific types
+libs/sdk/src/protocol/
+├── index.ts                 Entry point — exports ProtocolClient, types
+├── client.ts                ProtocolClient — WebSocket connection, command/event dispatch
+├── subscription.ts          Typed subscription async iterators
+└── types.ts                 Re-exports from @langchain/langgraph/protocol types
 ```
-
-### 5.1 `v2/client.ts` — ProtocolClient
 
 ```typescript
+// libs/sdk/src/protocol/client.ts
+
 export class ProtocolClient {
   private ws: WebSocket;
   private commandId: number = 0;
@@ -464,22 +548,8 @@ export class ProtocolClient {
     this.ws.onmessage = (event) => this.handleMessage(event);
   }
 
-  /**
-   * Subscribe to channels on specific namespaces.
-   * Returns a typed async iterable.
-   */
-  async subscribe(
-    channels: Channel[],
-    options?: SubscribeOptions
-  ): Promise<ProtocolSubscription> {
-    const result = await this.sendCommand("subscription.subscribe", {
-      channels,
-      ...options,
-    });
-    return new ProtocolSubscription(result.subscriptionId, this);
-  }
+  async subscribe(channels: Channel[], options?: SubscribeOptions) { /* ... */ }
 
-  // Typed command methods matching the in-process Session API
   readonly resource = { /* list, read, write, download */ };
   readonly sandbox = { /* input, kill */ };
   readonly input = { /* respond, inject */ };
@@ -497,23 +567,84 @@ export class ProtocolClient {
 
   private handleMessage(event: MessageEvent): void {
     if (event.data instanceof ArrayBuffer) {
-      // Binary frame — dispatch to media subscription
       this.handleBinaryFrame(event.data);
       return;
     }
     const msg = JSON.parse(event.data);
     if (msg.type === "success" || msg.type === "error") {
-      // Command response
       const pending = this.pending.get(msg.id);
       if (pending) {
         this.pending.delete(msg.id);
         msg.type === "success" ? pending.resolve(msg.result) : pending.reject(msg);
       }
     } else if (msg.type === "event") {
-      // Dispatch to matching subscription iterators
       this.dispatchEvent(msg);
     }
   }
+}
+```
+
+### 5.2 Framework Transport Files
+
+Each framework SDK gets a single new file that implements
+`UseStreamTransport` using `ProtocolClient`:
+
+| Package | New file | Content |
+|---------|----------|---------|
+| `@langchain/react` | `src/protocol.tsx` | `ProtocolStreamTransport` for React `useStream` |
+| `@langchain/vue` | `src/protocol.ts` | `ProtocolStreamTransport` for Vue `useStream` |
+| `@langchain/svelte` | `src/protocol.ts` | `ProtocolStreamTransport` for Svelte `useStream` |
+| `@langchain/angular` | `src/protocol.ts` | `ProtocolStreamTransport` for Angular stream service |
+
+All four share the same pattern — a thin wrapper that:
+
+1. Creates a `ProtocolClient` (WebSocket connection)
+2. Subscribes to the appropriate channels
+3. Translates protocol events into the `{ event, data }` SSE shape
+   that `useStream`'s existing orchestrator expects
+4. Exposes protocol-specific features (subscriptions, commands) as
+   additional properties on the transport instance
+
+```typescript
+// Example: libs/sdk-react/src/protocol.tsx
+
+import { ProtocolClient } from "@langchain/langgraph-sdk/protocol";
+import type { UseStreamTransport } from "@langchain/langgraph-sdk/ui";
+
+export class ProtocolStreamTransport<StateType, Bag>
+  implements UseStreamTransport<StateType, Bag>
+{
+  private client: ProtocolClient;
+
+  constructor(options: { url: string }) {
+    this.client = new ProtocolClient(options);
+  }
+
+  async stream(payload) {
+    // Subscribe to channels needed by useStream's orchestrator
+    const sub = await this.client.subscribe(
+      ["messages", "updates", "tools", "custom", "lifecycle"],
+      { /* namespace options from payload */ }
+    );
+
+    // Yield events in the { event, data } shape useStream expects
+    return (async function* () {
+      for await (const event of sub) {
+        yield {
+          event: event.method,
+          data: event.params.data,
+        };
+      }
+    })();
+  }
+
+  // Additional protocol features exposed to the component
+  get resource() { return this.client.resource; }
+  get sandbox() { return this.client.sandbox; }
+  get input() { return this.client.input; }
+  get state() { return this.client.state; }
+  get usage() { return this.client.usage; }
+  get agent() { return this.client.agent; }
 }
 ```
 
@@ -532,7 +663,11 @@ new config keys) — no existing signatures or behavior changes.
 | `langgraph-core/package.json` | Add `"./protocol"` subpath export | ~3 lines |
 | `langgraph/src/protocol.ts` | New file: `export * from "@langchain/langgraph/protocol"` | ~1 line |
 | `langgraph/package.json` | Add `"./protocol"` subpath export | ~3 lines |
-| `sdk/package.json` | Add `"./v2"` subpath export | ~3 lines |
+| `sdk/package.json` | Add `"./protocol"` subpath export | ~3 lines |
+| `sdk-react/package.json` | Add `"./protocol"` subpath export | ~3 lines |
+| `sdk-vue/package.json` | Add `"./protocol"` subpath export | ~3 lines |
+| `sdk-svelte/package.json` | Add `"./protocol"` subpath export | ~3 lines |
+| `sdk-angular/package.json` | Add `"./protocol"` subpath export | ~3 lines |
 | `langgraph-api/src/server.mts` | Mount v2 router: `app.route("/", v2)` | ~2 lines |
 
 ### What does NOT change
@@ -544,7 +679,11 @@ new config keys) — no existing signatures or behavior changes.
 | `pregel/runner.ts` | `tick`, `_commit` — all unchanged. Lifecycle events are emitted by the Session wrapper observing chunks, not by modifying the runner. |
 | `pregel/messages.ts` | `StreamMessagesHandler` — unchanged. |
 | `pregel/index.ts` | `_streamIterator` — unchanged (except the one-line re-export). v2 calls it internally with all modes enabled. |
-| `sdk/src/client.ts` | v1 `Client` — unchanged. v2 client is a new file. |
+| `sdk/src/client.ts` | v1 `Client` — unchanged. Protocol client is a new file. |
+| `sdk-react/src/stream.tsx` | `useStream` hook — unchanged. Protocol transport plugs in via existing `transport` option. |
+| `sdk-vue/src/index.ts` | `useStream` composable — unchanged. Same transport pattern. |
+| `sdk-svelte/src/index.ts` | `useStream` store — unchanged. Same transport pattern. |
+| `sdk-angular/src/index.ts` | Stream service — unchanged. Same transport pattern. |
 | `langgraph-api/src/api/runs.mts` | v1 run streaming — unchanged. v2 has its own routes. |
 | `langgraph-api/src/stream.mts` | v1 stream preprocessing — unchanged. |
 
@@ -710,10 +849,18 @@ additive and does not change any existing behavior.
        └── ../../interrupt.ts (interrupt, Command for input handler)
 
 @langchain/langgraph-sdk
-  src/v2/                ← NEW (depends on protocol types)
+  src/protocol/          ← NEW (ProtocolClient, WebSocket transport)
        │
        └── imports from:
            └── @langchain/langgraph/protocol  (types only, for type sharing)
+
+@langchain/react, @langchain/vue, @langchain/svelte, @langchain/angular
+  src/protocol.*         ← NEW (ProtocolStreamTransport — 1 file each)
+       │
+       ├── imports from:
+       │   ├── @langchain/langgraph-sdk/protocol  (ProtocolClient)
+       │   └── @langchain/langgraph-sdk/ui        (UseStreamTransport interface)
+       └── consumed by: existing useStream hooks via `transport` option
 
 @langchain/langgraph-api
   src/api/v2/            ← NEW (depends on protocol + existing server infra)
@@ -725,8 +872,11 @@ additive and does not change any existing behavior.
 ```
 
 No circular dependencies. The protocol directory imports from existing
-pregel internals (one direction only). The SDK and API server import the
-protocol types for type sharing but do not import internal implementation.
+pregel internals (one direction only). The SDK, framework transports, and
+API server import the protocol types for type sharing but do not import
+internal implementation. The framework transport files import from
+`@langchain/langgraph-sdk/protocol` (the shared client) — they do not
+import from `@langchain/langgraph` directly.
 
 ---
 
@@ -736,11 +886,138 @@ protocol types for type sharing but do not import internal implementation.
 |----------|-----------|----------------|--------------|
 | `langgraph-core` protocol | 12 | 4 | ~1,500 |
 | `langgraph-api` v2 | 4 | 1 | ~400 |
-| `sdk` v2 | 4 | 1 | ~500 |
+| `sdk` protocol client | 4 | 1 | ~400 |
+| Framework SDKs (React/Vue/Svelte/Angular) | 4 | 4 | ~400 |
 | `langgraph` re-export | 1 | 1 | ~5 |
 | Tests | 9 | 0 | ~1,200 |
-| **Total** | **30** | **7** | **~3,600** |
+| **Total** | **34** | **11** | **~3,900** |
 
-The 7 modified files have a combined ~17 lines of actual changes (re-exports,
-subpath exports, router mount, type union extension). The remaining ~3,583
+The 11 modified files have a combined ~30 lines of actual changes (re-exports,
+subpath exports, router mount, type union extension). The remaining ~3,870
 lines are in new files that don't affect existing behavior.
+
+---
+
+## 12. Blockers and Risks
+
+### 12.1 High Risk
+
+**WebSocket support in Hono / deployment environments.** The `langgraph-api`
+server uses [Hono](https://hono.dev/). Hono's WebSocket support varies by
+runtime adapter: `@hono/node-server` has WebSocket via `upgradeWebSocket`,
+but behavior differs across Deno, Cloudflare Workers, Bun, and other
+targets. The protocol's primary transport is WebSocket, so any deployment
+environment that doesn't support WebSocket upgrade from Hono will fall back
+to the SSE + HTTP POST path — which works but loses the clean bidirectional
+experience. We need to validate WebSocket upgrade behavior across all
+deployment targets LangGraph supports before v2 launch.
+
+**"All modes enabled" performance at extreme scale.** The v2 Session calls
+`_streamIterator` with all 8 stream modes enabled and `subgraphs: true`.
+For a run with 500 subagents, this means every LLM token, tool call, state
+update, and debug trace from every subagent is produced as JS objects in
+memory — even if the client only subscribed to `lifecycle` on the root
+namespace. While the dispatcher discards unmatched events cheaply (no
+serialization), the production overhead of all callback handlers
+(`StreamMessagesHandler`, `StreamToolsHandler`) running for every subagent
+may become a CPU bottleneck. If benchmarks show this is a problem, the
+mitigation is to push subscription awareness down into `_emit` in
+`PregelLoop` — but this is a significantly more invasive change that
+touches the core pipeline.
+
+**`_streamIterator` is private.** The Session calls `graph._streamIterator()`
+directly, which is marked `@internal` and `override` (it comes from the
+`Runnable` base class). If this method's signature or semantics change in a
+future `@langchain/core` update, it could silently break the protocol
+layer. We should either promote `_streamIterator` to a stable internal API
+with a compatibility contract, or wrap it in a public method on `Pregel`
+that the protocol layer uses instead.
+
+### 12.2 Medium Risk
+
+**Multi-consumer async iteration.** JavaScript's `ReadableStream` supports
+only one reader at a time. The `Session.subscribe()` API returns
+independent async iterators that consumers can use concurrently. This
+requires a pub/sub fan-out pattern (one producer, N consumer queues).
+Implementing this correctly — with proper backpressure, cleanup when
+consumers unsubscribe or abandon iterators, and no memory leaks from
+unconsumed queues — is subtle. An incorrect implementation can cause memory
+leaks (events buffered in abandoned queues) or deadlocks (producer blocked
+waiting for a slow consumer).
+
+**`cddl2ts` output quality.** The
+[`cddl2ts`](https://github.com/webdriverio/cddl/tree/main/packages/cddl2ts)
+tool generates TypeScript interfaces from CDDL. Its output may not map
+perfectly to our protocol's CDDL extensions (e.g., the `//=` augmentation
+syntax, recursive types like `AgentTreeNode`). We may need to contribute
+upstream fixes or maintain a thin post-processing step. Additionally,
+`cddl2ts` only covers TypeScript — Python and Java type generation from
+CDDL will require separate tooling that may not exist at the same maturity
+level (Python has `cddlparser` but no codegen; Java has no established CDDL
+toolchain).
+
+**Interrupt/resume as in-band commands.** The `input.respond` command
+wraps `Command({ resume })` and feeds it back into the graph. Today,
+resume requires a new `invoke` or `stream` call on the graph — the graph
+run has already completed (it threw `GraphInterrupt`) and must be
+re-entered. The protocol's `input.respond` implies the connection stays
+open and the graph resumes in the same session. This requires either:
+(a) the session catches `GraphInterrupt`, waits for `input.respond`,
+then re-enters the graph with the resume command — which means managing a
+state machine around interrupt/resume within the session; or (b) changing
+how `GraphInterrupt` propagation works so the graph can "pause" rather
+than "throw." Option (a) is feasible but adds complexity to the session.
+Option (b) is a deeper runtime change.
+
+**Event buffer memory under high fan-out.** The `EventBuffer` stores
+recent events for replay. With 500 subagents each producing 50 events/sec,
+the buffer fills its default 1,000-event capacity in ~0.1 seconds. A
+client that disconnects and reconnects after 5 seconds will have missed
+~25,000 events — far beyond the buffer. The buffer capacity needs to be
+configurable and the `subscription.reconnect` response must clearly
+communicate whether full replay is possible. For long-running agents, a
+checkpoint-based reconnection strategy (restore from latest checkpoint
+rather than replaying events) may be more practical than event buffering.
+
+### 12.3 Low Risk
+
+**Framework SDK transport parity.** The four framework SDKs (React, Vue,
+Svelte, Angular) each need a `ProtocolStreamTransport` implementation.
+While the pattern is the same across all four, subtle differences in each
+framework's reactivity model (React hooks vs Vue refs vs Svelte stores vs
+Angular observables) may surface edge cases — especially around
+subscription lifecycle cleanup when components unmount/remount. This is
+testing-heavy but not architecturally risky.
+
+**Binary frame parsing in browsers.** WebSocket binary frames arrive as
+`ArrayBuffer` in browsers. Parsing the 16-byte header (4 x uint32) is
+straightforward with `DataView`, but endianness must be explicitly
+specified (network byte order / big-endian). This is easy to get wrong in
+initial implementation and produces silent data corruption rather than
+visible errors.
+
+**Protocol versioning and evolution.** The CDDL schema defines the v2
+protocol, but there is no built-in negotiation for future v3/v4 changes.
+Adding an initial `session.capabilities` exchange (similar to BiDi's
+capability negotiation but lighter) would future-proof the protocol, but
+adds initial complexity. Risk of not doing this: breaking changes in
+future versions require new URL prefixes (`/v3/`, `/v4/`).
+
+**Python/Java parity.** This implementation plan covers TypeScript/JS only.
+The same protocol needs to be implemented in LangGraph Python and (future)
+LangGraph Java. The CDDL schema ensures type-level parity, but the runtime
+architecture decisions (session wrapping `_stream_iterator`, dispatcher
+pattern, transport abstraction) need to be independently implemented in
+each language. Divergence in behavior across implementations could become a
+support burden.
+
+**Sandbox/resource handlers are deployment-specific.** The `resource.*` and
+`sandbox.*` command handlers depend on access to the agent's execution
+environment (file system, shell processes). For in-process execution, this
+is Node.js `fs` and `child_process`. For agents running in remote sandboxes
+(Modal, Daytona, E2B), these handlers need a bridge to the sandbox
+provider's API. This bridge cannot be defined generically in
+`langgraph-core` — it must be a pluggable adapter pattern where each
+deployment backend (local, Modal, Daytona) provides its own resource/sandbox
+handler implementation. The protocol defines the interface; the backend
+provides the implementation.
