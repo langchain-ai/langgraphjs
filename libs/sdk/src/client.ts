@@ -392,7 +392,8 @@ class BaseClient {
           : config.headers;
 
       // Prepare fetch options
-      const [url, init] = this.prepareFetchOptions(requestEndpoint, {
+      // oxlint-disable-next-line prefer-const -- init is reassigned by onRequest hook
+      let [url, init] = this.prepareFetchOptions(requestEndpoint, {
         method,
         timeoutMs: null,
         signal: config.signal,
@@ -2156,7 +2157,8 @@ class UiClient extends BaseClient {
     return UiClient.getOrCached(
       `${this.apiUrl}-${assistantId}-${agentName}`,
       async () => {
-        const [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
+        // oxlint-disable-next-line prefer-const -- init is reassigned by onRequest hook
+        let [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
           headers: {
             Accept: "text/html",
             "Content-Type": "application/json",
