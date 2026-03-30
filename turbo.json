@@ -10,18 +10,6 @@
       "dependsOn": ["^build:internal"],
       "outputs": ["dist/**"]
     },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "lint:fix": {
-      "dependsOn": ["^lint:fix"]
-    },
-    "format": {
-      "dependsOn": ["^format"]
-    },
-    "format:check": {
-      "dependsOn": ["^format:check"]
-    },
     "test": {
       "cache": false,
       "dependsOn": ["^build:internal", "build:internal"]

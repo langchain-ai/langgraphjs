@@ -1,6 +1,5 @@
 packages:
-  - 'docs'
-  - 'examples/*'
-  - 'libs/*'
-  - 'internal/*'
-
+  - "docs"
+  - "examples/*"
+  - "libs/*"
+  - "internal/*"
