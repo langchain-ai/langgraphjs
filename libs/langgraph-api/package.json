@@ -57,9 +57,7 @@
     "dev": "tsx ./tests/utils.server.mts --dev",
     "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "test": "vitest run"
   },
   "dependencies": {
     "@babel/code-frame": "^7.26.2",
@@ -108,7 +106,6 @@
     "@types/uuid": "^10.0.0",
     "jose": "^6.0.10",
     "postgres": "^3.4.5",
-    "prettier": "^2.8.3",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",
     "wait-port": "^1.1.0"

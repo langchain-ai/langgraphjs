@@ -7,8 +7,6 @@
     "dev:client": "vite",
     "dev:server": "langgraphjs dev --no-browser",
     "build:internal": "vite build",
-    "format": "prettier --write src",
-    "lint": "prettier --check src",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,7 +20,6 @@
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
-    "prettier": "^2.8.3",
     "svelte": "^5.43.5",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",

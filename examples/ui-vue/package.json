@@ -7,8 +7,6 @@
     "dev:client": "vite",
     "dev:server": "langgraphjs dev --no-browser",
     "build:internal": "vite build",
-    "format": "prettier --write src",
-    "lint": "prettier --check src",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -25,7 +23,6 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-vue": "^6.0.1",
-    "prettier": "^2.8.3",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
     "vite": "^7.0.0"

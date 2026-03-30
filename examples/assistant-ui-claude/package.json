@@ -9,8 +9,6 @@
     "dev:server": "langgraphjs dev --no-browser",
     "build": "vite build",
     "build:internal": "tsc -b && vite build",
-    "format": "prettier --write src",
-    "lint": "prettier --check src",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -35,7 +33,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.0",
-    "prettier": "^3.8.1",
     "tailwindcss": "^4.2.1",
     "tw-shimmer": "^0.4.8",
     "typescript": "^5",
