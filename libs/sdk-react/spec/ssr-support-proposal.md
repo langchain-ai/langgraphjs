@@ -166,13 +166,21 @@ type StreamSnapshot<StateType> = {
   };
 };
 
-async function getStreamSnapshot<StateType>(options: {
-  client: Client;
+type GetStreamSnapshotOptions = {
   assistantId: string;
   threadId: string | null;
+  apiUrl?: string;
+  apiKey?: string;
+  callerOptions?: StreamCallerOptions;
+  defaultHeaders?: Record<string, string>;
+  client?: StreamClient;
   fetchStateHistory?: boolean | { limit: number };
   includeResume?: boolean;
-}): Promise<StreamSnapshot<StateType>>;
+};
+
+async function getStreamSnapshot<StateType>(
+  options: GetStreamSnapshotOptions,
+): Promise<StreamSnapshot<StateType>>;
 ```
 
 Responsibilities:
@@ -180,6 +188,14 @@ Responsibilities:
 - fetch the latest thread state or history on the server;
 - normalize it into a serializable shape that the client can hydrate from;
 - optionally attach resume metadata for an active run if one exists.
+
+The intended ergonomics should mirror `useStream()`:
+
+- most users pass `assistantId`, `threadId`, and `apiUrl`;
+- advanced users can still pass a preconfigured `client`, but that should be an
+  escape hatch exposed from `@langchain/react/server`;
+- examples and docs should default to the `apiUrl` path so developers only have
+  to learn `@langchain/react`.
 
 This is the missing contract that converts today's ad hoc SSR building blocks
 into an actual supported feature.
@@ -310,7 +326,6 @@ For a request to `/thread/:id`:
 
 ```tsx
 // app/thread/[threadId]/page.tsx
-import { Client } from "@langchain/langgraph-sdk";
 import { getStreamSnapshot } from "@langchain/react/server";
 import { ChatClient } from "./chat-client";
 
@@ -321,13 +336,9 @@ export default async function Page({
 }) {
   const { threadId } = await params;
 
-  const client = new Client({
-    apiUrl: process.env.LANGGRAPH_API_URL,
-  });
-
   const snapshot = await getStreamSnapshot({
-    client,
     assistantId: "agent",
+    apiUrl: process.env.LANGGRAPH_API_URL,
     threadId,
     fetchStateHistory: true,
     includeResume: true,
@@ -362,8 +373,8 @@ export function ChatClient({ snapshot }) {
 ```ts
 export async function loader({ params }) {
   const snapshot = await getStreamSnapshot({
-    client,
     assistantId: "agent",
+    apiUrl: process.env.LANGGRAPH_API_URL,
     threadId: params.threadId!,
     fetchStateHistory: true,
     includeResume: true,
