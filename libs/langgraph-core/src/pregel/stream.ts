@@ -146,7 +146,7 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   close() {
     try {
       this.controller.close();
-    } catch (e) {
+    } catch (_e) {
       // pass
     } finally {
       this._closed = true;

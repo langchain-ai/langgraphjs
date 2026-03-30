@@ -71,7 +71,7 @@ async function _reviver(value: any): Promise<any> {
           } else {
             return new (constructor as any)(...(revivedObj.args || []));
           }
-        } catch (error) {
+        } catch (_error) {
           return revivedObj;
         }
       } else if (isLangChainSerializedObject(revivedObj)) {

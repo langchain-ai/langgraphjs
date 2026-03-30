@@ -31,7 +31,7 @@ describe("PregelRunner", () => {
 
       try {
         await runner.tick({ timeout: 5000 });
-      } catch (e) {
+      } catch (_e) {
         // Ignore errors
       }
 
@@ -60,7 +60,7 @@ describe("PregelRunner", () => {
 
       try {
         await runner.tick({ onStepWrite: mockOnStepWrite });
-      } catch (e) {
+      } catch (_e) {
         // Ignore any errors from other parts of the code
       }
 

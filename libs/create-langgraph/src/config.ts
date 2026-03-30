@@ -100,7 +100,7 @@ async function scanFileForAgents(filePath: string): Promise<AgentInfo[]> {
   try {
     const content = await fs.readFile(filePath, "utf-8");
     return scanContentForAgents(content, filePath);
-  } catch (error) {
+  } catch (_error) {
     // Skip files that can't be read
     return [];
   }

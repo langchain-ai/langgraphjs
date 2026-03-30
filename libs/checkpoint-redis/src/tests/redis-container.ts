@@ -55,7 +55,7 @@ export async function createRedisContainer(): Promise<{
         if (client.isOpen) {
           await client.disconnect();
         }
-      } catch (error) {
+      } catch (_error) {
         // Client might already be closed
       }
 

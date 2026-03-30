@@ -700,7 +700,7 @@ describe("Graph Structure Tests (Python port)", () => {
     // Initial invocation will fail at the "flaky" node
     try {
       await graph.invoke({ value: ["0"] }, thread1);
-    } catch (error) {
+    } catch (_error) {
       // Expected to fail
     }
 
