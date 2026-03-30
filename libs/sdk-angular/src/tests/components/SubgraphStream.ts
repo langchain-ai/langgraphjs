@@ -36,7 +36,9 @@ export function resetSubgraphCalls() {
 })
 export class SubgraphStreamComponent {
   onCheckpointEvent = input<((...args: any[]) => void) | undefined>(undefined);
+
   onUpdateEvent = input<((...args: any[]) => void) | undefined>(undefined);
+
   onCustomEvent = input<((...args: any[]) => void) | undefined>(undefined);
 
   stream = injectStream({
