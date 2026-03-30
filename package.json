@@ -23,6 +23,9 @@
     "format:check": "oxfmt --check",
     "release": "pnpm changeset publish"
   },
+  "lint-staged": {
+    "*.{css,html,js,json,jsx,md,mdx,ts,tsx,yaml,yml}": "oxfmt --write --no-error-on-unmatched-pattern"
+  },
   "devDependencies": {
     "@changesets/changelog-github": "^0.6.0",
     "@swc/core": "^1.3.90",
@@ -33,6 +36,7 @@
     "cheminfo-types": "^1.4.0",
     "d3": "^7.9.0",
     "eslint-plugin-no-instanceof": "^1.0.1",
+    "lint-staged": "^16.4.0",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.55.0",
     "readline": "^1.3.0",
