@@ -186,7 +186,7 @@ export class VectorOperations {
       } else {
         results.push(String(current));
       }
-    } catch (_error) {
+    } catch {
       return [];
     }
 

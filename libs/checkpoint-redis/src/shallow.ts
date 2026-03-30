@@ -138,7 +138,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       if (prevCheckpointData && typeof prevCheckpointData === "object") {
         prevCheckpointId = prevCheckpointData.checkpoint_id;
       }
-    } catch (_error) {
+    } catch {
       // Key doesn't exist yet, that's fine
     }
 

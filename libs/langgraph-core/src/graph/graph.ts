@@ -773,7 +773,7 @@ export class CompiledGraph<
                   ? dataStr.slice("Runnable".length)
                   : dataStr;
                 return dataStr;
-              } catch (_error) {
+              } catch {
                 return data.getName();
               }
             } else {
@@ -969,7 +969,7 @@ export class CompiledGraph<
                   ? dataStr.slice("Runnable".length)
                   : dataStr;
                 return dataStr;
-              } catch (_error) {
+              } catch {
                 return data.getName();
               }
             } else {

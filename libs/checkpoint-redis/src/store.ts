@@ -560,12 +560,12 @@ export class RedisStore {
           const oldVectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${oldUuid}`;
           try {
             await this.client.del(oldVectorKey);
-          } catch (_error) {
+          } catch {
             // Vector might not exist
           }
         }
       }
-    } catch (_error) {
+    } catch {
       // Index might not exist yet
     }
 
@@ -976,7 +976,7 @@ export class RedisStore {
             }
           );
           stats.vectorDocuments = vectorResult.total || 0;
-        } catch (_error) {
+        } catch {
           // Vector index might not exist
           stats.vectorDocuments = 0;
         }
@@ -984,7 +984,7 @@ export class RedisStore {
         // Get index info
         try {
           stats.indexInfo = await this.client.ft.info("store");
-        } catch (_error) {
+        } catch {
           // Index info might not be available
         }
       }
@@ -1040,7 +1040,7 @@ export class RedisStore {
       const vectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${docUuid}`;
       try {
         await this.client.expire(vectorKey, ttlSeconds);
-      } catch (_error) {
+      } catch {
         // Vector key might not exist
       }
     }

@@ -28,7 +28,7 @@ async function logData(data: LogData): Promise<void> {
       },
       body: JSON.stringify(data),
     });
-  } catch (_error) {
+  } catch {
     // pass
   }
 }
