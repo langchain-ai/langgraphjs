@@ -42,7 +42,7 @@ interface PendingSendColumn {
 const checkpointMetadataKeys = ["source", "step", "parents"] as const;
 
 type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
-  keyof T
+  keyof T,
 ]
   ? [keyof T] extends [K[number]]
     ? K

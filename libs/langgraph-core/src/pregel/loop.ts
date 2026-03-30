@@ -592,7 +592,7 @@ export class PregelLoop {
           if (c === TASKS && _isSend(v)) {
             return [c, sanitizeUntrackedValuesInSend(v, this.channels)] as [
               string,
-              unknown
+              unknown,
             ];
           }
           return [c, v] as [string, unknown];

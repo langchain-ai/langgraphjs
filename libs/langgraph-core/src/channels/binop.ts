@@ -26,7 +26,7 @@ const isBinaryOperatorAggregate = (
  */
 export class BinaryOperatorAggregate<
   ValueType,
-  UpdateType = ValueType
+  UpdateType = ValueType,
 > extends BaseChannel<
   ValueType,
   OverwriteOrValue<ValueType, UpdateType>,

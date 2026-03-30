@@ -61,8 +61,8 @@ function createStubRun(
   let streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
     : payload.stream_mode
-    ? [payload.stream_mode]
-    : undefined;
+      ? [payload.stream_mode]
+      : undefined;
 
   if (streamMode == null || streamMode.length === 0) streamMode = ["values"];
   const config = Object.assign(

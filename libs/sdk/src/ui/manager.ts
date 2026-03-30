@@ -33,7 +33,7 @@ export const REMOVE_ALL_MESSAGES = "__remove_all__";
 
 type GetUpdateType<
   Bag extends BagTemplate,
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 > = Bag extends { UpdateType: unknown }
   ? Bag["UpdateType"]
   : Partial<StateType>;
@@ -68,7 +68,7 @@ export type EventStreamEvent<StateType, UpdateType, CustomType> =
 
 interface StreamManagerEventCallbacks<
   StateType extends Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   onUpdateEvent?: (
     data: UpdatesStreamEvent<GetUpdateType<Bag, StateType>>["data"],
@@ -182,7 +182,7 @@ export interface StreamManagerOptions {
 
 export class StreamManager<
   StateType extends Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   private abortRef = new AbortController();
 
@@ -692,7 +692,7 @@ export class StreamManager<
       StateType,
       GetUpdateType<Bag, StateType>,
       GetCustomEventType<Bag>
-    >
+    >,
   >(
     expected: T,
     actual: EventStreamEvent<
@@ -902,7 +902,7 @@ export class StreamManager<
           ) {
             const interruptData = data as Partial<StateType>;
             this.setStreamValues(
-              (prev) => ({ ...prev, ...interruptData } as StateType)
+              (prev) => ({ ...prev, ...interruptData }) as StateType
             );
           } else {
             this.setStreamValues(data as StateType);

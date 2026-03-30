@@ -298,7 +298,7 @@ export interface ThreadState<ValuesType = DefaultValues> {
 
 export interface ThreadTask<
   ValuesType = DefaultValues,
-  TInterruptValue = unknown
+  TInterruptValue = unknown,
 > {
   id: string;
   name: string;
@@ -375,8 +375,10 @@ export interface CronCreateResponse {
   metadata: Metadata;
 }
 
-export interface CronCreateForThreadResponse
-  extends Omit<CronCreateResponse, "thread_id"> {
+export interface CronCreateForThreadResponse extends Omit<
+  CronCreateResponse,
+  "thread_id"
+> {
   thread_id: string;
 }
 

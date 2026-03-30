@@ -34,8 +34,8 @@ const createValidRun = async (
   const streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
     : payload.stream_mode != null
-    ? [payload.stream_mode]
-    : [];
+      ? [payload.stream_mode]
+      : [];
   if (streamMode.length === 0) streamMode.push("values");
 
   const multitaskStrategy = payload.multitask_strategy ?? "reject";

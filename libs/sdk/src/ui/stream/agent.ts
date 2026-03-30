@@ -85,7 +85,7 @@ import type { UseStreamOptions } from "../types.js";
 export interface UseAgentStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ToolCall = DefaultToolCall,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > extends BaseStream<StateType, ToolCall, Bag> {
   /**
    * Tool calls paired with their results.
@@ -158,5 +158,5 @@ export interface UseAgentStream<
  */
 export interface UseAgentStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > extends UseStreamOptions<StateType, Bag> {}

@@ -158,11 +158,11 @@ const getStreamModes = (
  * ```
  */
 export class RemoteGraph<
-    Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ContextType extends Record<string, any> = StrRecord<string, any>
-  >
+  Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = StrRecord<string, any>,
+>
   extends Runnable<
     PregelInputType,
     PregelOutputType,
@@ -311,8 +311,8 @@ export class RemoteGraph<
         state: task.state
           ? this._createStateSnapshot(task.state)
           : task.checkpoint
-          ? { configurable: task.checkpoint }
-          : undefined,
+            ? { configurable: task.checkpoint }
+            : undefined,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result: (task as any).result,
       };
@@ -555,11 +555,12 @@ export class RemoteGraph<
       const nodeId = node.id;
       nodesMap[nodeId] = {
         id: nodeId.toString(),
-        name: typeof node.data === "string" ? node.data : node.data?.name ?? "",
+        name:
+          typeof node.data === "string" ? node.data : (node.data?.name ?? ""),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
         metadata:
-          typeof node.data !== "string" ? node.data?.metadata ?? {} : {},
+          typeof node.data !== "string" ? (node.data?.metadata ?? {}) : {},
       };
     }
     return nodesMap;

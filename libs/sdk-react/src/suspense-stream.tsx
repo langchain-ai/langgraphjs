@@ -34,7 +34,7 @@ export function createSuspenseCache(): SuspenseCache {
 function getCacheKey(
   client: Client,
   threadId: string,
-  limit: boolean | number,
+  limit: boolean | number
 ): string {
   return `suspense:${getClientConfigHash(client)}:${threadId}:${limit}`;
 }
@@ -42,7 +42,7 @@ function getCacheKey(
 function fetchThreadHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number },
+  options?: { limit?: boolean | number }
 ): Promise<ThreadState<StateType>[]> {
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
@@ -59,7 +59,7 @@ function getOrCreateCacheEntry<StateType extends Record<string, unknown>>(
   cache: SuspenseCache,
   client: Client,
   threadId: string,
-  limit: boolean | number,
+  limit: boolean | number
 ): SuspenseCacheEntry<ThreadState<StateType>[]> {
   const key = getCacheKey(client, threadId, limit);
   let entry = cache.get(key) as
@@ -106,7 +106,7 @@ function getOrCreateCacheEntry<StateType extends Record<string, unknown>>(
  * ```
  */
 export function invalidateSuspenseCache(
-  cache: SuspenseCache = defaultSuspenseCache,
+  cache: SuspenseCache = defaultSuspenseCache
 ): void {
   cache.clear();
 }
@@ -166,7 +166,7 @@ export function useSuspenseStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseSuspenseStreamOptions<T, InferBag<T, Bag>>,
+  options: UseSuspenseStreamOptions<T, InferBag<T, Bag>>
 ): WithClassMessages<WithSuspense<ResolveStreamInterface<T, InferBag<T, Bag>>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,7 +190,7 @@ export function useSuspenseStream(options: any): any {
       options.apiUrl,
       options.callerOptions,
       options.defaultHeaders,
-    ],
+    ]
   );
 
   const { threadId } = options;
@@ -213,7 +213,7 @@ export function useSuspenseStream(options: any): any {
       cache,
       client,
       threadId,
-      historyLimit,
+      historyLimit
     );
   }
 
@@ -231,7 +231,7 @@ export function useSuspenseStream(options: any): any {
 
   const mutate = useCallback(
     async (
-      mutateId?: string,
+      mutateId?: string
     ): Promise<ThreadState<StateType>[] | null | undefined> => {
       const fetchId = mutateId ?? threadId;
       if (!fetchId) return undefined;
@@ -248,7 +248,7 @@ export function useSuspenseStream(options: any): any {
         return undefined;
       }
     },
-    [cache, client, threadId, historyLimit],
+    [cache, client, threadId, historyLimit]
   );
 
   // ---- build thread override for useStreamLGP ----

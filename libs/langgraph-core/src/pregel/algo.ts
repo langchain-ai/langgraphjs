@@ -453,7 +453,7 @@ export type NextTaskExtraFieldsWithoutStore = NextTaskExtraFields & {
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
@@ -466,7 +466,7 @@ export function _prepareNextTasks<
 
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
@@ -484,7 +484,7 @@ export function _prepareNextTasks<
  */
 export function _prepareNextTasks<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   checkpoint: ReadonlyCheckpoint,
   pendingWrites: [string, string, unknown][] | undefined,
@@ -544,7 +544,7 @@ export function _prepareNextTasks<
 
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: SimpleTaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -558,7 +558,7 @@ export function _prepareSingleTask<
 
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -572,7 +572,7 @@ export function _prepareSingleTask<
 
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,
@@ -590,7 +590,7 @@ export function _prepareSingleTask<
  */
 export function _prepareSingleTask<
   Nn extends StrRecord<string, PregelNode>,
-  Cc extends StrRecord<string, BaseChannel>
+  Cc extends StrRecord<string, BaseChannel>,
 >(
   taskPath: TaskPath,
   checkpoint: ReadonlyCheckpoint,

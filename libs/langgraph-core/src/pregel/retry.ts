@@ -63,7 +63,7 @@ export type SettledPregelTask = {
 
 export async function _runWithRetry<
   N extends PropertyKey,
-  C extends PropertyKey
+  C extends PropertyKey,
 >(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pregelTask: PregelExecutableTask<N, C>,
@@ -79,7 +79,7 @@ export async function _runWithRetry<
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
   let interval =
     resolvedRetryPolicy !== undefined
-      ? resolvedRetryPolicy.initialInterval ?? DEFAULT_INITIAL_INTERVAL
+      ? (resolvedRetryPolicy.initialInterval ?? DEFAULT_INITIAL_INTERVAL)
       : 0;
   let attempts = 0;
   let error;

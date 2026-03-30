@@ -74,13 +74,8 @@ export type EntrypointFinalValueT<OutputT> = OutputT extends
  * `AsyncGenerator` type, and the type predicate would branch to `never`, disallowing any valid function from being passed
  * to `task` or `entrypoint`.
  */
-type AsyncGeneratorExists = AsyncGenerator<
-  unknown,
-  unknown,
-  unknown
-> extends object
-  ? true
-  : false;
+type AsyncGeneratorExists =
+  AsyncGenerator<unknown, unknown, unknown> extends object ? true : false;
 
 /**
  * Matches valid function signatures for entrypoints. Disallows generator functions.
@@ -88,28 +83,28 @@ type AsyncGeneratorExists = AsyncGenerator<
 export type EntrypointFunc<InputT, OutputT> = [OutputT] extends never
   ? (input: InputT, config: LangGraphRunnableConfig) => never
   : AsyncGeneratorExists extends true // only check if it may be an AsyncGenerator when those actually exist
-  ? OutputT extends AsyncGenerator<unknown, unknown, unknown>
-    ? never
+    ? OutputT extends AsyncGenerator<unknown, unknown, unknown>
+      ? never
+      : OutputT extends Generator<unknown, unknown, unknown>
+        ? never
+        : (input: InputT, config: LangGraphRunnableConfig) => OutputT
     : OutputT extends Generator<unknown, unknown, unknown>
-    ? never
-    : (input: InputT, config: LangGraphRunnableConfig) => OutputT
-  : OutputT extends Generator<unknown, unknown, unknown>
-  ? never
-  : (input: InputT, config: LangGraphRunnableConfig) => OutputT;
+      ? never
+      : (input: InputT, config: LangGraphRunnableConfig) => OutputT;
 
 /**
  * Matches valid function signatures for tasks. Disallows generator functions.
  */
 export type TaskFunc<ArgsT extends unknown[], OutputT> = [OutputT] extends [
-  never
+  never,
 ]
   ? (...args: ArgsT) => never
   : AsyncGeneratorExists extends true // only check if it may be an AsyncGenerator when those actually exist
-  ? OutputT extends AsyncGenerator<unknown, unknown, unknown>
-    ? never
+    ? OutputT extends AsyncGenerator<unknown, unknown, unknown>
+      ? never
+      : OutputT extends Generator<unknown, unknown, unknown>
+        ? never
+        : (...args: ArgsT) => OutputT
     : OutputT extends Generator<unknown, unknown, unknown>
-    ? never
-    : (...args: ArgsT) => OutputT
-  : OutputT extends Generator<unknown, unknown, unknown>
-  ? never
-  : (...args: ArgsT) => OutputT;
+      ? never
+      : (...args: ArgsT) => OutputT;

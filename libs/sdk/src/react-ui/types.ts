@@ -1,6 +1,6 @@
 export interface UIMessage<
   TName extends string = string,
-  TProps extends Record<string, unknown> = Record<string, unknown>
+  TProps extends Record<string, unknown> = Record<string, unknown>,
 > {
   type: "ui";
 

@@ -218,9 +218,8 @@ async function tryDirectZodExtraction(
 ): Promise<GraphSchema | undefined> {
   try {
     const { toJsonSchema } = await import("@langchain/core/utils/json_schema");
-    const { isZodSchemaV3, isZodSchemaV4 } = await import(
-      "@langchain/core/utils/types"
-    );
+    const { isZodSchemaV3, isZodSchemaV4 } =
+      await import("@langchain/core/utils/types");
 
     const builder = (graph as unknown as { builder?: GraphBuilder }).builder;
     if (!builder) return undefined;

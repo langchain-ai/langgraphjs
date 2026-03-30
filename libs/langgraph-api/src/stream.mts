@@ -222,7 +222,7 @@ export async function* streamState(
   const events = graph.streamEvents(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
-      : kwargs.input ?? null,
+      : (kwargs.input ?? null),
     {
       version: "v2" as const,
 

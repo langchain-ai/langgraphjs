@@ -51,7 +51,7 @@ import type { QueueInterface } from "../queue.js";
 export interface BaseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ToolCall = DefaultToolCall,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   /**
    * The current state values of the stream.

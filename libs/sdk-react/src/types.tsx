@@ -111,7 +111,7 @@ export interface UseStream<
    */
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
+    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
   ) => Promise<void>;
 
   /**
@@ -145,7 +145,7 @@ export interface UseStream<
    */
   getMessagesMetadata: (
     message: BaseMessage,
-    index?: number,
+    index?: number
   ) => MessageMetadata<StateType> | undefined;
 
   /**
@@ -176,7 +176,7 @@ export interface UseStream<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    },
+    }
   ) => Promise<void>;
 
   /**
@@ -245,7 +245,7 @@ export type UseStreamCustom<
 > & {
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    options?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ) => Promise<void>;
 
   switchThread: (newThreadId: string | null) => void;

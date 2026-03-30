@@ -95,7 +95,7 @@ export function provideStream<
 >(
   options:
     | ResolveStreamOptions<T, InferBag<T, Bag>>
-    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): ReturnType<typeof useStream<T, Bag>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stream = useStream<T, Bag>(options as any);
@@ -143,7 +143,7 @@ export function useStreamContext<
   if (context == null) {
     throw new Error(
       "useStreamContext() requires a parent component to call provideStream(). " +
-        "Add provideStream({ assistantId: '...' }) in an ancestor component.",
+        "Add provideStream({ assistantId: '...' }) in an ancestor component."
     );
   }
   return context;
