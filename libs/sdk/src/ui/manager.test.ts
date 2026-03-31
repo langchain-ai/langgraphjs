@@ -615,6 +615,66 @@ describe("StreamManager", () => {
       expect(values.__interrupt__).toHaveLength(1);
       expect(values.__interrupt__[0].id).toBe("int-B");
     });
+
+    it("should clear accumulated interrupts when a values event sends an empty array", async () => {
+      const action1 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [{ id: "int-A", value: "approve A?" }],
+              messages: [],
+            } as unknown as TestState,
+          },
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [{ id: "int-B", value: "approve B?" }],
+              messages: [],
+            } as unknown as TestState,
+          },
+        ]);
+      const onError = vi.fn();
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action1, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      const action2 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [],
+              messages: [],
+            } as unknown as TestState,
+          },
+        ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action2, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(
+        (streamManager.values as unknown as { __interrupt__: unknown[] })
+          .__interrupt__
+      ).toEqual([]);
+    });
   });
 
   describe("regression: handling null/undefined data", () => {
@@ -881,6 +941,57 @@ describe("StreamManager", () => {
   });
 
   describe("onError callback", () => {
+    it("should keep prior interrupts visible when the next stream fails before values", async () => {
+      const onError = vi.fn();
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError,
+      };
+
+      const action1 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [{ id: "int-A", value: "approve?" }],
+              messages: [],
+            } as unknown as TestState,
+          },
+        ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action1, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      const streamError = new Error("Stream failed before values");
+      const action2 = async () => {
+        throw streamError;
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action2, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      expect(onError).toHaveBeenCalledWith(streamError);
+      expect(
+        (
+          streamManager.values as unknown as {
+            __interrupt__: Array<{ id: string; value: string }>;
+          }
+        ).__interrupt__
+      ).toEqual([{ id: "int-A", value: "approve?" }]);
+    });
+
     it("should call onError when the stream action throws", async () => {
       const streamError = new Error("Stream failed");
       const action = async () => {
