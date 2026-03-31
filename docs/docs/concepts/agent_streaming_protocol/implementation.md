@@ -1,8 +1,8 @@
 # Agent Streaming Protocol — Implementation Plan
 
 > **Status**: Draft  
-> **Companion**: [Protocol Design](./agent_streaming_protocol_design.md) |
-> [CDDL Schema](./agent_streaming_protocol.cddl)  
+> **Companion**: [Protocol Design](./design.md) |
+> [CDDL Schema](./protocol.cddl)  
 > **Date**: 2026-03-26
 
 ## 1. Versioning Strategy
@@ -162,7 +162,7 @@ the same tool the WebDriver BiDi project uses to generate TypeScript types
 from their CDDL spec. The generation is a build-time step:
 
 ```bash
-npx cddl2ts ./docs/docs/concepts/agent_streaming_protocol.cddl > \
+npx cddl2ts ./docs/docs/concepts/agent_streaming_protocol/protocol.cddl > \
   ./libs/langgraph-core/src/pregel/protocol/types.generated.ts
 ```
 

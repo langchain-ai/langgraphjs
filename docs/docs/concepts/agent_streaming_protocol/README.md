@@ -15,6 +15,5 @@ capabilities.
 | Reconnection mid-run | [06-reconnection-mid-run.md](./06-reconnection-mid-run.md) | Disconnect/reconnect, event replay |
 | Cost-controlled research | [07-cost-controlled-research.md](./07-cost-controlled-research.md) | Per-agent budgets, usage streaming |
 
-See the [Protocol Design](../agent_streaming_protocol_design.md) and
-[Implementation Plan](../agent_streaming_protocol_implementation.md) for
-the full specification.
+See the [Protocol Design](./design.md) and
+[Implementation Plan](./implementation.md) for the full specification.
