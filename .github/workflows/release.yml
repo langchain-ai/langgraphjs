@@ -11,13 +11,17 @@ concurrency:
 
 permissions:
   id-token: write
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "true"
