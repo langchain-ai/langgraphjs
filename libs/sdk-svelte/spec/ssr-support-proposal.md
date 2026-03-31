@@ -1,4 +1,4 @@
-# `@langchain/react` SSR Support Proposal
+# `@langchain/svelte` SSR Support Proposal
 
 ## Status
 
@@ -6,21 +6,31 @@ Draft
 
 ## Summary
 
-`@langchain/react` already supports recovering an in-flight run after a reload via
-`reconnectOnMount`, `sessionStorage`, and `joinStream()`. That makes the UI
+`@langchain/svelte` already supports recovering an in-flight run after a reload
+via `reconnectOnMount`, `sessionStorage`, and `joinStream()`. That makes the UI
 *correct eventually*, but it does not make the UI feel instant:
 
 - the server cannot render the latest known thread state into the HTML response;
-- the browser must boot React before `joinStream()` can resume the run;
+- the browser must boot the Svelte app before `joinStream()` can resume the run;
 - reconnect metadata only stores `runId`, so client recovery restarts from
   `lastEventId = "-1"` instead of resuming from a precise point;
 - the feature is LangGraph Platform-specific and not modeled as a first-class
   SSR handoff API.
 
-This proposal defines a best-in-class SSR story for `@langchain/react`: the
+This proposal defines a best-in-class SSR story for `@langchain/svelte`: the
 server renders the latest known thread state immediately, the client hydrates
 without UI flicker, and an in-flight run continues streaming from an explicit
 resume token rather than a best-effort browser-only reconnect.
+
+The intended developer experience should closely match the React, Vue, and
+Angular SDKs:
+
+- each package exposes a `getStreamSnapshot()` server helper under its own
+  package namespace;
+- each client adapter accepts an `ssr.snapshot` option;
+- each framework can resume an in-flight run from the same `ResumeToken` model;
+- examples default to `apiUrl`-first configuration and keep preconfigured
+  clients as an advanced escape hatch.
 
 ## Goals
 
@@ -36,27 +46,30 @@ resume token rather than a best-effort browser-only reconnect.
      earlier partial state, and no visible "catch up" phase.
 
 3. **Framework-friendly SSR**
-   - The API should work with Next.js App Router, Next.js Pages Router, Remix,
-     React Router, and custom SSR stacks.
-   - It should support both React Server Components and classic server-rendered
-     routes.
+   - The API should work with SvelteKit and custom Svelte SSR stacks.
+   - It should compose with both page-level data loading and shared context
+     patterns such as `provideStream()`.
 
 4. **Shared runtime model**
    - The snapshot and resume model should be backed by shared SDK primitives,
-     not bespoke React-only logic.
-   - React should be a thin adapter over reusable stream orchestration.
+     not bespoke Svelte-only logic.
+   - Svelte should be a thin adapter over reusable stream orchestration.
 
-5. **Progressive adoption**
+5. **Cross-SDK consistency**
+   - Svelte should use the same conceptual SSR contract as React, Vue, and
+     Angular.
+   - Developers moving between framework SDKs should learn one model, not four.
+
+6. **Progressive adoption**
    - Existing `useStream()` consumers should keep working.
    - Apps should be able to adopt SSR incrementally, starting with read-only
      snapshots and later enabling resumable streaming.
 
 ## Non-goals
 
-- Streaming tokens from the server directly into React HTML.
-  - React SSR can stream HTML, but the primary problem here is preserving
-    conversational state and resuming event streams, not server-rendering every
-    token update.
+- Streaming tokens from the server directly into SSR HTML.
+  - The main problem here is preserving conversational state and resuming event
+    streams, not server-rendering every token update.
 - Replacing the existing client-only `useStream()` path.
   - The current SPA flow should remain supported.
 - Solving persistence for every backend automatically.
@@ -65,19 +78,19 @@ resume token rather than a best-effort browser-only reconnect.
 
 ## Current State
 
-Today, `@langchain/react` supports:
+Today, `@langchain/svelte` supports:
 
 - `initialValues` for immediate client-side rendering while thread history
-  loads.
-- `thread` injection for externally managed thread state.
-- `useSuspenseStream()` for Suspense-based history loading.
+  loads;
+- `provideStream()` / `getStream()` / `getStreamContext()` for sharing a stream
+  through Svelte context;
 - `reconnectOnMount` for browser refresh recovery.
 
 The current reconnect flow is roughly:
 
 1. a run is started with `streamResumable: true`;
 2. the browser stores `lg:stream:${threadId} -> runId` in `sessionStorage`;
-3. after a reload, the client hook mounts;
+3. after a reload, the client component mounts;
 4. the hook reads `sessionStorage` and calls `joinStream(runId)`;
 5. `joinStream()` defaults to `lastEventId = "-1"`;
 6. the UI converges to the latest state after the client is live again.
@@ -116,8 +129,8 @@ The current API exposes pieces that can help (`initialValues`, `thread`,
    - Storage-backed reconnect remains useful, but SSR should not require it.
 
 3. **Hydration should be deterministic**
-   - The state rendered on the server should be the same state React hydrates on
-     the client before any new events are applied.
+   - The state rendered on the server should be the same state the Svelte app
+     hydrates on the client before any new events are applied.
 
 4. **Resume from a cursor, not from the beginning**
    - The client should continue from the latest acknowledged event when
@@ -127,52 +140,10 @@ The current API exposes pieces that can help (`initialValues`, `thread`,
    - LangGraph Platform should get a first-party SSR path.
    - Custom transports should be able to implement the same contract.
 
-## Cross-SDK DX Contract
-
-This proposal should be treated as the canonical DX contract for the frontend SDK
-family, not as a React-only one-off.
-
-The goal is that `@langchain/react`, `@langchain/vue`,
-`@langchain/svelte`, and `@langchain/angular` all expose the same
-conceptual SSR model:
-
-1. **The same server helper name**
-   - Each package should expose `getStreamSnapshot` and `StreamSnapshot` from a
-     package-local server entrypoint:
-     - `@langchain/react/server`
-     - `@langchain/vue/server`
-     - `@langchain/svelte/server`
-     - `@langchain/angular/server`
-
-2. **The same snapshot shape**
-   - The serialized snapshot and resume token should mean the same thing across
-     all SDKs.
-
-3. **The same option names**
-   - Client hydration should use `ssr.snapshot`, `ssr.resume`, and
-     `ssr.revalidateOnMount` everywhere.
-
-4. **The same default ergonomics**
-   - The common path should be `assistantId + threadId + apiUrl`.
-   - Passing a preconfigured `client` should remain an advanced escape hatch.
-
-5. **Framework-native client entrypoints**
-   - React, Vue, and Svelte should continue to use `useStream(...)`.
-   - Angular should use `injectStream(...)` because that is the package's
-     idiomatic primary API, but the `ssr` option should behave the same.
-
-6. **Shared-stream helpers should accept the same SSR contract**
-   - React: `StreamProvider`
-   - Vue: `provideStream`
-   - Svelte: `provideStream`
-   - Angular: `provideStream` and, by extension, `StreamService`
-
-This consistency matters for both users and maintainers:
-
-- users should not have to re-learn SSR support when switching frameworks;
-- docs can share one mental model across packages;
-- the implementation can stay anchored in shared SDK primitives rather than
-  re-inventing resumable hydration per adapter.
+6. **DX should stay aligned across SDKs**
+   - The package name changes, but the mental model should not.
+   - The shared concepts should be `StreamSnapshot`, `ResumeToken`,
+     `getStreamSnapshot()`, and `ssr.snapshot`.
 
 ## Proposed API
 
@@ -191,7 +162,7 @@ Add a server-safe export:
 import {
   getStreamSnapshot,
   type StreamSnapshot,
-} from "@langchain/react/server";
+} from "@langchain/svelte/server";
 ```
 
 Suggested API:
@@ -240,21 +211,18 @@ The intended ergonomics should mirror `useStream()`:
 
 - most users pass `assistantId`, `threadId`, and `apiUrl`;
 - advanced users can still pass a preconfigured `client`, but that should be an
-  escape hatch exposed from `@langchain/react/server`;
+  escape hatch exposed from `@langchain/svelte/server`;
 - examples and docs should default to the `apiUrl` path so developers only have
-  to learn `@langchain/react`.
-
-This is the missing contract that converts today's ad hoc SSR building blocks
-into an actual supported feature.
+  to learn `@langchain/svelte`.
 
 ### 2. Extend `useStream()` with SSR-aware hydration
 
-Add an optional `ssr` field to `useStream()` and `useSuspenseStream()`:
+Add an optional `ssr` field to `useStream()`:
 
 ```ts
 const stream = useStream({
   assistantId: "agent",
-  apiUrl: process.env.NEXT_PUBLIC_API_URL,
+  apiUrl: publicApiUrl,
   ssr: {
     snapshot,
     resume: "if-in-flight",
@@ -280,28 +248,30 @@ Client behavior:
    `joinStream(snapshot.resume.runId, snapshot.resume.lastEventId)`;
 4. continue streaming from the same UI that was server-rendered.
 
-This keeps SSR support additive rather than introducing a separate hook like
-`useSSRStream()`.
+### 3. Support provider-level SSR composition
 
-### 3. Support a provider-level variant
-
-`StreamProvider` should accept the same `ssr` option so an application can
+`provideStream()` should accept the same `ssr` option so an application can
 server-render a shared stream tree once and hydrate multiple child components
 from the same source of truth.
 
-```tsx
-<StreamProvider
-  assistantId="agent"
-  apiUrl={apiUrl}
-  ssr={{ snapshot, resume: "if-in-flight" }}
->
-  <ChatLayout />
-</StreamProvider>
+```svelte
+<script lang="ts">
+  import { provideStream } from "@langchain/svelte";
+
+  provideStream({
+    assistantId: "agent",
+    apiUrl,
+    ssr: { snapshot, resume: "if-in-flight" },
+  });
+</script>
 ```
+
+This aligns Svelte's shared-context story with React's `StreamProvider`,
+Vue's `provideStream()`, and Angular's `provideStream()`.
 
 ## Shared SDK Changes Required
 
-The React API above is only ergonomic if the shared SDK grows two lower-level
+The Svelte API above is only ergonomic if the shared SDK grows two lower-level
 capabilities.
 
 ### A. Persist and expose a real resume cursor
@@ -332,7 +302,7 @@ than necessary and can visibly re-accumulate partial UI.
 
 The client already knows how to turn stream events into `values`, messages,
 interrupts, subagent state, and tool progress. SSR will be more robust if that
-logic is available outside React too.
+logic is available outside Svelte too.
 
 Suggested direction:
 
@@ -349,7 +319,7 @@ foundation if we want parity across React, Vue, Svelte, and Angular adapters.
 
 ### Server request lifecycle
 
-For a request to `/thread/:id`:
+For a request to `/thread/[threadId]`:
 
 1. server receives `threadId`;
 2. server calls `getStreamSnapshot({ threadId, includeResume: true })`;
@@ -369,66 +339,67 @@ For a request to `/thread/:id`:
 
 ## Example Usage
 
-### Next.js App Router
+### SvelteKit page
 
-```tsx
-// app/thread/[threadId]/page.tsx
-import { getStreamSnapshot } from "@langchain/react/server";
-import { ChatClient } from "./chat-client";
+```ts
+// src/routes/thread/[threadId]/+page.server.ts
+import { getStreamSnapshot } from "@langchain/svelte/server";
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ threadId: string }>;
-}) {
-  const { threadId } = await params;
-
+export async function load({ params }) {
   const snapshot = await getStreamSnapshot({
     assistantId: "agent",
     apiUrl: process.env.LANGGRAPH_API_URL,
-    threadId,
+    threadId: params.threadId,
     fetchStateHistory: true,
     includeResume: true,
   });
 
-  return <ChatClient snapshot={snapshot} />;
+  return { snapshot };
 }
 ```
 
-```tsx
-// app/thread/[threadId]/chat-client.tsx
-"use client";
+```svelte
+<!-- src/routes/thread/[threadId]/+page.svelte -->
+<script lang="ts">
+  import { useStream } from "@langchain/svelte";
 
-import { useStream } from "@langchain/react";
+  let { data } = $props();
 
-export function ChatClient({ snapshot }) {
   const stream = useStream({
-    assistantId: snapshot.assistantId,
-    apiUrl: process.env.NEXT_PUBLIC_LANGGRAPH_API_URL,
+    assistantId: data.snapshot.assistantId,
+    apiUrl: "/api/langgraph",
     ssr: {
-      snapshot,
+      snapshot: data.snapshot,
       resume: "if-in-flight",
     },
   });
+</script>
 
-  return <MessageList messages={stream.messages} />;
-}
+{#each stream.messages as message, i (message.id ?? i)}
+  <div>{message.content}</div>
+{/each}
 ```
 
-### Remix / React Router loader
+### Shared provider in SvelteKit
 
-```ts
-export async function loader({ params }) {
-  const snapshot = await getStreamSnapshot({
-    assistantId: "agent",
-    apiUrl: process.env.LANGGRAPH_API_URL,
-    threadId: params.threadId!,
-    fetchStateHistory: true,
-    includeResume: true,
+```svelte
+<script lang="ts">
+  import { provideStream } from "@langchain/svelte";
+
+  let { data } = $props();
+
+  provideStream({
+    assistantId: data.snapshot.assistantId,
+    apiUrl: "/api/langgraph",
+    ssr: {
+      snapshot: data.snapshot,
+      resume: "if-in-flight",
+    },
   });
+</script>
 
-  return json({ snapshot });
-}
+<MessageList />
+<MessageInput />
 ```
 
 ## What "Best in Class" Means
@@ -445,11 +416,10 @@ client fetches or resumes.
 The client resumes from the last acknowledged event instead of replaying the
 entire run.
 
-### 3. It works with Suspense and non-Suspense apps
+### 3. It works with framework-native shared state patterns
 
-`useSuspenseStream()` should accept the same snapshot contract. In the SSR case,
-Suspense should mainly be a fallback for revalidation or thread switching, not a
-requirement for first paint.
+Svelte apps should be able to use the same snapshot either directly with
+`useStream()` or through `provideStream()` and `getStream()`.
 
 ### 4. It supports custom transports
 
@@ -467,8 +437,8 @@ custom backends from participating.
 
 ### 5. It scales to other frontend adapters
 
-The orchestration and resume primitives should live in the shared SDK so Vue,
-Svelte, and Angular can adopt the same model later.
+The orchestration and resume primitives should live in the shared SDK so React,
+Vue, and Angular can adopt the same model too.
 
 ## Backwards Compatibility
 
@@ -485,10 +455,10 @@ This proposal is additive:
 
 Ship:
 
-- `@langchain/react/server`;
+- `@langchain/svelte/server`;
 - `getStreamSnapshot()`;
 - `useStream({ ssr: { snapshot } })`;
-- `StreamProvider` support for `ssr.snapshot`.
+- `provideStream({ ssr: { snapshot } })`.
 
 Outcome:
 
@@ -515,7 +485,7 @@ Ship:
 
 - shared stream event reducer utilities;
 - transport-level snapshot/resume hooks;
-- equivalent adapter support beyond React.
+- equivalent adapter support beyond Svelte.
 
 Outcome:
 
@@ -541,16 +511,16 @@ Outcome:
    - Recommendation: keep storage-based reconnect as a fallback for pure SPA
      usage, but prefer server-issued `snapshot.resume` when present.
 
-5. **Should React expose a new hook name?**
+5. **Should Svelte expose a new hook name?**
    - Recommendation: no. Extending `useStream()` keeps the mental model simpler
-     and avoids splitting features between near-identical hooks.
+     and avoids splitting features between near-identical APIs.
 
 ## Risks
 
 ### Snapshot mismatch
 
 If the server serializes one state shape and the client derives another during
-hydration, users will see React hydration warnings or flicker.
+hydration, users will see hydration warnings or flicker.
 
 Mitigation:
 
@@ -590,7 +560,8 @@ Pursue SSR support in two deliberate milestones:
 
 This path fits the current architecture:
 
-- React already supports injected thread data via `thread` and `initialValues`;
+- Svelte already supports injected thread data via `thread` and
+  `initialValues`;
 - the shared SDK already centralizes stream orchestration;
 - `joinStream()` already exists and only needs a stronger resume token.
 
