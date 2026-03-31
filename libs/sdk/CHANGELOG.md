@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.8.3
+
+### Patch Changes
+
+- [#2204](https://github.com/langchain-ai/langgraphjs/pull/2204) [`d9d807e`](https://github.com/langchain-ai/langgraphjs/commit/d9d807ebb0398a43a07412fb034a65fc598c0731) Thanks [@brydar](https://github.com/brydar)! - fix(sdk): accumulate parallel interrupts in StreamManager
+
 ## 1.8.2
 
 ### Patch Changes
