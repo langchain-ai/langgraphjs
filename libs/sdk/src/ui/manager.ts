@@ -940,7 +940,7 @@ export class StreamManager<
                 ...prev,
                 ...interruptData,
                 __interrupt__: interrupts,
-              } as StateType;
+              } as unknown as StateType;
             });
           } else {
             // Non-interrupt values events must not wipe accumulated
