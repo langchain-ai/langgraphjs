@@ -248,7 +248,7 @@ export class FileSystemAssistants implements AssistantsRepo {
     });
 
     yield* this.conn.withGenerator(async function* (STORE) {
-      let filtered = Object.values(STORE.assistants)
+      const filtered = Object.values(STORE.assistants)
         .filter((assistant) => {
           if (
             options.graph_id != null &&
@@ -1511,7 +1511,7 @@ export class FileSystemRuns implements RunsRepo {
           ),
           context:
             typeof assistant.context !== "object" && assistant.context != null
-              ? assistant.context ?? kwargs.context
+              ? (assistant.context ?? kwargs.context)
               : Object.assign({}, assistant.context, kwargs.context),
         }),
         multitask_strategy: multitaskStrategy,

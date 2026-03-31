@@ -108,7 +108,7 @@ export class AsyncCaller {
 
   protected maxRetries: AsyncCallerParams["maxRetries"];
 
-  private queue: typeof import("p-queue")["default"]["prototype"];
+  private queue: (typeof import("p-queue"))["default"]["prototype"];
 
   private onFailedResponseHook?: ResponseCallback;
 

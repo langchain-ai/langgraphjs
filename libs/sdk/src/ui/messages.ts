@@ -19,11 +19,12 @@ import type { ThreadState } from "../schema.js";
  * Used by framework SDKs to reflect that `ensureHistoryMessageInstances`
  * converts plain message objects to class instances at runtime.
  */
-export type StateWithBaseMessages<S> = S extends Record<string, unknown>
-  ? "messages" extends keyof S
-    ? Omit<S, "messages"> & { messages: BaseMessage[] }
-    : S
-  : S;
+export type StateWithBaseMessages<S> =
+  S extends Record<string, unknown>
+    ? "messages" extends keyof S
+      ? Omit<S, "messages"> & { messages: BaseMessage[] }
+      : S
+    : S;
 
 /**
  * Maps a `ThreadState<StateType>[]` so that the `messages` field inside
@@ -173,7 +174,7 @@ export function ensureMessageInstances(
  * shallow-copied states whose messages have been coerced.
  */
 export function ensureHistoryMessageInstances<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(
   history: ThreadState<StateType>[],
   messagesKey: string = "messages"

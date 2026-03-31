@@ -106,7 +106,7 @@ export const COMMAND_SYMBOL = Symbol.for("langgraph.command");
 export class CommandInstance<
   Resume = unknown,
   Update = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > {
   [COMMAND_SYMBOL]: CommandParams<Resume, Update, Nodes>;
 
@@ -178,9 +178,10 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class Send<Node extends string = string, Args = any>
-  implements SendInterface<Node, Args>
-{
+export class Send<
+  Node extends string = string,
+  Args = any,
+> implements SendInterface<Node, Args> {
   lg_name = "Send";
 
   public node: Node;
@@ -341,7 +342,7 @@ export function isInterrupted<Value = unknown>(
 export type CommandParams<
   Resume = unknown,
   Update = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > = {
   /**
    * A discriminator field used to identify the type of object. Must be populated when serializing.
@@ -446,7 +447,7 @@ export type CommandParams<
 export class Command<
   Resume = unknown,
   Update extends Record<string, unknown> = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > extends CommandInstance<Resume, Update, Nodes> {
   readonly lg_name = "Command";
 

@@ -25,14 +25,14 @@ export interface StateDefinition {
 type ExtractValueType<C> = C extends BaseChannel
   ? C["ValueType"]
   : C extends () => BaseChannel
-  ? ReturnType<C>["ValueType"]
-  : never;
+    ? ReturnType<C>["ValueType"]
+    : never;
 
 type ExtractUpdateType<C> = C extends BaseChannel
   ? C["UpdateType"]
   : C extends () => BaseChannel
-  ? ReturnType<C>["UpdateType"]
-  : never;
+    ? ReturnType<C>["UpdateType"]
+    : never;
 
 export type StateType<SD extends StateDefinition> = {
   [key in keyof SD]: ExtractValueType<SD[key]>;
@@ -157,7 +157,7 @@ export class AnnotationRoot<SD extends StateDefinition> {
  */
 export const Annotation: AnnotationFunction = function <
   ValueType,
-  UpdateType = ValueType
+  UpdateType = ValueType,
 >(
   annotation?: SingleReducer<ValueType, UpdateType>
 ): BaseChannel<ValueType, OverwriteValue<ValueType> | UpdateType> {

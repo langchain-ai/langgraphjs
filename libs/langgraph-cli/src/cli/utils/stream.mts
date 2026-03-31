@@ -6,7 +6,7 @@ const TRAILING_NEWLINE = [CR, LF];
 
 function joinArrays(data: ArrayLike<number>[]) {
   const totalLength = data.reduce((acc, curr) => acc + curr.length, 0);
-  let merged = new Uint8Array(totalLength);
+  const merged = new Uint8Array(totalLength);
   let offset = 0;
   for (const c of data) {
     merged.set(c, offset);

@@ -5,7 +5,7 @@ export function getEnvironmentVariable(name: string): string | undefined {
       ? // eslint-disable-next-line no-process-env
         process.env?.[name]
       : undefined;
-  } catch (e) {
+  } catch {
     return undefined;
   }
 }

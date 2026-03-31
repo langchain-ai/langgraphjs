@@ -40,18 +40,18 @@ export function useStreamCustom<
 
   const interruptStore = derived(
     version,
-    () => orchestrator.interrupt as Interrupt<InterruptType> | undefined,
+    () => orchestrator.interrupt as Interrupt<InterruptType> | undefined
   );
 
   const interruptsStore = derived(
     version,
-    () => orchestrator.interrupts as Interrupt<InterruptType>[],
+    () => orchestrator.interrupts as Interrupt<InterruptType>[]
   );
 
   const subagentsStore = derived(version, () => orchestrator.subagents);
   const activeSubagentsStore = derived(
     version,
-    () => orchestrator.activeSubagents,
+    () => orchestrator.activeSubagents
   );
 
   const emptyEntries = writable<never[]>([]);
@@ -60,7 +60,7 @@ export function useStreamCustom<
   const valuesRef = fromStore(valuesStore);
   const errorRef = fromStore(derived(version, () => orchestrator.error));
   const isLoadingRef = fromStore(
-    derived(version, () => orchestrator.isLoading),
+    derived(version, () => orchestrator.isLoading)
   );
   const branchRef = fromStore(branch);
   const messagesRef = fromStore(messagesStore);
@@ -87,7 +87,7 @@ export function useStreamCustom<
 
     async submit(
       values: UpdateType | null | undefined,
-      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
     ) {
       await orchestrator.submit(values, submitOptions);
     },
@@ -106,7 +106,7 @@ export function useStreamCustom<
 
     getMessagesMetadata(
       message: Message,
-      index?: number,
+      index?: number
     ): MessageMetadata<StateType> | undefined {
       return orchestrator.getMessagesMetadata(message, index);
     },

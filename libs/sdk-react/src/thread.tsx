@@ -7,7 +7,7 @@ export const useControllableThreadId = (options?: {
   onThreadId?: (threadId: string) => void;
 }): [string | null, (threadId: string | null) => void] => {
   const [localThreadId, _setLocalThreadId] = useState<string | null>(
-    options?.threadId ?? null,
+    options?.threadId ?? null
   );
 
   const onThreadIdRef = useRef(options?.onThreadId);

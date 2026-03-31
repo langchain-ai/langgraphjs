@@ -201,14 +201,14 @@ export function useStreamLGP<
 
     getMessagesMetadata(
       message: Message,
-      index?: number,
+      index?: number
     ): MessageMetadata<StateType> | undefined {
       return orchestrator.getMessagesMetadata(message, index);
     },
 
     submit: (
       values: StateType,
-      submitOptions?: SubmitOptions<StateType, ConfigurableType>,
+      submitOptions?: SubmitOptions<StateType, ConfigurableType>
     ) => orchestrator.submit(values, submitOptions),
     stop: () => orchestrator.stop(),
     joinStream: (...args: Parameters<typeof orchestrator.joinStream>) =>

@@ -62,7 +62,7 @@ function registerPlugin(
       build.onEnd(async (result) => {
         const newResult: { basename: string; contents: Uint8Array }[] = [];
         for (const item of result.outputFiles ?? []) {
-          let basename = path.basename(item.path);
+          const basename = path.basename(item.path);
           let contents = item.contents;
           if (basename === "entrypoint.js") {
             contents = textEncoder.encode(

@@ -13,7 +13,7 @@ import type {
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
   options:
     | UseStreamOptions<StateType, Bag>
@@ -24,14 +24,14 @@ function isCustomOptions<
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
   options: ResolveStreamOptions<T, InferBag<T, Bag>>
 ): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 export function useStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): ResolveStreamInterface<T, InferBag<T, Bag>>;

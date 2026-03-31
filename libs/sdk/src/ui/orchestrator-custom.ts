@@ -29,7 +29,7 @@ import type {
  * @returns The custom transport thread state.
  */
 function createCustomTransportThreadState<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(values: StateType, threadId: string): ThreadState<StateType> {
   return {
     values,
@@ -55,7 +55,7 @@ function createCustomTransportThreadState<
  */
 export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   readonly stream: StreamManager<StateType, Bag>;
 

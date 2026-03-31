@@ -88,7 +88,7 @@ export class FileSystemPersistence<Schema> {
     }
 
     let shouldPersist = false;
-    let schedulePersist = () => void (shouldPersist = true);
+    const schedulePersist = () => void (shouldPersist = true);
 
     try {
       const gen =

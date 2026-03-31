@@ -119,7 +119,7 @@ export type CreateSupervisorParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
 > = {
   /**
    * List of agents to manage
@@ -266,7 +266,7 @@ const createSupervisor = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
 >({
   agents,
   llm,

@@ -71,7 +71,7 @@ async function _reviver(value: any): Promise<any> {
           } else {
             return new (constructor as any)(...(revivedObj.args || []));
           }
-        } catch (error) {
+        } catch {
           return revivedObj;
         }
       } else if (isLangChainSerializedObject(revivedObj)) {
@@ -85,7 +85,7 @@ async function _reviver(value: any): Promise<any> {
 }
 
 function _encodeConstructorArgs(
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // oxlint-disable-next-line @typescript-eslint/no-unsafe-function-type
   constructor: Function,
   method?: string,
   args?: any[],

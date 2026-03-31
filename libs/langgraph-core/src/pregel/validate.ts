@@ -12,7 +12,7 @@ export class GraphValidationError extends Error {
 
 export function validateGraph<
   Nn extends Record<string, PregelNode>,
-  Cc extends Record<string, BaseChannel>
+  Cc extends Record<string, BaseChannel>,
 >({
   nodes,
   channels,

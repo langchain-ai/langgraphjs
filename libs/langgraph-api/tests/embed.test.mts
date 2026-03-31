@@ -582,7 +582,7 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    let chunks = await gatherIterator(
+    const chunks = await gatherIterator(
       client.runs.stream(thread.thread_id, graphId, {
         input: {
           messages: [{ role: "human", content: "SF", id: "initial-message" }],
@@ -645,7 +645,7 @@ describe("subgraphs", () => {
       },
     ]);
 
-    let state = await client.threads.getState(thread.thread_id);
+    const state = await client.threads.getState(thread.thread_id);
     expect(state.next).toEqual(["weather_graph"]);
     expect(state.tasks).toEqual([
       {
@@ -966,7 +966,7 @@ describe("subgraphs", () => {
   it.concurrent("interrupt inside node", async () => {
     const graphId = "agent";
 
-    let thread = await client.threads.create();
+    const thread = await client.threads.create();
     await gatherIterator(
       client.runs.stream(thread.thread_id, graphId, {
         input: {
@@ -1028,7 +1028,7 @@ describe("command update state", () => {
       })
     );
 
-    let stream = await gatherIterator(
+    const stream = await gatherIterator(
       client.runs.stream(thread.thread_id, graphId, {
         command: { update: { keyOne: "value3", keyTwo: "value4" } },
         config: globalConfig,
@@ -1036,7 +1036,7 @@ describe("command update state", () => {
     );
     expect(stream.filter((chunk) => chunk.event === "error")).toEqual([]);
 
-    let state = await client.threads.getState<StateSchema>(thread.thread_id);
+    const state = await client.threads.getState<StateSchema>(thread.thread_id);
     expect(state.values).toMatchObject({ keyOne: "value3", keyTwo: "value4" });
   });
 

@@ -97,7 +97,7 @@ export function StreamProvider<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  props: StreamProviderProps<T, Bag> | StreamProviderCustomProps<T, Bag>,
+  props: StreamProviderProps<T, Bag> | StreamProviderCustomProps<T, Bag>
 ): ReactNode {
   const { children, ...options } = props;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,7 +142,7 @@ export function useStreamContext<
   if (context === null) {
     throw new Error(
       "useStreamContext must be used within a <StreamProvider>. " +
-        "Wrap your component tree with <StreamProvider> or use useStream() directly.",
+        "Wrap your component tree with <StreamProvider> or use useStream() directly."
     );
   }
   return context;

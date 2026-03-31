@@ -135,12 +135,15 @@ export function parentAndChildCheckpointTuplesWithWrites({
     {} as Record<string, PendingWrite>
   );
 
-  const childWriteCountByChannel = writesToChild.reduce((acc, { writes }) => {
-    writes.forEach(([channel, _]) => {
-      acc[channel] = (acc[channel] || 0) + 1;
-    });
-    return acc;
-  }, {} as Record<string, number>);
+  const childWriteCountByChannel = writesToChild.reduce(
+    (acc, { writes }) => {
+      writes.forEach(([channel, _]) => {
+        acc[channel] = (acc[channel] || 0) + 1;
+      });
+      return acc;
+    },
+    {} as Record<string, number>
+  );
 
   const childChannelVersions = Object.fromEntries(
     Object.entries(parentChannelVersions).map(([key, value]) => [

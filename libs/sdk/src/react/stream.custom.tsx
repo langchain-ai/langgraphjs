@@ -53,9 +53,8 @@ interface FetchStreamTransportOptions {
 
 export class FetchStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> implements UseStreamTransport<StateType, Bag>
-{
+  Bag extends BagTemplate = BagTemplate,
+> implements UseStreamTransport<StateType, Bag> {
   constructor(private readonly options: FetchStreamTransportOptions) {}
 
   async stream(payload: {
@@ -100,7 +99,7 @@ export class FetchStreamTransport<
 }
 
 function createCustomTransportThreadState<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(values: StateType, threadId: string): ThreadState<StateType> {
   return {
     values,
@@ -120,7 +119,7 @@ function createCustomTransportThreadState<
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
   options: AnyStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {

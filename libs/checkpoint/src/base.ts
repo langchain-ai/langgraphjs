@@ -16,7 +16,7 @@ export type ChannelVersions = Record<string, ChannelVersion>;
 
 export interface Checkpoint<
   N extends string = string,
-  C extends string = string
+  C extends string = string,
 > {
   /**
    * The version of the checkpoint format. Currently 4

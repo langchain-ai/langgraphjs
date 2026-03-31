@@ -15,7 +15,7 @@ import type { CachePolicy, RetryPolicy } from "./utils/index.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any
+  RunInput = any,
 > extends RunnableCallable {
   lc_graph_name = "ChannelRead";
 
@@ -70,8 +70,9 @@ export class ChannelRead<
 const defaultRunnableBound =
   /* #__PURE__ */ new RunnablePassthrough<PregelNodeInputType>();
 
-interface PregelNodeArgs<RunInput, RunOutput>
-  extends Partial<RunnableBindingArgs<RunInput, RunOutput>> {
+interface PregelNodeArgs<RunInput, RunOutput> extends Partial<
+  RunnableBindingArgs<RunInput, RunOutput>
+> {
   channels: Record<string, string> | string[];
   triggers: Array<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,7 +98,7 @@ export type PregelNodeOutputType = any;
 
 export class PregelNode<
   RunInput = PregelNodeInputType,
-  RunOutput = PregelNodeOutputType
+  RunOutput = PregelNodeOutputType,
 > extends RunnableBinding<RunInput, RunOutput, RunnableConfig> {
   lc_graph_name = "PregelNode";
 

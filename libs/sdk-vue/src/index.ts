@@ -83,7 +83,7 @@ function useStreamLGP<
       getClient: () => client.value,
       getAssistantId: () => toValue(options.assistantId),
       getMessagesKey: () => toValue(options.messagesKey) ?? "messages",
-    },
+    }
   );
 
   const initialThreadId = toValue(options.threadId) ?? undefined;
@@ -95,7 +95,7 @@ function useStreamLGP<
       const resolved = newId ?? undefined;
       orchestrator.setThreadId(resolved);
     },
-    { flush: "sync" },
+    { flush: "sync" }
   );
 
   // Monotonically increasing counter bumped on every orchestrator update.
@@ -139,7 +139,7 @@ function useStreamLGP<
         }
       }
     },
-    { immediate: true },
+    { immediate: true }
   );
 
   // Queue draining
@@ -151,7 +151,7 @@ function useStreamLGP<
     }),
     () => {
       orchestrator.drainQueue();
-    },
+    }
   );
 
   // Auto-reconnect
@@ -170,7 +170,7 @@ function useStreamLGP<
       if (shouldReconnect) {
         orchestrator.tryReconnect();
       }
-    },
+    }
   );
 
   // Cached computed properties derived from the orchestrator.
@@ -207,7 +207,7 @@ function useStreamLGP<
     (newBranch) => {
       if (branch.value !== newBranch) branch.value = newBranch;
     },
-    { immediate: true },
+    { immediate: true }
   );
 
   const messages = computed(() => {
@@ -289,7 +289,7 @@ function useStreamLGP<
 
     getMessagesMetadata: (
       message: Message,
-      index?: number,
+      index?: number
     ): MessageMetadata<StateType> | undefined => {
       return orchestrator.getMessagesMetadata(message, index);
     },
@@ -342,7 +342,7 @@ type WithClassMessages<T> = {
     : K extends "getMessagesMetadata"
       ? (
           message: BaseMessage,
-          index?: number,
+          index?: number
         ) => MessageMetadata<Record<string, unknown>> | undefined
       : K extends "toolCalls"
         ? T[K] extends (infer TC)[]
@@ -380,14 +380,14 @@ type WithClassMessages<T> = {
                   : K extends "submit"
                     ? T[K] extends (
                         values: infer V,
-                        options?: infer O,
+                        options?: infer O
                       ) => infer Ret
                       ? (
                           values:
                             | AcceptBaseMessages<Exclude<V, null | undefined>>
                             | null
                             | undefined,
-                          options?: O,
+                          options?: O
                         ) => Ret
                       : T[K]
                     : K extends "history"
@@ -399,23 +399,23 @@ type WithClassMessages<T> = {
   ? {
       getSubagent: T extends {
         getSubagent: (
-          id: string,
+          id: string
         ) => SubagentStreamInterface<infer S, infer TC, infer N> | undefined;
       }
         ? (
-            toolCallId: string,
+            toolCallId: string
           ) => ClassSubagentStreamInterface<S, TC, N> | undefined
         : never;
       getSubagentsByType: T extends {
         getSubagentsByType: (
-          type: string,
+          type: string
         ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
       }
         ? (type: string) => ClassSubagentStreamInterface<S, TC, N>[]
         : never;
       getSubagentsByMessage: T extends {
         getSubagentsByMessage: (
-          id: string,
+          id: string
         ) => SubagentStreamInterface<infer S, infer TC, infer N>[];
       }
         ? (messageId: string) => ClassSubagentStreamInterface<S, TC, N>[]
@@ -427,7 +427,7 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: VueReactiveOptions<ResolveStreamOptions<T, InferBag<T, Bag>>>,
+  options: VueReactiveOptions<ResolveStreamOptions<T, InferBag<T, Bag>>>
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 export function useStream<
@@ -436,7 +436,7 @@ export function useStream<
 >(
   options: VueReactiveOptions<
     UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-  >,
+  >
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

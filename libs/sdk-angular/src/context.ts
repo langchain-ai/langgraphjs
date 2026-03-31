@@ -33,7 +33,7 @@ export interface StreamDefaults {
  * Provide via `provideStreamDefaults()` in your application config.
  */
 export const STREAM_DEFAULTS = new InjectionToken<StreamDefaults>(
-  "LANGCHAIN_STREAM_DEFAULTS",
+  "LANGCHAIN_STREAM_DEFAULTS"
 );
 
 /**
@@ -41,7 +41,7 @@ export const STREAM_DEFAULTS = new InjectionToken<StreamDefaults>(
  * Provide via `provideStream()` at the component level.
  */
 export const STREAM_INSTANCE = new InjectionToken<StreamServiceInstance>(
-  "LANGCHAIN_STREAM_INSTANCE",
+  "LANGCHAIN_STREAM_INSTANCE"
 );
 
 /**
@@ -66,7 +66,7 @@ export const STREAM_INSTANCE = new InjectionToken<StreamServiceInstance>(
  * ```
  */
 export function provideStreamDefaults(
-  defaults: StreamDefaults,
+  defaults: StreamDefaults
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
     { provide: STREAM_DEFAULTS, useValue: defaults },
@@ -112,7 +112,7 @@ export function provideStream<
 >(
   options:
     | ResolveStreamOptions<T, InferBag<T, Bag>>
-    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ) {
   return {
     provide: STREAM_INSTANCE,

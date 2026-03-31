@@ -21,23 +21,23 @@ export async function compilePackages(opts: CompilePackageOptions) {
   }
 
   await Promise.all(
-    packages.map(({ pkg, path }) => buildProject(path, pkg, opts)),
+    packages.map(({ pkg, path }) => buildProject(path, pkg, opts))
   );
 }
 
 async function buildProject(
   path: string,
   pkg: PackageJson,
-  opts: CompilePackageOptions,
+  opts: CompilePackageOptions
 ) {
   const input = Object.entries(pkg.exports || {}).filter(
-    ([exp]) => !extname(exp),
+    ([exp]) => !extname(exp)
   ) as [string, PackageJson.ExportConditions][];
   const entry = input.map(([, { input }]) => input).filter(Boolean) as string[];
   const watch = opts.watch ?? false;
   const sourcemap = !opts.skipSourcemap;
   const exportsCJS = Object.values(pkg.exports || {}).some(
-    (exp) => typeof exp === "object" && exp && "require" in exp,
+    (exp) => typeof exp === "object" && exp && "require" in exp
   );
   const format: Format[] = exportsCJS ? ["esm", "cjs"] : ["esm"];
 
@@ -73,6 +73,7 @@ async function buildProject(
    */
   const buildChecks = {
     unused:
+      // oxlint-disable-next-line no-constant-condition
       !watch && !opts.skipUnused && false
         ? ({
             root: path,

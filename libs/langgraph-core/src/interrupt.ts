@@ -112,12 +112,13 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   throw new GraphInterrupt([{ id, value }]);
 }
 
-type FilterAny<X> = (<T>() => T extends X ? 1 : 2) extends <
-  T
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
->() => T extends any ? 1 : 2
-  ? never
-  : X;
+type FilterAny<X> =
+  (<T>() => T extends X ? 1 : 2) extends <
+    T,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  >() => T extends any ? 1 : 2
+    ? never
+    : X;
 
 export type InferInterruptInputType<T> = T extends typeof interrupt<
   infer I,
@@ -125,18 +126,18 @@ export type InferInterruptInputType<T> = T extends typeof interrupt<
 >
   ? I
   : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends { [key: string]: typeof interrupt<any, any> }
-  ? { [K in keyof T]: InferInterruptInputType<T[K]> }[keyof T]
-  : unknown;
+    T extends { [key: string]: typeof interrupt<any, any> }
+    ? { [K in keyof T]: InferInterruptInputType<T[K]> }[keyof T]
+    : unknown;
 
 export type InferInterruptResumeType<
   T,
-  TInner = false
+  TInner = false,
 > = T extends typeof interrupt<never, infer R>
   ? TInner extends true
     ? FilterAny<R>
     : R
   : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends { [key: string]: typeof interrupt<any, any> }
-  ? { [K in keyof T]: InferInterruptResumeType<T[K], true> }[keyof T]
-  : unknown;
+    T extends { [key: string]: typeof interrupt<any, any> }
+    ? { [K in keyof T]: InferInterruptResumeType<T[K], true> }[keyof T]
+    : unknown;

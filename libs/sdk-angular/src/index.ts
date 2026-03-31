@@ -308,7 +308,7 @@ function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
 ): AngularSignalWrap<
   WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
 >;
@@ -334,7 +334,7 @@ function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): AngularSignalWrap<
   WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
 >;
@@ -350,7 +350,7 @@ function injectStream(options?: any): any {
       throw new Error(
         "injectStream() requires an ancestor component to provide a stream via provideStream(). " +
           "Add provideStream({ assistantId: '...' }) to the providers array of a parent component, " +
-          "or use injectStream(options) directly.",
+          "or use injectStream(options) directly."
       );
     }
     return instance;
@@ -403,11 +403,11 @@ export class StreamService<
   constructor(
     options:
       | ResolveStreamOptions<T, InferBag<T, Bag>>
-      | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+      | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
   ) {
     this._stream = injectStream(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options as any,
+      options as any
     ) as unknown as StreamServiceInstance<T, Bag>;
   }
 
@@ -485,7 +485,7 @@ export class StreamService<
     options?: SubmitOptions<
       T extends Record<string, unknown> ? T : Record<string, unknown>,
       GetConfigurableType<Bag>
-    >,
+    >
   ): ReturnType<typeof this._stream.submit> {
     return this._stream.submit(values, options);
   }
@@ -512,14 +512,14 @@ export class StreamService<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    },
+    }
   ): Promise<void> {
     return this._stream.joinStream(runId, lastEventId, options);
   }
 
   getMessagesMetadata(
     message: BaseMessage,
-    index?: number,
+    index?: number
   ):
     | MessageMetadata<
         T extends Record<string, unknown> ? T : Record<string, unknown>

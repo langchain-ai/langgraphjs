@@ -29,7 +29,7 @@ export function useStreamCustom<
   type ConfigurableType = GetConfigurableType<Bag>;
 
   const orchestrator = new CustomStreamOrchestrator<StateType, Bag>(
-    options as unknown as AnyStreamCustomOptions<StateType, Bag>,
+    options as unknown as AnyStreamCustomOptions<StateType, Bag>
   );
 
   const branch = ref<string>("");
@@ -45,7 +45,7 @@ export function useStreamCustom<
         orchestrator.syncThreadId(resolved);
       }
     },
-    { flush: "sync" },
+    { flush: "sync" }
   );
 
   const streamValues = shallowRef<StateType | null>(null);
@@ -81,7 +81,7 @@ export function useStreamCustom<
         orchestrator.reconstructSubagentsIfNeeded();
       }
     },
-    { immediate: true },
+    { immediate: true }
   );
 
   // Cached computed properties — unlike plain getters, `computed()` only
@@ -129,7 +129,7 @@ export function useStreamCustom<
 
     submit: async (
       values: UpdateType | null | undefined,
-      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
     ) => {
       await orchestrator.submit(values, submitOptions);
     },
@@ -146,7 +146,7 @@ export function useStreamCustom<
 
     getMessagesMetadata(
       message: Message,
-      index?: number,
+      index?: number
     ): MessageMetadata<StateType> | undefined {
       return orchestrator.getMessagesMetadata(message, index);
     },

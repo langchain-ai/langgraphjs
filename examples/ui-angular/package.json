@@ -8,21 +8,7 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
-    "watch": "ng build --watch --configuration development",
-    "format": "prettier --write src",
-    "lint": "prettier --check src"
-  },
-  "prettier": {
-    "printWidth": 100,
-    "singleQuote": true,
-    "overrides": [
-      {
-        "files": "*.html",
-        "options": {
-          "parser": "angular"
-        }
-      }
-    ]
+    "watch": "ng build --watch --configuration development"
   },
   "private": true,
   "dependencies": {
@@ -46,7 +32,6 @@
     "@angular/build": "^21.2.1",
     "@angular/cli": "^21.2.1",
     "@angular/compiler-cli": "^21.2.2",
-    "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   }
 }

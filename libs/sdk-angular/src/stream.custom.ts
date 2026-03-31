@@ -64,7 +64,7 @@ export function injectStreamCustom<
 
     async submit(
       values: UpdateType | null | undefined,
-      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>,
+      submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
     ) {
       await orchestrator.submit(values, submitOptions);
     },
@@ -81,7 +81,7 @@ export function injectStreamCustom<
 
     getMessagesMetadata(
       message: Message<ToolCallType>,
-      index?: number,
+      index?: number
     ): MessageMetadata<StateType> | undefined {
       return orchestrator.getMessagesMetadata(message, index);
     },

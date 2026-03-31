@@ -82,7 +82,7 @@ function resolveRunMetadataStorage(
  */
 function resolveCallbackStreamModes<
   S extends Record<string, unknown>,
-  B extends BagTemplate
+  B extends BagTemplate,
 >(options: AnyStreamOptions<S, B>): StreamMode[] {
   const modes: StreamMode[] = [];
   if (options.onUpdateEvent) modes.push("updates");
@@ -117,7 +117,7 @@ export interface OrchestratorAccessors {
  */
 export class StreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   readonly stream: StreamManager<StateType, Bag>;
 
@@ -185,8 +185,8 @@ export class StreamOrchestrator<
     this.historyLimit =
       typeof options.fetchStateHistory === "object" &&
       options.fetchStateHistory != null
-        ? options.fetchStateHistory.limit ?? false
-        : options.fetchStateHistory ?? false;
+        ? (options.fetchStateHistory.limit ?? false)
+        : (options.fetchStateHistory ?? false);
 
     this.messageManager = new MessageTupleManager();
     this.stream = new StreamManager<StateType, Bag>(this.messageManager, {
@@ -912,7 +912,7 @@ export class StreamOrchestrator<
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
     this.#branch =
       checkpointId != null
-        ? currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+        ? (currentBranchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
         : "";
 
     const includeImplicitBranch =

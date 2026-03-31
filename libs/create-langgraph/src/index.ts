@@ -178,7 +178,7 @@ export async function createNew(projectPath?: string, templateId?: string) {
     }
   }
 
-  let language: "js" | "python" = "js";
+  const language: "js" | "python" = "js";
   let templateUrl: string;
   if (templateId) {
     const config = TEMPLATE_ID_TO_CONFIG[templateId];

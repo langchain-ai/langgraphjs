@@ -18,7 +18,7 @@ function isCustomOptions<
 >(
   options:
     | UseStreamOptions<StateType, Bag>
-    | UseStreamCustomOptions<StateType, Bag>,
+    | UseStreamCustomOptions<StateType, Bag>
 ): options is UseStreamCustomOptions<StateType, Bag> {
   return "transport" in options;
 }
@@ -30,7 +30,7 @@ type AnyUseStreamOptions =
   | UseStreamCustomOptions<Record<string, unknown>, BagTemplate>;
 
 function selectStreamImplementation(
-  options: AnyUseStreamOptions,
+  options: AnyUseStreamOptions
 ): UseStreamImplementation {
   return isCustomOptions(options) ? useStreamCustom : useStreamLGP;
 }
@@ -192,7 +192,7 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: ResolveStreamOptions<T, InferBag<T, Bag>>,
+  options: ResolveStreamOptions<T, InferBag<T, Bag>>
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 /**
@@ -215,14 +215,14 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>,
+  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
 ): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
   // Keep implementation stable for the lifetime of this hook instance.
   const [useSelectedStream] = useState(() =>
-    selectStreamImplementation(options),
+    selectStreamImplementation(options)
   );
   return useSelectedStream(options);
 }

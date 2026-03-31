@@ -349,7 +349,7 @@ export class InMemoryStore extends BaseStore {
       if (op.value !== null && op.index !== false) {
         const paths =
           op.index === null || op.index === undefined
-            ? this._indexConfig.__tokenizedFields ?? []
+            ? (this._indexConfig.__tokenizedFields ?? [])
             : op.index.map(
                 (ix) => [ix, tokenizePath(ix)] as [string, string[]]
               );

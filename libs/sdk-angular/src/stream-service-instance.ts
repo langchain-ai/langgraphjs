@@ -73,7 +73,7 @@ export interface StreamServiceInstance<
     options?: SubmitOptions<
       T extends Record<string, unknown> ? T : Record<string, unknown>,
       GetConfigurableType<Bag>
-    >,
+    >
   ): Promise<void>;
   stop(): Promise<void>;
   setBranch(value: string): void;
@@ -88,11 +88,11 @@ export interface StreamServiceInstance<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    },
+    }
   ): Promise<void>;
   getMessagesMetadata(
     message: Message,
-    index?: number,
+    index?: number
   ):
     | MessageMetadata<
         T extends Record<string, unknown> ? T : Record<string, unknown>

@@ -153,8 +153,8 @@ export type Message<ToolCall = DefaultToolCall> =
 type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
   ? Args
   : S extends { _input: infer Args }
-  ? Args
-  : never;
+    ? Args
+    : never;
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
@@ -167,8 +167,8 @@ type InferToolInput<T> = T extends {
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferSchemaInput<S>
-  : never;
+    ? InferSchemaInput<S>
+    : never;
 
 /**
  * Infer a tool call type from a single tool.
@@ -199,9 +199,9 @@ export type ToolCallFromTool<T> = T extends { name: infer N }
     ? Args extends never
       ? never
       : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      Args extends Record<string, any>
-      ? { name: N; args: Args; id?: string; type?: "tool_call" }
-      : never
+        Args extends Record<string, any>
+        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+        : never
     : never
   : never;
 
@@ -259,7 +259,7 @@ export type ToolCallState = "pending" | "completed" | "error";
 export type ToolCallWithResult<
   ToolCall = DefaultToolCall,
   TToolMessage = ToolMessage,
-  TAIMessage = AIMessage<ToolCall>
+  TAIMessage = AIMessage<ToolCall>,
 > = {
   /**
    * Unique identifier for this tool call.

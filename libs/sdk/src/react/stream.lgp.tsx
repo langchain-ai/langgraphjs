@@ -167,7 +167,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(options: AnyStreamOptions<StateType, Bag>): UseStream<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
@@ -284,8 +284,8 @@ export function useStreamLGP<
   const historyLimit =
     typeof options.fetchStateHistory === "object" &&
     options.fetchStateHistory != null
-      ? options.fetchStateHistory.limit ?? false
-      : options.fetchStateHistory ?? false;
+      ? (options.fetchStateHistory.limit ?? false)
+      : (options.fetchStateHistory ?? false);
 
   const builtInHistory = useThreadHistory<StateType>(
     client,
@@ -484,7 +484,7 @@ export function useStreamLGP<
     const checkpointId = submitOptions?.checkpoint?.checkpoint_id;
     setBranch(
       checkpointId != null
-        ? branchContext.branchByCheckpoint[checkpointId]?.branch ?? ""
+        ? (branchContext.branchByCheckpoint[checkpointId]?.branch ?? "")
         : ""
     );
 

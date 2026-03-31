@@ -23,9 +23,7 @@
     "build": "pnpm turbo build:internal --filter=@langchain/langgraph-ui",
     "build:internal": "pnpm clean && node scripts/build.mjs",
     "prepublish": "pnpm build",
-    "typecheck": "tsc --noEmit",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
@@ -38,7 +36,6 @@
     "@types/node": "^18.15.11",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "prettier": "^2.8.3",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4"
   }

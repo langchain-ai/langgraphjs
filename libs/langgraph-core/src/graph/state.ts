@@ -123,7 +123,7 @@ export type StateGraphAddNodeOptions<
   Nodes extends string = string,
   InputSchema extends StateDefinitionInit | undefined =
     | StateDefinitionInit
-    | undefined
+    | undefined,
 > = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
@@ -133,7 +133,7 @@ export type StateGraphAddNodeOptions<
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
   I extends StateDefinition,
-  O extends StateDefinition
+  O extends StateDefinition,
 > = {
   stateSchema: AnnotationRoot<SD>;
   input?: AnnotationRoot<I>;
@@ -142,7 +142,7 @@ export type StateGraphArgsWithStateSchema<
 
 export type StateGraphArgsWithInputOutputSchemas<
   SD extends StateDefinition,
-  O extends StateDefinition = SD
+  O extends StateDefinition = SD,
 > = {
   input: AnnotationRoot<SD>;
   output: AnnotationRoot<O>;
@@ -151,15 +151,15 @@ export type StateGraphArgsWithInputOutputSchemas<
 type ExtractStateDefinition<T> = T extends AnyStateSchema
   ? T // Keep StateSchema as-is to preserve type information
   : T extends StateDefinitionInit
-  ? ToStateDefinition<T>
-  : StateDefinition;
+    ? ToStateDefinition<T>
+    : StateDefinition;
 
 type NodeAction<
   S,
   U,
   C extends StateDefinitionInit,
   InterruptType,
-  WriterType
+  WriterType,
 > = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -172,7 +172,7 @@ type StrictNodeAction<
   C extends StateDefinitionInit,
   Nodes extends string,
   InterruptType,
-  WriterType
+  WriterType,
 > = RunnableLike<
   Prettify<S>,
   | U
@@ -299,7 +299,7 @@ export class StateGraph<
   C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
@@ -686,7 +686,7 @@ export class StateGraph<
 
   override addNode<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -714,18 +714,11 @@ export class StateGraph<
   >;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
-    nodes:
-      | [
-          key: K,
-          action: NodeAction<
-            NodeInput,
-            NodeOutput,
-            C,
-            InterruptType,
-            WriterType
-          >,
-          options?: StateGraphAddNodeOptions
-        ][]
+    nodes: [
+      key: K,
+      action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
+      options?: StateGraphAddNodeOptions,
+    ][]
   ): StateGraph<
     SD,
     S,
@@ -740,7 +733,7 @@ export class StateGraph<
   override addNode<
     K extends string,
     InputSchema extends StateDefinitionInit,
-    NodeOutput extends U = U
+    NodeOutput extends U = U,
   >(
     key: K,
     action: NodeAction<
@@ -765,7 +758,7 @@ export class StateGraph<
   override addNode<
     K extends string,
     InputSchema extends StateDefinitionInit,
-    NodeOutput extends U = U
+    NodeOutput extends U = U,
   >(
     key: K,
     action: NodeAction<
@@ -819,7 +812,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions
+          options?: StateGraphAddNodeOptions,
         ]
       | [
           nodes:
@@ -827,8 +820,8 @@ export class StateGraph<
             | [
                 key: K,
                 action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-                options?: StateGraphAddNodeOptions
-              ][]
+                options?: StateGraphAddNodeOptions,
+              ][],
         ]
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     function isMultipleNodes(
@@ -839,8 +832,8 @@ export class StateGraph<
         | [
             key: K,
             action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-            options?: AddNodeOptions
-          ][]
+            options?: AddNodeOptions,
+          ][],
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
     }
@@ -854,7 +847,7 @@ export class StateGraph<
     ) as [
       K,
       NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-      StateGraphAddNodeOptions | undefined
+      StateGraphAddNodeOptions | undefined,
     ][];
 
     if (nodes.length === 0) {
@@ -972,7 +965,7 @@ export class StateGraph<
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptions
+      options?: StateGraphAddNodeOptions,
     ][]
   ): StateGraph<
     SD,
@@ -987,7 +980,7 @@ export class StateGraph<
 
   addSequence<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -1025,7 +1018,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions
+          options?: StateGraphAddNodeOptions,
         ][]
       | Record<
           K,
@@ -1254,7 +1247,7 @@ export class CompiledStateGraph<
   C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > extends CompiledGraph<
   N,
   S,
