@@ -1,5 +1,14 @@
 # @langchain/vue
 
+## 0.3.2
+
+### Patch Changes
+
+- [#2252](https://github.com/langchain-ai/langgraphjs/pull/2252) [`6a47a82`](https://github.com/langchain-ai/langgraphjs/commit/6a47a826ee4c15cccedd289c267ef30eb2c64db5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - docs(vue): fix template ref usage in examples
+
+- Updated dependencies [[`d9d807e`](https://github.com/langchain-ai/langgraphjs/commit/d9d807ebb0398a43a07412fb034a65fc598c0731)]:
+  - @langchain/langgraph-sdk@1.8.3
+
 ## 0.3.1
 
 ### Patch Changes
