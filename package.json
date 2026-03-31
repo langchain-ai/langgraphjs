@@ -61,7 +61,14 @@
       "minimatch@<4": ">=3.1.4 <4",
       "minimatch@>=5 <6": ">=5.1.8 <6",
       "minimatch@>=9": ">=9.0.7",
-      "rollup@2": ">=4.59.0"
+      "rollup@2": ">=4.59.0",
+      "handlebars": ">=4.7.9",
+      "path-to-regexp@>=8": ">=8.4.0",
+      "picomatch@<3": ">=2.3.2 <3",
+      "picomatch@>=4": ">=4.0.4",
+      "undici@<7": ">=6.24.0 <7",
+      "undici@>=7": ">=7.24.0",
+      "fast-xml-parser": ">=5.5.6"
     },
     "onlyBuiltDependencies": [
       "@swc/core",
