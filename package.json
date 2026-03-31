@@ -24,7 +24,8 @@
     "release": "pnpm changeset publish"
   },
   "lint-staged": {
-    "*.{css,html,js,json,jsx,md,mdx,ts,tsx,yaml,yml}": "oxfmt --write --no-error-on-unmatched-pattern"
+    "*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm run lint",
+    "*": "pnpm run fmt --no-error-on-unmatched-pattern"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.6.0",
