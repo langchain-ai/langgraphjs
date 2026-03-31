@@ -183,7 +183,8 @@ async function updateGraphPaths(
     const importStr = typeof graphDef === "string" ? graphDef : graphDef.path;
     const description =
       typeof graphDef === "string" ? undefined : graphDef.description;
-    const [moduleStr, attrStr] = importStr.split(":", 2);
+    // oxlint-disable-next-line prefer-const -- moduleStr is reassigned for local modules
+    let [moduleStr, attrStr] = importStr.split(":", 2);
     if (!moduleStr || !attrStr) {
       throw new Error(
         `Import string "${importStr}" must be in format "<module>:<attribute>".`

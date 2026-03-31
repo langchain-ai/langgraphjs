@@ -30,6 +30,8 @@
     "docs/**",
     "examples/**",
     "internal/**",
+    "libs/langgraph-api/src/graph/parser/schema/types.mts",
+    "libs/langgraph-api/src/graph/parser/schema/types.template.mts",
   ],
   "jsxSingleQuote": false,
   "printWidth": 80,

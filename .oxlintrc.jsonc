@@ -17,6 +17,7 @@
     "**/scripts",
     "docs",
     "internal/environment_tests",
+    "libs/langgraph-api/src/graph/parser/schema/types.mts",
   ],
   "rules": {
     "constructor-super": "error",
