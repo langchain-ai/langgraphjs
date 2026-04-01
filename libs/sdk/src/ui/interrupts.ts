@@ -2,7 +2,8 @@ import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 import { Interrupt, ThreadState } from "../schema.js";
 
 /**
- * Rewrites Python/API snake_case on interrupt `value` to JS camelCase for HITL.
+ * Normalizes HITL interrupt payloads to expose camelCase fields plus deprecated
+ * snake_case aliases for compatibility during migration.
  */
 export function normalizeInterruptForClient<T = unknown>(
   interrupt: Interrupt<T>
