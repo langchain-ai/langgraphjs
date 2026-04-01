@@ -1761,7 +1761,8 @@ export class FileSystemRuns implements RunsRepo {
       threadId: string | undefined,
       options: {
         ignore404?: boolean;
-        cancelOnDisconnect?: AbortSignal;
+        signal?: AbortSignal;
+        cancelOnDisconnect?: boolean;
         lastEventId: string | undefined;
       },
       auth: AuthContext | undefined
@@ -1771,7 +1772,7 @@ export class FileSystemRuns implements RunsRepo {
 
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
-        const signal = options?.cancelOnDisconnect;
+        const signal = options?.signal;
         const queue = StreamManager.getQueue(runId, {
           ifNotFound: "create",
           resumable: options.lastEventId != null,
@@ -1827,7 +1828,7 @@ export class FileSystemRuns implements RunsRepo {
           }
         }
 
-        if (signal?.aborted && threadId != null) {
+        if (signal?.aborted && options?.cancelOnDisconnect && threadId != null) {
           await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
         }
       });
