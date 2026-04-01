@@ -11,7 +11,12 @@ import type { Client } from "../../client.js";
 import type { ThreadState, Interrupt } from "../../schema.js";
 import type { StreamMode, ToolProgress } from "../../types.stream.js";
 import type { StreamEvent } from "../../types.js";
-import type { Message, DefaultToolCall } from "../../types.messages.js";
+import type {
+  Message,
+  DefaultToolCall,
+  AIMessage,
+  ToolCallWithResult,
+} from "../../types.messages.js";
 import type { BagTemplate } from "../../types.template.js";
 import type { Sequence } from "../branching.js";
 import type {
@@ -113,7 +118,7 @@ export interface BaseStream<
    */
   submit: (
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>,
   ) => Promise<void>;
 
   /**
@@ -150,7 +155,7 @@ export interface BaseStream<
    */
   getMessagesMetadata: (
     message: Message<ToolCall>,
-    index?: number
+    index?: number,
   ) => MessageMetadata<StateType> | undefined;
 
   /**
@@ -186,7 +191,7 @@ export interface BaseStream<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
-    }
+    },
   ) => Promise<void>;
 
   /**
@@ -203,6 +208,54 @@ export interface BaseStream<
     StateType,
     SubmitOptions<StateType, GetConfigurableType<Bag>>
   >;
+
+  /**
+   * Tool calls paired with their results.
+   *
+   * Each entry contains the tool call request and its corresponding result.
+   * Useful for rendering tool invocations and their outputs together.
+   *
+   * @example
+   * ```typescript
+   * stream.toolCalls.map(({ call, result }) => (
+   *   <ToolCallCard
+   *     name={call.name}
+   *     args={call.args}
+   *     result={result}
+   *   />
+   * ));
+   * ```
+   */
+  toolCalls: ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get tool calls for a specific AI message.
+   *
+   * Use this to find which tool calls were initiated by a particular
+   * assistant message, useful for rendering tool calls inline with messages.
+   *
+   * @param message - The AI message to get tool calls for
+   * @returns Array of tool calls initiated by the message
+   *
+   * @example
+   * ```typescript
+   * messages.map(message => {
+   *   if (message.type === "ai") {
+   *     const calls = stream.getToolCalls(message);
+   *     return (
+   *       <>
+   *         <MessageBubble message={message} />
+   *         {calls.map(tc => <ToolCallCard key={tc.call.id} {...tc} />)}
+   *       </>
+   *     );
+   *   }
+   *   return <MessageBubble message={message} />;
+   * });
+   * ```
+   */
+  getToolCalls: (
+    message: AIMessage<ToolCall>,
+  ) => ToolCallWithResult<ToolCall>[];
 }
 
 // Note: BaseStreamOptions is not defined here - we use UseStreamOptions from types.ts

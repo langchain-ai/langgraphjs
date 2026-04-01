@@ -1,6 +1,10 @@
 import { describe, test, expectTypeOf } from "vitest";
 import type { BaseMessage } from "@langchain/core/messages";
-import type { Message } from "../types.messages.js";
+import type {
+  Message,
+  DefaultToolCall,
+  ToolCallWithResult,
+} from "../types.messages.js";
 import type { ThreadState } from "../schema.js";
 import type { BagTemplate } from "../types.template.js";
 import type { BaseStream, ResolveStreamInterface } from "../ui/stream/index.js";
@@ -26,6 +30,27 @@ describe("ResolveStreamInterface resolves plain state types to BaseStream", () =
       BagTemplate
     >;
     expectTypeOf<Resolved>().toExtend<BaseStream<Record<string, unknown>>>();
+  });
+
+  test("BaseStream exposes toolCalls for plain state types", () => {
+    type GeneratorState = {
+      messages: Message[];
+    };
+
+    type Resolved = ResolveStreamInterface<GeneratorState, BagTemplate>;
+    expectTypeOf<Resolved>().toHaveProperty("toolCalls");
+    expectTypeOf<Resolved["toolCalls"]>().toEqualTypeOf<
+      ToolCallWithResult<DefaultToolCall>[]
+    >();
+  });
+
+  test("BaseStream exposes getToolCalls for plain state types", () => {
+    type GeneratorState = {
+      messages: Message[];
+    };
+
+    type Resolved = ResolveStreamInterface<GeneratorState, BagTemplate>;
+    expectTypeOf<Resolved>().toHaveProperty("getToolCalls");
   });
 });
 
