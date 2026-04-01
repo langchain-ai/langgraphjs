@@ -425,6 +425,63 @@ function Chat() {
 
 Switching threads via `switchThread()` cancels all pending runs and clears the queue.
 
+## Thread-Level Streaming (experimental)
+
+Use `useThreadStream` when your chat needs to follow runs started outside the
+current client (for example: another browser tab, backend worker, or webhook).
+It hydrates the current thread state, subscribes to `/threads/:id/stream`, and
+exposes chat controls (`submit`, `stop`, `switchThread`, and `queue`) plus
+thread-level status (`runningRuns`, `pendingRuns`, `isBusy`).
+
+```tsx
+import { useThreadStream } from "@langchain/react";
+
+function ThreadChat({ threadId }: { threadId: string }) {
+  const {
+    messages,
+    isBusy,
+    runningRuns,
+    pendingRuns,
+    submit,
+    queue,
+    refresh,
+  } = useThreadStream<{ messages: { type: string; content: string }[] }>({
+    assistantId: "agent",
+    threadId,
+    apiUrl: "http://localhost:2024",
+    reconnectOnMount: true,
+    streamMode: ["run_modes", "state_update"],
+  });
+
+  return (
+    <div>
+      <p>Busy: {isBusy ? "yes" : "no"}</p>
+      <p>Running: {runningRuns.length}</p>
+      <p>Pending: {pendingRuns.length}</p>
+      <p>Queued: {queue.size}</p>
+
+      {messages.map((msg, i) => (
+        <div key={i}>{msg.content}</div>
+      ))}
+
+      <button
+        onClick={() =>
+          void submit({
+            messages: [{ type: "human", content: "Hello from thread mode" }],
+          })
+        }
+      >
+        Send
+      </button>
+
+      <button onClick={() => void refresh()}>Refresh</button>
+    </div>
+  );
+}
+```
+
+`useThreadStream` is experimental and may change in future releases.
+
 ## Custom Transport
 
 Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
