@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   HumanMessageChunk,
   AIMessageChunk,
-  SystemMessageChunk,
-  ToolMessageChunk,
   HumanMessage,
+  AIMessage,
+  SystemMessage,
+  ToolMessage,
 } from "@langchain/core/messages";
 import type { ThreadState } from "../schema.js";
 import type { Message } from "../types.messages.js";
@@ -73,28 +74,58 @@ const plainTool: Message = {
 } as Message;
 
 describe("ensureMessageInstances", () => {
-  it("converts plain human message to HumanMessageChunk", () => {
+  it("converts plain human message to HumanMessage", () => {
     const [result] = ensureMessageInstances([plainHuman]);
-    expect(result).toBeInstanceOf(HumanMessageChunk);
+    expect(result).toBeInstanceOf(HumanMessage);
     expect(result.content).toBe("Hello");
     expect(result.id).toBe("msg-1");
   });
 
-  it("converts plain AI message to AIMessageChunk", () => {
+  it("converts plain AI message to AIMessage", () => {
     const [result] = ensureMessageInstances([plainAI]);
-    expect(result).toBeInstanceOf(AIMessageChunk);
+    expect(result).toBeInstanceOf(AIMessage);
     expect(result.content).toBe("Hi there!");
   });
 
-  it("converts plain system message to SystemMessageChunk", () => {
+  it("promotes tool_call content blocks to AIMessage.tool_calls", () => {
+    const [result] = ensureMessageInstances([
+      {
+        type: "ai",
+        id: "msg-tools",
+        content: [
+          {
+            index: 0,
+            type: "tool_call",
+            id: "toolu_123",
+            name: "fact_card",
+            args: { worker: "worker-001", attempt: 0 },
+          },
+        ],
+        tool_calls: [],
+        invalid_tool_calls: [],
+      } as unknown as Message,
+    ]);
+
+    expect(result).toBeInstanceOf(AIMessage);
+    expect((result as AIMessage).tool_calls).toEqual([
+      {
+        id: "toolu_123",
+        name: "fact_card",
+        args: { worker: "worker-001", attempt: 0 },
+        type: "tool_call",
+      },
+    ]);
+  });
+
+  it("converts plain system message to SystemMessage", () => {
     const [result] = ensureMessageInstances([plainSystem]);
-    expect(result).toBeInstanceOf(SystemMessageChunk);
+    expect(result).toBeInstanceOf(SystemMessage);
     expect(result.content).toBe("You are a helpful assistant.");
   });
 
-  it("converts plain tool message to ToolMessageChunk", () => {
+  it("converts plain tool message to ToolMessage", () => {
     const [result] = ensureMessageInstances([plainTool]);
-    expect(result).toBeInstanceOf(ToolMessageChunk);
+    expect(result).toBeInstanceOf(ToolMessage);
     expect(result.content).toBe("result");
   });
 
@@ -107,9 +138,9 @@ describe("ensureMessageInstances", () => {
   it("handles mixed plain objects and class instances", () => {
     const instance = new HumanMessage({ content: "class", id: "x" });
     const results = ensureMessageInstances([plainHuman, instance, plainAI]);
-    expect(results[0]).toBeInstanceOf(HumanMessageChunk);
+    expect(results[0]).toBeInstanceOf(HumanMessage);
     expect(results[1]).toBe(instance);
-    expect(results[2]).toBeInstanceOf(AIMessageChunk);
+    expect(results[2]).toBeInstanceOf(AIMessage);
   });
 });
 
@@ -122,8 +153,8 @@ describe("ensureHistoryMessageInstances", () => {
     expect(result).toHaveLength(1);
     const messages = result[0].values.messages as unknown[];
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toBeInstanceOf(HumanMessageChunk);
-    expect(messages[1]).toBeInstanceOf(AIMessageChunk);
+    expect(messages[0]).toBeInstanceOf(HumanMessage);
+    expect(messages[1]).toBeInstanceOf(AIMessage);
   });
 
   it("converts all message types across multiple states", () => {
@@ -161,12 +192,12 @@ describe("ensureHistoryMessageInstances", () => {
     const result = ensureHistoryMessageInstances(history);
 
     const msgs0 = result[0].values.messages as unknown[];
-    expect(msgs0[0]).toBeInstanceOf(HumanMessageChunk);
+    expect(msgs0[0]).toBeInstanceOf(HumanMessage);
 
     const msgs1 = result[1].values.messages as unknown[];
-    expect(msgs1[0]).toBeInstanceOf(HumanMessageChunk);
-    expect(msgs1[1]).toBeInstanceOf(AIMessageChunk);
-    expect(msgs1[2]).toBeInstanceOf(ToolMessageChunk);
+    expect(msgs1[0]).toBeInstanceOf(HumanMessage);
+    expect(msgs1[1]).toBeInstanceOf(AIMessage);
+    expect(msgs1[2]).toBeInstanceOf(ToolMessage);
   });
 
   it("passes through states without message arrays unchanged", () => {
@@ -189,8 +220,8 @@ describe("ensureHistoryMessageInstances", () => {
     const result = ensureHistoryMessageInstances(history, "chat");
 
     const messages = result[0].values.chat as unknown[];
-    expect(messages[0]).toBeInstanceOf(HumanMessageChunk);
-    expect(messages[1]).toBeInstanceOf(AIMessageChunk);
+    expect(messages[0]).toBeInstanceOf(HumanMessage);
+    expect(messages[1]).toBeInstanceOf(AIMessage);
   });
 
   it("preserves other state properties", () => {
@@ -234,8 +265,8 @@ describe("functional graph (values: null)", () => {
     expect(result).toHaveLength(3);
 
     const msgs = result[0].values.messages as unknown[];
-    expect(msgs[0]).toBeInstanceOf(HumanMessageChunk);
-    expect(msgs[1]).toBeInstanceOf(AIMessageChunk);
+    expect(msgs[0]).toBeInstanceOf(HumanMessage);
+    expect(msgs[1]).toBeInstanceOf(AIMessage);
 
     expect(result[2].values).toBeNull();
     expect(result[2]).toBe(history[2]);
@@ -335,8 +366,8 @@ describe("base SDK getBranchContext returns plain objects (no conversion)", () =
     const lastConverted = converted[converted.length - 1];
     const messages = lastConverted.values.messages as unknown[];
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toBeInstanceOf(HumanMessageChunk);
-    expect(messages[1]).toBeInstanceOf(AIMessageChunk);
+    expect(messages[0]).toBeInstanceOf(HumanMessage);
+    expect(messages[1]).toBeInstanceOf(AIMessage);
 
     // Original flatHistory is untouched
     const lastOrig = flatHistory[flatHistory.length - 1];

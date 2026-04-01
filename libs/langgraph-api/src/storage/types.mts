@@ -156,6 +156,14 @@ export interface Store {
 export interface Message {
   topic: `run:${string}:stream:${string}`;
   data: unknown;
+  /**
+   * Marks payloads that have already been converted to their protocol
+   * shape by the in-process streaming layer
+   * (e.g. `convertToProtocolEvent({ mode: "custom", ... })` output).
+   * Carried through the run-queue so downstream consumers (protocol session)
+   * can skip re-wrapping the payload.
+   */
+  normalized?: boolean;
 }
 
 export interface Thread {
@@ -291,7 +299,8 @@ export interface RunsStreamRepo {
     threadId: string | undefined,
     options: {
       ignore404?: boolean;
-      cancelOnDisconnect?: AbortSignal;
+      signal?: AbortSignal;
+      cancelOnDisconnect?: boolean;
       lastEventId: string | undefined;
     },
     auth: AuthContext | undefined

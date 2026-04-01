@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useStream } from "../../index.js";
+  import { useStream, useToolCalls, type AnyStream } from "../../index.js";
   import type { DeepAgentGraph } from "../fixtures/browser-fixtures.js";
 
   interface Props {
@@ -12,29 +12,23 @@
   const stream = useStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl,
-    filterSubagentMessages: true,
   });
 
-  let retainedSubagent = $state<ReturnType<
-    typeof stream.getSubagent
-  >>();
-
-  $effect(() => {
-    const researcher = stream.getSubagentsByType("researcher")[0];
-    if (researcher && !retainedSubagent) {
-      retainedSubagent = researcher;
-    }
-  });
+  const retainedSubagent = $derived(
+    [...stream.subagents.values()].find((sub) => sub.name === "researcher"),
+  );
+  const retainedToolCalls = useToolCalls(stream as AnyStream, () => retainedSubagent);
 
   const retainedStatus = $derived(retainedSubagent?.status ?? "missing");
-  const retainedToolCallCount = $derived(retainedSubagent?.toolCalls.length ?? -1);
-  const retainedTask = $derived(retainedSubagent?.toolCall?.args?.description ?? "");
+  const retainedToolCallCount = $derived(retainedToolCalls.current.length);
+  const retainedTask = $derived(retainedSubagent?.taskInput ?? "");
   const retainedLatestToolName = $derived(
-    retainedSubagent?.toolCalls.at(-1)?.call?.name ?? "missing"
+    retainedToolCalls.current.at(-1)?.name ?? "missing"
   );
-  const retainedLatestToolArgs = $derived(
-    JSON.stringify(retainedSubagent?.toolCalls.at(-1)?.call?.args ?? {})
-  );
+  const retainedLatestToolArgs = $derived.by(() => {
+    const input = retainedToolCalls.current.at(-1)?.input;
+    return typeof input === "string" ? input : JSON.stringify(input ?? {});
+  });
 </script>
 
 <div data-testid="retained-subagent-root">
@@ -46,10 +40,9 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void stream.submit(
-        { messages: [{ content: "Run analysis", type: "human" }] },
-        { streamSubgraphs: true },
-      )}
+      void stream.submit({
+        messages: [{ content: "Run analysis", type: "human" }],
+      })}
   >
     Send
   </button>

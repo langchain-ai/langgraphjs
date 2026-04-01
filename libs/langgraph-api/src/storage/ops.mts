@@ -1761,17 +1761,23 @@ export class FileSystemRuns implements RunsRepo {
       threadId: string | undefined,
       options: {
         ignore404?: boolean;
-        cancelOnDisconnect?: AbortSignal;
+        signal?: AbortSignal;
+        cancelOnDisconnect?: boolean;
         lastEventId: string | undefined;
       },
       auth: AuthContext | undefined
-    ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
+    ): AsyncGenerator<{
+      id?: string;
+      event: string;
+      data: unknown;
+      normalized?: boolean;
+    }> {
       const conn = this.conn;
       const runs = this.runs;
 
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
-        const signal = options?.cancelOnDisconnect;
+        const signal = options?.signal;
         const queue = StreamManager.getQueue(runId, {
           ifNotFound: "create",
           resumable: options.lastEventId != null,
@@ -1811,7 +1817,14 @@ export class FileSystemRuns implements RunsRepo {
                 `run:${runId}:stream:`.length
               );
 
-              yield { id, event: streamTopic, data: message.data };
+              yield {
+                id,
+                event: streamTopic,
+                data: message.data,
+                ...(message.normalized != null
+                  ? { normalized: message.normalized }
+                  : {}),
+              };
             }
           } catch (error) {
             if (error instanceof AbortError) break;
@@ -1827,7 +1840,11 @@ export class FileSystemRuns implements RunsRepo {
           }
         }
 
-        if (signal?.aborted && threadId != null) {
+        if (
+          signal?.aborted &&
+          options?.cancelOnDisconnect &&
+          threadId != null
+        ) {
           await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
         }
       });
@@ -1838,6 +1855,7 @@ export class FileSystemRuns implements RunsRepo {
       event: string;
       data: unknown;
       resumable: boolean;
+      normalized?: boolean;
     }) {
       const queue = StreamManager.getQueue(payload.runId, {
         ifNotFound: "create",
@@ -1846,6 +1864,9 @@ export class FileSystemRuns implements RunsRepo {
       queue.push({
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,
+        ...(payload.normalized != null
+          ? { normalized: payload.normalized }
+          : {}),
       });
     }
   };

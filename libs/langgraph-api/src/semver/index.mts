@@ -21,7 +21,9 @@ export async function checkSemver(
     const required = peerDependencies[pkg.name];
     if (!required) return [];
 
-    const satisfies = semver.satisfies(pkg.version, required);
+    const satisfies = semver.satisfies(pkg.version, required, {
+      includePrerelease: true,
+    });
     return { ...pkg, required, satisfies };
   });
 }

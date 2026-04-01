@@ -10,7 +10,6 @@
   const stream = useStream({
     assistantId: "interruptAgent",
     apiUrl,
-    fetchStateHistory: false,
   });
 </script>
 

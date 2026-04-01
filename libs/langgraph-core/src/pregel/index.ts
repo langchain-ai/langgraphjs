@@ -80,6 +80,7 @@ import {
 import { mapInput, readChannels } from "./io.js";
 import { PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
+import { StreamProtocolMessagesHandler } from "./messages-v2.js";
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig, type ServerInfo } from "./runnable_types.js";
 import { PregelRunner } from "./runner.js";
@@ -89,6 +90,16 @@ import {
   StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
+import {
+  createGraphRunStream,
+  GraphRunStream,
+  STREAM_EVENTS_V3_MODES,
+} from "../stream/index.js";
+import type {
+  InferExtensions,
+  ProtocolEvent,
+  StreamTransformer,
+} from "../stream/index.js";
 import type {
   Durability,
   GetStateOptions,
@@ -125,6 +136,53 @@ import { interrupt } from "../interrupt.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
+type StreamEventsV3Options<
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TTransformers extends ReadonlyArray<() => StreamTransformer<any>>,
+  TEncoding extends "text/event-stream" | undefined = undefined,
+> = Partial<
+  Omit<PregelOptions<Nodes, Channels, ContextType>, "encoding" | "subgraphs">
+> & {
+  version: "v3";
+  /** User-supplied transformer factories for custom projections. */
+  transformers?: TTransformers;
+} & (TEncoding extends "text/event-stream"
+    ? { encoding: "text/event-stream" }
+    : { encoding?: undefined });
+
+function protocolEventsToEventStream(run: AsyncIterable<ProtocolEvent>) {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const event of run) {
+          const namespace = event.params.namespace;
+          const eventName = namespace.length
+            ? `${event.method}|${namespace.join("|")}`
+            : event.method;
+          controller.enqueue(
+            encoder.encode(
+              `event: ${eventName}\ndata: ${JSON.stringify(event.params.data ?? {})}\n\n`
+            )
+          );
+        }
+      } catch (error) {
+        controller.enqueue(
+          encoder.encode(
+            `event: error\ndata: ${JSON.stringify({ message: String(error) })}\n\n`
+          )
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
 
 /**
  * Utility class for working with channels in the Pregel system.
@@ -394,6 +452,8 @@ export class Pregel<
   CommandType = CommandInstance,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StreamCustom = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 >
   extends PartialRunnable<
     InputType | CommandType | null,
@@ -509,6 +569,13 @@ export class Pregel<
   private userInterrupt?: unknown;
 
   /**
+   * Stream reducer factories registered at compile time.  These run
+   * automatically for every `streamEvents(..., { version: "v3" })` call,
+   * before any call-site transformers.
+   */
+  streamTransformers: TStreamTransformers;
+
+  /**
    * The trigger to node mapping for the graph run.
    * @internal
    */
@@ -519,7 +586,7 @@ export class Pregel<
    *
    * @internal
    */
-  constructor(fields: PregelParams<Nodes, Channels>) {
+  constructor(fields: PregelParams<Nodes, Channels, TStreamTransformers>) {
     super(fields);
 
     let { streamMode } = fields;
@@ -560,6 +627,8 @@ export class Pregel<
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
     this.userInterrupt = fields.userInterrupt;
+    this.streamTransformers = (fields.streamTransformers ??
+      []) as TStreamTransformers;
 
     if (this.autoValidate) {
       this.validate();
@@ -585,12 +654,51 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  override withConfig(
-    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt">
-  ): typeof this {
-    const mergedConfig = mergeConfigs(this.config, config);
+  override withConfig<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new (this.constructor as any)({ ...this, config: mergedConfig });
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers: TTransformers;
+    }
+  ): Pregel<
+    Nodes,
+    Channels,
+    ContextType,
+    InputType,
+    OutputType,
+    StreamUpdatesType,
+    StreamValuesType,
+    NodeReturnType,
+    CommandType,
+    StreamCustom,
+    readonly [...TStreamTransformers, ...TTransformers]
+  >;
+
+  override withConfig(
+    config: PregelOptions<Nodes, Channels, ContextType>
+  ): this;
+
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      streamTransformers?: ReadonlyArray<() => StreamTransformer<any>>;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any {
+    const { streamTransformers, ...restConfig } = config;
+    const mergedConfig = mergeConfigs(this.config, restConfig);
+    const mergedStreamTransformers = [
+      ...this.streamTransformers,
+      ...(streamTransformers ?? []),
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new (this.constructor as any)({
+      ...this,
+      config: mergedConfig,
+      streamTransformers: mergedStreamTransformers,
+    });
   }
 
   /**
@@ -1893,9 +2001,121 @@ export class Pregel<
     );
   }
 
+  async #streamEventsV3<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+    TEncoding extends "text/event-stream" | undefined = undefined,
+  >(
+    input: InputType | CommandType | null,
+    options: StreamEventsV3Options<
+      Nodes,
+      Channels,
+      ContextType,
+      TTransformers,
+      TEncoding
+    >
+  ): Promise<
+    | GraphRunStream<
+        OutputType,
+        InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
+      >
+    | IterableReadableStream<Uint8Array>
+  > {
+    const {
+      version,
+      encoding,
+      transformers: userTransformers,
+      ...restOptions
+    } = options;
+
+    const streamOptions = {
+      recursionLimit: this.config?.recursionLimit,
+      ...restOptions,
+      configurable: {
+        ...this.config?.configurable,
+        ...restOptions?.configurable,
+      },
+      version,
+      streamMode: STREAM_EVENTS_V3_MODES,
+      subgraphs: true as const,
+      encoding: undefined,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sourcePromise = this.stream(input, streamOptions as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const source: AsyncIterable<any> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [Symbol.asyncIterator]: async function* (): AsyncGenerator<any> {
+        const src = await sourcePromise;
+        for await (const chunk of src) {
+          yield chunk;
+        }
+      },
+    };
+
+    type TMerged = readonly [...TStreamTransformers, ...TTransformers];
+    const mergedTransformers = [
+      ...(this.streamTransformers ?? []),
+      ...(userTransformers ?? []),
+    ] as unknown as TMerged;
+
+    const graphRun = createGraphRunStream<OutputType, TMerged>(
+      source,
+      mergedTransformers
+    );
+
+    if (encoding === "text/event-stream") {
+      const abortController = new AbortController();
+      abortController.signal.addEventListener(
+        "abort",
+        () => graphRun.abort(abortController.signal.reason),
+        { once: true }
+      );
+
+      return new IterableReadableStreamWithAbortSignal(
+        protocolEventsToEventStream(graphRun),
+        abortController
+      );
+    }
+
+    return graphRun;
+  }
+
   /**
    * @inheritdoc
    */
+  override streamEvents<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    input: InputType | CommandType | null,
+    options: StreamEventsV3Options<
+      Nodes,
+      Channels,
+      ContextType,
+      TTransformers,
+      "text/event-stream"
+    >
+  ): Promise<IterableReadableStream<Uint8Array>>;
+
+  override streamEvents<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    input: InputType | CommandType | null,
+    options: StreamEventsV3Options<Nodes, Channels, ContextType, TTransformers>
+  ): Promise<
+    GraphRunStream<
+      OutputType,
+      InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
+    >
+  >;
+
   override streamEvents(
     input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
@@ -1916,10 +2136,25 @@ export class Pregel<
   override streamEvents(
     input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
-      version: "v1" | "v2";
+      version: "v1" | "v2" | "v3";
     },
     streamOptions?: StreamEventsOptions
-  ): IterableReadableStream<StreamEvent | Uint8Array> {
+  ):
+    | IterableReadableStream<StreamEvent | Uint8Array>
+    | Promise<
+        | GraphRunStream<
+            OutputType,
+            InferExtensions<readonly [...TStreamTransformers]>
+          >
+        | IterableReadableStream<Uint8Array>
+      > {
+    if (options.version === "v3") {
+      return this.#streamEventsV3(
+        input,
+        options as StreamEventsV3Options<Nodes, Channels, ContextType, []>
+      );
+    }
+
     const abortController = new AbortController();
 
     const config = {
@@ -1935,7 +2170,14 @@ export class Pregel<
     };
 
     return new IterableReadableStreamWithAbortSignal(
-      super.streamEvents(input, config, streamOptions),
+      super.streamEvents(
+        input,
+        config as Partial<PregelOptions<Nodes, Channels, ContextType>> & {
+          version: "v1" | "v2";
+          encoding?: "text/event-stream";
+        },
+        streamOptions
+      ),
       abortController
     );
   }
@@ -2043,9 +2285,11 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const messageStreamer = new StreamMessagesHandler((chunk) =>
-        stream.push(chunk)
-      );
+      const useProtocolMessagesStream =
+        (options as { version?: unknown } | undefined)?.version === "v3";
+      const messageStreamer = useProtocolMessagesStream
+        ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
+        : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];
@@ -2199,7 +2443,7 @@ export class Pregel<
         if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload] = chunk;
+        const [namespace, mode, payload, meta] = chunk;
         if (streamMode.includes(mode)) {
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
@@ -2210,7 +2454,12 @@ export class Pregel<
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            yield [namespace, mode, payload];
+            // Preserve chunk meta (e.g. the checkpoint envelope on `values`
+            // events) so `streamEvents(..., { version: "v3" })` / `pump()`
+            // can surface it on the protocol stream.
+            yield meta !== undefined
+              ? [namespace, mode, payload, meta]
+              : [namespace, mode, payload];
           } else if (!streamModeSingle) {
             yield [mode, payload];
           } else if (streamSubgraphs) {

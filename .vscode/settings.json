@@ -9,10 +9,6 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "python.languageServer": "None",
   "deno.enable": false,
-  "eslint.enable": true,
-  "eslint.workingDirectories": [
-    { "pattern": "libs/*" }
-  ],
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
   }

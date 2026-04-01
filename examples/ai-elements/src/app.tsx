@@ -1,5 +1,5 @@
+import { AIMessage, HumanMessage } from "langchain";
 import { useStream } from "@langchain/react";
-import { AIMessage } from "@langchain/core/messages";
 import { PlusIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { MessageList } from "./components/message-list";
@@ -14,17 +14,16 @@ import {
 import { Button } from "./components/ui/button";
 import { LANGGRAPH_API_URL, LANGGRAPH_ASSISTANT_ID } from "./lib/stream";
 import { useThreadIdParam } from "./lib/thread-id";
+import type { agent } from "../agent"
 
 export function App() {
   const [threadId, onThreadId] = useThreadIdParam();
   const [inputText, setInputText] = useState("");
 
-  const stream = useStream({
+  const stream = useStream<typeof agent>({
     apiUrl: LANGGRAPH_API_URL,
     assistantId: LANGGRAPH_ASSISTANT_ID,
     onThreadId,
-    reconnectOnMount: true,
-    fetchStateHistory: true,
     threadId,
   });
 
@@ -34,22 +33,21 @@ export function App() {
     (message: { text: string }) => {
       if (!message.text.trim()) return;
       setInputText("");
-      stream.submit({ messages: [{ type: "human", content: message.text }] });
+      stream.submit({ messages: [new HumanMessage(message.text)] });
     },
     [stream],
   );
 
   const handleSuggestionSelect = useCallback(
     (prompt: string) => {
-      stream.submit({ messages: [{ type: "human", content: prompt }] });
+      stream.submit({ messages: [new HumanMessage(prompt)] });
     },
     [stream],
   );
 
   const handleNewChat = useCallback(() => {
-    onThreadId(undefined);
-    stream.switchThread(null);
-  }, [stream, onThreadId]);
+    onThreadId(null);
+  }, [onThreadId]);
 
   const handleCopyLastMessage = useCallback(() => {
     const lastAi = [...stream.messages].reverse().find(AIMessage.isInstance);
@@ -83,8 +81,7 @@ export function App() {
         <SuggestionsScreen onSelect={handleSuggestionSelect} />
       ) : (
         <MessageList
-          messages={stream.messages}
-          isLoading={stream.isLoading}
+          stream={stream}
           onCopyLastMessage={handleCopyLastMessage}
         />
       )}
@@ -98,7 +95,7 @@ export function App() {
             <PromptInputTextarea
               value={inputText}
               placeholder="Ask me something..."
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputText(e.target.value)}
             />
           </PromptInputBody>
           <PromptInputFooter>

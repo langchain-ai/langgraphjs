@@ -90,7 +90,11 @@ import {
 } from "./debug.js";
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
-import { IterableReadableWritableStream, StreamChunk } from "./stream.js";
+import {
+  IterableReadableWritableStream,
+  StreamChunk,
+  StreamChunkMeta,
+} from "./stream.js";
 import { isXXH3 } from "../hash.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
@@ -779,10 +783,13 @@ export class PregelLoop {
           "values"
         )
       );
-      this._emit(valuesOutput);
       // clear pending writes
       this.checkpointPendingWrites = [];
+      // persist the new checkpoint BEFORE emitting values, so the
+      // attached `checkpoint` envelope on the values event points at
+      // the fork target that captures this superstep's final state.
       await this._putCheckpoint({ source: "loop" });
+      this._emitValuesWithCheckpointMeta(valuesOutput);
       // after execution, check if we should interrupt
       if (
         shouldInterrupt(
@@ -931,7 +938,7 @@ export class PregelLoop {
           this.triggerToNodes
         );
 
-        this._emit(
+        this._emitValuesWithCheckpointMeta(
           gatherIteratorSync(
             prefixGenerator(
               mapOutputValues(
@@ -945,7 +952,7 @@ export class PregelLoop {
         );
       }
 
-      // Emit INTERRUPT event
+      // Emit INTERRUPT event (not a state snapshot — no checkpoint envelope)
       if (isGraphInterrupt(error) && !error.interrupts.length) {
         this._emit([
           ["updates", { [INTERRUPT]: [] }],
@@ -1110,16 +1117,25 @@ export class PregelLoop {
           "values"
         )
       );
-      this._emit(valuesOutput);
-    }
-    if (this.isResuming) {
-      this.input = INPUT_RESUMING;
-    } else if (isCommandUpdateOrGoto) {
-      // we need to create a new checkpoint for Command(update=...) or Command(goto=...)
-      // in case the result of Command(goto=...) is an interrupt.
-      // If not done, the checkpoint containing the interrupt will be lost.
-      await this._putCheckpoint({ source: "input" });
-      this.input = INPUT_DONE;
+      // Preserve the original `isResuming`-first priority: when both
+      // `isResuming` and `isCommandUpdateOrGoto` are true (resuming from
+      // an interrupt with a Command update/goto), the resume path wins
+      // and no new input checkpoint is created here.
+      if (this.isResuming) {
+        this.input = INPUT_RESUMING;
+      } else if (isCommandUpdateOrGoto) {
+        // Persist the input checkpoint BEFORE emitting values so the
+        // attached `checkpoint` envelope points at the just-created
+        // fork target. We need a new checkpoint for Command(update=...)
+        // or Command(goto=...) in case the result of Command(goto=...)
+        // is an interrupt. If not done, the checkpoint containing the
+        // interrupt will be lost.
+        await this._putCheckpoint({ source: "input" });
+        this.input = INPUT_DONE;
+      }
+      // Emit after any checkpoint persistence so the `checkpoint` envelope
+      // on the values event points at the fork target for the emitted state.
+      this._emitValuesWithCheckpointMeta(valuesOutput);
     } else {
       // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
@@ -1166,10 +1182,19 @@ export class PregelLoop {
     }
   }
 
-  protected _emit(values: [StreamMode, unknown][]) {
-    for (const [mode, payload] of values) {
+  protected _emit(
+    values: Array<
+      [StreamMode, unknown] | [StreamMode, unknown, StreamChunkMeta | undefined]
+    >
+  ) {
+    for (const entry of values) {
+      const [mode, payload, meta] = entry as [
+        StreamMode,
+        unknown,
+        StreamChunkMeta | undefined,
+      ];
       if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload]);
+        this.stream.push([this.checkpointNamespace, mode, payload, meta]);
       }
 
       // debug mode is a "checkpoints" or "tasks" wrapped in an object
@@ -1201,6 +1226,53 @@ export class PregelLoop {
         ]);
       }
     }
+  }
+
+  /**
+   * Build a {@link StreamChunkMeta} describing the currently active checkpoint.
+   * Used to enrich `values` tuples with a lightweight fork pointer that
+   * `streamEvents(..., { version: "v3" })` promotes to a companion
+   * `checkpoints` event (emitted immediately before its paired `values`).
+   * This envelope backs branching / time-travel UIs
+   * (`useMessageMetadata(msg.id).parentCheckpointId`). Returns `undefined`
+   * if no checkpoint metadata is available yet (no checkpointer
+   * configured, or first superstep before the input checkpoint lands).
+   */
+  protected _currentCheckpointMeta(): StreamChunkMeta | undefined {
+    if (!this.checkpointMetadata || !this.checkpoint?.id) return undefined;
+    const parent_id = this.prevCheckpointConfig?.configurable?.checkpoint_id as
+      | string
+      | undefined;
+    return {
+      checkpoint: {
+        id: this.checkpoint.id,
+        ...(parent_id ? { parent_id } : {}),
+        step: this.checkpointMetadata.step,
+        source: this.checkpointMetadata.source,
+      },
+    };
+  }
+
+  /**
+   * Emit the given stream entries, attaching the current checkpoint meta to
+   * every `"values"` entry. Callers MUST invoke this after the checkpoint
+   * corresponding to the emitted state has been created (typically via
+   * `_putCheckpoint`), so the attached `id` points at the fork target that
+   * captures the emitted state.
+   */
+  protected _emitValuesWithCheckpointMeta(
+    entries: [StreamMode, unknown][]
+  ): void {
+    const meta = this._currentCheckpointMeta();
+    if (!meta) {
+      this._emit(entries);
+      return;
+    }
+    this._emit(
+      entries.map(([mode, payload]) =>
+        mode === "values" ? [mode, payload, meta] : [mode, payload]
+      )
+    );
   }
 
   protected _putCheckpoint(

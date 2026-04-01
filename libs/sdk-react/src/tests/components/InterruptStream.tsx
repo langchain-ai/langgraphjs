@@ -1,62 +1,73 @@
-import type { Message } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
+
+interface InterruptState {
+  request: string;
+  decision: Record<string, unknown> | null;
+  completed: boolean;
+}
 
 interface Props {
   apiUrl: string;
   assistantId?: string;
-  fetchStateHistory?: boolean;
+  /** When true, the Resume button uses stream.respond() directly. */
+  useRespondMethod?: boolean;
 }
 
 export function InterruptStream({
   apiUrl,
-  assistantId = "interruptAgent",
-  fetchStateHistory = false,
+  assistantId = "interrupt_graph",
+  useRespondMethod = false,
 }: Props) {
-  const { messages, interrupt, submit } = useStream<
-    { messages: Message[] },
-    { InterruptType: { nodeName: string } }
-  >({
+  const thread = useStream<InterruptState>({
     assistantId,
     apiUrl,
-    fetchStateHistory,
   });
+
+  const promptValue = thread.interrupt?.value;
+  const interruptPrompt =
+    promptValue != null &&
+    typeof promptValue === "object" &&
+    "prompt" in (promptValue as object)
+      ? String((promptValue as { prompt?: unknown }).prompt ?? "")
+      : "";
 
   return (
     <div>
-      <div data-testid="messages">
-        {messages.map((msg, i) => (
-          <div key={msg.id ?? i} data-testid={`message-${i}`}>
-            {typeof msg.content === "string"
-              ? msg.content
-              : JSON.stringify(msg.content)}
-          </div>
-        ))}
+      <div data-testid="interrupt-count">{thread.interrupts.length}</div>
+      <div data-testid="interrupt-prompt">{interruptPrompt}</div>
+      <div data-testid="interrupt-id">
+        {thread.interrupt?.id ?? ""}
       </div>
-      {interrupt ? (
-        <div>
-          <div data-testid="interrupt">
-            {interrupt.when ?? interrupt.value?.nodeName}
-          </div>
-          <button
-            data-testid="resume"
-            onClick={() =>
-              void submit(null, { command: { resume: "Resuming" } })
-            }
-          >
-            Resume
-          </button>
-        </div>
-      ) : null}
+      <div data-testid="completed">
+        {thread.values?.completed ? "true" : "false"}
+      </div>
+      <div data-testid="decision">
+        {thread.values?.decision
+          ? JSON.stringify(thread.values.decision)
+          : "null"}
+      </div>
+      <div data-testid="loading">
+        {thread.isLoading ? "Loading..." : "Not loading"}
+      </div>
       <button
         data-testid="submit"
-        onClick={() =>
-          void submit(
-            { messages: [{ content: "Hello", type: "human" }] },
-            { interruptBefore: ["beforeInterrupt"] },
-          )
-        }
+        onClick={() => void thread.submit({ request: "ship it" })}
       >
-        Send
+        Submit
+      </button>
+      <button
+        data-testid="resume"
+        onClick={() => {
+          if (useRespondMethod && thread.interrupt) {
+            void thread.respond({ approved: true });
+          } else {
+            void thread.submit(undefined, {
+              command: { resume: { approved: true } },
+            });
+          }
+        }}
+      >
+        Resume
       </button>
     </div>
   );

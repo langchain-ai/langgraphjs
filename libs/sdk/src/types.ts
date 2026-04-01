@@ -7,6 +7,7 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
+export type StreamProtocol = "legacy" | "v2" | "v2-websocket";
 export type StreamEvent =
   | "events"
   | "metadata"
