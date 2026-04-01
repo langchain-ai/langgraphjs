@@ -10,6 +10,7 @@ import type {
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
+import { PROTOCOL_MESSAGES_STREAM_CONFIG_KEY } from "./protocol/constants.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -168,6 +169,9 @@ export async function* streamState(
   });
 
   const userStreamMode = kwargs.stream_mode ?? [];
+  const useProtocolMessagesStream =
+    userStreamMode.includes("messages") &&
+    kwargs.config?.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
@@ -249,7 +253,10 @@ export async function* streamState(
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
 
-    if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
+    if (
+      event.event === "on_chain_stream" &&
+      (kwargs.subgraphs || event.run_id === run.run_id)
+    ) {
       const [ns, mode, chunk] = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
       ) as [string[] | null, LangGraphStreamMode, unknown];
@@ -283,7 +290,10 @@ export async function* streamState(
       }
 
       if (mode === "messages") {
-        if (userStreamMode.includes("messages-tuple")) {
+        if (
+          userStreamMode.includes("messages-tuple") ||
+          useProtocolMessagesStream
+        ) {
           if (kwargs.subgraphs && ns?.length) {
             yield { event: `messages|${ns.join("|")}`, data };
           } else {
@@ -308,8 +318,11 @@ export async function* streamState(
     // - handleLLMEnd receives the final message as BaseMessageChunk rather than BaseMessage, which from the outside will become indistinguishable.
     // - handleLLMEnd should not dedupe the message
     // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
-    if (userStreamMode.includes("messages")) {
-      if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
+    if (userStreamMode.includes("messages") && !useProtocolMessagesStream) {
+      if (
+        event.event === "on_chain_stream" &&
+        (kwargs.subgraphs || event.run_id === run.run_id)
+      ) {
         const newMessages: Array<BaseMessageChunk> = [];
         const [_, chunk]: [string, any] = event.data.chunk;
 

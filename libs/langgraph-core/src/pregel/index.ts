@@ -80,6 +80,10 @@ import {
 import { mapInput, readChannels } from "./io.js";
 import { PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
+import {
+  PROTOCOL_MESSAGES_STREAM_CONFIG_KEY,
+  StreamProtocolMessagesHandler,
+} from "./messages-v2.js";
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig, type ServerInfo } from "./runnable_types.js";
 import { PregelRunner } from "./runner.js";
@@ -2043,9 +2047,10 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const messageStreamer = new StreamMessagesHandler((chunk) =>
-        stream.push(chunk)
-      );
+      const messageStreamer =
+        config.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true
+          ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
+          : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];

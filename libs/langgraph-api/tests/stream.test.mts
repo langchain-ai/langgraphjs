@@ -1,0 +1,248 @@
+import { describe, expect, it } from "vitest";
+
+import { streamState } from "../src/stream.mjs";
+import type { Run } from "../src/storage/types.mjs";
+
+const createRun = (overrides?: Partial<Run>): Run =>
+  ({
+    run_id: "00000000-0000-7000-8000-000000000001",
+    thread_id: "00000000-0000-7000-8000-000000000002",
+    assistant_id: "deep-agent",
+    created_at: new Date("2026-04-01T00:00:00.000Z"),
+    updated_at: new Date("2026-04-01T00:00:00.000Z"),
+    status: "running",
+    metadata: {},
+    multitask_strategy: "interrupt",
+    kwargs: {
+      config: {
+        configurable: {
+          graph_id: "deep-agent",
+        },
+      },
+      stream_mode: ["messages-tuple"],
+      subgraphs: true,
+      resumable: true,
+    },
+    ...overrides,
+  }) satisfies Run;
+
+describe("streamState", () => {
+  it("includes child on_chain_stream events when subgraphs are enabled", async () => {
+    const run = createRun();
+    const childRunId = "00000000-0000-7000-8000-000000000099";
+
+    const chunks: Array<{ event: string; data: unknown }> = [];
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents() {
+            yield {
+              event: "on_chain_stream",
+              run_id: childRunId,
+              data: {
+                chunk: [
+                  ["tools:call_123"],
+                  "messages",
+                  {
+                    id: "msg_1",
+                    type: "ai",
+                    content: "Hello from subgraph",
+                  },
+                ],
+              },
+            };
+          },
+        }) as never,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([
+      {
+        event: "metadata",
+        data: { run_id: run.run_id, attempt: 1 },
+      },
+      {
+        event: "messages|tools:call_123",
+        data: {
+          id: "msg_1",
+          type: "ai",
+          content: "Hello from subgraph",
+        },
+      },
+    ]);
+  });
+
+  it("passes child namespace updates through unchanged", async () => {
+    const run = createRun({
+      kwargs: {
+        config: {
+          configurable: {
+            graph_id: "deep-agent",
+          },
+        },
+        stream_mode: ["updates"],
+        subgraphs: true,
+        resumable: true,
+      },
+    });
+    const childRunId = "00000000-0000-7000-8000-000000000099";
+
+    const chunks: Array<{ event: string; data: unknown }> = [];
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents() {
+            yield {
+              event: "on_chain_stream",
+              run_id: childRunId,
+              data: {
+                chunk: [
+                  ["tools:call_js_eval", "1"],
+                  "updates",
+                  {
+                    worker: {
+                      messages: [
+                        {
+                          id: "human_1",
+                          type: "human",
+                          content: "Write a tiny poem for Sheryl Baxter.",
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            };
+            yield {
+              event: "on_chain_stream",
+              run_id: childRunId,
+              data: {
+                chunk: [
+                  ["tools:call_js_eval", "1"],
+                  "updates",
+                  {
+                    worker: {
+                      messages: [
+                        {
+                          id: "ai_1",
+                          type: "ai",
+                          content: "Sheryl, your bright work sings.",
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            };
+          },
+        }) as never,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([
+      {
+        event: "metadata",
+        data: { run_id: run.run_id, attempt: 1 },
+      },
+      {
+        event: "updates|tools:call_js_eval|1",
+        data: {
+          worker: {
+            messages: [
+              {
+                id: "human_1",
+                type: "human",
+                content: "Write a tiny poem for Sheryl Baxter.",
+              },
+            ],
+          },
+        },
+      },
+      {
+        event: "updates|tools:call_js_eval|1",
+        data: {
+          worker: {
+            messages: [
+              {
+                id: "ai_1",
+                type: "ai",
+                content: "Sheryl, your bright work sings.",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+  });
+
+  it("uses native messages events for protocol-gated runs", async () => {
+    const run = createRun({
+      kwargs: {
+        config: {
+          configurable: {
+            graph_id: "deep-agent",
+            __protocol_messages_stream: true,
+          },
+        },
+        stream_mode: ["messages"],
+        subgraphs: false,
+        resumable: true,
+      },
+    });
+
+    const chunks: Array<{ event: string; data: unknown }> = [];
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents() {
+            yield {
+              event: "on_chain_stream",
+              run_id: run.run_id,
+              data: {
+                chunk: [
+                  "messages",
+                  {
+                    event: "message-start",
+                    messageId: "msg_1",
+                  },
+                ],
+              },
+            };
+            yield {
+              event: "on_chat_model_stream",
+              run_id: "00000000-0000-7000-8000-000000000099",
+              metadata: { langgraph_checkpoint_ns: "" },
+              data: {
+                chunk: {
+                  id: "msg_1",
+                  type: "AIMessageChunk",
+                  content: "Hello",
+                },
+              },
+            };
+          },
+        }) as never,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([
+      {
+        event: "metadata",
+        data: { run_id: run.run_id, attempt: 1 },
+      },
+      {
+        event: "messages",
+        data: {
+          event: "message-start",
+          messageId: "msg_1",
+        },
+      },
+    ]);
+  });
+});

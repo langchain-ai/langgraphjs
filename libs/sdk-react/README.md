@@ -49,6 +49,9 @@ function Chat() {
 | `assistantId` | `string` | **Required.** The assistant/graph ID to stream from. |
 | `apiUrl` | `string` | Base URL of the LangGraph API. |
 | `client` | `Client` | Pre-configured `Client` instance (alternative to `apiUrl`). |
+| `streamProtocol` | `"legacy" \| "v2-sse" \| "v2-websocket"` | Streaming backend to use. Defaults to `"legacy"`. |
+| `protocolFetchFactory` | `() => typeof fetch` | Optional fetch factory for protocol SSE mode. |
+| `protocolWebSocketFactory` | `(url: string) => WebSocket` | Optional WebSocket factory for protocol WebSocket mode. |
 | `messagesKey` | `string` | State key containing messages. Defaults to `"messages"`. |
 | `initialValues` | `StateType` | Initial state values before any stream data arrives. |
 | `fetchStateHistory` | `boolean \| { limit: number }` | Fetch thread history on stream completion. Enables branching. |
@@ -79,6 +82,93 @@ function Chat() {
 | `queue.size` | `number` | Number of pending runs on the server. |
 | `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
 | `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
+
+## Protocol streaming
+
+`useStream` keeps the legacy transport by default. The new session-based protocol
+is opt-in and can use either SSE or WebSockets through a single option:
+
+```tsx
+const stream = useStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+  streamProtocol: "v2-sse",
+});
+```
+
+### Protocol modes
+
+| `streamProtocol` | Behavior |
+|---|---|
+| `"legacy"` | Existing legacy run streaming endpoints. |
+| `"v2-sse"` | Session-based protocol over HTTP + SSE. |
+| `"v2-websocket"` | Session-based protocol over WebSockets. |
+
+### SSE protocol mode
+
+Use SSE when you want protocol semantics but still need fetch-based request
+customization:
+
+```tsx
+const stream = useStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+  streamProtocol: "v2-sse",
+  protocolFetchFactory: () => async (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set("x-api-key", "my-key");
+    return fetch(input, { ...init, headers });
+  },
+});
+```
+
+### WebSocket protocol mode
+
+Use WebSockets when you want the protocol's bidirectional transport:
+
+```tsx
+const stream = useStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+  streamProtocol: "v2-websocket",
+});
+```
+
+To customize socket creation, pass `protocolWebSocketFactory`:
+
+```tsx
+const stream = useStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+  streamProtocol: "v2-websocket",
+  protocolWebSocketFactory: (url) => new WebSocket(url),
+});
+```
+
+### Browser limitation
+
+Browsers do not let normal `WebSocket` connections attach arbitrary custom
+headers. Because of that:
+
+- `defaultHeaders`
+- `apiKey`
+- `onRequest`
+
+are not applied to `streamProtocol: "v2-websocket"` connections.
+
+If you need header-based auth or fetch-level request customization, prefer:
+
+```tsx
+streamProtocol: "v2-sse"
+```
+
+and use `protocolFetchFactory`.
+
+### Fallback behavior
+
+When `streamProtocol` is set to a protocol mode, `useStream` still falls back to
+legacy streaming for request shapes that the protocol runtime does not yet
+support. This keeps the change opt-in and low-risk for existing apps.
 
 ## `useSuspenseStream`
 

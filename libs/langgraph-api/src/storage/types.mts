@@ -291,7 +291,8 @@ export interface RunsStreamRepo {
     threadId: string | undefined,
     options: {
       ignore404?: boolean;
-      cancelOnDisconnect?: AbortSignal;
+      signal?: AbortSignal;
+      cancelOnDisconnect?: boolean;
       lastEventId: string | undefined;
     },
     auth: AuthContext | undefined

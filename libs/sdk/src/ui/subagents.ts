@@ -67,6 +67,40 @@ export function extractToolCallIdFromNamespace(
 }
 
 /**
+ * Extracts a stable subagent namespace key from a namespace path.
+ *
+ * This preserves the full subgraph path (for example `tools:parent|1`) while
+ * trimming trailing runtime segments such as `model_request:<id>`.
+ *
+ * @param namespace - The namespace array or checkpoint_ns string
+ * @returns Stable subagent namespace key, or undefined if none exists
+ */
+export function getSubagentNamespaceKey(
+  namespace: string[] | string | undefined
+): string | undefined {
+  if (!namespace) return undefined;
+
+  const segments =
+    typeof namespace === "string" ? namespace.split("|") : [...namespace];
+  if (!segments.some((segment) => segment.startsWith("tools:"))) {
+    return undefined;
+  }
+
+  let end = segments.length;
+  while (end > 0) {
+    const segment = segments[end - 1];
+    if (segment == null) break;
+    if (segment.startsWith("tools:") || !segment.includes(":")) {
+      break;
+    }
+    end -= 1;
+  }
+
+  const key = segments.slice(0, end).join("|");
+  return key.length > 0 ? key : undefined;
+}
+
+/**
  * Calculates the depth of a subagent based on its namespace.
  * Counts the number of "tools:" segments in the namespace.
  *
@@ -155,17 +189,27 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   private subagents = new Map<string, SubagentStreamBase<ToolCall>>();
 
   /**
-   * Maps namespace IDs (pregel task IDs) to tool call IDs.
-   * LangGraph subgraphs use internal pregel task IDs in their namespace,
-   * which are different from the tool_call_id used to invoke them.
+   * Maps stable subagent namespace keys to tool call IDs.
+   *
+   * The key preserves the full subgraph path (for example `tools:parent|1`) so
+   * sibling subagents launched under the same parent namespace don't collide.
    */
   private namespaceToToolCallId = new Map<string, string>();
+
+  /**
+   * Ordered pending subagent tool-call IDs per root tools namespace.
+   *
+   * QuickJS fan-out emits sibling task() starts under the same parent namespace
+   * before each child subgraph settles on its own namespace path. We queue those
+   * starts here so child namespaces can claim them deterministically in order.
+   */
+  private pendingToolCallIdsByNamespace = new Map<string, string[]>();
 
   /**
    * Pending namespace matches that couldn't be resolved immediately.
    * These are retried when new tool calls are registered.
    */
-  private pendingMatches = new Map<string, string>(); // namespaceId -> description
+  private pendingMatches = new Map<string, string>(); // namespaceKey -> description
 
   /**
    * Messages received before we can map a subgraph namespace to the public
@@ -301,33 +345,99 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
-   * Get the tool call ID for a given namespace ID.
-   * Returns the namespace ID itself if no mapping exists.
+   * Get the tool call ID for a given namespace key.
+   * Returns the namespace key itself if no mapping exists.
    */
-  getToolCallIdFromNamespace(namespaceId: string): string {
-    return this.namespaceToToolCallId.get(namespaceId) ?? namespaceId;
+  getToolCallIdFromNamespace(namespaceKey: string): string {
+    return this.namespaceToToolCallId.get(namespaceKey) ?? namespaceKey;
+  }
+
+  private getRootNamespaceKey(namespaceKey: string): string {
+    return namespaceKey.split("|")[0] ?? namespaceKey;
+  }
+
+  queueToolCallForNamespace(namespaceKey: string, toolCallId: string): void {
+    const rootNamespaceKey = this.getRootNamespaceKey(namespaceKey);
+    const queue =
+      this.pendingToolCallIdsByNamespace.get(rootNamespaceKey) ?? [];
+    if (!queue.includes(toolCallId)) {
+      queue.push(toolCallId);
+      this.pendingToolCallIdsByNamespace.set(rootNamespaceKey, queue);
+    }
+  }
+
+  private claimQueuedToolCallForNamespace(
+    namespaceKey: string
+  ): string | undefined {
+    const existingToolCallId = this.namespaceToToolCallId.get(namespaceKey);
+    if (existingToolCallId) {
+      return existingToolCallId;
+    }
+
+    const mappedToolCallIds = new Set(this.namespaceToToolCallId.values());
+    const rootNamespaceKey = this.getRootNamespaceKey(namespaceKey);
+    const queue = this.pendingToolCallIdsByNamespace.get(rootNamespaceKey);
+    if (!queue || queue.length === 0) {
+      return undefined;
+    }
+
+    while (queue.length > 0) {
+      const nextToolCallId = queue.shift();
+      if (!nextToolCallId) {
+        continue;
+      }
+      if (mappedToolCallIds.has(nextToolCallId)) {
+        continue;
+      }
+
+      this.namespaceToToolCallId.set(namespaceKey, nextToolCallId);
+      if (queue.length === 0) {
+        this.pendingToolCallIdsByNamespace.delete(rootNamespaceKey);
+      } else {
+        this.pendingToolCallIdsByNamespace.set(rootNamespaceKey, queue);
+      }
+      return nextToolCallId;
+    }
+
+    this.pendingToolCallIdsByNamespace.delete(rootNamespaceKey);
+    return undefined;
+  }
+
+  private resolveToolCallIdForNamespace(
+    namespaceKey: string
+  ): string | undefined {
+    const mappedToolCallId = this.namespaceToToolCallId.get(namespaceKey);
+    if (mappedToolCallId) {
+      return mappedToolCallId;
+    }
+
+    if (this.subagents.has(namespaceKey)) {
+      return namespaceKey;
+    }
+
+    return this.claimQueuedToolCallForNamespace(namespaceKey);
   }
 
   /**
    * Try to match a subgraph to a pending subagent by description.
-   * Creates a mapping from namespace ID to tool call ID if a match is found.
+   * Creates a mapping from a namespace key to tool call ID if a match is found.
    *
    * Uses a multi-pass matching strategy:
    * 1. Exact description match
    * 2. Description contains/partial match
    * 3. Any unmapped pending subagent (fallback)
    *
-   * @param namespaceId - The namespace ID (pregel task ID) from the subgraph
+   * @param namespaceKey - Stable namespace key from the subgraph
    * @param description - The description from the subgraph's initial message
    * @returns The matched tool call ID, or undefined if no match
    */
   matchSubgraphToSubagent(
-    namespaceId: string,
+    namespaceKey: string,
     description: string
   ): string | undefined {
     // Skip if we already have a mapping
-    if (this.namespaceToToolCallId.has(namespaceId)) {
-      return this.namespaceToToolCallId.get(namespaceId);
+    if (this.namespaceToToolCallId.has(namespaceKey)) {
+      return this.namespaceToToolCallId.get(namespaceKey);
     }
 
     // Get all already-mapped tool call IDs
@@ -335,14 +445,14 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
     // Helper to establish mapping and mark as running
     const establishMapping = (toolCallId: string): string => {
-      this.namespaceToToolCallId.set(namespaceId, toolCallId);
+      this.namespaceToToolCallId.set(namespaceKey, toolCallId);
       // Also mark the subagent as running since we now have its namespace
       const subagent = this.subagents.get(toolCallId);
       if (subagent && subagent.status === "pending") {
         this.subagents.set(toolCallId, {
           ...subagent,
           status: "running",
-          namespace: [namespaceId],
+          namespace: namespaceKey.split("|"),
           startedAt: new Date(),
         });
         this.onSubagentChange?.();
@@ -393,9 +503,35 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
     // No match found - store for retry when more tool calls are registered
     if (description) {
-      this.pendingMatches.set(namespaceId, description);
+      this.pendingMatches.set(namespaceKey, description);
     }
     return undefined;
+  }
+
+  /**
+   * Bind a subgraph namespace ID directly to a known tool call ID.
+   *
+   * This is used when a stream event already carries both identifiers, such as
+   * protocol tool events that include an internal namespace and the public
+   * `toolCallId` for the delegated task.
+   *
+   * @param namespaceKey - Stable namespace key from the subgraph.
+   * @param toolCallId - The tool call ID associated with the delegated task.
+   * @param options - Optional namespace metadata to attach immediately.
+   */
+  bindNamespaceToToolCall(
+    namespaceKey: string,
+    toolCallId: string,
+    options?: {
+      namespace?: string[];
+    }
+  ): void {
+    const existingToolCallId = this.namespaceToToolCallId.get(namespaceKey);
+    if (existingToolCallId && existingToolCallId !== toolCallId) {
+      return;
+    }
+    this.namespaceToToolCallId.set(namespaceKey, toolCallId);
+    this.markRunning(toolCallId, options);
   }
 
   /**
@@ -403,6 +539,62 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   isSubagentToolCall(toolName: string): boolean {
     return this.subagentToolNames.has(toolName);
+  }
+
+  private stringifyMessageContent(content: unknown): string {
+    if (typeof content === "string") {
+      return content;
+    }
+
+    if (Array.isArray(content)) {
+      const text = content
+        .map((block) => {
+          if (typeof block === "string") {
+            return block;
+          }
+
+          if (
+            block != null &&
+            typeof block === "object" &&
+            "type" in block &&
+            (block as { type?: unknown }).type === "text" &&
+            "text" in block &&
+            typeof (block as { text?: unknown }).text === "string"
+          ) {
+            return (block as { text: string }).text;
+          }
+
+          return "";
+        })
+        .filter(Boolean)
+        .join("");
+
+      return text.length > 0 ? text : JSON.stringify(content);
+    }
+
+    return JSON.stringify(content);
+  }
+
+  private inferCompletedResult(
+    messages: Message<ToolCall>[]
+  ): string | undefined {
+    if (messages.length === 0) {
+      return undefined;
+    }
+
+    const lastMeaningfulMessage = [...messages]
+      .reverse()
+      .find((message) => message.type !== "tool" && message.type !== "remove");
+    if (!lastMeaningfulMessage || lastMeaningfulMessage.type !== "ai") {
+      return undefined;
+    }
+
+    const toolCalls = getToolCallsWithResults<ToolCall>(messages);
+    if (toolCalls.some((toolCall) => toolCall.state === "pending")) {
+      return undefined;
+    }
+
+    return this.stringifyMessageContent(lastMeaningfulMessage.content);
   }
 
   /**
@@ -454,16 +646,45 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   private buildExecution(
     base: SubagentStreamBase<ToolCall>
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
-    // Get fresh messages from the streaming manager (populated during live streaming).
-    // Fall back to base.messages, which is populated by updateSubagentFromSubgraphState
-    // when restoring history after page reload.
-    const streamingMessages = this.getMessagesForSubagent(base.id);
-    const messages =
-      streamingMessages.length > 0 ? streamingMessages : base.messages;
     return this.createSubagentStream({
       ...base,
-      messages,
+      messages: base.messages,
     });
+  }
+
+  private getMessageSetScore(messages: Message<ToolCall>[]): {
+    toolCalls: number;
+    count: number;
+  } {
+    return {
+      toolCalls: getToolCallsWithResults<ToolCall>(messages).length,
+      count: messages.length,
+    };
+  }
+
+  private selectBestMessages(
+    ...candidates: Message<ToolCall>[][]
+  ): Message<ToolCall>[] {
+    let best: Message<ToolCall>[] = [];
+    let bestScore = { toolCalls: 0, count: 0 };
+
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate) || candidate.length === 0) {
+        continue;
+      }
+
+      const score = this.getMessageSetScore(candidate);
+      if (
+        score.toolCalls > bestScore.toolCalls ||
+        (score.toolCalls === bestScore.toolCalls &&
+          score.count > bestScore.count)
+      ) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+
+    return best;
   }
 
   /**
@@ -711,7 +932,10 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
     this.subagents.set(toolCallId, {
       ...existing,
-      status: "running",
+      status:
+        existing.status === "complete" || existing.status === "error"
+          ? existing.status
+          : "running",
       namespace,
       parentId:
         existing.parentId ?? extractParentIdFromNamespace(namespace) ?? null,
@@ -723,15 +947,20 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
-   * Mark a subagent as running using a namespace ID.
-   * Resolves the namespace ID to the actual tool call ID via the mapping.
+   * Mark a subagent as running using a namespace key.
+   * Resolves the namespace key to the actual tool call ID via the mapping.
    *
-   * @param namespaceId - The namespace ID (pregel task ID) from the subgraph
+   * @param namespaceKey - Stable namespace key from the subgraph
    * @param namespace - The full namespace array
    */
-  markRunningFromNamespace(namespaceId: string, namespace?: string[]): void {
-    const toolCallId = this.getToolCallIdFromNamespace(namespaceId);
-    this.markRunning(toolCallId, { namespace });
+  markRunningFromNamespace(namespaceKey: string, namespace?: string[]): void {
+    const toolCallId = this.resolveToolCallIdForNamespace(namespaceKey);
+    if (!toolCallId) {
+      return;
+    }
+    this.markRunning(toolCallId, {
+      namespace: namespace ?? namespaceKey.split("|"),
+    });
   }
 
   /**
@@ -741,23 +970,26 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * Uses MessageTupleManager for proper chunk concatenation, matching
    * how the main stream handles messages.
    *
-   * @param namespaceId - The namespace ID (pregel task ID) from the stream
+   * @param namespaceKey - Stable namespace key from the stream
    * @param serialized - The serialized message from the stream
    * @param metadata - Optional metadata from the stream event
    */
   addMessageToSubagent(
-    namespaceId: string,
+    namespaceKey: string,
     serialized: Message<DefaultToolCall>,
     metadata?: Record<string, unknown>
   ): void {
     // First, try to match this namespace to an existing subagent
     // For human messages (which contain the description), try to establish the mapping
     if (serialized.type === "human" && typeof serialized.content === "string") {
-      this.matchSubgraphToSubagent(namespaceId, serialized.content);
+      this.matchSubgraphToSubagent(namespaceKey, serialized.content);
     }
 
     // Resolve the actual tool call ID from the namespace mapping
-    const toolCallId = this.getToolCallIdFromNamespace(namespaceId);
+    const toolCallId = this.resolveToolCallIdForNamespace(namespaceKey);
+    if (!toolCallId) {
+      return;
+    }
     const existing = this.subagents.get(toolCallId);
 
     // If we still don't have a match, the mapping hasn't been established yet.
@@ -774,20 +1006,35 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     const messageId = manager.add(serialized, metadata);
 
     if (messageId) {
+      const nextMessages = this.selectBestMessages(
+        existing.messages as Message<ToolCall>[],
+        this.getMessagesForSubagent(toolCallId)
+      );
+
       // Update the subagent status if this is an AI message with content
       if (serialized.type === "ai") {
         this.subagents.set(toolCallId, {
           ...existing,
-          status: "running",
+          status:
+            existing.status === "complete" || existing.status === "error"
+              ? existing.status
+              : "running",
+          namespace:
+            existing.namespace.length > 0
+              ? existing.namespace
+              : namespaceKey.split("|"),
           startedAt: existing.startedAt ?? new Date(),
-          // Messages are derived from the manager, so we update them here
-          messages: this.getMessagesForSubagent(toolCallId),
+          messages: nextMessages,
         });
       } else {
         // For other message types, just update the messages
         this.subagents.set(toolCallId, {
           ...existing,
-          messages: this.getMessagesForSubagent(toolCallId),
+          namespace:
+            existing.namespace.length > 0
+              ? existing.namespace
+              : namespaceKey.split("|"),
+          messages: nextMessages,
         });
       }
     }
@@ -802,29 +1049,91 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * This populates the subagent's state values, making them accessible
    * via the `values` property.
    *
-   * @param namespaceId - The namespace ID (pregel task ID) from the stream
+   * @param namespaceKey - Stable namespace key from the stream
    * @param values - The state values from the stream event
    */
   updateSubagentValues(
-    namespaceId: string,
+    namespaceKey: string,
     values: Record<string, unknown>
   ): void {
+    const messages = values.messages as unknown[];
+    if (Array.isArray(messages) && messages.length > 0) {
+      const humanMessage = messages.find(
+        (message): message is Record<string, unknown> =>
+          message != null &&
+          typeof message === "object" &&
+          (message as { type?: unknown }).type === "human" &&
+          typeof (message as { content?: unknown }).content === "string"
+      );
+      if (humanMessage) {
+        this.matchSubgraphToSubagent(
+          namespaceKey,
+          humanMessage.content as string
+        );
+      }
+    }
+
     // Resolve the actual tool call ID from the namespace mapping
-    const toolCallId = this.getToolCallIdFromNamespace(namespaceId);
+    const toolCallId = this.resolveToolCallIdForNamespace(namespaceKey);
+    if (!toolCallId) {
+      return;
+    }
     const existing = this.subagents.get(toolCallId);
 
     if (!existing) {
       return;
     }
 
+    const nextMessages = Array.isArray(values.messages)
+      ? this.selectBestMessages(
+          existing.messages as Message<ToolCall>[],
+          values.messages as Message<ToolCall>[]
+        )
+      : existing.messages;
+
     this.subagents.set(toolCallId, {
       ...existing,
       values,
+      messages: nextMessages,
       status: existing.status === "pending" ? "running" : existing.status,
+      namespace:
+        existing.namespace.length > 0
+          ? existing.namespace
+          : namespaceKey.split("|"),
       startedAt: existing.startedAt ?? new Date(),
     });
 
     this.onSubagentChange?.();
+  }
+
+  processToolEndForNamespace(namespaceKey: string, output: string): boolean {
+    const rootNamespaceKey = this.getRootNamespaceKey(namespaceKey);
+    const matches = [...this.subagents.values()].filter((subagent) => {
+      if (subagent.status !== "running") {
+        return false;
+      }
+
+      const subagentNamespaceKey = getSubagentNamespaceKey(subagent.namespace);
+      if (!subagentNamespaceKey) {
+        return false;
+      }
+
+      if (this.getRootNamespaceKey(subagentNamespaceKey) !== rootNamespaceKey) {
+        return false;
+      }
+
+      return (
+        this.inferCompletedResult(subagent.messages as Message<ToolCall>[]) ===
+        output
+      );
+    });
+
+    if (matches.length !== 1) {
+      return false;
+    }
+
+    this.complete(matches[0].id, output, "complete");
+    return true;
   }
 
   /**
@@ -861,6 +1170,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   clear(): void {
     this.subagents.clear();
     this.namespaceToToolCallId.clear();
+    this.pendingToolCallIdsByNamespace.clear();
     this.messageManagers.clear();
     this.pendingMatches.clear();
     this.pendingMessages.clear();
@@ -1036,15 +1346,35 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   ): boolean {
     const subagent = this.subagents.get(toolCallId);
     if (!subagent) return false;
-    // Don't overwrite messages from active streaming
-    if (subagent.messages.length > 0) return false;
     if (messages.length === 0) return false;
 
-    subagent.messages = messages as Message<ToolCall>[];
-    if (values != null) subagent.values = values;
+    const existingMessages = subagent.messages as Message<ToolCall>[];
+    const nextMessages = this.selectBestMessages(
+      existingMessages,
+      messages as Message<ToolCall>[]
+    );
+    const didUpdateMessages = nextMessages !== existingMessages;
+    const didUpdateValues = values != null;
+
+    if (!didUpdateMessages && !didUpdateValues) {
+      return false;
+    }
+
+    subagent.messages = nextMessages;
+    if (values != null) {
+      subagent.values = values;
+    }
+    const inferredResult = this.inferCompletedResult(
+      nextMessages as Message<ToolCall>[]
+    );
+    if (inferredResult != null && subagent.status !== "error") {
+      subagent.status = "complete";
+      subagent.result ??= inferredResult;
+      subagent.completedAt ??= new Date();
+    }
 
     this.onSubagentChange?.();
-    return true;
+    return didUpdateMessages || didUpdateValues;
   }
 
   /**
