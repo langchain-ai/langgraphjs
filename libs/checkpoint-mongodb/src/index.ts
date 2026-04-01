@@ -202,6 +202,28 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         doc.metadata.value("utf8")
       )) as CheckpointMetadata;
 
+      // Query pending writes for this checkpoint, matching getTuple() behavior
+      const serializedWrites = await this.db
+        .collection(this.checkpointWritesCollectionName)
+        .find({
+          thread_id: doc.thread_id,
+          checkpoint_ns: doc.checkpoint_ns,
+          checkpoint_id: doc.checkpoint_id,
+        })
+        .toArray();
+      const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+        serializedWrites.map(async (serializedWrite) => {
+          return [
+            serializedWrite.task_id,
+            serializedWrite.channel,
+            await this.serde.loadsTyped(
+              serializedWrite.type,
+              serializedWrite.value.value("utf8")
+            ),
+          ] as CheckpointPendingWrite;
+        })
+      );
+
       yield {
         config: {
           configurable: {
@@ -211,6 +233,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           },
         },
         checkpoint,
+        pendingWrites,
         metadata,
         parentConfig: doc.parent_checkpoint_id
           ? {
