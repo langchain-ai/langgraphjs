@@ -5,35 +5,35 @@
  */
 
 /**
- * Copy a plain object, drop `snake`, and ensure `camel` is set from camel ?? snake.
+ * Copy a plain object and expose both casing styles for a field.
+ *
+ * camelCase is treated as canonical when both keys are present so newer
+ * consumers keep the current behavior while legacy snake_case access still
+ * resolves to the same value.
  */
-function aliasSnakeToCamel(
-  item: unknown,
-  camel: string,
-  snake: string
-): unknown {
+function aliasCasePair(item: unknown, camel: string, snake: string): unknown {
   if (item === null || typeof item !== "object" || Array.isArray(item)) {
     return item;
   }
   const o = item as Record<string, unknown>;
   const merged = o[camel] ?? o[snake];
-  const next: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(o)) {
-    if (k === snake) continue;
-    next[k] = v;
+  const next: Record<string, unknown> = { ...o };
+  if (merged !== undefined) {
+    next[camel] = merged;
+    next[snake] = merged;
   }
-  if (merged !== undefined) next[camel] = merged;
   return next;
 }
 
 function mapArrayAlias(raw: unknown, camel: string, snake: string): unknown {
   if (!Array.isArray(raw)) return raw;
-  return raw.map((item) => aliasSnakeToCamel(item, camel, snake));
+  return raw.map((item) => aliasCasePair(item, camel, snake));
 }
 
 /**
- * If `value` looks like a HITL request object from the Python API, rewrite
- * snake_case keys to the camelCase shape used by JS / LangChain.
+ * If `value` looks like a HITL request object, expose both the new camelCase
+ * keys and the deprecated snake_case aliases so older apps keep working while
+ * migrating to the new shape.
  */
 export function normalizeHitlInterruptPayload(value: unknown): unknown {
   if (value === null || typeof value !== "object") {
@@ -52,34 +52,27 @@ export function normalizeHitlInterruptPayload(value: unknown): unknown {
     return value;
   }
 
-  const next: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (
-      k === "action_requests" ||
-      k === "actionRequests" ||
-      k === "review_configs" ||
-      k === "reviewConfigs"
-    ) {
-      continue;
-    }
-    next[k] = v;
-  }
+  const next: Record<string, unknown> = { ...obj };
 
   const actionRequestsRaw = obj.actionRequests ?? obj.action_requests;
   if (actionRequestsRaw !== undefined) {
-    next.actionRequests = mapArrayAlias(
+    const actionRequests = mapArrayAlias(
       actionRequestsRaw,
       "name",
       "action_name"
     );
+    next.actionRequests = actionRequests;
+    next.action_requests = actionRequests;
   }
   const reviewConfigsRaw = obj.reviewConfigs ?? obj.review_configs;
   if (reviewConfigsRaw !== undefined) {
-    next.reviewConfigs = mapArrayAlias(
+    const reviewConfigs = mapArrayAlias(
       reviewConfigsRaw,
       "allowedDecisions",
       "allowed_decisions"
     );
+    next.reviewConfigs = reviewConfigs;
+    next.review_configs = reviewConfigs;
   }
   return next;
 }
