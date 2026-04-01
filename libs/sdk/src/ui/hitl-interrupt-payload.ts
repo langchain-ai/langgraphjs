@@ -11,11 +11,7 @@
  * consumers keep the current behavior while legacy snake_case access still
  * resolves to the same value.
  */
-function aliasCasePair(
-  item: unknown,
-  camel: string,
-  snake: string
-): unknown {
+function aliasCasePair(item: unknown, camel: string, snake: string): unknown {
   if (item === null || typeof item !== "object" || Array.isArray(item)) {
     return item;
   }
