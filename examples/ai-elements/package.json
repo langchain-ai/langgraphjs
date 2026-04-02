@@ -12,9 +12,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.32",
+    "@langchain/core": "^1.1.38",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.2.13",
+    "@langchain/openai": "^1.4.1",
     "@langchain/react": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -34,7 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "langchain": "^1.2.32",
+    "langchain": "^1.2.39",
     "lucide-react": "^0.577.0",
     "motion": "^12.36.0",
     "nanoid": "^5.1.6",
