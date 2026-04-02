@@ -25,7 +25,7 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm run lint",
-    "*": "pnpm run fmt --no-error-on-unmatched-pattern"
+    "*": "pnpm run format --no-error-on-unmatched-pattern"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.6.0",
@@ -49,7 +49,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": ">=1.1.27",
+      "@langchain/core": ">=1.1.38",
       "langchain": ">=1.2.27",
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
