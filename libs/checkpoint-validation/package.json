@@ -55,7 +55,7 @@
     "mongodb": "^6.21.0",
     "pg": "^8.12.0",
     "rollup": "^4.37.0",
-    "typescript": "^4.9.5 || ^5.4.5"
+    "typescript": "^6.0.2"
   },
   "publishConfig": {
     "access": "public",
