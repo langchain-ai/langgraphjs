@@ -9,6 +9,10 @@ import type {
 
 export { useStream, type ClassSubagentStreamInterface } from "./stream.js";
 export {
+  useThreadStream,
+  useThreadStream as experimental_useThreadStream,
+} from "./thread-stream.js";
+export {
   useSuspenseStream,
   createSuspenseCache,
   invalidateSuspenseCache,
@@ -79,6 +83,10 @@ export type {
   QueueEntry,
   QueueInterface,
 } from "@langchain/langgraph-sdk/ui";
+export type {
+  UseThreadStreamOptions,
+  UseThreadStreamValue,
+} from "./thread-stream.js";
 
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
   _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;

@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm turbo dev:client dev:server --filter=@examples/ui-react",
+    "dev": "pnpm run dev:server & pnpm run dev:client",
+    "dev:python": "pnpm run dev:server:python & pnpm run dev:client",
     "dev:client": "vite",
     "dev:server": "langgraphjs dev --no-browser",
+    "dev:server:python": "langgraph dev --config langgraph.python.json --no-browser",
     "build:internal": "tsc -b && vite build",
     "preview": "vite preview"
   },
@@ -14,6 +16,7 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/openai": "^1.2.3",
+    "@langchain/react": "workspace:*",
     "deepagents": "^1.8.3",
     "langchain": "^1.2.26",
     "lucide-react": "^0.577.0",

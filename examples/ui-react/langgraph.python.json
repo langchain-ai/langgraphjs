@@ -1,0 +1,8 @@
+{
+  "$schema": "https://raw.githubusercontent.com/langchain-ai/langgraph/main/libs/cli/schemas/schema.json",
+  "dependencies": ["langgraph>=0.6.0"],
+  "graphs": {
+    "tool-calling-agent": "./python_backend/graph.py:graph",
+    "thread-stream-mechanics": "./python_backend/graph.py:graph"
+  }
+}

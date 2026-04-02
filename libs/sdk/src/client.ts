@@ -288,8 +288,26 @@ class BaseClient {
       for (const [key, value] of Object.entries(mutatedOptions.params)) {
         if (value == null) continue;
 
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item == null) continue;
+
+            const strValue =
+              typeof item === "string" ||
+              typeof item === "number" ||
+              typeof item === "boolean"
+                ? item.toString()
+                : JSON.stringify(item);
+
+            targetUrl.searchParams.append(key, strValue);
+          }
+          continue;
+        }
+
         const strValue =
-          typeof value === "string" || typeof value === "number"
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
             ? value.toString()
             : JSON.stringify(value);
 

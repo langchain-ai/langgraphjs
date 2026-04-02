@@ -171,5 +171,10 @@ function joinArrays(data: ArrayLike<number>[]) {
 }
 
 function decodeArraysToJson(decoder: TextDecoder, data: ArrayLike<number>[]) {
-  return JSON.parse(decoder.decode(joinArrays(data)));
+  const text = decoder.decode(joinArrays(data));
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
