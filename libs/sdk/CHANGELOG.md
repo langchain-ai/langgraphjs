@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.8.4
+
+### Patch Changes
+
+- [#2263](https://github.com/langchain-ai/langgraphjs/pull/2263) [`936b48b`](https://github.com/langchain-ai/langgraphjs/commit/936b48b2807687d3fa5dd7aa480ebcc2ad3ffccf) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Restore deprecated snake_case aliases on human-in-the-loop interrupt payloads
+  while preserving the newer camelCase fields so older apps can migrate to
+  `@langchain/react` without breaking interrupt handling.
+
 ## 1.8.3
 
 ### Patch Changes
