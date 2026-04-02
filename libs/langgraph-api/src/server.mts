@@ -214,7 +214,7 @@ export async function startServer(
   if (!options.http?.disable_runs) app.route("/", runs);
   if (!options.http?.disable_threads) app.route("/", threads);
   if (!options.http?.disable_store) app.route("/", store);
-  if (!options.http?.disable_runs) app.route("/", protocol(upgradeWebSocket));
+  if (!options.http?.disable_runs) app.route("/", protocol(upgradeWebSocket, ops));
 
   if (options.ui) {
     logger.info(`Registering UI from ${options.cwd}`);

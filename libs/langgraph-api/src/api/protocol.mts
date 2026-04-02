@@ -1,173 +1,351 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
+import { streamSSE } from "hono/streaming";
 import type { UpgradeWebSocket } from "hono/ws";
 import { z } from "zod/v3";
 
-import { RunProtocolSession } from "../protocol/session.mjs";
-import type { Run, RunsRepo, ThreadsRepo } from "../storage/types.mjs";
+import { ProtocolService } from "../protocol/service.mjs";
+import type {
+  ProtocolCommand,
+  ProtocolTarget,
+} from "../protocol/types.mjs";
+import type { Ops } from "../storage/types.mjs";
+import { jsonExtra } from "../utils/hono.mjs";
+import { serialiseAsDict } from "../utils/serde.mjs";
 
-declare module "hono" {
-  interface ContextVariableMap {
-    protocolRun?: Run;
-    protocolRepos?: {
-      runs: RunsRepo;
-      threads: ThreadsRepo;
-    };
-  }
-}
+const SessionIdSchema = z.object({ session_id: z.string() });
 
-const RunIdSchema = z.object({ run_id: z.string().uuid() });
-const ThreadRunIdSchema = z.object({
-  thread_id: z.string().uuid(),
-  run_id: z.string().uuid(),
+const ProtocolSessionOpenSchema = z.object({
+  method: z.literal("session.open"),
+  params: z.object({
+    protocolVersion: z.string(),
+    target: z.object({
+      kind: z.enum(["graph", "agent"]),
+      id: z.string(),
+    }),
+    preferredTransports: z.array(z.string()).optional(),
+    mediaTransferModes: z.array(z.string()).optional(),
+  }),
 });
 
-const createSessionHandlers = (
-  c: any,
-  repos: {
-    runs: RunsRepo;
-    threads: ThreadsRepo;
-  },
-  run: Run,
-  threadId: string | undefined
-) => {
-  let session: RunProtocolSession | undefined;
-  let started = false;
-  const abortController = new AbortController();
+const ProtocolCommandSchema = z.object({
+  id: z.number().int().nonnegative(),
+  method: z.string(),
+  params: z.record(z.unknown()).optional(),
+});
 
-  const startSession = (ws: {
-    send: (source: string) => void;
-  }) => {
-    if (started) return;
-    started = true;
-
-    const source = repos.runs.stream.join(
-      run.run_id,
-      threadId,
-      {
-        signal: abortController.signal,
-        cancelOnDisconnect: false,
-        lastEventId: run.kwargs.resumable ? "-1" : undefined,
-      },
-      c.var.auth
-    );
-
-    session = new RunProtocolSession({
-      runId: run.run_id,
-      threadId,
-      auth: c.var.auth,
-      initialRun: run,
-      getRun: () => repos.runs.get(run.run_id, threadId, c.var.auth),
-      send: (payload) => ws.send(payload),
-      source,
-    });
-    void session.start();
-  };
-
-  const closeSession = () => {
-    abortController.abort();
-    void session?.close();
-  };
-
-  return {
-    onOpen(_event: Event, ws: { send: (source: string) => void }) {
-      startSession(ws);
-    },
-    async onMessage(
-      event: MessageEvent,
-      ws: { send: (source: string) => void }
-    ) {
-      startSession(ws);
-      const payload = await (async () => {
-        if (typeof event.data === "string") return event.data;
-        if (event.data instanceof ArrayBuffer) {
-          return new TextDecoder().decode(new Uint8Array(event.data));
-        }
-        if (event.data instanceof Blob) {
-          const buffer = await event.data.arrayBuffer();
-          return new TextDecoder().decode(new Uint8Array(buffer));
-        }
-        return String(event.data);
-      })();
-      void session?.handleCommand(payload);
-    },
-    onClose() {
-      closeSession();
-    },
-    onError() {
-      closeSession();
-    },
-  };
+const parseSocketPayload = async (event: MessageEvent) => {
+  if (typeof event.data === "string") return event.data;
+  if (event.data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(event.data));
+  }
+  if (event.data instanceof Blob) {
+    const buffer = await event.data.arrayBuffer();
+    return new TextDecoder().decode(new Uint8Array(buffer));
+  }
+  return String(event.data);
 };
 
-const attachRun = (threaded: boolean) => {
-  return async (c: any, next: () => Promise<void>) => {
-    if (threaded) {
-      const { thread_id, run_id } = c.req.valid("param");
-      await c.var.LANGGRAPH_OPS.threads.get(thread_id, c.var.auth);
-      const run = await c.var.LANGGRAPH_OPS.runs.get(
-        run_id,
-        thread_id,
-        c.var.auth
-      );
-      if (run == null) {
-        throw new HTTPException(404, { message: "Run not found" });
-      }
-      c.set("protocolRun", run);
-      c.set("protocolRepos", {
-        runs: c.var.LANGGRAPH_OPS.runs,
-        threads: c.var.LANGGRAPH_OPS.threads,
-      });
-      await next();
-      return;
-    }
+const toSessionTarget = (
+  payload: z.infer<typeof ProtocolSessionOpenSchema>
+): ProtocolTarget => ({
+  kind: payload.params.target.kind,
+  id: payload.params.target.id,
+});
 
-    const { run_id } = c.req.valid("param");
-    const run = await c.var.LANGGRAPH_OPS.runs.get(run_id, undefined, c.var.auth);
-    if (run == null) {
-      throw new HTTPException(404, { message: "Run not found" });
-    }
-    c.set("protocolRun", run);
-    c.set("protocolRepos", {
-      runs: c.var.LANGGRAPH_OPS.runs,
-      threads: c.var.LANGGRAPH_OPS.threads,
-    });
-    await next();
+const createRunScopedWebSocketHandlers = (
+  protocolService: ProtocolService,
+  target: ProtocolTarget,
+  auth: any
+) => {
+  let sessionId: string | undefined;
+  return {
+    async onOpen(_event: Event, ws: { send: (source: string) => void }) {
+      const { record, response } = await protocolService.openSession({
+        transportName: "websocket",
+        auth,
+        target,
+        sendEvent: (event) => {
+          ws.send(serialiseAsDict(event));
+        },
+      });
+      sessionId = record.sessionId;
+      ws.send(serialiseAsDict(response));
+    },
+    async onMessage(event: MessageEvent, ws: { send: (source: string) => void }) {
+      if (sessionId == null) {
+        ws.send(
+          serialiseAsDict({
+            type: "error",
+            id: null,
+            error: "invalid_argument",
+            message: "Protocol session not initialized.",
+          })
+        );
+        return;
+      }
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(await parseSocketPayload(event));
+      } catch {
+        ws.send(
+          serialiseAsDict({
+            type: "error",
+            id: null,
+            error: "invalid_argument",
+            message: "Protocol commands must be valid JSON.",
+          })
+        );
+        return;
+      }
+
+      if (
+        typeof payload !== "object" ||
+        payload == null ||
+        typeof (payload as { id?: unknown }).id !== "number" ||
+        typeof (payload as { method?: unknown }).method !== "string"
+      ) {
+        ws.send(
+          serialiseAsDict({
+            type: "error",
+            id: null,
+            error: "invalid_argument",
+            message: "Protocol commands must include an integer id and string method.",
+          })
+        );
+        return;
+      }
+
+      const response = await protocolService.handleCommand(
+        sessionId,
+        payload as ProtocolCommand
+      );
+      ws.send(serialiseAsDict(response));
+    },
+    onClose() {
+      if (sessionId != null) void protocolService.closeSession(sessionId);
+    },
+    onError() {
+      if (sessionId != null) void protocolService.closeSession(sessionId);
+    },
   };
 };
 
 export default function createProtocolApi(
-  upgradeWebSocket: UpgradeWebSocket
+  upgradeWebSocket: UpgradeWebSocket,
+  ops: Ops
 ) {
   const api = new Hono();
+  const protocolService = new ProtocolService({
+    runs: ops.runs,
+    threads: ops.threads,
+  });
 
   api.get(
-    "/runs/:run_id/protocol",
-    zValidator("param", RunIdSchema),
-    attachRun(false),
-    upgradeWebSocket((c: any) =>
-      createSessionHandlers(
-        c,
-        c.get("protocolRepos") as { runs: RunsRepo; threads: ThreadsRepo },
-        c.get("protocolRun") as Run,
-        undefined
-      ) as any
-    )
+    "/v2/runs",
+    upgradeWebSocket((c: any) => {
+      let sessionId: string | undefined;
+
+      return {
+        async onOpen(_event: Event, _ws: { send: (source: string) => void }) {},
+        async onMessage(event: MessageEvent, ws: { send: (source: string) => void }) {
+          const raw = await parseSocketPayload(event);
+          let payload: unknown;
+          try {
+            payload = JSON.parse(raw);
+          } catch {
+            ws.send(
+              serialiseAsDict({
+                type: "error",
+                id: null,
+                error: "invalid_argument",
+                message: "Protocol commands must be valid JSON.",
+              })
+            );
+            return;
+          }
+
+          if (
+            sessionId == null &&
+            typeof payload === "object" &&
+            payload != null &&
+            (payload as { method?: unknown }).method === "session.open"
+          ) {
+            const parsed = ProtocolSessionOpenSchema.parse(payload);
+            const { record, response } = await protocolService.openSession({
+              transportName: "websocket",
+              auth: c.var.auth,
+              target: toSessionTarget(parsed),
+              sendEvent: (protocolEvent) => {
+                ws.send(serialiseAsDict(protocolEvent));
+              },
+            });
+            sessionId = record.sessionId;
+            ws.send(serialiseAsDict(response));
+            return;
+          }
+
+          if (sessionId == null) {
+            ws.send(
+              serialiseAsDict({
+                type: "error",
+                id:
+                  typeof payload === "object" &&
+                  payload != null &&
+                  typeof (payload as { id?: unknown }).id === "number"
+                    ? (payload as { id: number }).id
+                    : null,
+                error: "invalid_argument",
+                message: "session.open must be the first command on a protocol socket.",
+              })
+            );
+            return;
+          }
+
+          if (
+            typeof payload !== "object" ||
+            payload == null ||
+            typeof (payload as { id?: unknown }).id !== "number" ||
+            typeof (payload as { method?: unknown }).method !== "string"
+          ) {
+            ws.send(
+              serialiseAsDict({
+                type: "error",
+                id: null,
+                error: "invalid_argument",
+                message: "Protocol commands must include an integer id and string method.",
+              })
+            );
+            return;
+          }
+
+          const response = await protocolService.handleCommand(
+            sessionId,
+            payload as ProtocolCommand
+          );
+          ws.send(serialiseAsDict(response));
+        },
+        onClose() {
+          if (sessionId != null) void protocolService.closeSession(sessionId);
+        },
+        onError() {
+          if (sessionId != null) void protocolService.closeSession(sessionId);
+        },
+      } as any;
+    })
+  );
+
+  api.post("/v2/sessions", zValidator("json", ProtocolSessionOpenSchema), async (c) => {
+    const payload = c.req.valid("json");
+    const { record, response } = await protocolService.openSession({
+      transportName: "sse-http",
+      auth: c.var.auth,
+      target: toSessionTarget(payload),
+    });
+
+    return jsonExtra(c, {
+      ...response,
+      result: {
+        ...response.result,
+        eventsUrl: `/v2/sessions/${record.sessionId}/events`,
+        commandsUrl: `/v2/sessions/${record.sessionId}/commands`,
+      },
+    });
+  });
+
+  api.post(
+    "/v2/sessions/:session_id/commands",
+    zValidator("param", SessionIdSchema),
+    zValidator("json", ProtocolCommandSchema),
+    async (c) => {
+      const { session_id } = c.req.valid("param");
+      const payload = c.req.valid("json") as ProtocolCommand;
+      return jsonExtra(c, await protocolService.handleCommand(session_id, payload));
+    }
+  );
+
+  api.get(
+    "/v2/sessions/:session_id/events",
+    zValidator("param", SessionIdSchema),
+    async (c) => {
+      const { session_id } = c.req.valid("param");
+      const session = protocolService.getSession(session_id);
+      if (session == null) return c.body("Session not found", 404);
+      const lastEventId = c.req.header("Last-Event-ID") || undefined;
+
+      return streamSSE(c, async (stream) => {
+        const delivered = new Set<string>();
+        const queued = session.queuedEvents.filter((event) => {
+          if (lastEventId != null && event.eventId <= lastEventId) return false;
+          return true;
+        });
+        for (const event of queued) {
+          delivered.add(event.eventId);
+          await stream.writeSSE({
+            id: event.eventId,
+            event: event.method,
+            data: serialiseAsDict(event),
+          });
+        }
+
+        await protocolService.attachEventSink(session_id, async (event) => {
+          if (delivered.has(event.eventId)) return;
+          delivered.add(event.eventId);
+          await stream.writeSSE({
+            id: event.eventId,
+            event: event.method,
+            data: serialiseAsDict(event),
+          });
+        });
+
+        await new Promise<void>((resolve) => {
+          stream.onAbort(() => resolve());
+        });
+      });
+    }
+  );
+
+  api.delete(
+    "/v2/sessions/:session_id",
+    zValidator("param", SessionIdSchema),
+    async (c) => {
+      const { session_id } = c.req.valid("param");
+      await protocolService.closeSession(session_id);
+      return c.body(null, 204);
+    }
   );
 
   api.get(
     "/threads/:thread_id/runs/:run_id/protocol",
-    zValidator("param", ThreadRunIdSchema),
-    attachRun(true),
-    upgradeWebSocket((c: any) =>
-      createSessionHandlers(
-        c,
-        c.get("protocolRepos") as { runs: RunsRepo; threads: ThreadsRepo },
-        c.get("protocolRun") as Run,
-        c.req.valid("param").thread_id
-      ) as any
-    )
+    zValidator(
+      "param",
+      z.object({
+        thread_id: z.string().uuid(),
+        run_id: z.string().uuid(),
+      })
+    ),
+    upgradeWebSocket((c: any) => {
+      const { thread_id, run_id } = c.req.valid("param");
+      return createRunScopedWebSocketHandlers(
+        protocolService,
+        { kind: "run", id: run_id, threadId: thread_id },
+        c.var.auth
+      ) as any;
+    })
+  );
+
+  api.get(
+    "/runs/:run_id/protocol",
+    zValidator("param", z.object({ run_id: z.string().uuid() })),
+    upgradeWebSocket((c: any) => {
+      const { run_id } = c.req.valid("param");
+      return createRunScopedWebSocketHandlers(
+        protocolService,
+        { kind: "run", id: run_id },
+        c.var.auth
+      ) as any;
+    })
   );
 
   return api;

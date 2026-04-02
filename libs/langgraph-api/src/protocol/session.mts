@@ -2,6 +2,7 @@ import { v7 as uuid7 } from "uuid";
 
 import type { AuthContext } from "../auth/index.mjs";
 import type { Run } from "../storage/types.mjs";
+import type { ProtocolCommand, ProtocolError, ProtocolResponseMeta, ProtocolSuccess } from "./types.mjs";
 import { serialiseAsDict, serializeError } from "../utils/serde.mjs";
 
 type SupportedChannel =
@@ -34,26 +35,6 @@ type SourceStreamEvent = {
   id?: string;
   event: string;
   data: unknown;
-};
-
-type ProtocolCommand = {
-  id: number;
-  method: string;
-  params?: Record<string, unknown>;
-};
-
-type ProtocolSuccess = {
-  type: "success";
-  id: number;
-  result: Record<string, unknown>;
-};
-
-type ProtocolError = {
-  type: "error";
-  id: number | null;
-  error: ErrorCode;
-  message: string;
-  stacktrace?: string;
 };
 
 type ProtocolEvent = {
@@ -387,6 +368,46 @@ export class RunProtocolSession {
         command.id,
         "unknown_error",
         error instanceof Error ? error.message : "Unknown protocol error",
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  async handleProtocolCommand(
+    command: ProtocolCommand,
+    meta?: ProtocolResponseMeta
+  ): Promise<ProtocolSuccess | ProtocolError> {
+    try {
+      switch (command.method) {
+        case "subscription.subscribe":
+          return await this.handleSubscribeForResponse(command, meta);
+        case "subscription.unsubscribe":
+          return await this.handleUnsubscribeForResponse(command, meta);
+        case "agent.getTree":
+          return this.success(command.id, { tree: this.buildTree([]) }, meta);
+        case "flow.setCapacity":
+          return await this.handleSetCapacityForResponse(command, meta);
+        case "subscription.reconnect":
+          return this.error(
+            command.id,
+            "not_supported",
+            "subscription.reconnect is not supported by this server yet.",
+            meta
+          );
+        default:
+          return this.error(
+            command.id,
+            "unknown_command",
+            `Unknown protocol command: ${command.method}`,
+            meta
+          );
+      }
+    } catch (error) {
+      return this.error(
+        command.id,
+        "unknown_error",
+        error instanceof Error ? error.message : "Unknown protocol error",
+        meta,
         error instanceof Error ? error.stack : undefined
       );
     }
@@ -794,6 +815,96 @@ export class RunProtocolSession {
     subscription.active = true;
   }
 
+  private async handleSubscribeForResponse(
+    command: ProtocolCommand,
+    meta?: ProtocolResponseMeta
+  ): Promise<ProtocolSuccess | ProtocolError> {
+    const params = isRecord(command.params) ? command.params : undefined;
+    const rawChannels = params?.channels;
+    if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        "subscription.subscribe requires a non-empty channels array.",
+        meta
+      );
+    }
+
+    const channels = rawChannels.filter(
+      (value): value is SupportedChannel =>
+        typeof value === "string" && SUPPORTED_CHANNELS.has(value as SupportedChannel)
+    );
+
+    if (channels.length !== rawChannels.length) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        "subscription.subscribe received an unsupported channel.",
+        meta
+      );
+    }
+
+    const namespaces =
+      Array.isArray(params?.namespaces) &&
+      params.namespaces.every(
+        (value) =>
+          Array.isArray(value) &&
+          value.every((segment) => typeof segment === "string")
+      )
+        ? (params.namespaces as string[][])
+        : undefined;
+
+    const depth =
+      typeof params?.depth === "number" &&
+      Number.isInteger(params.depth) &&
+      params.depth >= 0
+        ? params.depth
+        : undefined;
+
+    const subscription: Subscription = {
+      id: uuid7(),
+      channels: new Set(channels),
+      namespaces,
+      depth,
+      active: false,
+    };
+
+    this.subscriptions.set(subscription.id, subscription);
+
+    const snapshotSeq = this.nextSeq;
+    const snapshot = this.buffer.filter(
+      (event) =>
+        event.seq <= snapshotSeq && this.matchesSubscription(subscription, event)
+    );
+
+    for (const event of snapshot) {
+      await this.sendJson(event);
+    }
+
+    let cursor = snapshotSeq;
+    while (true) {
+      const drain = this.buffer.filter(
+        (event) =>
+          event.seq > cursor && this.matchesSubscription(subscription, event)
+      );
+      if (drain.length === 0) break;
+      for (const event of drain) {
+        await this.sendJson(event);
+      }
+      cursor = drain.at(-1)?.seq ?? cursor;
+    }
+
+    subscription.active = true;
+    return this.success(
+      command.id,
+      {
+        subscriptionId: subscription.id,
+        replayedEvents: snapshot.length,
+      },
+      meta
+    );
+  }
+
   private async handleUnsubscribe(command: ProtocolCommand) {
     const params = isRecord(command.params) ? command.params : undefined;
     const subscriptionId = params?.subscriptionId;
@@ -818,6 +929,33 @@ export class RunProtocolSession {
     await this.sendSuccess(command.id, {});
   }
 
+  private async handleUnsubscribeForResponse(
+    command: ProtocolCommand,
+    meta?: ProtocolResponseMeta
+  ): Promise<ProtocolSuccess | ProtocolError> {
+    const params = isRecord(command.params) ? command.params : undefined;
+    const subscriptionId = params?.subscriptionId;
+    if (typeof subscriptionId !== "string") {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        "subscription.unsubscribe requires a subscriptionId.",
+        meta
+      );
+    }
+
+    if (!this.subscriptions.delete(subscriptionId)) {
+      return this.error(
+        command.id,
+        "no_such_subscription",
+        `Unknown subscription: ${subscriptionId}`,
+        meta
+      );
+    }
+
+    return this.success(command.id, {}, meta);
+  }
+
   private async handleSetCapacity(command: ProtocolCommand) {
     const params = isRecord(command.params) ? command.params : undefined;
     const maxBufferSize = params?.maxBufferSize;
@@ -840,6 +978,33 @@ export class RunProtocolSession {
     }
 
     await this.sendSuccess(command.id, {});
+  }
+
+  private async handleSetCapacityForResponse(
+    command: ProtocolCommand,
+    meta?: ProtocolResponseMeta
+  ): Promise<ProtocolSuccess | ProtocolError> {
+    const params = isRecord(command.params) ? command.params : undefined;
+    const maxBufferSize = params?.maxBufferSize;
+    if (
+      typeof maxBufferSize !== "number" ||
+      !Number.isInteger(maxBufferSize) ||
+      maxBufferSize < 1
+    ) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        "flow.setCapacity requires maxBufferSize to be a positive integer.",
+        meta
+      );
+    }
+
+    this.maxBufferSize = maxBufferSize;
+    if (this.buffer.length > this.maxBufferSize) {
+      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
+    }
+
+    return this.success(command.id, {}, meta);
   }
 
   private async sendSuccess(id: number, result: Record<string, unknown>) {
@@ -870,6 +1035,36 @@ export class RunProtocolSession {
       .then(() => this.send(serialiseAsDict(message)))
       .catch(() => undefined);
     await this.sendQueue;
+  }
+
+  private success(
+    id: number,
+    result: Record<string, unknown>,
+    meta?: ProtocolResponseMeta
+  ): ProtocolSuccess {
+    return {
+      type: "success",
+      id,
+      result,
+      ...(meta != null ? { meta } : {}),
+    };
+  }
+
+  private error(
+    id: number | null,
+    error: ErrorCode,
+    message: string,
+    meta?: ProtocolResponseMeta,
+    stacktrace?: string
+  ): ProtocolError {
+    return {
+      type: "error",
+      id,
+      error,
+      message,
+      ...(stacktrace != null ? { stacktrace } : {}),
+      ...(meta != null ? { meta } : {}),
+    };
   }
 }
 
