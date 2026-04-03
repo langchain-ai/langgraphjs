@@ -188,6 +188,7 @@ describe("deep agent", () => {
         }[]
     >();
     expectTypeOf(stream.values.count).toEqualTypeOf<number>();
+    expectTypeOf(stream.values.messages).toExtend<BaseMessage[]>();
     expectTypeOf(stream.values.files).toEqualTypeOf<
       {
         path: string;
@@ -264,6 +265,7 @@ describe("deep agent", () => {
     expectTypeOf(subagent.status).toEqualTypeOf<
       "pending" | "running" | "complete" | "error"
     >();
+    expectTypeOf(subagent.values.messages).toExtend<BaseMessage[]>();
     expectTypeOf(subagent.messages).toBeArray();
     expectTypeOf(subagent.messages[0]).toExtend<BaseMessage>();
     expectTypeOf(subagent.toolCall).toEqualTypeOf<{
@@ -293,5 +295,21 @@ describe("deep agent", () => {
       expectTypeOf(subagent.messages).toBeArray();
       expectTypeOf(subagent.messages[0]).toExtend<BaseMessage>();
     }
+  });
+
+  test("optimisticValues callback uses BaseMessage state for inferred deep agents", () => {
+    const stream = useStream<typeof deepAgentTwoSubagents>({
+      assistantId: "deep-agent",
+    });
+
+    type SubmitOptions = NonNullable<Parameters<typeof stream.submit>[1]>;
+    type OptimisticFn = Extract<
+      NonNullable<SubmitOptions["optimisticValues"]>,
+      (...args: any[]) => any
+    >;
+
+    expectTypeOf<Parameters<OptimisticFn>[0]["messages"]>().toExtend<
+      BaseMessage[]
+    >();
   });
 });

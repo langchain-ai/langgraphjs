@@ -36,7 +36,9 @@ import type {
   InferSubagentNames,
   UseStreamTransport,
 } from "../ui/types.js";
-import type { ResolveStreamOptions } from "../ui/stream/index.js";
+import type {
+  ResolveStreamOptions,
+} from "../ui/stream/index.js";
 
 // ============================================================================
 // Tool Definitions

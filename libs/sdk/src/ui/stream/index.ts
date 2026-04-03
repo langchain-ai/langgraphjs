@@ -174,7 +174,6 @@ export type InferSubagentStates<T> = T extends { "~deepAgentTypes": unknown }
  *
  * @template T - The agent or graph type (use `typeof agent` or `typeof graph`)
  * @template Bag - Type configuration bag for interrupts, configurable, etc.
- *
  * @example
  * ```typescript
  * // Automatic detection based on agent type
@@ -199,10 +198,6 @@ export type ResolveStreamInterface<T, Bag extends BagTemplate = BagTemplate> =
     : IsReactAgent<T> extends true
       ? UseAgentStream<InferStateType<T>, InferToolCalls<T>, Bag>
       : BaseStream<InferStateType<T>, InferToolCalls<T>, Bag>;
-
-// ============================================================================
-// Options Interface Resolution
-// ============================================================================
 
 /**
  * Resolves the appropriate options interface based on the agent/graph type.
