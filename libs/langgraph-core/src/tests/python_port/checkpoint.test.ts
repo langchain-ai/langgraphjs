@@ -743,7 +743,7 @@ describe("Checkpoint Tests (Python port)", () => {
     // Wait for task to finish (should throw AbortError)
     await expect(
       async () => await gatherIterator(streamEvents)
-    ).rejects.toThrow("Abort");
+    ).rejects.toThrow(/abort/i);
 
     // Check logs after cancellation is handled
     expect(logs.sort()).toEqual([
