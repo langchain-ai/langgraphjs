@@ -90,6 +90,9 @@ const serverUrl = inject("serverUrl");
       <div data-testid="observed-toolcall-states">
         {{ observedToolCallStates() }}
       </div>
+      <div data-testid="observed-subagent-statuses">
+        {{ observedSubagentStatuses() }}
+      </div>
 
       <hr />
       <button data-testid="submit" (click)="onSubmit()">Send</button>
