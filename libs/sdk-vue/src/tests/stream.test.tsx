@@ -2578,6 +2578,163 @@ it("deep agent: subagents call tools and render args/results", async () => {
     .toHaveTextContent(/Both agents completed their tasks/);
 });
 
+it("deep agent: getSubagentsByMessage renders subagents while they are still running", async () => {
+  const observedGroupedStates = new Set<string>();
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStream<DeepAgentGraph>({
+        assistantId: "deepAgent",
+        apiUrl: serverUrl,
+        filterSubagentMessages: true,
+      });
+
+      return () => {
+        const groupedTurns = thread.messages.value.flatMap((msg, index, messages) => {
+          if (msg.type !== "human") return [];
+
+          const next = messages[index + 1];
+          if (!next || next.type !== "ai" || !next.id) return [];
+
+          const subagents = thread
+            .getSubagentsByMessage(next.id)
+            .slice()
+            .sort((a: any, b: any) =>
+              (a.toolCall?.args?.subagent_type ?? "").localeCompare(
+                b.toolCall?.args?.subagent_type ?? "",
+              ),
+            );
+
+          if (subagents.length === 0) return [];
+
+          return [
+            {
+              humanId: msg.id ?? `human-${index}`,
+              parentAiMessageId: next.id,
+              subagents,
+            },
+          ];
+        });
+
+        if (thread.isLoading.value && groupedTurns.length > 0) {
+          observedGroupedStates.add("rendered-while-loading");
+        }
+
+        for (const turn of groupedTurns) {
+          for (const sub of turn.subagents) {
+            const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+            const toolStates =
+              sub.toolCalls
+                .map((tc: any) => tc.state)
+                .sort()
+                .join("+") || "no-tool-calls";
+            observedGroupedStates.add(
+              `${subType}:${sub.status}:${toolStates}:${
+                sub.result ? "has-result" : "no-result"
+              }:${thread.isLoading.value ? "loading" : "idle"}`,
+            );
+          }
+        }
+
+        return (
+          <div data-testid="deep-agent-by-message-root">
+            <div data-testid="loading">
+              {thread.isLoading.value ? "Loading..." : "Not loading"}
+            </div>
+            <div data-testid="messages">
+              {thread.messages.value.map((msg, i) => (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  {msg.type}:{typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content)}
+                </div>
+              ))}
+            </div>
+            {groupedTurns.map((turn, index) => (
+              <div key={turn.parentAiMessageId} data-testid={`turn-${index}`}>
+                <div data-testid={`turn-${index}-subagent-count`}>
+                  {turn.subagents.length}
+                </div>
+                <div data-testid={`turn-${index}-subagent-statuses`}>
+                  {turn.subagents
+                    .map(
+                      (sub: any) =>
+                        `${sub.toolCall?.args?.subagent_type}:${sub.status}`,
+                    )
+                    .join(",")}
+                </div>
+                <div data-testid={`turn-${index}-tool-states`}>
+                  {turn.subagents
+                    .flatMap((sub: any) =>
+                      sub.toolCalls.map(
+                        (tc: any) =>
+                          `${sub.toolCall?.args?.subagent_type}:${tc.call.name}:${tc.state}`,
+                      ),
+                    )
+                    .join(",")}
+                </div>
+              </div>
+            ))}
+            <div data-testid="observed-grouped-states">
+              {[...observedGroupedStates].sort().join(",")}
+            </div>
+            <button
+              data-testid="submit"
+              onClick={() =>
+                void thread.submit(
+                  { messages: [{ content: "Run analysis", type: "human" }] },
+                  { streamSubgraphs: true },
+                )
+              }
+            >
+              Send
+            </button>
+          </div>
+        );
+      };
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("turn-0-subagent-count"), { timeout: 30_000 })
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("turn-0-subagent-statuses"))
+    .toHaveTextContent(/data-analyst:complete/);
+  await expect
+    .element(screen.getByTestId("turn-0-subagent-statuses"))
+    .toHaveTextContent(/researcher:complete/);
+
+  await expect
+    .element(screen.getByTestId("turn-0-tool-states"))
+    .toHaveTextContent(/data-analyst:query_database:completed/);
+  await expect
+    .element(screen.getByTestId("turn-0-tool-states"))
+    .toHaveTextContent(/researcher:search_web:completed/);
+
+  const observedStates = screen.getByTestId("observed-grouped-states");
+  await expect.element(observedStates).toHaveTextContent(/rendered-while-loading/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/data-analyst:running:pending:no-result:loading/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/researcher:running:pending:no-result:loading/);
+});
+
 it("stream.history returns BaseMessage instances", async () => {
   const TestComponent = defineComponent({
     setup() {
