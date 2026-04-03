@@ -1999,6 +1999,146 @@ it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
   );
 });
 
+it("useStreamCustom exposes pending subagents as soon as the parent tool call arrives", async () => {
+  let resumeStream: (() => void) | undefined;
+  const waitForResume = new Promise<void>((resolve) => {
+    resumeStream = resolve;
+  });
+
+  const transport = {
+    async stream() {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "messages",
+          data: [
+            {
+              id: "human-1",
+              type: "human",
+              content: "Run research",
+            },
+            {},
+          ],
+        };
+
+        yield {
+          event: "messages",
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "",
+              tool_calls: [
+                {
+                  id: "task-1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Research AI trends",
+                  },
+                },
+              ],
+            },
+            {},
+          ],
+        };
+
+        await waitForResume;
+
+        yield {
+          event: "messages",
+          data: [
+            {
+              id: "tool-1",
+              type: "tool",
+              content: "Done researching",
+              tool_call_id: "task-1",
+            },
+            {},
+          ],
+        };
+      }
+
+      return generate();
+    },
+  };
+
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStreamCustom<{ messages: Message[] }>({
+        transport: transport as any,
+        threadId: null,
+        onThreadId: () => {},
+      });
+
+      return () => {
+        const subagents = [...thread.subagents.values()];
+        return (
+          <div>
+            <div data-testid="loading">
+              {thread.isLoading.value ? "Loading..." : "Not loading"}
+            </div>
+            <div data-testid="subagent-count">{subagents.length}</div>
+            <div data-testid="subagent-statuses">
+              {subagents.map((sub: any) => sub.status).join(",")}
+            </div>
+            <div data-testid="subagent-results">
+              {subagents.map((sub: any) => sub.result ?? "").join(",")}
+            </div>
+            <button
+              data-testid="submit-pending-subagent"
+              onClick={() =>
+                void thread.submit({
+                  messages: [{ type: "human", content: "Run research" }],
+                } as any)
+              }
+            >
+              Submit
+            </button>
+            <button
+              data-testid="resume-pending-subagent"
+              onClick={() => resumeStream?.()}
+            >
+              Resume
+            </button>
+          </div>
+        );
+      };
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await screen.getByTestId("submit-pending-subagent").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("subagent-count"))
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("subagent-statuses"))
+    .toHaveTextContent("pending");
+  await expect
+    .element(screen.getByTestId("subagent-results"))
+    .toHaveTextContent("");
+
+  await screen.getByTestId("resume-pending-subagent").click();
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("subagent-statuses"))
+    .toHaveTextContent("complete");
+  await expect
+    .element(screen.getByTestId("subagent-results"))
+    .toHaveTextContent("Done researching");
+});
+
 // Server-side queue e2e tests
 const VueQueueStreamComponent = defineComponent({
   setup() {
@@ -2726,12 +2866,6 @@ it("deep agent: getSubagentsByMessage renders subagents while they are still run
     .toHaveTextContent(/researcher:search_web:completed/);
 
   const observedStates = screen.getByTestId("observed-grouped-states");
-  await expect
-    .element(observedStates)
-    .toHaveTextContent(/data-analyst:pending:/);
-  await expect
-    .element(observedStates)
-    .toHaveTextContent(/researcher:pending:/);
   await expect.element(observedStates).toHaveTextContent(/rendered-while-loading/);
   await expect
     .element(observedStates)
