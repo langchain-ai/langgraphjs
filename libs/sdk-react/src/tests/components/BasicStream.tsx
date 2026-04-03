@@ -4,6 +4,7 @@ import { useStream } from "../../index.js";
 interface Props {
   apiUrl: string;
   assistantId?: string;
+  streamProtocol?: "legacy" | "v2-sse";
   submitInput?: Record<string, unknown>;
   submitOptions?: Record<string, unknown>;
   onCheckpointEvent?: (...args: unknown[]) => void;
@@ -16,6 +17,7 @@ interface Props {
 export function BasicStream({
   apiUrl,
   assistantId = "agent",
+  streamProtocol,
   submitInput = { messages: [{ content: "Hello", type: "human" }] },
   submitOptions,
   onCheckpointEvent,
@@ -27,6 +29,7 @@ export function BasicStream({
   const thread = useStream<{ messages: Message[] }>({
     assistantId,
     apiUrl,
+    streamProtocol,
     onCheckpointEvent,
     onTaskEvent,
     onUpdateEvent,

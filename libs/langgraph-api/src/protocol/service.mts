@@ -29,7 +29,16 @@ type SessionBindings = {
 type EventSink = (message: ProtocolEvent) => Promise<void> | void;
 
 const PROTOCOL_VERSION = "0.3.0";
-const DEFAULT_RUN_STREAM_MODES: StreamMode[] = ["values"];
+const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
+  "values",
+  "updates",
+  "messages",
+  "tools",
+  "custom",
+  "debug",
+  "checkpoints",
+  "tasks",
+];
 
 const MODULE_CAPABILITIES: ModuleCapability[] = [
   {
@@ -118,6 +127,15 @@ const normalizeRunInput = (value: unknown) => {
     config: undefined,
     metadata: undefined,
   };
+};
+
+const getThreadIdFromConfig = (value: unknown): string | undefined => {
+  if (!isRecord(value)) return undefined;
+  const configurable = value.configurable;
+  if (!isRecord(configurable)) return undefined;
+  return typeof configurable.thread_id === "string"
+    ? configurable.thread_id
+    : undefined;
 };
 
 const normalizeStoreItem = (item: any) => ({
@@ -335,6 +353,7 @@ export class ProtocolService {
     const targetId = record.target.id;
     const assistantId = getAssistantId(targetId);
     const params = normalizeRunInput(command.params);
+    const configuredThreadId = getThreadIdFromConfig(params.config);
 
     const currentRun =
       record.currentRunId != null
@@ -378,7 +397,7 @@ export class ProtocolService {
         resumable: runPayload.stream_resumable,
       },
       {
-        threadId: record.currentThreadId,
+        threadId: record.currentThreadId ?? configuredThreadId,
         metadata: runPayload.metadata,
         status: "pending",
         multitaskStrategy: runPayload.multitask_strategy,

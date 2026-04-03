@@ -37,6 +37,7 @@ import type {
   CronsUpdatePayload,
   OnConflictBehavior,
   RunsCreatePayload,
+  StreamProtocol,
   RunsStreamPayload,
   RunsWaitPayload,
   StreamEvent,
@@ -49,6 +50,15 @@ import type {
 import { AsyncCaller, AsyncCallerParams } from "./utils/async_caller.js";
 import { getEnvironmentVariable } from "./utils/env.js";
 import { mergeSignals } from "./utils/signals.js";
+import {
+  ProtocolEventAdapter,
+  canUseProtocolSse,
+  getProtocolChannels,
+  isProtocolErrorResponse,
+  type ProtocolCommandResponse,
+  type ProtocolEventMessage,
+  type ProtocolOpenSessionResponse,
+} from "./utils/protocol.js";
 import { BytesLineDecoder, SSEDecoder } from "./utils/sse.js";
 import { streamWithRetry, StreamRequestParams } from "./utils/stream.js";
 
@@ -175,6 +185,9 @@ function getRunMetadataFromResponse(
   };
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
 export type RequestHook = (
   url: URL,
   init: RequestInit
@@ -193,6 +206,7 @@ export interface ClientConfig {
   timeoutMs?: number;
   defaultHeaders?: Record<string, HeaderValue>;
   onRequest?: RequestHook;
+  streamProtocol?: StreamProtocol;
 }
 
 class BaseClient {
@@ -205,6 +219,8 @@ class BaseClient {
   protected defaultHeaders: Record<string, HeaderValue>;
 
   protected onRequest?: RequestHook;
+
+  protected streamProtocol: StreamProtocol;
 
   constructor(config?: ClientConfig) {
     const callerOptions = {
@@ -240,6 +256,7 @@ class BaseClient {
     this.apiUrl = config?.apiUrl?.replace(/\/$/, "") || defaultApiUrl;
     this.defaultHeaders = config?.defaultHeaders || {};
     this.onRequest = config?.onRequest;
+    this.streamProtocol = config?.streamProtocol ?? "legacy";
     const apiKey = getApiKey(config?.apiKey);
     if (apiKey) {
       this.defaultHeaders["x-api-key"] = apiKey;
@@ -1412,6 +1429,205 @@ export class RunsClient<
   TUpdateType = TStateType,
   TCustomEventType = unknown,
 > extends BaseClient {
+  private shouldUseProtocolSse<
+    TStreamMode extends StreamMode | StreamMode[] = StreamMode,
+    TSubgraphs extends boolean = false,
+  >(
+    threadId: string | null,
+    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
+  ) {
+    const requestedProtocol =
+      payload?.streamProtocol ?? this.streamProtocol ?? "legacy";
+    if (requestedProtocol !== "v2-sse") return false;
+    if (threadId == null) return false;
+    if (!canUseProtocolSse(payload?.streamMode)) return false;
+    if (
+      payload?.command != null &&
+      (payload.command.update != null || payload.command.goto != null)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  private async openProtocolSession(
+    assistantId: string,
+    signal?: AbortSignal
+  ): Promise<ProtocolOpenSessionResponse> {
+    return this.fetch<ProtocolOpenSessionResponse>("/v2/sessions", {
+      method: "POST",
+      json: {
+        method: "session.open",
+        params: {
+          protocolVersion: "0.3.0",
+          target: { kind: "agent", id: assistantId },
+          preferredTransports: ["sse-http"],
+        },
+      },
+      signal,
+    });
+  }
+
+  private async postProtocolCommand(
+    sessionId: string,
+    command: {
+      id: number;
+      method: string;
+      params?: Record<string, unknown>;
+    },
+    signal?: AbortSignal
+  ): Promise<ProtocolCommandResponse> {
+    return this.fetch<ProtocolCommandResponse>(
+      `/v2/sessions/${sessionId}/commands`,
+      {
+        method: "POST",
+        json: command,
+        signal,
+      }
+    );
+  }
+
+  private async getProtocolThreadId(sessionId: string, signal?: AbortSignal) {
+    const response = await this.postProtocolCommand(
+      sessionId,
+      {
+        id: 3,
+        method: "state.get",
+        params: {},
+      },
+      signal
+    );
+    if (isProtocolErrorResponse(response)) return undefined;
+    const checkpoint = isRecord(response.result)
+      ? response.result.checkpoint
+      : undefined;
+    return isRecord(checkpoint) && typeof checkpoint.thread_id === "string"
+      ? checkpoint.thread_id
+      : undefined;
+  }
+
+  private async *streamViaProtocolSse<
+    TStreamMode extends StreamMode | StreamMode[] = StreamMode,
+    TSubgraphs extends boolean = false,
+  >(
+    threadId: string,
+    assistantId: string,
+    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
+  ): AsyncGenerator<{ id?: string; event: StreamEvent; data: unknown }> {
+    const openResponse = await this.openProtocolSession(
+      assistantId,
+      payload?.signal
+    );
+    const sessionId =
+      isRecord(openResponse.result) &&
+      typeof openResponse.result.sessionId === "string"
+        ? openResponse.result.sessionId
+        : undefined;
+
+    if (!sessionId) {
+      throw new Error("Protocol session did not return a session ID.");
+    }
+
+    const subscribeResponse = await this.postProtocolCommand(
+      sessionId,
+      {
+        id: 1,
+        method: "subscription.subscribe",
+        params: {
+          channels: getProtocolChannels(payload?.streamMode),
+          ...(payload?.streamSubgraphs
+            ? {}
+            : {
+                namespaces: [[]],
+                depth: 0,
+              }),
+        },
+      },
+      payload?.signal
+    );
+
+    if (isProtocolErrorResponse(subscribeResponse)) {
+      throw new Error(
+        `Protocol subscribe failed: ${subscribeResponse.message}`
+      );
+    }
+
+    const protocolInput =
+      payload?.command?.resume !== undefined && payload?.input == null
+        ? payload.command.resume
+        : payload?.input;
+    const runResponse = await this.postProtocolCommand(
+      sessionId,
+      {
+        id: 2,
+        method: "run.input",
+        params: {
+          input: protocolInput ?? null,
+          config: payload?.config,
+          metadata: payload?.metadata,
+        },
+      },
+      payload?.signal
+    );
+
+    if (isProtocolErrorResponse(runResponse)) {
+      throw new Error(`Protocol run failed: ${runResponse.message}`);
+    }
+
+    const runId =
+      isRecord(runResponse.result) && typeof runResponse.result.runId === "string"
+        ? runResponse.result.runId
+        : undefined;
+    if (!runId) {
+      throw new Error("Protocol run did not return a run ID.");
+    }
+
+    const resolvedThreadId =
+      threadId ?? (await this.getProtocolThreadId(sessionId, payload?.signal));
+
+    payload?.onRunCreated?.({
+      run_id: runId,
+      ...(resolvedThreadId != null ? { thread_id: resolvedThreadId } : {}),
+    });
+
+    const adapter = new ProtocolEventAdapter();
+
+    try {
+      if (resolvedThreadId != null) {
+        yield {
+          event: "metadata",
+          data: { run_id: runId, thread_id: resolvedThreadId },
+        };
+      }
+
+      const eventStream = this.streamWithRetry<{
+        id?: string;
+        event: string;
+        data: unknown;
+      }>({
+        endpoint: `/v2/sessions/${sessionId}/events`,
+        method: "GET",
+        signal: payload?.signal,
+        headers: { Accept: "text/event-stream" },
+      });
+
+      for await (const protocolEvent of eventStream) {
+        const message = isRecord(protocolEvent.data)
+          ? (protocolEvent.data as ProtocolEventMessage)
+          : undefined;
+        if (message?.type !== "event") continue;
+        for (const adapted of adapter.adapt(message)) {
+          yield adapted;
+        }
+      }
+    } finally {
+      await this.fetch<void>(`/v2/sessions/${sessionId}`, {
+        method: "DELETE",
+        signal: undefined,
+      }).catch(() => undefined);
+    }
+  }
+
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
     TSubgraphs extends boolean = false,
@@ -1466,6 +1682,17 @@ export class RunsClient<
     TUpdateType,
     TCustomEventType
   > {
+    if (this.shouldUseProtocolSse(threadId, payload)) {
+      yield* this.streamViaProtocolSse(threadId as string, assistantId, payload) as TypedAsyncGenerator<
+        TStreamMode,
+        TSubgraphs,
+        TStateType,
+        TUpdateType,
+        TCustomEventType
+      >;
+      return;
+    }
+
     const json: Record<string, unknown> = {
       input: payload?.input,
       command: payload?.command,
@@ -2223,6 +2450,7 @@ export class Client<
         apiKey: config?.apiKey,
         timeoutMs: config?.timeoutMs,
         defaultHeaders: config?.defaultHeaders,
+        streamProtocol: config?.streamProtocol,
 
         maxConcurrency: config?.callerOptions?.maxConcurrency,
         maxRetries: config?.callerOptions?.maxRetries,

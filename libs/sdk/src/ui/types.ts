@@ -15,6 +15,7 @@ import type {
   OnCompletionBehavior,
   DisconnectMode,
   Durability,
+  StreamProtocol,
 } from "../types.js";
 import type {
   UpdatesStreamEvent,
@@ -1077,6 +1078,15 @@ export interface UseStreamOptions<
    * Default headers to send with requests.
    */
   defaultHeaders?: ClientConfig["defaultHeaders"];
+
+  /**
+   * Streaming transport to use for run submission.
+   * Keeps the `useStream` surface unchanged while allowing opt-in to the
+   * session-based protocol over HTTP + SSE.
+   *
+   * @default "legacy"
+   */
+  streamProtocol?: StreamProtocol;
 
   /**
    * Specify the key within the state that contains messages.

@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Client } from "@langchain/langgraph-sdk";
@@ -72,6 +74,12 @@ const TEST_PORT = 2234;
 const TEST_API_URL = `http://127.0.0.1:${TEST_PORT}`;
 const TEST_WS_URL = `ws://127.0.0.1:${TEST_PORT}`;
 const globalConfig = { configurable: { user_id: "123" } };
+const TEST_GRAPHS_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "graphs"
+);
+const websocketIt =
+  typeof WebSocket === "undefined" ? it.skip : it;
 
 const createTestClient = () => new Client<any>({ apiUrl: TEST_API_URL });
 
@@ -92,7 +100,7 @@ const startProtocolTestServer = async () => {
     port: TEST_PORT,
     nWorkers: 2,
     host: "127.0.0.1",
-    cwd: "/workspace/libs/langgraph-api/tests/graphs",
+    cwd: TEST_GRAPHS_DIR,
     graphs: {
       agent: "./agent.mts:graph",
       nested: "./nested.mts:graph",
@@ -170,7 +178,7 @@ const readSseEvents = async (
 };
 
 describe("protocol transports", () => {
-  it("supports session-based websocket protocol flow", async () => {
+  websocketIt("supports session-based websocket protocol flow", async () => {
     await startProtocolTestServer();
 
     const socket = new WebSocket(`${TEST_WS_URL}/v2/runs`);
@@ -316,6 +324,7 @@ describe("protocol transports", () => {
 
   it("supports split HTTP+SSE protocol flow", async () => {
     await startProtocolTestServer();
+    const threadId = crypto.randomUUID();
 
     const openResponse = await fetch(`${TEST_API_URL}/v2/sessions`, {
       method: "POST",
@@ -357,7 +366,7 @@ describe("protocol transports", () => {
           id: 1,
           method: "subscription.subscribe",
           params: {
-            channels: ["values", "updates"],
+            channels: ["values", "updates", "messages"],
             namespaces: [["gp_two"]],
           },
         }),
@@ -376,6 +385,33 @@ describe("protocol transports", () => {
       },
     });
 
+    const messagesSubscribeResponse = await fetch(
+      `${TEST_API_URL}/v2/sessions/${sessionId}/commands`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: 11,
+          method: "subscription.subscribe",
+          params: {
+            channels: ["messages"],
+          },
+        }),
+      }
+    ).then((response) => response.json());
+
+    expect(messagesSubscribeResponse).toMatchObject({
+      type: "success",
+      id: 11,
+      result: {
+        subscriptionId: expect.any(String),
+      },
+      meta: {
+        sessionId,
+        appliedThroughSeq: expect.any(Number),
+      },
+    });
+
     const runResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/commands`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -384,7 +420,12 @@ describe("protocol transports", () => {
         method: "run.input",
         params: {
           input: { messages: ["input"] },
-          config: globalConfig,
+          config: {
+            configurable: {
+              ...globalConfig.configurable,
+              thread_id: threadId,
+            },
+          },
         },
       }),
     }).then((response) => response.json());
@@ -400,7 +441,7 @@ describe("protocol transports", () => {
     });
 
     const events = await readSseEvents(eventsResponse, {
-      expected: 3,
+      expected: 4,
       timeoutMs: 10_000,
     });
 
@@ -408,14 +449,36 @@ describe("protocol transports", () => {
     expect(events.every((event) => event.id != null)).toBe(true);
     expect(
       events
-        .filter((event) => event.event === "values" || event.event === "updates")
+        .filter(
+          (event) =>
+            event.event === "values" || event.event === "updates"
+        )
         .every(
           (event) => ((event.data as any)?.params?.namespace as string[] | undefined)?.[0] === "gp_two"
         )
     ).toBe(true);
+    const stateResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: 3,
+        method: "state.get",
+        params: {},
+      }),
+    }).then((response) => response.json());
+
+    expect(stateResponse).toMatchObject({
+      type: "success",
+      id: 3,
+      result: {
+        checkpoint: {
+          thread_id: threadId,
+        },
+      },
+    });
   });
 
-  it("keeps compatibility run-scoped websocket protocol route", async () => {
+  websocketIt("keeps compatibility run-scoped websocket protocol route", async () => {
     await startProtocolTestServer();
 
     const client = createTestClient();

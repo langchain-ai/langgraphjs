@@ -59,6 +59,28 @@ it("handles message submission and streaming", async () => {
     .toHaveTextContent("Not loading");
 });
 
+it("handles message submission over protocol SSE", async () => {
+  const screen = await render(
+    <BasicStream apiUrl={serverUrl} streamProtocol="v2-sse" />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
 it("handles stop functionality", async () => {
   const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
