@@ -1,5 +1,11 @@
 # @langchain/vue
 
+## 0.3.3
+
+### Patch Changes
+
+- [#2274](https://github.com/langchain-ai/langgraphjs/pull/2274) [`05810fe`](https://github.com/langchain-ai/langgraphjs/commit/05810fe087e1c23d41d3cc495985c8eb91542c83) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Fix Vue subagent grouping during streaming
+
 ## 0.3.2
 
 ### Patch Changes
