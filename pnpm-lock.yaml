@@ -1699,6 +1699,9 @@ importers:
       '@langchain/langgraph-ui':
         specifier: workspace:*
         version: link:../langgraph-ui
+      '@langchain/protocol':
+        specifier: ^0.0.1
+        version: 0.0.1
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -3632,6 +3635,9 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': '>=1.1.27'
+
+  '@langchain/protocol@0.0.1':
+    resolution: {integrity: sha512-c65KeRgXNYqAPKjHOIUKacSjpidq+t5n5IKXHxL2eLaqxda/gDCYSXd8vDfxMMdUgXp6omsc9RqyCzwE1W6oog==}
 
   '@langchain/scripts@0.1.4':
     resolution: {integrity: sha512-O+mv2aqUIm3XWxYBrwFWMeTI3aHWeFR8OYjGFXKc1MGV/3LLao3PciyQvKUg1SL7FemHJ1ltDx74rKuEv8xxPA==}
@@ -12873,6 +12879,8 @@ snapshots:
       zod: 4.3.6
     transitivePeerDependencies:
       - ws
+
+  '@langchain/protocol@0.0.1': {}
 
   '@langchain/scripts@0.1.4':
     dependencies:

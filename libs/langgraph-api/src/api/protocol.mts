@@ -62,7 +62,7 @@ const createRunScopedWebSocketHandlers = (
   return {
     async onOpen(_event: Event, ws: { send: (source: string) => void }) {
       const { record, response } = await protocolService.openSession({
-        transportName: "websocket",
+        transportName: "websocket" as const,
         auth,
         target,
         sendEvent: (event) => {
@@ -174,7 +174,7 @@ export default function createProtocolApi(
           ) {
             const parsed = ProtocolSessionOpenSchema.parse(payload);
             const { record, response } = await protocolService.openSession({
-              transportName: "websocket",
+              transportName: "websocket" as const,
               auth: c.var.auth,
               target: toSessionTarget(parsed),
               sendEvent: (protocolEvent) => {
@@ -222,7 +222,7 @@ export default function createProtocolApi(
 
           const response = await protocolService.handleCommand(
             sessionId,
-            payload as ProtocolCommand
+            payload as unknown as ProtocolCommand
           );
           ws.send(serialiseAsDict(response));
         },
@@ -239,7 +239,7 @@ export default function createProtocolApi(
   api.post("/v2/sessions", zValidator("json", ProtocolSessionOpenSchema), async (c) => {
     const payload = c.req.valid("json");
     const { record, response } = await protocolService.openSession({
-      transportName: "sse-http",
+      transportName: "sse-http" as const,
       auth: c.var.auth,
       target: toSessionTarget(payload),
     });
@@ -260,7 +260,7 @@ export default function createProtocolApi(
     zValidator("json", ProtocolCommandSchema),
     async (c) => {
       const { session_id } = c.req.valid("param");
-      const payload = c.req.valid("json") as ProtocolCommand;
+      const payload = c.req.valid("json") as unknown as ProtocolCommand;
       return jsonExtra(c, await protocolService.handleCommand(session_id, payload));
     }
   );
@@ -277,10 +277,17 @@ export default function createProtocolApi(
       return streamSSE(c, async (stream) => {
         const delivered = new Set<string>();
         const queued = session.queuedEvents.filter((event) => {
-          if (lastEventId != null && event.eventId <= lastEventId) return false;
+          if (
+            lastEventId != null &&
+            event.eventId != null &&
+            event.eventId <= lastEventId
+          ) {
+            return false;
+          }
           return true;
         });
         for (const event of queued) {
+          if (event.eventId == null) continue;
           delivered.add(event.eventId);
           await stream.writeSSE({
             id: event.eventId,
@@ -290,6 +297,7 @@ export default function createProtocolApi(
         }
 
         await protocolService.attachEventSink(session_id, async (event) => {
+          if (event.eventId == null) return;
           if (delivered.has(event.eventId)) return;
           delivered.add(event.eventId);
           await stream.writeSSE({
