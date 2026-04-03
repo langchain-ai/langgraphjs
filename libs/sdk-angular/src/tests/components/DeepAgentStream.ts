@@ -104,6 +104,7 @@ export class DeepAgentStreamComponent {
   });
 
   toolCallStates = new Set<string>();
+  subagentStatuses = new Set<string>();
 
   sortedSubagents() {
     const sorted = [...this.stream.subagents().values()].sort(
@@ -114,6 +115,7 @@ export class DeepAgentStreamComponent {
     );
     for (const sub of sorted) {
       const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+      this.subagentStatuses.add(`${subType}:${sub.status}`);
       for (const tc of sub.toolCalls) {
         this.toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
       }
@@ -123,6 +125,10 @@ export class DeepAgentStreamComponent {
 
   observedToolCallStates(): string {
     return [...this.toolCallStates].sort().join(",");
+  }
+
+  observedSubagentStatuses(): string {
+    return [...this.subagentStatuses].sort().join(",");
   }
 
   getSubType(sub: ClassSubagentStreamInterface): string {
