@@ -64,11 +64,11 @@ type StreamState<T> = T extends {
     ? S extends Record<string, unknown>
       ? S
       : Record<string, unknown>
-  : T extends { values: infer V }
-    ? V extends Record<string, unknown>
-      ? V
-      : Record<string, unknown>
-    : Record<string, unknown>;
+    : T extends { values: infer V }
+      ? V extends Record<string, unknown>
+        ? V
+        : Record<string, unknown>
+      : Record<string, unknown>;
 
 type ClassOptimisticValues<StateType> =
   StateType extends Record<string, unknown>
