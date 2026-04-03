@@ -81,7 +81,6 @@
       "browser": "./dist/web.js",
       "input": "./src/index.ts",
       "typedoc": "./src/index.ts",
-      "browser": "./dist/web.js",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
