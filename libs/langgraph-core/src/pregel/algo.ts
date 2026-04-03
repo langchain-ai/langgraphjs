@@ -68,7 +68,7 @@ import {
 } from "./types.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
-import { LangGraphRunnableConfig } from "./runnable_types.js";
+import { ExecutionInfo, LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
 import { XXH3 } from "../hash.js";
@@ -641,63 +641,73 @@ export function _prepareSingleTask<
     };
     if (forExecution) {
       const writes: [keyof Cc, unknown][] = [];
+      const executionInfo: ExecutionInfo = {
+        checkpointId: checkpoint.id,
+        checkpointNs: taskCheckpointNamespace,
+        taskId: id,
+        threadId: configurable.thread_id as string | undefined,
+        runId: config.runId != null ? String(config.runId) : undefined,
+        nodeAttempt: 1,
+      };
+      const taskConfig = patchConfig(
+        mergeConfigs(config, {
+          metadata,
+          store: extra.store ?? config.store,
+        }),
+        {
+          runName: call.name,
+          callbacks: manager?.getChild(`graph:step:${step}`),
+          configurable: {
+            [CONFIG_KEY_TASK_ID]: id,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
+              _localWrite(
+                (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
+                processes,
+                writes_
+              ),
+            [CONFIG_KEY_READ]: (
+              select_: Array<keyof Cc> | keyof Cc,
+              fresh_: boolean = false
+            ) =>
+              _localRead(
+                checkpoint,
+                channels,
+                {
+                  name: call.name,
+                  writes: writes as PendingWrite[],
+                  triggers,
+                  path: outputTaskPath,
+                },
+                select_,
+                fresh_
+              ),
+            [CONFIG_KEY_CHECKPOINTER]:
+              checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+            [CONFIG_KEY_CHECKPOINT_MAP]: {
+              ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+              [parentNamespace]: checkpoint.id,
+            },
+            [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+              pendingWrites: pendingWrites ?? [],
+              taskId: id,
+              currentTaskInput: call.input,
+              resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+              namespaceHash: XXH3(taskCheckpointNamespace),
+            }),
+            [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
+            checkpoint_id: undefined,
+            checkpoint_ns: taskCheckpointNamespace,
+          },
+        }
+      ) as LangGraphRunnableConfig;
+      taskConfig.executionInfo = executionInfo;
       const task = {
         name: call.name,
         input: call.input,
         proc,
         writes,
-        config: patchConfig(
-          mergeConfigs(config, {
-            metadata,
-            store: extra.store ?? config.store,
-          }),
-          {
-            runName: call.name,
-            callbacks: manager?.getChild(`graph:step:${step}`),
-            configurable: {
-              [CONFIG_KEY_TASK_ID]: id,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
-                _localWrite(
-                  (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
-                  processes,
-                  writes_
-                ),
-              [CONFIG_KEY_READ]: (
-                select_: Array<keyof Cc> | keyof Cc,
-                fresh_: boolean = false
-              ) =>
-                _localRead(
-                  checkpoint,
-                  channels,
-                  {
-                    name: call.name,
-                    writes: writes as PendingWrite[],
-                    triggers,
-                    path: outputTaskPath,
-                  },
-                  select_,
-                  fresh_
-                ),
-              [CONFIG_KEY_CHECKPOINTER]:
-                checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
-              [CONFIG_KEY_CHECKPOINT_MAP]: {
-                ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
-                [parentNamespace]: checkpoint.id,
-              },
-              [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
-                pendingWrites: pendingWrites ?? [],
-                taskId: id,
-                currentTaskInput: call.input,
-                resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-                namespaceHash: XXH3(taskCheckpointNamespace),
-              }),
-              [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
-              checkpoint_id: undefined,
-              checkpoint_ns: taskCheckpointNamespace,
-            },
-          }
-        ),
+        config: taskConfig,
         triggers,
         retry_policy: call.retry,
         cache_key: call.cache
@@ -783,66 +793,75 @@ export function _prepareSingleTask<
           metadata = { ...metadata, ...proc.metadata };
         }
         const writes: [keyof Cc, unknown][] = [];
+        const executionInfo: ExecutionInfo = {
+          checkpointId: checkpoint.id,
+          checkpointNs: taskCheckpointNamespace,
+          taskId,
+          threadId: configurable.thread_id as string | undefined,
+          runId: config.runId != null ? String(config.runId) : undefined,
+          nodeAttempt: 1,
+        };
+        const taskConfig = patchConfig(
+          mergeConfigs(config, {
+            metadata,
+            tags: proc.tags,
+            store: extra.store ?? config.store,
+          }),
+          {
+            runName: packet.node,
+            callbacks: manager?.getChild(`graph:step:${step}`),
+            configurable: {
+              [CONFIG_KEY_TASK_ID]: taskId,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
+                _localWrite(
+                  (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
+                  processes,
+                  writes_
+                ),
+              [CONFIG_KEY_READ]: (
+                select_: Array<keyof Cc> | keyof Cc,
+                fresh_: boolean = false
+              ) =>
+                _localRead(
+                  checkpoint,
+                  channels,
+                  {
+                    name: packet.node,
+                    writes: writes as PendingWrite[],
+                    triggers,
+                    path: taskPath,
+                  },
+                  select_,
+                  fresh_
+                ),
+              [CONFIG_KEY_CHECKPOINTER]:
+                checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+              [CONFIG_KEY_CHECKPOINT_MAP]: {
+                ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+                [parentNamespace]: checkpoint.id,
+              },
+              [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                pendingWrites: pendingWrites ?? [],
+                taskId,
+                currentTaskInput: packet.args,
+                resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                namespaceHash: XXH3(taskCheckpointNamespace),
+              }),
+              [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
+              checkpoint_id: undefined,
+              checkpoint_ns: taskCheckpointNamespace,
+            },
+          }
+        ) as LangGraphRunnableConfig;
+        taskConfig.executionInfo = executionInfo;
         return {
           name: packet.node,
           input: packet.args,
           proc: node,
           subgraphs: proc.subgraphs,
           writes,
-          config: patchConfig(
-            mergeConfigs(config, {
-              metadata,
-              tags: proc.tags,
-              store: extra.store ?? config.store,
-            }),
-            {
-              runName: packet.node,
-              callbacks: manager?.getChild(`graph:step:${step}`),
-              configurable: {
-                [CONFIG_KEY_TASK_ID]: taskId,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
-                  _localWrite(
-                    (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
-                    processes,
-                    writes_
-                  ),
-                [CONFIG_KEY_READ]: (
-                  select_: Array<keyof Cc> | keyof Cc,
-                  fresh_: boolean = false
-                ) =>
-                  _localRead(
-                    checkpoint,
-                    channels,
-                    {
-                      name: packet.node,
-                      writes: writes as PendingWrite[],
-                      triggers,
-                      path: taskPath,
-                    },
-                    select_,
-                    fresh_
-                  ),
-                [CONFIG_KEY_CHECKPOINTER]:
-                  checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
-                [CONFIG_KEY_CHECKPOINT_MAP]: {
-                  ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
-                  [parentNamespace]: checkpoint.id,
-                },
-                [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
-                  pendingWrites: pendingWrites ?? [],
-                  taskId,
-                  currentTaskInput: packet.args,
-                  resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-                  namespaceHash: XXH3(taskCheckpointNamespace),
-                }),
-                [CONFIG_KEY_PREVIOUS_STATE]:
-                  checkpoint.channel_values[PREVIOUS],
-                checkpoint_id: undefined,
-                checkpoint_ns: taskCheckpointNamespace,
-              },
-            }
-          ),
+          config: taskConfig,
           triggers,
           retry_policy: proc.retryPolicy,
           cache_key: proc.cachePolicy
@@ -955,68 +974,78 @@ export function _prepareSingleTask<
             metadata = { ...metadata, ...proc.metadata };
           }
           const writes: [keyof Cc, unknown][] = [];
+          const executionInfo: ExecutionInfo = {
+            checkpointId: checkpoint.id,
+            checkpointNs: taskCheckpointNamespace,
+            taskId,
+            threadId: configurable.thread_id as string | undefined,
+            runId: config.runId != null ? String(config.runId) : undefined,
+            nodeAttempt: 1,
+          };
+          const taskConfig = patchConfig(
+            mergeConfigs(config, {
+              metadata,
+              tags: proc.tags,
+              store: extra.store ?? config.store,
+            }),
+            {
+              runName: name,
+              callbacks: manager?.getChild(`graph:step:${step}`),
+              configurable: {
+                [CONFIG_KEY_TASK_ID]: taskId,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
+                  _localWrite(
+                    (items: PendingWrite<keyof Cc>[]) => {
+                      writes.push(...items);
+                    },
+                    processes,
+                    writes_
+                  ),
+                [CONFIG_KEY_READ]: (
+                  select_: Array<keyof Cc> | keyof Cc,
+                  fresh_: boolean = false
+                ) =>
+                  _localRead(
+                    checkpoint,
+                    channels,
+                    {
+                      name,
+                      writes: writes as PendingWrite[],
+                      triggers: [trigger],
+                      path: taskPath,
+                    },
+                    select_,
+                    fresh_
+                  ),
+                [CONFIG_KEY_CHECKPOINTER]:
+                  checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+                [CONFIG_KEY_CHECKPOINT_MAP]: {
+                  ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+                  [parentNamespace]: checkpoint.id,
+                },
+                [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+                  pendingWrites: pendingWrites ?? [],
+                  taskId,
+                  currentTaskInput: val,
+                  resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+                  namespaceHash: XXH3(taskCheckpointNamespace),
+                }),
+                [CONFIG_KEY_PREVIOUS_STATE]:
+                  checkpoint.channel_values[PREVIOUS],
+                checkpoint_id: undefined,
+                checkpoint_ns: taskCheckpointNamespace,
+              },
+            }
+          ) as LangGraphRunnableConfig;
+          taskConfig.executionInfo = executionInfo;
           return {
             name,
             input: val,
             proc: node,
             subgraphs: proc.subgraphs,
             writes,
-            config: patchConfig(
-              mergeConfigs(config, {
-                metadata,
-                tags: proc.tags,
-                store: extra.store ?? config.store,
-              }),
-              {
-                runName: name,
-                callbacks: manager?.getChild(`graph:step:${step}`),
-                configurable: {
-                  [CONFIG_KEY_TASK_ID]: taskId,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
-                    _localWrite(
-                      (items: PendingWrite<keyof Cc>[]) => {
-                        writes.push(...items);
-                      },
-                      processes,
-                      writes_
-                    ),
-                  [CONFIG_KEY_READ]: (
-                    select_: Array<keyof Cc> | keyof Cc,
-                    fresh_: boolean = false
-                  ) =>
-                    _localRead(
-                      checkpoint,
-                      channels,
-                      {
-                        name,
-                        writes: writes as PendingWrite[],
-                        triggers: [trigger],
-                        path: taskPath,
-                      },
-                      select_,
-                      fresh_
-                    ),
-                  [CONFIG_KEY_CHECKPOINTER]:
-                    checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
-                  [CONFIG_KEY_CHECKPOINT_MAP]: {
-                    ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
-                    [parentNamespace]: checkpoint.id,
-                  },
-                  [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
-                    pendingWrites: pendingWrites ?? [],
-                    taskId,
-                    currentTaskInput: val,
-                    resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-                    namespaceHash: XXH3(taskCheckpointNamespace),
-                  }),
-                  [CONFIG_KEY_PREVIOUS_STATE]:
-                    checkpoint.channel_values[PREVIOUS],
-                  checkpoint_id: undefined,
-                  checkpoint_ns: taskCheckpointNamespace,
-                },
-              }
-            ),
+            config: taskConfig,
             triggers: [trigger],
             retry_policy: proc.retryPolicy,
             cache_key: proc.cachePolicy

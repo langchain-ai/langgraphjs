@@ -81,7 +81,7 @@ import { mapInput, readChannels } from "./io.js";
 import { PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { PregelNode } from "./read.js";
-import { LangGraphRunnableConfig } from "./runnable_types.js";
+import { LangGraphRunnableConfig, type ServerInfo } from "./runnable_types.js";
 import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
@@ -2090,6 +2090,10 @@ export class Pregel<
 
     config.interrupt ??= (this.userInterrupt as typeof interrupt) ?? interrupt;
 
+    if (config.serverInfo == null) {
+      config.serverInfo = _buildServerInfo(config);
+    }
+
     const callbackManager = await getCallbackManagerForConfig(config);
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(), // chain
@@ -2341,4 +2345,36 @@ export class Pregel<
   async clearCache(): Promise<void> {
     await this.cache?.clear([]);
   }
+}
+
+function _buildServerInfo(
+  config: LangGraphRunnableConfig
+): ServerInfo | undefined {
+  const metadata = config.metadata ?? {};
+  const configurable = config.configurable ?? {};
+  const assistantId = metadata.assistant_id as string | undefined;
+  const graphId = metadata.graph_id as string | undefined;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const authUserData = configurable.langgraph_auth_user as
+    | Record<string, any>
+    | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let user: Record<string, any> | undefined;
+  if (
+    authUserData != null &&
+    typeof authUserData === "object" &&
+    "identity" in authUserData
+  ) {
+    user = authUserData;
+  }
+
+  if (assistantId != null || graphId != null || user != null) {
+    return {
+      assistantId: assistantId != null ? String(assistantId) : "",
+      graphId: graphId != null ? String(graphId) : "",
+      user,
+    };
+  }
+  return undefined;
 }

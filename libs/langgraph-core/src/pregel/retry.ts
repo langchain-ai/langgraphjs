@@ -1,5 +1,6 @@
 import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
 import { isGraphBubbleUp, isParentCommand } from "../errors.js";
+import type { LangGraphRunnableConfig } from "./runnable_types.js";
 import { PregelExecutableTask } from "./types.js";
 import { getParentCheckpointNamespace } from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
@@ -89,6 +90,15 @@ export async function _runWithRetry<
   if (configurable) config = patchConfigurable(config, configurable);
   config = { ...config, signal };
 
+  const lgConfig = config as LangGraphRunnableConfig;
+  const firstAttemptTime = Date.now();
+  if (lgConfig.executionInfo != null) {
+    lgConfig.executionInfo = {
+      ...lgConfig.executionInfo,
+      nodeFirstAttemptTime: firstAttemptTime,
+    };
+  }
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     if (signal?.aborted) {
@@ -167,6 +177,15 @@ export async function _runWithRetry<
 
       // signal subgraphs to resume (if available)
       config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
+
+      const retryLgConfig = config as LangGraphRunnableConfig;
+      if (retryLgConfig.executionInfo != null) {
+        retryLgConfig.executionInfo = {
+          ...retryLgConfig.executionInfo,
+          nodeAttempt: attempts + 1,
+          nodeFirstAttemptTime: firstAttemptTime,
+        };
+      }
     }
   }
   return {
