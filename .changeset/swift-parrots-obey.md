@@ -1,6 +1,7 @@
 ---
 "@langchain/angular": patch
 "@langchain/svelte": patch
+"@langchain/vue": patch
 "@langchain/langgraph-sdk": patch
 ---
 
