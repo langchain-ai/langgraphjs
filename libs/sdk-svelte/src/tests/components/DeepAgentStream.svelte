@@ -16,7 +16,9 @@
   });
 
   const toolCallStates = new Set<string>();
+  const subagentStatuses = new Set<string>();
   let observedToolCallStates = $state("");
+  let observedSubagentStatuses = $state("");
 
   const sortedSubagents = $derived(
     [...stream.subagents.values()].sort((a: any, b: any) => {
@@ -29,11 +31,13 @@
   $effect(() => {
     for (const sub of sortedSubagents) {
       const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+      subagentStatuses.add(`${subType}:${sub.status}`);
       for (const tc of sub.toolCalls) {
         toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
       }
     }
     observedToolCallStates = [...toolCallStates].sort().join(",");
+    observedSubagentStatuses = [...subagentStatuses].sort().join(",");
   });
 
   function formatMessage(msg: any): string {
@@ -98,6 +102,9 @@
 
   <div data-testid="observed-toolcall-states">
     {observedToolCallStates}
+  </div>
+  <div data-testid="observed-subagent-statuses">
+    {observedSubagentStatuses}
   </div>
 
   <hr />
