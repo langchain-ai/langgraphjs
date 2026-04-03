@@ -20,10 +20,8 @@ import type { ThreadState } from "../schema.js";
  * converts plain message objects to class instances at runtime.
  */
 export type StateWithBaseMessages<S> =
-  S extends Record<string, unknown>
-    ? "messages" extends keyof S
-      ? Omit<S, "messages"> & { messages: BaseMessage[] }
-      : S
+  S extends { messages: unknown }
+    ? Omit<S, "messages"> & { messages: BaseMessage[] }
     : S;
 
 /**
