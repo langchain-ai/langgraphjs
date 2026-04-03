@@ -2726,6 +2726,12 @@ it("deep agent: getSubagentsByMessage renders subagents while they are still run
     .toHaveTextContent(/researcher:search_web:completed/);
 
   const observedStates = screen.getByTestId("observed-grouped-states");
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/data-analyst:pending:/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/researcher:pending:/);
   await expect.element(observedStates).toHaveTextContent(/rendered-while-loading/);
   await expect
     .element(observedStates)
