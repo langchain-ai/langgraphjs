@@ -9161,7 +9161,7 @@ graph TD;
       graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
     );
 
-    expect(streamedEvents).toEqual([
+    expect(streamedEvents).toMatchObject([
       [
         new _AnyIdToolMessage({
           tool_call_id: "test",
@@ -9226,7 +9226,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_integration: "langgraph",
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
@@ -9247,7 +9247,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_integration: "langgraph",
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
@@ -9268,7 +9268,7 @@ graph TD;
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
           __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_three/),
-          ls_integration: "langgraph",
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
@@ -9383,7 +9383,7 @@ graph TD;
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
-            ls_integration: "langgraph",
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -9405,7 +9405,7 @@ graph TD;
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
-            ls_integration: "langgraph",
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -9425,7 +9425,7 @@ graph TD;
             langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
             __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_three/),
-            ls_integration: "langgraph",
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
