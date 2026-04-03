@@ -70,14 +70,6 @@ class LongPutCheckpointer extends MemorySaver {
   }
 }
 
-async function waitForCheckpointPutToSettle(logs: string[]): Promise<void> {
-  await expect
-    .poll(() => logs.includes("put checkpoint") || logs.includes("error putting checkpoint"), {
-      timeout: 1000,
-    })
-    .toBe(true);
-}
-
 /**
  * Custom checkpointer that verifies a run's configurable fields
  * are merged with the previous checkpoint config for each step
