@@ -1261,7 +1261,7 @@ export class StreamOrchestrator<
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) =>
-          this.submit(null, {
+          void this.submit(null as unknown as StateType, {
             multitaskStrategy: "interrupt",
             command,
           }),
