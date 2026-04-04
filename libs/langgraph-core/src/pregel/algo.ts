@@ -654,8 +654,8 @@ export function _prepareSingleTask<
         input: call.input,
         proc,
         writes,
-        config: Object.assign(
-          patchConfig(
+        config: {
+          ...patchConfig(
             mergeConfigs(config, {
               metadata,
               store: extra.store ?? config.store,
@@ -708,8 +708,8 @@ export function _prepareSingleTask<
               },
             }
           ),
-          { executionInfo }
-        ),
+          executionInfo,
+        },
         triggers,
         retry_policy: call.retry,
         cache_key: call.cache
@@ -809,8 +809,8 @@ export function _prepareSingleTask<
           proc: node,
           subgraphs: proc.subgraphs,
           writes,
-          config: Object.assign(
-            patchConfig(
+          config: {
+            ...patchConfig(
               mergeConfigs(config, {
                 metadata,
                 tags: proc.tags,
@@ -865,8 +865,8 @@ export function _prepareSingleTask<
                 },
               }
             ),
-            { executionInfo }
-          ),
+            executionInfo,
+          },
           triggers,
           retry_policy: proc.retryPolicy,
           cache_key: proc.cachePolicy
@@ -993,8 +993,8 @@ export function _prepareSingleTask<
             proc: node,
             subgraphs: proc.subgraphs,
             writes,
-            config: Object.assign(
-              patchConfig(
+            config: {
+              ...patchConfig(
                 mergeConfigs(config, {
                   metadata,
                   tags: proc.tags,
@@ -1050,8 +1050,8 @@ export function _prepareSingleTask<
                   },
                 }
               ),
-              { executionInfo }
-            ),
+              executionInfo,
+            },
             triggers: [trigger],
             retry_policy: proc.retryPolicy,
             cache_key: proc.cachePolicy
