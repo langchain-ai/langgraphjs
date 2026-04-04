@@ -318,12 +318,15 @@ function useStreamLGP<
       return activeSubagentsRef.value;
     },
     getSubagent(toolCallId: string) {
+      void version.value;
       return orchestrator.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      void version.value;
       return orchestrator.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      void version.value;
       return orchestrator.getSubagentsByMessage(messageId);
     },
   };

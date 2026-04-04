@@ -1129,6 +1129,19 @@ it("deep agent: subagents call tools and render args/results", async () => {
 
   // Verify tool call state transitions (pending → completed)
   const observedStates = screen.getByTestId("observed-toolcall-states");
+  const observedSubagentStatuses = screen.getByTestId("observed-subagent-statuses");
+  await expect
+    .element(observedSubagentStatuses)
+    .toHaveTextContent(/data-analyst:(pending|running|complete)/);
+  await expect
+    .element(observedSubagentStatuses)
+    .toHaveTextContent(/researcher:(pending|running|complete)/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/data-analyst:query_database:pending/);
+  await expect
+    .element(observedStates)
+    .toHaveTextContent(/researcher:search_web:pending/);
   await expect
     .element(observedStates)
     .toHaveTextContent(/data-analyst:query_database:completed/);

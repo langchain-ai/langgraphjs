@@ -1176,6 +1176,45 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("pending subagent visibility", () => {
+    const toolCalls = [
+      {
+        id: "call_1",
+        name: "task",
+        args: {
+          subagent_type: "researcher",
+          description: "Research AI trends",
+        },
+      },
+    ];
+
+    it("exposes pending subagents immediately after tool-call registration", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+      expect(subagent?.status).toBe("pending");
+      expect(subagent?.startedAt).toBeNull();
+      expect(mgr.getActiveSubagents()).toEqual([]);
+    });
+
+    it("returns pending subagents from getSubagentsByMessage before they start running", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      const subagents = mgr.getSubagentsByMessage("msg-1");
+      expect(subagents).toHaveLength(1);
+      expect(subagents[0]?.status).toBe("pending");
+    });
+  });
+
   describe("SubagentManager aiMessageId update (OpenAI ID replacement)", () => {
     function createManager(onChange?: () => void) {
       return new SubagentManager({

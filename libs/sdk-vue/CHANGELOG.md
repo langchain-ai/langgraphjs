@@ -1,5 +1,20 @@
 # @langchain/vue
 
+## 0.3.4
+
+### Patch Changes
+
+- [#2278](https://github.com/langchain-ai/langgraphjs/pull/2278) [`0d04099`](https://github.com/langchain-ai/langgraphjs/commit/0d04099958dcca0a1ed053e6a41cc2c12bab78f5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(vue): Make subagents accessible once they are spun up
+
+- Updated dependencies [[`3bbb3ff`](https://github.com/langchain-ai/langgraphjs/commit/3bbb3ff65aa3c1de96c7d751c14dc9ee11e3b095), [`0d04099`](https://github.com/langchain-ai/langgraphjs/commit/0d04099958dcca0a1ed053e6a41cc2c12bab78f5)]:
+  - @langchain/langgraph-sdk@1.8.5
+
+## 0.3.3
+
+### Patch Changes
+
+- [#2274](https://github.com/langchain-ai/langgraphjs/pull/2274) [`05810fe`](https://github.com/langchain-ai/langgraphjs/commit/05810fe087e1c23d41d3cc495985c8eb91542c83) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Fix Vue subagent grouping during streaming
+
 ## 0.3.2
 
 ### Patch Changes

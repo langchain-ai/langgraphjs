@@ -184,12 +184,15 @@ export function useStreamCustom<
     },
 
     getSubagent(toolCallId: string) {
+      void subagentsRef.value;
       return orchestrator.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      void subagentsRef.value;
       return orchestrator.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      void subagentsRef.value;
       return orchestrator.getSubagentsByMessage(messageId);
     },
   };

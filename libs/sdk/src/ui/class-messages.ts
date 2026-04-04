@@ -10,7 +10,12 @@ import type {
   AcceptBaseMessages,
   MessageMetadata,
 } from "./types.js";
-import type { HistoryWithBaseMessages } from "./messages.js";
+import type {
+  HistoryWithBaseMessages,
+  StateWithBaseMessages,
+} from "./messages.js";
+import type { QueueInterface } from "./queue.js";
+import type { ThreadState } from "../schema.js";
 
 /**
  * Remaps an SDK {@link ToolCallWithResult} so that the `toolMessage` and
@@ -40,10 +45,47 @@ export type ClassSubagentStreamInterface<
   SubagentName extends string = string,
 > = Omit<
   SubagentStreamInterface<StateType, ToolCall, SubagentName>,
-  "messages"
+  "messages" | "values"
 > & {
   messages: BaseMessage[];
+  values: StateWithBaseMessages<StateType>;
 };
+
+type StreamState<T> = T extends {
+  getMessagesMetadata: (
+    message: unknown,
+    index?: number
+  ) => MessageMetadata<infer S> | undefined;
+}
+  ? S extends Record<string, unknown>
+    ? S
+    : Record<string, unknown>
+  : T extends { history: ThreadState<infer S>[] }
+    ? S extends Record<string, unknown>
+      ? S
+      : Record<string, unknown>
+    : T extends { values: infer V }
+      ? V extends Record<string, unknown>
+        ? V
+        : Record<string, unknown>
+      : Record<string, unknown>;
+
+type ClassOptimisticValues<StateType> =
+  StateType extends Record<string, unknown>
+    ?
+        | Partial<StateWithBaseMessages<StateType>>
+        | ((
+            prev: StateWithBaseMessages<StateType>
+          ) => Partial<StateWithBaseMessages<StateType>>)
+    : never;
+
+type WithClassSubmitOptions<StateType, Options> = Options extends {
+  optimisticValues?: unknown;
+}
+  ? Omit<Options, "optimisticValues"> & {
+      optimisticValues?: ClassOptimisticValues<StateType>;
+    }
+  : Options;
 
 /**
  * Maps a stream interface to use `@langchain/core` {@link BaseMessage}
@@ -66,11 +108,13 @@ export type ClassSubagentStreamInterface<
 export type WithClassMessages<T> = Omit<
   T,
   | "messages"
+  | "values"
   | "history"
   | "getMessagesMetadata"
   | "toolCalls"
   | "getToolCalls"
   | "submit"
+  | "queue"
   | "subagents"
   | "activeSubagents"
   | "getSubagent"
@@ -78,10 +122,11 @@ export type WithClassMessages<T> = Omit<
   | "getSubagentsByMessage"
 > & {
   messages: BaseMessage[];
+  values: StateWithBaseMessages<StreamState<T>>;
   getMessagesMetadata: (
     message: BaseMessage,
     index?: number
-  ) => MessageMetadata<Record<string, unknown>> | undefined;
+  ) => MessageMetadata<StateWithBaseMessages<StreamState<T>>> | undefined;
 } & ("history" extends keyof T
     ? { history: HistoryWithBaseMessages<T["history"]> }
     : unknown) &
@@ -95,8 +140,18 @@ export type WithClassMessages<T> = Omit<
                 | AcceptBaseMessages<Exclude<V, null | undefined>>
                 | null
                 | undefined,
-              options?: O
+              options?: WithClassSubmitOptions<StreamState<T>, O>
             ) => Ret
+          : never;
+      }
+    : unknown) &
+  ("queue" extends keyof T
+    ? {
+        queue: T extends { queue: QueueInterface<infer S, infer O> }
+          ? QueueInterface<
+              StateWithBaseMessages<S>,
+              WithClassSubmitOptions<S, O>
+            >
           : never;
       }
     : unknown) &

@@ -245,6 +245,15 @@ describe("custom state types work with class instance messages", () => {
     expectTypeOf(stream).toHaveProperty("values");
   });
 
+  test("custom state fields are preserved on values", () => {
+    const stream = useStream<CustomState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.values).toHaveProperty("sessionId");
+    expectTypeOf(stream.values).toHaveProperty("metadata");
+  });
+
   test("stream.messages is still BaseMessage[]", () => {
     const stream = useStream<CustomState>({
       assistantId: "agent",
@@ -262,6 +271,22 @@ describe("custom state types work with class instance messages", () => {
       { messages: [{ type: "human", content: "hello" }] },
       undefined,
     );
+  });
+
+  test("optimisticValues callback receives typed custom state", () => {
+    const stream = useStream<CustomState>({
+      assistantId: "agent",
+    });
+
+    type SubmitOptions = NonNullable<Parameters<typeof stream.submit>[1]>;
+    type OptimisticFn = Extract<
+      NonNullable<SubmitOptions["optimisticValues"]>,
+      (...args: any[]) => any
+    >;
+
+    expectTypeOf<Parameters<OptimisticFn>[0]>().toHaveProperty("sessionId");
+    expectTypeOf<Parameters<OptimisticFn>[0]>().toHaveProperty("metadata");
+    expectTypeOf<ReturnType<OptimisticFn>>().toHaveProperty("messages");
   });
 });
 

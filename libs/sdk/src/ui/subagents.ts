@@ -395,21 +395,16 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
-   * Check if a subagent should be shown to the user.
-   * Subagents are only shown once they've actually started running.
+   * Check if a subagent should be exposed through the public API.
    *
-   * This filters out:
-   * - Pending subagents that haven't been matched to a namespace yet
-   * - Streaming artifacts with partial/corrupted data
+   * We expose subagents as soon as their parent AI message emits a complete
+   * subagent tool call, which means pending subagents should be visible.
    *
-   * The idea is: we register subagents internally when we see tool calls,
-   * but we only show them to the user once LangGraph confirms they're
-   * actually executing (via namespace events).
+   * This still filters out corrupted or partial streaming artifacts by
+   * requiring a valid-looking `subagent_type`.
    */
   private isValidSubagent(subagent: SubagentStreamBase<ToolCall>): boolean {
-    // Only show subagents that have started running or completed
-    // This ensures we don't show partial/pending subagents
-    return subagent.status === "running" || subagent.status === "complete";
+    return this.isValidSubagentType(subagent.toolCall.args.subagent_type);
   }
 
   /**
