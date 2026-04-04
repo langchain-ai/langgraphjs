@@ -6,6 +6,7 @@ import {
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
   headlessToolResumeCommand,
+  parseHeadlessToolInterruptPayload,
 } from "../headless-tools.js";
 
 async function flushMicrotasks(count = 4) {
@@ -142,6 +143,54 @@ describe("headless tool interrupt helpers", () => {
     ]);
   });
 
+  it("treats Python snake_case tool_call as headless for filtering", () => {
+    const interrupts = [
+      {
+        id: "tool-int",
+        value: {
+          type: "tool" as const,
+          tool_call: {
+            id: "call-1",
+            name: "geolocation_get",
+            args: { high_accuracy: null },
+          },
+        },
+      },
+      {
+        id: "hitl-int",
+        value: {
+          action_requests: [
+            { action_name: "approve", args: {}, description: "" },
+          ],
+        },
+      },
+    ];
+
+    expect(filterOutHeadlessToolInterrupts(interrupts)).toEqual([
+      interrupts[1],
+    ]);
+  });
+
+  it("normalizes Python tool_call via parseHeadlessToolInterruptPayload", () => {
+    expect(
+      parseHeadlessToolInterruptPayload({
+        type: "tool",
+        tool_call: {
+          id: "call_heTfkJwAH7gjuxHXMANzQKTJ",
+          name: "geolocation_get",
+          args: { high_accuracy: null },
+        },
+      })
+    ).toEqual({
+      type: "tool",
+      toolCall: {
+        id: "call_heTfkJwAH7gjuxHXMANzQKTJ",
+        name: "geolocation_get",
+        args: { high_accuracy: null },
+      },
+    });
+  });
+
   it("builds a keyed resume command for tool call results", () => {
     expect(
       headlessToolResumeCommand({
@@ -236,5 +285,47 @@ describe("headless tool interrupt helpers", () => {
     await flushMicrotasks();
 
     expect(resumeSubmit).not.toHaveBeenCalled();
+  });
+
+  it("flushes headless tool interrupts serialized with Python tool_call", async () => {
+    const handled = new Set<string>();
+    const onTool = vi.fn();
+    const resumeSubmit = vi.fn();
+
+    flushPendingHeadlessToolInterrupts(
+      {
+        __interrupt__: [
+          {
+            id: "py-headless",
+            value: {
+              type: "tool",
+              tool_call: {
+                id: "call-1",
+                name: "get_location",
+                args: { high_accuracy: false },
+              },
+            },
+          },
+        ],
+      },
+      [
+        {
+          tool: { name: "get_location" },
+          execute: async () => ({ latitude: 1, longitude: 2 }),
+        },
+      ],
+      handled,
+      { onTool, resumeSubmit }
+    );
+
+    await flushMicrotasks();
+
+    expect(resumeSubmit).toHaveBeenCalledWith({
+      resume: {
+        "call-1": { latitude: 1, longitude: 2 },
+      },
+    });
+    expect(handled.has("py-headless")).toBe(true);
+    expect(onTool).toHaveBeenCalledTimes(2);
   });
 });

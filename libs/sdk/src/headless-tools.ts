@@ -3,6 +3,10 @@ import type { Interrupt } from "./schema.js";
 /**
  * Represents a headless tool interrupt payload emitted by LangChain's
  * schema-only `tool({ ... })` overload.
+ *
+ * Servers may serialize the nested tool call as `toolCall` (JS) or
+ * `tool_call` (Python). Use {@link parseHeadlessToolInterruptPayload} to
+ * normalize either shape before reading fields.
  */
 export interface HeadlessToolInterrupt {
   type: "tool";
@@ -10,6 +14,42 @@ export interface HeadlessToolInterrupt {
     id: string | undefined;
     name: string;
     args: unknown;
+  };
+}
+
+/**
+ * Parses a headless-tool interrupt `value` from the graph. Accepts both
+ * `toolCall` (LangChain JS) and `tool_call` (Python / JSON snake_case).
+ */
+export function parseHeadlessToolInterruptPayload(
+  value: unknown
+): HeadlessToolInterrupt | null {
+  if (typeof value !== "object" || value == null) {
+    return null;
+  }
+  const v = value as Record<string, unknown>;
+  if (v.type !== "tool") {
+    return null;
+  }
+
+  const rawTc = v.toolCall ?? v.tool_call;
+  if (typeof rawTc !== "object" || rawTc == null) {
+    return null;
+  }
+  const tc = rawTc as Record<string, unknown>;
+  if (typeof tc.name !== "string") {
+    return null;
+  }
+
+  const id = typeof tc.id === "string" ? tc.id : undefined;
+
+  return {
+    type: "tool",
+    toolCall: {
+      id,
+      name: tc.name,
+      args: tc.args,
+    },
   };
 }
 
@@ -55,17 +95,7 @@ export function filterOutHeadlessToolInterrupts<T extends { value?: unknown }>(
 export function isHeadlessToolInterrupt(
   interrupt: unknown
 ): interrupt is HeadlessToolInterrupt {
-  if (typeof interrupt !== "object" || interrupt == null) {
-    return false;
-  }
-
-  const value = interrupt as Record<string, unknown>;
-  return (
-    value.type === "tool" &&
-    typeof value.toolCall === "object" &&
-    value.toolCall != null &&
-    typeof (value.toolCall as Record<string, unknown>).name === "string"
-  );
+  return parseHeadlessToolInterruptPayload(interrupt) != null;
 }
 
 export function findHeadlessTool<Args = unknown, Output = unknown>(
@@ -204,8 +234,10 @@ export function flushPendingHeadlessToolInterrupts(
   const defer = options.defer ?? ((run) => run());
 
   for (const interrupt of interrupts as Interrupt[]) {
-    if (!isHeadlessToolInterrupt(interrupt.value)) continue;
-    const headlessInterrupt = interrupt.value;
+    const headlessInterrupt = parseHeadlessToolInterruptPayload(
+      interrupt.value
+    );
+    if (!headlessInterrupt) continue;
 
     const interruptId = interrupt.id ?? headlessInterrupt.toolCall.id ?? "";
     if (handledIds.has(interruptId)) continue;

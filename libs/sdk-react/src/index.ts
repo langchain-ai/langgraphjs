@@ -105,6 +105,7 @@ export {
 } from "@langchain/langgraph-sdk/ui";
 export {
   isHeadlessToolInterrupt,
+  parseHeadlessToolInterruptPayload,
   filterOutHeadlessToolInterrupts,
   findHeadlessTool,
   executeHeadlessTool,
