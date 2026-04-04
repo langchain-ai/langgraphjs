@@ -665,7 +665,6 @@ export function _prepareSingleTask<
               callbacks: manager?.getChild(`graph:step:${step}`),
               configurable: {
                 [CONFIG_KEY_TASK_ID]: id,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                   _localWrite(
                     (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
@@ -821,7 +820,6 @@ export function _prepareSingleTask<
                 callbacks: manager?.getChild(`graph:step:${step}`),
                 configurable: {
                   [CONFIG_KEY_TASK_ID]: taskId,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                     _localWrite(
                       (items: PendingWrite<keyof Cc>[]) =>
@@ -1005,7 +1003,6 @@ export function _prepareSingleTask<
                   callbacks: manager?.getChild(`graph:step:${step}`),
                   configurable: {
                     [CONFIG_KEY_TASK_ID]: taskId,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
                       _localWrite(
                         (items: PendingWrite<keyof Cc>[]) => {

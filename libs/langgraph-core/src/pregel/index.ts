@@ -2355,11 +2355,9 @@ function _buildServerInfo(
   const assistantId = metadata.assistant_id as string | undefined;
   const graphId = metadata.graph_id as string | undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const authUserData = configurable.langgraph_auth_user as
     | Record<string, any>
     | undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let user: Record<string, any> | undefined;
   if (
     authUserData != null &&
