@@ -21,6 +21,8 @@ export {
   extractInterrupts,
   normalizeInterruptForClient,
   normalizeInterruptsList,
+  userFacingInterruptsFromValuesArray,
+  userFacingInterruptsFromThreadTasks,
 } from "./interrupts.js";
 export { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";

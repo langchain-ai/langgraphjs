@@ -68,3 +68,30 @@ export type { BagTemplate } from "./types.template.js";
 export type * from "./ui/stream/index.js";
 
 export { StreamError } from "./ui/errors.js";
+
+export type {
+  HeadlessToolImplementation,
+  AnyHeadlessToolImplementation,
+  ToolEvent,
+  HeadlessToolInterrupt,
+  OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
+  BrowserTool,
+  AnyBrowserTool,
+  BrowserToolEvent,
+  BrowserToolInterrupt,
+  OnBrowserToolCallback,
+} from "./browser-tools.js";
+export {
+  isHeadlessToolInterrupt,
+  filterOutHeadlessToolInterrupts,
+  findHeadlessTool,
+  executeHeadlessTool,
+  handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
+  isBrowserToolInterrupt,
+  findBrowserTool,
+  executeBrowserTool,
+  handleBrowserToolInterrupt,
+} from "./browser-tools.js";

@@ -13,7 +13,7 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
-  normalizeInterruptsList,
+  userFacingInterruptsFromValuesArray,
   FetchStreamTransport,
   toMessageClass,
   ensureMessageInstances,
@@ -35,6 +35,7 @@ import type {
   Interrupt,
   ThreadState,
 } from "@langchain/langgraph-sdk";
+import { flushPendingHeadlessToolInterrupts } from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStreamCustom } from "./types.js";
 
@@ -234,6 +235,29 @@ export function useStreamCustom<
     await submitDirect(values, submitOptions);
   };
 
+  const handledToolsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    handledToolsRef.current.clear();
+  }, [threadId]);
+
+  useEffect(() => {
+    flushPendingHeadlessToolInterrupts(
+      stream.values as Record<string, unknown> | null,
+      options.tools,
+      handledToolsRef.current,
+      {
+        onTool: options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          submit(null, {
+            command,
+          }),
+      }
+    );
+  }, [options.onTool, options.tools, stream.values, submit]);
+
   return {
     get values() {
       return stream.values ?? ({} as StateType);
@@ -272,10 +296,8 @@ export function useStreamCustom<
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          stream.values.__interrupt__ as Interrupt<InterruptType>[]
         );
       }
 

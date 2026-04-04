@@ -5,6 +5,7 @@ import {
 } from "./orchestrator.js";
 import type { AnyStreamOptions } from "./types.js";
 import type { Client } from "../client.js";
+import type { HeadlessToolImplementation } from "../browser-tools.js";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
@@ -468,6 +469,49 @@ describe("StreamOrchestrator", () => {
       /* eslint-enable @typescript-eslint/no-explicit-any */
 
       expect(orch.messages).toHaveLength(1);
+
+      orch.dispose();
+    });
+
+    it("filters headless tool interrupts from user-facing accessors", async () => {
+      const toolImpl: HeadlessToolImplementation<{ city: string }, string> = {
+        tool: { name: "get_weather" },
+        execute: vi.fn().mockResolvedValue("sunny"),
+      };
+      const streamValues = {
+        __interrupt__: [
+          {
+            id: "tool-int",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "call-1",
+                name: "get_weather",
+                args: { city: "SF" },
+              },
+            },
+          },
+        ],
+        messages: [],
+      };
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield { event: "values" as const, data: streamValues };
+        },
+      };
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockReturnValue(mockStream);
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ tools: [toolImpl] }),
+        accessors
+      );
+
+      await orch.submit({ messages: [] });
+
+      expect(orch.interrupts).toEqual([]);
+      expect(orch.interrupt).toBeUndefined();
+      expect(toolImpl.execute).toHaveBeenCalledWith({ city: "SF" });
+      expect(client.runs.stream).toHaveBeenCalledTimes(2);
 
       orch.dispose();
     });

@@ -18,13 +18,14 @@ import type { UseStreamCustom } from "./types.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
-import { normalizeInterruptsList } from "../ui/interrupts.js";
+import { userFacingInterruptsFromValuesArray } from "../ui/interrupts.js";
 import { Interrupt, type ThreadState } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
+import { flushPendingHeadlessToolInterrupts } from "../browser-tools.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -266,6 +267,29 @@ export function useStreamCustom<
     );
   };
 
+  const handledToolsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    handledToolsRef.current.clear();
+  }, [threadId]);
+
+  useEffect(() => {
+    flushPendingHeadlessToolInterrupts(
+      stream.values as Record<string, unknown> | null,
+      options.tools,
+      handledToolsRef.current,
+      {
+        onTool: options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          submit(null, {
+            command,
+          }),
+      }
+    );
+  }, [options.onTool, options.tools, stream.values, submit]);
+
   return {
     get values() {
       return stream.values ?? ({} as StateType);
@@ -283,10 +307,8 @@ export function useStreamCustom<
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          stream.values.__interrupt__ as Interrupt<InterruptType>[]
         );
       }
 

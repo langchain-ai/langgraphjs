@@ -88,6 +88,19 @@ export type {
   ToolCallFromTool,
   ToolCallsFromTools,
 } from "@langchain/langgraph-sdk";
+export type {
+  HeadlessToolImplementation,
+  AnyHeadlessToolImplementation,
+  ToolEvent,
+  HeadlessToolInterrupt,
+  OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
+  BrowserTool,
+  AnyBrowserTool,
+  BrowserToolEvent,
+  BrowserToolInterrupt,
+  OnBrowserToolCallback,
+} from "@langchain/langgraph-sdk";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
@@ -95,3 +108,16 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "@langchain/langgraph-sdk/ui";
+export {
+  isHeadlessToolInterrupt,
+  filterOutHeadlessToolInterrupts,
+  findHeadlessTool,
+  executeHeadlessTool,
+  handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
+  isBrowserToolInterrupt,
+  findBrowserTool,
+  executeBrowserTool,
+  handleBrowserToolInterrupt,
+} from "@langchain/langgraph-sdk";
