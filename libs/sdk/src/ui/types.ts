@@ -37,7 +37,7 @@ import type { BagTemplate } from "../types.template.js";
 import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
-} from "../browser-tools.js";
+} from "../headless-tools.js";
 
 /**
  * Represents a tool call that initiated a subagent.

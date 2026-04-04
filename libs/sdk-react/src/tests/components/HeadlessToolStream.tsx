@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Message, ToolEvent } from "@langchain/langgraph-sdk";
+import type { BaseMessage, ToolEvent } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
 import { getLocationTool } from "../fixtures/browser-fixtures.js";
 
@@ -20,7 +20,7 @@ export function BrowserToolStream({ apiUrl, execute }: Props) {
       })),
   );
 
-  const { messages, isLoading, submit } = useStream<{ messages: Message[] }>({
+  const { messages, isLoading, submit } = useStream<{ messages: BaseMessage[] }>({
     assistantId: "browserToolAgent",
     apiUrl,
     tools: [tool],

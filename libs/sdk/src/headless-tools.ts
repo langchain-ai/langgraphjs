@@ -222,25 +222,3 @@ export function flushPendingHeadlessToolInterrupts(
     });
   }
 }
-
-/** @deprecated Use `HeadlessToolInterrupt`. */
-export type BrowserToolInterrupt = HeadlessToolInterrupt;
-/** @deprecated Use `HeadlessToolImplementation`. */
-export type BrowserTool<
-  Args = unknown,
-  Output = unknown,
-> = HeadlessToolImplementation<Args, Output>;
-/** @deprecated Use `AnyHeadlessToolImplementation`. */
-export type AnyBrowserTool = AnyHeadlessToolImplementation;
-/** @deprecated Use `ToolEvent`. */
-export type BrowserToolEvent = ToolEvent;
-/** @deprecated Use `OnToolCallback`. */
-export type OnBrowserToolCallback = OnToolCallback;
-/** @deprecated Use `isHeadlessToolInterrupt`. */
-export const isBrowserToolInterrupt = isHeadlessToolInterrupt;
-/** @deprecated Use `findHeadlessTool`. */
-export const findBrowserTool = findHeadlessTool;
-/** @deprecated Use `executeHeadlessTool`. */
-export const executeBrowserTool = executeHeadlessTool;
-/** @deprecated Use `handleHeadlessToolInterrupt`. */
-export const handleBrowserToolInterrupt = handleHeadlessToolInterrupt;

@@ -14,7 +14,7 @@ import {
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import { flushPendingHeadlessToolInterrupts } from "../browser-tools.js";
+import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
   AnyStreamCustomOptions,
   CustomSubmitOptions,

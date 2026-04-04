@@ -70,12 +70,7 @@ export type {
   HeadlessToolInterrupt,
   OnToolCallback,
   FlushPendingHeadlessToolInterruptsOptions,
-  BrowserTool,
-  AnyBrowserTool,
-  BrowserToolEvent,
-  BrowserToolInterrupt,
-  OnBrowserToolCallback,
-} from "../browser-tools.js";
+} from "../headless-tools.js";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
@@ -91,8 +86,4 @@ export {
   handleHeadlessToolInterrupt,
   headlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
-  isBrowserToolInterrupt,
-  findBrowserTool,
-  executeBrowserTool,
-  handleBrowserToolInterrupt,
-} from "../browser-tools.js";
+} from "../headless-tools.js";

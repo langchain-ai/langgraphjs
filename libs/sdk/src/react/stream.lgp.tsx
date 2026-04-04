@@ -50,7 +50,7 @@ import {
 import { useControllableThreadId } from "./thread.js";
 import type { StreamEvent } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
-import { flushPendingHeadlessToolInterrupts } from "../browser-tools.js";
+import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 
 function getFetchHistoryKey(
   client: Client,

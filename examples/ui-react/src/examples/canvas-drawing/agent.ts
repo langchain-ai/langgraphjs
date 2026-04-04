@@ -1,8 +1,8 @@
 /**
  * Canvas Drawing Agent
  *
- * An LLM that can paint on an HTML5 canvas using structured browser tools.
- * All drawing happens client-side through the browser tool mechanism — no
+ * An LLM that can paint on an HTML5 canvas using structured headless tools.
+ * All drawing happens client-side through the headless tool mechanism — no
  * eval(), no arbitrary code execution. The agent expresses creativity purely
  * through typed Canvas 2D API calls.
  *

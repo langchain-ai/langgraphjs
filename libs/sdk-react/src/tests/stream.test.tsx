@@ -26,7 +26,7 @@ import { SuspenseBasicStream } from "./components/SuspenseBasicStream.js";
 import { SuspenseErrorStream } from "./components/SuspenseErrorStream.js";
 import { SuspenseWithThreadId } from "./components/SuspenseWithThreadId.js";
 import { ContextProvider } from "./components/ContextProvider.js";
-import { BrowserToolStream } from "./components/BrowserToolStream.js";
+import { HeadlessToolStream } from "./components/HeadlessToolStream.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1353,13 +1353,8 @@ it("useStreamContext throws when used outside StreamProvider", async () => {
     );
 });
 
-
-// ============================================================================
-// Browser Tools
-// ============================================================================
-
-it("browser tools - executes in browser and resumes agent automatically", async () => {
-  const screen = await render(<BrowserToolStream apiUrl={serverUrl} />);
+it("headless tools - executes in browser and resumes agent automatically", async () => {
+  const screen = await render(<HeadlessToolStream apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
 
@@ -1376,8 +1371,8 @@ it("browser tools - executes in browser and resumes agent automatically", async 
     .toHaveTextContent("Location received!");
 });
 
-it("browser tools - onBrowserTool callback fires start and success events", async () => {
-  const screen = await render(<BrowserToolStream apiUrl={serverUrl} />);
+it("headless tools - onTool callback fires start and success events", async () => {
+  const screen = await render(<HeadlessToolStream apiUrl={serverUrl} />);
 
   await screen.getByTestId("submit").click();
 
@@ -1392,13 +1387,13 @@ it("browser tools - onBrowserTool callback fires start and success events", asyn
     .toHaveTextContent("success:get_location");
 });
 
-it("browser tools - propagates execute error back to agent as error payload", async () => {
+it("headless tools - propagates execute error back to agent as error payload", async () => {
   const failingExecute = async () => {
     throw new Error("GPS unavailable");
   };
 
   const screen = await render(
-    <BrowserToolStream apiUrl={serverUrl} execute={failingExecute} />,
+    <HeadlessToolStream apiUrl={serverUrl} execute={failingExecute} />,
   );
 
   await screen.getByTestId("submit").click();

@@ -383,7 +383,7 @@ export function CanvasDrawingAgent() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
-  // ── Initialise canvas & share context with browser tools ──────────────────
+  // ── Initialise canvas & share context with headless tools ──────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -577,7 +577,7 @@ registerExample({
   id: "canvas-drawing",
   title: "Canvas Drawing",
   description:
-    "AI artist that draws on an HTML5 canvas using browser tools — no eval",
+    "AI artist that draws on an HTML5 canvas using headless tools — no eval",
   category: "agents",
   icon: "tool",
   ready: true,

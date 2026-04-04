@@ -3044,7 +3044,7 @@ it("useStreamContext throws when used outside provideStream", async () => {
     );
 });
 
-function makeBrowserToolComponent(
+function makeHeadlessToolComponent(
   execute?: (args: unknown) => Promise<unknown>,
 ) {
   return defineComponent({
@@ -3062,7 +3062,7 @@ function makeBrowserToolComponent(
       );
 
       const { messages, isLoading, submit } = useStream({
-        assistantId: "browserToolAgent",
+        assistantId: "headlessToolAgent",
         apiUrl: serverUrl,
         tools: [tool],
         onTool: (event) => {
@@ -3123,8 +3123,8 @@ function makeBrowserToolComponent(
   });
 }
 
-it("browser tools - executes in browser and resumes agent automatically", async () => {
-  const screen = render(makeBrowserToolComponent());
+it("headless tools - executes in browser and resumes agent automatically", async () => {
+  const screen = render(makeHeadlessToolComponent());
 
   await screen.getByTestId("submit").click();
 
@@ -3139,8 +3139,8 @@ it("browser tools - executes in browser and resumes agent automatically", async 
     .toHaveTextContent("Location received!");
 });
 
-it("browser tools - onBrowserTool callback fires start and success events", async () => {
-  const screen = render(makeBrowserToolComponent());
+it("headless tools - onTool callback fires start and success events", async () => {
+  const screen = render(makeHeadlessToolComponent());
 
   await screen.getByTestId("submit").click();
 
@@ -3155,12 +3155,12 @@ it("browser tools - onBrowserTool callback fires start and success events", asyn
     .toHaveTextContent("success:get_location");
 });
 
-it("browser tools - propagates execute error back to agent as error payload", async () => {
+it("headless tools - propagates execute error back to agent as error payload", async () => {
   const failingExecute = async () => {
     throw new Error("GPS unavailable");
   };
 
-  const screen = render(makeBrowserToolComponent(failingExecute));
+  const screen = render(makeHeadlessToolComponent(failingExecute));
 
   await screen.getByTestId("submit").click();
 

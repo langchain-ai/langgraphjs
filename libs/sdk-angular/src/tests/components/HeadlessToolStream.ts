@@ -38,11 +38,11 @@ const TEMPLATE = `
 `;
 
 @Component({ template: TEMPLATE })
-export class BrowserToolComponent {
+export class HeadlessToolComponent {
   toolEvents = signal<ToolEvent[]>([]);
 
   stream = injectStream({
-    assistantId: "browserToolAgent",
+    assistantId: "headlessToolAgent",
     apiUrl: serverUrl,
     tools: [
       getLocationTool.implement(async () => ({
@@ -67,11 +67,11 @@ export class BrowserToolComponent {
 }
 
 @Component({ template: TEMPLATE })
-export class BrowserToolErrorComponent {
+export class HeadlessToolErrorComponent {
   toolEvents = signal<ToolEvent[]>([]);
 
   stream = injectStream({
-    assistantId: "browserToolAgent",
+    assistantId: "headlessToolAgent",
     apiUrl: serverUrl,
     tools: [
       getLocationTool.implement(async () => {

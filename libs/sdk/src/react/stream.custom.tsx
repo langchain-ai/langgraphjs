@@ -25,7 +25,7 @@ import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
-import { flushPendingHeadlessToolInterrupts } from "../browser-tools.js";
+import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 
 interface FetchStreamTransportOptions {
   /**

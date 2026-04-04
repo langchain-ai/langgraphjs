@@ -136,9 +136,9 @@ function LocationMap({
 }
 
 /**
- * Component to display browser tool execution status
+ * Component to display headless tool execution status
  */
-function BrowserToolStatus({ events }: { events: ToolEvent[] }) {
+function HeadlessToolStatus({ events }: { events: ToolEvent[] }) {
   if (events.length === 0) return null;
 
   return (
@@ -238,7 +238,7 @@ function MemoryToolCallCard({
 
     try {
       const parsed = JSON.parse(content);
-      // Browser tool results are wrapped: { [callId]: actualResult }
+      // headless tool results are wrapped: { [callId]: actualResult }
       const data: Record<string, unknown> =
         call.id && parsed[call.id] !== undefined ? parsed[call.id] : parsed;
 
@@ -457,15 +457,15 @@ function hasContent(message: Message): boolean {
   return false;
 }
 
-export function BrowserToolsAgent() {
-  // Track browser tool events for display
+export function HeadlessToolsAgent() {
+  // Track headless tool events for display
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [isProcessingHitl, setIsProcessingHitl] = useState(false);
 
   const stream = useStream<typeof agent, { InterruptType: HITLRequest }>({
-    assistantId: "browser-tools",
+    assistantId: "headless-tools",
     apiUrl: "http://localhost:2024",
-    // Register browser tools - these will execute locally when the agent calls them
+    // Register headless tools - these will execute locally when the agent calls them
     tools: [
       memoryListImpl,
       memoryPutImpl,
@@ -474,7 +474,7 @@ export function BrowserToolsAgent() {
       memoryForgetImpl,
       geolocationGetImpl,
     ],
-    // Track browser tool lifecycle events
+    // Track headless tool lifecycle events
     onTool: (event) => {
       setToolEvents((prev) => {
         // On start, add the event
@@ -610,8 +610,8 @@ export function BrowserToolsAgent() {
                 </div>
               )}
 
-              {/* Show browser tool execution status */}
-              <BrowserToolStatus events={toolEvents} />
+              {/* Show headless tool execution status */}
+              <HeadlessToolStatus events={toolEvents} />
 
               {/* Show loading indicator when streaming and no content yet */}
               {stream.isLoading &&
@@ -661,14 +661,14 @@ export function BrowserToolsAgent() {
 
 // Register this example
 registerExample({
-  id: "browser-tools",
+  id: "headless-tools",
   title: "Long-Term Memory",
   description:
     "Local browser memory + headless tools; geolocation is gated with human-in-the-loop",
   category: "agents",
   icon: "tool",
   ready: true,
-  component: BrowserToolsAgent,
+  component: HeadlessToolsAgent,
 });
 
-export default BrowserToolsAgent;
+export default HeadlessToolsAgent;

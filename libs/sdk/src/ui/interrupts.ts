@@ -1,5 +1,5 @@
 import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
-import { filterOutHeadlessToolInterrupts } from "../browser-tools.js";
+import { filterOutHeadlessToolInterrupts } from "../headless-tools.js";
 import { Interrupt, ThreadState } from "../schema.js";
 
 /**

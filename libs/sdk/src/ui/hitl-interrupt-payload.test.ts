@@ -6,7 +6,7 @@ import {
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
   headlessToolResumeCommand,
-} from "../browser-tools.js";
+} from "../headless-tools.js";
 
 async function flushMicrotasks(count = 4) {
   for (let i = 0; i < count; i += 1) {

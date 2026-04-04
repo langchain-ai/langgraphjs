@@ -371,10 +371,10 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
 });
 
 /**
- * Stateless model for browser tool tests. Inspects incoming messages instead
+ * Stateless model for headless tool tests. Inspects incoming messages instead
  * of using a call counter, so retries never receive a stale response.
  */
-class FakeBrowserToolModel extends BaseChatModel {
+class FakeHeadlessToolModel extends BaseChatModel {
   constructor() {
     super({});
   }
@@ -440,10 +440,10 @@ class FakeBrowserToolModel extends BaseChatModel {
   }
 }
 
-const browserToolModel = new FakeBrowserToolModel();
+const headlessToolModel = new FakeHeadlessToolModel();
 
-const browserToolAgent = createAgent({
-  model: browserToolModel,
+const headlessToolAgent = createAgent({
+  model: headlessToolModel,
   tools: [getLocationTool],
   checkpointer,
 }) as unknown as AnyPregel;
@@ -454,7 +454,7 @@ const graphs: Record<string, AnyPregel> = {
   parentAgent,
   removeMessageAgent,
   errorAgent,
-  browserToolAgent,
+  headlessToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 

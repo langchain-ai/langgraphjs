@@ -5,7 +5,7 @@ import {
 } from "./orchestrator.js";
 import type { AnyStreamOptions } from "./types.js";
 import type { Client } from "../client.js";
-import type { HeadlessToolImplementation } from "../browser-tools.js";
+import type { HeadlessToolImplementation } from "../headless-tools.js";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;

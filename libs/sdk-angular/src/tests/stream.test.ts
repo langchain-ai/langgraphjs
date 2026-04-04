@@ -44,9 +44,9 @@ import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
 import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
 import {
-  BrowserToolComponent,
-  BrowserToolErrorComponent,
-} from "./components/BrowserToolStream.js";
+  HeadlessToolComponent,
+  HeadlessToolErrorComponent,
+} from "./components/HeadlessToolStream.js";
 import { StreamServiceBasicComponent } from "./components/StreamServiceBasic.js";
 import { StreamServiceCustomTransportComponent } from "./components/StreamServiceCustomTransport.js";
 import { StreamServiceSharedComponent } from "./components/StreamServiceShared.js";
@@ -1290,10 +1290,8 @@ it("injectStream throws when used outside an injection context", () => {
   }).toThrow();
 });
 
-
-// Browser Tools
-it("browser tools - executes in browser and resumes agent automatically", async () => {
-  const screen = await render(BrowserToolComponent);
+it("headless tools - executes in browser and resumes agent automatically", async () => {
+  const screen = await render(HeadlessToolComponent);
 
   await screen.getByTestId("submit").click();
 
@@ -1308,8 +1306,8 @@ it("browser tools - executes in browser and resumes agent automatically", async 
     .toHaveTextContent("Location received!");
 });
 
-it("browser tools - onBrowserTool callback fires start and success events", async () => {
-  const screen = await render(BrowserToolComponent);
+it("headless tools - onHeadlessTool callback fires start and success events", async () => {
+  const screen = await render(HeadlessToolComponent);
 
   await screen.getByTestId("submit").click();
 
@@ -1324,8 +1322,8 @@ it("browser tools - onBrowserTool callback fires start and success events", asyn
     .toHaveTextContent("success:get_location");
 });
 
-it("browser tools - propagates execute error back to agent as error payload", async () => {
-  const screen = await render(BrowserToolErrorComponent);
+it("headless tools - propagates execute error back to agent as error payload", async () => {
+  const screen = await render(HeadlessToolErrorComponent);
 
   await screen.getByTestId("submit").click();
 

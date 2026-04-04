@@ -76,12 +76,7 @@ export type {
   HeadlessToolInterrupt,
   OnToolCallback,
   FlushPendingHeadlessToolInterruptsOptions,
-  BrowserTool,
-  AnyBrowserTool,
-  BrowserToolEvent,
-  BrowserToolInterrupt,
-  OnBrowserToolCallback,
-} from "./browser-tools.js";
+} from "./headless-tools.js";
 export {
   isHeadlessToolInterrupt,
   filterOutHeadlessToolInterrupts,
@@ -90,8 +85,4 @@ export {
   handleHeadlessToolInterrupt,
   headlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
-  isBrowserToolInterrupt,
-  findBrowserTool,
-  executeBrowserTool,
-  handleBrowserToolInterrupt,
-} from "./browser-tools.js";
+} from "./headless-tools.js";

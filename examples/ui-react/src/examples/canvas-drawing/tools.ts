@@ -1,5 +1,5 @@
 /**
- * Canvas Drawing Browser Tools
+ * Canvas Drawing Headless Tools
  *
  * Provides a structured, eval-free API for the LLM to draw on an HTML5 canvas.
  * Each tool maps to one or more safe Canvas 2D API calls — no arbitrary code

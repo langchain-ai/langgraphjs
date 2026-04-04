@@ -1,7 +1,7 @@
 /**
- * Browser Tools: Long-Term Memory Example
+ * Headless Tools: Long-Term Memory Example
  *
- * This example demonstrates browser tools that provide durable, user-controlled
+ * This example demonstrates headless tools that provide durable, user-controlled
  * memory using IndexedDB. The agent can remember user preferences, facts, and
  * context across sessions - all stored locally in the browser.
  *
@@ -175,7 +175,7 @@ async function getAllMemories(): Promise<Memory[]> {
 }
 
 // ============================================================================
-// Memory Browser Tools
+// Memory Headless Tools
 // ============================================================================
 
 /**
@@ -488,7 +488,7 @@ export const memoryForgetImpl = memoryForget.implement(
 );
 
 // ============================================================================
-// Geolocation Browser Tool
+// Geolocation Headless Tool
 // ============================================================================
 
 /**

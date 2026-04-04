@@ -1,7 +1,7 @@
 /**
  * Browser Memory Agent
  *
- * This agent demonstrates long-term memory using browser tools.
+ * This agent demonstrates long-term memory using headless tools.
  * It can remember user preferences, facts, and context across sessions -
  * all stored locally in the browser's IndexedDB, never leaving the device.
  *
@@ -17,7 +17,7 @@ import { createAgent, humanInTheLoopMiddleware } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 
-// Import browser tools for memory operations
+// Import headless tools for memory operations
 import {
   memoryPut,
   memoryGet,
