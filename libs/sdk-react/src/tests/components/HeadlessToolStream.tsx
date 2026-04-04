@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { BaseMessage, ToolEvent } from "@langchain/langgraph-sdk";
+import type { ToolEvent } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 import { useStream } from "../../index.js";
 import { getLocationTool } from "../fixtures/browser-fixtures.js";
 
@@ -9,7 +10,7 @@ interface Props {
   execute?: Parameters<typeof getLocationTool.implement>[0];
 }
 
-export function BrowserToolStream({ apiUrl, execute }: Props) {
+export function HeadlessToolStream({ apiUrl, execute }: Props) {
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
   const tool = getLocationTool.implement(
@@ -21,7 +22,7 @@ export function BrowserToolStream({ apiUrl, execute }: Props) {
   );
 
   const { messages, isLoading, submit } = useStream<{ messages: BaseMessage[] }>({
-    assistantId: "browserToolAgent",
+    assistantId: "headlessToolAgent",
     apiUrl,
     tools: [tool],
     onTool: (event) => {

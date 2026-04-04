@@ -21,7 +21,7 @@
   );
 
   const stream = useStream({
-    assistantId: "browserToolAgent",
+    assistantId: "headlessToolAgent",
     apiUrl,
     tools: [tool],
     onTool: (event) => {
