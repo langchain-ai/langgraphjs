@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.2.7
+
+### Patch Changes
+
+- [#2281](https://github.com/langchain-ai/langgraphjs/pull/2281) [`2b62610`](https://github.com/langchain-ai/langgraphjs/commit/2b626107101bddb13cf662e1583ea1a828c6e0cd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(sdk): support for headless tools
+
 ## 1.2.6
 
 ### Patch Changes
