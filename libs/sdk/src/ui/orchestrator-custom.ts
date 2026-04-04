@@ -9,8 +9,12 @@ import {
   toMessageClass,
   ensureMessageInstances,
 } from "./messages.js";
-import { extractInterrupts, normalizeInterruptsList } from "./interrupts.js";
+import {
+  extractInterrupts,
+  userFacingInterruptsFromValuesArray,
+} from "./interrupts.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
+import { flushPendingHeadlessToolInterrupts } from "../browser-tools.js";
 import type {
   AnyStreamCustomOptions,
   CustomSubmitOptions,
@@ -77,6 +81,8 @@ export class CustomStreamOrchestrator<
 
   #disposed = false;
 
+  #handledHeadlessToolInterruptIds = new Set<string>();
+
   /**
    * Create a new {@link CustomStreamOrchestrator} instance.
    *
@@ -99,6 +105,7 @@ export class CustomStreamOrchestrator<
     this.#historyValues = options.initialValues ?? ({} as StateType);
 
     this.#streamUnsub = this.stream.subscribe(() => {
+      this.#flushPendingHeadlessToolInterrupts();
       this.#notify();
     });
 
@@ -153,6 +160,7 @@ export class CustomStreamOrchestrator<
   syncThreadId(newId: string | null): void {
     if (newId !== this.#threadId) {
       this.#threadId = newId;
+      this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
       this.#notify();
     }
@@ -257,10 +265,8 @@ export class CustomStreamOrchestrator<
       "__interrupt__" in this.stream.values &&
       Array.isArray(this.stream.values.__interrupt__)
     ) {
-      const valueInterrupts = this.stream.values.__interrupt__;
-      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-      return normalizeInterruptsList(
-        valueInterrupts as Interrupt<GetInterruptType<Bag>>[]
+      return userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
+        this.stream.values.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
       );
     }
     return [];
@@ -374,6 +380,7 @@ export class CustomStreamOrchestrator<
   switchThread(newThreadId: string | null): void {
     if (newThreadId !== this.#threadId) {
       this.#threadId = newThreadId;
+      this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
       this.#notify();
     }
@@ -501,5 +508,23 @@ export class CustomStreamOrchestrator<
     void this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });
+  }
+
+  #flushPendingHeadlessToolInterrupts(): void {
+    flushPendingHeadlessToolInterrupts(
+      this.stream.values as Record<string, unknown> | null,
+      this.#options.tools,
+      this.#handledHeadlessToolInterruptIds,
+      {
+        onTool: this.#options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          this.submit(null, {
+            command,
+          }),
+      }
+    );
   }
 }
