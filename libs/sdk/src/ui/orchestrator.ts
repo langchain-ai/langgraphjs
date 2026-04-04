@@ -16,9 +16,14 @@ import {
 import { PendingRunsTracker } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
-import { extractInterrupts, normalizeInterruptsList } from "./interrupts.js";
+import {
+  extractInterrupts,
+  userFacingInterruptsFromThreadTasks,
+  userFacingInterruptsFromValuesArray,
+} from "./interrupts.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
+import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
   UseStreamThread,
   AnyStreamOptions,
@@ -162,6 +167,8 @@ export class StreamOrchestrator<
 
   #disposed = false;
 
+  #handledHeadlessToolInterruptIds = new Set<string>();
+
   /**
    * Create a new StreamOrchestrator.
    *
@@ -210,6 +217,9 @@ export class StreamOrchestrator<
     };
 
     this.#streamUnsub = this.stream.subscribe(() => {
+      this.#flushPendingHeadlessToolInterrupts(
+        this.stream.values as Record<string, unknown> | null
+      );
       this.#notify();
     });
 
@@ -270,6 +280,7 @@ export class StreamOrchestrator<
   setThreadId(newId: string | undefined): void {
     if (newId === this.#threadId) return;
     this.#threadId = newId;
+    this.#handledHeadlessToolInterruptIds.clear();
     this.stream.clear();
     this.#fetchHistoryForThread(newId);
     this.#notify();
@@ -285,6 +296,7 @@ export class StreamOrchestrator<
   #setThreadIdFromSubmit(newId: string): void {
     this.#threadIdStreaming = newId;
     this.#threadId = newId;
+    this.#handledHeadlessToolInterruptIds.clear();
     this.#options.onThreadId?.(newId);
     this.#notify();
   }
@@ -342,6 +354,9 @@ export class StreamOrchestrator<
         isLoading: false,
         mutate: this.#mutate,
       };
+      this.#flushPendingHeadlessToolInterrupts(
+        data?.at(0)?.values as Record<string, unknown> | null | undefined
+      );
       this.#notify();
       return data;
     } catch (err) {
@@ -362,6 +377,7 @@ export class StreamOrchestrator<
    */
   initThreadId(threadId: string | undefined): void {
     this.#threadId = threadId;
+    this.#handledHeadlessToolInterruptIds.clear();
     this.#fetchHistoryForThread(threadId);
   }
 
@@ -522,10 +538,8 @@ export class StreamOrchestrator<
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
     const v = this.values;
     if (v != null && "__interrupt__" in v && Array.isArray(v.__interrupt__)) {
-      const valueInterrupts = v.__interrupt__;
-      if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-      return normalizeInterruptsList(
-        valueInterrupts as Interrupt<GetInterruptType<Bag>>[]
+      return userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
+        v.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
       );
     }
 
@@ -534,11 +548,10 @@ export class StreamOrchestrator<
     const allTasks = this.branchContext.threadHead?.tasks ?? [];
     const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
-    if (allInterrupts.length > 0) {
-      return normalizeInterruptsList(
-        allInterrupts as Interrupt<GetInterruptType<Bag>>[]
-      );
-    }
+    const taskInterrupts = userFacingInterruptsFromThreadTasks<
+      GetInterruptType<Bag>
+    >(allInterrupts as Interrupt<GetInterruptType<Bag>>[]);
+    if (taskInterrupts != null) return taskInterrupts;
 
     const next = this.branchContext.threadHead?.next ?? [];
     if (!next.length || this.error != null) return [];
@@ -1174,6 +1187,7 @@ export class StreamOrchestrator<
     if (newThreadId !== current) {
       const prevThreadId = this.#threadId;
       this.#threadId = newThreadId ?? undefined;
+      this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
 
       const removed = this.pendingRuns.removeAll();
@@ -1231,5 +1245,26 @@ export class StreamOrchestrator<
     this.#streamUnsub = null;
     this.#queueUnsub = null;
     void this.stop();
+  }
+
+  #flushPendingHeadlessToolInterrupts(
+    values: Record<string, unknown> | null | undefined
+  ): void {
+    flushPendingHeadlessToolInterrupts(
+      values,
+      this.#options.tools,
+      this.#handledHeadlessToolInterruptIds,
+      {
+        onTool: this.#options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          void this.submit(null as unknown as StateType, {
+            multitaskStrategy: "interrupt",
+            command,
+          }),
+      }
+    );
   }
 }

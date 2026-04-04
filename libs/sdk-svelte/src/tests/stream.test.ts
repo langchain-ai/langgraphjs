@@ -2,6 +2,7 @@ import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 import BasicStream from "./components/BasicStream.svelte";
+import HeadlessToolStream from "./components/HeadlessToolStream.svelte";
 import InitialValuesStream from "./components/InitialValuesStream.svelte";
 import StopMutateStream from "./components/StopMutateStream.svelte";
 import StopFunctionalStream from "./components/StopFunctionalStream.svelte";
@@ -1296,4 +1297,59 @@ it("getStream throws when used outside a component", () => {
   expect(() => {
     getStream();
   }).toThrow();
+});
+
+it("headless tools - executes in browser and resumes agent automatically", async () => {
+  const screen = render(HeadlessToolStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Where am I?");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
+});
+
+it("headless tools - onTool callback fires start and success events", async () => {
+  const screen = render(HeadlessToolStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-0"))
+    .toHaveTextContent("start:get_location");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("success:get_location");
+});
+
+it("headless tools - propagates execute error back to agent as error payload", async () => {
+  const failingExecute = async () => {
+    throw new Error("GPS unavailable");
+  };
+
+  const screen = render(HeadlessToolStream, {
+    apiUrl: serverUrl,
+    execute: failingExecute,
+  });
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("error:get_location:GPS unavailable");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
 });

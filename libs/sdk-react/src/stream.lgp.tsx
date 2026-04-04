@@ -32,7 +32,8 @@ import {
   StreamManager,
   MessageTupleManager,
   extractInterrupts,
-  normalizeInterruptsList,
+  userFacingInterruptsFromThreadTasks,
+  userFacingInterruptsFromValuesArray,
   toMessageClass,
   ensureMessageInstances,
   ensureHistoryMessageInstances,
@@ -51,6 +52,7 @@ import {
   type UseStreamThread,
 } from "@langchain/langgraph-sdk/ui";
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
+import { flushPendingHeadlessToolInterrupts } from "@langchain/langgraph-sdk";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStream, SubmitOptions } from "./types.js";
 
@@ -878,6 +880,30 @@ export function useStreamLGP<
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
 
+  const handledToolsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    handledToolsRef.current.clear();
+  }, [threadId]);
+
+  useEffect(() => {
+    flushPendingHeadlessToolInterrupts(
+      values as Record<string, unknown>,
+      options.tools,
+      handledToolsRef.current,
+      {
+        onTool: options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          submit(null, {
+            multitaskStrategy: "interrupt",
+            command,
+          }),
+      }
+    );
+  }, [options.onTool, options.tools, submit, values]);
+
   return {
     get values() {
       trackStreamMode("values");
@@ -930,10 +956,8 @@ export function useStreamLGP<
         "__interrupt__" in values &&
         Array.isArray(values.__interrupt__)
       ) {
-        const valueInterrupts = values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return normalizeInterruptsList(
-          valueInterrupts as Interrupt<InterruptType>[]
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          values.__interrupt__ as Interrupt<InterruptType>[]
         );
       }
 
@@ -944,11 +968,10 @@ export function useStreamLGP<
       const allTasks = branchContext.threadHead?.tasks ?? [];
       const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
-      if (allInterrupts.length > 0) {
-        return normalizeInterruptsList(
-          allInterrupts as Interrupt<InterruptType>[]
-        );
-      }
+      const taskInterrupts = userFacingInterruptsFromThreadTasks<InterruptType>(
+        allInterrupts as Interrupt<InterruptType>[]
+      );
+      if (taskInterrupts != null) return taskInterrupts;
 
       // check if there's a next task present (breakpoint-style interrupt)
       const next = branchContext.threadHead?.next ?? [];

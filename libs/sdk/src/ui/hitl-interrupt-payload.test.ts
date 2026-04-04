@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
 import { normalizeInterruptForClient } from "./interrupts.js";
+import {
+  filterOutHeadlessToolInterrupts,
+  flushPendingHeadlessToolInterrupts,
+  headlessToolResumeCommand,
+} from "../headless-tools.js";
+
+async function flushMicrotasks(count = 4) {
+  for (let i = 0; i < count; i += 1) {
+    await Promise.resolve();
+  }
+}
 
 describe("normalizeHitlInterruptPayload", () => {
   it("aliases Python snake_case HITL fields to camelCase", () => {
@@ -103,5 +114,127 @@ describe("normalizeInterruptForClient", () => {
         },
       ],
     });
+  });
+});
+
+describe("headless tool interrupt helpers", () => {
+  it("filters out headless tool interrupts while preserving others", () => {
+    const interrupts = [
+      {
+        id: "tool-int",
+        value: {
+          type: "tool" as const,
+          toolCall: { id: "call-1", name: "get_location", args: {} },
+        },
+      },
+      {
+        id: "hitl-int",
+        value: {
+          action_requests: [{ action_name: "approve", args: {}, description: "" }],
+        },
+      },
+      { id: "breakpoint", when: "breakpoint" as const },
+    ];
+
+    expect(filterOutHeadlessToolInterrupts(interrupts)).toEqual([
+      interrupts[1],
+      interrupts[2],
+    ]);
+  });
+
+  it("builds a keyed resume command for tool call results", () => {
+    expect(
+      headlessToolResumeCommand({
+        toolCallId: "call-1",
+        value: { latitude: 1, longitude: 2 },
+      })
+    ).toEqual({
+      resume: {
+        "call-1": { latitude: 1, longitude: 2 },
+      },
+    });
+  });
+
+  it("flushes only newly seen headless tool interrupts", async () => {
+    const handled = new Set<string>();
+    const onTool = vi.fn();
+    const resumeSubmit = vi.fn();
+
+    flushPendingHeadlessToolInterrupts(
+      {
+        __interrupt__: [
+          {
+            id: "headless-1",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "call-1",
+                name: "get_location",
+                args: { highAccuracy: false },
+              },
+            },
+          },
+          {
+            id: "hitl-1",
+            value: {
+              action_requests: [
+                { action_name: "approve", args: {}, description: "" },
+              ],
+            },
+          },
+        ],
+      },
+      [
+        {
+          tool: { name: "get_location" },
+          execute: async () => ({ latitude: 1, longitude: 2 }),
+        },
+      ],
+      handled,
+      { onTool, resumeSubmit }
+    );
+
+    await flushMicrotasks();
+
+    expect(resumeSubmit).toHaveBeenCalledWith({
+      resume: {
+        "call-1": { latitude: 1, longitude: 2 },
+      },
+    });
+
+    expect(handled.has("headless-1")).toBe(true);
+    expect(onTool).toHaveBeenCalledTimes(2);
+
+    resumeSubmit.mockClear();
+
+    flushPendingHeadlessToolInterrupts(
+      {
+        __interrupt__: [
+          {
+            id: "headless-1",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "call-1",
+                name: "get_location",
+                args: { highAccuracy: false },
+              },
+            },
+          },
+        ],
+      },
+      [
+        {
+          tool: { name: "get_location" },
+          execute: async () => ({ latitude: 1, longitude: 2 }),
+        },
+      ],
+      handled,
+      { onTool, resumeSubmit }
+    );
+
+    await flushMicrotasks();
+
+    expect(resumeSubmit).not.toHaveBeenCalled();
   });
 });
