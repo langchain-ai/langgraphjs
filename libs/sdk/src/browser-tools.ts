@@ -205,14 +205,15 @@ export function flushPendingHeadlessToolInterrupts(
 
   for (const interrupt of interrupts as Interrupt[]) {
     if (!isHeadlessToolInterrupt(interrupt.value)) continue;
+    const headlessInterrupt = interrupt.value;
 
-    const interruptId = interrupt.id ?? interrupt.value.toolCall.id ?? "";
+    const interruptId = interrupt.id ?? headlessInterrupt.toolCall.id ?? "";
     if (handledIds.has(interruptId)) continue;
     handledIds.add(interruptId);
 
     defer(() => {
       void handleHeadlessToolInterrupt(
-        interrupt.value,
+        headlessInterrupt,
         tools,
         options.onTool
       ).then((result) => {

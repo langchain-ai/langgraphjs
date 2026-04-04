@@ -20,7 +20,7 @@
       })),
   );
 
-  const { messages, isLoading, submit } = useStream({
+  const stream = useStream({
     assistantId: "browserToolAgent",
     apiUrl,
     tools: [tool],
@@ -32,17 +32,17 @@
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
           : JSON.stringify(msg.content)}
       </div>
     {/each}
-    {#if $messages.length > 0}
+    {#if stream.messages.length > 0}
       <div data-testid="message-last">
         {(() => {
-          const last = $messages[$messages.length - 1];
+          const last = stream.messages[stream.messages.length - 1];
           return typeof last.content === "string"
             ? last.content
             : JSON.stringify(last.content);
@@ -51,7 +51,7 @@
     {/if}
   </div>
 
-  <div data-testid="loading">{$isLoading ? "loading" : "idle"}</div>
+  <div data-testid="loading">{stream.isLoading ? "loading" : "idle"}</div>
 
   <div data-testid="tool-events">
     {#each toolEvents as event, i}
@@ -66,7 +66,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit(
+      void stream.submit(
         { messages: [{ type: "human", content: "Where am I?" }] } as any,
       )}
   >

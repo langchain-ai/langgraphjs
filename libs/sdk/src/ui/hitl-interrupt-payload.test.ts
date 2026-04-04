@@ -8,6 +8,12 @@ import {
   headlessToolResumeCommand,
 } from "../browser-tools.js";
 
+async function flushMicrotasks(count = 4) {
+  for (let i = 0; i < count; i += 1) {
+    await Promise.resolve();
+  }
+}
+
 describe("normalizeHitlInterruptPayload", () => {
   it("aliases Python snake_case HITL fields to camelCase", () => {
     const raw = {
@@ -188,14 +194,15 @@ describe("headless tool interrupt helpers", () => {
       { onTool, resumeSubmit }
     );
 
-    await Promise.resolve();
+    await flushMicrotasks();
 
-    expect(handled.has("headless-1")).toBe(true);
     expect(resumeSubmit).toHaveBeenCalledWith({
       resume: {
         "call-1": { latitude: 1, longitude: 2 },
       },
     });
+
+    expect(handled.has("headless-1")).toBe(true);
     expect(onTool).toHaveBeenCalledTimes(2);
 
     resumeSubmit.mockClear();
@@ -226,7 +233,7 @@ describe("headless tool interrupt helpers", () => {
       { onTool, resumeSubmit }
     );
 
-    await Promise.resolve();
+    await flushMicrotasks();
 
     expect(resumeSubmit).not.toHaveBeenCalled();
   });

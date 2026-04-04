@@ -3,7 +3,11 @@ import { defineConfig } from "vitest/config";
 import angular from "@analogjs/vite-plugin-angular";
 import { webdriverio } from "@vitest/browser-webdriverio";
 
-const nonAngularFiles = [/mock-server\.ts/, /vitest-browser-shim\.ts/];
+const nonAngularFiles = [
+  /mock-server\.ts/,
+  /browser-fixtures\.ts/,
+  /vitest-browser-shim\.ts/,
+];
 
 export default defineConfig({
   plugins: [
@@ -23,7 +27,12 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: {},
+  resolve: {
+    alias: {
+      "@langchain/langgraph-api/experimental/embed":
+        "/workspace/libs/langgraph-api/dist/experimental/embed.mjs",
+    },
+  },
   test: {
     globals: true,
     testTimeout: 30_000,
