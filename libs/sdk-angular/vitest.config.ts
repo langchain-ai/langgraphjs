@@ -1,7 +1,11 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { transformWithEsbuild } from "vite";
 import { defineConfig } from "vitest/config";
 import angular from "@analogjs/vite-plugin-angular";
 import { webdriverio } from "@vitest/browser-webdriverio";
+
+const workspaceRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const nonAngularFiles = [
   /mock-server\.ts/,
@@ -29,8 +33,10 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@langchain/langgraph-api/experimental/embed":
-        "/workspace/libs/langgraph-api/dist/experimental/embed.mjs",
+      "@langchain/langgraph-api/experimental/embed": resolve(
+        workspaceRoot,
+        "libs/langgraph-api/src/experimental/embed.mts"
+      ),
     },
   },
   test: {
