@@ -80,6 +80,7 @@ export {
 } from "../ui/subagents.js";
 export {
   isHeadlessToolInterrupt,
+  parseHeadlessToolInterruptPayload,
   filterOutHeadlessToolInterrupts,
   findHeadlessTool,
   executeHeadlessTool,

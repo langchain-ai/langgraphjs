@@ -79,6 +79,7 @@ export type {
 } from "./headless-tools.js";
 export {
   isHeadlessToolInterrupt,
+  parseHeadlessToolInterruptPayload,
   filterOutHeadlessToolInterrupts,
   findHeadlessTool,
   executeHeadlessTool,
