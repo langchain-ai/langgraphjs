@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.8.7
+
+### Patch Changes
+
+- [#2285](https://github.com/langchain-ai/langgraphjs/pull/2285) [`a5dfdb6`](https://github.com/langchain-ai/langgraphjs/commit/a5dfdb61c7af0b957b0064b02cb390a11cd59b56) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): detect interrupt for Python agents
+
 ## 1.8.6
 
 ### Patch Changes
