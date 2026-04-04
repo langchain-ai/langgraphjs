@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ToolEvent } from "@langchain/langgraph-sdk";
-import type { BaseMessage } from "@langchain/core/messages";
+import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { useStream } from "../../index.js";
 import { getLocationTool } from "../fixtures/browser-fixtures.js";
 
@@ -67,7 +67,7 @@ export function HeadlessToolStream({ apiUrl, execute }: Props) {
         data-testid="submit"
         onClick={() =>
           void submit({
-            messages: [{ type: "human", content: "Where am I?" }],
+            messages: [new HumanMessage("Where am I?")],
           })
         }
       >
