@@ -69,13 +69,13 @@ export function extractInterrupts<InterruptType = unknown>(
     const filtered = filterOutHeadlessToolInterrupts(valueInterrupts);
     if (filtered.length === 0) return undefined;
     if (filtered.length === 1) {
-      return normalizeInterruptForClient(filtered[0] as Interrupt<InterruptType>);
+      return normalizeInterruptForClient(
+        filtered[0] as Interrupt<InterruptType>
+      );
     }
 
     // TODO: fix the typing of interrupts if multiple interrupts are returned
-    const normalized = filtered.map((i) =>
-      normalizeInterruptForClient(i)
-    );
+    const normalized = filtered.map((i) => normalizeInterruptForClient(i));
     return normalized as unknown as Interrupt<InterruptType> | undefined;
   }
 

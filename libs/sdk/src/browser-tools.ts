@@ -16,10 +16,7 @@ export interface HeadlessToolInterrupt {
 /**
  * Client-side implementation returned by `headlessTool.implement(...)`.
  */
-export interface HeadlessToolImplementation<
-  Args = unknown,
-  Output = unknown,
-> {
+export interface HeadlessToolImplementation<Args = unknown, Output = unknown> {
   tool: {
     name: string;
   };
@@ -27,7 +24,10 @@ export interface HeadlessToolImplementation<
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyHeadlessToolImplementation = HeadlessToolImplementation<any, any>;
+export type AnyHeadlessToolImplementation = HeadlessToolImplementation<
+  any,
+  any
+>;
 
 export interface ToolEvent {
   phase: "start" | "success" | "error";
@@ -106,8 +106,8 @@ export async function executeHeadlessTool<Args = unknown, Output = unknown>(
 
     return { success: true, result };
   } catch (err) {
-    const error =
-      err instanceof Error ? err : new Error(String(err));
+    // oxlint-disable-next-line no-instanceof/no-instanceof
+    const error = err instanceof Error ? err : new Error(String(err));
     const duration = Date.now() - startTime;
 
     onTool?.({
@@ -226,8 +226,10 @@ export function flushPendingHeadlessToolInterrupts(
 /** @deprecated Use `HeadlessToolInterrupt`. */
 export type BrowserToolInterrupt = HeadlessToolInterrupt;
 /** @deprecated Use `HeadlessToolImplementation`. */
-export type BrowserTool<Args = unknown, Output = unknown> =
-  HeadlessToolImplementation<Args, Output>;
+export type BrowserTool<
+  Args = unknown,
+  Output = unknown,
+> = HeadlessToolImplementation<Args, Output>;
 /** @deprecated Use `AnyHeadlessToolImplementation`. */
 export type AnyBrowserTool = AnyHeadlessToolImplementation;
 /** @deprecated Use `ToolEvent`. */

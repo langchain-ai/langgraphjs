@@ -195,14 +195,10 @@ export const canvasDrawText = canvasDrawTextHeadless.implement(
     if (baseline) c.textBaseline = baseline as CanvasTextBaseline;
 
     if (fill) {
-      maxWidth !== undefined
-        ? c.fillText(text, x, y, maxWidth)
-        : c.fillText(text, x, y);
+      c.fillText(text, x, y, maxWidth)
     }
     if (stroke) {
-      maxWidth !== undefined
-        ? c.strokeText(text, x, y, maxWidth)
-        : c.strokeText(text, x, y);
+      c.strokeText(text, x, y, maxWidth)
     }
 
     c.textAlign = prevAlign;

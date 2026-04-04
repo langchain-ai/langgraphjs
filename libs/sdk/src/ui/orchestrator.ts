@@ -548,10 +548,9 @@ export class StreamOrchestrator<
     const allTasks = this.branchContext.threadHead?.tasks ?? [];
     const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
 
-    const taskInterrupts =
-      userFacingInterruptsFromThreadTasks<GetInterruptType<Bag>>(
-        allInterrupts as Interrupt<GetInterruptType<Bag>>[]
-      );
+    const taskInterrupts = userFacingInterruptsFromThreadTasks<
+      GetInterruptType<Bag>
+    >(allInterrupts as Interrupt<GetInterruptType<Bag>>[]);
     if (taskInterrupts != null) return taskInterrupts;
 
     const next = this.branchContext.threadHead?.next ?? [];
