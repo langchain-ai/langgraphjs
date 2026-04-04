@@ -92,15 +92,6 @@ export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
 
-function _setExecutionInfo(
-  config: RunnableConfig,
-  executionInfo: ExecutionInfo
-): LangGraphRunnableConfig {
-  const langGraphConfig: LangGraphRunnableConfig = config;
-  langGraphConfig.executionInfo = executionInfo;
-  return langGraphConfig;
-}
-
 function triggersNextStep(
   updatedChannels: Set<string>,
   triggerToNodes: Record<string, string[]> | undefined
@@ -663,7 +654,7 @@ export function _prepareSingleTask<
         input: call.input,
         proc,
         writes,
-        config: _setExecutionInfo(
+        config: Object.assign(
           patchConfig(
             mergeConfigs(config, {
               metadata,
@@ -717,7 +708,7 @@ export function _prepareSingleTask<
               },
             }
           ),
-          executionInfo
+          { executionInfo }
         ),
         triggers,
         retry_policy: call.retry,
@@ -818,7 +809,7 @@ export function _prepareSingleTask<
           proc: node,
           subgraphs: proc.subgraphs,
           writes,
-          config: _setExecutionInfo(
+          config: Object.assign(
             patchConfig(
               mergeConfigs(config, {
                 metadata,
@@ -874,7 +865,7 @@ export function _prepareSingleTask<
                 },
               }
             ),
-            executionInfo
+            { executionInfo }
           ),
           triggers,
           retry_policy: proc.retryPolicy,
@@ -1002,7 +993,7 @@ export function _prepareSingleTask<
             proc: node,
             subgraphs: proc.subgraphs,
             writes,
-            config: _setExecutionInfo(
+            config: Object.assign(
               patchConfig(
                 mergeConfigs(config, {
                   metadata,
@@ -1059,7 +1050,7 @@ export function _prepareSingleTask<
                   },
                 }
               ),
-              executionInfo
+              { executionInfo }
             ),
             triggers: [trigger],
             retry_policy: proc.retryPolicy,
