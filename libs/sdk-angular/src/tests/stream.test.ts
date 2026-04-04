@@ -43,6 +43,10 @@ import { QueueOnCreatedComponent } from "./components/QueueOnCreated.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
 import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
+import {
+  BrowserToolComponent,
+  BrowserToolErrorComponent,
+} from "./components/BrowserToolStream.js";
 import { StreamServiceBasicComponent } from "./components/StreamServiceBasic.js";
 import { StreamServiceCustomTransportComponent } from "./components/StreamServiceCustomTransport.js";
 import { StreamServiceSharedComponent } from "./components/StreamServiceShared.js";
@@ -1284,4 +1288,54 @@ it("injectStream throws when used outside an injection context", () => {
   expect(() => {
     injectStream();
   }).toThrow();
+});
+
+
+// Browser Tools
+it("browser tools - executes in browser and resumes agent automatically", async () => {
+  const screen = await render(BrowserToolComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Where am I?");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
+});
+
+it("browser tools - onBrowserTool callback fires start and success events", async () => {
+  const screen = await render(BrowserToolComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-0"))
+    .toHaveTextContent("start:get_location");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("success:get_location");
+});
+
+it("browser tools - propagates execute error back to agent as error payload", async () => {
+  const screen = await render(BrowserToolErrorComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("error:get_location:GPS unavailable");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
 });

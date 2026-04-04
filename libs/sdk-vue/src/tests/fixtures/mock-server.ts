@@ -33,12 +33,14 @@ import {
   type Pregel,
 } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { tool, ToolMessage } from "langchain";
+import { tool, ToolMessage, createAgent } from "langchain";
 import { z } from "zod/v4";
 import { createDeepAgent, type DeepAgent } from "deepagents";
 
 import type { Message } from "@langchain/langgraph-sdk";
 import type { TestProject } from "vitest/node";
+
+import { getLocationTool } from "./browser-fixtures.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -347,8 +349,6 @@ const deepAnalystModel = new FakeToolCallingModel({
   ],
 });
 
-export type DeepAgentGraph = DeepAgent;
-
 const deepAgentGraph: DeepAgent = createDeepAgent({
   model: deepOrchestratorModel,
   subagents: [
@@ -370,12 +370,91 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   systemPrompt: "You are an AI coordinator that delegates tasks.",
 });
 
+/**
+ * Stateless model for browser tool tests. Inspects incoming messages instead
+ * of using a call counter, so retries never receive a stale response.
+ */
+class FakeBrowserToolModel extends BaseChatModel {
+  constructor() {
+    super({});
+  }
+
+  _llmType() {
+    return "fake-browser-tool";
+  }
+
+  _combineLLMOutput() {
+    return [];
+  }
+
+  private _needsToolCall(messages?: BaseMessage[]) {
+    return !messages?.some((m) => m.getType() === "tool");
+  }
+
+  async _generate(messages?: BaseMessage[]): Promise<ChatResult> {
+    const msg = this._needsToolCall(messages)
+      ? new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "get_location",
+              args: { highAccuracy: false },
+              id: "tool-call-browser-1",
+              type: "tool_call",
+            },
+          ],
+        })
+      : new AIMessage("Location received!");
+    return {
+      generations: [{ text: (msg.content as string) || "", message: msg }],
+    };
+  }
+
+  async *_streamResponseChunks(messages?: BaseMessage[]) {
+    if (this._needsToolCall(messages)) {
+      yield new ChatGenerationChunk({
+        message: new AIMessageChunk({
+          content: "",
+          tool_call_chunks: [
+            {
+              name: "get_location",
+              args: JSON.stringify({ highAccuracy: false }),
+              id: "tool-call-browser-1",
+              index: 0,
+              type: "tool_call_chunk",
+            },
+          ],
+        }),
+        text: "",
+      });
+    } else {
+      yield new ChatGenerationChunk({
+        message: new AIMessageChunk("Location received!"),
+        text: "Location received!",
+      });
+    }
+  }
+
+  bindTools() {
+    return this;
+  }
+}
+
+const browserToolModel = new FakeBrowserToolModel();
+
+const browserToolAgent = createAgent({
+  model: browserToolModel,
+  tools: [getLocationTool],
+  checkpointer,
+}) as unknown as AnyPregel;
+
 const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
   parentAgent,
   removeMessageAgent,
   errorAgent,
+  browserToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 

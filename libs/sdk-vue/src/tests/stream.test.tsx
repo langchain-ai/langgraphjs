@@ -9,7 +9,10 @@ import {
   type UseStreamTransport,
 } from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
-import type { DeepAgentGraph } from "./fixtures/mock-server.js";
+import {
+  type DeepAgentGraph,
+  getLocationTool,
+} from "./fixtures/browser-fixtures.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -3039,4 +3042,135 @@ it("useStreamContext throws when used outside provideStream", async () => {
     .toHaveTextContent(
       "useStreamContext() requires a parent component to call provideStream()",
     );
+});
+
+function makeBrowserToolComponent(
+  execute?: (args: unknown) => Promise<unknown>,
+) {
+  return defineComponent({
+    setup() {
+      const toolEvents = ref<{ phase: string; name: string; error?: Error }[]>(
+        [],
+      );
+
+      const tool = getLocationTool.implement(
+        execute ??
+          (async () => ({
+            latitude: 37.7749,
+            longitude: -122.4194,
+          })),
+      );
+
+      const { messages, isLoading, submit } = useStream({
+        assistantId: "browserToolAgent",
+        apiUrl: serverUrl,
+        tools: [tool],
+        onTool: (event) => {
+          toolEvents.value = [...toolEvents.value, event];
+        },
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {messages.value.map((msg, i: number) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
+            {messages.value.length > 0 && (
+              <div data-testid="message-last">
+                {(() => {
+                  const last = messages.value[messages.value.length - 1];
+                  return typeof last.content === "string"
+                    ? last.content
+                    : JSON.stringify(last.content);
+                })()}
+              </div>
+            )}
+          </div>
+
+          <div data-testid="loading">
+            {isLoading.value ? "loading" : "idle"}
+          </div>
+
+          <div data-testid="tool-events">
+            {toolEvents.value.map((event, i) => (
+              <div key={i} data-testid={`tool-event-${i}`}>
+                {`${event.phase}:${event.name}`}
+                {event.phase === "error" && event.error
+                  ? `:${event.error.message}`
+                  : ""}
+              </div>
+            ))}
+          </div>
+
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({
+                messages: [{ type: "human", content: "Where am I?" }],
+              })
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+}
+
+it("browser tools - executes in browser and resumes agent automatically", async () => {
+  const screen = render(makeBrowserToolComponent());
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Where am I?");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
+});
+
+it("browser tools - onBrowserTool callback fires start and success events", async () => {
+  const screen = render(makeBrowserToolComponent());
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-0"))
+    .toHaveTextContent("start:get_location");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("success:get_location");
+});
+
+it("browser tools - propagates execute error back to agent as error payload", async () => {
+  const failingExecute = async () => {
+    throw new Error("GPS unavailable");
+  };
+
+  const screen = render(makeBrowserToolComponent(failingExecute));
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("error:get_location:GPS unavailable");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
 });
