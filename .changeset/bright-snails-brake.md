@@ -1,9 +1,9 @@
 ---
 "@langchain/langgraph": patch
-"@langchain/angular": patch
-"@langchain/react": patch
-"@langchain/svelte": patch
-"@langchain/vue": patch
+"@langchain/angular": minor
+"@langchain/react": minor
+"@langchain/svelte": minor
+"@langchain/vue": minor
 ---
 
 feat(sdk): support for headless tools
