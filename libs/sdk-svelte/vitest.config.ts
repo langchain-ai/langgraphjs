@@ -1,18 +1,10 @@
 import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { webdriverio } from "@vitest/browser-webdriverio";
-import path from "node:path";
 
 export default defineConfig({
   plugins: [svelte()],
-  resolve: {
-    alias: {
-      "@langchain/langgraph-api/experimental/embed": path.resolve(
-        __dirname,
-        "../langgraph-api/dist/experimental/embed.mjs"
-      ),
-    },
-  },
+  resolve: {},
   test: {
     globals: true,
     testTimeout: 30_000,

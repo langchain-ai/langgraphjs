@@ -1,21 +1,10 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { webdriverio } from "@vitest/browser-webdriverio";
-import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
-
-const workspaceRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      "@langchain/langgraph-api/experimental/embed": resolve(
-        workspaceRoot,
-        "libs/langgraph-api/src/experimental/embed.mts"
-      ),
-    },
-  },
+  resolve: {},
   test: {
     globals: true,
     testTimeout: 30_000,
