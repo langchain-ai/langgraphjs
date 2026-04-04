@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.8.6
+
+### Patch Changes
+
+- [`b4a841c`](https://github.com/langchain-ai/langgraphjs/commit/b4a841c4b369db7f0fa93fe1de6b3b1ac3e8d3fb) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): bump all packages
+
 ## 1.8.5
 
 ### Patch Changes
