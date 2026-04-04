@@ -86,15 +86,16 @@ export async function _runWithRetry<
   let error;
   let result;
 
-  let { config } = pregelTask;
-  if (configurable) config = patchConfigurable(config, configurable);
+  let config: LangGraphRunnableConfig = pregelTask.config ?? {};
+  if (configurable) {
+    config = patchConfigurable(config, configurable);
+  }
   config = { ...config, signal };
 
-  const lgConfig = config as LangGraphRunnableConfig;
   const firstAttemptTime = Date.now();
-  if (lgConfig.executionInfo != null) {
-    lgConfig.executionInfo = {
-      ...lgConfig.executionInfo,
+  if (config.executionInfo != null) {
+    config.executionInfo = {
+      ...config.executionInfo,
       nodeFirstAttemptTime: firstAttemptTime,
     };
   }
@@ -178,10 +179,9 @@ export async function _runWithRetry<
       // signal subgraphs to resume (if available)
       config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
 
-      const retryLgConfig = config as LangGraphRunnableConfig;
-      if (retryLgConfig.executionInfo != null) {
-        retryLgConfig.executionInfo = {
-          ...retryLgConfig.executionInfo,
+      if (config.executionInfo != null) {
+        config.executionInfo = {
+          ...config.executionInfo,
           nodeAttempt: attempts + 1,
           nodeFirstAttemptTime: firstAttemptTime,
         };
