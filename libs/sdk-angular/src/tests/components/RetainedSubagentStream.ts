@@ -1,4 +1,4 @@
-import { Component, computed, effect, signal } from "@angular/core";
+import { Component, computed } from "@angular/core";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 import type { DeepAgentGraph } from "../fixtures/browser-fixtures.js";
@@ -25,25 +25,26 @@ export class RetainedSubagentStreamComponent {
     filterSubagentMessages: true,
   });
 
-  readonly retainedSubagent = signal<ReturnType<
-    typeof this.stream.getSubagentsByType
-  >[number] | null>(null);
-
-  constructor() {
-    effect(() => {
-      const researcher = this.stream.getSubagentsByType("researcher")[0] ?? null;
-      if (researcher && this.retainedSubagent() == null) {
-        this.retainedSubagent.set(researcher);
-      }
-    });
-  }
+  private retainedSubagentRef: ReturnType<
+    typeof this.stream.subagents
+  > extends ReadonlyMap<string, infer TSubagent>
+    ? TSubagent | null
+    : null = null;
 
   readonly retainedSubagentStatus = computed(() => {
-    return this.retainedSubagent()?.status ?? "missing";
+    if (this.retainedSubagentRef == null) {
+      this.retainedSubagentRef =
+        this.stream.subagents().values().next().value ?? null;
+    }
+    return this.retainedSubagentRef?.status ?? "missing";
   });
 
   readonly retainedSubagentToolCallCount = computed(() => {
-    return this.retainedSubagent()?.toolCalls.length ?? -1;
+    if (this.retainedSubagentRef == null) {
+      this.retainedSubagentRef =
+        this.stream.subagents().values().next().value ?? null;
+    }
+    return this.retainedSubagentRef?.toolCalls.length ?? -1;
   });
 
   onSubmit() {

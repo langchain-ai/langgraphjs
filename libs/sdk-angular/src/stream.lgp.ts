@@ -40,6 +40,15 @@ export function useStreamLGP<
 
   const version = signal(0);
   const subagentVersion = signal(0);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    subagentVersion
+  );
 
   effect((onCleanup) => {
     const unsubscribe = orchestrator.subscribe(() => {

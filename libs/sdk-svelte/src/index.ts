@@ -209,18 +209,12 @@ function useStreamLGP<
   const version = writable(0);
   const reactiveSubagents = createReactiveSubagentAccessors(
     {
-      getVersion: () => {
-        let current = 0;
-        version.subscribe((value) => {
-          current = value;
-        })();
-        return current;
-      },
       getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
       getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
       getSubagentsByMessage: (messageId) =>
         orchestrator.getSubagentsByMessage(messageId),
-    }
+    },
+    version
   );
   const unsubscribe = orchestrator.subscribe(() => {
     version.update((v) => v + 1);

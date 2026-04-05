@@ -1,5 +1,5 @@
 import type { Readable } from "svelte/store";
-import { get } from "svelte/store";
+import { fromStore } from "svelte/store";
 
 type SubagentLike = {
   id: string;
@@ -23,9 +23,10 @@ export function createReactiveSubagentAccessors<
   version: Readable<number>,
 ) {
   const subagentCache = new Map<string, TSubagent>();
+  const versionRef = fromStore(version);
 
   const readVersion = () => {
-    void get(version);
+    void versionRef.current;
   };
 
   const getCachedSubagent = (toolCallId: string): TSubagent | undefined => {
