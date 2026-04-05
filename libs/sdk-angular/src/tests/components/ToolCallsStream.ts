@@ -17,13 +17,13 @@ const serverUrl = inject("serverUrl");
 })
 export class ToolCallsComponent {
   stream = injectStream({
-    assistantId: "agent",
+    assistantId: "headlessToolAgent",
     apiUrl: serverUrl,
   });
 
   onSubmit() {
     void this.stream.submit({
-      messages: [{ content: "Hello", type: "human" }],
+      messages: [{ content: "Where am I?", type: "human" }],
     } as any);
   }
 }

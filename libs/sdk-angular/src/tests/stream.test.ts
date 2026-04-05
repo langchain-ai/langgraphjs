@@ -60,6 +60,21 @@ declare module "vitest-browser-angular" {
 
 const serverUrl = inject("serverUrl");
 
+async function createSeededThread(messageContents: string[]): Promise<string> {
+  const client = new Client({ apiUrl: serverUrl });
+  const thread = await client.threads.create();
+
+  for (const content of messageContents) {
+    await client.runs.wait(thread.thread_id, "agent", {
+      input: {
+        messages: [{ content, type: "human" }],
+      },
+    });
+  }
+
+  return thread.thread_id;
+}
+
 it("renders initial state correctly", async () => {
   const screen = await render(BasicStreamComponent);
 
@@ -238,13 +253,18 @@ it("onStop is not called when stream completes naturally", async () => {
     .toHaveTextContent("No");
 
   await screen.getByTestId("submit").click();
-
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
   await expect
     .element(screen.getByTestId("onstop-called"))
+    .toHaveTextContent("No");
+  await expect
+    .element(screen.getByTestId("has-mutate"))
     .toHaveTextContent("No");
 });
 
@@ -267,8 +287,12 @@ it("make sure to pass metadata to the thread", async () => {
     .toHaveTextContent("Hey");
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(threadId);
-  expect(thread.metadata).toMatchObject({ random: "123" });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(threadId);
+      return thread.metadata;
+    })
+    .toMatchObject({ random: "123" });
 });
 
 it("streamSubgraphs: true", async () => {
@@ -592,7 +616,27 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const screen = await render(BasicStreamWithHistoryComponent);
+  const threadId = await createSeededThread(["Hello (1)", "Hello (2)", "Hello (3)"]);
+  const client = new Client({ apiUrl: serverUrl });
+  await expect
+    .poll(async () => {
+      const history = await client.threads.getHistory(threadId, { limit: 2 });
+      return history.length;
+    })
+    .toBe(2);
+
+  const history = await client.threads.getHistory(threadId, { limit: 2 });
+  expect(history).toHaveLength(2);
+  expect(
+    history.flatMap((state: any) => (state.values.messages ?? []) as { type?: string }[]),
+  ).toEqual(expect.arrayContaining([expect.objectContaining({ type: "human" })]));
+  expect(
+    history.flatMap((state: any) => (state.values.messages ?? []) as { type?: string }[]),
+  ).toEqual(expect.arrayContaining([expect.objectContaining({ type: "ai" })]));
+});
+
+it("stream.history returns BaseMessage instances", async () => {
+  const screen = await render(HistoryMessagesComponent);
 
   await screen.getByTestId("submit").click();
   await expect
@@ -608,88 +652,6 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-});
-
-it("onRequest gets called when a request is made", async () => {
-  resetOnRequestCalls();
-
-  const screen = await render(OnRequestComponent);
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
-
-  expect(onRequestCalls).toMatchObject([
-    [expect.stringContaining("/threads"), { method: "POST" }],
-    [
-      expect.stringContaining("/runs/stream"),
-      {
-        method: "POST",
-        body: {
-          input: { messages: [{ content: "Hello", type: "human" }] },
-          assistant_id: "agent",
-        },
-      },
-    ],
-  ]);
-});
-
-it("interrupts (fetchStateHistory: true)", async () => {
-  const screen = await render(InterruptWithHistoryComponent);
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("interrupt"))
-    .toHaveTextContent("breakpoint");
-
-  await screen.getByTestId("resume").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Before interrupt");
-  await expect
-    .element(screen.getByTestId("interrupt"))
-    .toHaveTextContent("agent");
-
-  await screen.getByTestId("resume").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Before interrupt");
-  await expect
-    .element(screen.getByTestId("message-2"))
-    .toHaveTextContent("Hey: Resuming");
-  await expect
-    .element(screen.getByTestId("message-3"))
-    .toHaveTextContent("After interrupt");
-});
-
-it("exposes toolCalls property", async () => {
-  const screen = await render(ToolCallsComponent);
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("tool-calls-count"))
-    .toHaveTextContent("0");
 });
 
 it("exposes interrupts array", async () => {

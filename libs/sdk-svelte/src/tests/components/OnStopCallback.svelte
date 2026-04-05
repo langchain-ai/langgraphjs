@@ -22,6 +22,7 @@
 </script>
 
 <div>
+  <div data-testid="loading">{stream.isLoading ? "Loading..." : "Not loading"}</div>
   <div data-testid="onstop-called">{onStopCalled ? "Yes" : "No"}</div>
   <div data-testid="has-mutate">{hasMutate ? "Yes" : "No"}</div>
   <button data-testid="submit" onclick={() => void stream.submit({} as any)}>

@@ -16,6 +16,21 @@ import {
 
 const serverUrl = inject("serverUrl");
 
+async function createSeededThread(messageContents: string[]): Promise<string> {
+  const client = new Client({ apiUrl: serverUrl });
+  const thread = await client.threads.create();
+
+  for (const content of messageContents) {
+    await client.runs.wait(thread.thread_id, "agent", {
+      input: {
+        messages: [{ content, type: "human" }],
+      },
+    });
+  }
+
+  return thread.thread_id;
+}
+
 it("renders initial state correctly", async () => {
   const TestComponent = defineComponent({
     setup() {
@@ -473,7 +488,7 @@ it("onStop is not called when stream completes naturally", async () => {
 
   const TestComponent = defineComponent({
     setup() {
-      const { submit } = useStream({
+      const { submit, isLoading } = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
         onStop: onStopCallback,
@@ -481,6 +496,9 @@ it("onStop is not called when stream completes naturally", async () => {
 
       return () => (
         <div>
+          <div data-testid="loading">
+            {isLoading.value ? "Loading..." : "Not loading"}
+          </div>
           <button data-testid="submit" onClick={() => void submit({})}>
             Send
           </button>
@@ -492,10 +510,12 @@ it("onStop is not called when stream completes naturally", async () => {
   const screen = render(TestComponent);
 
   await screen.getByTestId("submit").click();
-
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
   expect(onStopCallback).not.toHaveBeenCalled();
 });
@@ -1202,11 +1222,14 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
+  const threadId = await createSeededThread(["Hello (1)", "Hello (2)", "Hello (3)"]);
+
   const TestComponent = defineComponent({
     setup() {
-      const { messages, isLoading, submit } = useStream({
+      const { history, isLoading } = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
+        threadId,
         fetchStateHistory: { limit: 2 },
       });
 
@@ -1215,44 +1238,36 @@ it("fetchStateHistory: { limit: 2 }", async () => {
           <div data-testid="loading">
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
-          <div data-testid="messages">
-            {messages.value.map((msg, i: number) => (
-              <div key={msg.id ?? i} data-testid={`message-${i}`}>
-                {typeof msg.content === "string"
-                  ? msg.content
-                  : JSON.stringify(msg.content)}
-              </div>
-            ))}
+          <div data-testid="history-count">{history.value.length}</div>
+          <div data-testid="history-message-types">
+            {history.value
+              .flatMap((state: any) => state.values.messages ?? [])
+              .map((msg: any) =>
+                typeof msg.getType === "function" ? msg.getType() : "plain",
+              )
+              .join(",")}
           </div>
-          <button
-            data-testid="submit"
-            onClick={() =>
-              void submit({ messages: [{ content: "Hello", type: "human" }] })
-            }
-          >
-            Send
-          </button>
         </div>
       );
     },
   });
 
   const screen = render(TestComponent);
-
-  await screen.getByTestId("submit").click();
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("history-count"))
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/human/);
+  await expect
+    .element(screen.getByTestId("history-message-types"))
+    .toHaveTextContent(/ai/);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -1425,7 +1440,7 @@ it("exposes toolCalls property", async () => {
     setup() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stream = useStream({
-        assistantId: "agent",
+        assistantId: "headlessToolAgent",
         apiUrl: serverUrl,
       }) as any;
 
@@ -1441,7 +1456,7 @@ it("exposes toolCalls property", async () => {
             data-testid="submit"
             onClick={() =>
               void stream.submit({
-                messages: [{ content: "Hello", type: "human" }],
+                messages: [{ content: "Where am I?", type: "human" }],
               })
             }
           >
@@ -1465,7 +1480,7 @@ it("exposes toolCalls property", async () => {
     .toHaveTextContent("Not loading");
   await expect
     .element(screen.getByTestId("tool-calls-count"))
-    .toHaveTextContent("0");
+    .toHaveTextContent("1");
 });
 
 it("exposes interrupts array", async () => {
@@ -2109,12 +2124,13 @@ it("server-side queue: submitting three times rapidly queues the latter two", as
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
-
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(2);
+  await expect
+    .poll(() =>
+      Array.from({ length: 8 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg2", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: queued inputs are displayed in queue.entries", async () => {
@@ -2135,7 +2151,9 @@ it("server-side queue: queued inputs are displayed in queue.entries", async () =
     .toHaveTextContent("2");
 
   const entriesEl = screen.getByTestId("queue-entries");
-  await expect.element(entriesEl, { timeout: 5000 }).toHaveTextContent(/Msg\d/);
+  await expect
+    .element(entriesEl, { timeout: 5000 })
+    .toHaveTextContent("Msg2,Msg3");
 });
 
 it("server-side queue: cancel removes a queued entry", async () => {
@@ -2154,9 +2172,15 @@ it("server-side queue: cancel removes a queued entry", async () => {
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("queue-entries"))
+    .toHaveTextContent("Msg2,Msg3");
 
   await screen.getByTestId("cancel-first").click();
 
+  await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("Msg3");
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 10000 })
     .toHaveTextContent("0");
@@ -2164,6 +2188,13 @@ it("server-side queue: cancel removes a queued entry", async () => {
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expect
+    .poll(() =>
+      Array.from({ length: 6 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: clear empties the queue", async () => {
@@ -2186,12 +2217,22 @@ it("server-side queue: clear empties the queue", async () => {
   await screen.getByTestId("clear-queue").click();
 
   await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("");
+  await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expect
+    .poll(() =>
+      Array.from({ length: 4 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey"]);
 });
 
 it("server-side queue: switchThread clears the queue", async () => {

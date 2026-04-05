@@ -10,7 +10,7 @@ export function OnStopCallback({ apiUrl, assistantId = "agent" }: Props) {
   const [onStopCalled, setOnStopCalled] = useState(false);
   const [hasMutate, setHasMutate] = useState(false);
 
-  const { submit, stop } = useStream({
+  const { submit, stop, isLoading } = useStream({
     assistantId,
     apiUrl,
     onStop: (arg) => {
@@ -21,6 +21,7 @@ export function OnStopCallback({ apiUrl, assistantId = "agent" }: Props) {
 
   return (
     <div>
+      <div data-testid="loading">{isLoading ? "Loading..." : "Not loading"}</div>
       <div data-testid="onstop-called">{onStopCalled ? "Yes" : "No"}</div>
       <div data-testid="has-mutate">{hasMutate ? "Yes" : "No"}</div>
       <button data-testid="submit" onClick={() => void submit({})}>
