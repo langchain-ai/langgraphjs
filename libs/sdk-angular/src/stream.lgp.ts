@@ -14,6 +14,7 @@ import {
   type Interrupt,
   type BagTemplate,
 } from "@langchain/langgraph-sdk";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -160,17 +161,21 @@ export function useStreamLGP<
 
   const subagents = computed(() => {
     void subagentVersion();
-    return orchestrator.subagents as ReadonlyMap<
-      string,
-      typeof orchestrator.subagents extends Map<string, infer V> ? V : never
-    >;
+    return reactiveSubagents.mapSubagents(
+      orchestrator.subagents as ReadonlyMap<
+        string,
+        typeof orchestrator.subagents extends Map<string, infer V> ? V : never
+      >
+    );
   });
 
   const activeSubagents = computed(() => {
     void subagentVersion();
-    return orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
-      ? V
-      : never)[];
+    return reactiveSubagents.mapActiveSubagents(
+      orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
+        ? V
+        : never)[]
+    );
   });
 
   return {

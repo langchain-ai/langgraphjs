@@ -22,6 +22,7 @@ import QueueStream from "./components/QueueStream.svelte";
 import QueueOnCreated from "./components/QueueOnCreated.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
+import RetainedSubagentStream from "./components/RetainedSubagentStream.svelte";
 import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
 import CustomTransportStreamSubgraphs from "./components/CustomTransportStreamSubgraphs.svelte";
 import HistoryMessages from "./components/HistoryMessages.svelte";
@@ -1159,6 +1160,25 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+});
+
+it("deep agent: retained subagent references stay reactive", async () => {
+  const screen = render(RetainedSubagentStream, { apiUrl: serverUrl });
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-toolcalls"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("complete");
 });
 
 it("stream.history returns BaseMessage instances", async () => {

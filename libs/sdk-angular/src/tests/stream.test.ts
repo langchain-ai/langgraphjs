@@ -42,6 +42,7 @@ import { QueueStreamComponent } from "./components/QueueStream.js";
 import { QueueOnCreatedComponent } from "./components/QueueOnCreated.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
+import { RetainedSubagentStreamComponent } from "./components/RetainedSubagentStream.js";
 import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
 import {
   HeadlessToolComponent,
@@ -1117,6 +1118,25 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+});
+
+it("deep agent: retained subagent references stay reactive", async () => {
+  const screen = await render(RetainedSubagentStreamComponent);
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-toolcalls"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("complete");
 });
 
 it("stream.history returns BaseMessage instances", async () => {
