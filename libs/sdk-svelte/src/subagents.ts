@@ -91,7 +91,7 @@ export function createReactiveSubagentAccessors<TSubagent extends SubagentLike>(
     );
   };
 
-  const mapActiveSubagents = (subagents: TSubagent[]) =>
+  const mapActiveSubagents = (subagents: readonly TSubagent[]) =>
     subagents
       .map((subagent) => getCachedSubagent(subagent.id))
       .filter((subagent): subagent is TSubagent => subagent != null);
