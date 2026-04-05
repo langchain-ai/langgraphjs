@@ -67,7 +67,7 @@ export function createReactiveSubagentAccessors<TSubagent extends SubagentLike>(
     return cached;
   };
 
-  const mapSubagents = (subagents: Map<string, TSubagent>) => {
+  const mapSubagents = (subagents: ReadonlyMap<string, TSubagent>) => {
     const nextIds = new Set(subagents.keys());
     for (const toolCallId of subagentCache.keys()) {
       if (!nextIds.has(toolCallId)) {
