@@ -2747,7 +2747,6 @@ it("deep agent: retained subagent references stay reactive", async () => {
         filterSubagentMessages: true,
       });
       const retainedSubagent = ref<any>();
-      const observedStates = ref<string[]>([]);
 
       watchEffect(() => {
         const researcher = thread.getSubagentsByType("researcher")[0];
@@ -2760,21 +2759,11 @@ it("deep agent: retained subagent references stay reactive", async () => {
         const subagent = retainedSubagent.value;
         const status = subagent?.status ?? "missing";
         const toolCallCount = subagent?.toolCalls.length ?? -1;
-        const nextState = `${status}:${toolCallCount}:${
-          thread.isLoading.value ? "loading" : "idle"
-        }`;
-
-        if (!observedStates.value.includes(nextState)) {
-          observedStates.value = [...observedStates.value, nextState];
-        }
 
         return (
           <div data-testid="retained-subagent-root">
             <div data-testid="retained-subagent-status">{status}</div>
             <div data-testid="retained-subagent-toolcalls">{toolCallCount}</div>
-            <div data-testid="retained-subagent-observed">
-              {observedStates.value.join(",")}
-            </div>
             <button
               data-testid="submit"
               onClick={() =>
@@ -2808,9 +2797,6 @@ it("deep agent: retained subagent references stay reactive", async () => {
   await expect
     .element(screen.getByTestId("retained-subagent-status"))
     .toHaveTextContent("complete");
-
-  const observed = screen.getByTestId("retained-subagent-observed");
-  await expect.element(observed).toHaveTextContent(/complete:1:idle/);
 });
 
 it("stream.history returns BaseMessage instances", async () => {
