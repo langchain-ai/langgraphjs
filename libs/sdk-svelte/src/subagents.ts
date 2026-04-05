@@ -16,11 +16,9 @@ type SubagentAccessors<TSubagent extends SubagentLike> = {
  * with the latest orchestrator snapshot while still participating in Svelte
  * reactivity via the provided version store.
  */
-export function createReactiveSubagentAccessors<
-  TSubagent extends SubagentLike,
->(
+export function createReactiveSubagentAccessors<TSubagent extends SubagentLike>(
   accessors: SubagentAccessors<TSubagent>,
-  version: Readable<number>,
+  version: Readable<number>
 ) {
   const subagentCache = new Map<string, TSubagent>();
   const versionRef = fromStore(version);
@@ -89,7 +87,7 @@ export function createReactiveSubagentAccessors<
           const cached = getCachedSubagent(toolCallId);
           return cached ? ([toolCallId, cached] as const) : undefined;
         })
-        .filter((entry): entry is readonly [string, TSubagent] => entry != null),
+        .filter((entry): entry is readonly [string, TSubagent] => entry != null)
     );
   };
 

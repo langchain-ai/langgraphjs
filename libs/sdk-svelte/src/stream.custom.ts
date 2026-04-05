@@ -30,7 +30,7 @@ export function useStreamCustom<
       getSubagentsByMessage: (messageId) =>
         orchestrator.getSubagentsByMessage(messageId),
     },
-    version,
+    version
   );
 
   const unsubscribe = orchestrator.subscribe(() => {
@@ -59,11 +59,10 @@ export function useStreamCustom<
   );
 
   const subagentsStore = derived(version, () =>
-    reactiveSubagents.mapSubagents(orchestrator.subagents),
+    reactiveSubagents.mapSubagents(orchestrator.subagents)
   );
-  const activeSubagentsStore = derived(
-    version,
-    () => reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents),
+  const activeSubagentsStore = derived(version, () =>
+    reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents)
   );
 
   const emptyEntries = writable<never[]>([]);

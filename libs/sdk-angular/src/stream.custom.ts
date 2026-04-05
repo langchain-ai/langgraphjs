@@ -34,7 +34,7 @@ export function injectStreamCustom<
       getSubagentsByMessage: (messageId) =>
         orchestrator.getSubagentsByMessage(messageId),
     },
-    subagentVersion,
+    subagentVersion
   );
 
   effect((onCleanup) => {
@@ -131,7 +131,9 @@ export function injectStreamCustom<
 
     subagents: computed(() => {
       void subagentVersion();
-      return reactiveSubagents.mapSubagents(orchestrator.subagents) as ReadonlyMap<
+      return reactiveSubagents.mapSubagents(
+        orchestrator.subagents
+      ) as ReadonlyMap<
         string,
         typeof orchestrator.subagents extends Map<string, infer V> ? V : never
       >;
@@ -140,7 +142,7 @@ export function injectStreamCustom<
     activeSubagents: computed(() => {
       void subagentVersion();
       return reactiveSubagents.mapActiveSubagents(
-        orchestrator.activeSubagents,
+        orchestrator.activeSubagents
       ) as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
         ? V
         : never)[];

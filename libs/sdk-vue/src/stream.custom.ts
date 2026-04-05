@@ -60,13 +60,13 @@ export function useStreamCustom<
       getSubagentsByMessage: (messageId) =>
         orchestrator.getSubagentsByMessage(messageId),
     },
-    version,
+    version
   );
   const subagentsRef = shallowRef(
-    reactiveSubagents.mapSubagents(orchestrator.subagents),
+    reactiveSubagents.mapSubagents(orchestrator.subagents)
   );
   const activeSubagentsRef = shallowRef(
-    reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents),
+    reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents)
   );
 
   const unsubscribe = orchestrator.subscribe(() => {
@@ -76,7 +76,7 @@ export function useStreamCustom<
     isLoading.value = orchestrator.isLoading;
     subagentsRef.value = reactiveSubagents.mapSubagents(orchestrator.subagents);
     activeSubagentsRef.value = reactiveSubagents.mapActiveSubagents(
-      orchestrator.activeSubagents,
+      orchestrator.activeSubagents
     );
   });
 

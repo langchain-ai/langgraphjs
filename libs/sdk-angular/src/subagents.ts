@@ -15,11 +15,9 @@ type SubagentAccessors<TSubagent extends SubagentLike> = {
  * from the latest orchestrator snapshot while remaining invalidated by the
  * Angular signal that tracks subagent updates.
  */
-export function createReactiveSubagentAccessors<
-  TSubagent extends SubagentLike,
->(
+export function createReactiveSubagentAccessors<TSubagent extends SubagentLike>(
   accessors: SubagentAccessors<TSubagent>,
-  version: Signal<number> | WritableSignal<number>,
+  version: Signal<number> | WritableSignal<number>
 ) {
   const subagentCache = new Map<string, TSubagent>();
 
@@ -83,7 +81,7 @@ export function createReactiveSubagentAccessors<
           const cached = getCachedSubagent(toolCallId);
           return cached ? ([toolCallId, cached] as const) : undefined;
         })
-        .filter((entry): entry is readonly [string, TSubagent] => entry != null),
+        .filter((entry): entry is readonly [string, TSubagent] => entry != null)
     );
   };
 
