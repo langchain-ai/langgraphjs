@@ -1,5 +1,11 @@
 # @langchain/angular
 
+## 0.4.3
+
+### Patch Changes
+
+- [#2287](https://github.com/langchain-ai/langgraphjs/pull/2287) [`591d2dc`](https://github.com/langchain-ai/langgraphjs/commit/591d2dc70e4e8770df2d9109fca5d402322f9d78) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): subagent stream reactivity
+
 ## 0.4.2
 
 ### Patch Changes
