@@ -26,6 +26,7 @@ import {
   type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 import { useStreamCustom } from "./stream.custom.js";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export { FetchStreamTransport };
 
@@ -206,6 +207,15 @@ function useStreamLGP<
   orchestrator.initThreadId(options.threadId ?? undefined);
 
   const version = writable(0);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    version
+  );
   const unsubscribe = orchestrator.subscribe(() => {
     version.update((v) => v + 1);
   });
@@ -283,11 +293,11 @@ function useStreamLGP<
   );
   const subagentsStore = derived(version, () => {
     orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.subagents;
+    return reactiveSubagents.mapSubagents(orchestrator.subagents);
   });
   const activeSubagentsStore = derived(version, () => {
     orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.activeSubagents;
+    return reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents);
   });
   const queueEntriesStore = derived(version, () => orchestrator.queueEntries);
   const queueSizeStore = derived(version, () => orchestrator.queueSize);
@@ -392,13 +402,13 @@ function useStreamLGP<
       return activeSubagentsRef.current;
     },
     getSubagent(toolCallId: string) {
-      return orchestrator.getSubagent(toolCallId);
+      return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      return orchestrator.getSubagentsByType(type);
+      return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      return orchestrator.getSubagentsByMessage(messageId);
+      return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
 }

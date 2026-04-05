@@ -1,7 +1,7 @@
 import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-vue";
-import { computed, defineComponent, ref } from "vue";
+import { computed, defineComponent, ref, watchEffect } from "vue";
 import {
   useStream,
   provideStream,
@@ -2736,6 +2736,67 @@ it("deep agent: getSubagentsByMessage renders subagents while they are still run
   await expect
     .element(observedStates)
     .toHaveTextContent(/researcher:running:pending:no-result:loading/);
+});
+
+it("deep agent: retained subagent references stay reactive", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStream<DeepAgentGraph>({
+        assistantId: "deepAgent",
+        apiUrl: serverUrl,
+        filterSubagentMessages: true,
+      });
+      const retainedSubagent = ref<any>();
+
+      watchEffect(() => {
+        const researcher = thread.getSubagentsByType("researcher")[0];
+        if (researcher && !retainedSubagent.value) {
+          retainedSubagent.value = researcher;
+        }
+      });
+
+      return () => {
+        const subagent = retainedSubagent.value;
+        const status = subagent?.status ?? "missing";
+        const toolCallCount = subagent?.toolCalls.length ?? -1;
+
+        return (
+          <div data-testid="retained-subagent-root">
+            <div data-testid="retained-subagent-status">{status}</div>
+            <div data-testid="retained-subagent-toolcalls">{toolCallCount}</div>
+            <button
+              data-testid="submit"
+              onClick={() =>
+                void thread.submit(
+                  { messages: [{ content: "Run analysis", type: "human" }] },
+                  { streamSubgraphs: true },
+                )
+              }
+            >
+              Send
+            </button>
+          </div>
+        );
+      };
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-toolcalls"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("complete");
 });
 
 it("stream.history returns BaseMessage instances", async () => {

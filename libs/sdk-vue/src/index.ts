@@ -44,6 +44,7 @@ import {
 import { useStreamCustom } from "./stream.custom.js";
 import type { VueReactiveOptions } from "./types.js";
 import { LANGCHAIN_OPTIONS, type LangChainPluginOptions } from "./context.js";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export { FetchStreamTransport };
 export type { VueReactiveOptions } from "./types.js";
@@ -103,13 +104,28 @@ function useStreamLGP<
   // solely to register a reactive dependency, so Vue knows to invalidate
   // their cached values when the orchestrator state changes.
   const version = shallowRef(0);
-  const subagentsRef = shallowRef(orchestrator.subagents);
-  const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    version
+  );
+  const subagentsRef = shallowRef(
+    reactiveSubagents.mapSubagents(orchestrator.subagents)
+  );
+  const activeSubagentsRef = shallowRef(
+    reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents)
+  );
 
   const unsubscribe = orchestrator.subscribe(() => {
     version.value += 1;
-    subagentsRef.value = orchestrator.subagents;
-    activeSubagentsRef.value = orchestrator.activeSubagents;
+    subagentsRef.value = reactiveSubagents.mapSubagents(orchestrator.subagents);
+    activeSubagentsRef.value = reactiveSubagents.mapActiveSubagents(
+      orchestrator.activeSubagents
+    );
   });
 
   onScopeDispose(() => {
@@ -319,15 +335,13 @@ function useStreamLGP<
     },
     getSubagent(toolCallId: string) {
       void version.value;
-      return orchestrator.getSubagent(toolCallId);
+      return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      void version.value;
-      return orchestrator.getSubagentsByType(type);
+      return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      void version.value;
-      return orchestrator.getSubagentsByMessage(messageId);
+      return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
 }

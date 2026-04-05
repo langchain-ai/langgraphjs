@@ -10,6 +10,7 @@ import {
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -22,6 +23,15 @@ export function useStreamCustom<
 
   const version = writable(0);
   const branch = writable<string>("");
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    version
+  );
 
   const unsubscribe = orchestrator.subscribe(() => {
     version.update((v) => v + 1);
@@ -48,10 +58,11 @@ export function useStreamCustom<
     () => orchestrator.interrupts as Interrupt<InterruptType>[]
   );
 
-  const subagentsStore = derived(version, () => orchestrator.subagents);
-  const activeSubagentsStore = derived(
-    version,
-    () => orchestrator.activeSubagents
+  const subagentsStore = derived(version, () =>
+    reactiveSubagents.mapSubagents(orchestrator.subagents)
+  );
+  const activeSubagentsStore = derived(version, () =>
+    reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents)
   );
 
   const emptyEntries = writable<never[]>([]);
@@ -148,13 +159,13 @@ export function useStreamCustom<
       return activeSubagentsRef.current;
     },
     getSubagent(toolCallId: string) {
-      return orchestrator.getSubagent(toolCallId);
+      return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      return orchestrator.getSubagentsByType(type);
+      return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      return orchestrator.getSubagentsByMessage(messageId);
+      return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
 }

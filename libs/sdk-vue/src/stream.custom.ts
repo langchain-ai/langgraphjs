@@ -19,6 +19,7 @@ import {
 } from "@langchain/langgraph-sdk/ui";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
 import type { VueReactiveOptions } from "./types.js";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -51,15 +52,32 @@ export function useStreamCustom<
   const streamValues = shallowRef<StateType | null>(null);
   const streamError = shallowRef<unknown>(undefined);
   const isLoading = shallowRef(false);
-  const subagentsRef = shallowRef(orchestrator.subagents);
-  const activeSubagentsRef = shallowRef(orchestrator.activeSubagents);
+  const version = shallowRef(0);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    version
+  );
+  const subagentsRef = shallowRef(
+    reactiveSubagents.mapSubagents(orchestrator.subagents)
+  );
+  const activeSubagentsRef = shallowRef(
+    reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents)
+  );
 
   const unsubscribe = orchestrator.subscribe(() => {
+    version.value += 1;
     streamValues.value = orchestrator.streamValues;
     streamError.value = orchestrator.error;
     isLoading.value = orchestrator.isLoading;
-    subagentsRef.value = orchestrator.subagents;
-    activeSubagentsRef.value = orchestrator.activeSubagents;
+    subagentsRef.value = reactiveSubagents.mapSubagents(orchestrator.subagents);
+    activeSubagentsRef.value = reactiveSubagents.mapActiveSubagents(
+      orchestrator.activeSubagents
+    );
   });
 
   onScopeDispose(() => {
@@ -185,15 +203,13 @@ export function useStreamCustom<
 
     getSubagent(toolCallId: string) {
       void subagentsRef.value;
-      return orchestrator.getSubagent(toolCallId);
+      return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      void subagentsRef.value;
-      return orchestrator.getSubagentsByType(type);
+      return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      void subagentsRef.value;
-      return orchestrator.getSubagentsByMessage(messageId);
+      return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
 }
