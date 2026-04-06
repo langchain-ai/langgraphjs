@@ -1213,6 +1213,47 @@ describe("StreamManager", () => {
       expect(subagents).toHaveLength(1);
       expect(subagents[0]?.status).toBe("pending");
     });
+
+    it("replays buffered subagent messages after namespace matching", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      mgr.addMessageToSubagent(
+        "pregel-task-1",
+        {
+          id: "sub-ai-1",
+          type: "ai",
+          content: "",
+          tool_calls: [
+            {
+              id: "search-1",
+              name: "search_web",
+              args: { query: "AI trends" },
+            },
+          ],
+        },
+        undefined
+      );
+
+      expect(mgr.getSubagent("call_1")?.toolCalls).toHaveLength(0);
+
+      mgr.addMessageToSubagent(
+        "pregel-task-1",
+        {
+          id: "sub-human-1",
+          type: "human",
+          content: "Research AI trends",
+        },
+        undefined
+      );
+
+      const subagent = mgr.getSubagent("call_1");
+      expect(subagent?.toolCalls).toHaveLength(1);
+      expect(subagent?.toolCalls[0]?.call.name).toBe("search_web");
+    });
   });
 
   describe("SubagentManager aiMessageId update (OpenAI ID replacement)", () => {
