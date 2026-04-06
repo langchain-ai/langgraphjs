@@ -1121,6 +1121,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node1",
             langgraph_step: -1,
@@ -1130,6 +1136,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node1",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PUSH, 0],
         writers: expect.any(Array),
@@ -1143,6 +1152,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node1",
             langgraph_step: -1,
@@ -1152,6 +1167,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node1",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PULL, "node1"],
         writers: expect.any(Array),
@@ -1165,6 +1183,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node2",
             langgraph_step: -1,
@@ -1174,6 +1198,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node2",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PULL, "node2"],
         writers: expect.any(Array),

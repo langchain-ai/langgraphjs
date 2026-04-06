@@ -106,8 +106,10 @@ export {
   MessagesZodMeta,
 } from "./graph/messages_annotation.js";
 export {
+  type ExecutionInfo,
   type LangGraphRunnableConfig,
   type Runtime,
+  type ServerInfo,
 } from "./pregel/runnable_types.js";
 
 export * from "./state/index.js";
