@@ -194,21 +194,30 @@ export function useStreamCustom<
     },
 
     get subagents() {
-      return subagentsRef.value;
+      void messagesComputed.value.length;
+      void version.value;
+      return reactiveSubagents.mapSubagents(orchestrator.subagents);
     },
 
     get activeSubagents() {
-      return activeSubagentsRef.value;
+      void messagesComputed.value.length;
+      void version.value;
+      return reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents);
     },
 
     getSubagent(toolCallId: string) {
-      void subagentsRef.value;
+      void messagesComputed.value.length;
+      void version.value;
       return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      void messagesComputed.value.length;
+      void version.value;
       return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      void messagesComputed.value.length;
+      void version.value;
       return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };

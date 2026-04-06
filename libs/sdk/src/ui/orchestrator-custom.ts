@@ -1,6 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
 import type { ThreadState, Interrupt } from "../schema.js";
+import type { StreamMode } from "../types.stream.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import { StreamManager, type EventStreamEvent } from "./manager.js";
@@ -141,6 +142,13 @@ export class CustomStreamOrchestrator<
    * @returns The current version counter.
    */
   getSnapshot = (): number => this.#version;
+
+  /**
+   * Custom transports do not negotiate stream modes with the server the way
+   * LangGraph Platform streams do, but framework adapters call this method on
+   * both orchestrator variants. Keep the API surface aligned as a no-op.
+   */
+  trackStreamMode(..._modes: StreamMode[]): void {}
 
   #notify(): void {
     if (this.#disposed) return;
