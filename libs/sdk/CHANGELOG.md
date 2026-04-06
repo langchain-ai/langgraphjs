@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.8.8
+
+### Patch Changes
+
+- [#2292](https://github.com/langchain-ai/langgraphjs/pull/2292) [`33293c7`](https://github.com/langchain-ai/langgraphjs/commit/33293c7f3f110bb462d77a2f8671e5b9d0e84b63) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): buffer subagent messages instead of dropping them
+
 ## 1.8.7
 
 ### Patch Changes
