@@ -595,7 +595,13 @@ it("fetchStateHistory: { limit: 2 }", async () => {
     },
   });
 
-  const screen = await render(<OnRequest apiUrl={serverUrl} client={client} />);
+  const screen = await render(
+    <OnRequest
+      apiUrl={serverUrl}
+      client={client}
+      fetchStateHistory={{ limit: 2 }}
+    />,
+  );
 
   await screen.getByTestId("submit").click();
 
@@ -606,15 +612,15 @@ it("fetchStateHistory: { limit: 2 }", async () => {
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
   await expect
-    .element(screen.getByTestId("messages"))
-    .toHaveTextContent("Hey");
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
   await expect
     .poll(
       () =>
-      onRequestCallback.mock.calls.find(
-        ([url]) => typeof url === "string" && url.includes("/history"),
-      ),
+        onRequestCallback.mock.calls.find(
+          ([url]) => typeof url === "string" && url.includes("/history"),
+        ),
       { timeout: 15_000 },
     )
     .toMatchObject([

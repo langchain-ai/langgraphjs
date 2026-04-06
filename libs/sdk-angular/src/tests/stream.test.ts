@@ -1,3 +1,4 @@
+import { Component } from "@angular/core";
 import type { LocatorSelectors } from "@vitest/browser/context";
 import { Client } from "@langchain/langgraph-sdk";
 import type { BaseMessage } from "langchain";
@@ -24,10 +25,17 @@ import { MultiSubmitComponent } from "./components/MultiSubmit.js";
 import { NewThreadIdComponent } from "./components/NewThreadId.js";
 import { BranchingComponent } from "./components/Branching.js";
 import {
+  OnRequestComponent,
+  onRequestCalls,
+  resetOnRequestCalls,
+} from "./components/OnRequest.js";
+import {
   CustomTransportStreamSubgraphsComponent,
   customStreamTransportHolder,
 } from "./components/CustomTransportStreamSubgraphs.js";
 import { CustomStreamMethodsComponent } from "./components/CustomStreamMethods.js";
+import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
+import { ToolCallsComponent } from "./components/ToolCallsStream.js";
 import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
 import { SwitchThreadComponent } from "./components/SwitchThread.js";
 import { QueueStreamComponent } from "./components/QueueStream.js";
@@ -593,9 +601,57 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  resetOnRequestCalls();
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url: any, init: any) => {
+      requests.push({
+        url: url.toString(),
+        body: init.body
+          ? (JSON.parse(init.body as string) as Record<string, unknown>)
+          : undefined,
+      });
+      return init;
+    },
+  });
 
-  const screen = await render(OnRequestComponent);
+  @Component({
+    template: `
+      <div>
+        <div data-testid="messages">
+          @for (msg of stream.messages(); track msg.id ?? $index) {
+            <div [attr.data-testid]="'message-' + $index">
+              {{ str(msg.content) }}
+            </div>
+          }
+        </div>
+        <div data-testid="loading">
+          {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+        </div>
+        <button data-testid="submit" (click)="onSubmit()">Send</button>
+      </div>
+    `,
+  })
+  class FetchStateHistoryComponent {
+    stream = injectStream({
+      assistantId: "agent",
+      apiUrl: serverUrl,
+      client,
+      fetchStateHistory: { limit: 2 },
+    });
+
+    str(v: unknown) {
+      return typeof v === "string" ? v : JSON.stringify(v);
+    }
+
+    onSubmit() {
+      void this.stream.submit({
+        messages: [{ content: "Hello", type: "human" }],
+      } as any);
+    }
+  }
+
+  const screen = await render(FetchStateHistoryComponent);
 
   await screen.getByTestId("submit").click();
 
@@ -611,22 +667,18 @@ it("fetchStateHistory: { limit: 2 }", async () => {
 
   await expect
     .poll(
-      () =>
-        onRequestCalls.find((call) =>
-          String(call[0]).includes("/history"),
-        )?.[1]?.body?.limit,
+      () => requests.find((call) => call.url.includes("/history"))?.body?.limit,
       { timeout: 10_000 },
     )
     .toBe(2);
 });
 
-it("stream.history returns BaseMessage instances", async () => {
-  const screen = await render(HistoryMessagesComponent);
+it("onRequest gets called when a request is made", async () => {
+  resetOnRequestCalls();
+
+  const screen = await render(OnRequestComponent);
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -634,9 +686,77 @@ it("stream.history returns BaseMessage instances", async () => {
   await expect
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
+
+  expect(onRequestCalls).toMatchObject([
+    [expect.stringContaining("/threads"), { method: "POST" }],
+    [
+      expect.stringContaining("/runs/stream"),
+      {
+        method: "POST",
+        body: {
+          input: { messages: [{ content: "Hello", type: "human" }] },
+          assistant_id: "agent",
+        },
+      },
+    ],
+  ]);
+});
+
+it("interrupts (fetchStateHistory: true)", async () => {
+  const screen = await render(InterruptWithHistoryComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("interrupt"))
+    .toHaveTextContent("breakpoint");
+
+  await screen.getByTestId("resume").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Before interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt"))
+    .toHaveTextContent("agent");
+
+  await screen.getByTestId("resume").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Before interrupt");
+  await expect
+    .element(screen.getByTestId("message-2"))
+    .toHaveTextContent("Hey: Resuming");
+  await expect
+    .element(screen.getByTestId("message-3"))
+    .toHaveTextContent("After interrupt");
+});
+
+it("exposes toolCalls property", async () => {
+  const screen = await render(ToolCallsComponent);
+
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("1");
 });
 
 it("exposes interrupts array", async () => {

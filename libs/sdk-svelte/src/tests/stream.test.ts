@@ -590,6 +590,7 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   const screen = render(OnRequestComponent, {
     apiUrl: serverUrl,
     client,
+    fetchStateHistory: { limit: 2 },
   });
 
   await screen.getByTestId("submit").click();
