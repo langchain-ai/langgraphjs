@@ -2,13 +2,20 @@ import { useStream } from "../../index.js";
 
 interface Props {
   apiUrl: string;
+  threadId?: string | null;
+  fetchStateHistory?: boolean | { limit: number };
 }
 
-export function HistoryMessages({ apiUrl }: Props) {
+export function HistoryMessages({
+  apiUrl,
+  threadId,
+  fetchStateHistory = true,
+}: Props) {
   const thread = useStream<{ messages: Record<string, unknown>[] }>({
     assistantId: "agent",
     apiUrl,
-    fetchStateHistory: true,
+    threadId,
+    fetchStateHistory,
   });
 
   const historyMessages = thread.history.flatMap(

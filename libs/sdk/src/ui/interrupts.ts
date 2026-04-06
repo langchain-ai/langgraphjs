@@ -1,4 +1,5 @@
 import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
+import { filterOutHeadlessToolInterrupts } from "../headless-tools.js";
 import { Interrupt, ThreadState } from "../schema.js";
 
 /**
@@ -26,6 +27,28 @@ export function normalizeInterruptsList<T = unknown>(
   return interrupts.map((i) => normalizeInterruptForClient(i));
 }
 
+export function userFacingInterruptsFromValuesArray<InterruptType = unknown>(
+  valueInterrupts: Interrupt<InterruptType>[]
+): Interrupt<InterruptType>[] {
+  if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
+
+  const filtered = filterOutHeadlessToolInterrupts(valueInterrupts);
+  if (filtered.length === 0) return [];
+
+  return normalizeInterruptsList(filtered as Interrupt<InterruptType>[]);
+}
+
+export function userFacingInterruptsFromThreadTasks<InterruptType = unknown>(
+  allInterrupts: Interrupt<InterruptType>[]
+): Interrupt<InterruptType>[] | null {
+  if (allInterrupts.length === 0) return null;
+
+  const filtered = filterOutHeadlessToolInterrupts(allInterrupts);
+  if (filtered.length === 0) return [];
+
+  return normalizeInterruptsList(filtered as Interrupt<InterruptType>[]);
+}
+
 export function extractInterrupts<InterruptType = unknown>(
   values: unknown,
   options?: {
@@ -42,14 +65,17 @@ export function extractInterrupts<InterruptType = unknown>(
   ) {
     const valueInterrupts = values.__interrupt__ as Interrupt<InterruptType>[];
     if (valueInterrupts.length === 0) return { when: "breakpoint" };
-    if (valueInterrupts.length === 1) {
-      return normalizeInterruptForClient(valueInterrupts[0]);
+
+    const filtered = filterOutHeadlessToolInterrupts(valueInterrupts);
+    if (filtered.length === 0) return undefined;
+    if (filtered.length === 1) {
+      return normalizeInterruptForClient(
+        filtered[0] as Interrupt<InterruptType>
+      );
     }
 
     // TODO: fix the typing of interrupts if multiple interrupts are returned
-    const normalized = valueInterrupts.map((i) =>
-      normalizeInterruptForClient(i)
-    );
+    const normalized = filtered.map((i) => normalizeInterruptForClient(i));
     return normalized as unknown as Interrupt<InterruptType> | undefined;
   }
 
@@ -64,8 +90,17 @@ export function extractInterrupts<InterruptType = unknown>(
     return { when: "breakpoint" };
   }
 
+  const filtered = filterOutHeadlessToolInterrupts(
+    interrupts as Interrupt<InterruptType>[]
+  );
+  if (filtered.length === 0) {
+    const next = options?.threadState?.next ?? [];
+    if (!next.length || options?.error != null) return undefined;
+    return { when: "breakpoint" };
+  }
+
   // Return only the current interrupt
   return normalizeInterruptForClient(
-    interrupts.at(-1) as Interrupt<InterruptType>
+    filtered.at(-1) as Interrupt<InterruptType>
   );
 }

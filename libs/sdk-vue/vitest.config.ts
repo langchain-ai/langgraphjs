@@ -5,6 +5,7 @@ import { webdriverio } from "@vitest/browser-webdriverio";
 
 export default defineConfig({
   plugins: [vue(), vueJsx()],
+  resolve: {},
   test: {
     globals: true,
     testTimeout: 30_000,

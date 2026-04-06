@@ -4,6 +4,7 @@ import { webdriverio } from "@vitest/browser-webdriverio";
 
 export default defineConfig({
   plugins: [svelte()],
+  resolve: {},
   test: {
     globals: true,
     testTimeout: 30_000,

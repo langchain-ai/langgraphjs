@@ -11,6 +11,7 @@ import {
   type MessageMetadata,
 } from "@langchain/langgraph-sdk/ui";
 import type { BagTemplate, Message, Interrupt } from "@langchain/langgraph-sdk";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export function injectStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -26,6 +27,15 @@ export function injectStreamCustom<
   const version = signal(0);
   const subagentVersion = signal(0);
   const isLoading = signal(orchestrator.isLoading);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    subagentVersion
+  );
 
   effect((onCleanup) => {
     const unsubscribe = orchestrator.subscribe(() => {
@@ -121,7 +131,10 @@ export function injectStreamCustom<
 
     subagents: computed(() => {
       void subagentVersion();
-      return orchestrator.subagents as ReadonlyMap<
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.mapSubagents(
+        orchestrator.subagents
+      ) as ReadonlyMap<
         string,
         typeof orchestrator.subagents extends Map<string, infer V> ? V : never
       >;
@@ -129,19 +142,25 @@ export function injectStreamCustom<
 
     activeSubagents: computed(() => {
       void subagentVersion();
-      return orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.mapActiveSubagents(
+        orchestrator.activeSubagents
+      ) as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
         ? V
         : never)[];
     }),
 
     getSubagent(toolCallId: string) {
-      return orchestrator.getSubagent(toolCallId);
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      return orchestrator.getSubagentsByType(type);
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      return orchestrator.getSubagentsByMessage(messageId);
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
 }

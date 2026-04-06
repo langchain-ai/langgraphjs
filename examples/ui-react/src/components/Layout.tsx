@@ -17,6 +17,8 @@ import "../examples/session-persistence";
 import "../examples/deepagent";
 import "../examples/deepagent-tools";
 import "../examples/tool-streaming";
+import "../examples/headless-tools";
+import "../examples/canvas-drawing";
 
 function WelcomeScreen() {
   return (

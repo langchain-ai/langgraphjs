@@ -271,7 +271,7 @@ export function createEmbedServer(options: {
       const { subgraphs } = c.req.valid("query");
 
       const thread = await options.threads.get(thread_id);
-      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graphId = thread?.metadata?.graph_id as string | undefined | null;
       const graph = graphId ? await getGraph(graphId) : undefined;
 
       if (graph == null) {
@@ -315,7 +315,7 @@ export function createEmbedServer(options: {
       }
 
       const thread = await options.threads.get(thread_id);
-      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graphId = thread?.metadata?.graph_id as string | undefined | null;
       const graph = graphId ? await getGraph(graphId) : undefined;
       if (graph == null) return c.json({ error: "Graph not found" }, 404);
 
@@ -348,7 +348,7 @@ export function createEmbedServer(options: {
       const { subgraphs } = c.req.valid("query");
 
       const thread = await options.threads.get(thread_id);
-      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graphId = thread?.metadata?.graph_id as string | undefined | null;
       const graph = graphId ? await getGraph(graphId) : undefined;
       if (graph == null) return c.json({ error: "Graph not found" }, 404);
 
@@ -376,7 +376,7 @@ export function createEmbedServer(options: {
       const { checkpoint, subgraphs } = c.req.valid("json");
 
       const thread = await options.threads.get(thread_id);
-      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graphId = thread?.metadata?.graph_id as string | undefined | null;
       const graph = graphId ? await getGraph(graphId) : undefined;
       if (graph == null) return c.json({ error: "Graph not found" }, 404);
 
@@ -398,7 +398,7 @@ export function createEmbedServer(options: {
       const { limit, before, metadata, checkpoint } = c.req.valid("json");
 
       const thread = await options.threads.get(thread_id);
-      const graphId = thread.metadata?.graph_id as string | undefined | null;
+      const graphId = thread?.metadata?.graph_id as string | undefined | null;
       const graph = graphId ? await getGraph(graphId) : undefined;
       if (graph == null) return jsonExtra(c, []);
 

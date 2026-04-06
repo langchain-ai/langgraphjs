@@ -1,6 +1,6 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import type { DeepAgentGraph } from "../fixtures/mock-server.js";
+  import type { DeepAgentGraph } from "../fixtures/browser-fixtures.js";
 
   interface Props {
     apiUrl: string;

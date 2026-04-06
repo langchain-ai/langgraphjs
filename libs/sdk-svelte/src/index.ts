@@ -26,6 +26,7 @@ import {
   type DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 import { useStreamCustom } from "./stream.custom.js";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export { FetchStreamTransport };
 
@@ -206,6 +207,15 @@ function useStreamLGP<
   orchestrator.initThreadId(options.threadId ?? undefined);
 
   const version = writable(0);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    version
+  );
   const unsubscribe = orchestrator.subscribe(() => {
     version.update((v) => v + 1);
   });
@@ -283,11 +293,11 @@ function useStreamLGP<
   );
   const subagentsStore = derived(version, () => {
     orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.subagents;
+    return reactiveSubagents.mapSubagents(orchestrator.subagents);
   });
   const activeSubagentsStore = derived(version, () => {
     orchestrator.trackStreamMode("updates", "messages-tuple");
-    return orchestrator.activeSubagents;
+    return reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents);
   });
   const queueEntriesStore = derived(version, () => orchestrator.queueEntries);
   const queueSizeStore = derived(version, () => orchestrator.queueSize);
@@ -386,19 +396,24 @@ function useStreamLGP<
     },
 
     get subagents() {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return subagentsRef.current;
     },
     get activeSubagents() {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return activeSubagentsRef.current;
     },
     getSubagent(toolCallId: string) {
-      return orchestrator.getSubagent(toolCallId);
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
-      return orchestrator.getSubagentsByType(type);
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
-      return orchestrator.getSubagentsByMessage(messageId);
+      orchestrator.trackStreamMode("updates", "messages-tuple");
+      return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
 }
@@ -456,6 +471,14 @@ export type {
   ToolCallFromTool,
   ToolCallsFromTools,
 } from "@langchain/langgraph-sdk";
+export type {
+  HeadlessToolImplementation,
+  AnyHeadlessToolImplementation,
+  ToolEvent,
+  HeadlessToolInterrupt,
+  OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
+} from "@langchain/langgraph-sdk";
 
 export {
   SubagentManager,
@@ -464,3 +487,13 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "@langchain/langgraph-sdk/ui";
+export {
+  isHeadlessToolInterrupt,
+  parseHeadlessToolInterruptPayload,
+  filterOutHeadlessToolInterrupts,
+  findHeadlessTool,
+  executeHeadlessTool,
+  handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
+} from "@langchain/langgraph-sdk";

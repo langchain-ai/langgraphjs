@@ -1,3 +1,4 @@
+import { Component } from "@angular/core";
 import type { LocatorSelectors } from "@vitest/browser/context";
 import { Client } from "@langchain/langgraph-sdk";
 import type { BaseMessage } from "langchain";
@@ -33,7 +34,6 @@ import {
   customStreamTransportHolder,
 } from "./components/CustomTransportStreamSubgraphs.js";
 import { CustomStreamMethodsComponent } from "./components/CustomStreamMethods.js";
-import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHistory.js";
 import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
 import { ToolCallsComponent } from "./components/ToolCallsStream.js";
 import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
@@ -42,7 +42,12 @@ import { QueueStreamComponent } from "./components/QueueStream.js";
 import { QueueOnCreatedComponent } from "./components/QueueOnCreated.js";
 import { SubmitOnErrorComponent } from "./components/SubmitOnError.js";
 import { DeepAgentStreamComponent } from "./components/DeepAgentStream.js";
+import { RetainedSubagentStreamComponent } from "./components/RetainedSubagentStream.js";
 import { HistoryMessagesComponent } from "./components/HistoryMessages.js";
+import {
+  HeadlessToolComponent,
+  HeadlessToolErrorComponent,
+} from "./components/HeadlessToolStream.js";
 import { StreamServiceBasicComponent } from "./components/StreamServiceBasic.js";
 import { StreamServiceCustomTransportComponent } from "./components/StreamServiceCustomTransport.js";
 import { StreamServiceSharedComponent } from "./components/StreamServiceShared.js";
@@ -234,13 +239,18 @@ it("onStop is not called when stream completes naturally", async () => {
     .toHaveTextContent("No");
 
   await screen.getByTestId("submit").click();
-
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
   await expect
     .element(screen.getByTestId("onstop-called"))
+    .toHaveTextContent("No");
+  await expect
+    .element(screen.getByTestId("has-mutate"))
     .toHaveTextContent("No");
 });
 
@@ -263,8 +273,12 @@ it("make sure to pass metadata to the thread", async () => {
     .toHaveTextContent("Hey");
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(threadId);
-  expect(thread.metadata).toMatchObject({ random: "123" });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(threadId);
+      return thread.metadata;
+    })
+    .toMatchObject({ random: "123" });
 });
 
 it("streamSubgraphs: true", async () => {
@@ -588,12 +602,59 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const screen = await render(BasicStreamWithHistoryComponent);
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url: any, init: any) => {
+      requests.push({
+        url: url.toString(),
+        body: init.body
+          ? (JSON.parse(init.body as string) as Record<string, unknown>)
+          : undefined,
+      });
+      return init;
+    },
+  });
+
+  @Component({
+    template: `
+      <div>
+        <div data-testid="messages">
+          @for (msg of stream.messages(); track msg.id ?? $index) {
+            <div [attr.data-testid]="'message-' + $index">
+              {{ str(msg.content) }}
+            </div>
+          }
+        </div>
+        <div data-testid="loading">
+          {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+        </div>
+        <button data-testid="submit" (click)="onSubmit()">Send</button>
+      </div>
+    `,
+  })
+  class FetchStateHistoryComponent {
+    stream = injectStream({
+      assistantId: "agent",
+      apiUrl: serverUrl,
+      client,
+      fetchStateHistory: { limit: 2 },
+    });
+
+    str(v: unknown) {
+      return typeof v === "string" ? v : JSON.stringify(v);
+    }
+
+    onSubmit() {
+      void this.stream.submit({
+        messages: [{ content: "Hello", type: "human" }],
+      } as any);
+    }
+  }
+
+  const screen = await render(FetchStateHistoryComponent);
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -604,6 +665,13 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+
+  await expect
+    .poll(
+      () => requests.find((call) => call.url.includes("/history"))?.body?.limit,
+      { timeout: 10_000 },
+    )
+    .toBe(2);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -678,6 +746,10 @@ it("interrupts (fetchStateHistory: true)", async () => {
 it("exposes toolCalls property", async () => {
   const screen = await render(ToolCallsComponent);
 
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+
   await screen.getByTestId("submit").click();
 
   await expect
@@ -685,7 +757,7 @@ it("exposes toolCalls property", async () => {
     .toHaveTextContent("Not loading");
   await expect
     .element(screen.getByTestId("tool-calls-count"))
-    .toHaveTextContent("0");
+    .toHaveTextContent("1");
 });
 
 it("exposes interrupts array", async () => {
@@ -1115,6 +1187,47 @@ it("deep agent: subagents call tools and render args/results", async () => {
     .toHaveTextContent(/Both agents completed their tasks/);
 });
 
+it("deep agent: retained subagent references stay reactive", async () => {
+  const screen = await render(RetainedSubagentStreamComponent);
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-toolcalls"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("complete");
+});
+
+it("deep agent: retained subagent summaries react to latest tool calls", async () => {
+  const screen = await render(RetainedSubagentStreamComponent);
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-task"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool"))
+    .toHaveTextContent("search_web");
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool-args"))
+    .toHaveTextContent('"query":"test research query"');
+});
+
 it("stream.history returns BaseMessage instances", async () => {
   const screen = await render(HistoryMessagesComponent);
 
@@ -1284,4 +1397,52 @@ it("injectStream throws when used outside an injection context", () => {
   expect(() => {
     injectStream();
   }).toThrow();
+});
+
+it("headless tools - executes in browser and resumes agent automatically", async () => {
+  const screen = await render(HeadlessToolComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Where am I?");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
+});
+
+it("headless tools - onHeadlessTool callback fires start and success events", async () => {
+  const screen = await render(HeadlessToolComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-0"))
+    .toHaveTextContent("start:get_location");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("success:get_location");
+});
+
+it("headless tools - propagates execute error back to agent as error payload", async () => {
+  const screen = await render(HeadlessToolErrorComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("error:get_location:GPS unavailable");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
 });

@@ -1,5 +1,34 @@
 # @examples/assistant-ui-claude
 
+## 0.1.10
+
+### Patch Changes
+
+- Updated dependencies [[`33293c7`](https://github.com/langchain-ai/langgraphjs/commit/33293c7f3f110bb462d77a2f8671e5b9d0e84b63)]:
+  - @langchain/react@0.3.3
+
+## 0.1.9
+
+### Patch Changes
+
+- Updated dependencies [[`a5dfdb6`](https://github.com/langchain-ai/langgraphjs/commit/a5dfdb61c7af0b957b0064b02cb390a11cd59b56)]:
+  - @langchain/react@0.3.2
+
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [[`b4a841c`](https://github.com/langchain-ai/langgraphjs/commit/b4a841c4b369db7f0fa93fe1de6b3b1ac3e8d3fb)]:
+  - @langchain/react@0.3.1
+
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [[`2b62610`](https://github.com/langchain-ai/langgraphjs/commit/2b626107101bddb13cf662e1583ea1a828c6e0cd)]:
+  - @langchain/langgraph@1.2.7
+  - @langchain/react@0.3.0
+
 ## 0.1.6
 
 ### Patch Changes

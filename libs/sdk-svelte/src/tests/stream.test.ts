@@ -2,6 +2,7 @@ import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 import BasicStream from "./components/BasicStream.svelte";
+import HeadlessToolStream from "./components/HeadlessToolStream.svelte";
 import InitialValuesStream from "./components/InitialValuesStream.svelte";
 import StopMutateStream from "./components/StopMutateStream.svelte";
 import StopFunctionalStream from "./components/StopFunctionalStream.svelte";
@@ -21,6 +22,7 @@ import QueueStream from "./components/QueueStream.svelte";
 import QueueOnCreated from "./components/QueueOnCreated.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
+import RetainedSubagentStream from "./components/RetainedSubagentStream.svelte";
 import CustomStreamMethods from "./components/CustomStreamMethods.svelte";
 import CustomTransportStreamSubgraphs from "./components/CustomTransportStreamSubgraphs.svelte";
 import HistoryMessages from "./components/HistoryMessages.svelte";
@@ -230,12 +232,16 @@ it("onStop is not called when stream completes naturally", async () => {
     .toHaveTextContent("No");
 
   await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
-  // Wait for stream to start and complete naturally
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
-
+  await expect
+    .element(screen.getByTestId("has-mutate"))
+    .toHaveTextContent("No");
   await expect
     .element(screen.getByTestId("onstop-called"))
     .toHaveTextContent("No");
@@ -259,8 +265,12 @@ it("make sure to pass metadata to the thread", async () => {
     .toHaveTextContent("Hey");
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(threadId);
-  expect(thread.metadata).toMatchObject({ random: "123" });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(threadId);
+      return thread.metadata;
+    })
+    .toMatchObject({ random: "123" });
 });
 
 it("streamSubgraphs: true", async () => {
@@ -566,15 +576,25 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const screen = render(BasicStream, {
+  const onRequestCalls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const client = new Client({
     apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      onRequestCalls.push({
+        url: url.toString(),
+        body: init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : undefined,
+      });
+      return init;
+    },
+  });
+
+  const screen = render(OnRequestComponent, {
+    apiUrl: serverUrl,
+    client,
     fetchStateHistory: { limit: 2 },
   });
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -585,6 +605,14 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+
+  await expect
+    .poll(
+      () =>
+        onRequestCalls.find((call) => call.url.includes("/history"))?.body?.limit,
+      { timeout: 10000 },
+    )
+    .toBe(2);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -724,7 +752,7 @@ it("exposes toolCalls property", async () => {
     .toHaveTextContent("Not loading");
   await expect
     .element(screen.getByTestId("tool-calls-count"))
-    .toHaveTextContent("0");
+    .toHaveTextContent("1");
 });
 
 it("exposes interrupts array", async () => {
@@ -910,11 +938,13 @@ it("server-side queue: submitting three times rapidly queues the latter two", as
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
 
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(2);
+  await expect
+    .poll(() =>
+      Array.from({ length: 8 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg2", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: queued inputs are displayed in queue.entries", async () => {
@@ -935,7 +965,9 @@ it("server-side queue: queued inputs are displayed in queue.entries", async () =
     .toHaveTextContent("2");
 
   const entriesEl = screen.getByTestId("queue-entries");
-  await expect.element(entriesEl, { timeout: 5000 }).toHaveTextContent(/Msg\d/);
+  await expect
+    .element(entriesEl, { timeout: 5000 })
+    .toHaveTextContent("Msg2,Msg3");
 });
 
 it("server-side queue: cancel removes a queued entry", async () => {
@@ -955,8 +987,15 @@ it("server-side queue: cancel removes a queued entry", async () => {
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("2");
 
+  await expect
+    .element(screen.getByTestId("queue-entries"))
+    .toHaveTextContent("Msg2,Msg3");
+
   await screen.getByTestId("cancel-first").click();
 
+  await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("Msg3");
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 10000 })
     .toHaveTextContent("0");
@@ -964,6 +1003,13 @@ it("server-side queue: cancel removes a queued entry", async () => {
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expect
+    .poll(() =>
+      Array.from({ length: 6 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: clear empties the queue", async () => {
@@ -986,12 +1032,22 @@ it("server-side queue: clear empties the queue", async () => {
   await screen.getByTestId("clear-queue").click();
 
   await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("");
+  await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expect
+    .poll(() =>
+      Array.from({ length: 4 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey"]);
 });
 
 it("server-side queue: switchThread clears the queue", async () => {
@@ -1039,11 +1095,13 @@ it("server-side queue: follow-ups submitted from onCreated are drained", async (
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
 
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(6);
+  await expect
+    .poll(() =>
+      Array.from({ length: 6 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Msg1", "Hey", "Msg2", "Hey", "Msg3", "Hey"]);
 });
 
 it("calls per-submit onError when stream fails", async () => {
@@ -1158,6 +1216,47 @@ it("deep agent: subagents call tools and render args/results", async () => {
   await expect
     .element(messages)
     .toHaveTextContent(/Both agents completed their tasks/);
+});
+
+it("deep agent: retained subagent references stay reactive", async () => {
+  const screen = render(RetainedSubagentStream, { apiUrl: serverUrl });
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-toolcalls"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("1");
+  await expect
+    .element(screen.getByTestId("retained-subagent-status"))
+    .toHaveTextContent("complete");
+});
+
+it("deep agent: retained subagent summaries react to latest tool calls", async () => {
+  const screen = render(RetainedSubagentStream, { apiUrl: serverUrl });
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-task"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool"))
+    .toHaveTextContent("search_web");
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool-args"))
+    .toHaveTextContent('"query":"test research query"');
 });
 
 it("stream.history returns BaseMessage instances", async () => {
@@ -1296,4 +1395,59 @@ it("getStream throws when used outside a component", () => {
   expect(() => {
     getStream();
   }).toThrow();
+});
+
+it("headless tools - executes in browser and resumes agent automatically", async () => {
+  const screen = render(HeadlessToolStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Where am I?");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
+});
+
+it("headless tools - onTool callback fires start and success events", async () => {
+  const screen = render(HeadlessToolStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-0"))
+    .toHaveTextContent("start:get_location");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("success:get_location");
+});
+
+it("headless tools - propagates execute error back to agent as error payload", async () => {
+  const failingExecute = async () => {
+    throw new Error("GPS unavailable");
+  };
+
+  const screen = render(HeadlessToolStream, {
+    apiUrl: serverUrl,
+    execute: failingExecute,
+  });
+
+  await screen.getByTestId("submit").click();
+
+  await expect.element(screen.getByTestId("loading")).toHaveTextContent("idle");
+
+  await expect
+    .element(screen.getByTestId("tool-event-1"))
+    .toHaveTextContent("error:get_location:GPS unavailable");
+
+  await expect
+    .element(screen.getByTestId("message-last"))
+    .toHaveTextContent("Location received!");
 });

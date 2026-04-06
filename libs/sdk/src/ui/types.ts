@@ -34,6 +34,10 @@ import type {
   ToolCallWithResult,
 } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import type {
+  AnyHeadlessToolImplementation,
+  OnToolCallback,
+} from "../headless-tools.js";
 
 /**
  * Represents a tool call that initiated a subagent.
@@ -1254,6 +1258,17 @@ export interface UseStreamOptions<
    */
   throttle?: number | boolean;
 
+  /**
+   * Headless tool implementations to execute locally when the agent interrupts
+   * with a schema-only `tool({ ... })` call from LangChain.
+   */
+  tools?: AnyHeadlessToolImplementation[];
+
+  /**
+   * Callback for headless tool lifecycle events.
+   */
+  onTool?: OnToolCallback;
+
   // Note: Agent-specific options are defined in their respective option interfaces:
   // - UseAgentStreamOptions: subagentToolNames
   // - UseDeepAgentStreamOptions: filterSubagentMessages
@@ -1277,6 +1292,8 @@ export type AnyStreamOptions<
   subagentToolNames?: string[];
   filterSubagentMessages?: boolean;
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
+  tools?: AnyHeadlessToolImplementation[];
+  onTool?: OnToolCallback;
 };
 
 interface RunMetadataStorage {
@@ -1400,6 +1417,8 @@ export type UseStreamCustomOptions<
   | "initialValues"
   | "throttle"
   | "onToolEvent"
+  | "tools"
+  | "onTool"
 > & { transport: UseStreamTransport<StateType, Bag> };
 
 /**
@@ -1419,6 +1438,8 @@ export type AnyStreamCustomOptions<
   subagentToolNames?: string[];
   filterSubagentMessages?: boolean;
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
+  tools?: AnyHeadlessToolImplementation[];
+  onTool?: OnToolCallback;
 };
 
 export type CustomSubmitOptions<

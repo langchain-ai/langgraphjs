@@ -1,19 +1,26 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import { Client, type Message } from "@langchain/langgraph-sdk";
+  import { Client } from "@langchain/langgraph-sdk";
 
   interface Props {
     apiUrl: string;
     assistantId?: string;
     client: Client;
+    fetchStateHistory?: boolean | { limit: number };
   }
 
-  const { apiUrl, assistantId = "agent", client }: Props = $props();
+  const {
+    apiUrl,
+    assistantId = "agent",
+    client,
+    fetchStateHistory,
+  }: Props = $props();
 
   const stream = useStream({
     assistantId,
     apiUrl,
     client,
+    fetchStateHistory,
   });
 </script>
 
@@ -26,6 +33,9 @@
           : JSON.stringify(msg.content)}
       </div>
     {/each}
+  </div>
+  <div data-testid="loading">
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <button
     data-testid="submit"

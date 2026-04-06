@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.8.5",
+  "version": "1.8.8",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "repository": {
@@ -27,7 +27,7 @@
     "@langchain/core": "^1.1.38",
     "@langchain/scripts": "^0.1.4",
     "deepagents": "^1.8.3",
-    "langchain": "^1.2.39",
+    "langchain": "^1.3.0",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "@types/react": "^19.2.14",

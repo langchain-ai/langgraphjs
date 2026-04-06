@@ -3,14 +3,21 @@
 
   interface Props {
     apiUrl: string;
+    threadId?: string | null;
+    fetchStateHistory?: boolean | { limit: number };
   }
 
-  const { apiUrl }: Props = $props();
+  const {
+    apiUrl,
+    threadId,
+    fetchStateHistory = true,
+  }: Props = $props();
 
   const stream = useStream({
     assistantId: "agent",
     apiUrl,
-    fetchStateHistory: true,
+    threadId,
+    fetchStateHistory,
   });
 
   const historyMessages = $derived(

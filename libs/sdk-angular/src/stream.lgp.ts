@@ -14,6 +14,7 @@ import {
   type Interrupt,
   type BagTemplate,
 } from "@langchain/langgraph-sdk";
+import { createReactiveSubagentAccessors } from "./subagents.js";
 
 export function useStreamLGP<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -39,6 +40,15 @@ export function useStreamLGP<
 
   const version = signal(0);
   const subagentVersion = signal(0);
+  const reactiveSubagents = createReactiveSubagentAccessors(
+    {
+      getSubagent: (toolCallId) => orchestrator.getSubagent(toolCallId),
+      getSubagentsByType: (type) => orchestrator.getSubagentsByType(type),
+      getSubagentsByMessage: (messageId) =>
+        orchestrator.getSubagentsByMessage(messageId),
+    },
+    subagentVersion
+  );
 
   effect((onCleanup) => {
     const unsubscribe = orchestrator.subscribe(() => {
@@ -160,17 +170,23 @@ export function useStreamLGP<
 
   const subagents = computed(() => {
     void subagentVersion();
-    return orchestrator.subagents as ReadonlyMap<
-      string,
-      typeof orchestrator.subagents extends Map<string, infer V> ? V : never
-    >;
+    orchestrator.trackStreamMode("updates", "messages-tuple");
+    return reactiveSubagents.mapSubagents(
+      orchestrator.subagents as ReadonlyMap<
+        string,
+        typeof orchestrator.subagents extends Map<string, infer V> ? V : never
+      >
+    );
   });
 
   const activeSubagents = computed(() => {
     void subagentVersion();
-    return orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
-      ? V
-      : never)[];
+    orchestrator.trackStreamMode("updates", "messages-tuple");
+    return reactiveSubagents.mapActiveSubagents(
+      orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
+        ? V
+        : never)[]
+    );
   });
 
   return {
@@ -228,12 +244,15 @@ export function useStreamLGP<
     subagents,
     activeSubagents,
     getSubagent(toolCallId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return orchestrator.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return orchestrator.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return orchestrator.getSubagentsByMessage(messageId);
     },
   };
