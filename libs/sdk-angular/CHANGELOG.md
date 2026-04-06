@@ -1,5 +1,11 @@
 # @langchain/angular
 
+## 0.4.4
+
+### Patch Changes
+
+- [#2290](https://github.com/langchain-ai/langgraphjs/pull/2290) [`4cddca6`](https://github.com/langchain-ai/langgraphjs/commit/4cddca61cee5352bfc109345023342f9f5b078de) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(vue): actually make it reactive
+
 ## 0.4.3
 
 ### Patch Changes
