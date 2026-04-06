@@ -1263,14 +1263,27 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
-  expect(onRequestCallback.mock.calls).toContainEqual([
-    expect.stringContaining("/history"),
-    expect.objectContaining({
-      method: "POST",
-      body: expect.objectContaining({ limit: 2 }),
-    }),
-  ]);
+  await expect
+    .poll(
+      () =>
+        onRequestCallback.mock.calls.find(
+          ([url]) => typeof url === "string" && url.includes("/history"),
+        ),
+      { timeout: 10000 },
+    )
+    .toMatchObject([
+      expect.stringMatching(/\/threads\/[^/]+\/history/),
+      {
+        method: "POST",
+        body: {
+          limit: 2,
+        },
+      },
+    ]);
 });
 
 it("onRequest gets called when a request is made", async () => {

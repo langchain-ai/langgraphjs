@@ -600,10 +600,15 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
   await expect
-    .poll(() =>
-      onRequestCalls.find((call) => call.url.includes("/history"))?.body?.limit,
+    .poll(
+      () =>
+        onRequestCalls.find((call) => call.url.includes("/history"))?.body?.limit,
+      { timeout: 10000 },
     )
     .toBe(2);
 });

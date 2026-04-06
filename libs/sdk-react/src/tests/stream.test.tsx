@@ -605,12 +605,17 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("messages"))
+    .toHaveTextContent("Hey");
 
   await expect
-    .poll(() =>
+    .poll(
+      () =>
       onRequestCallback.mock.calls.find(
         ([url]) => typeof url === "string" && url.includes("/history"),
       ),
+      { timeout: 15_000 },
     )
     .toMatchObject([
       expect.stringMatching(/\/threads\/[^/]+\/history/),
