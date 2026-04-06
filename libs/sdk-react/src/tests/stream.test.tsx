@@ -42,6 +42,19 @@ async function createSeededThread(messageContents: string[]): Promise<string> {
     });
   }
 
+  await expect
+    .poll(async () => {
+      try {
+        const history = await client.threads.getHistory(thread.thread_id, {
+          limit: messageContents.length,
+        });
+        return history.length;
+      } catch {
+        return 0;
+      }
+    })
+    .toBeGreaterThanOrEqual(messageContents.length);
+
   return thread.thread_id;
 }
 
