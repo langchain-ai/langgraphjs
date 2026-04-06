@@ -16,34 +16,6 @@ import {
 
 const serverUrl = inject("serverUrl");
 
-async function createSeededThread(messageContents: string[]): Promise<string> {
-  const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.create();
-
-  for (const content of messageContents) {
-    await client.runs.wait(thread.thread_id, "agent", {
-      input: {
-        messages: [{ content, type: "human" }],
-      },
-    });
-  }
-
-  await expect
-    .poll(async () => {
-      try {
-        const history = await client.threads.getHistory(thread.thread_id, {
-          limit: messageContents.length,
-        });
-        return history.length;
-      } catch {
-        return 0;
-      }
-    })
-    .toBeGreaterThanOrEqual(messageContents.length);
-
-  return thread.thread_id;
-}
-
 it("renders initial state correctly", async () => {
   const TestComponent = defineComponent({
     setup() {
