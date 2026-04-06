@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.2.8
+
+### Patch Changes
+
+- [#2275](https://github.com/langchain-ai/langgraphjs/pull/2275) [`e42c2c8`](https://github.com/langchain-ai/langgraphjs/commit/e42c2c8836e0b7e36067fea6cc51842e1eb2c60f) Thanks [@open-swe](https://github.com/apps/open-swe)! - enhance runtime with executionInfo and serverInfo
+
 ## 1.2.7
 
 ### Patch Changes
