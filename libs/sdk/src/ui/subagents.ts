@@ -248,8 +248,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    */
   private flushPendingMessages(namespaceId: string) {
     const pending = this.pendingMessages.get(namespaceId);
-    if (!pending?.length)
-      return;
+    if (!pending?.length) return;
 
     this.pendingMessages.delete(namespaceId);
     pending.forEach(({ serialized, metadata }) => {
