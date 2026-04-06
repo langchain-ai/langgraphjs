@@ -170,6 +170,7 @@ export function useStreamLGP<
 
   const subagents = computed(() => {
     void subagentVersion();
+    orchestrator.trackStreamMode("updates", "messages-tuple");
     return reactiveSubagents.mapSubagents(
       orchestrator.subagents as ReadonlyMap<
         string,
@@ -180,6 +181,7 @@ export function useStreamLGP<
 
   const activeSubagents = computed(() => {
     void subagentVersion();
+    orchestrator.trackStreamMode("updates", "messages-tuple");
     return reactiveSubagents.mapActiveSubagents(
       orchestrator.activeSubagents as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
         ? V
@@ -242,12 +244,15 @@ export function useStreamLGP<
     subagents,
     activeSubagents,
     getSubagent(toolCallId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return orchestrator.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return orchestrator.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return orchestrator.getSubagentsByMessage(messageId);
     },
   };

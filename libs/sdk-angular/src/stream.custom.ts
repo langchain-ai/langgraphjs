@@ -131,6 +131,7 @@ export function injectStreamCustom<
 
     subagents: computed(() => {
       void subagentVersion();
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.mapSubagents(
         orchestrator.subagents
       ) as ReadonlyMap<
@@ -141,6 +142,7 @@ export function injectStreamCustom<
 
     activeSubagents: computed(() => {
       void subagentVersion();
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.mapActiveSubagents(
         orchestrator.activeSubagents
       ) as readonly (typeof orchestrator.activeSubagents extends (infer V)[]
@@ -149,12 +151,15 @@ export function injectStreamCustom<
     }),
 
     getSubagent(toolCallId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };

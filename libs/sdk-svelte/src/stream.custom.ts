@@ -153,18 +153,23 @@ export function useStreamCustom<
     },
 
     get subagents() {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return subagentsRef.current;
     },
     get activeSubagents() {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return activeSubagentsRef.current;
     },
     getSubagent(toolCallId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      orchestrator.trackStreamMode("updates", "messages-tuple");
       return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
