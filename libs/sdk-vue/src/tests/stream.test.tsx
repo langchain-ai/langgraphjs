@@ -1235,14 +1235,24 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const threadId = await createSeededThread(["Hello (1)", "Hello (2)", "Hello (3)"]);
+  const onRequestCallback = vi.fn();
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url: URL, init: RequestInit) => {
+      onRequestCallback(url.toString(), {
+        ...init,
+        body: init.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return init;
+    },
+  });
 
   const TestComponent = defineComponent({
     setup() {
-      const { history, isLoading } = useStream({
+      const { messages, isLoading, submit } = useStream({
         assistantId: "agent",
         apiUrl: serverUrl,
-        threadId,
+        client,
         fetchStateHistory: { limit: 2 },
       });
 
@@ -1251,36 +1261,44 @@ it("fetchStateHistory: { limit: 2 }", async () => {
           <div data-testid="loading">
             {isLoading.value ? "Loading..." : "Not loading"}
           </div>
-          <div data-testid="history-count">{history.value.length}</div>
-          <div data-testid="history-message-types">
-            {history.value
-              .flatMap((state: any) => state.values.messages ?? [])
-              .map((msg: any) =>
-                typeof msg.getType === "function" ? msg.getType() : "plain",
-              )
-              .join(",")}
+          <div data-testid="messages">
+            {messages.value.map((msg, i: number) => (
+              <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                {typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)}
+              </div>
+            ))}
           </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({ messages: [{ content: "Hello", type: "human" }] })
+            }
+          >
+            Send
+          </button>
         </div>
       );
     },
   });
 
   const screen = render(TestComponent);
+  await screen.getByTestId("submit").click();
   await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
   await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Not loading");
-  await expect
-    .element(screen.getByTestId("history-count"))
-    .toHaveTextContent("2");
-  await expect
-    .element(screen.getByTestId("history-message-types"))
-    .toHaveTextContent(/human/);
-  await expect
-    .element(screen.getByTestId("history-message-types"))
-    .toHaveTextContent(/ai/);
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  expect(onRequestCallback.mock.calls).toContainEqual([
+    expect.stringContaining("/history"),
+    expect.objectContaining({
+      method: "POST",
+      body: expect.objectContaining({ limit: 2 }),
+    }),
+  ]);
 });
 
 it("onRequest gets called when a request is made", async () => {

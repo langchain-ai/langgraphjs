@@ -603,28 +603,37 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const threadId = await createSeededThread(["Hello (1)", "Hello (2)", "Hello (3)"]);
-  const screen = render(HistoryMessages, {
+  const onRequestCalls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const client = new Client({
     apiUrl: serverUrl,
-    threadId,
-    fetchStateHistory: { limit: 2 },
+    onRequest: (url, init) => {
+      onRequestCalls.push({
+        url: url.toString(),
+        body: init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : undefined,
+      });
+      return init;
+    },
   });
 
+  const screen = render(OnRequestComponent, {
+    apiUrl: serverUrl,
+    client,
+  });
+
+  await screen.getByTestId("submit").click();
+
   await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
   await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Not loading");
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
   await expect
-    .element(screen.getByTestId("history-count"))
-    .toHaveTextContent("2");
-  await expect
-    .element(screen.getByTestId("history-message-types"))
-    .toHaveTextContent(/human/);
-  await expect
-    .element(screen.getByTestId("history-message-types"))
-    .toHaveTextContent(/ai/);
+    .poll(() =>
+      onRequestCalls.find((call) => call.url.includes("/history"))?.body?.limit,
+    )
+    .toBe(2);
 });
 
 it("onRequest gets called when a request is made", async () => {

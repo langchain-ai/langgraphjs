@@ -621,23 +621,26 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const threadId = await createSeededThread(["Hello (1)", "Hello (2)", "Hello (3)"]);
-  const client = new Client({ apiUrl: serverUrl });
-  await expect
-    .poll(async () => {
-      const history = await client.threads.getHistory(threadId, { limit: 2 });
-      return history.length;
-    })
-    .toBe(2);
+  resetOnRequestCalls();
 
-  const history = await client.threads.getHistory(threadId, { limit: 2 });
-  expect(history).toHaveLength(2);
-  expect(
-    history.flatMap((state: any) => (state.values.messages ?? []) as { type?: string }[]),
-  ).toEqual(expect.arrayContaining([expect.objectContaining({ type: "human" })]));
-  expect(
-    history.flatMap((state: any) => (state.values.messages ?? []) as { type?: string }[]),
-  ).toEqual(expect.arrayContaining([expect.objectContaining({ type: "ai" })]));
+  const screen = await render(OnRequestComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .poll(() =>
+      onRequestCalls.find((call) =>
+        String(call[0]).includes("/history"),
+      )?.[1]?.body?.limit,
+    )
+    .toBe(2);
 });
 
 it("stream.history returns BaseMessage instances", async () => {

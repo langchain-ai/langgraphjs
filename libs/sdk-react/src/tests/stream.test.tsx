@@ -30,34 +30,6 @@ import { HeadlessToolStream } from "./components/HeadlessToolStream.js";
 
 const serverUrl = inject("serverUrl");
 
-async function createSeededThread(messageContents: string[]): Promise<string> {
-  const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.create();
-
-  for (const content of messageContents) {
-    await client.runs.wait(thread.thread_id, "agent", {
-      input: {
-        messages: [{ content, type: "human" }],
-      },
-    });
-  }
-
-  await expect
-    .poll(async () => {
-      try {
-        const history = await client.threads.getHistory(thread.thread_id, {
-          limit: messageContents.length,
-        });
-        return history.length;
-      } catch {
-        return 0;
-      }
-    })
-    .toBeGreaterThanOrEqual(messageContents.length);
-
-  return thread.thread_id;
-}
-
 async function expectMessageContents(
   screen: Awaited<ReturnType<typeof render>>,
   expected: string[],
@@ -611,30 +583,44 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const threadId = await createSeededThread(["Hello (1)", "Hello (2)", "Hello (3)"]);
-  const screen = await render(
-    <HistoryMessages
-      apiUrl={serverUrl}
-      threadId={threadId}
-      fetchStateHistory={{ limit: 2 }}
-    />,
-  );
+  const onRequestCallback = vi.fn();
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      onRequestCallback(url.toString(), {
+        ...init,
+        body: init.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return init;
+    },
+  });
+
+  const screen = await render(<OnRequest apiUrl={serverUrl} client={client} />);
+
+  await screen.getByTestId("submit").click();
 
   await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
   await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Not loading");
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
   await expect
-    .element(screen.getByTestId("history-count"))
-    .toHaveTextContent("2");
-  await expect
-    .element(screen.getByTestId("history-message-types"))
-    .toHaveTextContent(/human/);
-  await expect
-    .element(screen.getByTestId("history-message-types"))
-    .toHaveTextContent(/ai/);
+    .poll(() =>
+      onRequestCallback.mock.calls.find(
+        ([url]) => typeof url === "string" && url.includes("/history"),
+      ),
+    )
+    .toMatchObject([
+      expect.stringMatching(/\/threads\/[^/]+\/history/),
+      {
+        method: "POST",
+        body: {
+          limit: 2,
+        },
+      },
+    ]);
 });
 
 it("onRequest gets called when a request is made", async () => {
