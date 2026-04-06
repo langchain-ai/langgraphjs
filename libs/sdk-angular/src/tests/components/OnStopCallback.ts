@@ -7,6 +7,9 @@ const serverUrl = inject("serverUrl");
 @Component({
   template: `
     <div>
+      <div data-testid="loading">
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+      </div>
       <div data-testid="onstop-called">{{ onStopCalled ? "Yes" : "No" }}</div>
       <div data-testid="has-mutate">{{ hasMutate ? "Yes" : "No" }}</div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>

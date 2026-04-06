@@ -8,7 +8,7 @@
   const { apiUrl }: Props = $props();
 
   const stream = useStream({
-    assistantId: "agent",
+    assistantId: "headlessToolAgent",
     apiUrl,
   });
 </script>
@@ -21,7 +21,9 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void stream.submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+      void stream.submit(
+        { messages: [{ content: "Where am I?", type: "human" }] } as any,
+      )}
   >
     Send
   </button>

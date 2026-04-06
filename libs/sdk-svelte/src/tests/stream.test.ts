@@ -232,12 +232,16 @@ it("onStop is not called when stream completes naturally", async () => {
     .toHaveTextContent("No");
 
   await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
-  // Wait for stream to start and complete naturally
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
-
+  await expect
+    .element(screen.getByTestId("has-mutate"))
+    .toHaveTextContent("No");
   await expect
     .element(screen.getByTestId("onstop-called"))
     .toHaveTextContent("No");
@@ -261,8 +265,12 @@ it("make sure to pass metadata to the thread", async () => {
     .toHaveTextContent("Hey");
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(threadId);
-  expect(thread.metadata).toMatchObject({ random: "123" });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(threadId);
+      return thread.metadata;
+    })
+    .toMatchObject({ random: "123" });
 });
 
 it("streamSubgraphs: true", async () => {
@@ -568,15 +576,25 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const screen = render(BasicStream, {
+  const onRequestCalls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const client = new Client({
     apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      onRequestCalls.push({
+        url: url.toString(),
+        body: init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : undefined,
+      });
+      return init;
+    },
+  });
+
+  const screen = render(OnRequestComponent, {
+    apiUrl: serverUrl,
+    client,
     fetchStateHistory: { limit: 2 },
   });
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -587,6 +605,14 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+
+  await expect
+    .poll(
+      () =>
+        onRequestCalls.find((call) => call.url.includes("/history"))?.body?.limit,
+      { timeout: 10000 },
+    )
+    .toBe(2);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -726,7 +752,7 @@ it("exposes toolCalls property", async () => {
     .toHaveTextContent("Not loading");
   await expect
     .element(screen.getByTestId("tool-calls-count"))
-    .toHaveTextContent("0");
+    .toHaveTextContent("1");
 });
 
 it("exposes interrupts array", async () => {
@@ -912,11 +938,13 @@ it("server-side queue: submitting three times rapidly queues the latter two", as
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
 
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(2);
+  await expect
+    .poll(() =>
+      Array.from({ length: 8 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg2", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: queued inputs are displayed in queue.entries", async () => {
@@ -937,7 +965,9 @@ it("server-side queue: queued inputs are displayed in queue.entries", async () =
     .toHaveTextContent("2");
 
   const entriesEl = screen.getByTestId("queue-entries");
-  await expect.element(entriesEl, { timeout: 5000 }).toHaveTextContent(/Msg\d/);
+  await expect
+    .element(entriesEl, { timeout: 5000 })
+    .toHaveTextContent("Msg2,Msg3");
 });
 
 it("server-side queue: cancel removes a queued entry", async () => {
@@ -957,8 +987,15 @@ it("server-side queue: cancel removes a queued entry", async () => {
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("2");
 
+  await expect
+    .element(screen.getByTestId("queue-entries"))
+    .toHaveTextContent("Msg2,Msg3");
+
   await screen.getByTestId("cancel-first").click();
 
+  await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("Msg3");
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 10000 })
     .toHaveTextContent("0");
@@ -966,6 +1003,13 @@ it("server-side queue: cancel removes a queued entry", async () => {
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expect
+    .poll(() =>
+      Array.from({ length: 6 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: clear empties the queue", async () => {
@@ -988,12 +1032,22 @@ it("server-side queue: clear empties the queue", async () => {
   await screen.getByTestId("clear-queue").click();
 
   await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("");
+  await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expect
+    .poll(() =>
+      Array.from({ length: 4 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Hi", "Hey", "Msg1", "Hey"]);
 });
 
 it("server-side queue: switchThread clears the queue", async () => {
@@ -1041,11 +1095,13 @@ it("server-side queue: follow-ups submitted from onCreated are drained", async (
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
 
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(6);
+  await expect
+    .poll(() =>
+      Array.from({ length: 6 }, (_, index) =>
+        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
+      ),
+    )
+    .toEqual(["Msg1", "Hey", "Msg2", "Hey", "Msg3", "Hey"]);
 });
 
 it("calls per-submit onError when stream fails", async () => {

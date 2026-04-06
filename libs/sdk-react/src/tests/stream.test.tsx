@@ -30,6 +30,20 @@ import { HeadlessToolStream } from "./components/HeadlessToolStream.js";
 
 const serverUrl = inject("serverUrl");
 
+async function expectMessageContents(
+  screen: Awaited<ReturnType<typeof render>>,
+  expected: string[],
+) {
+  await expect
+    .poll(() =>
+      expected.map(
+        (_, index) =>
+          screen.getByTestId(`message-${index}`).element().textContent?.trim() ?? "",
+      ),
+    )
+    .toEqual(expected);
+}
+
 it("renders initial state correctly", async () => {
   const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
@@ -223,10 +237,13 @@ it("onStop is not called when stream completes naturally", async () => {
     .toHaveTextContent("No");
 
   await screen.getByTestId("submit").click();
-
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("has-mutate")).toHaveTextContent("No");
 
   await expect
     .element(screen.getByTestId("onstop-called"))
@@ -253,8 +270,12 @@ it("make sure to pass metadata to the thread", async () => {
     .toHaveTextContent("Hey");
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(threadId);
-  expect(thread.metadata).toMatchObject({ random: "123" });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(threadId);
+      return thread.metadata;
+    })
+    .toMatchObject({ random: "123" });
 });
 
 it("streamSubgraphs: true", async () => {
@@ -562,14 +583,27 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
+  const onRequestCallback = vi.fn();
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      onRequestCallback(url.toString(), {
+        ...init,
+        body: init.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return init;
+    },
+  });
+
   const screen = await render(
-    <BasicStream apiUrl={serverUrl} fetchStateHistory={{ limit: 2 }} />,
+    <OnRequest
+      apiUrl={serverUrl}
+      client={client}
+      fetchStateHistory={{ limit: 2 }}
+    />,
   );
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -580,6 +614,24 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+
+  await expect
+    .poll(
+      () =>
+        onRequestCallback.mock.calls.find(
+          ([url]) => typeof url === "string" && url.includes("/history"),
+        ),
+      { timeout: 15_000 },
+    )
+    .toMatchObject([
+      expect.stringMatching(/\/threads\/[^/]+\/history/),
+      {
+        method: "POST",
+        body: {
+          limit: 2,
+        },
+      },
+    ]);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -942,12 +994,16 @@ it("server-side queue: submitting three times rapidly queues the latter two", as
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
-
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(2);
+  await expectMessageContents(screen, [
+    "Hi",
+    "Hey",
+    "Msg1",
+    "Hey",
+    "Msg2",
+    "Hey",
+    "Msg3",
+    "Hey",
+  ]);
 });
 
 it("server-side queue: queued inputs are displayed in queue.entries", async () => {
@@ -968,7 +1024,7 @@ it("server-side queue: queued inputs are displayed in queue.entries", async () =
     .toHaveTextContent("2");
 
   const entriesEl = screen.getByTestId("queue-entries");
-  await expect.element(entriesEl).toHaveTextContent(/Msg\d/);
+  await expect.element(entriesEl).toHaveTextContent("Msg2,Msg3");
 });
 
 it("server-side queue: cancel removes a queued entry", async () => {
@@ -987,9 +1043,15 @@ it("server-side queue: cancel removes a queued entry", async () => {
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("queue-entries"))
+    .toHaveTextContent("Msg2,Msg3");
 
   await screen.getByTestId("cancel-first").click();
 
+  await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("Msg3");
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 10000 })
     .toHaveTextContent("0");
@@ -997,6 +1059,7 @@ it("server-side queue: cancel removes a queued entry", async () => {
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expectMessageContents(screen, ["Hi", "Hey", "Msg1", "Hey", "Msg3", "Hey"]);
 });
 
 it("server-side queue: clear empties the queue", async () => {
@@ -1019,12 +1082,16 @@ it("server-side queue: clear empties the queue", async () => {
   await screen.getByTestId("clear-queue").click();
 
   await expect
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
+    .toHaveTextContent("");
+  await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
 
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5000 })
     .toHaveTextContent("Not loading");
+  await expectMessageContents(screen, ["Hi", "Hey", "Msg1", "Hey"]);
 });
 
 it("server-side queue: switchThread clears the queue", async () => {
@@ -1071,12 +1138,14 @@ it("server-side queue: follow-ups submitted from onCreated are drained", async (
   await expect
     .element(screen.getByTestId("queue-size"), { timeout: 5000 })
     .toHaveTextContent("0");
-
-  const count = parseInt(
-    screen.getByTestId("message-count").element().textContent ?? "0",
-    10,
-  );
-  expect(count).toBeGreaterThanOrEqual(6);
+  await expectMessageContents(screen, [
+    "Msg1",
+    "Hey",
+    "Msg2",
+    "Hey",
+    "Msg3",
+    "Hey",
+  ]);
 });
 
 it("calls per-submit onError when stream fails", async () => {

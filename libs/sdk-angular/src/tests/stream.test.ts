@@ -1,3 +1,4 @@
+import { Component } from "@angular/core";
 import type { LocatorSelectors } from "@vitest/browser/context";
 import { Client } from "@langchain/langgraph-sdk";
 import type { BaseMessage } from "langchain";
@@ -33,7 +34,6 @@ import {
   customStreamTransportHolder,
 } from "./components/CustomTransportStreamSubgraphs.js";
 import { CustomStreamMethodsComponent } from "./components/CustomStreamMethods.js";
-import { BasicStreamWithHistoryComponent } from "./components/BasicStreamWithHistory.js";
 import { InterruptWithHistoryComponent } from "./components/InterruptStreamWithHistory.js";
 import { ToolCallsComponent } from "./components/ToolCallsStream.js";
 import { InterruptsArrayComponent } from "./components/InterruptsArray.js";
@@ -239,13 +239,18 @@ it("onStop is not called when stream completes naturally", async () => {
     .toHaveTextContent("No");
 
   await screen.getByTestId("submit").click();
-
-  await new Promise((r) => {
-    setTimeout(r, 1500);
-  });
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
 
   await expect
     .element(screen.getByTestId("onstop-called"))
+    .toHaveTextContent("No");
+  await expect
+    .element(screen.getByTestId("has-mutate"))
     .toHaveTextContent("No");
 });
 
@@ -268,8 +273,12 @@ it("make sure to pass metadata to the thread", async () => {
     .toHaveTextContent("Hey");
 
   const client = new Client({ apiUrl: serverUrl });
-  const thread = await client.threads.get(threadId);
-  expect(thread.metadata).toMatchObject({ random: "123" });
+  await expect
+    .poll(async () => {
+      const thread = await client.threads.get(threadId);
+      return thread.metadata;
+    })
+    .toMatchObject({ random: "123" });
 });
 
 it("streamSubgraphs: true", async () => {
@@ -593,12 +602,59 @@ it("branching", async () => {
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
-  const screen = await render(BasicStreamWithHistoryComponent);
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url: any, init: any) => {
+      requests.push({
+        url: url.toString(),
+        body: init.body
+          ? (JSON.parse(init.body as string) as Record<string, unknown>)
+          : undefined,
+      });
+      return init;
+    },
+  });
+
+  @Component({
+    template: `
+      <div>
+        <div data-testid="messages">
+          @for (msg of stream.messages(); track msg.id ?? $index) {
+            <div [attr.data-testid]="'message-' + $index">
+              {{ str(msg.content) }}
+            </div>
+          }
+        </div>
+        <div data-testid="loading">
+          {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+        </div>
+        <button data-testid="submit" (click)="onSubmit()">Send</button>
+      </div>
+    `,
+  })
+  class FetchStateHistoryComponent {
+    stream = injectStream({
+      assistantId: "agent",
+      apiUrl: serverUrl,
+      client,
+      fetchStateHistory: { limit: 2 },
+    });
+
+    str(v: unknown) {
+      return typeof v === "string" ? v : JSON.stringify(v);
+    }
+
+    onSubmit() {
+      void this.stream.submit({
+        messages: [{ content: "Hello", type: "human" }],
+      } as any);
+    }
+  }
+
+  const screen = await render(FetchStateHistoryComponent);
 
   await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Loading...");
 
   await expect
     .element(screen.getByTestId("message-0"))
@@ -609,6 +665,13 @@ it("fetchStateHistory: { limit: 2 }", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
+
+  await expect
+    .poll(
+      () => requests.find((call) => call.url.includes("/history"))?.body?.limit,
+      { timeout: 10_000 },
+    )
+    .toBe(2);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -683,6 +746,10 @@ it("interrupts (fetchStateHistory: true)", async () => {
 it("exposes toolCalls property", async () => {
   const screen = await render(ToolCallsComponent);
 
+  await expect
+    .element(screen.getByTestId("tool-calls-count"))
+    .toHaveTextContent("0");
+
   await screen.getByTestId("submit").click();
 
   await expect
@@ -690,7 +757,7 @@ it("exposes toolCalls property", async () => {
     .toHaveTextContent("Not loading");
   await expect
     .element(screen.getByTestId("tool-calls-count"))
-    .toHaveTextContent("0");
+    .toHaveTextContent("1");
 });
 
 it("exposes interrupts array", async () => {

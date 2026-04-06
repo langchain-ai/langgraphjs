@@ -5,13 +5,20 @@ interface Props {
   apiUrl: string;
   assistantId?: string;
   client: Client;
+  fetchStateHistory?: boolean | { limit: number };
 }
 
-export function OnRequest({ apiUrl, assistantId = "agent", client }: Props) {
-  const { submit, messages } = useStream({
+export function OnRequest({
+  apiUrl,
+  assistantId = "agent",
+  client,
+  fetchStateHistory,
+}: Props) {
+  const { submit, messages, isLoading } = useStream({
     assistantId,
     apiUrl,
     client,
+    fetchStateHistory,
   });
 
   return (
@@ -25,6 +32,7 @@ export function OnRequest({ apiUrl, assistantId = "agent", client }: Props) {
           </div>
         ))}
       </div>
+      <div data-testid="loading">{isLoading ? "Loading..." : "Not loading"}</div>
       <button
         data-testid="submit"
         onClick={() =>
