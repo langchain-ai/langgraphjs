@@ -28,11 +28,21 @@
 
   const retainedStatus = $derived(retainedSubagent?.status ?? "missing");
   const retainedToolCallCount = $derived(retainedSubagent?.toolCalls.length ?? -1);
+  const retainedTask = $derived(retainedSubagent?.toolCall?.args?.description ?? "");
+  const retainedLatestToolName = $derived(
+    retainedSubagent?.toolCalls.at(-1)?.call?.name ?? "missing"
+  );
+  const retainedLatestToolArgs = $derived(
+    JSON.stringify(retainedSubagent?.toolCalls.at(-1)?.call?.args ?? {})
+  );
 </script>
 
 <div data-testid="retained-subagent-root">
   <div data-testid="retained-subagent-status">{retainedStatus}</div>
   <div data-testid="retained-subagent-toolcalls">{retainedToolCallCount}</div>
+  <div data-testid="retained-subagent-task">{retainedTask || "missing"}</div>
+  <div data-testid="retained-subagent-latest-tool">{retainedLatestToolName}</div>
+  <div data-testid="retained-subagent-latest-tool-args">{retainedLatestToolArgs}</div>
   <button
     data-testid="submit"
     onclick={() =>

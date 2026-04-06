@@ -1139,6 +1139,28 @@ it("deep agent: retained subagent references stay reactive", async () => {
     .toHaveTextContent("complete");
 });
 
+it("deep agent: retained subagent summaries react to latest tool calls", async () => {
+  const screen = await render(RetainedSubagentStreamComponent);
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-task"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool"))
+    .toHaveTextContent("search_web");
+  await expect
+    .element(screen.getByTestId("retained-subagent-latest-tool-args"))
+    .toHaveTextContent('"query":"test research query"');
+});
+
 it("stream.history returns BaseMessage instances", async () => {
   const screen = await render(HistoryMessagesComponent);
 

@@ -14,6 +14,15 @@ const serverUrl = inject("serverUrl");
       <div data-testid="retained-subagent-toolcalls">
         {{ retainedSubagentToolCallCount() }}
       </div>
+      <div data-testid="retained-subagent-task">
+        {{ retainedSubagentTask() }}
+      </div>
+      <div data-testid="retained-subagent-latest-tool">
+        {{ retainedSubagentLatestToolName() }}
+      </div>
+      <div data-testid="retained-subagent-latest-tool-args">
+        {{ retainedSubagentLatestToolArgs() }}
+      </div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>
     </div>
   `,
@@ -45,6 +54,30 @@ export class RetainedSubagentStreamComponent {
         this.stream.subagents().values().next().value ?? null;
     }
     return this.retainedSubagentRef?.toolCalls.length ?? -1;
+  });
+
+  readonly retainedSubagentTask = computed(() => {
+    if (this.retainedSubagentRef == null) {
+      this.retainedSubagentRef =
+        this.stream.subagents().values().next().value ?? null;
+    }
+    return this.retainedSubagentRef?.toolCall?.args?.description ?? "missing";
+  });
+
+  readonly retainedSubagentLatestToolName = computed(() => {
+    if (this.retainedSubagentRef == null) {
+      this.retainedSubagentRef =
+        this.stream.subagents().values().next().value ?? null;
+    }
+    return this.retainedSubagentRef?.toolCalls.at(-1)?.call?.name ?? "missing";
+  });
+
+  readonly retainedSubagentLatestToolArgs = computed(() => {
+    if (this.retainedSubagentRef == null) {
+      this.retainedSubagentRef =
+        this.stream.subagents().values().next().value ?? null;
+    }
+    return JSON.stringify(this.retainedSubagentRef?.toolCalls.at(-1)?.call?.args ?? {});
   });
 
   onSubmit() {
