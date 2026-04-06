@@ -2799,6 +2799,77 @@ it("deep agent: retained subagent references stay reactive", async () => {
     .toHaveTextContent("complete");
 });
 
+it("deep agent: retained subagent summaries react to latest tool calls", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const thread = useStream<DeepAgentGraph>({
+        assistantId: "deepAgent",
+        apiUrl: serverUrl,
+        filterSubagentMessages: true,
+      });
+
+      const summary = computed(() => {
+        const subagent = [...thread.subagents.values()].find(
+          (candidate) =>
+            candidate.toolCall?.args?.subagent_type === "researcher",
+        );
+        const latestToolCall = subagent?.toolCalls.at(-1);
+
+        return {
+          task: subagent?.toolCall?.args?.description ?? "",
+          latestToolName: latestToolCall?.call?.name ?? "",
+          latestToolArgs: JSON.stringify(latestToolCall?.call?.args ?? {}),
+        };
+      });
+
+      return () => (
+        <div data-testid="retained-subagent-summary-root">
+          <div data-testid="retained-subagent-summary-task">
+            {summary.value.task || "missing"}
+          </div>
+          <div data-testid="retained-subagent-summary-tool">
+            {summary.value.latestToolName || "missing"}
+          </div>
+          <div data-testid="retained-subagent-summary-args">
+            {summary.value.latestToolArgs}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void thread.submit(
+                { messages: [{ content: "Run analysis", type: "human" }] },
+                { streamSubgraphs: true },
+              )
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-summary-tool"))
+    .toHaveTextContent("missing");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("retained-subagent-summary-task"), {
+      timeout: 30_000,
+    })
+    .toHaveTextContent("Search the web for test research query");
+  await expect
+    .element(screen.getByTestId("retained-subagent-summary-tool"))
+    .toHaveTextContent("search_web");
+  await expect
+    .element(screen.getByTestId("retained-subagent-summary-args"))
+    .toHaveTextContent('"query":"test research query"');
+});
+
 it("stream.history returns BaseMessage instances", async () => {
   const TestComponent = defineComponent({
     setup() {

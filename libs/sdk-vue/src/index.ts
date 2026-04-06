@@ -328,19 +328,28 @@ function useStreamLGP<
     },
 
     get subagents() {
-      return subagentsRef.value;
+      void messages.value.length;
+      void version.value;
+      return reactiveSubagents.mapSubagents(orchestrator.subagents);
     },
     get activeSubagents() {
-      return activeSubagentsRef.value;
+      void messages.value.length;
+      void version.value;
+      return reactiveSubagents.mapActiveSubagents(orchestrator.activeSubagents);
     },
     getSubagent(toolCallId: string) {
+      void messages.value.length;
       void version.value;
       return reactiveSubagents.getSubagent(toolCallId);
     },
     getSubagentsByType(type: string) {
+      void messages.value.length;
+      void version.value;
       return reactiveSubagents.getSubagentsByType(type);
     },
     getSubagentsByMessage(messageId: string) {
+      void messages.value.length;
+      void version.value;
       return reactiveSubagents.getSubagentsByMessage(messageId);
     },
   };
