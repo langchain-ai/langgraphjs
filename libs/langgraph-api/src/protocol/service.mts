@@ -26,6 +26,10 @@ type SessionBindings = {
   threads: ThreadsRepo;
 };
 
+/**
+ * Transport-agnostic sink used to forward normalized protocol events into a
+ * concrete delivery mechanism such as WebSocket or SSE.
+ */
 type EventSink = (message: ProtocolEvent) => Promise<void> | void;
 
 const PROTOCOL_VERSION = "0.3.0";
@@ -158,6 +162,14 @@ const normalizeKeys = (value: unknown): string[] | undefined => {
   return value as string[];
 };
 
+/**
+ * Shared session registry and command dispatcher for protocol transports.
+ *
+ * This service owns the session lifecycle that sits above individual runs. It
+ * allows graph/agent-targeted sessions to queue protocol commands before a run
+ * exists, then replays those commands into the bound run session once
+ * `run.input` starts work.
+ */
 export class ProtocolService {
   private readonly bindings: SessionBindings;
 
@@ -175,6 +187,10 @@ export class ProtocolService {
     this.sessions.delete(sessionId);
   }
 
+  /**
+   * Create a new protocol session and bind it immediately when the target is an
+   * existing run.
+   */
   async openSession(options: {
     transportName: ProtocolTransportName;
     auth: SessionRecord["auth"];
@@ -256,6 +272,10 @@ export class ProtocolService {
     };
   }
 
+  /**
+   * Attach a live transport consumer and flush any events buffered before the
+   * consumer connected.
+   */
   async attachEventSink(
     sessionId: string,
     sendEvent: EventSink
@@ -274,6 +294,12 @@ export class ProtocolService {
     this.sessions.delete(sessionId);
   }
 
+  /**
+   * Route a protocol command through the shared session core.
+   *
+   * Commands that need an active run session are queued for graph/agent targets
+   * until `run.input` creates and binds a run.
+   */
   async handleCommand(
     sessionId: string,
     command: ProtocolCommand
@@ -346,6 +372,10 @@ export class ProtocolService {
     }
   }
 
+  /**
+   * Start a new run, resume an interrupted run, or continue on the current
+   * thread depending on the session's bound state.
+   */
   private async handleRunInput(
     record: SessionRecord,
     command: ProtocolCommand
@@ -551,6 +581,10 @@ export class ProtocolService {
     });
   }
 
+  /**
+   * Bind the shared session to a concrete LangGraph run and forward that run's
+   * normalized protocol events into the transport-level session buffer.
+   */
   private async ensureRunSession(record: SessionRecord, run: Run) {
     if (record.session != null && record.currentRunId === run.run_id) return;
 

@@ -230,6 +230,15 @@ const normalizeDebugData = (value: unknown) => {
   return value;
 };
 
+/**
+ * Normalizes one LangGraph run into protocol events and manages per-run
+ * subscriptions, buffering, and replay.
+ *
+ * This class is transport-agnostic: callers provide a `send()` function and an
+ * optional source stream, and the session handles command processing plus event
+ * fan-out for both direct run-scoped sockets and the shared `v2` session
+ * service.
+ */
 export class RunProtocolSession {
   private readonly initialRun: Run;
 
@@ -276,6 +285,10 @@ export class RunProtocolSession {
     this.source = options.source;
   }
 
+  /**
+   * Start consuming the bound run source and emit the initial root lifecycle
+   * state into the protocol buffer.
+   */
   async start() {
     this.rootGraphName =
       typeof this.initialRun.kwargs.config?.configurable?.graph_id === "string"
@@ -297,12 +310,20 @@ export class RunProtocolSession {
     }
   }
 
+  /**
+   * Stop consuming the run source and wait for queued transport writes to
+   * settle.
+   */
   async close() {
     this.abortController.abort();
     await this.sourceTask?.catch(() => undefined);
     await this.sendQueue.catch(() => undefined);
   }
 
+  /**
+   * Parse and handle a raw JSON command coming directly from a run-scoped
+   * transport.
+   */
   async handleCommand(rawPayload: string) {
     let payload: unknown;
     try {
@@ -373,6 +394,10 @@ export class RunProtocolSession {
     }
   }
 
+  /**
+   * Handle a structured protocol command and return a typed response instead of
+   * writing directly to the transport.
+   */
   async handleProtocolCommand(
     command: ProtocolCommand,
     meta?: ProtocolResponseMeta
@@ -413,6 +438,10 @@ export class RunProtocolSession {
     }
   }
 
+  /**
+   * Inject a raw run stream event into the protocol session. This is primarily
+   * used by tests and by higher-level services that already own the event loop.
+   */
   async ingestSourceEvent(event: SourceStreamEvent) {
     await this.handleSourceEvent(event);
   }

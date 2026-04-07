@@ -34,6 +34,10 @@ const ProtocolCommandSchema = z.object({
   params: z.record(z.unknown()).optional(),
 });
 
+/**
+ * Normalize browser/node websocket message payloads into UTF-8 text so the
+ * protocol layer only needs to handle JSON strings.
+ */
 const parseSocketPayload = async (event: MessageEvent) => {
   if (typeof event.data === "string") return event.data;
   if (event.data instanceof ArrayBuffer) {
@@ -46,6 +50,10 @@ const parseSocketPayload = async (event: MessageEvent) => {
   return String(event.data);
 };
 
+/**
+ * Convert the validated session-open payload into the internal target shape
+ * used by the shared protocol service.
+ */
 const toSessionTarget = (
   payload: z.infer<typeof ProtocolSessionOpenSchema>
 ): ProtocolTarget => ({
@@ -53,6 +61,12 @@ const toSessionTarget = (
   id: payload.params.target.id,
 });
 
+/**
+ * Build websocket handlers for the compatibility run-scoped protocol routes.
+ *
+ * These routes now reuse the shared session service internally but retain the
+ * older URL shape so existing additive consumers keep working.
+ */
 const createRunScopedWebSocketHandlers = (
   protocolService: ProtocolService,
   target: ProtocolTarget,
@@ -132,6 +146,13 @@ const createRunScopedWebSocketHandlers = (
   };
 };
 
+/**
+ * Register protocol transport routes for LangGraph API.
+ *
+ * This mounts both the new session-based `v2` transport surface and the
+ * run-scoped compatibility websocket routes on top of the same shared protocol
+ * service.
+ */
 export default function createProtocolApi(
   upgradeWebSocket: UpgradeWebSocket,
   ops: Ops
