@@ -147,6 +147,276 @@ describe("RunProtocolSession", () => {
     ]);
   });
 
+  it("preserves raw namespace segments with task IDs", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["values"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "values|tools:call_123|model:worker_456",
+      data: { messages: ["child"] },
+    });
+
+    const streamedEvent = sent.find(
+      (message): message is Record<string, unknown> =>
+        typeof message === "object" &&
+        message != null &&
+        (message as { type?: string }).type === "event"
+    );
+
+    expect(streamedEvent).toEqual({
+      type: "event",
+      eventId: expect.any(String),
+      seq: expect.any(Number),
+      method: "values",
+      params: {
+        namespace: ["tools:call_123", "model:worker_456"],
+        timestamp: expect.any(Number),
+        data: { messages: ["child"] },
+      },
+    });
+  });
+
+  it("derives legacy message namespaces from checkpoint metadata", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["messages"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "messages/metadata",
+      data: {
+        message_1: {
+          metadata: {
+            langgraph_checkpoint_ns: "tools:call_123|model:worker_456",
+          },
+        },
+      },
+    });
+    await session.ingestSourceEvent({
+      id: "2",
+      event: "messages/partial",
+      data: [{ id: "message_1", type: "ai", content: "Hello" }],
+    });
+
+    const events = sent.filter(
+      (message): message is Record<string, unknown> =>
+        typeof message === "object" &&
+        message != null &&
+        (message as { type?: string }).type === "event"
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "event",
+      method: "messages",
+      params: {
+        namespace: ["tools:call_123", "model:worker_456"],
+        data: {
+          event: "message-start",
+          messageId: "message_1",
+        },
+      },
+    });
+
+    expect(events[1]).toMatchObject({
+      type: "event",
+      method: "messages",
+      params: {
+        namespace: ["tools:call_123", "model:worker_456"],
+        data: {
+          event: "content-block-start",
+          index: 0,
+        },
+      },
+    });
+  });
+
+  it("passes through namespaced tuple message events", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["messages"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "messages|tools:call_123|model:worker_456",
+      data: [
+        {
+          id: "message_1",
+          type: "ai",
+          content: "Hel",
+        },
+        {
+          langgraph_checkpoint_ns: "tools:call_123|model:worker_456",
+        },
+      ],
+    });
+
+    const events = sent.filter(
+      (message): message is Record<string, unknown> =>
+        typeof message === "object" &&
+        message != null &&
+        (message as { type?: string }).type === "event"
+    );
+
+    expect(events[0]).toEqual({
+      type: "event",
+      eventId: expect.any(String),
+      seq: expect.any(Number),
+      method: "messages",
+      params: {
+        namespace: ["tools:call_123", "model:worker_456"],
+        timestamp: expect.any(Number),
+        data: [
+          {
+            id: "message_1",
+            type: "ai",
+            content: "Hel",
+          },
+          {
+            langgraph_checkpoint_ns: "tools:call_123|model:worker_456",
+          },
+        ],
+      },
+    });
+  });
+
+  it("emits synthetic subagent events from root task updates", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["messages", "values", "updates"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "updates",
+      data: {
+        model_request: {
+          messages: [
+            {
+              id: "ai_1",
+              type: "ai",
+              content: "",
+              tool_calls: [
+                {
+                  id: "call_123",
+                  name: "task",
+                  args: {
+                    description: "Research protocol details",
+                    subagent_type: "protocol-researcher",
+                  },
+                  type: "tool_call",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    await session.ingestSourceEvent({
+      id: "2",
+      event: "updates",
+      data: {
+        tools: {
+          messages: [
+            {
+              id: "tool_1",
+              type: "tool",
+              name: "task",
+              tool_call_id: "call_123",
+              content: "Research summary",
+            },
+          ],
+        },
+      },
+    });
+
+    const events = sent.filter(
+      (message): message is Record<string, unknown> =>
+        typeof message === "object" &&
+        message != null &&
+        (message as { type?: string }).type === "event"
+    );
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "messages",
+          params: expect.objectContaining({
+            namespace: ["tools:call_123"],
+            data: [
+              expect.objectContaining({
+                type: "human",
+                content: "Research protocol details",
+              }),
+              expect.objectContaining({
+                checkpoint_ns: "tools:call_123",
+              }),
+            ],
+          }),
+        }),
+        expect.objectContaining({
+          method: "values",
+          params: expect.objectContaining({
+            namespace: ["tools:call_123"],
+            data: expect.objectContaining({
+              messages: [
+                expect.objectContaining({
+                  type: "human",
+                  content: "Research protocol details",
+                }),
+                expect.objectContaining({
+                  type: "ai",
+                  content: "Research summary",
+                }),
+              ],
+            }),
+          }),
+        }),
+      ])
+    );
+  });
+
   it("normalizes legacy message events into protocol message lifecycle events", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);
@@ -167,7 +437,19 @@ describe("RunProtocolSession", () => {
       event: "messages/metadata",
       data: {
         message_1: {
-          metadata: { langgraph_node: "agent", model_name: "fake" },
+          metadata: {
+            ls_provider: "openai",
+            model_name: "fake",
+            model_type: "chat",
+            run_id: "run_123",
+            thread_id: "thread_123",
+            system_fingerprint: "fp_123",
+            service_tier: "default",
+            temperature: 0.2,
+            langgraph_node: "agent",
+            langgraph_checkpoint_ns: "model:checkpoint",
+            versions: { "@langchain/openai": "1.4.3" },
+          },
         },
       },
     });
@@ -196,16 +478,25 @@ describe("RunProtocolSession", () => {
 
     expect(events.map((event) => event.params)).toEqual([
       {
-        namespace: [],
+        namespace: ["model:checkpoint"],
         timestamp: expect.any(Number),
         data: {
           event: "message-start",
           messageId: "message_1",
-          metadata: { langgraph_node: "agent", model_name: "fake" },
+          metadata: {
+            provider: "openai",
+            model: "fake",
+            modelType: "chat",
+            runId: "run_123",
+            threadId: "thread_123",
+            systemFingerprint: "fp_123",
+            serviceTier: "default",
+            temperature: 0.2,
+          },
         },
       },
       {
-        namespace: [],
+        namespace: ["model:checkpoint"],
         timestamp: expect.any(Number),
         data: {
           event: "content-block-start",
@@ -214,7 +505,7 @@ describe("RunProtocolSession", () => {
         },
       },
       {
-        namespace: [],
+        namespace: ["model:checkpoint"],
         timestamp: expect.any(Number),
         data: {
           event: "content-block-delta",
@@ -223,7 +514,7 @@ describe("RunProtocolSession", () => {
         },
       },
       {
-        namespace: [],
+        namespace: ["model:checkpoint"],
         timestamp: expect.any(Number),
         data: {
           event: "content-block-delta",
@@ -232,7 +523,7 @@ describe("RunProtocolSession", () => {
         },
       },
       {
-        namespace: [],
+        namespace: ["model:checkpoint"],
         timestamp: expect.any(Number),
         data: {
           event: "content-block-finish",
@@ -241,7 +532,7 @@ describe("RunProtocolSession", () => {
         },
       },
       {
-        namespace: [],
+        namespace: ["model:checkpoint"],
         timestamp: expect.any(Number),
         data: {
           event: "message-finish",

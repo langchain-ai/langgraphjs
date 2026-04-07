@@ -1,15 +1,47 @@
 import type {
+  AgentResult,
+  AgentStatus,
+  AgentTreeNode,
   CapabilityAdvertisement,
+  CheckpointsEvent,
   Channel,
   Command,
   CommandResponse,
+  ContentBlockDeltaData,
+  ContentBlockFinishData,
+  ContentBlockStartData,
+  CustomData,
+  DebugEvent,
   ErrorCode,
   ErrorResponse,
   Event,
+  MessageErrorData,
+  MessagesData,
+  FlowCapacityParams,
+  MessageFinishData,
+  MessageMetadata,
+  MessageStartData,
   ModuleCapability,
+  Namespace,
   ResponseMeta,
+  RunInputParams,
+  RunResult,
   SessionResult,
+  StateGetResult,
+  StoreItem,
+  StorePutParams,
+  StoreSearchParams,
+  StoreSearchResult,
+  SubscribeParams,
+  SubscribeResult,
+  ToolErrorData,
+  ToolFinishedData,
+  ToolOutputDeltaData,
+  ToolStartedData,
+  ToolsData,
   TransportProfile,
+  UnsubscribeParams,
+  UpdatesEvent,
 } from "@langchain/protocol";
 import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session.mjs";
@@ -56,7 +88,54 @@ export type ProtocolSuccess = CommandResponse;
 export type ProtocolError = ErrorResponse;
 export type ProtocolEvent = Event;
 export type ProtocolCommand = Command;
-export type { CapabilityAdvertisement, ErrorCode, ModuleCapability, TransportProfile };
+export type ProtocolCommandByMethod<
+  Method extends ProtocolCommand["method"],
+> = Extract<ProtocolCommand, { method: Method }>;
+export type ProtocolEventByMethod<
+  Method extends SupportedChannel,
+> = Extract<ProtocolEvent, { method: Method }>;
+export type ProtocolEventDataByMethod<
+  Method extends SupportedChannel,
+> = ProtocolEventByMethod<Method>["params"]["data"];
+export type {
+  AgentResult,
+  AgentStatus,
+  AgentTreeNode,
+  CapabilityAdvertisement,
+  CheckpointsEvent,
+  ContentBlockDeltaData,
+  ContentBlockFinishData,
+  ContentBlockStartData,
+  CustomData,
+  DebugEvent,
+  ErrorCode,
+  FlowCapacityParams,
+  MessageErrorData,
+  MessageFinishData,
+  MessageMetadata,
+  MessagesData,
+  MessageStartData,
+  ModuleCapability,
+  Namespace,
+  RunInputParams,
+  RunResult,
+  SessionResult,
+  StateGetResult,
+  StoreItem,
+  StorePutParams,
+  StoreSearchParams,
+  StoreSearchResult,
+  SubscribeParams,
+  SubscribeResult,
+  ToolErrorData,
+  ToolFinishedData,
+  ToolOutputDeltaData,
+  ToolStartedData,
+  ToolsData,
+  TransportProfile,
+  UnsubscribeParams,
+  UpdatesEvent,
+};
 
 /**
  * Session targets supported by the API transport layer.

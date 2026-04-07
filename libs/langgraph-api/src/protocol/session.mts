@@ -2,73 +2,94 @@ import { v7 as uuid7 } from "uuid";
 
 import type { AuthContext } from "../auth/index.mjs";
 import type { Run } from "../storage/types.mjs";
-import type { ProtocolCommand, ProtocolError, ProtocolResponseMeta, ProtocolSuccess } from "./types.mjs";
+import type {
+  AgentResult,
+  AgentStatus,
+  AgentTreeNode,
+  ContentBlockDeltaData,
+  ContentBlockFinishData,
+  ContentBlockStartData,
+  CustomData,
+  DebugEvent,
+  FlowCapacityParams,
+  MessageFinishData,
+  MessageMetadata,
+  MessageStartData,
+  Namespace,
+  ProtocolCommand,
+  ProtocolCommandByMethod,
+  ProtocolError,
+  ProtocolEvent,
+  ProtocolEventByMethod,
+  ProtocolResponseMeta,
+  ProtocolSuccess,
+  SourceStreamEvent,
+  SubscribeParams,
+  SubscribeResult,
+  SupportedChannel,
+  ToolErrorData,
+  ToolFinishedData,
+  ToolOutputDeltaData,
+  ToolStartedData,
+  ToolsData,
+  UnsubscribeParams,
+  UpdatesEvent,
+} from "./types.mjs";
 import { serialiseAsDict, serializeError } from "../utils/serde.mjs";
-
-type SupportedChannel =
-  | "values"
-  | "updates"
-  | "messages"
-  | "tools"
-  | "custom"
-  | "lifecycle"
-  | "debug"
-  | "checkpoints"
-  | "tasks";
-
-type AgentStatus =
-  | "spawned"
-  | "running"
-  | "completed"
-  | "failed"
-  | "interrupted";
-
-type ErrorCode =
-  | "invalid_argument"
-  | "unknown_command"
-  | "unknown_error"
-  | "no_such_run"
-  | "no_such_subscription"
-  | "not_supported";
-
-type SourceStreamEvent = {
-  id?: string;
-  event: string;
-  data: unknown;
-};
-
-type ProtocolEvent = {
-  type: "event";
-  eventId: string;
-  seq: number;
-  method: SupportedChannel;
-  params: {
-    namespace: string[];
-    timestamp: number;
-    data: unknown;
-    node?: string;
-  };
-};
 
 type Subscription = {
   id: string;
   channels: Set<SupportedChannel>;
-  namespaces?: string[][];
+  namespaces?: Namespace[];
   depth?: number;
   active: boolean;
 };
 
 type NamespaceInfo = {
-  namespace: string[];
+  namespace: Namespace;
   status: AgentStatus;
   graphName: string;
 };
 
+type ProtocolMetadataScalar = string | number | boolean | null;
+
+type ProtocolCompatibleMessageMetadata = MessageMetadata &
+  Record<string, ProtocolMetadataScalar>;
+
 type MessageState = {
-  metadata?: unknown;
+  metadata?: ProtocolCompatibleMessageMetadata;
+  namespace?: Namespace;
   started: boolean;
   lastText: string;
   finished: boolean;
+};
+
+type SyntheticSubagentState = {
+  namespace: Namespace;
+  messages: Array<Record<string, unknown>>;
+  completed: boolean;
+};
+
+type NormalizedUpdatesData = {
+  node?: string;
+  values: UpdatesEvent["params"]["data"]["values"];
+};
+
+type ProtocolEventDataMap = {
+  values: ProtocolEventByMethod<"values">["params"]["data"];
+  updates:
+    | ProtocolEventByMethod<"updates">["params"]["data"]
+    | UpdatesEvent["params"]["data"]["values"];
+  messages:
+    | ProtocolEventByMethod<"messages">["params"]["data"]
+    | Record<string, unknown>
+    | unknown[];
+  tools: ProtocolEventByMethod<"tools">["params"]["data"];
+  custom: ProtocolEventByMethod<"custom">["params"]["data"];
+  lifecycle: ProtocolEventByMethod<"lifecycle">["params"]["data"];
+  debug: ProtocolEventByMethod<"debug">["params"]["data"];
+  checkpoints: ProtocolEventByMethod<"checkpoints">["params"]["data"];
+  tasks: ProtocolEventByMethod<"tasks">["params"]["data"];
 };
 
 const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
@@ -86,24 +107,125 @@ const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const toNamespaceKey = (namespace: string[]) => namespace.join("\0");
+const isSupportedChannel = (value: string): value is SupportedChannel =>
+  SUPPORTED_CHANNELS.has(value as SupportedChannel);
+
+const isMetadataScalar = (
+  value: unknown
+): value is ProtocolMetadataScalar =>
+  value === null ||
+  typeof value === "string" ||
+  typeof value === "number" ||
+  typeof value === "boolean";
+
+const PROTOCOL_METADATA_KEY_MAP = {
+  provider: ["provider", "ls_provider"],
+  model: ["model", "model_name", "ls_model_name"],
+  modelType: ["modelType", "model_type", "ls_model_type"],
+  runId: ["runId", "run_id"],
+  threadId: ["threadId", "thread_id"],
+  systemFingerprint: ["systemFingerprint", "system_fingerprint"],
+  serviceTier: ["serviceTier", "service_tier"],
+} as const satisfies Record<string, readonly string[]>;
+
+const PROTOCOL_METADATA_SOURCE_KEYS = new Set<string>(
+  Object.values(PROTOCOL_METADATA_KEY_MAP).flat()
+);
+
+const PROTOCOL_METADATA_EXCLUDED_KEYS = new Set<string>([
+  "assistant_id",
+  "checkpoint_ns",
+  "created_by",
+  "graph_id",
+  "langgraph_api_url",
+  "langgraph_checkpoint_ns",
+  "langgraph_host",
+  "langgraph_node",
+  "langgraph_path",
+  "langgraph_plan",
+  "langgraph_step",
+  "langgraph_triggers",
+  "langgraph_version",
+  "ls_integration",
+  "run_attempt",
+  "tags",
+  "versions",
+  "__pregel_task_id",
+]);
+
+const toProtocolMessageMetadata = (
+  value: unknown
+): ProtocolCompatibleMessageMetadata | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  const metadata = isRecord(value.metadata) ? value.metadata : value;
+  const concise: ProtocolCompatibleMessageMetadata = {};
+
+  for (const [targetKey, sourceKeys] of Object.entries(PROTOCOL_METADATA_KEY_MAP)) {
+    const mappedValue = sourceKeys
+      .map((sourceKey) => metadata[sourceKey])
+      .find((candidate) => isMetadataScalar(candidate));
+    if (mappedValue !== undefined) {
+      concise[targetKey] = mappedValue;
+    }
+  }
+
+  for (const [key, rawValue] of Object.entries(metadata)) {
+    if (
+      key in PROTOCOL_METADATA_KEY_MAP ||
+      PROTOCOL_METADATA_SOURCE_KEYS.has(key) ||
+      PROTOCOL_METADATA_EXCLUDED_KEYS.has(key) ||
+      key.startsWith("langgraph_") ||
+      key.startsWith("__pregel_") ||
+      key.startsWith("checkpoint_")
+    ) {
+      continue;
+    }
+
+    if (isMetadataScalar(rawValue)) {
+      concise[key] = rawValue;
+    }
+  }
+
+  return Object.keys(concise).length > 0 ? concise : undefined;
+};
+
+const toProtocolMessageNamespace = (value: unknown): Namespace | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  const metadata = isRecord(value.metadata) ? value.metadata : value;
+  const checkpointNs =
+    typeof metadata.langgraph_checkpoint_ns === "string"
+      ? metadata.langgraph_checkpoint_ns
+      : typeof metadata.checkpoint_ns === "string"
+        ? metadata.checkpoint_ns
+        : undefined;
+
+  if (!checkpointNs) return undefined;
+
+  return checkpointNs.split("|").filter((segment) => segment.length > 0);
+};
+
+const toNamespaceKey = (namespace: Namespace) => namespace.join("\0");
 
 const normalizeNamespaceSegment = (segment: string) => segment.split(":")[0];
 
-const normalizeNamespace = (namespace: string[]) =>
-  namespace.map(normalizeNamespaceSegment);
+// Preserve raw namespace segments in protocol events so clients can distinguish
+// parallel subgraphs such as `tools:<task-id>`. We only strip dynamic suffixes
+// when deriving display-oriented graph names.
+const normalizeNamespace = (namespace: string[]): Namespace => namespace;
 
 const parseEventName = (event: string) => {
   const [method, ...namespace] = event.split("|");
   return { method, namespace };
 };
 
-const isPrefixMatch = (namespace: string[], prefix: string[]) => {
+const isPrefixMatch = (namespace: Namespace, prefix: Namespace) => {
   if (prefix.length > namespace.length) return false;
   return prefix.every((segment, index) => namespace[index] === segment);
 };
 
-const guessGraphName = (namespace: string[]) => {
+const guessGraphName = (namespace: Namespace) => {
   const last = namespace.at(-1);
   if (last == null) return "root";
   return normalizeNamespaceSegment(last);
@@ -151,75 +273,96 @@ const toLifecycleStatus = (status: Run["status"]): AgentStatus => {
   return "running";
 };
 
+const asUpdateValues = (value: unknown): UpdatesEvent["params"]["data"]["values"] =>
+  isRecord(value) ? value : { value };
+
 const normalizeUpdatesData = (
   value: unknown
-): { node?: string; values: unknown } => {
+): NormalizedUpdatesData => {
   if (isRecord(value)) {
     const entries = Object.entries(value);
     if (entries.length === 1) {
       const [node, nodeValues] = entries[0];
-      return { node, values: nodeValues };
+      return { node, values: asUpdateValues(nodeValues) };
     }
   }
-  return { values: value };
+  return { values: asUpdateValues(value) };
 };
 
-const normalizeToolData = (value: unknown) => {
+const getToolCallId = (
+  value: Record<string, unknown>,
+  fallbackToolCallId: string
+): string => {
+  if (typeof value.toolCallId === "string") return value.toolCallId;
+  if (typeof value.tool_call_id === "string") return value.tool_call_id;
+  if (typeof value.id === "string") return value.id;
+  return fallbackToolCallId;
+};
+
+const normalizeToolData = (
+  value: unknown,
+  fallbackToolCallId: string
+): ToolsData => {
   if (!isRecord(value) || typeof value.event !== "string") {
     return {
       event: "tool-output-delta",
+      toolCallId: fallbackToolCallId,
       delta: extractErrorMessage(value),
-    };
+    } satisfies ToolOutputDeltaData;
   }
+
+  const toolCallId = getToolCallId(value, fallbackToolCallId);
 
   switch (value.event) {
     case "on_tool_start":
       return {
         event: "tool-started",
-        toolCallId:
-          typeof value.toolCallId === "string" ? value.toolCallId : undefined,
+        toolCallId,
         toolName: typeof value.name === "string" ? value.name : "tool",
         input: value.input,
-      };
+      } satisfies ToolStartedData;
     case "on_tool_event":
       return {
         event: "tool-output-delta",
-        toolCallId:
-          typeof value.toolCallId === "string" ? value.toolCallId : undefined,
+        toolCallId,
         delta:
           typeof value.data === "string"
             ? value.data
             : safeStringify(value.data ?? null),
-      };
+      } satisfies ToolOutputDeltaData;
     case "on_tool_end":
       return {
         event: "tool-finished",
-        toolCallId:
-          typeof value.toolCallId === "string" ? value.toolCallId : undefined,
+        toolCallId,
         output: value.output,
-      };
+      } satisfies ToolFinishedData;
     case "on_tool_error":
       return {
         event: "tool-error",
-        toolCallId:
-          typeof value.toolCallId === "string" ? value.toolCallId : undefined,
+        toolCallId,
         message: extractErrorMessage(value.error),
-      };
+      } satisfies ToolErrorData;
     default:
       return {
         event: "tool-output-delta",
-        toolCallId:
-          typeof value.toolCallId === "string" ? value.toolCallId : undefined,
+        toolCallId,
         delta: safeStringify(value),
-      };
+      } satisfies ToolOutputDeltaData;
   }
 };
 
-const normalizeDebugData = (value: unknown) => {
+const isDebugChunkType = (
+  value: unknown
+): value is DebugEvent["params"]["data"]["type"] =>
+  value === "checkpoint" || value === "task" || value === "task_result";
+
+const normalizeDebugData = (
+  value: unknown
+): DebugEvent["params"]["data"] => {
   if (
     isRecord(value) &&
     typeof value.step === "number" &&
-    typeof value.type === "string"
+    isDebugChunkType(value.type)
   ) {
     return {
       step: value.step,
@@ -227,7 +370,11 @@ const normalizeDebugData = (value: unknown) => {
       payload: value.payload,
     };
   }
-  return value;
+  return {
+    step: -1,
+    type: "task",
+    payload: value,
+  };
 };
 
 /**
@@ -253,6 +400,8 @@ export class RunProtocolSession {
   private readonly namespaces = new Map<string, NamespaceInfo>();
 
   private readonly messageState = new Map<string, MessageState>();
+
+  private readonly syntheticSubagents = new Map<string, SyntheticSubagentState>();
 
   private readonly abortController = new AbortController();
 
@@ -365,7 +514,7 @@ export class RunProtocolSession {
         case "agent.getTree":
           await this.sendSuccess(command.id, {
             tree: this.buildTree([]),
-          });
+          } satisfies AgentResult);
           return;
         case "flow.setCapacity":
           await this.handleSetCapacity(command);
@@ -503,8 +652,6 @@ export class RunProtocolSession {
 
     const { method, namespace: rawNamespace } = parseEventName(event.event);
     const namespace = normalizeNamespace(rawNamespace);
-    const timestamp = Date.now();
-
     if (method !== "messages") {
       await this.ensureNamespaces(namespace);
     }
@@ -512,17 +659,33 @@ export class RunProtocolSession {
     switch (method) {
       case "values":
         await this.pushEvent(this.createEvent("values", namespace, event.data));
+        await this.emitSyntheticSubagentEvents(namespace, event.data);
+        return;
+      case "messages":
+        if (namespace.length > 0) {
+          await this.ensureNamespaces(namespace);
+        }
+        await this.pushEvent(
+          this.createEvent(
+            "messages",
+            namespace,
+            event.data as ProtocolEventDataMap["messages"]
+          )
+        );
         return;
       case "updates": {
         const normalized = normalizeUpdatesData(event.data);
         await this.pushEvent(
           this.createEvent("updates", namespace, normalized.values, normalized.node)
         );
+        await this.emitSyntheticSubagentEvents(namespace, normalized.values);
         return;
       }
       case "custom":
         await this.pushEvent(
-          this.createEvent("custom", namespace, { payload: event.data }, undefined)
+          this.createEvent("custom", namespace, {
+            payload: event.data,
+          } satisfies CustomData)
         );
         return;
       case "debug":
@@ -540,7 +703,11 @@ export class RunProtocolSession {
         return;
       case "tools":
         await this.pushEvent(
-          this.createEvent("tools", namespace, normalizeToolData(event.data))
+          this.createEvent(
+            "tools",
+            namespace,
+            normalizeToolData(event.data, event.id ?? uuid7())
+          )
         );
         return;
       case "messages/metadata":
@@ -549,8 +716,7 @@ export class RunProtocolSession {
         await this.normalizeLegacyMessageEvent(
           method,
           namespace,
-          event.data,
-          timestamp
+          event.data
         );
         return;
       default:
@@ -558,11 +724,130 @@ export class RunProtocolSession {
     }
   }
 
+  private parseToolCallArgs(args: unknown): Record<string, unknown> {
+    if (isRecord(args)) return args;
+    if (typeof args === "string") {
+      try {
+        const parsed = JSON.parse(args);
+        return isRecord(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  private createSyntheticMessageMetadata(namespace: Namespace) {
+    const checkpointNs = namespace.join("|");
+    return {
+      checkpoint_ns: checkpointNs,
+      langgraph_checkpoint_ns: checkpointNs,
+    };
+  }
+
+  private async emitSyntheticSubagentEvents(
+    namespace: Namespace,
+    values: unknown
+  ): Promise<void> {
+    if (namespace.length > 0 || !isRecord(values) || !Array.isArray(values.messages)) {
+      return;
+    }
+
+    for (const rawMessage of values.messages) {
+      if (!isRecord(rawMessage)) continue;
+
+      if (rawMessage.type === "ai" && Array.isArray(rawMessage.tool_calls)) {
+        for (const rawToolCall of rawMessage.tool_calls) {
+          if (!isRecord(rawToolCall)) continue;
+          if (rawToolCall.name !== "task" || typeof rawToolCall.id !== "string") continue;
+
+          const toolCallId = rawToolCall.id;
+          const toolNamespace = [`tools:${toolCallId}`] satisfies Namespace;
+          const parsedArgs = this.parseToolCallArgs(rawToolCall.args);
+          const description =
+            typeof parsedArgs.description === "string"
+              ? parsedArgs.description
+              : "Task delegated to subagent.";
+
+          if (this.syntheticSubagents.has(toolCallId)) {
+            continue;
+          }
+
+          await this.ensureNamespaces(toolNamespace);
+          const humanMessage = {
+            id: `subagent:${toolCallId}:human`,
+            type: "human",
+            content: description,
+            additional_kwargs: {},
+            response_metadata: {},
+          };
+          const syntheticState: SyntheticSubagentState = {
+            namespace: toolNamespace,
+            messages: [humanMessage],
+            completed: false,
+          };
+          this.syntheticSubagents.set(toolCallId, syntheticState);
+
+          await this.pushEvent(
+            this.createEvent("messages", toolNamespace, [
+              humanMessage,
+              this.createSyntheticMessageMetadata(toolNamespace),
+            ])
+          );
+          await this.pushEvent(
+            this.createEvent("values", toolNamespace, {
+              messages: syntheticState.messages,
+            })
+          );
+        }
+      }
+
+      if (
+        rawMessage.type === "tool" &&
+        typeof rawMessage.tool_call_id === "string" &&
+        rawMessage.name === "task"
+      ) {
+        const syntheticState = this.syntheticSubagents.get(rawMessage.tool_call_id);
+        if (syntheticState == null || syntheticState.completed) {
+          continue;
+        }
+
+        const aiMessage = {
+          id:
+            typeof rawMessage.id === "string"
+              ? `subagent:${rawMessage.id}`
+              : `subagent:${rawMessage.tool_call_id}:ai`,
+          type: "ai",
+          content:
+            typeof rawMessage.content === "string"
+              ? rawMessage.content
+              : safeStringify(rawMessage.content),
+          additional_kwargs: {},
+          response_metadata: {},
+        };
+
+        syntheticState.messages.push(aiMessage);
+        syntheticState.completed = true;
+
+        await this.pushEvent(
+          this.createEvent("messages", syntheticState.namespace, [
+            aiMessage,
+            this.createSyntheticMessageMetadata(syntheticState.namespace),
+          ])
+        );
+        await this.pushEvent(
+          this.createEvent("values", syntheticState.namespace, {
+            messages: syntheticState.messages,
+          })
+        );
+      }
+    }
+  }
+
   private async normalizeLegacyMessageEvent(
     method: string,
-    namespace: string[],
-    data: unknown,
-    timestamp: number
+    namespace: Namespace,
+    data: unknown
   ) {
     if (method === "messages/metadata") {
       if (!isRecord(data)) return;
@@ -572,7 +857,8 @@ export class RunProtocolSession {
           lastText: "",
           finished: false,
         };
-        state.metadata = isRecord(value) ? value.metadata : undefined;
+        state.metadata = toProtocolMessageMetadata(value);
+        state.namespace = toProtocolMessageNamespace(value) ?? state.namespace;
         this.messageState.set(messageId, state);
       }
       return;
@@ -590,21 +876,34 @@ export class RunProtocolSession {
         lastText: "",
         finished: false,
       };
+      const messageNamespace = namespace.length > 0 ? namespace : (state.namespace ?? []);
+
+      if (messageNamespace.length > 0) {
+        await this.ensureNamespaces(messageNamespace);
+      }
 
       if (!state.started) {
         await this.pushEvent(
-          this.createEvent("messages", namespace, {
-            event: "message-start",
-            messageId,
-            metadata: state.metadata,
-          })
+          this.createEvent(
+            "messages",
+            messageNamespace,
+            {
+              event: "message-start",
+              messageId,
+              ...(state.metadata != null ? { metadata: state.metadata } : {}),
+            } satisfies MessageStartData
+          )
         );
         await this.pushEvent(
-          this.createEvent("messages", namespace, {
-            event: "content-block-start",
-            index: 0,
-            contentBlock: { type: "text", text: "" },
-          })
+          this.createEvent(
+            "messages",
+            messageNamespace,
+            {
+              event: "content-block-start",
+              index: 0,
+              contentBlock: { type: "text", text: "" },
+            } satisfies ContentBlockStartData
+          )
         );
         state.started = true;
       }
@@ -614,11 +913,15 @@ export class RunProtocolSession {
         const delta = text.slice(previousText.length);
         if (delta.length > 0) {
           await this.pushEvent(
-            this.createEvent("messages", namespace, {
-              event: "content-block-delta",
-              index: 0,
-              contentBlock: { type: "text", text: delta },
-            })
+            this.createEvent(
+              "messages",
+              messageNamespace,
+              {
+                event: "content-block-delta",
+                index: 0,
+                contentBlock: { type: "text", text: delta },
+              } satisfies ContentBlockDeltaData
+            )
           );
         }
         state.lastText = text;
@@ -626,17 +929,25 @@ export class RunProtocolSession {
 
       if (method === "messages/complete" && !state.finished) {
         await this.pushEvent(
-          this.createEvent("messages", namespace, {
-            event: "content-block-finish",
-            index: 0,
-            contentBlock: { type: "text", text: state.lastText },
-          })
+          this.createEvent(
+            "messages",
+            messageNamespace,
+            {
+              event: "content-block-finish",
+              index: 0,
+              contentBlock: { type: "text", text: state.lastText },
+            } satisfies ContentBlockFinishData
+          )
         );
         await this.pushEvent(
-          this.createEvent("messages", namespace, {
-            event: "message-finish",
-            reason: "stop",
-          })
+          this.createEvent(
+            "messages",
+            messageNamespace,
+            {
+              event: "message-finish",
+              reason: "stop",
+            } satisfies MessageFinishData
+          )
         );
         state.finished = true;
       }
@@ -645,7 +956,7 @@ export class RunProtocolSession {
     }
   }
 
-  private async ensureNamespaces(namespace: string[]) {
+  private async ensureNamespaces(namespace: Namespace) {
     for (let length = 1; length <= namespace.length; length += 1) {
       const partial = namespace.slice(0, length);
       const key = toNamespaceKey(partial);
@@ -663,7 +974,7 @@ export class RunProtocolSession {
   }
 
   private setNamespaceInfo(
-    namespace: string[],
+    namespace: Namespace,
     status: AgentStatus,
     options?: { graphName?: string }
   ) {
@@ -680,9 +991,57 @@ export class RunProtocolSession {
   }
 
   private createEvent(
+    method: "values",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["values"]
+  ): ProtocolEventByMethod<"values">;
+  private createEvent(
+    method: "updates",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["updates"],
+    node?: string
+  ): ProtocolEventByMethod<"updates">;
+  private createEvent(
+    method: "messages",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["messages"],
+    node?: string
+  ): ProtocolEventByMethod<"messages">;
+  private createEvent(
+    method: "tools",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["tools"],
+    node?: string
+  ): ProtocolEventByMethod<"tools">;
+  private createEvent(
+    method: "custom",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["custom"]
+  ): ProtocolEventByMethod<"custom">;
+  private createEvent(
+    method: "lifecycle",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["lifecycle"]
+  ): ProtocolEventByMethod<"lifecycle">;
+  private createEvent(
+    method: "debug",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["debug"]
+  ): ProtocolEventByMethod<"debug">;
+  private createEvent(
+    method: "checkpoints",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["checkpoints"]
+  ): ProtocolEventByMethod<"checkpoints">;
+  private createEvent(
+    method: "tasks",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["tasks"]
+  ): ProtocolEventByMethod<"tasks">;
+  private createEvent(
     method: SupportedChannel,
-    namespace: string[],
-    data: unknown,
+    namespace: Namespace,
+    data: ProtocolEventDataMap[SupportedChannel],
     node?: string
   ): ProtocolEvent {
     this.nextSeq += 1;
@@ -697,7 +1056,7 @@ export class RunProtocolSession {
         ...(node != null ? { node } : {}),
         data,
       },
-    };
+    } as ProtocolEvent;
   }
 
   private async pushEvent(event: ProtocolEvent) {
@@ -718,7 +1077,9 @@ export class RunProtocolSession {
     subscription: Subscription,
     event: ProtocolEvent
   ): boolean {
-    if (!subscription.channels.has(event.method)) return false;
+    if (!isSupportedChannel(event.method) || !subscription.channels.has(event.method)) {
+      return false;
+    }
 
     if (subscription.namespaces == null || subscription.namespaces.length === 0) {
       return true;
@@ -731,7 +1092,7 @@ export class RunProtocolSession {
     });
   }
 
-  private buildTree(namespace: string[]): Record<string, unknown> {
+  private buildTree(namespace: Namespace): AgentTreeNode {
     const key = toNamespaceKey(namespace);
     const current =
       this.namespaces.get(key) ??
@@ -757,11 +1118,15 @@ export class RunProtocolSession {
       status: current.status,
       graphName: current.graphName,
       ...(children.length > 0 ? { children } : {}),
-    };
+    } satisfies AgentTreeNode;
   }
 
-  private async handleSubscribe(command: ProtocolCommand) {
-    const params = isRecord(command.params) ? command.params : undefined;
+  private async handleSubscribe(
+    command: ProtocolCommandByMethod<"subscription.subscribe">
+  ) {
+    const params = isRecord(command.params)
+      ? (command.params as Partial<SubscribeParams>)
+      : undefined;
     const rawChannels = params?.channels;
     if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
       await this.sendError(
@@ -793,7 +1158,7 @@ export class RunProtocolSession {
           Array.isArray(value) &&
           value.every((segment) => typeof segment === "string")
       )
-        ? (params.namespaces as string[][])
+        ? (params.namespaces as Namespace[])
         : undefined;
 
     const depth =
@@ -816,13 +1181,14 @@ export class RunProtocolSession {
     const snapshotSeq = this.nextSeq;
     const snapshot = this.buffer.filter(
       (event) =>
-        event.seq <= snapshotSeq && this.matchesSubscription(subscription, event)
+        (event.seq ?? 0) <= snapshotSeq &&
+        this.matchesSubscription(subscription, event)
     );
 
     await this.sendSuccess(command.id, {
       subscriptionId: subscription.id,
       replayedEvents: snapshot.length,
-    });
+    } satisfies SubscribeResult);
 
     for (const event of snapshot) {
       await this.sendJson(event);
@@ -832,7 +1198,7 @@ export class RunProtocolSession {
     while (true) {
       const drain = this.buffer.filter(
         (event) =>
-          event.seq > cursor && this.matchesSubscription(subscription, event)
+          (event.seq ?? 0) > cursor && this.matchesSubscription(subscription, event)
       );
       if (drain.length === 0) break;
       for (const event of drain) {
@@ -845,10 +1211,12 @@ export class RunProtocolSession {
   }
 
   private async handleSubscribeForResponse(
-    command: ProtocolCommand,
+    command: ProtocolCommandByMethod<"subscription.subscribe">,
     meta?: ProtocolResponseMeta
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params) ? command.params : undefined;
+    const params = isRecord(command.params)
+      ? (command.params as Partial<SubscribeParams>)
+      : undefined;
     const rawChannels = params?.channels;
     if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
       return this.error(
@@ -880,7 +1248,7 @@ export class RunProtocolSession {
           Array.isArray(value) &&
           value.every((segment) => typeof segment === "string")
       )
-        ? (params.namespaces as string[][])
+        ? (params.namespaces as Namespace[])
         : undefined;
 
     const depth =
@@ -903,7 +1271,8 @@ export class RunProtocolSession {
     const snapshotSeq = this.nextSeq;
     const snapshot = this.buffer.filter(
       (event) =>
-        event.seq <= snapshotSeq && this.matchesSubscription(subscription, event)
+        (event.seq ?? 0) <= snapshotSeq &&
+        this.matchesSubscription(subscription, event)
     );
 
     for (const event of snapshot) {
@@ -914,7 +1283,7 @@ export class RunProtocolSession {
     while (true) {
       const drain = this.buffer.filter(
         (event) =>
-          event.seq > cursor && this.matchesSubscription(subscription, event)
+          (event.seq ?? 0) > cursor && this.matchesSubscription(subscription, event)
       );
       if (drain.length === 0) break;
       for (const event of drain) {
@@ -929,13 +1298,17 @@ export class RunProtocolSession {
       {
         subscriptionId: subscription.id,
         replayedEvents: snapshot.length,
-      },
+      } satisfies SubscribeResult,
       meta
     );
   }
 
-  private async handleUnsubscribe(command: ProtocolCommand) {
-    const params = isRecord(command.params) ? command.params : undefined;
+  private async handleUnsubscribe(
+    command: ProtocolCommandByMethod<"subscription.unsubscribe">
+  ) {
+    const params = isRecord(command.params)
+      ? (command.params as Partial<UnsubscribeParams>)
+      : undefined;
     const subscriptionId = params?.subscriptionId;
     if (typeof subscriptionId !== "string") {
       await this.sendError(
@@ -959,10 +1332,12 @@ export class RunProtocolSession {
   }
 
   private async handleUnsubscribeForResponse(
-    command: ProtocolCommand,
+    command: ProtocolCommandByMethod<"subscription.unsubscribe">,
     meta?: ProtocolResponseMeta
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params) ? command.params : undefined;
+    const params = isRecord(command.params)
+      ? (command.params as Partial<UnsubscribeParams>)
+      : undefined;
     const subscriptionId = params?.subscriptionId;
     if (typeof subscriptionId !== "string") {
       return this.error(
@@ -985,8 +1360,12 @@ export class RunProtocolSession {
     return this.success(command.id, {}, meta);
   }
 
-  private async handleSetCapacity(command: ProtocolCommand) {
-    const params = isRecord(command.params) ? command.params : undefined;
+  private async handleSetCapacity(
+    command: ProtocolCommandByMethod<"flow.setCapacity">
+  ) {
+    const params = isRecord(command.params)
+      ? (command.params as Partial<FlowCapacityParams>)
+      : undefined;
     const maxBufferSize = params?.maxBufferSize;
     if (
       typeof maxBufferSize !== "number" ||
@@ -1010,10 +1389,12 @@ export class RunProtocolSession {
   }
 
   private async handleSetCapacityForResponse(
-    command: ProtocolCommand,
+    command: ProtocolCommandByMethod<"flow.setCapacity">,
     meta?: ProtocolResponseMeta
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params) ? command.params : undefined;
+    const params = isRecord(command.params)
+      ? (command.params as Partial<FlowCapacityParams>)
+      : undefined;
     const maxBufferSize = params?.maxBufferSize;
     if (
       typeof maxBufferSize !== "number" ||
@@ -1036,7 +1417,10 @@ export class RunProtocolSession {
     return this.success(command.id, {}, meta);
   }
 
-  private async sendSuccess(id: number, result: Record<string, unknown>) {
+  private async sendSuccess<Result extends ProtocolSuccess["result"]>(
+    id: number,
+    result: Result
+  ) {
     await this.sendJson({
       type: "success",
       id,
@@ -1046,7 +1430,7 @@ export class RunProtocolSession {
 
   private async sendError(
     id: number | null,
-    error: ErrorCode,
+    error: ProtocolError["error"],
     message: string,
     stacktrace?: string
   ) {
@@ -1066,9 +1450,9 @@ export class RunProtocolSession {
     await this.sendQueue;
   }
 
-  private success(
+  private success<Result extends ProtocolSuccess["result"]>(
     id: number,
-    result: Record<string, unknown>,
+    result: Result,
     meta?: ProtocolResponseMeta
   ): ProtocolSuccess {
     return {
@@ -1081,7 +1465,7 @@ export class RunProtocolSession {
 
   private error(
     id: number | null,
-    error: ErrorCode,
+    error: ProtocolError["error"],
     message: string,
     meta?: ProtocolResponseMeta,
     stacktrace?: string

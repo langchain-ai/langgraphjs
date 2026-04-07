@@ -185,6 +185,17 @@ export async function* streamState(
 
   if (!libStreamMode.has("debug")) libStreamMode.add("debug");
 
+  console.log(
+    "[streamState config]",
+    JSON.stringify({
+      runId: run.run_id,
+      graphId,
+      subgraphs: kwargs.subgraphs ?? false,
+      userStreamMode,
+      libStreamMode: [...libStreamMode],
+    })
+  );
+
   yield {
     event: "metadata",
     data: { run_id: run.run_id, attempt: options.attempt },
@@ -249,10 +260,22 @@ export async function* streamState(
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
 
-    if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
+    if (
+      event.event === "on_chain_stream" &&
+      (kwargs.subgraphs || event.run_id === run.run_id)
+    ) {
       const [ns, mode, chunk] = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
       ) as [string[] | null, LangGraphStreamMode, unknown];
+      console.log(
+        "[streamState on_chain_stream]",
+        JSON.stringify({
+          runId: run.run_id,
+          subgraphs: kwargs.subgraphs ?? false,
+          namespace: ns,
+          mode,
+        })
+      );
 
       // Listen for debug events and capture checkpoint
       let data: unknown = chunk;
@@ -309,7 +332,10 @@ export async function* streamState(
     // - handleLLMEnd should not dedupe the message
     // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
     if (userStreamMode.includes("messages")) {
-      if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
+      if (
+        event.event === "on_chain_stream" &&
+        (kwargs.subgraphs || event.run_id === run.run_id)
+      ) {
         const newMessages: Array<BaseMessageChunk> = [];
         const [_, chunk]: [string, any] = event.data.chunk;
 

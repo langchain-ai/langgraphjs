@@ -9,13 +9,25 @@ import type {
 import type { RunCommand } from "../command.mjs";
 import { store as graphStore } from "../storage/store.mjs";
 import type {
+  CapabilityAdvertisement,
   ProtocolCommand,
+  ProtocolCommandByMethod,
   ProtocolError,
   ProtocolEvent,
   ProtocolSuccess,
+  ProtocolVersion,
+  RunInputParams,
+  RunResult,
   SessionRecord,
+  SessionResult,
   ProtocolTarget,
   ProtocolTransportName,
+  StateGetResult,
+  StoreItem,
+  StorePutParams,
+  StoreSearchParams,
+  StoreSearchResult,
+  SubscribeResult,
   TransportProfile,
   ModuleCapability,
 } from "./types.mjs";
@@ -32,11 +44,11 @@ type SessionBindings = {
  */
 type EventSink = (message: ProtocolEvent) => Promise<void> | void;
 
-const PROTOCOL_VERSION = "0.3.0";
+const PROTOCOL_VERSION: ProtocolVersion = "0.3.0";
 const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
   "values",
   "updates",
-  "messages",
+  "messages-tuple",
   "tools",
   "custom",
   "debug",
@@ -74,7 +86,9 @@ const MODULE_CAPABILITIES: ModuleCapability[] = [
   },
 ];
 
-const CONTENT_BLOCK_TYPES = [
+const CONTENT_BLOCK_TYPES: NonNullable<
+  CapabilityAdvertisement["contentBlockTypes"]
+> = [
   "text",
   "reasoning",
   "tool_call",
@@ -90,7 +104,7 @@ const CONTENT_BLOCK_TYPES = [
   "non_standard",
 ];
 
-const PAYLOAD_TYPES = [
+const PAYLOAD_TYPES: NonNullable<CapabilityAdvertisement["payloadTypes"]> = [
   "LifecycleEvent",
   "MessagesEvent",
   "ToolsEvent",
@@ -118,7 +132,7 @@ const defaultTransportProfile = (
       : ["artifact-only", "upgrade-to-websocket"],
 });
 
-const normalizeRunInput = (value: unknown) => {
+const normalizeRunInput = (value: unknown): RunInputParams => {
   if (isRecord(value)) {
     return {
       input: value.input,
@@ -142,7 +156,7 @@ const getThreadIdFromConfig = (value: unknown): string | undefined => {
     : undefined;
 };
 
-const normalizeStoreItem = (item: any) => ({
+const normalizeStoreItem = (item: any): StoreItem => ({
   namespace: item.namespace,
   key: item.key,
   value: item.value,
@@ -245,7 +259,7 @@ export class ProtocolService {
           protocolVersion: record.protocolVersion,
           transport: record.transport,
           capabilities: record.capabilities,
-        },
+        } satisfies SessionResult,
         meta: {
           sessionId,
           appliedThroughSeq: record.seq,
@@ -264,7 +278,7 @@ export class ProtocolService {
         protocolVersion: record.protocolVersion,
         transport: record.transport,
         capabilities: record.capabilities,
-      },
+      } satisfies SessionResult,
       meta: {
         sessionId: record.sessionId,
         appliedThroughSeq: record.seq,
@@ -323,7 +337,7 @@ export class ProtocolService {
             ? {
                 subscriptionId: uuid7(),
                 replayedEvents: 0,
-              }
+              } satisfies SubscribeResult
             : {},
         meta: {
           sessionId: record.sessionId,
@@ -342,7 +356,7 @@ export class ProtocolService {
             protocolVersion: record.protocolVersion,
             transport: record.transport,
             capabilities: record.capabilities,
-          },
+          } satisfies SessionResult,
           meta: {
             sessionId: record.sessionId,
             appliedThroughSeq: record.seq,
@@ -378,7 +392,7 @@ export class ProtocolService {
    */
   private async handleRunInput(
     record: SessionRecord,
-    command: ProtocolCommand
+    command: ProtocolCommandByMethod<"run.input">
   ): Promise<ProtocolSuccess | ProtocolError> {
     const targetId = record.target.id;
     const assistantId = getAssistantId(targetId);
@@ -410,6 +424,14 @@ export class ProtocolService {
       if_not_exists: "create" as const,
       multitask_strategy: "interrupt" as const,
     };
+    console.log(
+      "[protocol run payload]",
+      JSON.stringify({
+        assistantId,
+        sessionId: record.sessionId,
+        runPayload,
+      })
+    );
 
     const [run] = await this.bindings.runs.put(
       uuid7(),
@@ -436,6 +458,14 @@ export class ProtocolService {
       },
       record.auth
     );
+    console.log(
+      "[protocol stored run kwargs]",
+      JSON.stringify({
+        sessionId: record.sessionId,
+        runId: run?.run_id,
+        kwargs: run?.kwargs,
+      })
+    );
 
     record.currentRunId = run.run_id;
     record.currentThreadId = run.thread_id;
@@ -450,7 +480,7 @@ export class ProtocolService {
     return {
       type: "success",
       id: command.id,
-      result: { runId: run.run_id },
+      result: { runId: run.run_id } satisfies RunResult,
       meta: {
         sessionId: record.sessionId,
         appliedThroughSeq: record.seq,
@@ -460,7 +490,7 @@ export class ProtocolService {
 
   private async handleStateGet(
     record: SessionRecord,
-    command: ProtocolCommand
+    command: ProtocolCommandByMethod<"state.get">
   ): Promise<ProtocolSuccess | ProtocolError> {
     if (record.currentThreadId == null) {
       return this.error(
@@ -469,12 +499,27 @@ export class ProtocolService {
         "No active run is bound to this session."
       );
     }
-    const params = isRecord(command.params) ? command.params : {};
+    const params = isRecord(command.params)
+      ? (command.params as Partial<ProtocolCommandByMethod<"state.get">["params"]>)
+      : {};
     const values = await this.bindings.threads.state.get(
       { configurable: { thread_id: record.currentThreadId } },
       { subgraphs: true },
       record.auth
     );
+    const checkpointConfig = isRecord(values.config?.configurable)
+      ? values.config.configurable
+      : undefined;
+    const checkpoint: StateGetResult["checkpoint"] =
+      checkpointConfig != null &&
+      typeof checkpointConfig.checkpoint_id === "string"
+        ? {
+            id: checkpointConfig.checkpoint_id,
+            ...(typeof checkpointConfig.checkpoint_ns === "string"
+              ? { ns: checkpointConfig.checkpoint_ns }
+              : {}),
+          }
+        : undefined;
     const requestedKeys = normalizeKeys(params.keys);
     const filteredValues =
       requestedKeys == null
@@ -489,11 +534,8 @@ export class ProtocolService {
       id: command.id,
       result: {
         values: filteredValues,
-        checkpoint:
-          values.config?.configurable != null
-            ? values.config.configurable
-            : undefined,
-      },
+        checkpoint,
+      } satisfies StateGetResult,
       meta: {
         sessionId: record.sessionId,
         appliedThroughSeq: record.seq,
@@ -503,9 +545,11 @@ export class ProtocolService {
 
   private async handleStoreSearch(
     record: SessionRecord,
-    command: ProtocolCommand
+    command: ProtocolCommandByMethod<"state.storeSearch">
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params) ? command.params : {};
+    const params = isRecord(command.params)
+      ? (command.params as Partial<StoreSearchParams>)
+      : {};
     const storeNamespace = normalizeStoreNamespace(params.storeNamespace);
     if (storeNamespace == null) {
       return this.error(
@@ -527,7 +571,7 @@ export class ProtocolService {
       id: command.id,
       result: {
         items: items.map(normalizeStoreItem),
-      },
+      } satisfies StoreSearchResult,
       meta: {
         sessionId: record.sessionId,
         appliedThroughSeq: record.seq,
@@ -537,9 +581,11 @@ export class ProtocolService {
 
   private async handleStorePut(
     record: SessionRecord,
-    command: ProtocolCommand
+    command: ProtocolCommandByMethod<"state.storePut">
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params) ? command.params : {};
+    const params = isRecord(command.params)
+      ? (command.params as Partial<StorePutParams>)
+      : {};
     const storeNamespace = normalizeStoreNamespace(params.storeNamespace);
     const key = params.key;
     if (storeNamespace == null || typeof key !== "string") {
