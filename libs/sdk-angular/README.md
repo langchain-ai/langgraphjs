@@ -422,7 +422,7 @@ export class CustomChatService extends StreamService<{
   constructor() {
     super({
       transport: new FetchStreamTransport({
-        url: "https://my-api.example.com/stream",
+        apiUrl: "https://my-api.example.com/stream",
       }),
       threadId: null,
       onThreadId: (id) => console.log("Thread created:", id),
@@ -486,7 +486,7 @@ import type { BaseMessage } from "langchain";
 export class ChatComponent {
   stream = injectStream<{ messages: BaseMessage[] }>({
     transport: new FetchStreamTransport({
-      url: "https://my-api.example.com/stream",
+      apiUrl: "https://my-api.example.com/stream",
     }),
     threadId: null,
     onThreadId: (id) => console.log("Thread created:", id),
