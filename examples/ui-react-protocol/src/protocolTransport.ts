@@ -168,10 +168,6 @@ const buildRunInputCommand = (payload: {
 
 async function* adaptProtocolEvents(
   source: AsyncIterable<{ id?: string; data: unknown }>,
-  options: {
-    assistantId: string;
-    transport: ProtocolTransportMode;
-  }
 ): AsyncGenerator<StreamEvent> {
   const adapter = new ProtocolEventAdapter();
 
@@ -180,23 +176,7 @@ async function* adaptProtocolEvents(
       ? (chunk.data as ProtocolEventMessage)
       : undefined;
     if (message?.type !== "event") continue;
-    console.log(
-      "[protocol raw event]",
-      JSON.stringify({
-        assistantId: options.assistantId,
-        transport: options.transport,
-        payload: message,
-      })
-    );
     for (const adapted of adapter.adapt(message)) {
-      console.log(
-        "[protocol adapted event]",
-        JSON.stringify({
-          assistantId: options.assistantId,
-          transport: options.transport,
-          payload: adapted,
-        })
-      );
       yield adapted;
     }
   }
@@ -259,24 +239,6 @@ export class ProtocolSseTransport<
       return (await response.json()) as ProtocolCommandResponse;
     };
 
-    const subscribeResponse = await postCommand(
-      buildSubscribeCommand(payload.streamSubgraphs)
-    );
-    if (isProtocolErrorResponse(subscribeResponse)) {
-      throw new Error(`Protocol subscribe failed: ${subscribeResponse.message}`);
-    }
-
-    const runResponse = await postCommand(
-      buildRunInputCommand({
-        input: payload.input,
-        config: payload.config,
-        context: payload.context,
-        command: payload.command,
-      })
-    );
-    const runId = parseRunId(runResponse);
-    const threadId = getThreadIdFromConfig(payload.config);
-
     const response = await fetchImpl(eventsUrl, {
       method: "GET",
       headers: { Accept: "text/event-stream" },
@@ -302,9 +264,30 @@ export class ProtocolSseTransport<
       },
     };
 
+    // Queue the subscription before the run starts, but only after the SSE
+    // connection is attached. This lets the server activate the subscription as
+    // soon as the run session exists, before the subgraph event buffer can roll
+    // past the early `tools:*` events we care about.
+    const subscribeResponse = await postCommand(
+      buildSubscribeCommand(payload.streamSubgraphs)
+    );
+    if (isProtocolErrorResponse(subscribeResponse)) {
+      throw new Error(`Protocol subscribe failed: ${subscribeResponse.message}`);
+    }
+
+    const runResponse = await postCommand(
+      buildRunInputCommand({
+        input: payload.input,
+        config: payload.config,
+        context: payload.context,
+        command: payload.command,
+      })
+    );
+    const runId = parseRunId(runResponse);
+    const threadId = getThreadIdFromConfig(payload.config);
+
     const apiUrl = this.options.apiUrl;
     const deleteFetch = this.options.fetch ?? fetch;
-    const assistantId = this.options.assistantId;
     return (async function* () {
       try {
         yield {
@@ -315,10 +298,7 @@ export class ProtocolSseTransport<
           },
         };
 
-        yield* adaptProtocolEvents(eventSource, {
-          assistantId,
-          transport: "http-sse",
-        });
+        yield* adaptProtocolEvents(eventSource);
       } finally {
         await deleteFetch(
           toSessionApiUrl(apiUrl, `/v2/sessions/${sessionId}`),

@@ -20,6 +20,12 @@ import {
   createProtocolTransport,
   type ProtocolTransportMode,
 } from "./protocolTransport";
+import {
+  formatNamespace,
+  getLastAssistantMetadata,
+  getSubagentPreview,
+  isRecord,
+} from "./utils";
 
 const API_URL = import.meta.env.VITE_LANGGRAPH_API_URL ?? "http://localhost:2024";
 
@@ -46,50 +52,6 @@ const TABS: Array<{
     blurb: "Coordinator plus three protocol-focused subagents.",
   },
 ];
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const formatNamespace = (namespace?: string[]) =>
-  namespace != null && namespace.length > 0 ? namespace.join(" / ") : "root";
-
-const getMessagePreview = (messages: Message[]) => {
-  const lastMessage = [...messages].reverse().find((message) => {
-    if (typeof message.content === "string") return message.content.trim().length > 0;
-    if (!Array.isArray(message.content)) return false;
-    return message.content.some(
-      (block) =>
-        isRecord(block) &&
-        block.type === "text" &&
-        typeof block.text === "string" &&
-        block.text.trim().length > 0
-    );
-  });
-
-  if (lastMessage == null) return "";
-  if (typeof lastMessage.content === "string") return lastMessage.content;
-  if (!Array.isArray(lastMessage.content)) return "";
-  return lastMessage.content
-    .filter(
-      (block): block is { type: "text"; text: string } =>
-        isRecord(block) &&
-        block.type === "text" &&
-        typeof block.text === "string"
-    )
-    .map((block) => block.text)
-    .join("");
-};
-
-const getLastAssistantMetadata = <TMessage extends Message>(
-  messages: TMessage[],
-  getMessagesMetadata?: (message: TMessage) => unknown
-) => {
-  if (getMessagesMetadata == null) return undefined;
-  const lastAssistant = [...messages]
-    .reverse()
-    .find((message) => message.type === "ai");
-  return lastAssistant != null ? getMessagesMetadata(lastAssistant) : undefined;
-};
 
 const summarizeToolEvent = (data: unknown) => {
   if (!isRecord(data) || typeof data.event !== "string") {
@@ -352,6 +314,7 @@ function DeepAgentView({
   const stream = useStream<typeof deepAgentType>({
     transport,
     filterSubagentMessages: true,
+    throttle: true,
     threadId,
     onThreadId: setThreadId,
     onToolEvent: (data, options) => {
@@ -375,7 +338,6 @@ function DeepAgentView({
     [stream.messages, stream.getMessagesMetadata]
   );
 
-  console.log(11, stream.subagents)
   const subagentDebug = useMemo(() => {
     const entries = Array.from(
       stream.subagents.entries() as Iterable<[string, unknown]>
@@ -395,7 +357,8 @@ function DeepAgentView({
       const snapshotMessages = Array.isArray(state.values?.messages)
         ? (state.values.messages as Message[])
         : [];
-
+      const livePreview = getSubagentPreview(state.messages);
+      const snapshotPreview = getSubagentPreview(snapshotMessages);
       return {
         id,
         status: state.status ?? "unknown",
@@ -404,10 +367,7 @@ function DeepAgentView({
         toolArgs: state.toolCall?.args,
         messageCount: state.messages?.length ?? 0,
         snapshotMessageCount: snapshotMessages.length,
-        preview:
-          state.messages != null ? getMessagePreview(state.messages) : undefined,
-        snapshotPreview:
-          snapshotMessages.length > 0 ? getMessagePreview(snapshotMessages) : undefined,
+        preview: livePreview ?? snapshotPreview,
       };
     });
   }, [stream.subagents]);
