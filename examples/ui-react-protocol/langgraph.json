@@ -1,0 +1,9 @@
+{
+  "node_version": "22",
+  "graphs": {
+    "stategraph": "./src/agents/basic-stategraph.ts:agent",
+    "create-agent": "./src/agents/create-agent.ts:agent",
+    "deep-agent": "./src/agents/deep-agent.ts:agent"
+  },
+  "env": ".env"
+}
