@@ -20,9 +20,11 @@ export function EventLog({ eventLog }: EventLogProps) {
           {eventLog.map((entry) => (
             <details key={entry.id} className="trace-item">
               <summary>
-                <span className="trace-kind">{entry.kind}</span>
-                <span className="trace-label">{entry.label}</span>
                 <span className="trace-time">{entry.timestamp}</span>
+                <span className="trace-summary-main">
+                  <span className="trace-kind">{entry.kind}</span>
+                  <span className="trace-label">{entry.label}</span>
+                </span>
               </summary>
               <div className="trace-detail">{entry.detail}</div>
               <pre className="trace-raw">{safeStringify(entry.raw)}</pre>

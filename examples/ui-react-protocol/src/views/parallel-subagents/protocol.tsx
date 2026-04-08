@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from "react";
 
 import type { Message } from "@langchain/langgraph-sdk";
@@ -31,6 +30,7 @@ import {
   useTraceLog,
 } from "../shared";
 import {
+  createSyntheticToolResultMessage,
   createTraceEntry,
   getCanonicalSubagentNamespace,
   getLifecycleGraphName,
@@ -38,6 +38,8 @@ import {
   getMessagesFromManager,
   getSortedSubagents,
   hasModelRequestActivity,
+  isToolCallNamespace,
+  isToolExecutionNamespace,
   isTerminalLifecycleStatus,
   type ModalState,
   resolveProtocolSubagentStatus,
@@ -55,11 +57,13 @@ export function ProtocolParallelSubagentsView({
   const clientRef = useRef<ReturnType<typeof createProtocolSessionClient> | null>(
     null
   );
-  const activeModalRef = useRef<{
+  const activeInspectorRef = useRef<{
     token: string;
     unsubscribe: () => Promise<void>;
   } | null>(null);
   const nextSubagentOrderRef = useRef(1);
+  const orchestratorAdapterRef = useRef(new ProtocolEventAdapter());
+  const orchestratorMessageManagerRef = useRef(new MessageTupleManager());
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sessionState, setSessionState] = useState<
@@ -71,12 +75,23 @@ export function ProtocolParallelSubagentsView({
   const [subagentsByKey, setSubagentsByKey] = useState<Record<string, SubagentRow>>(
     {}
   );
-  const [modal, setModal] = useState<ModalState | null>(null);
+  const [inspector, setInspector] = useState<ModalState | null>(null);
+  const [orchestratorMessages, setOrchestratorMessages] = useState<Message[]>([]);
+  const [orchestratorToolEvents, setOrchestratorToolEvents] = useState<
+    ReturnType<typeof useTraceLog>["eventLog"]
+  >([]);
 
-  const closeModal = useCallback(async () => {
-    const active = activeModalRef.current;
-    activeModalRef.current = null;
-    setModal(null);
+  const resetOrchestratorMessages = useCallback(() => {
+    orchestratorAdapterRef.current = new ProtocolEventAdapter();
+    orchestratorMessageManagerRef.current = new MessageTupleManager();
+    setOrchestratorMessages([]);
+    setOrchestratorToolEvents([]);
+  }, []);
+
+  const closeInspector = useCallback(async () => {
+    const active = activeInspectorRef.current;
+    activeInspectorRef.current = null;
+    setInspector(null);
 
     if (active != null) {
       await active.unsubscribe();
@@ -147,7 +162,7 @@ export function ProtocolParallelSubagentsView({
         };
       });
 
-      setModal((current) =>
+      setInspector((current) =>
         current?.key === key
           ? {
               ...current,
@@ -167,6 +182,7 @@ export function ProtocolParallelSubagentsView({
   useEffect(() => {
     let disposed = false;
     let unsubscribeLifecycle: (() => Promise<void>) | undefined;
+    let unsubscribeOrchestrator: (() => Promise<void>) | undefined;
 
     const client = createProtocolSessionClient(transportMode, {
       apiUrl: API_URL,
@@ -181,8 +197,9 @@ export function ProtocolParallelSubagentsView({
     setIsSubmitting(false);
     setSubagentsByKey({});
     nextSubagentOrderRef.current = 1;
-    setModal(null);
-    activeModalRef.current = null;
+    setInspector(null);
+    activeInspectorRef.current = null;
+    resetOrchestratorMessages();
 
     void (async () => {
       try {
@@ -203,7 +220,87 @@ export function ProtocolParallelSubagentsView({
           return;
         }
 
+        const orchestratorSubscription = await client.subscribe({
+          channels: ["messages", "tools"],
+          namespaces: [[]],
+          depth: 1,
+          onEvent: (event) => {
+            const namespace = [...event.params.namespace];
+            const isToolExecutionMessage =
+              event.method === "messages" && isToolExecutionNamespace(namespace);
+            const canonicalNamespace = getCanonicalSubagentNamespace(namespace);
+            const toolCallId =
+              canonicalNamespace != null
+                ? extractToolCallIdFromNamespace(canonicalNamespace)
+                : undefined;
+            const isNestedWorkerNamespace =
+              canonicalNamespace != null &&
+              namespace.length > 1 &&
+              toolCallId != null &&
+              isToolCallNamespace(toolCallId);
+
+            if (isNestedWorkerNamespace) {
+              return;
+            }
+
+            for (const adaptedEvent of orchestratorAdapterRef.current.adapt(event)) {
+              if (
+                adaptedEvent.event.startsWith("messages") &&
+                Array.isArray(adaptedEvent.data)
+              ) {
+                if (isToolExecutionMessage) {
+                  continue;
+                }
+                const [chunk, metadata] = adaptedEvent.data as [
+                  Message,
+                  Record<string, unknown> | undefined,
+                ];
+                orchestratorMessageManagerRef.current.add(
+                  chunk,
+                  isRecord(metadata) ? metadata : undefined
+                );
+                setOrchestratorMessages(
+                  getMessagesFromManager(orchestratorMessageManagerRef.current)
+                );
+                continue;
+              }
+
+              if (adaptedEvent.event.startsWith("tools")) {
+                const syntheticMessage = createSyntheticToolResultMessage(
+                  adaptedEvent.data
+                );
+                if (syntheticMessage != null) {
+                  orchestratorMessageManagerRef.current.add(syntheticMessage, {
+                    langgraph_checkpoint_ns: namespace.join("|"),
+                    langgraph_node: "tools",
+                  });
+                  setOrchestratorMessages(
+                    getMessagesFromManager(orchestratorMessageManagerRef.current)
+                  );
+                }
+
+                const summary = summarizeToolEvent(adaptedEvent.data);
+                const entry = createTraceEntry(
+                  "tool",
+                  summary.label,
+                  `${summary.detail} Namespace: ${formatNamespace(namespace)}`,
+                  adaptedEvent.data
+                );
+                setOrchestratorToolEvents((current) => [entry, ...current].slice(0, 25));
+              }
+            }
+          },
+        });
+
+        if (disposed) {
+          await orchestratorSubscription.unsubscribe();
+          await subscription.unsubscribe();
+          await client.close();
+          return;
+        }
+
         unsubscribeLifecycle = subscription.unsubscribe;
+        unsubscribeOrchestrator = orchestratorSubscription.unsubscribe;
         setSessionState("ready");
       } catch (nextError) {
         if (disposed) return;
@@ -221,12 +318,18 @@ export function ProtocolParallelSubagentsView({
       clientRef.current = null;
       setSessionState("closed");
       void (async () => {
-        await closeModal();
+        await closeInspector();
         await unsubscribeLifecycle?.();
+        await unsubscribeOrchestrator?.();
         await client.close();
       })();
     };
-  }, [closeModal, handleSessionLifecycleEvent, transportMode]);
+  }, [
+    closeInspector,
+    handleSessionLifecycleEvent,
+    resetOrchestratorMessages,
+    transportMode,
+  ]);
 
   const handleSubmit = useCallback(
     async (content: string) => {
@@ -241,7 +344,8 @@ export function ProtocolParallelSubagentsView({
       setRunId(null);
       setSubagentsByKey({});
       nextSubagentOrderRef.current = 1;
-      await closeModal();
+      resetOrchestratorMessages();
+      await closeInspector();
 
       try {
         const response = await client.runInput({
@@ -265,7 +369,7 @@ export function ProtocolParallelSubagentsView({
         );
       }
     },
-    [closeModal]
+    [closeInspector, resetOrchestratorMessages]
   );
 
   const handleOpenSubagent = useCallback(
@@ -273,10 +377,10 @@ export function ProtocolParallelSubagentsView({
       const client = clientRef.current;
       if (client == null) return;
 
-      await closeModal();
+      await closeInspector();
 
       const token = crypto.randomUUID();
-      activeModalRef.current = {
+      activeInspectorRef.current = {
         token,
         unsubscribe: async () => undefined,
       };
@@ -285,7 +389,7 @@ export function ProtocolParallelSubagentsView({
       const messageManager = new MessageTupleManager();
       const namespaceLabel = formatNamespace(subagent.namespace);
 
-      setModal({
+      setInspector({
         key: subagent.key,
         namespace: subagent.namespace,
         graphName: subagent.graphName,
@@ -300,13 +404,19 @@ export function ProtocolParallelSubagentsView({
           channels: ["messages", "tools"],
           namespaces: [subagent.namespace],
           onEvent: (event) => {
-            if (activeModalRef.current?.token !== token) return;
+            if (activeInspectorRef.current?.token !== token) return;
+            const namespace = [...event.params.namespace];
+            const isToolExecutionMessage =
+              event.method === "messages" && isToolExecutionNamespace(namespace);
 
             for (const adaptedEvent of adapter.adapt(event)) {
               if (
                 adaptedEvent.event.startsWith("messages") &&
                 Array.isArray(adaptedEvent.data)
               ) {
+                if (isToolExecutionMessage) {
+                  continue;
+                }
                 const [chunk, metadata] = adaptedEvent.data as [
                   Message,
                   Record<string, unknown> | undefined,
@@ -316,7 +426,7 @@ export function ProtocolParallelSubagentsView({
                   isRecord(metadata) ? metadata : undefined
                 );
 
-                setModal((current) =>
+                setInspector((current) =>
                   current?.key === subagent.key
                     ? {
                         ...current,
@@ -328,6 +438,24 @@ export function ProtocolParallelSubagentsView({
               }
 
               if (adaptedEvent.event.startsWith("tools")) {
+                const syntheticMessage = createSyntheticToolResultMessage(
+                  adaptedEvent.data
+                );
+                if (syntheticMessage != null) {
+                  messageManager.add(syntheticMessage, {
+                    langgraph_checkpoint_ns: namespace.join("|"),
+                    langgraph_node: "tools",
+                  });
+                  setInspector((current) =>
+                    current?.key === subagent.key
+                      ? {
+                          ...current,
+                          messages: getMessagesFromManager(messageManager),
+                        }
+                      : current
+                  );
+                }
+
                 const summary = summarizeToolEvent(adaptedEvent.data);
                 const entry = createTraceEntry(
                   "tool",
@@ -336,7 +464,7 @@ export function ProtocolParallelSubagentsView({
                   adaptedEvent.data
                 );
 
-                setModal((current) =>
+                setInspector((current) =>
                   current?.key === subagent.key
                     ? {
                         ...current,
@@ -348,7 +476,7 @@ export function ProtocolParallelSubagentsView({
               }
 
               if (adaptedEvent.event === "error") {
-                setModal((current) =>
+                setInspector((current) =>
                   current?.key === subagent.key
                     ? {
                         ...current,
@@ -365,17 +493,17 @@ export function ProtocolParallelSubagentsView({
           },
         });
 
-        if (activeModalRef.current?.token !== token) {
+        if (activeInspectorRef.current?.token !== token) {
           await subscription.unsubscribe();
           return;
         }
 
-        activeModalRef.current = {
+        activeInspectorRef.current = {
           token,
           unsubscribe: subscription.unsubscribe,
         };
 
-        setModal((current) =>
+        setInspector((current) =>
           current?.key === subagent.key
             ? {
                 ...current,
@@ -384,9 +512,9 @@ export function ProtocolParallelSubagentsView({
             : current
         );
       } catch (nextError) {
-        if (activeModalRef.current?.token !== token) return;
-        activeModalRef.current = null;
-        setModal((current) =>
+        if (activeInspectorRef.current?.token !== token) return;
+        activeInspectorRef.current = null;
+        setInspector((current) =>
           current?.key === subagent.key
             ? {
                 ...current,
@@ -400,7 +528,7 @@ export function ProtocolParallelSubagentsView({
         );
       }
     },
-    [closeModal]
+    [closeInspector]
   );
 
   const subagents = useMemo(
@@ -416,204 +544,218 @@ export function ProtocolParallelSubagentsView({
       sessionState,
       threadId,
       runId,
+      orchestratorMessageCount: orchestratorMessages.length,
+      orchestratorToolEventCount: orchestratorToolEvents.length,
       discoveredSubagents: subagents.length,
-      selectedNamespace: modal?.namespace ?? null,
-      popupSubscriptionActive: modal != null,
+      selectedNamespace: inspector?.namespace ?? null,
+      inspectorSubscriptionActive: inspector != null,
     }),
-    [modal, runId, sessionState, subagents.length, threadId, transportMode]
+    [
+      inspector,
+      orchestratorMessages.length,
+      orchestratorToolEvents.length,
+      runId,
+      sessionState,
+      subagents.length,
+      threadId,
+      transportMode,
+    ]
   );
-
-  const modalTitleId = "parallel-subagent-activity-title";
+  const isInspectingSubagent = inspector != null;
+  const orchestratorStatusLabel =
+    sessionState === "connecting"
+      ? "Connecting..."
+      : isSubmitting
+        ? "Streaming orchestrator..."
+        : "Ready";
 
   return (
-    <>
-      <section className="playground-shell">
-        <header className="hero-card">
+    <section className="playground-shell">
+      <header className="hero-card">
+        <div>
+          <div className="eyebrow">Protocol benchmark</div>
+          <h2>Parallel Subagent Fan-Out</h2>
+          <p>
+            This QuickJS-backed Deep Agent now keeps the main panel focused on the
+            orchestrator&apos;s root messages, then swaps that same inspector over to
+            a subagent when you click one in the discovered-worker list.
+          </p>
+        </div>
+        <dl className="hero-metadata">
           <div>
-            <div className="eyebrow">Protocol benchmark</div>
-            <h2>Parallel Subagent Fan-Out</h2>
-            <p>
-              This QuickJS-backed Deep Agent keeps the base UI subscribed only to
-              lifecycle events. Open a subagent on demand to attach a temporary
-              namespace-scoped messages and tools subscription, then close it to
-              stop receiving that worker&apos;s customer-poem activity.
-            </p>
+            <dt>Assistant</dt>
+            <dd>{SESSION_ASSISTANT_ID}</dd>
           </div>
-          <dl className="hero-metadata">
-            <div>
-              <dt>Assistant</dt>
-              <dd>{SESSION_ASSISTANT_ID}</dd>
-            </div>
-            <div>
-              <dt>API</dt>
-              <dd>{API_URL}</dd>
-            </div>
-            <div>
-              <dt>Protocol</dt>
-              <dd>{getTransportLabel(transportMode)}</dd>
-            </div>
-            <div>
-              <dt>Thread</dt>
-              <dd>{threadId ?? "pending"}</dd>
-            </div>
-          </dl>
-        </header>
+          <div>
+            <dt>API</dt>
+            <dd>{API_URL}</dd>
+          </div>
+          <div>
+            <dt>Protocol</dt>
+            <dd>{getTransportLabel(transportMode)}</dd>
+          </div>
+          <div>
+            <dt>Thread</dt>
+            <dd>{threadId ?? "pending"}</dd>
+          </div>
+        </dl>
+      </header>
 
-        {error != null ? <div className="error-banner">{error}</div> : null}
+      {error != null ? <div className="error-banner">{error}</div> : null}
 
-        <div className="suggestion-row">
-          {SUGGESTIONS.map((suggestion) => (
-            <button
-              key={suggestion}
-              className="suggestion-chip"
-              disabled={isSubmitting || sessionState !== "ready"}
-              onClick={() => void handleSubmit(suggestion)}
-              type="button"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-
-        <div className="parallel-grid">
-          <section className="conversation-card">
-            <div className="panel-card-header">
-              <h3>Fan-Out Request</h3>
-              <span className="conversation-status">
-                {sessionState === "connecting"
-                  ? "Connecting..."
-                  : isSubmitting
-                    ? "Streaming lifecycle..."
-                    : "Ready"}
-              </span>
-            </div>
-
-            <div className="empty-feed parallel-intro">
-              <h3>Lifecycle-first benchmark</h3>
-              <p>
-                This view avoids a broad messages subscription until you click a
-                subagent. That keeps the main surface light even when many workers
-                are writing customer poems in parallel.
-              </p>
-            </div>
-
-            <Composer
-              disabled={isSubmitting || sessionState !== "ready"}
-              onSubmit={(content) => void handleSubmit(content)}
-              placeholder="Ask for poems for 8, 16, or all 100 customers so the coordinator fans out through QuickJS."
-            />
-          </section>
-
-          <aside className="sidebar-stack">
-            <section className="panel-card">
-              <div className="panel-card-header">
-                <h3>Discovered Subagents</h3>
-                <span className="conversation-status">{subagents.length}</span>
-              </div>
-
-              {subagents.length === 0 ? (
-                <div className="empty-panel">
-                  Lifecycle events will populate this list as soon as the
-                  benchmark coordinator starts spawning customer-poet workers.
-                </div>
-              ) : (
-                <div className="parallel-subagent-list">
-                  {subagents.map((subagent) => (
-                    <button
-                      key={subagent.key}
-                      className="parallel-subagent-button"
-                      onClick={() => void handleOpenSubagent(subagent)}
-                      type="button"
-                    >
-                      <div className="subagent-header">
-                        <strong>{subagent.graphName}</strong>
-                        <span
-                          className={`status-pill status-${subagent.status.toLowerCase()}`}
-                        >
-                          {subagent.status}
-                        </span>
-                      </div>
-                      <div className="subagent-meta">
-                        Namespace: {formatNamespace(subagent.namespace)}
-                      </div>
-                      <div className="subagent-meta">
-                        Tool call: {subagent.toolCallId}
-                      </div>
-                      <div className="subagent-meta">
-                        {subagent.eventCount} lifecycle event
-                        {subagent.eventCount === 1 ? "" : "s"} seen
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <JsonPanel title="Session Snapshot" value={sessionSnapshot} />
-            <EventLog eventLog={eventLog} />
-          </aside>
-        </div>
-      </section>
-
-      {modal != null ? (
-        <div
-          className="parallel-modal-backdrop"
-          onClick={(event: MouseEvent<HTMLDivElement>) => {
-            if (event.target !== event.currentTarget) return;
-            void closeModal();
-          }}
-          role="presentation"
-        >
-          <section
-            aria-labelledby={modalTitleId}
-            aria-modal="true"
-            className="parallel-modal"
-            role="dialog"
+      <div className="suggestion-row">
+        {SUGGESTIONS.map((suggestion) => (
+          <button
+            key={suggestion}
+            className="suggestion-chip"
+            disabled={isSubmitting || sessionState !== "ready"}
+            onClick={() => void handleSubmit(suggestion)}
+            type="button"
           >
-            <div className="panel-card-header">
-              <div>
-                <h3 id={modalTitleId}>{modal.graphName}</h3>
-                <div className="subagent-meta">
-                  Namespace: {formatNamespace(modal.namespace)}
-                </div>
-              </div>
-              <div className="parallel-modal-actions">
-                {modal.isConnecting ? (
-                  <span className="conversation-status">Subscribing...</span>
-                ) : null}
-                <span className={`status-pill status-${modal.status.toLowerCase()}`}>
-                  {modal.status}
-                </span>
-                <button
-                  className="secondary-button"
-                  onClick={() => void closeModal()}
-                  type="button"
-                >
-                  Close popup
-                </button>
+            {suggestion}
+          </button>
+        ))}
+      </div>
+
+      <div className="parallel-grid">
+        <section className="conversation-card">
+          <div className="panel-card-header">
+            <div>
+              <h3>{inspector?.graphName ?? "Fan-Out Request"}</h3>
+              <div className="subagent-meta">
+                {isInspectingSubagent
+                  ? `Namespace: ${formatNamespace(inspector.namespace)}`
+                  : "Root namespace only. Click a worker to replace this panel with that subagent's live activity."}
               </div>
             </div>
+            <div className="parallel-inline-actions">
+              {isInspectingSubagent ? (
+                <>
+                  {inspector.isConnecting ? (
+                    <span className="conversation-status">Subscribing...</span>
+                  ) : null}
+                  <span
+                    className={`status-pill status-${inspector.status.toLowerCase()}`}
+                  >
+                    {inspector.status}
+                  </span>
+                  <button
+                    className="secondary-button"
+                    onClick={() => void closeInspector()}
+                    type="button"
+                  >
+                    Back to orchestrator
+                  </button>
+                </>
+              ) : (
+                <span className="conversation-status">{orchestratorStatusLabel}</span>
+              )}
+            </div>
+          </div>
 
-            {modal.error != null ? (
-              <div className="error-banner">{modal.error}</div>
-            ) : null}
+          {inspector?.error != null ? (
+            <div className="error-banner">{inspector.error}</div>
+          ) : null}
 
-            <div className="parallel-modal-grid">
-              <section className="panel-card">
+          {isInspectingSubagent ? (
+            <div className="parallel-inline-grid">
+              <section className="panel-card parallel-inline-panel">
                 <div className="panel-card-header">
                   <h3>Messages</h3>
                   <span className="conversation-status">
-                    {modal.messages.length} total
+                    {inspector.messages.length} total
                   </span>
                 </div>
-                <MessageFeed messages={modal.messages} />
+                <MessageFeed messages={inspector.messages} />
               </section>
 
-              <EventLog eventLog={modal.toolEvents} />
+              <EventLog eventLog={inspector.toolEvents} />
             </div>
+          ) : (
+            <>
+              <div className="empty-feed parallel-intro">
+                <h3>Root orchestrator stream</h3>
+                <p>
+                  The center panel stays attached to the coordinator&apos;s
+                  non-worker protocol traffic, so you can see its prompts,
+                  tool-call messages, js-eval activity, and final summary without
+                  opening anything else.
+                </p>
+              </div>
+              <div className="parallel-inline-grid">
+                <section className="panel-card parallel-inline-panel">
+                  <div className="panel-card-header">
+                    <h3>Messages</h3>
+                    <span className="conversation-status">
+                      {orchestratorMessages.length} total
+                    </span>
+                  </div>
+                  <MessageFeed messages={orchestratorMessages} />
+                </section>
+
+                <EventLog eventLog={orchestratorToolEvents} />
+              </div>
+            </>
+          )}
+
+          <Composer
+            disabled={isSubmitting || sessionState !== "ready"}
+            onSubmit={(content) => void handleSubmit(content)}
+            placeholder="Ask for poems for 8, 16, or all 100 customers so the coordinator fans out through QuickJS."
+          />
+        </section>
+
+        <aside className="sidebar-stack">
+          <section className="panel-card">
+            <div className="panel-card-header">
+              <h3>Discovered Subagents</h3>
+              <span className="conversation-status">{subagents.length}</span>
+            </div>
+
+            {subagents.length === 0 ? (
+              <div className="empty-panel">
+                Lifecycle events will populate this list as soon as the benchmark
+                coordinator starts spawning customer-poet workers.
+              </div>
+            ) : (
+              <div className="parallel-subagent-list">
+                {subagents.map((subagent) => (
+                  <button
+                    key={subagent.key}
+                    className={`parallel-subagent-button${
+                      inspector?.key === subagent.key ? " is-active" : ""
+                    }`}
+                    onClick={() => void handleOpenSubagent(subagent)}
+                    type="button"
+                  >
+                    <div className="subagent-header">
+                      <strong>{subagent.graphName}</strong>
+                      <span
+                        className={`status-pill status-${subagent.status.toLowerCase()}`}
+                      >
+                        {subagent.status}
+                      </span>
+                    </div>
+                    <div className="subagent-meta">
+                      Namespace: {formatNamespace(subagent.namespace)}
+                    </div>
+                    <div className="subagent-meta">
+                      Tool call: {subagent.toolCallId}
+                    </div>
+                    <div className="subagent-meta">
+                      {subagent.eventCount} lifecycle event
+                      {subagent.eventCount === 1 ? "" : "s"} seen
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
-        </div>
-      ) : null}
-    </>
+
+          <JsonPanel title="Session Snapshot" value={sessionSnapshot} />
+          <EventLog eventLog={eventLog} />
+        </aside>
+      </div>
+    </section>
   );
 }

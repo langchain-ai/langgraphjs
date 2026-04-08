@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { MemorySaver } from "@langchain/langgraph";
 import { createQuickJSMiddleware } from "@langchain/quickjs";
-import { createDeepAgent } from "deepagents";
-import { tool } from "langchain";
+import { createDeepAgent, StoreBackend } from "deepagents";
+import { tool, createMiddleware } from "langchain";
 import { z } from "zod/v4";
 
 import { modelName } from "./shared";
@@ -13,107 +13,14 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-type CustomerRecord = {
-  index: number;
-  customerId: string;
-  firstName: string;
-  lastName: string;
-  company: string;
-  city: string;
-  country: string;
-  email: string;
-  subscriptionDate: string;
-};
-
-const parseCsvLine = (line: string) => {
-  const cells: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-
-    if (char === "\"") {
-      if (inQuotes && line[index + 1] === "\"") {
-        current += "\"";
-        index += 1;
-        continue;
-      }
-
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      cells.push(current);
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  cells.push(current);
-  return cells;
-};
-
-const loadFixtureCustomers = (): CustomerRecord[] => {
-  const fixture = readFileSync(
-    new URL("./fixtures/customers-100.csv", import.meta.url),
-    "utf8"
-  );
-  const lines = fixture.trim().split(/\r?\n/);
-  const [, ...rows] = lines;
-
-  return rows.map((row) => {
-    const cells = parseCsvLine(row);
-    return {
-      index: Number(cells[0]),
-      customerId: cells[1],
-      firstName: cells[2],
-      lastName: cells[3],
-      company: cells[4],
-      city: cells[5],
-      country: cells[6],
-      email: cells[9],
-      subscriptionDate: cells[10],
-    };
-  });
-};
-
-const fixtureCustomers = loadFixtureCustomers();
-
-const loadCustomerFixture = tool(
-  async ({ limit }: { limit?: number }) => {
-    await sleep(120);
-    const safeLimit =
-      typeof limit === "number" && Number.isFinite(limit)
-        ? Math.max(1, Math.min(fixtureCustomers.length, Math.floor(limit)))
-        : fixtureCustomers.length;
-
-    return JSON.stringify(
-      {
-        count: safeLimit,
-        customers: fixtureCustomers.slice(0, safeLimit),
-      },
-      null,
-      2
-    );
-  },
-  {
-    name: "load_customer_fixture",
-    description:
-      "Load customers from the bundled CSV fixture for fan-out benchmark tasks.",
-    schema: z.object({
-      limit: z
-        .number()
-        .int()
-        .positive()
-        .max(fixtureCustomers.length)
-        .optional()
-        .describe("Optional number of customers to load from the fixture."),
-    }),
-  }
+const mountedCsvPath = "/fixtures/customers-100.csv";
+const fixtureCsv = readFileSync(
+  new URL("./fixtures/customers-100.csv", import.meta.url),
+  "utf8"
+);
+const fixtureCustomerCount = Math.max(
+  0,
+  fixtureCsv.trim().split(/\r?\n/).length - 1
 );
 
 const poemValidationSchema = z.object({
@@ -220,25 +127,31 @@ const validatePoemRhythm = createFakePoemValidator(
 
 const checkpointer = new MemorySaver();
 
-export const agent = createDeepAgent({
-  model: modelName,
-  checkpointer,
-  tools: [loadCustomerFixture],
-  middleware: [
-    createQuickJSMiddleware({
-      ptc: ["task", "load_customer_fixture"],
-      systemPrompt: `When the user asks for fan-out, load the bundled customer
-fixture inside js_eval and then use Promise.all with tools.task so the work
-runs in parallel. Prefer one customer per subagent instead of batching many
-customers into a single task unless the user explicitly asks for batching.`,
-    }),
-  ],
-  subagents: [
-    {
-      name: "parallel-worker",
-      description:
-        "Writes one tiny poem for one customer, then validates it repeatedly.",
-      systemPrompt: `You are a focused customer poet.
+export async function agent() {
+  const backend = new StoreBackend({ fileFormat: "v2" });
+  return createDeepAgent({
+    model: modelName,
+    backend,
+    checkpointer,
+    middleware: [
+      createQuickJSMiddleware({
+        backend,
+        ptc: ["task"],
+      }),
+      createMiddleware({
+        name: "csv-fixture",
+        beforeAgent: async (runtime) => {
+          await backend.write(mountedCsvPath, fixtureCsv);
+          return runtime;
+        },
+      }),
+    ],
+    subagents: [
+      {
+        name: "parallel-worker",
+        description:
+          "Writes one tiny poem for one customer, then validates it repeatedly.",
+        systemPrompt: `You are a focused customer poet.
 
 Write exactly one short poem for the assigned customer.
 
@@ -254,27 +167,42 @@ Rules:
   validate_poem_rhythm.
 - Stop once a validator returns passed=true, or after 6 validation attempts.
 - Return only the final poem in your final answer.`,
-      tools: [
-        validatePoemPersonalization,
-        validatePoemImagery,
-        validatePoemRhythm,
-      ],
-    },
-  ],
-  systemPrompt: `You are the parallel subagent benchmark coordinator.
+        tools: [
+          validatePoemPersonalization,
+          validatePoemImagery,
+          validatePoemRhythm,
+        ],
+      },
+    ],
+    systemPrompt: `You are the parallel subagent benchmark coordinator.
 
-Your job is to stress-test hierarchical streaming by creating one short poem for
-each customer in the bundled CSV fixture using many subagents in parallel.
+Important: Use js_eval exactly once per request to do the whole workflow end to
+end. Inside that single script, call await readFile("${mountedCsvPath}") to
+load the CSV, parse it in JavaScript, select the requested customers, and
+launch all worker tasks with Promise.all.
+
+Never paste, inline, or reconstruct the CSV contents inside the script. Always
+read the fixture from ${mountedCsvPath} at runtime instead of copying it into a
+string literal.
+
+Inside QuickJS, launch workers with tools.task(...). The task calls should use
+the documented shape with subagentType: "parallel-worker".
 
 Rules:
-- When the user does not specify a count, default to all 100 customers.
-- Use load_customer_fixture to get the customers you need.
-- Use js_eval plus Promise.all to launch the worker tasks concurrently.
-- Route every spawned task to the "parallel-worker" subagent type.
+- When the user does not specify a count, default to all ${fixtureCustomerCount}
+  customers.
+- Perform the CSV read, parse, customer selection, and Promise.all fan-out
+  inside one js_eval call.
+- Do not define reusable REPL helpers first, and do not split the workflow
+  across multiple js_eval calls unless the first call fails.
+- Do not launch workers sequentially. Map over all selected customers and await
+  a single Promise.all call for the full batch.
+- Route every spawned task with subagentType: "parallel-worker".
 - Pass each task the customer's name, company, city, country, and email context.
 - Produce one worker per customer so the UI shows a wide subagent list.
 - Each worker should validate its poem until one fake validator passes, which
   should produce roughly 3 validation tool calls on average.
 - After the workers finish, summarize the overall result in a short answer that
   mentions how many poems were created.`,
-});
+  });
+}

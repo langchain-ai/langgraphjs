@@ -33,7 +33,7 @@ export type ModalState = {
 export const SESSION_ASSISTANT_ID = "parallel-subagents";
 
 export const SUGGESTIONS = [
-  "Write short poems for the first 8 customers in the CSV fixture.",
+  "Write short poems for the first 2 customers in the CSV fixture.",
   "Write short poems for the first 16 customers and summarize the fan-out.",
   "Write a tiny poem for every customer in the 100-row fixture.",
 ];
@@ -91,11 +91,72 @@ export const hasModelRequestActivity = (namespace: string[]) =>
   namespace.some((segment) => segment.startsWith("model_request:"));
 
 export const isToolCallNamespace = (toolCallId: string) =>
-  toolCallId.startsWith("call_");
+  toolCallId.startsWith("call_") ||
+  toolCallId.startsWith("synthetic_subagent_");
 
 export const isNamespacePrefix = (prefix: string[], namespace?: string[]) => {
   if (namespace == null) return false;
   return prefix.every((segment, index) => namespace[index] === segment);
+};
+
+export const isToolExecutionNamespace = (namespace: string[]) =>
+  namespace.at(-1)?.startsWith("tools:") ?? false;
+
+const getToolResultContent = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (isRecord(value) && "content" in value) {
+    const content = value.content;
+    if (typeof content === "string") {
+      return content;
+    }
+    try {
+      return JSON.stringify(content, null, 2);
+    } catch {
+      return String(content);
+    }
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
+export const createSyntheticToolResultMessage = (event: unknown): Message | null => {
+  if (!isRecord(event) || typeof event.toolCallId !== "string") {
+    return null;
+  }
+
+  if (event.event !== "on_tool_end" && event.event !== "on_tool_error") {
+    return null;
+  }
+
+  const rawPayload = event.event === "on_tool_end" ? event.output : event.error;
+  const payload = isRecord(rawPayload) ? rawPayload : undefined;
+  const status =
+    event.event === "on_tool_error" || payload?.status === "error"
+      ? "error"
+      : "success";
+  const content = getToolResultContent(rawPayload);
+  const name =
+    typeof payload?.name === "string"
+      ? payload.name
+      : typeof event.name === "string"
+        ? event.name
+        : undefined;
+
+  return {
+    id: `synthetic-tool-${event.toolCallId}`,
+    type: "tool",
+    tool_call_id: event.toolCallId,
+    status,
+    content,
+    ...(name != null ? { name } : {}),
+  };
 };
 
 export const getLegacySubagentTitle = (

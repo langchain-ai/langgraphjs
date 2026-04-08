@@ -42,7 +42,7 @@ export function LegacyParallelSubagentsView() {
     Array<TraceEntry & { namespace?: string[] }>
   >([]);
 
-  const stream = useStream<typeof parallelAgentType>({
+  const stream = useStream<Awaited<ReturnType<typeof parallelAgentType>>>({
     assistantId: SESSION_ASSISTANT_ID,
     apiUrl: API_URL,
     fetchStateHistory: true,

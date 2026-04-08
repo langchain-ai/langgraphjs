@@ -348,6 +348,138 @@ pre {
   color: #e2e8f0;
 }
 
+.message-content-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-content-details summary {
+  cursor: pointer;
+  list-style: none;
+  color: #a5b4fc;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.message-content-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-content-details summary:hover {
+  color: #c7d2fe;
+}
+
+.message-content-expanded {
+  margin-top: 8px;
+}
+
+.tool-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(5, 7, 11, 0.45);
+}
+
+.tool-card-theme-task {
+  border-color: rgba(96, 165, 250, 0.28);
+  background:
+    linear-gradient(180deg, rgba(14, 26, 46, 0.92), rgba(7, 12, 22, 0.92));
+}
+
+.tool-card-theme-code {
+  border-color: rgba(167, 139, 250, 0.3);
+  background:
+    linear-gradient(180deg, rgba(25, 16, 48, 0.92), rgba(10, 8, 25, 0.92));
+}
+
+.tool-card-theme-validator {
+  border-color: rgba(74, 222, 128, 0.26);
+  background:
+    linear-gradient(180deg, rgba(10, 35, 24, 0.92), rgba(7, 16, 12, 0.92));
+}
+
+.tool-card-theme-generic {
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.tool-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.tool-card-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.tool-card-name {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: #a5b4fc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.tool-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tool-card-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.tool-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-card-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.tool-card-copy,
+.tool-card-code {
+  padding: 12px 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.58);
+  color: #e2e8f0;
+  line-height: 1.6;
+}
+
+.tool-card-code {
+  font-size: 0.82rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow: auto;
+}
+
 .reasoning-block {
   border-left: 3px solid rgba(251, 191, 36, 0.55);
   padding-left: 12px;
@@ -446,10 +578,10 @@ pre {
 }
 
 .trace-item summary {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   cursor: pointer;
   list-style: none;
 }
@@ -458,16 +590,26 @@ pre {
   display: none;
 }
 
+.trace-summary-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
 .trace-kind {
   text-transform: uppercase;
   font-size: 0.74rem;
   letter-spacing: 0.06em;
   color: #a5b4fc;
+  flex-shrink: 0;
 }
 
 .trace-label {
   color: #f8fafc;
   font-weight: 600;
+  min-width: 0;
 }
 
 .trace-time {
@@ -541,6 +683,41 @@ pre {
 .parallel-subagent-button:hover {
   border-color: rgba(154, 164, 255, 0.34);
   background: rgba(22, 27, 43, 0.86);
+}
+
+.parallel-subagent-button.is-active {
+  border-color: rgba(129, 140, 248, 0.58);
+  background: rgba(37, 44, 76, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.18);
+}
+
+.parallel-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.parallel-inline-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 18px;
+}
+
+.parallel-inline-grid > .panel-card {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.parallel-inline-grid > .panel-card > .panel-card-header {
+  margin-bottom: 12px;
+}
+
+.parallel-inline-panel {
+  padding: 18px;
 }
 
 .parallel-modal-backdrop {
@@ -625,6 +802,7 @@ pre {
 
   .playground-grid,
   .parallel-grid,
+  .parallel-inline-grid,
   .parallel-modal-grid {
     grid-template-columns: 1fr;
   }
