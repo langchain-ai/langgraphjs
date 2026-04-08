@@ -7,9 +7,14 @@ import {
 import { CreateAgentView } from "./views/CreateAgentView";
 import { DeepAgentView } from "./views/DeepAgentView";
 import { API_URL } from "./views/shared";
+import { ParallelSubagentsView } from "./views/ParallelSubagentsView";
 import { StateGraphView } from "./views/StateGraphView";
 
-type TabId = "stategraph" | "create-agent" | "deep-agent";
+type TabId =
+  | "stategraph"
+  | "create-agent"
+  | "deep-agent"
+  | "parallel-subagents";
 
 const DEFAULT_TAB: TabId = "stategraph";
 const DEFAULT_TRANSPORT: PlaygroundTransportMode = "legacy";
@@ -34,12 +39,18 @@ const TABS: Array<{
     title: "Deep Agent",
     blurb: "Coordinator plus three protocol-focused subagents.",
   },
+  {
+    id: "parallel-subagents",
+    title: "Parallel Subagents",
+    blurb: "QuickJS fan-out with lifecycle-first namespace drill-down.",
+  },
 ];
 
 const isTabId = (value: string | null): value is TabId =>
   value === "stategraph" ||
   value === "create-agent" ||
-  value === "deep-agent";
+  value === "deep-agent" ||
+  value === "parallel-subagents";
 
 const isTransportMode = (
   value: string | null
@@ -127,6 +138,12 @@ export function App() {
       ) : null}
       {activeTab === "deep-agent" ? (
         <DeepAgentView key={activeViewKey} transportMode={transportMode} />
+      ) : null}
+      {activeTab === "parallel-subagents" ? (
+        <ParallelSubagentsView
+          key={activeViewKey}
+          transportMode={transportMode}
+        />
       ) : null}
     </main>
   );

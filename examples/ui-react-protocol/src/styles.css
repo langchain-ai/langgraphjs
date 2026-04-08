@@ -122,7 +122,7 @@ pre {
 
 .tab-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -241,6 +241,13 @@ pre {
 .playground-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.95fr);
+  gap: 18px;
+  min-height: 68vh;
+}
+
+.parallel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.95fr);
   gap: 18px;
   min-height: 68vh;
 }
@@ -389,6 +396,15 @@ pre {
   font-size: 0.84rem;
 }
 
+.secondary-button {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  padding: 10px 16px;
+  background: rgba(8, 10, 16, 0.7);
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
 .primary-button {
   border: 0;
   border-radius: 14px;
@@ -496,6 +512,75 @@ pre {
   line-height: 1.5;
 }
 
+.parallel-intro {
+  min-height: 0;
+}
+
+.parallel-intro p {
+  margin-bottom: 0;
+}
+
+.parallel-subagent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.parallel-subagent-button {
+  width: 100%;
+  text-align: left;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(6, 8, 13, 0.54);
+  padding: 14px;
+  color: inherit;
+}
+
+.parallel-subagent-button:hover {
+  border-color: rgba(154, 164, 255, 0.34);
+  background: rgba(22, 27, 43, 0.86);
+}
+
+.parallel-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.74);
+  backdrop-filter: blur(6px);
+}
+
+.parallel-modal {
+  width: min(1240px, 100%);
+  max-height: min(88vh, 920px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(11, 15, 24, 0.96);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
+.parallel-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.parallel-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -538,7 +623,9 @@ pre {
     flex-direction: column;
   }
 
-  .playground-grid {
+  .playground-grid,
+  .parallel-grid,
+  .parallel-modal-grid {
     grid-template-columns: 1fr;
   }
 }
