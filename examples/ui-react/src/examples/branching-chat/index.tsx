@@ -132,7 +132,9 @@ export function BranchingChat() {
       newContent: string
     ) => {
       const meta = stream.getMessagesMetadata(message);
-      const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
+      const parentCheckpoint =
+        meta?.forkParentCheckpoint ??
+        meta?.firstSeenState?.parent_checkpoint;
 
       // Submit from the parent checkpoint with the new message content
       stream.submit(
@@ -150,7 +152,9 @@ export function BranchingChat() {
   const handleRegenerate = useCallback(
     (message: Message<InferAgentToolCalls<typeof agent>>) => {
       const meta = stream.getMessagesMetadata(message);
-      const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
+      const parentCheckpoint =
+        meta?.forkParentCheckpoint ??
+        meta?.firstSeenState?.parent_checkpoint;
 
       // Submit with undefined to regenerate from the parent checkpoint
       stream.submit(undefined, { checkpoint: parentCheckpoint });

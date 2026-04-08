@@ -13,6 +13,9 @@ const serverUrl = inject("serverUrl");
             <div [attr.data-testid]="'content-' + $index">
               {{ str(msg.content) }}
             </div>
+            <div [attr.data-testid]="'fork-parent-' + $index">
+              {{ getForkParent(msg, $index) }}
+            </div>
 
             @if (getBranchOptions(msg, $index); as nav) {
               <div [attr.data-testid]="'branch-nav-' + $index">
@@ -33,6 +36,7 @@ const serverUrl = inject("serverUrl");
                 </button>
               </div>
             }
+
             @if (msg.type === "human") {
               <button
                 [attr.data-testid]="'fork-' + $index"
@@ -52,11 +56,14 @@ const serverUrl = inject("serverUrl");
           </div>
         }
       </div>
-      <button data-testid="submit" (click)="onSubmit()">Send</button>
+      <button data-testid="submit-root" (click)="onSubmitRoot()">Send Root</button>
+      <button data-testid="submit-follow-up" (click)="onSubmitFollowUp()">
+        Send Follow Up
+      </button>
     </div>
   `,
 })
-export class BranchingComponent {
+export class BranchingMultiTurnComponent {
   stream = injectStream({
     assistantId: "agent",
     apiUrl: serverUrl,
@@ -74,6 +81,13 @@ export class BranchingComponent {
     if (!branchOptions || !branch) return null;
     const branchIndex = branchOptions.indexOf(branch);
     return { branchOptions, branchIndex };
+  }
+
+  getForkParent(msg: any, index: number) {
+    return (
+      this.stream.getMessagesMetadata(msg, index)?.forkParentCheckpoint
+        ?.checkpoint_id ?? ""
+    );
   }
 
   onPrev(branchOptions: string[], branchIndex: number) {
@@ -113,9 +127,15 @@ export class BranchingComponent {
     void this.stream.submit(undefined as any, { checkpoint });
   }
 
-  onSubmit() {
+  onSubmitRoot() {
     void this.stream.submit({
       messages: [{ content: "Hello", type: "human" }],
+    } as any);
+  }
+
+  onSubmitFollowUp() {
+    void this.stream.submit({
+      messages: [{ content: "Follow up", type: "human" }],
     } as any);
   }
 }
