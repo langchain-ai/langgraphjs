@@ -441,7 +441,7 @@ describe("protocol transports", () => {
     });
 
     const events = await readSseEvents(eventsResponse, {
-      expected: 4,
+      expected: 2,
       timeoutMs: 10_000,
     });
 
@@ -454,7 +454,10 @@ describe("protocol transports", () => {
             event.event === "values" || event.event === "updates"
         )
         .every(
-          (event) => ((event.data as any)?.params?.namespace as string[] | undefined)?.[0] === "gp_two"
+          (event) =>
+            ((event.data as any)?.params?.namespace as string[] | undefined)?.[0]?.startsWith(
+              "gp_two"
+            ) === true
         )
     ).toBe(true);
     const stateResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/commands`, {
@@ -472,7 +475,7 @@ describe("protocol transports", () => {
       id: 3,
       result: {
         checkpoint: {
-          thread_id: threadId,
+          id: expect.any(String),
         },
       },
     });

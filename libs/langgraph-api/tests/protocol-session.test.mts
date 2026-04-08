@@ -252,7 +252,7 @@ describe("RunProtocolSession", () => {
     });
   });
 
-  it("passes through namespaced tuple message events", async () => {
+  it("normalizes namespaced tuple message events into protocol lifecycle events", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);
     await session.start();
@@ -289,26 +289,459 @@ describe("RunProtocolSession", () => {
         (message as { type?: string }).type === "event"
     );
 
-    expect(events[0]).toEqual({
-      type: "event",
-      eventId: expect.any(String),
-      seq: expect.any(Number),
-      method: "messages",
-      params: {
+    expect(events.map((event) => event.params)).toEqual([
+      {
         namespace: ["tools:call_123", "model:worker_456"],
         timestamp: expect.any(Number),
-        data: [
+        data: {
+          event: "message-start",
+          messageId: "message_1",
+        },
+      },
+      {
+        namespace: ["tools:call_123", "model:worker_456"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-start",
+          index: 0,
+          contentBlock: { type: "text", text: "" },
+        },
+      },
+      {
+        namespace: ["tools:call_123", "model:worker_456"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-delta",
+          index: 0,
+          contentBlock: { type: "text", text: "Hel" },
+        },
+      },
+    ]);
+  });
+
+  it("normalizes tuple tool-call chunks and strips non-protocol metadata", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["messages"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "messages|model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87",
+      data: [
+        {
+          id: "chatcmpl-1",
+          type: "ai",
+          content: "",
+          tool_call_chunks: [
+            {
+              args: "scrip",
+              index: 0,
+              type: "tool_call_chunk",
+            },
+          ],
+          additional_kwargs: {
+            tool_calls: [
+              {
+                index: 0,
+                function: {
+                  arguments: "scrip",
+                },
+              },
+            ],
+          },
+          response_metadata: {
+            model_provider: "openai",
+            usage: {},
+          },
+          tool_calls: [],
+          invalid_tool_calls: [
+            {
+              name: "",
+              args: "scrip",
+              error: "Malformed args.",
+              type: "invalid_tool_call",
+            },
+          ],
+        },
+        {
+          tags: [],
+          ls_integration: "deepagents",
+          created_by: "system",
+          run_attempt: 1,
+          langgraph_version: "1.2.6",
+          langgraph_plan: "developer",
+          langgraph_host: "self-hosted",
+          langgraph_api_url: "http://localhost:2024",
+          thread_id: "thread_123",
+          run_id: "run_123",
+          graph_id: "deep-agent",
+          assistant_id: "assistant_123",
+          langgraph_step: 3,
+          langgraph_node: "model_request",
+          langgraph_triggers: ["branch:to:model_request"],
+          langgraph_path: ["__pregel_pull", "model_request"],
+          langgraph_checkpoint_ns:
+            "model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87",
+          __pregel_task_id: "task_123",
+          checkpoint_ns:
+            "model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87",
+          ls_provider: "openai",
+          ls_model_name: "gpt-4o-mini",
+          ls_model_type: "chat",
+          versions: {
+            "@langchain/core": "1.1.31",
+            "@langchain/openai": "1.2.13",
+          },
+        },
+      ],
+    });
+
+    const events = sent.filter(
+      (message): message is Record<string, unknown> =>
+        typeof message === "object" &&
+        message != null &&
+        (message as { type?: string }).type === "event"
+    );
+
+    expect(events.map((event) => event.params)).toEqual([
+      {
+        namespace: ["model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "message-start",
+          messageId: "chatcmpl-1",
+          metadata: {
+            provider: "openai",
+            model: "gpt-4o-mini",
+            modelType: "chat",
+            runId: "run_123",
+            threadId: "thread_123",
+          },
+        },
+      },
+      {
+        namespace: ["model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-start",
+          index: 0,
+          contentBlock: { type: "tool_call_chunk", args: "" },
+        },
+      },
+      {
+        namespace: ["model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-delta",
+          index: 0,
+          contentBlock: { type: "tool_call_chunk", args: "scrip" },
+        },
+      },
+    ]);
+  });
+
+  it("parses finalized OpenAI tool-call arguments before emitting protocol events", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["messages"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "messages|model_request:test",
+      data: [
+        {
+          id: "chatcmpl-final",
+          type: "ai",
+          content: "",
+          tool_call_chunks: [
+            {
+              name: "task",
+              args: "{\"description\":\"hi\"}",
+              id: "call_123",
+              index: 0,
+              type: "tool_call_chunk",
+            },
+          ],
+          additional_kwargs: {
+            stop_reason: "tool_calls",
+          },
+          response_metadata: {
+            finish_reason: "tool_calls",
+          },
+          tool_calls: [
+            {
+              index: 0,
+              id: "call_123",
+              type: "function",
+              function: {
+                name: "task",
+                arguments: "{\"description\":\"hi\"}",
+              },
+            },
+          ],
+          invalid_tool_calls: [],
+        },
+        {
+          langgraph_checkpoint_ns: "model_request:test",
+          ls_provider: "openai",
+        },
+      ],
+    });
+
+    const events = sent.filter(
+      (message): message is Record<string, unknown> =>
+        typeof message === "object" &&
+        message != null &&
+        (message as { type?: string }).type === "event"
+    );
+
+    expect(events.map((event) => event.params)).toEqual([
+      {
+        namespace: ["model_request:test"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "message-start",
+          messageId: "chatcmpl-final",
+          metadata: {
+            provider: "openai",
+          },
+        },
+      },
+      {
+        namespace: ["model_request:test"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-start",
+          index: 0,
+          contentBlock: {
+            type: "tool_call_chunk",
+            id: "call_123",
+            name: "task",
+            args: "",
+          },
+        },
+      },
+      {
+        namespace: ["model_request:test"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-delta",
+          index: 0,
+          contentBlock: {
+            type: "tool_call_chunk",
+            id: "call_123",
+            name: "task",
+            args: "{\"description\":\"hi\"}",
+          },
+        },
+      },
+      {
+        namespace: ["model_request:test"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "content-block-finish",
+          index: 0,
+          contentBlock: {
+            type: "tool_call",
+            id: "call_123",
+            name: "task",
+            args: {
+              description: "hi",
+            },
+          },
+        },
+      },
+      {
+        namespace: ["model_request:test"],
+        timestamp: expect.any(Number),
+        data: {
+          event: "message-finish",
+          reason: "tool_use",
+          metadata: {
+            finish_reason: "tool_calls",
+          },
+        },
+      },
+    ]);
+  });
+
+  it("normalizes message payloads inside values snapshots", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["values"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "values",
+      data: {
+        messages: [
           {
-            id: "message_1",
-            type: "ai",
-            content: "Hel",
+            id: "human_1",
+            type: "human",
+            content: "Break down a smoke test plan.",
+            additional_kwargs: {},
+            response_metadata: {},
           },
           {
-            langgraph_checkpoint_ns: "tools:call_123|model:worker_456",
+            id: "ai_1",
+            type: "ai",
+            content: "",
+            additional_kwargs: {
+              tool_calls: [
+                {
+                  id: "call_123",
+                  type: "function",
+                  function: {
+                    name: "task",
+                    arguments: "{\"description\":\"Review risks\"}",
+                  },
+                },
+              ],
+            },
+            response_metadata: {
+              model_provider: "openai",
+              usage: {
+                input_tokens: 5,
+                output_tokens: 2,
+                total_tokens: 7,
+              },
+            },
+            tool_call_chunks: [
+              {
+                id: "call_123",
+                name: "task",
+                args: "{\"description\":\"Review risks\"}",
+                index: 0,
+                type: "tool_call_chunk",
+              },
+            ],
+            tool_calls: [],
+            invalid_tool_calls: [],
+          },
+          {
+            id: "tool_1",
+            type: "tool",
+            name: "task",
+            tool_call_id: "call_123",
+            content: "Risk review complete.",
+            additional_kwargs: {},
+            response_metadata: {},
+            status: "success",
           },
         ],
+        nested: {
+          messages: [
+            {
+              id: "ai_2",
+              type: "assistant",
+              content: "Nested result",
+              additional_kwargs: {},
+              response_metadata: {},
+              invalid_tool_calls: [
+                {
+                  id: "bad_1",
+                  args: "{",
+                  error: "Malformed args.",
+                  type: "invalid_tool_call",
+                },
+              ],
+            },
+          ],
+        },
       },
     });
+
+    expect(sent).toEqual([
+      {
+        type: "event",
+        eventId: expect.any(String),
+        seq: expect.any(Number),
+        method: "values",
+        params: {
+          namespace: [],
+          timestamp: expect.any(Number),
+          data: {
+            messages: [
+              {
+                id: "human_1",
+                type: "human",
+                content: "Break down a smoke test plan.",
+              },
+              {
+                id: "ai_1",
+                type: "ai",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "call_123",
+                    name: "task",
+                    args: {
+                      description: "Review risks",
+                    },
+                    type: "tool_call",
+                  },
+                ],
+              },
+              {
+                id: "tool_1",
+                type: "tool",
+                name: "task",
+                tool_call_id: "call_123",
+                content: "Risk review complete.",
+                status: "success",
+              },
+            ],
+            nested: {
+              messages: [
+                {
+                  id: "ai_2",
+                  type: "ai",
+                  content: "Nested result",
+                  invalid_tool_calls: [
+                    {
+                      id: "bad_1",
+                      args: "{",
+                      error: "Malformed args.",
+                      type: "invalid_tool_call",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    ]);
   });
 
   it("emits synthetic subagent events from root task updates", async () => {
@@ -384,15 +817,24 @@ describe("RunProtocolSession", () => {
           method: "messages",
           params: expect.objectContaining({
             namespace: ["tools:call_123"],
-            data: [
-              expect.objectContaining({
-                type: "human",
-                content: "Research protocol details",
-              }),
-              expect.objectContaining({
-                checkpoint_ns: "tools:call_123",
-              }),
-            ],
+            data: expect.objectContaining({
+              event: "message-start",
+              messageId: "subagent:call_123:human",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          method: "messages",
+          params: expect.objectContaining({
+            namespace: ["tools:call_123"],
+            data: expect.objectContaining({
+              event: "content-block-delta",
+              index: 0,
+              contentBlock: {
+                type: "text",
+                text: "Research protocol details",
+              },
+            }),
           }),
         }),
         expect.objectContaining({
