@@ -11,6 +11,7 @@ interface Props {
   onTaskEvent?: (...args: unknown[]) => void;
   onUpdateEvent?: (...args: unknown[]) => void;
   onCustomEvent?: (...args: unknown[]) => void;
+  onLangChainEvent?: (...args: unknown[]) => void;
   fetchStateHistory?: boolean | { limit: number };
 }
 
@@ -24,6 +25,7 @@ export function BasicStream({
   onTaskEvent,
   onUpdateEvent,
   onCustomEvent,
+  onLangChainEvent,
   fetchStateHistory,
 }: Props) {
   const thread = useStream<{ messages: Message[] }>({
@@ -34,6 +36,7 @@ export function BasicStream({
     onTaskEvent,
     onUpdateEvent,
     onCustomEvent,
+    onLangChainEvent,
     fetchStateHistory,
   });
 

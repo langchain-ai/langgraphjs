@@ -53,6 +53,7 @@ import {
 import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
 import { useControllableThreadId } from "./thread.js";
 import type { UseStream, SubmitOptions } from "./types.js";
+import { createStreamRuntime } from "./stream-runtime/index.js";
 
 function getFetchHistoryKey(
   client: Client,
@@ -255,6 +256,16 @@ export function useStreamLGP<
       options.callerOptions,
       options.defaultHeaders,
     ]
+  );
+  const { runtime } = useMemo(
+    () =>
+      createStreamRuntime<
+        StateType,
+        UpdateType,
+        ConfigurableType,
+        CustomType
+      >(client, options.streamProtocol),
+    [client, options.streamProtocol]
   );
 
   const [messageManager] = useState(() => new MessageTupleManager());
@@ -582,28 +593,20 @@ export function useStreamLGP<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
-        return client.runs.stream(usableThreadId, options.assistantId, {
-          input: values as Record<string, unknown>,
-          config: submitOptions?.config,
-          context: submitOptions?.context,
-          command: submitOptions?.command,
-
-          interruptBefore: submitOptions?.interruptBefore,
-          interruptAfter: submitOptions?.interruptAfter,
-          metadata: submitOptions?.metadata,
-          multitaskStrategy: submitOptions?.multitaskStrategy,
-          onCompletion: submitOptions?.onCompletion,
-          onDisconnect:
-            submitOptions?.onDisconnect ??
-            (streamResumable ? "continue" : "cancel"),
-
+        return await runtime.submit({
+          assistantId: options.assistantId,
+          threadId: usableThreadId,
+          input: values,
+          submitOptions: {
+            ...submitOptions,
+            checkpoint,
+            onDisconnect:
+              submitOptions?.onDisconnect ??
+              (streamResumable ? "continue" : "cancel"),
+            streamResumable,
+          },
           signal,
-
-          checkpoint,
           streamMode,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
-          streamResumable,
-          durability: submitOptions?.durability,
           onRunCreated(params) {
             callbackMeta = {
               run_id: params.run_id,
@@ -617,9 +620,7 @@ export function useStreamLGP<
 
             options.onCreated?.(callbackMeta);
           },
-        }) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
+        });
       },
       {
         getMessages,
@@ -774,13 +775,13 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
-        const stream = client.runs.joinStream(threadId, runId, {
+        const stream = (await runtime.join({
+          threadId,
+          runId,
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
-        }) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
+        })) as AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>;
 
         return joinOptions?.filter != null
           ? filterStream(stream, joinOptions.filter)
