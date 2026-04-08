@@ -110,6 +110,8 @@ export class RunProtocolSession {
     this.messageProcessor = new SessionMessageProcessor({
       ensureNamespaces: async (namespace) => this.ensureNamespaces(namespace),
       pushEvent: async (event) => this.pushEvent(event),
+      emitLifecycleEvent: async (namespace, status, options) =>
+        this.emitNamespaceLifecycle(namespace, status, options),
       createMessagesEvent: (namespace, data) =>
         this.createEvent("messages", namespace, data),
       createValuesEvent: (namespace, data) =>
@@ -317,13 +319,9 @@ export class RunProtocolSession {
     if (status === "running") return;
 
     this.terminalLifecycleEmitted = true;
-    this.setNamespaceInfo([], status, { graphName: this.rootGraphName });
-    await this.pushEvent(
-      this.createEvent("lifecycle", [], {
-        event: status,
-        graphName: this.rootGraphName,
-      })
-    );
+    await this.emitNamespaceLifecycle([], status, {
+      graphName: this.rootGraphName,
+    });
   }
 
   /**
@@ -336,14 +334,10 @@ export class RunProtocolSession {
 
     if (event.event === "error") {
       this.terminalLifecycleEmitted = true;
-      this.setNamespaceInfo([], "failed", { graphName: this.rootGraphName });
-      await this.pushEvent(
-        this.createEvent("lifecycle", [], {
-          event: "failed",
-          graphName: this.rootGraphName,
-          error: serializeError(event.data).message,
-        })
-      );
+      await this.emitNamespaceLifecycle([], "failed", {
+        graphName: this.rootGraphName,
+        error: serializeError(event.data).message,
+      });
       return;
     }
 
@@ -486,6 +480,47 @@ export class RunProtocolSession {
         existing?.graphName ??
         (namespace.length === 0 ? this.rootGraphName : guessGraphName(namespace)),
     });
+  }
+
+  /**
+   * Updates cached lifecycle state for a namespace and emits the matching event.
+     *
+   * @param namespace - Namespace to update.
+   * @param status - Lifecycle status to emit.
+   * @param options - Optional graph name override and error payload.
+   */
+  private async emitNamespaceLifecycle(
+    namespace: Namespace,
+    status: NamespaceInfo["status"],
+    options?: { graphName?: string; error?: string }
+  ) {
+    const key = toNamespaceKey(namespace);
+    if (namespace.length > 0 && !this.namespaces.has(key)) {
+      await this.ensureNamespaces(namespace);
+    }
+
+    const current = this.namespaces.get(key);
+    const graphName =
+      options?.graphName ??
+      current?.graphName ??
+      (namespace.length === 0 ? this.rootGraphName : guessGraphName(namespace));
+
+    if (
+      current?.status === status &&
+      current.graphName === graphName &&
+      options?.error == null
+    ) {
+      return;
+    }
+
+    this.setNamespaceInfo(namespace, status, { graphName });
+    await this.pushEvent(
+      this.createEvent("lifecycle", namespace, {
+        event: status,
+        graphName,
+        ...(options?.error != null ? { error: options.error } : {}),
+      })
+    );
   }
 
   private createEvent(

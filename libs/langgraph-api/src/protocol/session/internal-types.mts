@@ -102,6 +102,11 @@ export type ProtocolEventDataMap = {
 export type MessageProcessorCallbacks = {
   ensureNamespaces: (namespace: Namespace) => Promise<void>;
   pushEvent: (event: ProtocolEvent) => Promise<void>;
+  emitLifecycleEvent: (
+    namespace: Namespace,
+    status: AgentStatus,
+    options?: { graphName?: string; error?: string }
+  ) => Promise<void>;
   createMessagesEvent: (
     namespace: Namespace,
     data: ProtocolEventDataMap["messages"]

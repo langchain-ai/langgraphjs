@@ -754,7 +754,7 @@ describe("RunProtocolSession", () => {
       JSON.stringify({
         id: 1,
         method: "subscription.subscribe",
-        params: { channels: ["messages", "values", "updates"] },
+        params: { channels: ["lifecycle", "messages", "values", "updates"] },
       })
     );
     sent.length = 0;
@@ -814,6 +814,16 @@ describe("RunProtocolSession", () => {
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          method: "lifecycle",
+          params: expect.objectContaining({
+            namespace: ["tools:call_123"],
+            data: {
+              event: "spawned",
+              graphName: "tools",
+            },
+          }),
+        }),
+        expect.objectContaining({
           method: "messages",
           params: expect.objectContaining({
             namespace: ["tools:call_123"],
@@ -853,6 +863,16 @@ describe("RunProtocolSession", () => {
                 }),
               ],
             }),
+          }),
+        }),
+        expect.objectContaining({
+          method: "lifecycle",
+          params: expect.objectContaining({
+            namespace: ["tools:call_123"],
+            data: {
+              event: "completed",
+              graphName: "tools",
+            },
           }),
         }),
       ])

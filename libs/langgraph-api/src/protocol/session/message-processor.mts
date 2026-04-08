@@ -176,6 +176,10 @@ export class SessionMessageProcessor {
             messages: syntheticState.messages,
           })
         );
+        await this.callbacks.emitLifecycleEvent(
+          syntheticState.namespace,
+          rawMessage.status === "error" ? "failed" : "completed"
+        );
       }
     }
   }
