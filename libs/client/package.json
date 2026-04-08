@@ -1,7 +1,7 @@
 {
   "name": "@langchain/client",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "Typed runtime client for the LangChain agent streaming protocol",
   "main": "./dist/index.js",

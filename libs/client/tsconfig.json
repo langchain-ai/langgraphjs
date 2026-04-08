@@ -10,13 +10,9 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "skipLibCheck": true,
-    "noEmitOnError": true,
-    "types": [
-      "vitest/globals"
-    ]
+    "noEmitOnError": true
   },
   "include": [
-    "src/**/*.ts",
-    "test/**/*.ts"
+    "src/**/*.ts"
   ]
 }
