@@ -248,6 +248,15 @@ export function getMessagesMetadataMap<
     options.initialValues ??
     ({} as StateType);
 
+  // Pre-build checkpoint ID → state map for O(1) lookups
+  const historyByCheckpointId = new Map(
+    (options.history ?? []).flatMap((s) =>
+      s.checkpoint?.checkpoint_id != null
+        ? [[s.checkpoint.checkpoint_id, s] as const]
+        : []
+    )
+  );
+
   const alreadyShown = new Set<string>();
   return options.getMessages(currentValues).map((message, idx) => {
     const messageId = message.id ?? idx;
@@ -270,6 +279,32 @@ export function getMessagesMetadataMap<
         : undefined;
     if (!branch?.branch?.length) branch = undefined;
 
+    // Compute the correct fork parent checkpoint BEFORE dedupe,
+    // since dedupe hides branch UI but fork point must remain valid.
+    // Start from the checkpoint directly before the message first appeared.
+    // If that checkpoint is itself part of this message's branch path, it is
+    // an intermediate same-message fork artifact (for example an INPUT_CP
+    // inserted by the server). Climb until we leave the message's own branch
+    // path so repeated edits stay flat, while later-turn edits keep the
+    // inherited outer-branch context intact.
+    let forkParentCheckpoint = firstSeenState?.parent_checkpoint ?? undefined;
+    if (forkParentCheckpoint?.checkpoint_id && branch?.branch) {
+      const branchPathIds = new Set(
+        branch.branch.split(PATH_SEP).filter((id) => id.length > 0)
+      );
+
+      while (
+        forkParentCheckpoint?.checkpoint_id &&
+        branchPathIds.has(forkParentCheckpoint.checkpoint_id)
+      ) {
+        const forkParentState = historyByCheckpointId.get(
+          forkParentCheckpoint.checkpoint_id
+        );
+        if (forkParentState?.parent_checkpoint == null) break;
+        forkParentCheckpoint = forkParentState.parent_checkpoint;
+      }
+    }
+
     // serialize branches
     const optionsShown = branch?.branchOptions?.flat(2).join(",");
     if (optionsShown) {
@@ -280,6 +315,7 @@ export function getMessagesMetadataMap<
     return {
       messageId: messageId.toString(),
       firstSeenState,
+      forkParentCheckpoint,
 
       branch: branch?.branch,
       branchOptions: branch?.branchOptions,

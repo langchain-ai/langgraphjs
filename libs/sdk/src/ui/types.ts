@@ -958,6 +958,17 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
   branchOptions: string[] | undefined;
 
   /**
+   * The checkpoint to use as the parent when forking or editing this message.
+   * This resolves the stable fork point for the message by skipping
+   * same-message intermediate checkpoints created by the server during fork
+   * operations, while preserving inherited outer-branch context for later-turn
+   * edits and regenerations.
+   *
+   * Usage: `submit({ messages: [...] }, { checkpoint: metadata.forkParentCheckpoint })`
+   */
+  forkParentCheckpoint?: Checkpoint;
+
+  /**
    * Metadata sent alongside the message during run streaming.
    * @remarks This metadata only exists temporarily in browser memory during streaming and is not persisted after completion.
    */
