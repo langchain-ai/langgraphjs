@@ -10,6 +10,7 @@ import type {
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
+import { extractTextContent } from "./protocol/session/event-normalizers.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -48,6 +49,41 @@ interface DebugCheckpoint {
 type LangGraphDebugChunk =
   | DebugChunk<"checkpoint", DebugCheckpoint>
   | DebugChunk<"task_result", DebugTask>;
+
+type SyntheticSubagentRegistration = {
+  toolCallId: string;
+  description: string;
+  completed: boolean;
+  namespace: string[];
+};
+
+const SYNTHETIC_SUBAGENT_TYPE = "subgraph-worker";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value != null;
+
+const getMessagesFromChunk = (
+  mode: LangGraphStreamMode,
+  chunk: unknown
+): Array<Record<string, unknown>> => {
+  if (mode === "messages" && isRecord(chunk)) {
+    return [chunk];
+  }
+
+  if (mode === "values" && isRecord(chunk) && Array.isArray(chunk.messages)) {
+    return chunk.messages.filter(isRecord);
+  }
+
+  if (mode === "updates" && isRecord(chunk)) {
+    return Object.values(chunk).flatMap((value) =>
+      isRecord(value) && Array.isArray(value.messages)
+        ? value.messages.filter(isRecord)
+        : []
+    );
+  }
+
+  return [];
+};
 
 const isRunnableConfig = (config: unknown): config is RunnableConfig => {
   if (typeof config !== "object" || config == null) return false;
@@ -256,6 +292,11 @@ export async function* streamState(
 
   const messages: Record<string, BaseMessageChunk> = {};
   const completedIds = new Set<string>();
+  const syntheticSubagentsByNamespace = new Map<
+    string,
+    SyntheticSubagentRegistration
+  >();
+  let syntheticSubagentCount = 0;
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
@@ -267,6 +308,7 @@ export async function* streamState(
       const [ns, mode, chunk] = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
       ) as [string[] | null, LangGraphStreamMode, unknown];
+      const syntheticChunks: Array<{ event: string; data: unknown }> = [];
       console.log(
         "[streamState on_chain_stream]",
         JSON.stringify({
@@ -276,6 +318,91 @@ export async function* streamState(
           mode,
         })
       );
+
+      if (kwargs.subgraphs && ns?.length) {
+        const sourceMessages = getMessagesFromChunk(mode, chunk);
+        if (sourceMessages.length > 0) {
+          const syntheticNamespaceKey = ns.join("\0");
+          let syntheticSubagent =
+            syntheticSubagentsByNamespace.get(syntheticNamespaceKey);
+
+          for (const message of sourceMessages) {
+            const content = extractTextContent(message.content);
+            if (
+              message.type === "human" &&
+              typeof content === "string" &&
+              content.length > 0 &&
+              syntheticSubagent == null
+            ) {
+              syntheticSubagent = {
+                toolCallId: `synthetic_subagent_${syntheticSubagentCount += 1}`,
+                description: content,
+                completed: false,
+                namespace: [...ns],
+              };
+              syntheticSubagentsByNamespace.set(
+                syntheticNamespaceKey,
+                syntheticSubagent
+              );
+
+              syntheticChunks.push({
+                event: "updates",
+                data: {
+                  [`synthetic_subagent_${syntheticSubagent.toolCallId}`]: {
+                    messages: [
+                      {
+                        id: `synthetic_ai_${syntheticSubagent.toolCallId}`,
+                        type: "ai",
+                        content: "",
+                        tool_calls: [
+                          {
+                            id: syntheticSubagent.toolCallId,
+                            name: "task",
+                            args: {
+                              description: syntheticSubagent.description,
+                              subagent_type: SYNTHETIC_SUBAGENT_TYPE,
+                            },
+                            type: "tool_call",
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              });
+              continue;
+            }
+
+            if (
+              syntheticSubagent != null &&
+              !syntheticSubagent.completed &&
+              message.type === "ai" &&
+              typeof content === "string" &&
+              content.length > 0 &&
+              (!Array.isArray(message.tool_calls) || message.tool_calls.length === 0)
+            ) {
+              syntheticSubagent.completed = true;
+              syntheticChunks.push({
+                event: "updates",
+                data: {
+                  [`synthetic_result_${syntheticSubagent.toolCallId}`]: {
+                    messages: [
+                      {
+                        id: `synthetic_tool_${syntheticSubagent.toolCallId}`,
+                        type: "tool",
+                        name: "task",
+                        tool_call_id: syntheticSubagent.toolCallId,
+                        content,
+                        status: "success",
+                      },
+                    ],
+                  },
+                },
+              });
+            }
+          }
+        }
+      }
 
       // Listen for debug events and capture checkpoint
       let data: unknown = chunk;
@@ -303,6 +430,12 @@ export async function* streamState(
           options?.onTaskResult?.(debugTask);
         }
         data = debugTask;
+      }
+
+      if (userStreamMode.includes("updates")) {
+        for (const syntheticChunk of syntheticChunks) {
+          yield syntheticChunk;
+        }
       }
 
       if (mode === "messages") {
