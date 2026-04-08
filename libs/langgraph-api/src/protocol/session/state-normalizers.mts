@@ -1,4 +1,6 @@
 import type {
+  ContentBlockStartData,
+  ContentBlockFinishData,
   MessageFinishData,
   UpdatesEvent,
 } from "../types.mjs";
@@ -21,6 +23,160 @@ const PROTOCOL_STATE_MESSAGE_TYPES = new Set([
   "function",
   "remove",
 ]);
+
+const MIME_TYPE_BY_AUDIO_FORMAT: Record<string, string> = {
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  pcm16: "audio/wav",
+  pcm: "audio/wav",
+  opus: "audio/opus",
+  aac: "audio/aac",
+  flac: "audio/flac",
+};
+
+const PROTOCOL_CONTENT_BLOCK_TYPES = new Set([
+  "text",
+  "reasoning",
+  "tool_call",
+  "tool_call_chunk",
+  "invalid_tool_call",
+  "server_tool_call",
+  "server_tool_call_chunk",
+  "server_tool_call_result",
+  "image",
+  "audio",
+  "video",
+  "file",
+  "non_standard",
+]);
+
+const normalizeAudioBlockFromAdditionalKwargs = (
+  additionalKwargs: Record<string, unknown> | undefined
+) => {
+  const audio = isRecord(additionalKwargs?.audio) ? additionalKwargs.audio : undefined;
+  if (audio == null) return undefined;
+
+  const data = typeof audio.data === "string" ? audio.data : undefined;
+  const url = typeof audio.url === "string" ? audio.url : undefined;
+  if (data == null && url == null) return undefined;
+
+  const format =
+    typeof audio.format === "string"
+      ? audio.format.toLowerCase()
+      : typeof audio.mimeType === "string"
+        ? undefined
+        : "wav";
+
+  return {
+    type: "audio",
+    ...(typeof audio.id === "string" ? { id: audio.id } : {}),
+    ...(url != null ? { url } : {}),
+    ...(data != null ? { data } : {}),
+    ...(typeof audio.mimeType === "string"
+      ? { mimeType: audio.mimeType }
+      : format != null && MIME_TYPE_BY_AUDIO_FORMAT[format] != null
+        ? { mimeType: MIME_TYPE_BY_AUDIO_FORMAT[format] }
+        : {}),
+    ...(typeof audio.transcript === "string" ? { transcript: audio.transcript } : {}),
+  } satisfies ContentBlockStartData["contentBlock"];
+};
+
+export const normalizeProtocolContentBlock = (
+  value: unknown
+): ContentBlockStartData["contentBlock"] | undefined => {
+  if (!isRecord(value) || typeof value.type !== "string") return undefined;
+
+  if (PROTOCOL_CONTENT_BLOCK_TYPES.has(value.type)) {
+    return value as ContentBlockStartData["contentBlock"];
+  }
+
+  if (value.type === "image_url") {
+    const rawImage = value.image_url;
+    if (typeof rawImage === "string") {
+      return { type: "image", url: rawImage };
+    }
+    if (isRecord(rawImage) && typeof rawImage.url === "string") {
+      return {
+        type: "image",
+        url: rawImage.url,
+      };
+    }
+    return undefined;
+  }
+
+  if (value.type === "input_audio") {
+    const rawAudio = isRecord(value.input_audio) ? value.input_audio : undefined;
+    if (rawAudio == null) return undefined;
+    return {
+      type: "audio",
+      ...(typeof rawAudio.data === "string" ? { data: rawAudio.data } : {}),
+      ...(typeof rawAudio.mimeType === "string"
+        ? { mimeType: rawAudio.mimeType }
+        : {}),
+    };
+  }
+
+  return {
+    type: "non_standard",
+    value: { ...value },
+  };
+};
+
+export const normalizeProtocolFinalizedContentBlock = (
+  value: unknown
+): ContentBlockFinishData["contentBlock"] | undefined => {
+  const block = normalizeProtocolContentBlock(value);
+  if (block == null) return undefined;
+  if (block.type === "tool_call_chunk" || block.type === "server_tool_call_chunk") {
+    return undefined;
+  }
+  return block as ContentBlockFinishData["contentBlock"];
+};
+
+export const normalizeProtocolMessageContent = (
+  content: unknown,
+  options?: { additionalKwargs?: Record<string, unknown> }
+) => {
+  if (typeof content === "string") {
+    const audioBlock = normalizeAudioBlockFromAdditionalKwargs(
+      options?.additionalKwargs
+    );
+    if (audioBlock == null) return content;
+
+    const blocks: ContentBlockStartData["contentBlock"][] = [];
+    if (content.length > 0) {
+      blocks.push({ type: "text", text: content });
+    }
+    blocks.push(audioBlock);
+    return blocks;
+  }
+
+  if (!Array.isArray(content)) {
+    const audioBlock = normalizeAudioBlockFromAdditionalKwargs(
+      options?.additionalKwargs
+    );
+    return audioBlock != null ? [audioBlock] : content;
+  }
+
+  const blocks: ContentBlockStartData["contentBlock"][] = [];
+  for (const entry of content) {
+    if (typeof entry === "string") {
+      blocks.push({ type: "text", text: entry });
+      continue;
+    }
+    const normalized = normalizeProtocolContentBlock(entry);
+    if (normalized != null) {
+      blocks.push(normalized);
+    }
+  }
+
+  const audioBlock = normalizeAudioBlockFromAdditionalKwargs(options?.additionalKwargs);
+  if (audioBlock != null && !blocks.some((block) => block.type === "audio")) {
+    blocks.push(audioBlock);
+  }
+
+  return blocks.length > 0 ? blocks : content;
+};
 
 /**
  * Creates the initial accumulator for a streamed message.
@@ -283,9 +439,15 @@ export const normalizeProtocolStateMessage = (
   const type = normalizeProtocolStateMessageType(value.type);
   if (type == null) return value;
 
+  const additionalKwargs = isRecord(value.additional_kwargs)
+    ? value.additional_kwargs
+    : undefined;
+
   const message: Record<string, unknown> = {
     type,
-    content: "content" in value ? value.content : "",
+    content: normalizeProtocolMessageContent("content" in value ? value.content : "", {
+      additionalKwargs: type === "ai" ? additionalKwargs : undefined,
+    }),
   };
 
   if (typeof value.id === "string") {
@@ -314,9 +476,6 @@ export const normalizeProtocolStateMessage = (
   }
 
   if (type === "ai") {
-    const additionalKwargs = isRecord(value.additional_kwargs)
-      ? value.additional_kwargs
-      : undefined;
     const rawToolCalls =
       Array.isArray(value.tool_calls) && value.tool_calls.length > 0
         ? value.tool_calls

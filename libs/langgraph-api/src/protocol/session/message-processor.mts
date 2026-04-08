@@ -14,7 +14,6 @@ import type {
 import { isRecord } from "./internal-types.mjs";
 import {
   extractTextContent,
-  safeStringify,
 } from "./event-normalizers.mjs";
 import {
   toProtocolMessageMetadata,
@@ -23,6 +22,8 @@ import {
 import {
   createEmptyMessageState,
   getTupleFinishData,
+  normalizeProtocolFinalizedContentBlock,
+  normalizeProtocolMessageContent,
 } from "./state-normalizers.mjs";
 import {
   finalizeTupleToolCall,
@@ -124,7 +125,7 @@ export class SessionMessageProcessor {
           };
           this.syntheticSubagents.set(toolCallId, syntheticState);
 
-          await this.emitSyntheticTextMessage(
+          await this.emitSyntheticMessage(
             toolNamespace,
             humanMessage.id,
             description
@@ -149,16 +150,27 @@ export class SessionMessageProcessor {
           continue;
         }
 
+        const artifactMessage = isRecord(rawMessage.artifact)
+          ? rawMessage.artifact
+          : undefined;
+        const aiMessageContent = normalizeProtocolMessageContent(
+          artifactMessage != null && "content" in artifactMessage
+            ? artifactMessage.content
+            : rawMessage.content,
+          {
+            additionalKwargs: isRecord(artifactMessage?.additional_kwargs)
+              ? artifactMessage.additional_kwargs
+              : undefined,
+          }
+        );
+
         const aiMessage = {
           id:
             typeof rawMessage.id === "string"
               ? `subagent:${rawMessage.id}`
               : `subagent:${rawMessage.tool_call_id}:ai`,
           type: "ai",
-          content:
-            typeof rawMessage.content === "string"
-              ? rawMessage.content
-              : safeStringify(rawMessage.content),
+          content: aiMessageContent,
           additional_kwargs: {},
           response_metadata: {},
         };
@@ -166,10 +178,10 @@ export class SessionMessageProcessor {
         syntheticState.messages.push(aiMessage);
         syntheticState.completed = true;
 
-        await this.emitSyntheticTextMessage(
+        await this.emitSyntheticMessage(
           syntheticState.namespace,
           aiMessage.id,
-          aiMessage.content as string
+          aiMessage.content
         );
         await this.callbacks.pushEvent(
           this.callbacks.createValuesEvent(syntheticState.namespace, {
@@ -214,7 +226,12 @@ export class SessionMessageProcessor {
       if (!isRecord(rawMessage) || typeof rawMessage.id !== "string") continue;
 
       const messageId = rawMessage.id;
-      const text = extractTextContent(rawMessage.content);
+      const normalizedContent = normalizeProtocolMessageContent(rawMessage.content, {
+        additionalKwargs: isRecord(rawMessage.additional_kwargs)
+          ? rawMessage.additional_kwargs
+          : undefined,
+      });
+      const text = extractTextContent(normalizedContent);
       const state =
         this.messageState.get(messageId) ?? createEmptyMessageState();
       const messageNamespace =
@@ -257,6 +274,27 @@ export class SessionMessageProcessor {
         state.lastText = text;
       }
 
+      if (Array.isArray(normalizedContent)) {
+        for (let offset = 0; offset < normalizedContent.length; offset += 1) {
+          const block = normalizedContent[offset];
+          if (!isRecord(block)) continue;
+          const index = typeof block.index === "number" ? block.index : offset;
+          if (block.type === "text" || block.type === "reasoning") {
+            continue;
+          }
+          const normalizedBlock = normalizeProtocolFinalizedContentBlock(block);
+          if (normalizedBlock == null) {
+            continue;
+          }
+          await this.emitTupleFinalizedBlock(
+            messageNamespace,
+            state,
+            index,
+            normalizedBlock
+          );
+        }
+      }
+
       if (method === "messages/complete" && !state.finished) {
         await this.callbacks.pushEvent(
           this.callbacks.createMessagesEvent(messageNamespace, {
@@ -285,10 +323,10 @@ export class SessionMessageProcessor {
    * @param messageId - Synthetic message identifier.
    * @param content - Full text content to emit.
    */
-  private async emitSyntheticTextMessage(
+  private async emitSyntheticMessage(
     namespace: Namespace,
     messageId: string,
-    content: string
+    content: unknown
   ) {
     if (namespace.length > 0) {
       await this.callbacks.ensureNamespaces(namespace);
@@ -300,29 +338,78 @@ export class SessionMessageProcessor {
         messageId,
       } satisfies MessageStartData)
     );
-    await this.callbacks.pushEvent(
-      this.callbacks.createMessagesEvent(namespace, {
-        event: "content-block-start",
-        index: 0,
-        contentBlock: { type: "text", text: "" },
-      } satisfies ContentBlockStartData)
-    );
-    if (content.length > 0) {
+
+    const normalizedContent = normalizeProtocolMessageContent(content);
+    if (typeof normalizedContent === "string") {
       await this.callbacks.pushEvent(
         this.callbacks.createMessagesEvent(namespace, {
-          event: "content-block-delta",
+          event: "content-block-start",
           index: 0,
-          contentBlock: { type: "text", text: content },
-        } satisfies ContentBlockDeltaData)
+          contentBlock: { type: "text", text: "" },
+        } satisfies ContentBlockStartData)
       );
+      if (normalizedContent.length > 0) {
+        await this.callbacks.pushEvent(
+          this.callbacks.createMessagesEvent(namespace, {
+            event: "content-block-delta",
+            index: 0,
+            contentBlock: { type: "text", text: normalizedContent },
+          } satisfies ContentBlockDeltaData)
+        );
+      }
+      await this.callbacks.pushEvent(
+        this.callbacks.createMessagesEvent(namespace, {
+          event: "content-block-finish",
+          index: 0,
+          contentBlock: { type: "text", text: normalizedContent },
+        } satisfies ContentBlockFinishData)
+      );
+    } else if (Array.isArray(normalizedContent)) {
+      for (let offset = 0; offset < normalizedContent.length; offset += 1) {
+        const rawBlock = normalizedContent[offset];
+        const block = normalizeProtocolFinalizedContentBlock(rawBlock);
+        if (block == null) continue;
+
+        const index = typeof block.index === "number" ? block.index : offset;
+        await this.callbacks.pushEvent(
+          this.callbacks.createMessagesEvent(namespace, {
+            event: "content-block-start",
+            index,
+            contentBlock:
+              block.type === "text"
+                ? { type: "text", text: "" }
+                : block.type === "reasoning"
+                  ? { type: "reasoning", reasoning: "" }
+                  : block,
+          } satisfies ContentBlockStartData)
+        );
+        if (block.type === "text" && block.text.length > 0) {
+          await this.callbacks.pushEvent(
+            this.callbacks.createMessagesEvent(namespace, {
+              event: "content-block-delta",
+              index,
+              contentBlock: { type: "text", text: block.text },
+            } satisfies ContentBlockDeltaData)
+          );
+        } else if (block.type === "reasoning" && block.reasoning.length > 0) {
+          await this.callbacks.pushEvent(
+            this.callbacks.createMessagesEvent(namespace, {
+              event: "content-block-delta",
+              index,
+              contentBlock: { type: "reasoning", reasoning: block.reasoning },
+            } satisfies ContentBlockDeltaData)
+          );
+        }
+        await this.callbacks.pushEvent(
+          this.callbacks.createMessagesEvent(namespace, {
+            event: "content-block-finish",
+            index,
+            contentBlock: block,
+          } satisfies ContentBlockFinishData)
+        );
+      }
     }
-    await this.callbacks.pushEvent(
-      this.callbacks.createMessagesEvent(namespace, {
-        event: "content-block-finish",
-        index: 0,
-        contentBlock: { type: "text", text: content },
-      } satisfies ContentBlockFinishData)
-    );
+
     await this.callbacks.pushEvent(
       this.callbacks.createMessagesEvent(namespace, {
         event: "message-finish",
@@ -405,6 +492,45 @@ export class SessionMessageProcessor {
             : { type: "reasoning", reasoning: value },
       } satisfies ContentBlockDeltaData)
     );
+  }
+
+  /**
+   * Emits a finalized non-text content block that does not stream via deltas.
+   *
+   * @param namespace - Namespace receiving the block.
+   * @param state - Mutable message accumulator.
+   * @param index - Content block index.
+   * @param contentBlock - Finalized protocol content block.
+   */
+  private async emitTupleFinalizedBlock(
+    namespace: Namespace,
+    state: MessageState,
+    index: number,
+    contentBlock: ContentBlockFinishData["contentBlock"]
+  ) {
+    const existing = state.blocks.get(index);
+    if (existing != null) return;
+
+    await this.callbacks.pushEvent(
+      this.callbacks.createMessagesEvent(namespace, {
+        event: "content-block-start",
+        index,
+        contentBlock,
+      } satisfies ContentBlockStartData)
+    );
+    await this.callbacks.pushEvent(
+      this.callbacks.createMessagesEvent(namespace, {
+        event: "content-block-finish",
+        index,
+        contentBlock,
+      } satisfies ContentBlockFinishData)
+    );
+    state.blocks.set(index, {
+      type: "finalized",
+      value: "",
+      finished: true,
+      contentBlock,
+    });
   }
 
   /**
@@ -494,6 +620,8 @@ export class SessionMessageProcessor {
         contentBlock = { type: "text", text: block.value };
       } else if (block.type === "reasoning") {
         contentBlock = { type: "reasoning", reasoning: block.value };
+      } else if (block.type === "finalized" && block.contentBlock != null) {
+        contentBlock = block.contentBlock;
       } else {
         contentBlock = finalizeTupleToolCall(
           block,
@@ -592,6 +720,17 @@ export class SessionMessageProcessor {
             index,
             "reasoning",
             block.reasoning
+          );
+        } else {
+          const normalizedBlock = normalizeProtocolFinalizedContentBlock(block);
+          if (normalizedBlock == null) {
+            continue;
+          }
+          await this.emitTupleFinalizedBlock(
+            resolvedNamespace,
+            state,
+            index,
+            normalizedBlock
           );
         }
       }

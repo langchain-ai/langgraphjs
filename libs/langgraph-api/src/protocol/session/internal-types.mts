@@ -1,5 +1,6 @@
 import type {
   AgentStatus,
+  ContentBlockFinishData,
   MessageMetadata,
   Namespace,
   ProtocolEvent,
@@ -43,11 +44,12 @@ export type NamespaceInfo = {
  * Incremental state for a single streamed content block.
  */
 export type MessageBlockState = {
-  type: "text" | "reasoning" | "tool_call_chunk";
+  type: "text" | "reasoning" | "tool_call_chunk" | "finalized";
   value: string;
   finished: boolean;
   id?: string;
   name?: string;
+  contentBlock?: ContentBlockFinishData["contentBlock"];
 };
 
 /**
