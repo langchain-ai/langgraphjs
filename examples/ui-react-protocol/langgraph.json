@@ -4,7 +4,8 @@
     "stategraph": "./src/agents/basic-stategraph.ts:agent",
     "create-agent": "./src/agents/create-agent.ts:agent",
     "deep-agent": "./src/agents/deep-agent.ts:agent",
-    "parallel-subagents": "./src/agents/parallel-subagents.ts:agent"
+    "parallel-subagents": "./src/agents/parallel-subagents.ts:agent",
+    "multimodal-comic": "./src/agents/multimodal-comic.ts:agent"
   },
   "env": ".env"
 }

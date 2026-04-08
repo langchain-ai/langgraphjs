@@ -758,6 +758,209 @@ pre {
   justify-content: flex-end;
 }
 
+.comic-strip-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background:
+    linear-gradient(180deg, rgba(13, 17, 29, 0.94), rgba(8, 10, 16, 0.94));
+}
+
+.comic-strip-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.comic-strip-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.comic-strip-header p {
+  margin: 10px 0 0;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.comic-stat-row,
+.comic-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.comic-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  background: rgba(30, 41, 59, 0.56);
+  color: #c7d2fe;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.comic-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.comic-chapter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(6, 8, 13, 0.62);
+}
+
+.comic-chapter-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comic-chapter-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.comic-chapter-brief {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.comic-image-frame {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.comic-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.comic-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 18px;
+  color: #94a3b8;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(15, 23, 42, 0.7),
+      rgba(15, 23, 42, 0.7) 12px,
+      rgba(30, 41, 59, 0.64) 12px,
+      rgba(30, 41, 59, 0.64) 24px
+    );
+}
+
+.comic-placeholder-small {
+  min-height: 88px;
+  border-radius: 14px;
+}
+
+.comic-body-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.comic-copy-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.54);
+}
+
+.comic-copy-card p {
+  margin: 0;
+  color: #e2e8f0;
+  line-height: 1.65;
+}
+
+.comic-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.comic-dialogue {
+  color: #fde68a;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.comic-caption,
+.comic-audio-meta {
+  color: #94a3b8;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.comic-audio-player {
+  width: 100%;
+}
+
+.comic-compose-form {
+  gap: 14px;
+}
+
+.comic-compose-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.comic-chapter-count-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.comic-chapter-count-input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(6, 8, 13, 0.9);
+  color: #f8fafc;
+  padding: 12px 14px;
+}
+
+.comic-compose-actions {
+  flex: 1;
+  margin-top: 0;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -803,8 +1006,13 @@ pre {
   .playground-grid,
   .parallel-grid,
   .parallel-inline-grid,
-  .parallel-modal-grid {
+  .parallel-modal-grid,
+  .comic-body-grid {
     grid-template-columns: 1fr;
+  }
+
+  .comic-strip-header {
+    flex-direction: column;
   }
 }
 
@@ -819,6 +1027,11 @@ pre {
   }
 
   .composer-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .comic-compose-row {
     flex-direction: column;
     align-items: stretch;
   }

@@ -6,6 +6,7 @@ import {
 } from "./components/ProtocolSwitcher";
 import { CreateAgentView } from "./views/CreateAgentView";
 import { DeepAgentView } from "./views/DeepAgentView";
+import { MultimodalComicView } from "./views/MultimodalComicView";
 import { API_URL } from "./views/shared";
 import { ParallelSubagentsView } from "./views/ParallelSubagentsView";
 import { StateGraphView } from "./views/StateGraphView";
@@ -14,7 +15,8 @@ type TabId =
   | "stategraph"
   | "create-agent"
   | "deep-agent"
-  | "parallel-subagents";
+  | "parallel-subagents"
+  | "multimodal-comic";
 
 const DEFAULT_TAB: TabId = "stategraph";
 const DEFAULT_TRANSPORT: PlaygroundTransportMode = "legacy";
@@ -44,13 +46,19 @@ const TABS: Array<{
     title: "Parallel Subagents",
     blurb: "QuickJS fan-out with lifecycle-first namespace drill-down.",
   },
+  {
+    id: "multimodal-comic",
+    title: "Multimodal Comic",
+    blurb: "Comic-strip generation with streamed image, text, and audio assets.",
+  },
 ];
 
 const isTabId = (value: string | null): value is TabId =>
   value === "stategraph" ||
   value === "create-agent" ||
   value === "deep-agent" ||
-  value === "parallel-subagents";
+  value === "parallel-subagents" ||
+  value === "multimodal-comic";
 
 const isTransportMode = (
   value: string | null
@@ -102,9 +110,10 @@ export function App() {
           <div className="eyebrow">LangGraph protocol playground</div>
           <h1>New Protocol Testbed</h1>
           <p className="app-subtitle">
-            Compare a StateGraph, a createAgent runtime, and a Deep Agent while
-            the frontend streams through the standard legacy API, the new
-            session-based HTTP+SSE protocol, or the new WebSocket protocol.
+            Compare a StateGraph, a createAgent runtime, several Deep Agent
+            patterns, and a multimodal comic-strip pipeline while the frontend
+            streams through the standard legacy API, the new session-based
+            HTTP+SSE protocol, or the new WebSocket protocol.
           </p>
         </div>
         <div className="header-badges">
@@ -144,6 +153,9 @@ export function App() {
           key={activeViewKey}
           transportMode={transportMode}
         />
+      ) : null}
+      {activeTab === "multimodal-comic" ? (
+        <MultimodalComicView key={activeViewKey} transportMode={transportMode} />
       ) : null}
     </main>
   );

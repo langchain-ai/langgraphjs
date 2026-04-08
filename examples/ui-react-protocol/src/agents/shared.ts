@@ -14,7 +14,7 @@ const globalProcess = globalThis as {
 };
 
 export const modelName =
-  globalProcess.process?.env?.OPENAI_MODEL ?? "gpt-4o-mini";
+  globalProcess.process?.env?.OPENAI_MODEL ?? "gpt-5.4";
 
 export const model = new ChatOpenAI({
   model: modelName,

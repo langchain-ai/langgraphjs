@@ -13,6 +13,7 @@
     "@langchain/core": "^1.1.39",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
+    "@langchain/protocol": "^0.0.3",
     "@langchain/openai": "^1.4.3",
     "@langchain/quickjs": "^0.2.5",
     "@uiw/react-json-view": "2.0.0-alpha.41",
