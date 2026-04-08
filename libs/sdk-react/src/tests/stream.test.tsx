@@ -81,6 +81,26 @@ it("handles message submission over protocol SSE", async () => {
     .toHaveTextContent("Not loading");
 });
 
+it("falls back to legacy streaming when protocol mode requests events", async () => {
+  const onLangChainEvent = vi.fn();
+  const screen = await render(
+    <BasicStream
+      apiUrl={serverUrl}
+      streamProtocol="v2-sse"
+      onLangChainEvent={onLangChainEvent}
+    />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+  expect(onLangChainEvent).toHaveBeenCalled();
+});
+
 it("handles stop functionality", async () => {
   const screen = await render(<BasicStream apiUrl={serverUrl} />);
 
