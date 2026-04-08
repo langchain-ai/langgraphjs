@@ -117,15 +117,16 @@ const loadCustomerFixture = tool(
 );
 
 const poemValidationSchema = z.object({
-  poem: z.string().describe("The draft poem to validate."),
-  customerName: z.string().describe("Customer full name."),
-  company: z.string().describe("Customer company."),
-  city: z.string().describe("Customer city."),
-  country: z.string().describe("Customer country."),
+  poem: z.string().default("").describe("The draft poem to validate."),
+  customerName: z.string().default("").describe("Customer full name."),
+  company: z.string().default("").describe("Customer company."),
+  city: z.string().default("").describe("Customer city."),
+  country: z.string().default("").describe("Customer country."),
   attempt: z
     .number()
     .int()
     .nonnegative()
+    .default(0)
     .describe("Zero-based validation attempt number."),
 });
 
@@ -151,10 +152,18 @@ const createFakePoemValidator = (
       attempt: number;
     }) => {
       await sleep(120 + (attempt % 3) * 70);
-      const passed = Math.random() < 0.3;
+      const hasRequiredInput =
+        poem.trim().length > 0 &&
+        customerName.trim().length > 0 &&
+        company.trim().length > 0 &&
+        city.trim().length > 0 &&
+        country.trim().length > 0;
+      const passed = hasRequiredInput && Math.random() < 0.3;
       const feedback = passed
         ? `Passed ${focus}. The poem feels ready for ${customerName}.`
-        : failureReasons[(attempt - 1) % failureReasons.length];
+        : hasRequiredInput
+          ? failureReasons[attempt % failureReasons.length]
+          : `Missing validator input. Call ${name} again with poem, customerName, company, city, country, and attempt.`;
 
       return JSON.stringify(
         {
@@ -239,6 +248,8 @@ Rules:
 - Mention either the company or the location.
 - Keep it vivid but brief, with no JSON or bullet points.
 - After drafting the poem, call exactly one validator at a time.
+- Every validator call must include poem, customerName, company, city, country,
+  and attempt.
 - Rotate across validate_poem_personalization, validate_poem_imagery, and
   validate_poem_rhythm.
 - Stop once a validator returns passed=true, or after 6 validation attempts.
