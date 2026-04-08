@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RunProtocolSession } from "../src/protocol/session.mjs";
+import { RunProtocolSession } from "../src/protocol/session/index.mjs";
 import type { Run } from "../src/storage/types.mjs";
 
 const createRun = (overrides?: Partial<Run>): Run =>

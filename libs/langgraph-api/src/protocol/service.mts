@@ -31,7 +31,7 @@ import type {
   TransportProfile,
   ModuleCapability,
 } from "./types.mjs";
-import { RunProtocolSession } from "./session.mjs";
+import { RunProtocolSession } from "./session/index.mjs";
 
 type SessionBindings = {
   runs: RunsRepo;

@@ -44,7 +44,7 @@ import type {
   UpdatesEvent,
 } from "@langchain/protocol";
 import type { AuthContext } from "../auth/index.mjs";
-import type { RunProtocolSession } from "./session.mjs";
+import type { RunProtocolSession } from "./session/index.mjs";
 
 /**
  * Raw events emitted by the existing LangGraph run stream implementation before
