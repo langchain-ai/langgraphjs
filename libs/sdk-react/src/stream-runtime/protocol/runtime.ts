@@ -1,5 +1,9 @@
 import { ProtocolClient } from "@langchain/client";
-import type { Client, StreamMode } from "@langchain/langgraph-sdk";
+import type {
+  Client,
+  ProtocolTransport,
+  StreamMode,
+} from "@langchain/langgraph-sdk";
 import type { RequestHook } from "@langchain/langgraph-sdk/client";
 import type { EventStreamEvent } from "@langchain/langgraph-sdk/ui";
 import {
@@ -10,6 +14,7 @@ import {
 } from "@langchain/langgraph-sdk/utils";
 import type { StreamRuntime } from "../types.js";
 import { ProtocolSseTransportAdapter } from "./http-transport.js";
+import { ProtocolWebSocketTransportAdapter } from "./websocket-transport.js";
 
 type HeaderValue = string | undefined | null;
 
@@ -82,6 +87,7 @@ export class ProtocolStreamRuntime<
 
   constructor(
     private readonly client: Client<StateType, UpdateType, CustomType>,
+    private readonly protocolTransport: ProtocolTransport = "sse-http",
   ) {
     this.transportConfig = getProtocolConfig(client);
   }
@@ -146,7 +152,10 @@ export class ProtocolStreamRuntime<
     AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
   > {
     const protocolClient = new ProtocolClient(
-      () => new ProtocolSseTransportAdapter(this.transportConfig),
+      () =>
+        this.protocolTransport === "websocket"
+          ? new ProtocolWebSocketTransportAdapter(this.transportConfig)
+          : new ProtocolSseTransportAdapter(this.transportConfig),
     );
     const sessionParams: SessionOpenParams = {
       protocolVersion: "0.3.0",
@@ -154,7 +163,7 @@ export class ProtocolStreamRuntime<
         kind: "agent",
         id: assistantId,
       },
-      preferredTransports: ["sse-http"],
+      preferredTransports: [this.protocolTransport],
     };
     const session = await protocolClient.open(sessionParams);
 

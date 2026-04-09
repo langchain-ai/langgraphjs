@@ -8,6 +8,7 @@ export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
 export type StreamProtocol = "legacy" | "v2-sse";
+export type ProtocolTransport = "sse-http" | "websocket";
 export type StreamEvent =
   | "events"
   | "metadata"

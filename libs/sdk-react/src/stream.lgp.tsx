@@ -264,8 +264,8 @@ export function useStreamLGP<
         UpdateType,
         ConfigurableType,
         CustomType
-      >(client, options.streamProtocol),
-    [client, options.streamProtocol]
+      >(client, options.streamProtocol, options.protocolTransport),
+    [client, options.protocolTransport, options.streamProtocol]
   );
 
   const [messageManager] = useState(() => new MessageTupleManager());
