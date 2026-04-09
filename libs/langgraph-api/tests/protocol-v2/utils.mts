@@ -310,8 +310,16 @@ export const readWebSocketEventsUntilIdle = async (
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const UUID_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const GENERATED_ID_PATTERN = /019[a-z0-9-]{20,}/gi;
+
+const normalizeEmbeddedIds = (value: string) =>
+  value.replace(GENERATED_ID_PATTERN, "<id>").replace(UUID_PATTERN, "<uuid>");
+
 const normalizeScalar = (value: unknown): unknown => {
   if (typeof value === "string") {
+    const normalized = normalizeEmbeddedIds(value);
     if (
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         value
@@ -322,6 +330,7 @@ const normalizeScalar = (value: unknown): unknown => {
     if (value.startsWith("019") && value.length > 20) {
       return "<id>";
     }
+    return normalized;
   }
   if (typeof value === "number") return value;
   return value;
@@ -350,12 +359,7 @@ export const normalizeForSnapshot = (value: unknown): unknown => {
   return normalizeScalar(value);
 };
 
-const UUID_PATTERN =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const GENERATED_ID_PATTERN = /019[a-z0-9-]{20,}/gi;
-
-const normalizeTransportString = (value: string) =>
-  value.replace(GENERATED_ID_PATTERN, "<id>").replace(UUID_PATTERN, "<uuid>");
+const normalizeTransportString = (value: string) => normalizeEmbeddedIds(value);
 
 export const normalizeForTransportParity = (value: unknown): unknown => {
   if (typeof value === "string") {

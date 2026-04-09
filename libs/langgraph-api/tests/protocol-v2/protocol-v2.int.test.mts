@@ -38,6 +38,53 @@ const projectStategraphParityTranscript = (transcript: any) => ({
     }),
 });
 
+const projectCreateAgentParityTranscript = (transcript: any) => ({
+  tree: {
+    graphName: transcript.tree?.graphName,
+    status: transcript.tree?.status,
+  },
+  finalAiContent: [...(transcript.values?.messages ?? [])]
+    .reverse()
+    .find((message: any) => message.type === "ai")?.content,
+  toolEvents: (transcript.events ?? [])
+    .filter((event: any) => event.method === "tools")
+    .map((event: any) => {
+      const data = event.params?.data ?? {};
+      return {
+        event: data.event,
+        toolName: data.toolName,
+        toolCallId: data.toolCallId,
+        output:
+          typeof data.output === "object" && data.output != null
+            ? {
+                content: data.output.content,
+                tool_call_id: data.output.tool_call_id,
+                type: data.output.type,
+              }
+            : data.output,
+      };
+    }),
+  messageEvents: (transcript.events ?? [])
+    .filter((event: any) => event.method === "messages")
+    .map((event: any) => {
+      const data = event.params?.data ?? {};
+      return {
+        event: data.event,
+        index: data.index,
+        reason: data.reason,
+        contentBlock:
+          data.contentBlock == null
+            ? undefined
+            : {
+                type: data.contentBlock.type,
+                text: data.contentBlock.text,
+                name: data.contentBlock.name,
+                args: data.contentBlock.args,
+              },
+      };
+    }),
+});
+
 afterEach(async () => {
   if (cleanupServer != null) {
     await Promise.race([
@@ -131,6 +178,38 @@ describe("protocol v2 snapshots", () => {
 
       expect(projectStategraphParityTranscript(websocketTranscript)).toEqual(
         projectStategraphParityTranscript(sseTranscript)
+      );
+    }
+  );
+
+  websocketIt(
+    "matches the finalized createAgent transcript over websocket and SSE",
+    async () => {
+      ({ cleanup: cleanupServer } = await startProtocolV2Server());
+
+      const target = { kind: "agent" as const, id: "create_agent" };
+      const channels = ["messages", "tools", "values"];
+      const input = {
+        messages: [
+          { type: "human", content: "What is the weather in San Francisco?" },
+        ],
+      };
+
+      const sseTranscript = await collectSseParityTranscript({
+        target,
+        channels,
+        input,
+        threadId: "protocol-v2-create-agent-sse-parity-thread",
+      });
+      const websocketTranscript = await collectWebSocketParityTranscript({
+        target,
+        channels,
+        input,
+        threadId: "protocol-v2-create-agent-websocket-parity-thread",
+      });
+
+      expect(projectCreateAgentParityTranscript(websocketTranscript)).toEqual(
+        projectCreateAgentParityTranscript(sseTranscript)
       );
     }
   );
