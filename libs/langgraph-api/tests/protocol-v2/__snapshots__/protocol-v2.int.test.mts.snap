@@ -33,7 +33,7 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
               },
               {
                 "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
-                "id": "run-019d7307-2c8e-75c8-80b6-aeaf2aaac9ff-tool-call-weather-1",
+                "id": "run-<id>",
                 "name": "get_weather",
                 "status": "success",
                 "tool_call_id": "call-weather-1",
@@ -44,6 +44,16 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
                 "id": "call-weather-1-final",
                 "name": "model",
                 "type": "ai",
+              },
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "What is the weather in San Francisco?",
@@ -111,7 +121,7 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
               },
               {
                 "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
-                "id": "run-019d7307-2c8e-75c8-80b6-aeaf2aaac9ff-tool-call-weather-1",
+                "id": "run-<id>",
                 "name": "get_weather",
                 "status": "success",
                 "tool_call_id": "call-weather-1",
@@ -122,6 +132,16 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
                 "id": "call-weather-1-final",
                 "name": "model",
                 "type": "ai",
+              },
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "What is the weather in San Francisco?",
@@ -294,8 +314,8 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
           "TasksEvent",
         ],
       },
-      "commandsUrl": "/v2/sessions/019d7310-a443-7000-8000-0ce7c1fd2629/commands",
-      "eventsUrl": "/v2/sessions/019d7310-a443-7000-8000-0ce7c1fd2629/events",
+      "commandsUrl": "/v2/sessions/<id>/commands",
+      "eventsUrl": "/v2/sessions/<id>/events",
       "protocolVersion": "0.3.0",
       "sessionId": "<session-id>",
       "transport": {
@@ -372,7 +392,7 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
           {
             "additional_kwargs": {},
             "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
-            "id": "run-019d7307-2c8e-75c8-80b6-aeaf2aaac9ff-tool-call-weather-1",
+            "id": "run-<id>",
             "metadata": {
               "versions": {
                 "@langchain/core": "1.1.31",
@@ -394,6 +414,20 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
             "tool_call_chunks": [],
             "tool_calls": [],
             "type": "ai",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "What is the weather in San Francisco?",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "What is the weather in San Francisco?",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
           },
           {
             "additional_kwargs": {},
@@ -537,6 +571,16 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
                 "id": "deep-orchestrator-final",
                 "name": "model",
                 "type": "ai",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "Research protocol risks and inspect the sample dataset.",
@@ -896,7 +940,7 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
         "params": {
           "data": {
             "event": "message-start",
-            "messageId": "subagent:7f6579ac-b312-4723-9db2-3466289b7419",
+            "messageId": "subagent:<uuid>",
           },
           "namespace": [
             "tools:task-1",
@@ -1015,7 +1059,7 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
               },
               {
                 "content": "Research completed: reconnect and lifecycle handling need coverage.",
-                "id": "subagent:7f6579ac-b312-4723-9db2-3466289b7419",
+                "id": "subagent:<uuid>",
                 "type": "ai",
               },
             ],
@@ -1058,7 +1102,7 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
         "params": {
           "data": {
             "event": "message-start",
-            "messageId": "subagent:3ad382f3-26d3-4aa6-857d-d142102d13fb",
+            "messageId": "subagent:<uuid>",
           },
           "namespace": [
             "tools:task-2",
@@ -1177,7 +1221,7 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
               },
               {
                 "content": "Analysis completed: found 2 sample records.",
-                "id": "subagent:3ad382f3-26d3-4aa6-857d-d142102d13fb",
+                "id": "subagent:<uuid>",
                 "type": "ai",
               },
             ],
@@ -1313,6 +1357,16 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
                 "id": "<uuid>",
                 "type": "human",
               },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
             ],
             "todos": [],
           },
@@ -1399,6 +1453,16 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
                 "id": "deep-orchestrator-final",
                 "name": "model",
                 "type": "ai",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "Research protocol risks and inspect the sample dataset.",
@@ -1566,6 +1630,16 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
                 "id": "<uuid>",
                 "type": "human",
               },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
             ],
             "todos": [],
           },
@@ -1652,6 +1726,16 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
                 "id": "deep-orchestrator-final",
                 "name": "model",
                 "type": "ai",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "Research protocol risks and inspect the sample dataset.",
@@ -1843,8 +1927,8 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
           "TasksEvent",
         ],
       },
-      "commandsUrl": "/v2/sessions/019d7310-ae7e-7000-8000-08554fd32967/commands",
-      "eventsUrl": "/v2/sessions/019d7310-ae7e-7000-8000-08554fd32967/events",
+      "commandsUrl": "/v2/sessions/<id>/commands",
+      "eventsUrl": "/v2/sessions/<id>/events",
       "protocolVersion": "0.3.0",
       "sessionId": "<session-id>",
       "transport": {
@@ -1993,6 +2077,20 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
             "response_metadata": {},
             "type": "human",
           },
+          {
+            "additional_kwargs": {},
+            "content": "Research protocol risks and inspect the sample dataset.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Research protocol risks and inspect the sample dataset.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
         ],
         "todos": [],
       },
@@ -2079,6 +2177,16 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
                 "id": "<uuid>",
                 "type": "human",
               },
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
+              },
             ],
           },
           "namespace": [],
@@ -2107,7 +2215,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             },
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2131,7 +2239,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2155,7 +2263,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2179,7 +2287,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2203,7 +2311,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2227,7 +2335,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2251,7 +2359,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2275,7 +2383,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2299,7 +2407,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2323,7 +2431,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2347,7 +2455,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2371,7 +2479,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2395,7 +2503,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2419,7 +2527,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2443,7 +2551,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2467,7 +2575,7 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "index": 0,
           },
           "namespace": [
-            "agent:1d741f23-f356-52ac-89b3-06008b3569fa",
+            "agent:<uuid>",
           ],
           "timestamp": "<timestamp>",
         },
@@ -2508,6 +2616,16 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
                 "content": "Plan accepted.",
                 "id": "stategraph-message-1",
                 "type": "ai",
+              },
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "Summarize the protocol draft.",
@@ -2670,8 +2788,8 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
           "TasksEvent",
         ],
       },
-      "commandsUrl": "/v2/sessions/019d7310-99ee-7006-908a-2ff3efae6648/commands",
-      "eventsUrl": "/v2/sessions/019d7310-99ee-7006-908a-2ff3efae6648/events",
+      "commandsUrl": "/v2/sessions/<id>/commands",
+      "eventsUrl": "/v2/sessions/<id>/events",
       "protocolVersion": "0.3.0",
       "sessionId": "<session-id>",
       "transport": {
@@ -2750,6 +2868,20 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "tool_call_chunks": [],
             "tool_calls": [],
             "type": "ai",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Summarize the protocol draft.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Summarize the protocol draft.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
           },
           {
             "additional_kwargs": {},

@@ -470,7 +470,9 @@ export const collectSseParityTranscript = async (options: {
   return normalizeForTransportParity({
     tree: treeResponse.result?.tree,
     values: stateResponse.result?.values,
-    events: events.map((event) => event.data),
+    events: events
+      .map((event) => event.data)
+      .filter((event): event is Record<string, unknown> => event != null),
   });
 };
 
@@ -553,7 +555,9 @@ export const collectWebSocketParityTranscript = async (options: {
     return normalizeForTransportParity({
       tree: treeResponse.result?.tree,
       values: stateResponse.result?.values,
-      events,
+      events: events.filter(
+        (event): event is Record<string, unknown> => event != null
+      ),
     });
   } finally {
     reader.close();
