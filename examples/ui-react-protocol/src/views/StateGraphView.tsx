@@ -1,15 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 import type { agent as stategraphAgentType } from "../agents/basic-stategraph";
 import type { PlaygroundTransportMode } from "../components/ProtocolSwitcher";
 import { ProtocolPlayground } from "../components/ProtocolPlayground";
-import { createProtocolTransport } from "../protocolTransport";
 import { getLastAssistantMetadata } from "../utils";
 import {
   API_URL,
   getTransportLabel,
+  getStreamProtocol,
   isProtocolTransportMode,
   summarizeToolEvent,
   summarizeUpdateEvent,
@@ -101,17 +101,11 @@ function ProtocolStateGraphView({
 }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const { eventLog, push } = useTraceLog();
-  const transport = useMemo(
-    () =>
-      createProtocolTransport(transportMode, {
-        apiUrl: API_URL,
-        assistantId: "stategraph",
-      }),
-    [transportMode]
-  );
 
   const stream = useStream<typeof stategraphAgentType>({
-    transport,
+    assistantId: "stategraph",
+    apiUrl: API_URL,
+    streamProtocol: getStreamProtocol(transportMode),
     threadId,
     onThreadId: setThreadId,
     onToolEvent: (data, options) => {

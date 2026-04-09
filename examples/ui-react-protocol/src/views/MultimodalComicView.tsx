@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 import type { agent as multimodalComicAgentType } from "../agents/multimodal-comic";
 import { EventLog } from "../components/EventLog";
@@ -9,7 +9,6 @@ import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
 import type { PlaygroundTransportMode } from "../components/ProtocolSwitcher";
 import { SubagentPanel } from "../components/SubagentPanel";
-import { createProtocolTransport } from "../protocolTransport";
 import {
   getLastAssistantMetadata,
   getSubagentPreview,
@@ -19,6 +18,7 @@ import {
 import {
   API_URL,
   getTransportLabel,
+  getStreamProtocol,
   isProtocolTransportMode,
   summarizeToolEvent,
   summarizeUpdateEvent,
@@ -421,18 +421,13 @@ function ProtocolMultimodalComicView({
 }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const { eventLog, push } = useTraceLog();
-  const transport = useMemo(
-    () =>
-      createProtocolTransport(transportMode, {
-        apiUrl: API_URL,
-        assistantId: ASSISTANT_ID,
-      }),
-    [transportMode]
-  );
 
   const stream = useStream<typeof multimodalComicAgentType>({
-    transport,
+    assistantId: ASSISTANT_ID,
+    apiUrl: API_URL,
+    fetchStateHistory: true,
     filterSubagentMessages: true,
+    streamProtocol: getStreamProtocol(transportMode),
     throttle: true,
     threadId,
     onThreadId: setThreadId,

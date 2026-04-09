@@ -6,7 +6,7 @@ import {
 } from "react";
 
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 import type { agent as parallelAgentType } from "../../agents/parallel-subagents";
 import { Composer } from "../../components/Composer";
