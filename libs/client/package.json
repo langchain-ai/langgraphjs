@@ -1,0 +1,30 @@
+{
+  "name": "@langchain/client",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Typed runtime client for the LangChain agent streaming protocol",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.vitest.json --noEmit"
+  },
+  "dependencies": {
+    "@langchain/protocol": "^0.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}

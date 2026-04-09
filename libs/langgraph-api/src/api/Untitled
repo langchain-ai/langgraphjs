@@ -1,0 +1,26 @@
+@langchain/langgraph-api:build:internal: > @langchain/langgraph-api@1.1.17 clean /Users/christian.bromann/Sites/LangChain/langgraphjs/libs/langgraph-api
+@langchain/langgraph-api:build:internal: > rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/
+@langchain/langgraph-api:build:internal: 
+@langchain/langgraph-api:build:internal: pnpm tsc --outDir dist
+@langchain/langgraph-api:build:internal: node:internal/errors:984
+@langchain/langgraph-api:build:internal:   const err = new Error(message);
+@langchain/langgraph-api:build:internal:               ^
+@langchain/langgraph-api:build:internal: 
+@langchain/langgraph-api:build:internal: Error: Command failed: pnpm tsc --outDir dist
+@langchain/langgraph-api:build:internal: 
+@langchain/langgraph-api:build:internal:     at genericNodeError (node:internal/errors:984:15)
+@langchain/langgraph-api:build:internal:     at wrappedFn (node:internal/errors:538:14)
+@langchain/langgraph-api:build:internal:     at ChildProcess.exithandler (node:child_process:422:12)
+@langchain/langgraph-api:build:internal:     at ChildProcess.emit (node:events:524:28)
+@langchain/langgraph-api:build:internal:     at maybeClose (node:internal/child_process:1104:16)
+@langchain/langgraph-api:build:internal:     at ChildProcess._handle.onexit (node:internal/child_process:304:5) {
+@langchain/langgraph-api:build:internal:   code: 2,
+@langchain/langgraph-api:build:internal:   killed: false,
+@langchain/langgraph-api:build:internal:   signal: null,
+@langchain/langgraph-api:build:internal:   cmd: 'pnpm tsc --outDir dist'
+@langchain/langgraph-api:build:internal: }
+@langchain/langgraph-api:build:internal: 
+@langchain/langgraph-api:build:internal: Node.js v20.19.4
+@langchain/langgraph-api:build:internal:  ELIFECYCLE  Command failed with exit code 1.
+@langchain/langgraph-api:build:internal: ERROR: command finished with error: command (/Users/christian.bromann/Sites/LangChain/langgraphjs/libs/langgraph-api) /Users/christian.bromann/.nvm/versions/node/v20.19.4/bin/pnpm run build:internal exited (1)
+@langchain/langgraph-api#build:internal: command (/Users/christian.bromann/Sites/LangChain/langgraphjs/libs/langgraph-api) /Users/christian.bromann/.nvm/versions/node/v20.19.4/bin/pnpm run build:internal exited (1)

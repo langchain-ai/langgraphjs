@@ -196,6 +196,7 @@ export function useStreamLGP<
         apiKey: options.apiKey,
         callerOptions: options.callerOptions,
         defaultHeaders: options.defaultHeaders,
+        streamProtocol: options.streamProtocol,
       }),
     [
       options.client,
@@ -203,6 +204,7 @@ export function useStreamLGP<
       options.apiUrl,
       options.callerOptions,
       options.defaultHeaders,
+      options.streamProtocol,
     ]
   );
 
@@ -593,6 +595,7 @@ export function useStreamLGP<
           streamSubgraphs: submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
+          streamProtocol: options.streamProtocol,
           onRunCreated(params) {
             callbackMeta = {
               run_id: params.run_id,

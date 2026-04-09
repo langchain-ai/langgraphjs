@@ -1,0 +1,168 @@
+import type { BaseMessage } from "@langchain/core/messages";
+import { ensureMessageInstances } from "@langchain/langgraph-sdk/ui";
+
+/**
+ * Narrow an unknown value to a plain object record.
+ */
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * Format arbitrary data for display in debug-oriented panels.
+ */
+export const safeStringify = (value: unknown) => {
+  if (value == null) return "No data yet.";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
+/**
+ * Extract plain text content from a protocol message.
+ */
+export const getTextContent = (message: BaseMessage) => {
+  if (typeof message.content === "string") return message.content;
+  if (!Array.isArray(message.content)) return "";
+  return message.content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        isRecord(block) &&
+        block.type === "text" &&
+        typeof block.text === "string"
+    )
+    .map((block) => block.text)
+    .join("");
+};
+
+/**
+ * Extract reasoning block text from a protocol message.
+ */
+export const getReasoningContent = (message: BaseMessage) => {
+  if (!Array.isArray(message.content)) return "";
+
+  const reasoning: string[] = [];
+  for (const block of message.content) {
+    const maybeBlock = block as unknown;
+    if (!isRecord(maybeBlock)) continue;
+    if (
+      maybeBlock["type"] === "reasoning" &&
+      typeof maybeBlock["reasoning"] === "string"
+    ) {
+      reasoning.push(maybeBlock["reasoning"]);
+    }
+  }
+
+  return reasoning.join("");
+};
+
+/**
+ * Summarize tool call activity for messages without text content.
+ */
+export const getToolCallSummary = (message: BaseMessage) => {
+  if (!("tool_calls" in message) || !Array.isArray(message.tool_calls)) {
+    return "";
+  }
+  if (message.tool_calls.length === 0) return "";
+  return `Requested ${message.tool_calls.length} tool call${
+    message.tool_calls.length === 1 ? "" : "s"
+  }.`;
+};
+
+/**
+ * Derive a short trailing preview for a subagent's latest streamed message.
+ */
+export const getSubagentPreview = (messages: BaseMessage[] | undefined) => {
+  if (!messages || messages.length === 0) return undefined;
+
+  const lastMessage = [...messages].reverse().find((message) => {
+    const content =
+      getTextContent(message) ||
+      getReasoningContent(message) ||
+      getToolCallSummary(message);
+    return content.trim().length > 0;
+  });
+
+  if (!lastMessage) return undefined;
+
+  const preview =
+    getTextContent(lastMessage) ||
+    getReasoningContent(lastMessage) ||
+    getToolCallSummary(lastMessage);
+  const trimmedPreview = preview.trim();
+  if (trimmedPreview.length === 0) return undefined;
+
+  return trimmedPreview.length > 100
+    ? `...${trimmedPreview.slice(-100)}`
+    : trimmedPreview;
+};
+
+/**
+ * Convert an unknown messages array into BaseMessage instances.
+ */
+export const toBaseMessages = (messages: unknown): BaseMessage[] => {
+  if (!Array.isArray(messages)) return [];
+  return ensureMessageInstances(messages as BaseMessage[]) as BaseMessage[];
+};
+
+export const ensureBaseMessages = toBaseMessages;
+
+/**
+ * Format a namespace array for compact UI display.
+ */
+export const formatNamespace = (namespace?: string[]) =>
+  namespace != null && namespace.length > 0 ? namespace.join(" / ") : "root";
+
+/**
+ * Look up metadata for the most recent assistant message.
+ */
+export const getLastAssistantMetadata = <TMessage extends BaseMessage>(
+  messages: TMessage[],
+  getMessagesMetadata?: (message: TMessage) => unknown
+) => {
+  if (getMessagesMetadata == null) return undefined;
+  const lastAssistant = [...messages]
+    .reverse()
+    .find((message) => message.type === "ai");
+  return lastAssistant != null ? getMessagesMetadata(lastAssistant) : undefined;
+};
+
+/**
+ * Convert a protocol message type into a UI label.
+ */
+export const getMessageLabel = (type: BaseMessage["type"]) => {
+  switch (type) {
+    case "human":
+      return "User";
+    case "tool":
+      return "Tool";
+    case "system":
+      return "System";
+    default:
+      return "Assistant";
+  }
+};
+
+/**
+ * Build a compact badge from stream metadata when available.
+ */
+export const getMetadataBadge = (metadata: unknown) => {
+  if (!isRecord(metadata)) return "";
+  const streamMetadata = isRecord(metadata.streamMetadata)
+    ? metadata.streamMetadata
+    : undefined;
+  const node =
+    typeof streamMetadata?.langgraph_node === "string"
+      ? streamMetadata.langgraph_node
+      : undefined;
+  const namespace =
+    typeof streamMetadata?.langgraph_checkpoint_ns === "string"
+      ? streamMetadata.langgraph_checkpoint_ns
+      : undefined;
+
+  if (node != null && namespace != null) return `${node} · ${namespace}`;
+  if (node != null) return node;
+  if (namespace != null) return namespace;
+  return "";
+};

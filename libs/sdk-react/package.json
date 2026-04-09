@@ -18,6 +18,7 @@
     "directory": "libs/sdk-react"
   },
   "dependencies": {
+    "@langchain/client": "workspace:^",
     "@langchain/langgraph-sdk": "workspace:^"
   },
   "devDependencies": {
@@ -26,6 +27,7 @@
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
     "@langchain/langgraph-checkpoint": "workspace:^",
+    "@langchain/protocol": "^0.0.3",
     "@types/node": "^25.4.0",
     "@types/react": "^19.2.14",
     "@vitejs/plugin-react": "^5.1.4",
