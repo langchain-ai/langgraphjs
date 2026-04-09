@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 import { useStream } from "@langchain/react";
 
 import type { agent as multimodalComicAgentType } from "../agents/multimodal-comic";
@@ -100,15 +100,15 @@ type StreamLike = {
   values: Record<string, unknown>;
   error: unknown;
   isLoading: boolean;
-  messages: Message[];
-  getMessagesMetadata?: (message: Message) => unknown;
+  messages: BaseMessage[];
+  getMessagesMetadata?: (message: BaseMessage) => unknown;
   subagents: Map<
     string,
     {
       id: string;
       status: string;
       result: string | null;
-      messages: Message[];
+      messages: BaseMessage[];
       toolCalls: Array<{
         id: string;
         call: {
@@ -223,7 +223,7 @@ const getRoleLabel = (subagentType: unknown) => {
   }
 };
 
-const getImageDataUrl = (message: Message) => {
+const getImageDataUrl = (message: BaseMessage) => {
   if (!Array.isArray(message.content)) return null;
 
   for (const block of message.content) {
@@ -488,7 +488,7 @@ function MultimodalComicPlayground({
   const [chapterCount, setChapterCount] = useState(1);
   const metadata = useMemo(
     () => getLastAssistantMetadata(stream.messages, stream.getMessagesMetadata),
-    [stream.getMessagesMetadata, stream.messages]
+    [stream.getMessagesMetadata, stream.messages],
   );
 
   const subagentEntries = useMemo(

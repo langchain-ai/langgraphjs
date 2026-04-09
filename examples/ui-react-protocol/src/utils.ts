@@ -1,4 +1,5 @@
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
+import { ensureMessageInstances } from "@langchain/langgraph-sdk/ui";
 
 /**
  * Narrow an unknown value to a plain object record.
@@ -21,7 +22,7 @@ export const safeStringify = (value: unknown) => {
 /**
  * Extract plain text content from a protocol message.
  */
-export const getTextContent = (message: Message) => {
+export const getTextContent = (message: BaseMessage) => {
   if (typeof message.content === "string") return message.content;
   if (!Array.isArray(message.content)) return "";
   return message.content
@@ -38,7 +39,7 @@ export const getTextContent = (message: Message) => {
 /**
  * Extract reasoning block text from a protocol message.
  */
-export const getReasoningContent = (message: Message) => {
+export const getReasoningContent = (message: BaseMessage) => {
   if (!Array.isArray(message.content)) return "";
 
   const reasoning: string[] = [];
@@ -59,7 +60,7 @@ export const getReasoningContent = (message: Message) => {
 /**
  * Summarize tool call activity for messages without text content.
  */
-export const getToolCallSummary = (message: Message) => {
+export const getToolCallSummary = (message: BaseMessage) => {
   if (!("tool_calls" in message) || !Array.isArray(message.tool_calls)) {
     return "";
   }
@@ -72,7 +73,7 @@ export const getToolCallSummary = (message: Message) => {
 /**
  * Derive a short trailing preview for a subagent's latest streamed message.
  */
-export const getSubagentPreview = (messages: Message[] | undefined) => {
+export const getSubagentPreview = (messages: BaseMessage[] | undefined) => {
   if (!messages || messages.length === 0) return undefined;
 
   const lastMessage = [...messages].reverse().find((message) => {
@@ -98,6 +99,16 @@ export const getSubagentPreview = (messages: Message[] | undefined) => {
 };
 
 /**
+ * Convert an unknown messages array into BaseMessage instances.
+ */
+export const toBaseMessages = (messages: unknown): BaseMessage[] => {
+  if (!Array.isArray(messages)) return [];
+  return ensureMessageInstances(messages as BaseMessage[]) as BaseMessage[];
+};
+
+export const ensureBaseMessages = toBaseMessages;
+
+/**
  * Format a namespace array for compact UI display.
  */
 export const formatNamespace = (namespace?: string[]) =>
@@ -106,7 +117,7 @@ export const formatNamespace = (namespace?: string[]) =>
 /**
  * Look up metadata for the most recent assistant message.
  */
-export const getLastAssistantMetadata = <TMessage extends Message>(
+export const getLastAssistantMetadata = <TMessage extends BaseMessage>(
   messages: TMessage[],
   getMessagesMetadata?: (message: TMessage) => unknown
 ) => {
@@ -120,7 +131,7 @@ export const getLastAssistantMetadata = <TMessage extends Message>(
 /**
  * Convert a protocol message type into a UI label.
  */
-export const getMessageLabel = (type: Message["type"]) => {
+export const getMessageLabel = (type: BaseMessage["type"]) => {
   switch (type) {
     case "human":
       return "User";

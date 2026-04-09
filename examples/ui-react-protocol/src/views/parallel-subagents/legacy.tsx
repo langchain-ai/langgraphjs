@@ -5,7 +5,7 @@ import {
   type MouseEvent,
 } from "react";
 
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 import { useStream } from "@langchain/react";
 
 import type { agent as parallelAgentType } from "../../agents/parallel-subagents";
@@ -15,6 +15,7 @@ import { JsonPanel } from "../../components/JsonPanel";
 import { MessageFeed } from "../../components/MessageFeed";
 import type { TraceEntry } from "../../components/ProtocolPlayground";
 import {
+  ensureBaseMessages,
   formatNamespace,
   getLastAssistantMetadata,
   getSubagentPreview,
@@ -95,16 +96,14 @@ export function LegacyParallelSubagentsView() {
     return entries.map(([toolCallId, subagent], index) => {
       const state = subagent as {
         status?: string;
-        messages?: Message[];
+        messages?: BaseMessage[];
         namespace?: string[];
         values?: Record<string, unknown>;
         toolCall?: {
           args?: Record<string, unknown>;
         };
       };
-      const snapshotMessages = Array.isArray(state.values?.messages)
-        ? (state.values.messages as Message[])
-        : [];
+      const snapshotMessages = ensureBaseMessages(state.values?.messages);
       const liveMessages = state.messages ?? [];
       const messages = liveMessages.length > 0 ? liveMessages : snapshotMessages;
 

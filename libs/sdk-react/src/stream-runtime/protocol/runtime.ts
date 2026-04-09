@@ -205,10 +205,15 @@ export class ProtocolStreamRuntime<
         ? submitOptions.command.resume
         : input;
 
+    const metadata =
+      submitOptions?.metadata != null && typeof submitOptions.metadata === "object"
+        ? (submitOptions.metadata as Record<string, unknown>)
+        : undefined;
+
     const runResult = await session.run.input({
       input: runInput ?? null,
       config: submitOptions?.config,
-      metadata: submitOptions?.metadata,
+      metadata,
     });
 
     const runId = runResult.runId;

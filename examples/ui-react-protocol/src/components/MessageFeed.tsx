@@ -1,9 +1,4 @@
-import type {
-  DefaultToolCall,
-  Message,
-  ToolCallWithResult,
-} from "@langchain/langgraph-sdk";
-import { getToolCallsWithResults } from "@langchain/langgraph-sdk/utils";
+import type { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
 
 import {
   getMessageLabel,
@@ -14,10 +9,73 @@ import {
   safeStringify,
 } from "../utils";
 
+type ToolCallWithResult = {
+  id: string;
+  state: "pending" | "completed" | "error";
+  call: {
+    name: string;
+    args: unknown;
+  };
+  aiMessage: BaseMessage;
+  result?: ToolMessage;
+};
+
 interface MessageFeedProps {
-  messages: Message[];
-  getMessageMetadata?: (message: Message) => unknown;
+  messages: BaseMessage[];
+  getMessageMetadata?: (message: BaseMessage) => unknown;
 }
+const isToolMessage = (message: BaseMessage): message is ToolMessage =>
+  message.type === "tool" && "tool_call_id" in message;
+
+const isAiMessageWithToolCalls = (
+  message: BaseMessage,
+): message is AIMessage & {
+  tool_calls?: Array<{
+    id?: string;
+    name: string;
+    args: unknown;
+  }>;
+} => message.type === "ai" && "tool_calls" in message;
+
+const getToolCallsWithResults = (messages: BaseMessage[]): ToolCallWithResult[] => {
+  const toolResultsById = new Map<string, ToolMessage>();
+  for (const message of messages) {
+    if (isToolMessage(message) && typeof message.tool_call_id === "string") {
+      toolResultsById.set(message.tool_call_id, message);
+    }
+  }
+
+  const toolCalls: ToolCallWithResult[] = [];
+  for (const message of messages) {
+    if (!isAiMessageWithToolCalls(message) || !Array.isArray(message.tool_calls)) {
+      continue;
+    }
+
+    for (const call of message.tool_calls) {
+      if (call == null || typeof call.name !== "string") {
+        continue;
+      }
+
+      const result =
+        typeof call.id === "string" ? toolResultsById.get(call.id) : undefined;
+      const status = result?.status === "error" ? "error" : result ? "completed" : "pending";
+
+      toolCalls.push({
+        id: call.id ?? `${message.id ?? "message"}:${call.name}:${toolCalls.length}`,
+        state: status,
+        call: {
+          name: call.name,
+          args: call.args,
+        },
+        aiMessage: message,
+        result,
+      });
+    }
+  }
+
+  return toolCalls;
+};
+
 
 const TOOL_PREVIEW_LIMIT = 220;
 const TOOL_CODE_PREVIEW_LINES = 8;
@@ -250,10 +308,7 @@ const getToolInputPreview = (name: string, args: unknown) => {
   };
 };
 
-const getToolResultPreview = (
-  name: string,
-  result: ToolCallWithResult<DefaultToolCall>["result"]
-) => {
+const getToolResultPreview = (name: string, result: ToolCallWithResult["result"]) => {
   if (result == null) return undefined;
 
   const parsedContent = parseToolPayload(result.content);
@@ -306,7 +361,7 @@ const getToolResultPreview = (
 function ToolCallCard({
   toolCall,
 }: {
-  toolCall: ToolCallWithResult<DefaultToolCall>;
+  toolCall: ToolCallWithResult;
 }) {
   const inputPreview = getToolInputPreview(toolCall.call.name, toolCall.call.args);
   const resultPreview = getToolResultPreview(toolCall.call.name, toolCall.result);
@@ -367,19 +422,20 @@ export function MessageFeed({
   const pairedToolResultIds = new Set(
     allToolCalls
       .map((toolCall) => toolCall.result?.tool_call_id)
-      .filter((toolCallId): toolCallId is string => toolCallId != null)
+      .filter((toolCallId): toolCallId is string => typeof toolCallId === "string"),
   );
   const toolCallsByMessage = new Map<
-    Message,
-    ToolCallWithResult<DefaultToolCall>[]
+    BaseMessage,
+    ToolCallWithResult[]
   >();
 
   for (const toolCall of allToolCalls) {
-    const existing = toolCallsByMessage.get(toolCall.aiMessage as Message) ?? [];
+    const existing =
+      toolCallsByMessage.get(toolCall.aiMessage as BaseMessage) ?? [];
     existing.push(toolCall);
     toolCallsByMessage.set(
-      toolCall.aiMessage as Message,
-      existing as ToolCallWithResult<DefaultToolCall>[]
+      toolCall.aiMessage as BaseMessage,
+      existing as ToolCallWithResult[]
     );
   }
 
@@ -397,10 +453,7 @@ export function MessageFeed({
   return (
     <div className="message-feed">
       {messages.map((message, index) => {
-        if (
-          message.type === "tool" &&
-          pairedToolResultIds.has(message.tool_call_id)
-        ) {
+        if (isToolMessage(message) && pairedToolResultIds.has(message.tool_call_id)) {
           return null;
         }
 
