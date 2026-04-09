@@ -221,7 +221,22 @@ describe("protocol transports", () => {
             expect.objectContaining({ name: "session" }),
             expect.objectContaining({ name: "run" }),
             expect.objectContaining({ name: "subscription" }),
-            expect.objectContaining({ name: "agent" }),
+            expect.objectContaining({
+              name: "agent",
+              channels: ["lifecycle"],
+            }),
+            expect.objectContaining({
+              name: "messages",
+              channels: ["messages"],
+            }),
+            expect.objectContaining({
+              name: "values",
+              channels: ["values"],
+            }),
+            expect.objectContaining({
+              name: "updates",
+              channels: ["updates"],
+            }),
           ]),
         },
       },
@@ -345,6 +360,22 @@ describe("protocol transports", () => {
         transport: {
           name: "sse-http",
           commandDelivery: "request-response",
+        },
+        capabilities: {
+          modules: expect.arrayContaining([
+            expect.objectContaining({
+              name: "messages",
+              channels: ["messages"],
+            }),
+            expect.objectContaining({
+              name: "values",
+              channels: ["values"],
+            }),
+            expect.objectContaining({
+              name: "updates",
+              channels: ["updates"],
+            }),
+          ]),
         },
         eventsUrl: expect.any(String),
         commandsUrl: expect.any(String),
@@ -479,6 +510,96 @@ describe("protocol transports", () => {
         },
       },
     });
+  });
+
+  it("streams message lifecycle deltas over session-based HTTP+SSE protocol", async () => {
+    await startProtocolTestServer();
+    const threadId = crypto.randomUUID();
+
+    const openResponse = await fetch(`${TEST_API_URL}/v2/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "session.open",
+        params: {
+          protocolVersion: "0.3.0",
+          target: { kind: "graph", id: "agent" },
+        },
+      }),
+    }).then((response) => response.json());
+
+    const sessionId = openResponse.result.sessionId as string;
+    const eventsResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/events`, {
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(eventsResponse.ok).toBe(true);
+
+    const subscribeResponse = await fetch(
+      `${TEST_API_URL}/v2/sessions/${sessionId}/commands`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: 1,
+          method: "subscription.subscribe",
+          params: {
+            channels: ["messages"],
+          },
+        }),
+      }
+    ).then((response) => response.json());
+
+    expect(subscribeResponse).toMatchObject({
+      type: "success",
+      id: 1,
+      result: {
+        subscriptionId: expect.any(String),
+      },
+    });
+
+    const runResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: 2,
+        method: "run.input",
+        params: {
+          input: {
+            messages: [
+              { type: "human", content: "foo", id: "initial-message" },
+            ],
+          },
+          config: {
+            configurable: {
+              ...globalConfig.configurable,
+              thread_id: threadId,
+            },
+          },
+        },
+      }),
+    }).then((response) => response.json());
+
+    expect(runResponse).toMatchObject({
+      type: "success",
+      id: 2,
+      result: { runId: expect.any(String) },
+    });
+
+    const events = await readSseEvents(eventsResponse, {
+      expected: 3,
+      timeoutMs: 10_000,
+    });
+
+    expect(events.every((event) => event.event === "messages")).toBe(true);
+    expect(
+      events.map((event) => (event.data as any)?.params?.data?.event)
+    ).toEqual(
+      expect.arrayContaining([
+        "message-start",
+        "content-block-start",
+        "content-block-delta",
+      ])
+    );
   });
 
   websocketIt("keeps compatibility run-scoped websocket protocol route", async () => {

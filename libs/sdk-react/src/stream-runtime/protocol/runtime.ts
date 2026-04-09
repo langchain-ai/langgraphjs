@@ -1,4 +1,5 @@
 import { ProtocolClient } from "@langchain/client";
+import type { CapabilityAdvertisement, Channel } from "@langchain/protocol";
 import type {
   Client,
   StreamMode,
@@ -36,6 +37,24 @@ type ProtocolRuntimeConfig = ReturnType<typeof getProtocolConfig> & {
 };
 
 const ROOT_NAMESPACE: string[] = [];
+const PROTOCOL_COMMAND_MODULES: CapabilityAdvertisement["modules"] = [
+  {
+    name: "session",
+    commands: ["open", "describe", "close"],
+  },
+  {
+    name: "subscription",
+    commands: ["subscribe", "unsubscribe", "reconnect"],
+  },
+  {
+    name: "run",
+    commands: ["input"],
+  },
+];
+
+const PROTOCOL_CHANNEL_MODULE_NAME: Partial<Record<Channel, string>> = {
+  lifecycle: "agent",
+};
 
 const isTerminalLifecycleEvent = (event: ProtocolEventMessage): boolean => {
   if (event.method !== "lifecycle") {
@@ -86,6 +105,20 @@ function getProtocolTransportMode(
   streamProtocol: StreamProtocol | undefined,
 ): ProtocolTransportMode {
   return streamProtocol === "v2-websocket" ? "websocket" : "sse-http";
+}
+
+function getProtocolCapabilities(
+  streamMode?: StreamMode | StreamMode[],
+): CapabilityAdvertisement {
+  return {
+    modules: [
+      ...PROTOCOL_COMMAND_MODULES,
+      ...getProtocolChannels(streamMode).map((channel) => ({
+        name: PROTOCOL_CHANNEL_MODULE_NAME[channel] ?? channel,
+        channels: [channel],
+      })),
+    ],
+  };
 }
 
 export class ProtocolStreamRuntime<
@@ -186,18 +219,13 @@ export class ProtocolStreamRuntime<
         kind: "agent",
         id: assistantId,
       },
+      capabilities: getProtocolCapabilities(streamMode),
       preferredTransports: [this.protocolTransport],
     };
     const session = await protocolClient.open(sessionParams);
 
     const subscription = await session.subscribe({
       channels: getProtocolChannels(streamMode),
-      ...(submitOptions?.streamSubgraphs
-        ? {}
-        : {
-            namespaces: [[]],
-            depth: 0,
-          }),
     });
 
     const runInput =

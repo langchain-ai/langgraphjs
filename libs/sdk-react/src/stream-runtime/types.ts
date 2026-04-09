@@ -6,7 +6,6 @@ export interface StreamRuntimeSubmitArgs<
   StateType extends Record<string, unknown>,
   UpdateType,
   ConfigurableType extends Record<string, unknown>,
-  CustomType,
 > {
   assistantId: string;
   threadId: string;
@@ -35,8 +34,7 @@ export interface StreamRuntime<
     args: StreamRuntimeSubmitArgs<
       StateType,
       UpdateType,
-      ConfigurableType,
-      CustomType
+      ConfigurableType
     >,
   ): Promise<AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>>;
   join(

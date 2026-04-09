@@ -48,12 +48,47 @@ const PROTOCOL_VERSION: ProtocolVersion = "0.3.0";
 const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
   "values",
   "updates",
-  "messages-tuple",
+  "messages",
   "tools",
   "custom",
   "debug",
   "checkpoints",
   "tasks",
+];
+
+const STREAM_CHANNEL_CAPABILITIES: ModuleCapability[] = [
+  {
+    name: "values",
+    channels: ["values"],
+  },
+  {
+    name: "updates",
+    channels: ["updates"],
+  },
+  {
+    name: "messages",
+    channels: ["messages"],
+  },
+  {
+    name: "tools",
+    channels: ["tools"],
+  },
+  {
+    name: "custom",
+    channels: ["custom"],
+  },
+  {
+    name: "debug",
+    channels: ["debug"],
+  },
+  {
+    name: "checkpoints",
+    channels: ["checkpoints"],
+  },
+  {
+    name: "tasks",
+    channels: ["tasks"],
+  },
 ];
 
 const MODULE_CAPABILITIES: ModuleCapability[] = [
@@ -79,6 +114,7 @@ const MODULE_CAPABILITIES: ModuleCapability[] = [
     channels: ["lifecycle"],
     events: ["spawned", "running", "completed", "failed", "interrupted"],
   },
+  ...STREAM_CHANNEL_CAPABILITIES,
   {
     name: "state",
     commands: ["state.get", "state.storeSearch", "state.storePut"],

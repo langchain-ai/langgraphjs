@@ -309,16 +309,6 @@ export async function* streamState(
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
       ) as [string[] | null, LangGraphStreamMode, unknown];
       const syntheticChunks: Array<{ event: string; data: unknown }> = [];
-      console.log(
-        "[streamState on_chain_stream]",
-        JSON.stringify({
-          runId: run.run_id,
-          subgraphs: kwargs.subgraphs ?? false,
-          namespace: ns,
-          mode,
-        })
-      );
-
       if (kwargs.subgraphs && ns?.length) {
         const sourceMessages = getMessagesFromChunk(mode, chunk);
         if (sourceMessages.length > 0) {

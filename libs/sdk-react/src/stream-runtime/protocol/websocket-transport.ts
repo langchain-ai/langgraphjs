@@ -46,6 +46,7 @@ class AsyncQueue<T> {
     this.error =
       error == null
         ? null
+        // oxlint-disable-next-line no-instanceof/no-instanceof
         : error instanceof Error
           ? error
           : new Error(String(error));
@@ -93,6 +94,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const toError = (error: unknown) =>
+  // oxlint-disable-next-line no-instanceof/no-instanceof
   error instanceof Error ? error : new Error(String(error));
 
 const toWebSocketUrl = (apiUrl: string): string => {
@@ -115,6 +117,8 @@ export interface ProtocolWebSocketTransportOptions {
 }
 
 export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
+  sessionId: string | null = null;
+  
   private readonly queue = new AsyncQueue<Message>();
   private readonly apiUrl: string;
   private readonly defaultHeaders?: Record<string, HeaderValue>;
@@ -122,7 +126,6 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
   private readonly webSocketFactory: (url: string) => WebSocket;
   private readonly pending = new Map<number, PendingResponse>();
   private socket: WebSocket | null = null;
-  private sessionId: string | null = null;
   private closed = false;
   private intentionalClose = false;
 

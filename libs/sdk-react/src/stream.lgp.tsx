@@ -240,10 +240,10 @@ export function useStreamLGP<
     return null;
   }, []);
 
-  const client = useMemo(
+  const client = useMemo<Client<StateType, UpdateType, CustomType>>(
     () =>
-      options.client ??
-      new Client({
+      (options.client as Client<StateType, UpdateType, CustomType> | undefined) ??
+      new Client<StateType, UpdateType, CustomType>({
         apiUrl: options.apiUrl,
         apiKey: options.apiKey,
         callerOptions: options.callerOptions,
@@ -264,8 +264,18 @@ export function useStreamLGP<
         UpdateType,
         ConfigurableType,
         CustomType
-      >(client, options),
-    [client, options]
+      >(
+        client,
+        options.streamProtocol,
+        options.protocolFetch?.(),
+        options.protocolWebSocket
+      ),
+    [
+      client,
+      options.streamProtocol,
+      options.protocolFetch,
+      options.protocolWebSocket,
+    ]
   );
 
   const [messageManager] = useState(() => new MessageTupleManager());
