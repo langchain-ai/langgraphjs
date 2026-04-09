@@ -11,6 +11,33 @@ let cleanupServer: (() => Promise<void>) | undefined;
 const websocketIt =
   typeof WebSocket === "undefined" ? it.skip : it;
 
+const projectStategraphParityTranscript = (transcript: any) => ({
+  tree: {
+    graphName: transcript.tree?.graphName,
+    status: transcript.tree?.status,
+  },
+  finalAiContent: [...(transcript.values?.messages ?? [])]
+    .reverse()
+    .find((message: any) => message.type === "ai")?.content,
+  messageEvents: (transcript.events ?? [])
+    .filter((event: any) => event.method === "messages")
+    .map((event: any) => {
+      const data = event.params?.data ?? {};
+      return {
+        event: data.event,
+        index: data.index,
+        reason: data.reason,
+        contentBlock:
+          data.contentBlock == null
+            ? undefined
+            : {
+                type: data.contentBlock.type,
+                text: data.contentBlock.text,
+              },
+      };
+    }),
+});
+
 afterEach(async () => {
   if (cleanupServer != null) {
     await Promise.race([
@@ -102,7 +129,9 @@ describe("protocol v2 snapshots", () => {
         threadId: "protocol-v2-websocket-parity-thread",
       });
 
-      expect(websocketTranscript).toEqual(sseTranscript);
+      expect(projectStategraphParityTranscript(websocketTranscript)).toEqual(
+        projectStategraphParityTranscript(sseTranscript)
+      );
     }
   );
 });

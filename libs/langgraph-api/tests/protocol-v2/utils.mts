@@ -41,6 +41,23 @@ export const startProtocolV2Server = async () =>
     },
   });
 
+export const resetProtocolV2ServerState = async () => {
+  const response = await fetch(`${TEST_API_URL}/internal/truncate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      runs: true,
+      threads: true,
+      assistants: false,
+      checkpointer: true,
+      store: true,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to reset protocol-v2 test server state");
+  }
+};
+
 class BufferedSocket {
   private readonly queue: ProtocolEnvelope[] = [];
 
@@ -290,6 +307,9 @@ export const readWebSocketEventsUntilIdle = async (
   return events;
 };
 
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 const normalizeScalar = (value: unknown): unknown => {
   if (typeof value === "string") {
     if (
@@ -419,17 +439,26 @@ export const collectSseParityTranscript = async (options: {
   threadId: string;
 }) => {
   const { sessionId, eventsResponse } = await openSseSession(options.target);
+  let commandId = 1;
 
-  await subscribeToChannels(sessionId, options.channels, 1);
-  await runSession(sessionId, options.input, options.threadId, 2);
+  await subscribeToChannels(sessionId, options.channels, commandId++);
+  await runSession(sessionId, options.input, options.threadId, commandId++);
+  let treeResponse: ProtocolEnvelope | undefined;
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    treeResponse = await sendSessionCommand(sessionId, {
+      id: commandId++,
+      method: "agent.getTree",
+      params: {},
+    });
+    if (treeResponse.result?.tree?.status !== "running") break;
+    await sleep(100);
+  }
+
+  await sleep(150);
   const events = await readSseEventsUntilIdle(eventsResponse);
-  const treeResponse = await sendSessionCommand(sessionId, {
-    id: 3,
-    method: "agent.getTree",
-    params: {},
-  });
   const stateResponse = await sendSessionCommand(sessionId, {
-    id: 4,
+    id: commandId++,
     method: "state.get",
     params: {},
   });
@@ -450,18 +479,23 @@ export const collectWebSocketParityTranscript = async (options: {
   const { socket, reader } = await openWebSocketSession(options.target);
 
   try {
+    let commandId = 1;
+
     socket.send(
       JSON.stringify({
-        id: 1,
+        id: commandId,
         method: "subscription.subscribe",
         params: { channels: options.channels },
       })
     );
-    await reader.next((payload) => payload.type === "success" && payload.id === 1);
+    await reader.next(
+      (payload) => payload.type === "success" && payload.id === commandId
+    );
+    commandId += 1;
 
     socket.send(
       JSON.stringify({
-        id: 2,
+        id: commandId,
         method: "run.input",
         params: {
           input: options.input,
@@ -474,30 +508,42 @@ export const collectWebSocketParityTranscript = async (options: {
         },
       })
     );
-    await reader.next((payload) => payload.type === "success" && payload.id === 2);
+    await reader.next(
+      (payload) => payload.type === "success" && payload.id === commandId
+    );
+    commandId += 1;
 
-    const events = await readWebSocketEventsUntilIdle(reader);
+    let treeResponse: ProtocolEnvelope | undefined;
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      socket.send(
+        JSON.stringify({
+          id: commandId,
+          method: "agent.getTree",
+          params: {},
+        })
+      );
+      treeResponse = await reader.next(
+        (payload) => payload.type === "success" && payload.id === commandId
+      );
+      commandId += 1;
+
+      if (treeResponse.result?.tree?.status !== "running") break;
+      await sleep(100);
+    }
+
+    await sleep(150);
+    const events = await readWebSocketEventsUntilIdle(reader, 1_000);
 
     socket.send(
       JSON.stringify({
-        id: 3,
-        method: "agent.getTree",
-        params: {},
-      })
-    );
-    const treeResponse = await reader.next(
-      (payload) => payload.type === "success" && payload.id === 3
-    );
-
-    socket.send(
-      JSON.stringify({
-        id: 4,
+        id: commandId,
         method: "state.get",
         params: {},
       })
     );
     const stateResponse = await reader.next(
-      (payload) => payload.type === "success" && payload.id === 4
+      (payload) => payload.type === "success" && payload.id === commandId
     );
 
     return normalizeForTransportParity({
