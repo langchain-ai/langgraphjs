@@ -4,12 +4,13 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
 import type { BagTemplate } from "@langchain/langgraph-sdk";
-import { useStream } from "../react/index.js";
 import type { UIMessage } from "./types.js";
 import type { UseStream } from "../react/types.js";
 
+type ExternalUiStream = UseStream<Record<string, unknown>, BagTemplate>;
+
 const UseStreamContext = React.createContext<{
-  stream: ReturnType<typeof useStream>;
+  stream: ExternalUiStream;
   meta: unknown;
 }>(null!);
 
@@ -103,7 +104,7 @@ interface LoadExternalComponentProps extends Pick<
   React.HTMLAttributes<HTMLDivElement>,
   "style" | "className"
 > {
-  stream: ReturnType<typeof useStream>;
+  stream: ExternalUiStream;
   namespace?: string;
   message: UIMessage;
   meta?: unknown;
@@ -233,7 +234,11 @@ export function bootstrapUiContext() {
     if (name === "react") return React;
     if (name === "react-dom") return ReactDOM;
     if (name === "react/jsx-runtime") return JsxRuntime;
-    if (name === "@langchain/langgraph-sdk/react") return { useStream };
+    if (name === "@langchain/langgraph-sdk/react") {
+      return {
+        useStreamContext,
+      };
+    }
     if (name === "@langchain/langgraph-sdk/react-ui") {
       return {
         useStreamContext,

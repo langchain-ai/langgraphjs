@@ -444,7 +444,9 @@ describe("realistic usage patterns with class instances", () => {
 
 describe("custom transport submit options", () => {
   test("remain narrow in transport mode", () => {
-    const transport: UseStreamTransport<BasicState> = {
+    type TransportState = Record<string, unknown> & BasicState;
+
+    const transport: UseStreamTransport<TransportState> = {
       async stream() {
         async function* generator(): AsyncGenerator<{
           event: string;
@@ -460,7 +462,7 @@ describe("custom transport submit options", () => {
       },
     };
 
-    const stream = useStream<BasicState>({
+    const stream = useStream<TransportState>({
       transport,
       onFinish() {},
     });
