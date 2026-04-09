@@ -67,10 +67,11 @@ describe("ensureLangGraphConfig", () => {
 
     const result = ensureLangGraphConfig(config1, config2);
 
-    // The implementation completely replaces objects rather than merging them
+    // The implementation completely replaces objects rather than merging them.
+    // Only allowlisted configurable keys are propagated to metadata.
     expect(result).toEqual({
       tags: ["tag2"],
-      metadata: { key2: "value2", option2: "value2" },
+      metadata: { key2: "value2" },
       callbacks: undefined,
       recursionLimit: 25,
       configurable: { option2: "value2" },
@@ -93,9 +94,9 @@ describe("ensureLangGraphConfig", () => {
     const result = ensureLangGraphConfig();
 
     expect(result.tags).toEqual(["storage-tag"]);
+    // Only allowlisted keys from configurable are copied to metadata
     expect(result.metadata || {}).toEqual({
       storage: "value",
-      storageOption: "value",
     });
     expect(result.configurable).toEqual({ storageOption: "value" });
     expect(result.callbacks).toEqual({ type: "copied-callback" });
@@ -118,16 +119,27 @@ describe("ensureLangGraphConfig", () => {
     expect(result.metadata).toEqual({});
   });
 
-  it("should copy scalar values to metadata from configurable", () => {
+  it("should only copy allowlisted configurable keys to metadata", () => {
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
     const config = {
       configurable: {
-        stringValue: "string",
-        numberValue: 42,
-        booleanValue: true,
+        thread_id: "th-123",
+        checkpoint_id: "ckpt-1",
+        checkpoint_ns: "ns-1",
+        task_id: "task-1",
+        run_id: "run-456",
+        assistant_id: "asst-789",
+        graph_id: "graph-0",
+        cron_id: "cron-1",
+        // These should NOT be copied to metadata
+        model: "gpt-4o",
+        user_id: "uid-1",
+        langgraph_auth_user_id: "user-1",
+        some_api_key: "secret",
+        custom_setting: 42,
         objectValue: { should: "not be copied" },
         __privateValue: "should not be copied",
       },
@@ -136,10 +148,14 @@ describe("ensureLangGraphConfig", () => {
     const result = ensureLangGraphConfig(config);
 
     expect(result.metadata).toEqual({
-      stringValue: "string",
-      numberValue: 42,
-      booleanValue: true,
-      // objectValue and __privateValue should not be copied
+      thread_id: "th-123",
+      checkpoint_id: "ckpt-1",
+      checkpoint_ns: "ns-1",
+      task_id: "task-1",
+      run_id: "run-456",
+      assistant_id: "asst-789",
+      graph_id: "graph-0",
+      cron_id: "cron-1",
     });
   });
 
@@ -149,15 +165,87 @@ describe("ensureLangGraphConfig", () => {
       .mockReturnValue(undefined);
 
     const config = {
-      metadata: { key: "original value" },
+      metadata: { thread_id: "original value" },
       configurable: {
-        key: "should not overwrite",
+        thread_id: "should not overwrite",
       },
     };
 
     const result = ensureLangGraphConfig(config);
 
-    expect(result.metadata?.key).toEqual("original value");
+    expect(result.metadata?.thread_id).toEqual("original value");
+  });
+
+  it("should propagate all allowlisted configurable keys to metadata", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const config = {
+      configurable: {
+        thread_id: "th-123",
+        checkpoint_id: "ckpt-1",
+        checkpoint_ns: "ns-1",
+        task_id: "task-1",
+        run_id: "run-456",
+        assistant_id: "asst-789",
+        graph_id: "graph-0",
+        cron_id: "cron-1",
+        // non-allowlisted keys
+        model: "gpt-4o",
+        user_id: "uid-1",
+        langgraph_auth_user_id: "user-1",
+        some_api_key: "secret",
+        custom_setting: { nested: true },
+      },
+      metadata: { nooverride: 18 },
+    };
+
+    const result = ensureLangGraphConfig(config);
+
+    // Allowlisted keys should be in metadata
+    expect(result.metadata).toEqual({
+      nooverride: 18,
+      thread_id: "th-123",
+      checkpoint_id: "ckpt-1",
+      checkpoint_ns: "ns-1",
+      task_id: "task-1",
+      run_id: "run-456",
+      assistant_id: "asst-789",
+      graph_id: "graph-0",
+      cron_id: "cron-1",
+    });
+
+    // Non-allowlisted keys should NOT appear
+    expect(result.metadata).not.toHaveProperty("model");
+    expect(result.metadata).not.toHaveProperty("user_id");
+    expect(result.metadata).not.toHaveProperty("langgraph_auth_user_id");
+    expect(result.metadata).not.toHaveProperty("some_api_key");
+    expect(result.metadata).not.toHaveProperty("custom_setting");
+  });
+
+  it("should not overwrite metadata with allowlisted configurable keys", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const config = {
+      configurable: {
+        thread_id: "from-configurable",
+        run_id: "from-configurable",
+      },
+      metadata: {
+        thread_id: "from-metadata",
+        run_id: "from-metadata",
+      },
+    };
+
+    const result = ensureLangGraphConfig(config);
+
+    expect(result.metadata).toEqual({
+      thread_id: "from-metadata",
+      run_id: "from-metadata",
+    });
   });
 });
 

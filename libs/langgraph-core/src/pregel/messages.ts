@@ -18,7 +18,12 @@ import {
 } from "@langchain/core/outputs";
 import { ChainValues } from "@langchain/core/utils/types";
 
-import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import {
+  CHECKPOINT_NAMESPACE_END,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  TAG_HIDDEN,
+  TAG_NOSTREAM,
+} from "../constants.js";
 import { StreamChunk } from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,9 +120,28 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       // Include legacy LangGraph SDK tag
       (!tags || (!tags.includes(TAG_NOSTREAM) && !tags.includes("nostream")))
     ) {
+      const taskCheckpointNs = metadata.langgraph_checkpoint_ns as string;
+      // Strip the task ID suffix to get the canonical checkpoint namespace.
+      const lastEnd = taskCheckpointNs.lastIndexOf(CHECKPOINT_NAMESPACE_END);
+      const checkpointNs =
+        lastEnd !== -1
+          ? `${taskCheckpointNs.substring(0, lastEnd)}${CHECKPOINT_NAMESPACE_END}`
+          : taskCheckpointNs;
+
+      const streamMetadata: Record<string, unknown> = {
+        tags,
+        name,
+        ...metadata,
+        langgraph_checkpoint_ns: checkpointNs,
+      };
+      // Preserve backwards-compatible streamed checkpoint metadata shape.
+      if (!("checkpoint_ns" in streamMetadata)) {
+        streamMetadata.checkpoint_ns = checkpointNs;
+      }
+
       this.metadatas[runId] = [
-        (metadata.langgraph_checkpoint_ns as string).split("|"),
-        { tags, name, ...metadata },
+        taskCheckpointNs.split(CHECKPOINT_NAMESPACE_SEPARATOR),
+        streamMetadata,
       ];
     }
   }

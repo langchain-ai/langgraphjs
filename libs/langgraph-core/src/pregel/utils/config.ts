@@ -89,21 +89,38 @@ export function ensureLangGraphConfig(
     }
   }
 
-  for (const [key, value] of Object.entries(empty.configurable!)) {
-    empty.metadata = empty.metadata ?? {};
-    if (
-      !key.startsWith("__") &&
-      (typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean") &&
-      !(key in empty.metadata!)
-    ) {
-      empty.metadata[key] = value;
+  const configurable = empty.configurable;
+  const metadata = empty.metadata;
+  if (configurable && metadata != null) {
+    for (const key of PROPAGATE_TO_METADATA) {
+      if (key in metadata) {
+        continue;
+      }
+      const value = configurable[key];
+      if (value) {
+        metadata[key] = value;
+      }
     }
   }
 
   return empty;
 }
+
+/**
+ * Configurable keys that should be propagated to user-visible metadata
+ * (e.g. streamed with messages). Only string values are copied, and
+ * existing metadata keys are never overwritten.
+ */
+const PROPAGATE_TO_METADATA = new Set([
+  "thread_id",
+  "checkpoint_id",
+  "checkpoint_ns",
+  "task_id",
+  "run_id",
+  "assistant_id",
+  "graph_id",
+  "cron_id",
+]);
 
 /**
  * A helper utility function that returns the {@link BaseStore} that was set when the graph was initialized

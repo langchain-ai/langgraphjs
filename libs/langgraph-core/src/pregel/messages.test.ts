@@ -143,8 +143,94 @@ describe("StreamMessagesHandler", () => {
 
       expect(handler.metadatas[runId]).toEqual([
         ["ns1", "ns2"],
-        { tags: [], name: "ModelName", ...metadata },
+        {
+          tags: [],
+          name: "ModelName",
+          ...metadata,
+          // checkpoint_ns is added as backwards-compat key
+          checkpoint_ns: "ns1|ns2",
+        },
       ]);
+    });
+
+    it("should strip task ID suffix from checkpoint_ns in stream metadata", () => {
+      const handler = new StreamMessagesHandler(vi.fn());
+
+      const runId = "run-456";
+      const metadata = {
+        langgraph_checkpoint_ns: "agent:abc123-uuid",
+        other_meta: "value",
+      };
+
+      handler.handleChatModelStart(
+        {} as Serialized,
+        [],
+        runId,
+        undefined,
+        {},
+        [],
+        metadata,
+        "ModelName"
+      );
+
+      const storedMeta = handler.metadatas[runId]!;
+      // Namespace array uses the full task checkpoint ns
+      expect(storedMeta[0]).toEqual(["agent:abc123-uuid"]);
+      // Stream metadata should have checkpoint_ns stripped of task ID
+      expect(storedMeta[1].langgraph_checkpoint_ns).toBe("agent:");
+      // Backwards-compatible checkpoint_ns key
+      expect(storedMeta[1].checkpoint_ns).toBe("agent:");
+    });
+
+    it("should preserve checkpoint_ns when no CHECKPOINT_NAMESPACE_END present", () => {
+      const handler = new StreamMessagesHandler(vi.fn());
+
+      const runId = "run-789";
+      const metadata = {
+        langgraph_checkpoint_ns: "simple-ns",
+        other_meta: "value",
+      };
+
+      handler.handleChatModelStart(
+        {} as Serialized,
+        [],
+        runId,
+        undefined,
+        {},
+        [],
+        metadata,
+        "ModelName"
+      );
+
+      const storedMeta = handler.metadatas[runId]!;
+      expect(storedMeta[1].langgraph_checkpoint_ns).toBe("simple-ns");
+    });
+
+    it("should not overwrite existing checkpoint_ns in metadata", () => {
+      const handler = new StreamMessagesHandler(vi.fn());
+
+      const runId = "run-999";
+      const metadata = {
+        langgraph_checkpoint_ns: "agent:abc123-uuid",
+        checkpoint_ns: "original-ns",
+      };
+
+      handler.handleChatModelStart(
+        {} as Serialized,
+        [],
+        runId,
+        undefined,
+        {},
+        [],
+        metadata,
+        "ModelName"
+      );
+
+      const storedMeta = handler.metadatas[runId]!;
+      // Existing checkpoint_ns should be preserved
+      expect(storedMeta[1].checkpoint_ns).toBe("original-ns");
+      // But langgraph_checkpoint_ns should still be updated
+      expect(storedMeta[1].langgraph_checkpoint_ns).toBe("agent:");
     });
 
     it("should not store metadata when TAG_NOSTREAM is present", () => {
