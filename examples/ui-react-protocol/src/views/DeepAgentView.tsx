@@ -1,11 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 import { useStream } from "@langchain/react";
 
 import type { agent as deepAgentType } from "../agents/deep-agent";
@@ -15,7 +16,11 @@ import {
   type SubagentCardData,
   type TraceEntry,
 } from "../components/ProtocolPlayground";
-import { getLastAssistantMetadata, getSubagentPreview } from "../utils";
+import {
+  ensureBaseMessages,
+  getLastAssistantMetadata,
+  getSubagentPreview,
+} from "../utils";
 import {
   API_URL,
   getTransportLabel,
@@ -152,8 +157,8 @@ function DeepAgentPlayground({
   onSubmit,
 }: {
   stream: {
-    messages: Message[];
-    getMessagesMetadata?: (message: Message) => unknown;
+    messages: BaseMessage[];
+    getMessagesMetadata?: (message: BaseMessage) => unknown;
     isLoading: boolean;
     subagents: {
       entries(): IterableIterator<[string, unknown]>;
@@ -179,7 +184,7 @@ function DeepAgentPlayground({
     return entries.map(([id, subagent]) => {
       const state = subagent as {
         status?: string;
-        messages?: Message[];
+        messages?: BaseMessage[];
         namespace?: string[];
         values?: Record<string, unknown>;
         toolCall?: {
@@ -188,7 +193,7 @@ function DeepAgentPlayground({
         };
       };
       const snapshotMessages = Array.isArray(state.values?.messages)
-        ? (state.values.messages as Message[])
+        ? ensureBaseMessages(state.values.messages)
         : [];
       const livePreview = getSubagentPreview(state.messages);
       const snapshotPreview = getSubagentPreview(snapshotMessages);

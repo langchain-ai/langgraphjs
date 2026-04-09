@@ -54,8 +54,8 @@ describe("createStreamRuntime", () => {
 
     expect(protocolRuntime.streamProtocol).toBe("v2-sse");
     expect(protocolRuntime.options).toEqual({
-      fetch: fetchFactory,
-      webSocketFactory: undefined,
+      protocolFetch: fetchFactory,
+      protocolWebSocket: undefined,
     });
 
     const result = await runtime.submit({
@@ -80,8 +80,8 @@ describe("createStreamRuntime", () => {
 
     expect(protocolRuntime.streamProtocol).toBe("v2-websocket");
     expect(protocolRuntime.options).toEqual({
-      fetch: undefined,
-      webSocketFactory: socketFactory,
+      protocolFetch: undefined,
+      protocolWebSocket: socketFactory,
     });
 
     const result = await runtime.join({

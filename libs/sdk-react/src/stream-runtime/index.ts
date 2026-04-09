@@ -34,8 +34,8 @@ export function createStreamRuntime<
     ConfigurableType,
     CustomType
   >(client, streamProtocol, {
-    fetch: protocolFetch,
-    webSocketFactory: protocolWebSocketFactory,
+    protocolFetch,
+    protocolWebSocket: protocolWebSocketFactory,
   });
 
   if (streamProtocol === "v2-sse" || streamProtocol === "v2-websocket") {

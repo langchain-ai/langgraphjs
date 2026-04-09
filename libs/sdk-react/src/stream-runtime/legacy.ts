@@ -1,8 +1,4 @@
-import type {
-  Client,
-  StreamEvent,
-  StreamMode,
-} from "@langchain/langgraph-sdk";
+import type { Client, StreamEvent } from "@langchain/langgraph-sdk";
 import type { EventStreamEvent } from "@langchain/langgraph-sdk/ui";
 import type { StreamRuntime } from "./types.js";
 
@@ -50,7 +46,17 @@ export class LegacyStreamRuntime<
       streamSubgraphs: submitOptions?.streamSubgraphs,
       streamResumable: submitOptions?.streamResumable,
       durability: submitOptions?.durability,
-      onRunCreated,
+      onRunCreated: onRunCreated == null
+        ? undefined
+        : (params) => {
+            if (params.thread_id == null) {
+              return;
+            }
+            onRunCreated({
+              run_id: params.run_id,
+              thread_id: params.thread_id,
+            });
+          },
     }) as AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>;
   }
 

@@ -1,4 +1,4 @@
-import type { Message } from "@langchain/langgraph-sdk";
+import type { BaseMessage } from "@langchain/core/messages";
 
 export interface TraceEntry {
   id: string;
@@ -26,7 +26,7 @@ export interface ProtocolPlaygroundProps {
   protocolLabel: string;
   placeholder: string;
   suggestions: string[];
-  messages: Message[];
+  messages: BaseMessage[];
   isLoading: boolean;
   error?: unknown;
   values?: unknown;
@@ -34,5 +34,5 @@ export interface ProtocolPlaygroundProps {
   eventLog: TraceEntry[];
   subagents?: SubagentCardData[];
   onSubmit: (content: string) => void;
-  getMessageMetadata?: (message: Message) => unknown;
+  getMessageMetadata?: (message: BaseMessage) => unknown;
 }
