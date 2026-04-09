@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
 
+import type { StreamProtocol } from "@langchain/langgraph-sdk";
+
 import type { PlaygroundTransportMode } from "../components/ProtocolSwitcher";
 import type { TraceEntry } from "../components/ProtocolPlayground";
-import type { ProtocolTransportMode } from "../protocolTransport";
 import { formatNamespace, isRecord } from "../utils";
 
 export const API_URL =
@@ -73,7 +74,16 @@ export const summarizeUpdateEvent = (data: unknown, namespace?: string[]) => {
 
 export const isProtocolTransportMode = (
   mode: PlaygroundTransportMode
-): mode is ProtocolTransportMode => mode !== "legacy";
+): mode is Exclude<PlaygroundTransportMode, "legacy"> => mode !== "legacy";
+
+export const getStreamProtocol = (
+  mode: PlaygroundTransportMode
+): StreamProtocol =>
+  mode === "websocket"
+    ? "v2-websocket"
+    : mode === "http-sse"
+      ? "v2-sse"
+      : "legacy";
 
 export const getTransportLabel = (mode: PlaygroundTransportMode) => {
   switch (mode) {

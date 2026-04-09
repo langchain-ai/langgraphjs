@@ -1,13 +1,12 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 import type { agent as deepAgentType } from "../agents/deep-agent";
 import type { PlaygroundTransportMode } from "../components/ProtocolSwitcher";
@@ -16,11 +15,11 @@ import {
   type SubagentCardData,
   type TraceEntry,
 } from "../components/ProtocolPlayground";
-import { createProtocolTransport } from "../protocolTransport";
 import { getLastAssistantMetadata, getSubagentPreview } from "../utils";
 import {
   API_URL,
   getTransportLabel,
+  getStreamProtocol,
   isProtocolTransportMode,
   summarizeToolEvent,
   summarizeUpdateEvent,
@@ -96,18 +95,13 @@ function ProtocolDeepAgentView({
 }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const { eventLog, push } = useTraceLog();
-  const transport = useMemo(
-    () =>
-      createProtocolTransport(transportMode, {
-        apiUrl: API_URL,
-        assistantId: "deep-agent",
-      }),
-    [transportMode]
-  );
 
   const stream = useStream<typeof deepAgentType>({
-    transport,
+    assistantId: "deep-agent",
+    apiUrl: API_URL,
+    fetchStateHistory: true,
     filterSubagentMessages: true,
+    streamProtocol: getStreamProtocol(transportMode),
     throttle: true,
     threadId,
     onThreadId: setThreadId,
