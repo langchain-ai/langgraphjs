@@ -19,7 +19,7 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "../index.js";
+import { useStream, type UseStreamTransport } from "../index.js";
 
 // ============================================================================
 // Test State Types
@@ -439,5 +439,38 @@ describe("realistic usage patterns with class instances", () => {
 
     const toolMessages = stream.messages.filter(ToolMessage.isInstance);
     expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
+  });
+});
+
+describe("custom transport submit options", () => {
+  test("remain narrow in transport mode", () => {
+    const transport: UseStreamTransport<BasicState> = {
+      async stream() {
+        async function* generator(): AsyncGenerator<{
+          event: string;
+          data: unknown;
+        }> {
+          yield {
+            event: "values",
+            data: { messages: [] },
+          };
+        }
+
+        return generator();
+      },
+    };
+
+    const stream = useStream<BasicState>({
+      transport,
+      onFinish() {},
+    });
+
+    type CustomSubmitOptions = NonNullable<Parameters<typeof stream.submit>[1]>;
+
+    expectTypeOf<CustomSubmitOptions>().toHaveProperty("streamSubgraphs");
+    expectTypeOf<CustomSubmitOptions>().not.toHaveProperty("onDisconnect");
+    expectTypeOf<CustomSubmitOptions>().not.toHaveProperty(
+      "streamResumable"
+    );
   });
 });

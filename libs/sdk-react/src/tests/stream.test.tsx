@@ -1,7 +1,11 @@
 import { Client, type Message } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-react";
-import { useStreamContext, type UseStreamTransport } from "../index.js";
+import {
+  useStream,
+  useStreamContext,
+  type UseStreamTransport,
+} from "../index.js";
 import { useStreamCustom } from "../stream.custom.js";
 import { BasicStream } from "./components/BasicStream.js";
 import { InitialValuesStream } from "./components/InitialValuesStream.js";
@@ -967,6 +971,76 @@ it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
         }),
       }),
     }),
+  );
+});
+
+it("useStream rejects unsupported custom transport resumability options", async () => {
+  type StreamState = { messages: Message[] };
+  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
+    async () => {
+      async function* generate(): AsyncGenerator<{
+        event: string;
+        data: unknown;
+      }> {
+        yield {
+          event: "values",
+          data: {
+            messages: [{ id: "ai-1", type: "ai", content: "Hello!" }],
+          },
+        };
+      }
+
+      return generate();
+    }
+  );
+  const onError = vi.fn();
+
+  function UnsupportedCustomTransportOptions() {
+    const thread = useStream<StreamState>({
+      transport: { stream: streamTransport },
+      threadId: null,
+      onThreadId: () => {},
+      onError,
+    });
+
+    return (
+      <button
+        data-testid="submit-unsupported-custom-options"
+        onClick={() =>
+          void (
+            thread.submit as (
+              values: StreamState,
+              options: {
+                onDisconnect?: string;
+                streamResumable?: boolean;
+              }
+            ) => Promise<void>
+          )(
+            {
+              messages: [{ type: "human", content: "Hi" } as Message],
+            },
+            {
+              onDisconnect: "continue",
+              streamResumable: true,
+            }
+          )
+        }
+      >
+        Submit
+      </button>
+    );
+  }
+
+  const screen = await render(<UnsupportedCustomTransportOptions />);
+  await screen.getByTestId("submit-unsupported-custom-options").click();
+
+  await expect.poll(() => onError.mock.calls.length).toBe(1);
+  expect(streamTransport).not.toHaveBeenCalled();
+  expect((onError.mock.calls[0][0] as Error).message).toContain(
+    "`onDisconnect`"
+  );
+  expect((onError.mock.calls[0][0] as Error).message).toContain(
+    "`streamResumable`"
   );
 });
 

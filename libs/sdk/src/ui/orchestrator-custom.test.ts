@@ -343,6 +343,38 @@ describe("CustomStreamOrchestrator", () => {
       orch.dispose();
     });
 
+    it("rejects unsupported disconnect and resumability options", async () => {
+      const transport = createMockTransport([]);
+      const onError = vi.fn();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          onError,
+          threadId: "t1",
+        })
+      );
+
+      await orch.submit(
+        { messages: [] },
+        {
+          onDisconnect: "continue",
+          streamResumable: true,
+        } as never
+      );
+
+      expect(transport.stream).not.toHaveBeenCalled();
+      expect(orch.error).toBeInstanceOf(Error);
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0][0] as Error).message).toContain(
+        "`onDisconnect`"
+      );
+      expect((onError.mock.calls[0][0] as Error).message).toContain(
+        "`streamResumable`"
+      );
+
+      orch.dispose();
+    });
+
     it("applies optimisticValues", async () => {
       const transport = createMockTransport([]);
       const orch = new CustomStreamOrchestrator<TestState>(

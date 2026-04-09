@@ -118,6 +118,36 @@ function createCustomTransportThreadState<
   };
 }
 
+function getUnsupportedCustomSubmitOptionsError(
+  submitOptions?:
+    | {
+        onDisconnect?: unknown;
+        streamResumable?: unknown;
+      }
+    | undefined
+): Error | undefined {
+  const unsupported: string[] = [];
+
+  if (submitOptions?.onDisconnect !== undefined) {
+    unsupported.push("`onDisconnect`");
+  }
+
+  if (submitOptions?.streamResumable !== undefined) {
+    unsupported.push("`streamResumable`");
+  }
+
+  if (unsupported.length === 0) {
+    return undefined;
+  }
+
+  const unsupportedList = unsupported.join(" and ");
+  return new Error(
+    `Custom transports do not support ${unsupportedList}. ` +
+      "Handle stream resumability and disconnect behavior in the " +
+      "transport or protocol session layer instead."
+  );
+}
+
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
@@ -198,6 +228,34 @@ export function useStreamCustom<
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
+    const unsupportedSubmitOptionsError = getUnsupportedCustomSubmitOptionsError(
+      submitOptions as
+        | {
+            onDisconnect?: unknown;
+            streamResumable?: unknown;
+          }
+        | undefined
+    );
+
+    if (unsupportedSubmitOptionsError) {
+      await stream.start(
+        async () => {
+          throw unsupportedSubmitOptionsError;
+        },
+        {
+          getMessages,
+          setMessages,
+          initialValues: {} as StateType,
+          callbacks: options,
+          onSuccess: () => undefined,
+          onError(error) {
+            options.onError?.(error, undefined);
+          },
+        }
+      );
+      return;
+    }
+
     let usableThreadId = threadId;
 
     stream.setStreamValues(() => {

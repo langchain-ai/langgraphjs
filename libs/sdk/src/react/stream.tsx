@@ -9,7 +9,9 @@ import type {
   ResolveStreamOptions,
   InferBag,
   InferStateType,
+  InferSubagentStates,
 } from "../ui/stream/index.js";
+import type { UseStreamCustom } from "./types.js";
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -34,7 +36,11 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate,
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): ResolveStreamInterface<T, InferBag<T, Bag>>;
+): UseStreamCustom<
+  InferStateType<T>,
+  InferBag<T, Bag>,
+  InferSubagentStates<T>
+>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {

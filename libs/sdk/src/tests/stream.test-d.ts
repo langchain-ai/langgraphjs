@@ -731,8 +731,15 @@ describe("useStream.values state inference", () => {
       onFinish() {},
     });
 
+    type CustomSubmitOptions = NonNullable<Parameters<typeof stream.submit>[1]>;
+
     expectTypeOf(stream.values).toEqualTypeOf<DirectState>();
     expectTypeOf(stream.values.customField).toEqualTypeOf<string>();
+    expectTypeOf<CustomSubmitOptions>().toHaveProperty("streamSubgraphs");
+    expectTypeOf<CustomSubmitOptions>().not.toHaveProperty("onDisconnect");
+    expectTypeOf<CustomSubmitOptions>().not.toHaveProperty(
+      "streamResumable"
+    );
   });
 });
 

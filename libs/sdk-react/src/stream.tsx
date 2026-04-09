@@ -6,11 +6,12 @@ import type {
   ResolveStreamOptions,
   InferBag,
   InferStateType,
+  InferSubagentStates,
   WithClassMessages,
 } from "@langchain/langgraph-sdk/ui";
 import { useStreamLGP } from "./stream.lgp.js";
 import { useStreamCustom } from "./stream.custom.js";
-import type { UseStreamCustomOptions } from "./types.js";
+import type { UseStreamCustom, UseStreamCustomOptions } from "./types.js";
 
 function isCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
@@ -216,7 +217,13 @@ export function useStream<
   Bag extends BagTemplate = BagTemplate,
 >(
   options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>;
+): WithClassMessages<
+  UseStreamCustom<
+    InferStateType<T>,
+    InferBag<T, Bag>,
+    InferSubagentStates<T>
+  >
+>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useStream(options: any): any {
