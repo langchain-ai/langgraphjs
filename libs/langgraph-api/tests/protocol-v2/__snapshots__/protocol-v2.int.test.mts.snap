@@ -90,6 +90,11 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
                 "id": "<uuid>",
                 "type": "human",
               },
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
             ],
           },
           "namespace": [],
@@ -142,6 +147,11 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
                 "id": "call-weather-1-final",
                 "name": "model",
                 "type": "ai",
+              },
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "What is the weather in San Francisco?",
@@ -434,6 +444,13 @@ exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapsho
             "tool_call_chunks": [],
             "tool_calls": [],
             "type": "ai",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "What is the weather in San Francisco?",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
           },
           {
             "additional_kwargs": {},
@@ -860,6 +877,13 @@ exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 
             "response_metadata": {},
             "type": "human",
           },
+          {
+            "additional_kwargs": {},
+            "content": "Research protocol risks and inspect the sample dataset.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
         ],
         "todos": [],
       },
@@ -930,6 +954,11 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
                 "content": "Plan accepted.",
                 "id": "stategraph-message-1",
                 "type": "ai",
+              },
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
               },
               {
                 "content": "Summarize the protocol draft.",
@@ -1431,6 +1460,11 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
                 "id": "<uuid>",
                 "type": "human",
               },
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
+              },
             ],
           },
           "namespace": [],
@@ -1657,6 +1691,13 @@ exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] =
             "tool_call_chunks": [],
             "tool_calls": [],
             "type": "ai",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Summarize the protocol draft.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
           },
           {
             "additional_kwargs": {},
