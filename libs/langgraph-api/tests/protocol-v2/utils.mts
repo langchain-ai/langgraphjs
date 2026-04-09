@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import { startServer } from "../../src/server.mjs";
 
 export type ProtocolEnvelope = Record<string, any>;
+export type ProtocolTarget = { kind: "graph" | "agent"; id: string };
 
 export const TEST_PORT = 2245;
 export const TEST_API_URL = `http://127.0.0.1:${TEST_PORT}`;
+export const TEST_WS_URL = `ws://127.0.0.1:${TEST_PORT}`;
 
 const TEST_GRAPHS_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -39,9 +41,69 @@ export const startProtocolV2Server = async () =>
     },
   });
 
-export const openSseSession = async (
-  target: { kind: "graph" | "agent"; id: string }
-) => {
+class BufferedSocket {
+  private readonly queue: ProtocolEnvelope[] = [];
+
+  private readonly waiters: Array<{
+    predicate: (payload: ProtocolEnvelope) => boolean;
+    resolve: (payload: ProtocolEnvelope) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }> = [];
+
+  constructor(private readonly socket: WebSocket) {
+    socket.addEventListener("message", (event) => {
+      let payload: ProtocolEnvelope;
+      try {
+        payload = JSON.parse(String(event.data)) as ProtocolEnvelope;
+      } catch {
+        return;
+      }
+
+      const waiterIndex = this.waiters.findIndex((waiter) =>
+        waiter.predicate(payload)
+      );
+      if (waiterIndex >= 0) {
+        const [waiter] = this.waiters.splice(waiterIndex, 1);
+        clearTimeout(waiter.timeout);
+        waiter.resolve(payload);
+        return;
+      }
+
+      this.queue.push(payload);
+    });
+  }
+
+  async next(
+    predicate: (payload: ProtocolEnvelope) => boolean,
+    timeoutMs: number = 10_000
+  ): Promise<ProtocolEnvelope> {
+    const queuedIndex = this.queue.findIndex(predicate);
+    if (queuedIndex >= 0) {
+      return this.queue.splice(queuedIndex, 1)[0];
+    }
+
+    return new Promise<ProtocolEnvelope>((resolve, reject) => {
+      const waiter = {
+        predicate,
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          const index = this.waiters.indexOf(waiter);
+          if (index >= 0) this.waiters.splice(index, 1);
+          reject(new Error("Timed out waiting for websocket message"));
+        }, timeoutMs),
+      };
+      this.waiters.push(waiter);
+    });
+  }
+
+  close() {
+    this.socket.close();
+  }
+}
+
+export const openSseSession = async (target: ProtocolTarget) => {
   const openResponse = await fetch(`${TEST_API_URL}/v2/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -67,6 +129,36 @@ export const openSseSession = async (
   }
 
   return { openResponse, sessionId, eventsResponse };
+};
+
+export const openWebSocketSession = async (target: ProtocolTarget) => {
+  const socket = new WebSocket(`${TEST_WS_URL}/v2/runs`);
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener("open", () => resolve(), { once: true });
+    socket.addEventListener(
+      "error",
+      () => reject(new Error("Failed to open websocket")),
+      { once: true }
+    );
+  });
+
+  const reader = new BufferedSocket(socket);
+  socket.send(
+    JSON.stringify({
+      id: 0,
+      method: "session.open",
+      params: {
+        protocolVersion: "0.3.0",
+        target,
+      },
+    })
+  );
+
+  const openResponse = await reader.next(
+    (payload) => payload.type === "success" && payload.id === 0
+  );
+
+  return { openResponse, socket, reader };
 };
 
 export const sendSessionCommand = async (
@@ -171,6 +263,33 @@ export const readSseEventsUntilIdle = async (
   return events;
 };
 
+export const readWebSocketEventsUntilIdle = async (
+  reader: BufferedSocket,
+  idleMs: number = 500
+) => {
+  const events: ProtocolEnvelope[] = [];
+
+  while (true) {
+    try {
+      const payload = await reader.next(
+        (message) => message.type === "event",
+        idleMs
+      );
+      events.push(payload);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "Timed out waiting for websocket message"
+      ) {
+        break;
+      }
+      throw error;
+    }
+  }
+
+  return events;
+};
+
 const normalizeScalar = (value: unknown): unknown => {
   if (typeof value === "string") {
     if (
@@ -211,8 +330,42 @@ export const normalizeForSnapshot = (value: unknown): unknown => {
   return normalizeScalar(value);
 };
 
+const UUID_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const GENERATED_ID_PATTERN = /019[a-z0-9-]{20,}/gi;
+
+const normalizeTransportString = (value: string) =>
+  value.replace(GENERATED_ID_PATTERN, "<id>").replace(UUID_PATTERN, "<uuid>");
+
+export const normalizeForTransportParity = (value: unknown): unknown => {
+  if (typeof value === "string") {
+    return normalizeTransportString(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeForTransportParity(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+        if (key === "timestamp") return [key, "<timestamp>"];
+        if (key === "seq") return [key, "<seq>"];
+        if (key === "eventId") return [key, "<event-id>"];
+        if (key === "sessionId") return [key, "<session-id>"];
+        if (key === "subscriptionId") return [key, "<subscription-id>"];
+        if (key === "runId") return [key, "<run-id>"];
+        if (key === "threadId") return [key, "<thread-id>"];
+        return [key, normalizeForTransportParity(entry)];
+      })
+    );
+  }
+
+  return value;
+};
+
 export const collectProtocolTranscript = async (options: {
-  target: { kind: "graph" | "agent"; id: string };
+  target: ProtocolTarget;
   channels: string[];
   input: unknown;
   threadId: string;
@@ -257,4 +410,102 @@ export const collectProtocolTranscript = async (options: {
       data: normalizeForSnapshot(event.data),
     })),
   });
+};
+
+export const collectSseParityTranscript = async (options: {
+  target: ProtocolTarget;
+  channels: string[];
+  input: unknown;
+  threadId: string;
+}) => {
+  const { sessionId, eventsResponse } = await openSseSession(options.target);
+
+  await subscribeToChannels(sessionId, options.channels, 1);
+  await runSession(sessionId, options.input, options.threadId, 2);
+  const events = await readSseEventsUntilIdle(eventsResponse);
+  const treeResponse = await sendSessionCommand(sessionId, {
+    id: 3,
+    method: "agent.getTree",
+    params: {},
+  });
+  const stateResponse = await sendSessionCommand(sessionId, {
+    id: 4,
+    method: "state.get",
+    params: {},
+  });
+
+  return normalizeForTransportParity({
+    tree: treeResponse.result?.tree,
+    values: stateResponse.result?.values,
+    events: events.map((event) => event.data),
+  });
+};
+
+export const collectWebSocketParityTranscript = async (options: {
+  target: ProtocolTarget;
+  channels: string[];
+  input: unknown;
+  threadId: string;
+}) => {
+  const { socket, reader } = await openWebSocketSession(options.target);
+
+  try {
+    socket.send(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: options.channels },
+      })
+    );
+    await reader.next((payload) => payload.type === "success" && payload.id === 1);
+
+    socket.send(
+      JSON.stringify({
+        id: 2,
+        method: "run.input",
+        params: {
+          input: options.input,
+          config: {
+            configurable: {
+              ...globalConfig.configurable,
+              thread_id: options.threadId,
+            },
+          },
+        },
+      })
+    );
+    await reader.next((payload) => payload.type === "success" && payload.id === 2);
+
+    const events = await readWebSocketEventsUntilIdle(reader);
+
+    socket.send(
+      JSON.stringify({
+        id: 3,
+        method: "agent.getTree",
+        params: {},
+      })
+    );
+    const treeResponse = await reader.next(
+      (payload) => payload.type === "success" && payload.id === 3
+    );
+
+    socket.send(
+      JSON.stringify({
+        id: 4,
+        method: "state.get",
+        params: {},
+      })
+    );
+    const stateResponse = await reader.next(
+      (payload) => payload.type === "success" && payload.id === 4
+    );
+
+    return normalizeForTransportParity({
+      tree: treeResponse.result?.tree,
+      values: stateResponse.result?.values,
+      events,
+    });
+  } finally {
+    reader.close();
+  }
 };

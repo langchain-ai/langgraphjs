@@ -2,10 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   collectProtocolTranscript,
+  collectSseParityTranscript,
+  collectWebSocketParityTranscript,
   startProtocolV2Server,
 } from "./utils.mjs";
 
 let cleanupServer: (() => Promise<void>) | undefined;
+const websocketIt =
+  typeof WebSocket === "undefined" ? it.skip : it;
 
 afterEach(async () => {
   if (cleanupServer != null) {
@@ -71,4 +75,34 @@ describe("protocol v2 snapshots", () => {
 
     expect(transcript).toMatchSnapshot();
   });
+
+  websocketIt(
+    "matches the finalized stategraph transcript over websocket and SSE",
+    async () => {
+      ({ cleanup: cleanupServer } = await startProtocolV2Server());
+
+      const target = { kind: "graph" as const, id: "stategraph_text" };
+      const channels = ["messages", "values"];
+      const input = {
+        messages: [
+          { type: "human", content: "Summarize the protocol draft." },
+        ],
+      };
+
+      const sseTranscript = await collectSseParityTranscript({
+        target,
+        channels,
+        input,
+        threadId: "protocol-v2-sse-parity-thread",
+      });
+      const websocketTranscript = await collectWebSocketParityTranscript({
+        target,
+        channels,
+        input,
+        threadId: "protocol-v2-websocket-parity-thread",
+      });
+
+      expect(websocketTranscript).toEqual(sseTranscript);
+    }
+  );
 });
