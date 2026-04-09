@@ -4,6 +4,7 @@ import {
   collectProtocolTranscript,
   collectSseParityTranscript,
   collectWebSocketParityTranscript,
+  resetProtocolV2ServerState,
   startProtocolV2Server,
 } from "./utils.mjs";
 
@@ -120,6 +121,7 @@ afterEach(async () => {
 describe("protocol v2 snapshots", () => {
   it("captures a stategraph transcript snapshot", async () => {
     ({ cleanup: cleanupServer } = await startProtocolV2Server());
+    await resetProtocolV2ServerState();
 
     const transcript = await collectProtocolTranscript({
       target: { kind: "graph", id: "stategraph_text" },
@@ -137,6 +139,7 @@ describe("protocol v2 snapshots", () => {
 
   it("captures a createAgent ReAct transcript snapshot", async () => {
     ({ cleanup: cleanupServer } = await startProtocolV2Server());
+    await resetProtocolV2ServerState();
 
     const transcript = await collectProtocolTranscript({
       target: { kind: "agent", id: "create_agent" },
@@ -154,6 +157,7 @@ describe("protocol v2 snapshots", () => {
 
   it("captures a createDeepAgent transcript snapshot", async () => {
     ({ cleanup: cleanupServer } = await startProtocolV2Server());
+    await resetProtocolV2ServerState();
 
     const transcript = await collectProtocolTranscript({
       target: { kind: "agent", id: "deep_agent" },
@@ -176,6 +180,7 @@ describe("protocol v2 snapshots", () => {
     "matches the finalized stategraph transcript over websocket and SSE",
     async () => {
       ({ cleanup: cleanupServer } = await startProtocolV2Server());
+      await resetProtocolV2ServerState();
 
       const target = { kind: "graph" as const, id: "stategraph_text" };
       const channels = ["messages", "values"];
@@ -208,6 +213,7 @@ describe("protocol v2 snapshots", () => {
     "matches the finalized createAgent transcript over websocket and SSE",
     async () => {
       ({ cleanup: cleanupServer } = await startProtocolV2Server());
+      await resetProtocolV2ServerState();
 
       const target = { kind: "agent" as const, id: "create_agent" };
       const channels = ["messages", "tools", "values"];
@@ -240,6 +246,7 @@ describe("protocol v2 snapshots", () => {
     "matches the finalized createDeepAgent transcript over websocket and SSE",
     async () => {
       ({ cleanup: cleanupServer } = await startProtocolV2Server());
+      await resetProtocolV2ServerState();
 
       const target = { kind: "agent" as const, id: "deep_agent" };
       const channels = ["messages", "tools", "lifecycle", "values", "updates"];
