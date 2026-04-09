@@ -49,7 +49,6 @@ export type {
 } from "@langchain/langgraph-sdk/ui";
 export type {
   MessageMetadata,
-  ProtocolTransport,
   UseStreamOptions,
   UseStreamCustomOptions,
   UseStreamTransport,
