@@ -67,6 +67,46 @@ const projectCreateAgentParityTranscript = (transcript: any) => ({
     }),
 });
 
+const projectDeepAgentParityTranscript = (transcript: any) => {
+  const messages = transcript.values?.messages ?? [];
+  const orchestratorMessage = messages.find(
+    (message: any) =>
+      message.type === "ai" &&
+      Array.isArray(message.tool_calls) &&
+      message.tool_calls.length > 0
+  );
+
+  return {
+    tree: {
+      graphName: transcript.tree?.graphName,
+      status: transcript.tree?.status,
+    },
+    finalAiContent: [...messages]
+      .reverse()
+      .find((message: any) => message.type === "ai")?.content,
+    orchestratorToolCalls: (orchestratorMessage?.tool_calls ?? []).map(
+      (toolCall: any) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        args: {
+          description: toolCall.args?.description,
+          subagent_type: toolCall.args?.subagent_type,
+        },
+      })
+    ),
+    lifecycleEvents: (transcript.events ?? [])
+      .filter((event: any) => event.method === "lifecycle")
+      .map((event: any) => {
+        const data = event.params?.data ?? {};
+        return {
+          namespace: event.params?.namespace ?? [],
+          event: data.event,
+          graphName: data.graphName,
+        };
+      }),
+  };
+};
+
 afterEach(async () => {
   if (cleanupServer != null) {
     await Promise.race([
@@ -192,6 +232,41 @@ describe("protocol v2 snapshots", () => {
 
       expect(projectCreateAgentParityTranscript(websocketTranscript)).toEqual(
         projectCreateAgentParityTranscript(sseTranscript)
+      );
+    }
+  );
+
+  websocketIt(
+    "matches the finalized createDeepAgent transcript over websocket and SSE",
+    async () => {
+      ({ cleanup: cleanupServer } = await startProtocolV2Server());
+
+      const target = { kind: "agent" as const, id: "deep_agent" };
+      const channels = ["messages", "tools", "lifecycle", "values", "updates"];
+      const input = {
+        messages: [
+          {
+            type: "human",
+            content: "Research protocol risks and inspect the sample dataset.",
+          },
+        ],
+      };
+
+      const sseTranscript = await collectSseParityTranscript({
+        target,
+        channels,
+        input,
+        threadId: "protocol-v2-deep-agent-sse-parity-thread",
+      });
+      const websocketTranscript = await collectWebSocketParityTranscript({
+        target,
+        channels,
+        input,
+        threadId: "protocol-v2-deep-agent-websocket-parity-thread",
+      });
+
+      expect(projectDeepAgentParityTranscript(websocketTranscript)).toEqual(
+        projectDeepAgentParityTranscript(sseTranscript)
       );
     }
   );
