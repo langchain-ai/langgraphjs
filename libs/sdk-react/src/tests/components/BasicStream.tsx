@@ -4,8 +4,7 @@ import { useStream } from "../../index.js";
 interface Props {
   apiUrl: string;
   assistantId?: string;
-  streamProtocol?: "legacy" | "v2-sse";
-  protocolTransport?: "sse-http" | "websocket";
+  streamProtocol?: "legacy" | "v2-sse" | "v2-websocket";
   submitInput?: Record<string, unknown>;
   submitOptions?: Record<string, unknown>;
   onCheckpointEvent?: (...args: unknown[]) => void;
@@ -20,7 +19,6 @@ export function BasicStream({
   apiUrl,
   assistantId = "agent",
   streamProtocol,
-  protocolTransport,
   submitInput = { messages: [{ content: "Hello", type: "human" }] },
   submitOptions,
   onCheckpointEvent,
@@ -34,7 +32,6 @@ export function BasicStream({
     assistantId,
     apiUrl,
     streamProtocol,
-    protocolTransport,
     onCheckpointEvent,
     onTaskEvent,
     onUpdateEvent,

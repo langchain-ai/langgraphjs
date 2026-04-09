@@ -85,8 +85,7 @@ it("handles message submission over protocol WebSocket", async () => {
   const screen = await render(
     <BasicStream
       apiUrl={serverUrl}
-      streamProtocol="v2-sse"
-      protocolTransport="websocket"
+      streamProtocol="v2-websocket"
     />,
   );
 

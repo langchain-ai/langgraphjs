@@ -1,4 +1,4 @@
-import type { Client, ProtocolTransport } from "@langchain/langgraph-sdk";
+import type { Client, StreamProtocol } from "@langchain/langgraph-sdk";
 import type { StreamRuntime } from "./types.js";
 import { LegacyStreamRuntime } from "./legacy.js";
 import { ProtocolStreamRuntime } from "./protocol/runtime.js";
@@ -10,8 +10,9 @@ export function createStreamRuntime<
   CustomType,
 >(
   client: Client<StateType, UpdateType, CustomType>,
-  streamProtocol?: "legacy" | "v2-sse",
-  protocolTransport?: ProtocolTransport,
+  streamProtocol?: StreamProtocol,
+  protocolFetch?: typeof fetch,
+  protocolWebSocketFactory?: (url: string) => WebSocket,
 ): {
   runtime: StreamRuntime<StateType, UpdateType, ConfigurableType, CustomType>;
   protocolRuntime: ProtocolStreamRuntime<
@@ -32,9 +33,12 @@ export function createStreamRuntime<
     UpdateType,
     ConfigurableType,
     CustomType
-  >(client, protocolTransport);
+  >(client, streamProtocol, {
+    fetch: protocolFetch,
+    webSocketFactory: protocolWebSocketFactory,
+  });
 
-  if (streamProtocol === "v2-sse") {
+  if (streamProtocol === "v2-sse" || streamProtocol === "v2-websocket") {
     return {
       runtime: {
         submit: async (args) =>

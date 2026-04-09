@@ -250,7 +250,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
   private assertBrowserSafeTransportConfig(): void {
     if (hasHeaders(this.defaultHeaders) || this.onRequest != null) {
       throw new Error(
-        'Browser WebSocket protocol transport does not support custom headers or onRequest hooks. Use protocolTransport: "sse-http" instead.',
+        "Browser WebSocket protocol transport does not support defaultHeaders or onRequest hooks. Supply a custom protocolWebSocketFactory if you need custom WebSocket setup.",
       );
     }
   }

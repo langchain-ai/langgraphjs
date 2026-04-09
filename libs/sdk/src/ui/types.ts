@@ -1081,24 +1081,35 @@ export interface UseStreamOptions<
   defaultHeaders?: ClientConfig["defaultHeaders"];
 
   /**
-   * Streaming transport to use for run submission.
-   * Keeps the `useStream` surface unchanged while allowing opt-in to the
-   * session-based protocol.
+   * Streaming protocol to use for run submission.
+   *
+   * - `"legacy"` keeps the existing REST + SSE implementation.
+   * - `"v2-sse"` opts into the session-based protocol over HTTP + SSE.
+   * - `"v2-websocket"` opts into the session-based protocol over WebSockets.
    *
    * @default "legacy"
    */
   streamProtocol?: StreamProtocol;
 
   /**
-   * Preferred transport to use when `streamProtocol` opts into the session-based
-   * protocol.
+   * Optional fetch factory used by the session-based protocol transports.
    *
-   * - `"sse-http"` keeps the current browser-friendly HTTP + SSE behavior.
-   * - `"websocket"` uses the protocol's bidirectional WebSocket transport.
+   * This can be used to inject a custom fetch implementation or wrap requests
+   * with custom auth/header logic specifically for protocol-based streaming.
    *
-   * @default "sse-http"
+   * For `"v2-sse"`, the returned fetch is used for both session commands and
+   * the SSE event stream.
    */
-  protocolTransport?: ProtocolTransport;
+  protocolFetch?: () => typeof fetch;
+
+  /**
+   * Optional WebSocket factory used when `streamProtocol` is `"v2-websocket"`.
+   *
+   * This lets applications construct custom WebSocket instances, for example
+   * when auth must be encoded in the URL or when a custom client implementation
+   * is needed.
+   */
+  protocolWebSocket?: (url: string) => WebSocket;
 
   /**
    * Specify the key within the state that contains messages.
