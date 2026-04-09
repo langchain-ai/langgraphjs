@@ -15,6 +15,7 @@ import type {
   OnCompletionBehavior,
   DisconnectMode,
   Durability,
+  ProtocolTransport,
   StreamProtocol,
 } from "../types.js";
 import type {
@@ -1082,11 +1083,22 @@ export interface UseStreamOptions<
   /**
    * Streaming transport to use for run submission.
    * Keeps the `useStream` surface unchanged while allowing opt-in to the
-   * session-based protocol over HTTP + SSE.
+   * session-based protocol.
    *
    * @default "legacy"
    */
   streamProtocol?: StreamProtocol;
+
+  /**
+   * Preferred transport to use when `streamProtocol` opts into the session-based
+   * protocol.
+   *
+   * - `"sse-http"` keeps the current browser-friendly HTTP + SSE behavior.
+   * - `"websocket"` uses the protocol's bidirectional WebSocket transport.
+   *
+   * @default "sse-http"
+   */
+  protocolTransport?: ProtocolTransport;
 
   /**
    * Specify the key within the state that contains messages.

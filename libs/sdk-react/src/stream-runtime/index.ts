@@ -1,4 +1,4 @@
-import type { Client } from "@langchain/langgraph-sdk";
+import type { Client, ProtocolTransport } from "@langchain/langgraph-sdk";
 import type { StreamRuntime } from "./types.js";
 import { LegacyStreamRuntime } from "./legacy.js";
 import { ProtocolStreamRuntime } from "./protocol/runtime.js";
@@ -11,6 +11,7 @@ export function createStreamRuntime<
 >(
   client: Client<StateType, UpdateType, CustomType>,
   streamProtocol?: "legacy" | "v2-sse",
+  protocolTransport?: ProtocolTransport,
 ): {
   runtime: StreamRuntime<StateType, UpdateType, ConfigurableType, CustomType>;
   protocolRuntime: ProtocolStreamRuntime<
@@ -31,7 +32,7 @@ export function createStreamRuntime<
     UpdateType,
     ConfigurableType,
     CustomType
-  >(client);
+  >(client, protocolTransport);
 
   if (streamProtocol === "v2-sse") {
     return {
