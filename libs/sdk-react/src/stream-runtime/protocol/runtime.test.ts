@@ -43,7 +43,7 @@ describe("ProtocolStreamRuntime", () => {
     });
   });
 
-  it("advertises subscribed protocol channels during session open", async () => {
+  it("binds the resolved thread to session.open and run.input", async () => {
     const runtime = new ProtocolStreamRuntime(
       {
         runs: {
@@ -57,6 +57,13 @@ describe("ProtocolStreamRuntime", () => {
       assistantId: "agent",
       threadId: "thread-1",
       input: { messages: [] },
+      submitOptions: {
+        config: {
+          configurable: {
+            user_id: "user-1",
+          },
+        },
+      },
       signal: new AbortController().signal,
       streamMode: ["messages-tuple", "tools", "values"],
     });
@@ -65,6 +72,12 @@ describe("ProtocolStreamRuntime", () => {
     expect(openMock).toHaveBeenCalledWith(
       expect.objectContaining({
         protocolVersion: "0.3.0",
+        config: {
+          configurable: {
+            user_id: "user-1",
+            thread_id: "thread-1",
+          },
+        },
         capabilities: {
           modules: expect.arrayContaining([
             expect.objectContaining({
@@ -98,6 +111,17 @@ describe("ProtocolStreamRuntime", () => {
 
     expect(subscribeMock).toHaveBeenCalledWith({
       channels: ["lifecycle", "messages", "tools", "values"],
+    });
+
+    expect(inputMock).toHaveBeenCalledWith({
+      input: { messages: [] },
+      config: {
+        configurable: {
+          user_id: "user-1",
+          thread_id: "thread-1",
+        },
+      },
+      metadata: undefined,
     });
   });
 });
