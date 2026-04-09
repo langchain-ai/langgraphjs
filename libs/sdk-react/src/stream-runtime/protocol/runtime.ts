@@ -29,6 +29,13 @@ type RunsClientInternals = {
 };
 
 type SessionOpenParams = Parameters<ProtocolClient["open"]>[0];
+type SessionOpenConfig = SessionOpenParams extends { config?: infer T }
+  ? T
+  : never;
+type RunInputParams = Parameters<
+  Awaited<ReturnType<ProtocolClient["open"]>>["run"]["input"]
+>[0];
+type RunInputConfig = RunInputParams extends { config?: infer T } ? T : never;
 
 type ProtocolTransportMode = "sse-http" | "websocket";
 
@@ -119,6 +126,28 @@ function getProtocolCapabilities(
       })),
     ],
   };
+}
+
+function bindThreadConfig(
+  config: unknown,
+  threadId: string,
+): SessionOpenConfig & RunInputConfig {
+  const base =
+    config != null && typeof config === "object"
+      ? (config as Record<string, unknown>)
+      : {};
+  const configurable =
+    base.configurable != null && typeof base.configurable === "object"
+      ? (base.configurable as Record<string, unknown>)
+      : {};
+
+  return {
+    ...base,
+    configurable: {
+      ...configurable,
+      thread_id: threadId,
+    },
+  } as SessionOpenConfig & RunInputConfig;
 }
 
 export class ProtocolStreamRuntime<
@@ -213,12 +242,14 @@ export class ProtocolStreamRuntime<
           ? new ProtocolWebSocketTransportAdapter(this.transportConfig)
           : new ProtocolSseTransportAdapter(this.transportConfig),
     );
+    const boundConfig = bindThreadConfig(submitOptions?.config, threadId);
     const sessionParams: SessionOpenParams = {
       protocolVersion: "0.3.0",
       target: {
         kind: "agent",
         id: assistantId,
       },
+      config: boundConfig,
       capabilities: getProtocolCapabilities(streamMode),
       preferredTransports: [this.protocolTransport],
     };
@@ -240,7 +271,7 @@ export class ProtocolStreamRuntime<
 
     const runResult = await session.run.input({
       input: runInput ?? null,
-      config: submitOptions?.config,
+      config: boundConfig,
       metadata,
     });
 
