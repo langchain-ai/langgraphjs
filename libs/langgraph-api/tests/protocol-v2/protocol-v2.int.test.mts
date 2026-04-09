@@ -46,24 +46,6 @@ const projectCreateAgentParityTranscript = (transcript: any) => ({
   finalAiContent: [...(transcript.values?.messages ?? [])]
     .reverse()
     .find((message: any) => message.type === "ai")?.content,
-  toolEvents: (transcript.events ?? [])
-    .filter((event: any) => event.method === "tools")
-    .map((event: any) => {
-      const data = event.params?.data ?? {};
-      return {
-        event: data.event,
-        toolName: data.toolName,
-        toolCallId: data.toolCallId,
-        output:
-          typeof data.output === "object" && data.output != null
-            ? {
-                content: data.output.content,
-                tool_call_id: data.output.tool_call_id,
-                type: data.output.type,
-              }
-            : data.output,
-      };
-    }),
   messageEvents: (transcript.events ?? [])
     .filter((event: any) => event.method === "messages")
     .map((event: any) => {
