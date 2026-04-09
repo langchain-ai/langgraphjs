@@ -31,7 +31,6 @@ export { overrideFetchImplementation } from "./singletons/fetch.js";
 export type {
   Command,
   OnConflictBehavior,
-  ProtocolTransport,
   RunsInvokePayload,
   StreamProtocol,
   StreamEvent,

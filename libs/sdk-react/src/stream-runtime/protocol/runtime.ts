@@ -1,8 +1,8 @@
 import { ProtocolClient } from "@langchain/client";
 import type {
   Client,
-  ProtocolTransport,
   StreamMode,
+  StreamProtocol,
 } from "@langchain/langgraph-sdk";
 import type { RequestHook } from "@langchain/langgraph-sdk/client";
 import type { EventStreamEvent } from "@langchain/langgraph-sdk/ui";
@@ -28,6 +28,12 @@ type RunsClientInternals = {
 };
 
 type SessionOpenParams = Parameters<ProtocolClient["open"]>[0];
+
+type ProtocolTransportMode = "sse-http" | "websocket";
+
+type ProtocolRuntimeConfig = ReturnType<typeof getProtocolConfig> & {
+  webSocketFactory?: (url: string) => WebSocket;
+};
 
 const ROOT_NAMESPACE: string[] = [];
 
@@ -76,6 +82,12 @@ function getProtocolConfig(
   };
 }
 
+function getProtocolTransportMode(
+  streamProtocol: StreamProtocol | undefined,
+): ProtocolTransportMode {
+  return streamProtocol === "v2-websocket" ? "websocket" : "sse-http";
+}
+
 export class ProtocolStreamRuntime<
   StateType extends Record<string, unknown>,
   UpdateType,
@@ -83,13 +95,24 @@ export class ProtocolStreamRuntime<
   CustomType,
 > implements StreamRuntime<StateType, UpdateType, ConfigurableType, CustomType>
 {
-  private readonly transportConfig: ReturnType<typeof getProtocolConfig>;
+  private readonly transportConfig: ProtocolRuntimeConfig;
+  private readonly protocolTransport: ProtocolTransportMode;
 
   constructor(
     private readonly client: Client<StateType, UpdateType, CustomType>,
-    private readonly protocolTransport: ProtocolTransport = "sse-http",
+    streamProtocol: StreamProtocol | undefined,
+    options?: {
+      protocolFetch?: typeof fetch;
+      protocolWebSocket?: (url: string) => WebSocket;
+    },
   ) {
-    this.transportConfig = getProtocolConfig(client);
+    this.protocolTransport = getProtocolTransportMode(streamProtocol);
+    const transportConfig = getProtocolConfig(client);
+    this.transportConfig = {
+      ...transportConfig,
+      fetch: options?.protocolFetch ?? transportConfig.fetch,
+      webSocketFactory: options?.protocolWebSocket,
+    };
   }
 
   canSubmit({

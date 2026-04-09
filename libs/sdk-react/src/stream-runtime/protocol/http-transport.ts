@@ -159,6 +159,7 @@ export interface ProtocolSseTransportOptions {
   defaultHeaders?: Record<string, HeaderValue>;
   onRequest?: RequestHook;
   fetch?: typeof fetch;
+  fetchFactory?: () => typeof fetch | Promise<typeof fetch>;
 }
 
 export class ProtocolSseTransportAdapter implements TransportAdapter {
@@ -176,6 +177,16 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.apiUrl = options.apiUrl;
     this.defaultHeaders = options.defaultHeaders ?? {};
     this.onRequest = options.onRequest;
+    this.fetchFactory = options.fetchFactory;
+  }
+
+  private readonly fetchFactory?: () => typeof fetch | Promise<typeof fetch>;
+
+  private async resolveFetch(): Promise<typeof fetch> {
+    if (this.fetchFactory) {
+      return await this.fetchFactory();
+    }
+    return this.fetchImpl;
   }
 
   async open(params: SessionOpenParams): Promise<SessionResult> {
@@ -335,7 +346,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     }
 
     try {
-      const response = await this.fetchImpl(url.toString(), requestInit);
+      const fetchImpl = await this.resolveFetch();
+      const response = await fetchImpl(url.toString(), requestInit);
       if (!response.ok) {
         throw new Error(
           `Protocol request failed: ${response.status} ${response.statusText}`,
