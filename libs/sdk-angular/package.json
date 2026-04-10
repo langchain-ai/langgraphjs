@@ -28,7 +28,7 @@
     "@angular/platform-browser": "^21.2.7",
     "@angular/platform-browser-dynamic": "^21.2.7",
     "@angular/router": "^21.2.7",
-    "@hono/node-server": "^1.19.11",
+    "@hono/node-server": "^1.19.13",
     "@langchain/core": "^1.1.38",
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
