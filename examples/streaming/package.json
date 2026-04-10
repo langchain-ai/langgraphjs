@@ -1,0 +1,21 @@
+{
+  "name": "@examples/streaming",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "basic": "tsx src/basic.ts",
+    "messages": "tsx src/messages.ts",
+    "subgraphs": "tsx src/subgraphs.ts",
+    "custom-reducer": "tsx src/custom-reducer.ts",
+    "parallel": "tsx src/parallel.ts",
+    "hitl": "tsx src/human-in-the-loop.ts"
+  },
+  "devDependencies": {
+    "@langchain/anthropic": "^1.3.26",
+    "@langchain/core": "^1.1.39",
+    "@langchain/langgraph": "workspace:*",
+    "langchain": "^1.3.1",
+    "tsx": "^4.21.0",
+    "zod": "^4.3.6"
+  }
+}

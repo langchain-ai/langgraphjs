@@ -93,6 +93,12 @@ import {
   StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
+import {
+  createGraphRunStream,
+  GraphRunStream,
+  STREAM_V2_MODES,
+} from "../stream/index.js";
+import type { InferExtensions, StreamReducer } from "../stream/index.js";
 import type {
   Durability,
   GetStateOptions,
@@ -1894,6 +1900,101 @@ export class Pregel<
         ? toEventStream(stream)
         : stream,
       abortController
+    );
+  }
+
+  /**
+   * Ergonomic v2 stream API for a single graph run.
+   *
+   * `streamV2()` is the recommended way to consume graph execution when you
+   * need typed, recursive access to subgraph events, tool lifecycle, and
+   * message content-block streaming.
+   *
+   * Returns a `Promise<GraphRunStream>` that resolves immediately (no async
+   * setup needed), kept async for a uniform call pattern across graph, agent,
+   * and deep agent levels (§ 15.8).
+   *
+   * The returned `GraphRunStream` is an `AsyncIterable<ProtocolEvent>`.
+   *
+   * Built-in projections:
+   *  - `run.output`        — `Promise<OutputType>` for the final state
+   *  - `run.values`        — `AsyncIterable` of state snapshots + `PromiseLike`
+   *  - `run.subgraphs`     — `AsyncIterable<SubgraphRunStream>` for child graphs
+   *  - `run.messages`      — `AsyncIterable<ChatModelStream>` for message lifecycles
+   *  - `run.messagesFrom`  — node-filtered messages
+   *  - `run.interrupted`   — whether the run ended due to an interrupt
+   *  - `run.interrupts`    — interrupt payloads
+   *  - `run.abort()`       — programmatic cancellation
+   *  - `run.extensions`    — merged reducer projections
+   *
+   * Example:
+   * ```typescript
+   * const run = await graph.streamV2(input, { configurable: { thread_id: "t1" } });
+   *
+   * for await (const event of run) {
+   *   console.log(event.method, event.params.data);
+   * }
+   *
+   * for await (const msg of run.messages) {
+   *   for await (const token of msg.text) { process.stdout.write(token); }
+   * }
+   *
+   * for await (const sub of run.subgraphs) {
+   *   for await (const event of sub) { … }
+   * }
+   *
+   * const finalState = await run.output;
+   * ```
+   *
+   * The v1 `stream()` API remains unchanged.
+   */
+  async streamV2<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TReducers extends ReadonlyArray<() => StreamReducer<any>> = [],
+  >(
+    input: InputType | CommandType | null,
+    options?: Partial<
+      Omit<
+        PregelOptions<Nodes, Channels, ContextType>,
+        "encoding" | "subgraphs"
+      >
+    > & {
+      /** User-supplied reducer factories for custom projections. */
+      reducers?: TReducers;
+    }
+  ): Promise<GraphRunStream<OutputType, InferExtensions<TReducers>>> {
+    const { reducers: userReducers, ...restOptions } = options ?? {};
+
+    const streamOptions = {
+      recursionLimit: this.config?.recursionLimit,
+      ...restOptions,
+      configurable: {
+        ...this.config?.configurable,
+        ...restOptions?.configurable,
+        [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
+      },
+      streamMode: STREAM_V2_MODES,
+      subgraphs: true as const,
+      encoding: undefined,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sourcePromise = this.stream(input, streamOptions as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const source: AsyncIterable<any> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [Symbol.asyncIterator]: async function* (): AsyncGenerator<any> {
+        const src = await sourcePromise;
+        for await (const chunk of src) {
+          yield chunk;
+        }
+      },
+    };
+
+    return createGraphRunStream<OutputType, TReducers>(
+      source,
+      (userReducers ?? []) as unknown as TReducers
     );
   }
 

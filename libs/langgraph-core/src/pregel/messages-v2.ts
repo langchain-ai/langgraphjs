@@ -164,6 +164,30 @@ const finalizeContentBlock = (
 };
 
 /**
+ * Converts LangChain's snake_case `usage_metadata` into the protocol's
+ * camelCase `UsageInfo` shape expected by `@langchain/protocol`.
+ *
+ * @param usage - LangChain-format usage metadata.
+ * @returns Protocol-compatible usage info, or `undefined` if input is nullish.
+ */
+const toProtocolUsage = (
+  usage: UsageMetadataLike | undefined
+): Record<string, unknown> | undefined => {
+  if (usage == null) return undefined;
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    totalTokens: usage.total_tokens,
+    ...(usage.input_token_details != null
+      ? { inputTokenDetails: usage.input_token_details }
+      : {}),
+    ...(usage.output_token_details != null
+      ? { outputTokenDetails: usage.output_token_details }
+      : {}),
+  };
+};
+
+/**
  * Combines additive usage metadata emitted by chunk streams into a running
  * snapshot.
  *
@@ -488,10 +512,15 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     runId: string | undefined,
     dedupe = false
   ) {
-    const messageId = this.normalizeMessageId(message, runId);
-    if (dedupe && messageId != null && this.seen[messageId] !== message) {
-      return;
+    if (dedupe) {
+      const existingId =
+        message.id ??
+        (runId != null ? this.stableMessageIdMap[runId] : undefined);
+      if (existingId != null && existingId in this.seen) {
+        return;
+      }
     }
+    const messageId = this.normalizeMessageId(message, runId);
 
     this.emitProtocolEvent(meta, {
       event: "message-start",
@@ -549,11 +578,12 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       "usage_metadata" in message && isUsageMetadataLike(message.usage_metadata)
         ? message.usage_metadata
         : undefined;
+    const protocolUsage = toProtocolUsage(usage);
 
     this.emitProtocolEvent(meta, {
       event: "message-finish",
       reason: finishReason,
-      ...(usage != null ? { usage } : {}),
+      ...(protocolUsage != null ? { usage: protocolUsage } : {}),
       ...(responseMetadata != null ? { metadata: responseMetadata } : {}),
     });
   }
@@ -735,10 +765,11 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         });
       }
 
+      const protocolUsage = toProtocolUsage(finishUsage);
       this.emitProtocolEvent(meta!, {
         event: "message-finish",
         reason: normalizeMessageFinishReason(responseMetadata?.stop_reason),
-        ...(finishUsage != null ? { usage: finishUsage } : {}),
+        ...(protocolUsage != null ? { usage: protocolUsage } : {}),
         ...(responseMetadata != null ? { metadata: responseMetadata } : {}),
       });
     }
