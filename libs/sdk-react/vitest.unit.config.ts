@@ -11,7 +11,6 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@langchain/client": r("../client/src/index.ts"),
       "@langchain/langgraph-sdk/utils": r("../sdk/src/utils/index.ts"),
       "@langchain/langgraph-sdk/ui": r("../sdk/src/ui/index.ts"),
       "@langchain/langgraph-sdk/client": r("../sdk/src/client.ts"),

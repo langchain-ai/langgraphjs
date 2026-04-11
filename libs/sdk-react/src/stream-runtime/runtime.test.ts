@@ -16,7 +16,7 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-vi.mock("@langchain/client", () => {
+vi.mock("@langchain/langgraph-sdk/client", () => {
   class MockProtocolClient {
     readonly open = openMock;
 

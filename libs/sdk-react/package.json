@@ -18,7 +18,6 @@
     "directory": "libs/sdk-react"
   },
   "dependencies": {
-    "@langchain/client": "workspace:^",
     "@langchain/langgraph-sdk": "workspace:^"
   },
   "devDependencies": {

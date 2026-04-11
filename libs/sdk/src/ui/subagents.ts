@@ -457,7 +457,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         });
         this.onSubagentChange?.();
       }
-      this.flushPendingMessages(namespaceId);
+      this.flushPendingMessages(namespaceKey);
       return toolCallId;
     };
 
@@ -996,7 +996,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     // Buffer the message so early AI/tool-call chunks are replayed once the
     // values event or a later human message establishes the mapping.
     if (!existing) {
-      this.queuePendingMessage(namespaceId, serialized, metadata);
+      this.queuePendingMessage(namespaceKey, serialized, metadata);
       return;
     }
 

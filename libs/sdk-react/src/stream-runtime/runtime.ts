@@ -3,7 +3,7 @@ import {
   ProtocolSseTransportAdapter,
   type ProtocolRequestHook,
   ProtocolWebSocketTransportAdapter,
-} from "@langchain/client";
+} from "@langchain/langgraph-sdk/client";
 import type { CapabilityAdvertisement, Channel } from "@langchain/protocol";
 import type {
   Client,
@@ -253,13 +253,13 @@ export class ProtocolStreamRuntime<
     );
     const boundConfig = bindThreadConfig(submitOptions?.config, threadId);
     const sessionParams: SessionOpenParams = {
-      protocolVersion: "0.3.0",
+      protocol_version: "0.3.0",
       target: {
         id: assistantId,
       },
       config: boundConfig,
       capabilities: getProtocolCapabilities(streamMode),
-      preferredTransports: [this.protocolTransport],
+      preferred_transports: [this.protocolTransport],
     };
     const session = await protocolClient.open(sessionParams);
     this.activeSession = session;
@@ -286,7 +286,7 @@ export class ProtocolStreamRuntime<
       metadata,
     });
 
-    const runId = runResult.runId;
+    const runId = runResult.run_id;
     if (typeof runId !== "string" || runId.length === 0) {
       await session.close().catch(() => undefined);
       throw new Error("Protocol run did not return a run ID.");
@@ -363,7 +363,7 @@ export class ProtocolStreamRuntime<
     }
     await session.input.respond({
       namespace: ROOT_NAMESPACE,
-      interruptId: args.interruptId,
+      interrupt_id: args.interruptId,
       response: args.response,
     });
   }
