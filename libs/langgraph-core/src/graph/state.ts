@@ -1073,7 +1073,12 @@ export class StateGraph<
     >;
   }
 
-  override compile({
+  override compile<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TReducers extends ReadonlyArray<
+      () => import("../stream/types.js").StreamReducer<any>
+    > = [],
+  >({
     checkpointer,
     store,
     cache,
@@ -1081,6 +1086,7 @@ export class StateGraph<
     interruptAfter,
     name,
     description,
+    reducers,
   }: {
     checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
@@ -1089,6 +1095,12 @@ export class StateGraph<
     interruptAfter?: N[] | All;
     name?: string;
     description?: string;
+    /**
+     * Stream reducer factories baked into the compiled graph.  These run
+     * automatically for every `streamV2()` call, before any call-site
+     * reducers.
+     */
+    reducers?: TReducers;
   } = {}): CompiledStateGraph<
     Prettify<S>,
     Prettify<U>,
@@ -1098,7 +1110,8 @@ export class StateGraph<
     C,
     NodeReturnType,
     InterruptType,
-    WriterType
+    WriterType,
+    TReducers
   > {
     // validate the graph
     this.validate([
@@ -1128,7 +1141,8 @@ export class StateGraph<
       C,
       NodeReturnType,
       InterruptType,
-      WriterType
+      WriterType,
+      TReducers
     >({
       builder: this,
       checkpointer,
@@ -1149,6 +1163,7 @@ export class StateGraph<
       name,
       description,
       userInterrupt,
+      streamReducers: reducers,
     });
 
     // attach nodes, edges and branches
@@ -1248,6 +1263,10 @@ export class CompiledStateGraph<
   NodeReturnType = unknown,
   InterruptType = unknown,
   WriterType = unknown,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamReducers extends ReadonlyArray<
+    () => import("../stream/types.js").StreamReducer<any>
+  > = [],
 > extends CompiledGraph<
   N,
   S,
@@ -1257,7 +1276,8 @@ export class CompiledStateGraph<
   ExtractStateType<O>,
   NodeReturnType,
   CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
-  InferWriterType<WriterType>
+  InferWriterType<WriterType>,
+  TStreamReducers
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
 
@@ -1283,7 +1303,8 @@ export class CompiledStateGraph<
       ExtractStateType<O>,
       NodeReturnType,
       CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
-      InferWriterType<WriterType>
+      InferWriterType<WriterType>,
+      TStreamReducers
     >
   >[0]) {
     super(rest);

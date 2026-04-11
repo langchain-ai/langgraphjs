@@ -404,6 +404,8 @@ export class Pregel<
   CommandType = CommandInstance,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StreamCustom = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamReducers extends ReadonlyArray<() => StreamReducer<any>> = [],
 >
   extends PartialRunnable<
     InputType | CommandType | null,
@@ -519,6 +521,13 @@ export class Pregel<
   private userInterrupt?: unknown;
 
   /**
+   * Stream reducer factories registered at compile time.  These run
+   * automatically for every `streamV2()` call, before any call-site
+   * reducers passed via `streamV2(input, { reducers })`.
+   */
+  streamReducers: TStreamReducers;
+
+  /**
    * The trigger to node mapping for the graph run.
    * @internal
    */
@@ -529,7 +538,7 @@ export class Pregel<
    *
    * @internal
    */
-  constructor(fields: PregelParams<Nodes, Channels>) {
+  constructor(fields: PregelParams<Nodes, Channels, TStreamReducers>) {
     super(fields);
 
     let { streamMode } = fields;
@@ -570,6 +579,7 @@ export class Pregel<
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
     this.userInterrupt = fields.userInterrupt;
+    this.streamReducers = (fields.streamReducers ?? []) as TStreamReducers;
 
     if (this.autoValidate) {
       this.validate();
@@ -1962,7 +1972,12 @@ export class Pregel<
       /** User-supplied reducer factories for custom projections. */
       reducers?: TReducers;
     }
-  ): Promise<GraphRunStream<OutputType, InferExtensions<TReducers>>> {
+  ): Promise<
+    GraphRunStream<
+      OutputType,
+      InferExtensions<readonly [...TStreamReducers, ...TReducers]>
+    >
+  > {
     const { reducers: userReducers, ...restOptions } = options ?? {};
 
     const streamOptions = {
@@ -1992,10 +2007,13 @@ export class Pregel<
       },
     };
 
-    return createGraphRunStream<OutputType, TReducers>(
-      source,
-      (userReducers ?? []) as unknown as TReducers
-    );
+    type TMerged = readonly [...TStreamReducers, ...TReducers];
+    const mergedReducers = [
+      ...(this.streamReducers ?? []),
+      ...(userReducers ?? []),
+    ] as unknown as TMerged;
+
+    return createGraphRunStream<OutputType, TMerged>(source, mergedReducers);
   }
 
   /**

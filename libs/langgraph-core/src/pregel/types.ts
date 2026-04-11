@@ -14,6 +14,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import type { Interrupt } from "../constants.js";
+import type { StreamReducer } from "../stream/types.js";
 import { CachePolicy, RetryPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
@@ -446,6 +447,8 @@ export interface PregelInterface<
 export type PregelParams<
   Nodes extends StrRecord<string, PregelNode>,
   Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamReducers extends ReadonlyArray<() => StreamReducer<any>> = [],
 > = {
   /**
    * The name of the graph. @see {@link Runnable.name}
@@ -550,6 +553,13 @@ export type PregelParams<
    * @internal
    */
   userInterrupt?: unknown;
+
+  /**
+   * Stream reducer factories registered at compile time.  These run
+   * automatically for every `streamV2()` call, before any call-site
+   * reducers.
+   */
+  streamReducers?: TStreamReducers;
 };
 
 export interface PregelTaskDescription {

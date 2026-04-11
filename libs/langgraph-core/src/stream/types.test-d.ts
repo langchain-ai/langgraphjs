@@ -137,7 +137,49 @@ describe("streamV2 with MessagesValue state", () => {
   });
 });
 
-describe("streamV2 with custom reducers", () => {
+describe("streamV2 with compile-time reducers", () => {
+  const eventCounter = (): StreamReducer<{
+    eventCount: Promise<number>;
+  }> => ({
+    init: () => ({ eventCount: Promise.resolve(0) }),
+    process: () => true,
+    finalize: () => {},
+    fail: () => {},
+  });
+
+  const CompileState = new StateSchema({
+    value: new ReducedValue(z.string().default(() => ""), {
+      reducer: (_: string, b: string) => b,
+    }),
+  });
+
+  it("merges compile-time and call-site reducer projections", async () => {
+    const graph = new StateGraph(CompileState)
+      .addNode("echo", (s) => ({ value: s.value }))
+      .addEdge(START, "echo")
+      .addEdge("echo", END)
+      .compile({ reducers: [eventCounter] });
+
+    const callSiteReducer = (): StreamReducer<{
+      flag: boolean;
+    }> => ({
+      init: () => ({ flag: true }),
+      process: () => true,
+      finalize: () => {},
+      fail: () => {},
+    });
+
+    const run = await graph.streamV2(
+      { value: "test" },
+      { reducers: [callSiteReducer] }
+    );
+
+    expectTypeOf(run.extensions.eventCount).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(run.extensions.flag).toBeBoolean();
+  });
+});
+
+describe("streamV2 with call-site reducers", () => {
   const ValueState = new StateSchema({
     value: new ReducedValue(z.string().default(() => ""), {
       reducer: (_: string, b: string) => b,

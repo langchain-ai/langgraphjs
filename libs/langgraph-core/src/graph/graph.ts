@@ -426,17 +426,41 @@ export class Graph<
     return this.addEdge(key, END);
   }
 
-  compile({
+  compile<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TReducers extends ReadonlyArray<
+      () => import("../stream/types.js").StreamReducer<any>
+    > = [],
+  >({
     checkpointer,
     interruptBefore,
     interruptAfter,
     name,
+    reducers,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
-  } = {}): CompiledGraph<N> {
+    /**
+     * Stream reducer factories baked into the compiled graph.  These run
+     * automatically for every `streamV2()` call, before any call-site
+     * reducers.
+     */
+    reducers?: TReducers;
+  } = {}): CompiledGraph<
+    N,
+    RunInput,
+    RunOutput,
+    Record<string, any>,
+    any,
+    any,
+    unknown,
+    unknown,
+    any,
+    TReducers
+  > {
+    // eslint-disable-line @typescript-eslint/no-explicit-any
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -460,6 +484,7 @@ export class Graph<
       streamChannels: [] as N[],
       streamMode: "values",
       name,
+      streamReducers: reducers,
     });
 
     // attach nodes, edges and branches
@@ -563,6 +588,9 @@ export class CompiledGraph<
   NodeReturnType = unknown,
   CommandType = unknown,
   StreamCustomType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TStreamReducers extends ReadonlyArray<
+    () => import("../stream/types.js").StreamReducer<any>
+  > = [], // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
@@ -573,7 +601,8 @@ export class CompiledGraph<
   OutputType,
   NodeReturnType,
   CommandType,
-  StreamCustomType
+  StreamCustomType,
+  TStreamReducers
 > {
   declare "~NodeType": N;
 
@@ -590,7 +619,8 @@ export class CompiledGraph<
     ...rest
   }: { builder: Graph<N, State, Update> } & PregelParams<
     Record<N | typeof START, PregelNode<State, Update>>,
-    Record<N | typeof START | typeof END | string, BaseChannel>
+    Record<N | typeof START | typeof END | string, BaseChannel>,
+    TStreamReducers
   >) {
     super(rest);
     this.builder = builder;
