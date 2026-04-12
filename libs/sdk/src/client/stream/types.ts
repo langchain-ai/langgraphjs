@@ -32,6 +32,12 @@ import type { TransportAdapter } from "./transport.js";
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;
 
+/**
+ * Extends the protocol `Channel` type with support for named custom
+ * channels like `"custom:a2a"`, allowing fine-grained subscriptions.
+ */
+export type SubscribableChannel = Channel | `custom:${string}`;
+
 export type EventMethodByChannel = {
   values: "values";
   updates: "updates";
@@ -50,13 +56,27 @@ export type EventMethodByChannel = {
   tasks: "tasks";
 };
 
-export type EventForChannel<TChannel extends Channel> = Extract<
-  Event,
-  { method: EventMethodByChannel[TChannel] }
->;
+export type EventForChannel<TChannel extends SubscribableChannel> =
+  TChannel extends Channel
+    ? Extract<Event, { method: EventMethodByChannel[TChannel] }>
+    : TChannel extends `custom:${string}`
+      ? Extract<Event, { method: "custom" }>
+      : never;
 
-export type EventForChannels<TChannels extends readonly Channel[]> =
+export type EventForChannels<TChannels extends readonly SubscribableChannel[]> =
   EventForChannel<TChannels[number]>;
+
+/**
+ * Maps a subscribable channel to the type yielded by its subscription handle.
+ *
+ * - `"custom:name"` channels yield `unknown` (the raw emitted payload).
+ * - All other channels yield the full protocol `Event`.
+ */
+export type YieldForChannel<TChannel extends SubscribableChannel> =
+  TChannel extends `custom:${string}` ? unknown : EventForChannel<TChannel>;
+
+export type YieldForChannels<TChannels extends readonly SubscribableChannel[]> =
+  YieldForChannel<TChannels[number]>;
 
 export interface ProtocolClientOptions {
   eventBufferSize?: number;
@@ -70,8 +90,8 @@ export interface SessionOrderingState {
 }
 
 export interface EventSubscription<
-  TEvent extends Event = Event,
-> extends AsyncIterable<TEvent> {
+  TYield = Event,
+> extends AsyncIterable<TYield> {
   readonly subscriptionId: string;
   readonly params: SubscribeParams;
   unsubscribe(): Promise<void>;

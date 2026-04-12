@@ -159,6 +159,101 @@ describe("StreamMux", () => {
     });
   });
 
+  it("emit callback injects events into the main log after the original", async () => {
+    const mux = new StreamMux();
+    const reducer: StreamReducer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        if (_event.method === "messages") {
+          emit?.("tools", { event: "tool-started", tool_name: "search" });
+        }
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addReducer(reducer);
+
+    mux.push([], makeEvent("messages", [], 0));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(2);
+    expect(events[0].method).toBe("messages");
+    expect(events[1].method).toBe("tools");
+    expect(events[1].params.data).toEqual({
+      event: "tool-started",
+      tool_name: "search",
+    });
+  });
+
+  it("emit callback can inject multiple events from a single process call", async () => {
+    const mux = new StreamMux();
+    const reducer: StreamReducer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        emit?.("lifecycle", { event: "spawned" });
+        emit?.("custom", { type: "status", status: "working" });
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addReducer(reducer);
+
+    mux.push([], makeEvent("updates", [], 0));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(3);
+    expect(events[0].method).toBe("updates");
+    expect(events[1].method).toBe("lifecycle");
+    expect(events[2].method).toBe("custom");
+  });
+
+  it("emitted events inherit the namespace of the triggering event", async () => {
+    const mux = new StreamMux();
+    const reducer: StreamReducer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        emit?.("tools", { event: "tool-started" });
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addReducer(reducer);
+
+    mux.push(["agent"], makeEvent("messages", ["agent"], 0));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events[1].params.namespace).toEqual(["agent"]);
+  });
+
+  it("emitted events get sequential seq numbers", async () => {
+    const mux = new StreamMux();
+    const reducer: StreamReducer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        emit?.("tools", { a: 1 });
+        emit?.("custom", { b: 2 });
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addReducer(reducer);
+
+    mux.push([], makeEvent("messages", [], 5));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events[0].seq).toBe(5);
+    expect(events[1].seq).toBe(6);
+    expect(events[2].seq).toBe(7);
+  });
+
   it("addReducer + process order", () => {
     const mux = new StreamMux();
     const order: number[] = [];
@@ -239,7 +334,7 @@ describe("StreamMux", () => {
     const error = new Error("test failure");
     mux.fail(error);
 
-    expect(failSpy).toHaveBeenCalledWith(error);
+    expect(failSpy).toHaveBeenCalledWith(error, expect.any(Function));
     expect(mux._events.done).toBe(true);
     expect(mux._discoveries.done).toBe(true);
     expect(rejectSpy).toHaveBeenCalledWith(error);

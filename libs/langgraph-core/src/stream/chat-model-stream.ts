@@ -92,7 +92,7 @@ export class ChatModelStreamImpl implements ChatModelStream {
     this.#events.push(data);
 
     if (data.event === "content-block-delta") {
-      const cb = data.contentBlock as Record<string, unknown>;
+      const cb = data.content_block as Record<string, unknown>;
       if (cb.type === "text" && typeof cb.text === "string") {
         this.#accumulatedText += cb.text;
         this.#textDeltas.push(cb.text);

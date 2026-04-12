@@ -75,6 +75,9 @@ export class StreamMux {
   /** @internal New-namespace discovery notifications. */
   readonly _discoveries = new EventLog<SubgraphDiscovery>();
 
+  /** Monotonic counter for events emitted by reducers via `emit()`. */
+  #nextEmitSeq = 0;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly #reducers: StreamReducer<any>[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,15 +148,33 @@ export class StreamMux {
       );
     }
 
+    // Track seq from the incoming event so reducer-emitted events
+    // get subsequent sequence numbers.
+    this.#nextEmitSeq = Math.max(this.#nextEmitSeq, event.seq + 1);
+
+    const pendingEmissions: ProtocolEvent[] = [];
+    const emit = (method: string, data: unknown) => {
+      pendingEmissions.push({
+        type: "event",
+        seq: this.#nextEmitSeq++,
+        method: method as ProtocolEvent["method"],
+        params: { namespace: ns, timestamp: Date.now(), data },
+      });
+    };
+
     let keep = true;
     for (const reducer of this.#reducers) {
-      if (!reducer.process(event)) {
+      if (!reducer.process(event, emit)) {
         keep = false;
       }
     }
 
     if (keep) {
       this._events.push(event);
+    }
+
+    for (const emitted of pendingEmissions) {
+      this._events.push(emitted);
     }
   }
 
@@ -168,8 +189,17 @@ export class StreamMux {
       stream?._resolveValues(values);
     }
 
+    const finalizeEmit = (method: string, data: unknown) => {
+      this._events.push({
+        type: "event",
+        seq: this.#nextEmitSeq++,
+        method: method as ProtocolEvent["method"],
+        params: { namespace: [], timestamp: Date.now(), data },
+      });
+    };
+
     for (const reducer of this.#reducers) {
-      reducer.finalize();
+      reducer.finalize(finalizeEmit);
     }
 
     this._events.close();
@@ -186,8 +216,17 @@ export class StreamMux {
    * @param err - The error that caused the run to fail.
    */
   fail(err: unknown): void {
+    const failEmit = (method: string, data: unknown) => {
+      this._events.push({
+        type: "event",
+        seq: this.#nextEmitSeq++,
+        method: method as ProtocolEvent["method"],
+        params: { namespace: [], timestamp: Date.now(), data },
+      });
+    };
+
     for (const reducer of this.#reducers) {
-      reducer.fail(err);
+      reducer.fail(err, failEmit);
     }
     this._events.fail(err);
     this._discoveries.fail(err);

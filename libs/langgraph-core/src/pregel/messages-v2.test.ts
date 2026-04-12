@@ -70,7 +70,7 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-start",
-          messageId: "msg-123",
+          message_id: "msg-123",
         },
       ],
       [
@@ -79,7 +79,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-start",
           index: 0,
-          contentBlock: { type: "text", text: "" },
+          content_block: { type: "text", text: "" },
         },
       ],
       [
@@ -88,7 +88,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          contentBlock: { type: "text", text: "Hello" },
+          content_block: { type: "text", text: "Hello" },
         },
       ],
       [
@@ -97,7 +97,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          contentBlock: { type: "text", text: "Hello" },
+          content_block: { type: "text", text: "Hello" },
         },
       ],
       [
@@ -147,7 +147,7 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-start",
-          messageId: "msg-456",
+          message_id: "msg-456",
         },
       ],
       [
@@ -156,7 +156,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-start",
           index: 0,
-          contentBlock: { type: "text", text: "" },
+          content_block: { type: "text", text: "" },
         },
       ],
       [
@@ -165,7 +165,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          contentBlock: { type: "text", text: "Done" },
+          content_block: { type: "text", text: "Done" },
         },
       ],
       [
@@ -174,7 +174,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          contentBlock: { type: "text", text: "Done", index: 0 },
+          content_block: { type: "text", text: "Done", index: 0 },
         },
       ],
       [

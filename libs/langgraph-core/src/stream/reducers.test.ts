@@ -65,7 +65,7 @@ describe("createMessagesReducer", () => {
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
-        contentBlock: { type: "text", text: "hello" },
+        content_block: { type: "text", text: "hello" },
       }, agentNs)
     );
     reducer.process(
@@ -296,7 +296,7 @@ describe("createMessagesReducer", () => {
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
-        contentBlock: { type: "text", text: "first" },
+        content_block: { type: "text", text: "first" },
       }, agentNs)
     );
     reducer.process(
@@ -310,7 +310,7 @@ describe("createMessagesReducer", () => {
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
-        contentBlock: { type: "text", text: "second" },
+        content_block: { type: "text", text: "second" },
       }, agentNs)
     );
     reducer.process(

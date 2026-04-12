@@ -93,15 +93,30 @@ npx tsx src/human-in-the-loop.ts
 
 Shows: `interrupt()`, `run.interrupted`, `run.interrupts`, `Command({ resume })`, multi-turn `streamV2()`
 
+### `a2a.ts` — A2A protocol over a deployed server
+
+End-to-end deployment example for custom stream reducers. The research
+pipeline is compiled with an A2A reducer (`createA2AReducer`) that emits
+A2A-formatted status updates and artifacts. The graph is deployed via the
+LangGraph dev server, and the SDK client subscribes to the `custom` channel
+to receive only A2A events.
+
+```bash
+npx tsx src/a2a.ts
+```
+
+Shows: `.compile({ reducers: [createA2AReducer] })`, `streamStateV2()`, SDK `client.runs.stream()`, `streamMode: ["custom"]`
+
 ## Agents
 
-The example agents live in `src/agents/`:
+The example agents live in `src/agents/` and `src/a2a/`:
 
 | Agent | File | Description |
 |-------|------|-------------|
-| Simple tool graph | `simple-tool-graph.ts` | Single ReAct loop with search + calculator |
-| Research pipeline | `research-pipeline.ts` | Two sequential subgraphs with separate tools |
-| Approval graph | `approval-graph.ts` | Planner → human approval → executor with interrupt/resume |
+| Simple tool graph | `agents/simple-tool-graph.ts` | Single ReAct loop with search + calculator |
+| Research pipeline | `agents/research-pipeline.ts` | Two sequential subgraphs with separate tools |
+| Approval graph | `agents/approval-graph.ts` | Planner → human approval → executor with interrupt/resume |
+| A2A research | `a2a/agent.ts` | Research pipeline with A2A stream reducer at compile time |
 
 ## API Surface
 

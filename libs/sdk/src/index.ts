@@ -20,6 +20,7 @@ export type {
   SessionOrderingState,
   EventSubscription,
   MessageSubscription,
+  SubscribableChannel,
   ProtocolRequestHook,
   ProtocolSseTransportOptions,
   ProtocolWebSocketTransportOptions,

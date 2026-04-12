@@ -52,8 +52,8 @@ describe("convertToProtocolEvent", () => {
     const result = convertToProtocolEvent(ns, "tools", payload, 4);
     expect(result!.params.data).toEqual({
       event: "tool-started",
-      toolName: "search",
-      toolCallId: "tc_1",
+      tool_name: "search",
+      tool_call_id: "tc_1",
       input: { q: "hello" },
     });
   });
@@ -68,7 +68,7 @@ describe("convertToProtocolEvent", () => {
     expect(result!.params.data).toEqual({
       event: "tool-finished",
       output: "result",
-      toolCallId: "tc_2",
+      tool_call_id: "tc_2",
     });
   });
 
@@ -106,7 +106,7 @@ describe("convertToProtocolEvent", () => {
     expect(result!.params.data).toEqual({
       event: "tool-output-delta",
       delta: "chunk",
-      toolCallId: "tc_3",
+      tool_call_id: "tc_3",
     });
   });
 
@@ -168,7 +168,7 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_start", name: "t", toolCallId: "id_1" },
       15
     );
-    expect(withId!.params.data).toHaveProperty("toolCallId", "id_1");
+    expect(withId!.params.data).toHaveProperty("tool_call_id", "id_1");
 
     const withoutId = convertToProtocolEvent(
       ns,
@@ -176,6 +176,6 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_start", name: "t" },
       16
     );
-    expect(withoutId!.params.data).toHaveProperty("toolCallId", "");
+    expect(withoutId!.params.data).toHaveProperty("tool_call_id", "");
   });
 });

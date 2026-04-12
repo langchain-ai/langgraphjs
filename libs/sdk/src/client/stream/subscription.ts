@@ -1,10 +1,10 @@
 import type {
-  Channel,
   Event,
   MediaType,
   Namespace,
   SubscribeParams,
 } from "@langchain/protocol";
+import type { SubscribableChannel } from "./types.js";
 
 function namespaceMatches(
   eventNamespace: Namespace,
@@ -57,7 +57,7 @@ function mediaTypeMatches(
  *
  * @param event - Event whose method should be mapped to a channel.
  */
-export function inferChannel(event: Event): Channel {
+export function inferChannel(event: Event): SubscribableChannel {
   switch (event.method) {
     case "values":
       return "values";
@@ -67,8 +67,10 @@ export function inferChannel(event: Event): Channel {
       return "messages";
     case "tools":
       return "tools";
-    case "custom":
-      return "custom";
+    case "custom": {
+      const data = event.params.data as { name?: string } | undefined;
+      return data?.name != null ? `custom:${data.name}` : "custom";
+    }
     case "lifecycle":
       return "lifecycle";
     case "media.streamStart":
@@ -112,7 +114,12 @@ export function matchesSubscription(
   definition: SubscribeParams
 ): boolean {
   const channel = inferChannel(event);
-  if (!definition.channels.includes(channel)) {
+  const channels = definition.channels as SubscribableChannel[];
+  // "custom:a2a" matches exactly; "custom" matches all custom events
+  const channelMatched =
+    channels.includes(channel) ||
+    (channel.startsWith("custom:") && channels.includes("custom"));
+  if (!channelMatched) {
     return false;
   }
 

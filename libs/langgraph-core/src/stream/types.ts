@@ -116,22 +116,38 @@ export interface StreamReducer<TProjection = any> {
    * Called for each {@link ProtocolEvent} before it is appended to the main log.
    *
    * @param event - Next protocol envelope for this run.
-   * @returns `false` to drop the event from the main log (use sparingly;
-   *   prefer keeping events visible and adding derived data alongside).
+   * @param emit - Callback to inject a new event into the main event stream
+   *   with a specific channel method (e.g. `"tools"`, `"lifecycle"`,
+   *   `"custom"`) and data payload.  Emitted events appear in the stream
+   *   alongside raw events and flow through the protocol's channel-based
+   *   subscription system to remote clients.
+   * @returns `false` to drop the original event from the main log (use
+   *   sparingly; prefer keeping events visible and adding derived data
+   *   alongside).
    */
-  process(event: ProtocolEvent): boolean;
+  process(
+    event: ProtocolEvent,
+    emit: (method: string, data: unknown) => void
+  ): boolean;
 
   /**
    * Called once when the underlying Pregel run completes without throwing.
+   *
+   * @param emit - Same emit callback as in `process()`, allowing the
+   *   reducer to inject terminal events (e.g. "completed" status) into
+   *   the protocol stream before it closes.
    */
-  finalize(): void;
+  finalize(emit?: (method: string, data: unknown) => void): void;
 
   /**
    * Called once when the run fails; `err` is the rejection or error value.
    *
    * @param err - Failure reason from the engine or user code.
+   * @param emit - Same emit callback as in `process()`, allowing the
+   *   reducer to inject terminal events (e.g. "failed" status) into the
+   *   protocol stream before it closes.
    */
-  fail(err: unknown): void;
+  fail(err: unknown, emit?: (method: string, data: unknown) => void): void;
 }
 
 import type { MessagesData as MessagesEventDataImport } from "@langchain/protocol";

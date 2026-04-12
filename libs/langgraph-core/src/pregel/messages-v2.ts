@@ -452,7 +452,8 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     runState.messageId = messageId;
     this.emitProtocolEvent(meta, {
       event: "message-start",
-      ...(messageId != null ? { messageId } : {}),
+      role: "ai",
+      ...(messageId != null ? { message_id: messageId } : {}),
     });
   }
 
@@ -478,7 +479,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index,
-        contentBlock: previous,
+        content_block: previous,
       });
     }
 
@@ -491,7 +492,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.emitProtocolEvent(meta, {
       event: "content-block-delta",
       index,
-      contentBlock: protocolDelta,
+      content_block: protocolDelta,
     });
   }
 
@@ -522,9 +523,18 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     }
     const messageId = this.normalizeMessageId(message, runId);
 
+    const role =
+      message.type === "human"
+        ? "human"
+        : message.type === "system"
+          ? "system"
+          : message.type === "tool"
+            ? ("tool" as const)
+            : "ai";
     this.emitProtocolEvent(meta, {
       event: "message-start",
-      ...(messageId != null ? { messageId } : {}),
+      role,
+      ...(messageId != null ? { message_id: messageId } : {}),
     });
 
     const normalizedContent = Array.isArray(message.content)
@@ -541,7 +551,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index,
-        contentBlock: startBlock,
+        content_block: startBlock,
       });
 
       const deltaBlock = toProtocolDeltaBlock(startBlock, rawBlock);
@@ -549,14 +559,14 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         this.emitProtocolEvent(meta, {
           event: "content-block-delta",
           index,
-          contentBlock: deltaBlock,
+          content_block: deltaBlock,
         });
       }
 
       this.emitProtocolEvent(meta, {
         event: "content-block-finish",
         index,
-        contentBlock:
+        content_block:
           rawBlock.type === "tool_call"
             ? rawBlock
             : rawBlock.type === "tool_call_chunk"
@@ -678,7 +688,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
               this.emitProtocolEvent(meta!, {
                 event: "content-block-start",
                 index,
-                contentBlock: rawBlock,
+                content_block: rawBlock,
               });
             }
             break;
@@ -761,7 +771,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         this.emitProtocolEvent(meta!, {
           event: "content-block-finish",
           index,
-          contentBlock: finalizeContentBlock(block),
+          content_block: finalizeContentBlock(block),
         });
       }
 

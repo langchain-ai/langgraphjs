@@ -133,20 +133,20 @@ function convertToolsPayload(payload: unknown): ToolsEventData {
   if (typeof payload !== "object" || payload === null) {
     return {
       event: "tool-error",
-      toolCallId: "",
+      tool_call_id: "",
       message: "Unexpected tools payload shape",
     };
   }
 
   const p = payload as Record<string, unknown>;
-  const toolCallId = String(p.toolCallId ?? "");
+  const tool_call_id = String(p.toolCallId ?? "");
 
   switch (p.event) {
     case "on_tool_start":
       return {
         event: "tool-started",
-        toolCallId,
-        toolName: String(p.name ?? "unknown"),
+        tool_call_id,
+        tool_name: String(p.name ?? "unknown"),
         input: p.input,
       };
 
@@ -155,7 +155,7 @@ function convertToolsPayload(payload: unknown): ToolsEventData {
         typeof p.data === "string" ? p.data : JSON.stringify(p.data ?? "");
       return {
         event: "tool-output-delta",
-        toolCallId,
+        tool_call_id,
         delta,
       };
     }
@@ -163,7 +163,7 @@ function convertToolsPayload(payload: unknown): ToolsEventData {
     case "on_tool_end":
       return {
         event: "tool-finished",
-        toolCallId,
+        tool_call_id,
         output: p.output,
       };
 
@@ -178,7 +178,7 @@ function convertToolsPayload(payload: unknown): ToolsEventData {
           : String(err ?? "unknown error");
       return {
         event: "tool-error",
-        toolCallId,
+        tool_call_id,
         message: errMessage,
       };
     }
@@ -186,7 +186,7 @@ function convertToolsPayload(payload: unknown): ToolsEventData {
     default:
       return {
         event: "tool-error",
-        toolCallId: "",
+        tool_call_id: "",
         message: `Unknown tool event: ${String(p.event)}`,
       };
   }

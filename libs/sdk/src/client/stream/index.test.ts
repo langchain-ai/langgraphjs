@@ -297,6 +297,56 @@ describe("SubscriptionHandle", () => {
   });
 });
 
+describe("custom:name subscriptions", () => {
+  it("subscribes to custom:a2a without capability assertion", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const sub = await session.subscribe("custom:a2a");
+    expect(sub.subscriptionId).toMatch(/^sub_/);
+  });
+
+  it("unwraps named custom events to raw payload", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const sub = await session.subscribe("custom:a2a");
+    const payload = { kind: "status-update", status: "working" };
+    transport.pushEvent(
+      eventOf("custom", { name: "a2a", payload })
+    );
+
+    const received = await nextValue(sub);
+    expect(received).toEqual(payload);
+  });
+
+  it("delivers full events for plain 'custom' subscriptions", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "custom", channels: ["custom"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const sub = await session.subscribe("custom");
+    const payload = { kind: "status-update", status: "working" };
+    transport.pushEvent(
+      eventOf("custom", { name: "a2a", payload })
+    );
+
+    const received = await nextValue(sub);
+    expect(received.method).toBe("custom");
+    expect((received.params.data as { name: string }).name).toBe("a2a");
+  });
+});
+
 describe("ProtocolError", () => {
   it("wraps error response with code and message", () => {
     const error = new ProtocolError({

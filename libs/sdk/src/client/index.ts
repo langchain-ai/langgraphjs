@@ -139,6 +139,7 @@ export type {
   AssembledMessage,
   MessageAssemblyUpdate,
   SubscribeOptions,
+  SubscribableChannel,
   EventMethodByChannel,
   EventForChannel,
   EventForChannels,

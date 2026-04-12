@@ -15,12 +15,12 @@ const SessionIdSchema = z.object({ session_id: z.string() });
 const ProtocolSessionOpenSchema = z.object({
   method: z.literal("session.open"),
   params: z.object({
-    protocolVersion: z.string(),
+    protocol_version: z.string(),
     target: z.object({
       id: z.string(),
     }),
-    preferredTransports: z.array(z.string()).optional(),
-    mediaTransferModes: z.array(z.string()).optional(),
+    preferred_transports: z.array(z.string()).optional(),
+    media_transfer_modes: z.array(z.string()).optional(),
   }),
 });
 
@@ -311,29 +311,29 @@ export default function createProtocolApi(
         const queued = session.queuedEvents.filter((event) => {
           if (
             lastEventId != null &&
-            event.eventId != null &&
-            event.eventId <= lastEventId
+            event.event_id != null &&
+            event.event_id <= lastEventId
           ) {
             return false;
           }
           return true;
         });
         for (const event of queued) {
-          if (event.eventId == null) continue;
-          delivered.add(event.eventId);
+          if (event.event_id == null) continue;
+          delivered.add(event.event_id);
           await stream.writeSSE({
-            id: event.eventId,
+            id: event.event_id,
             event: event.method,
             data: serialiseAsDict(event),
           });
         }
 
         await protocolService.attachEventSink(session_id, async (event) => {
-          if (event.eventId == null) return;
-          if (delivered.has(event.eventId)) return;
-          delivered.add(event.eventId);
+          if (event.event_id == null) return;
+          if (delivered.has(event.event_id)) return;
+          delivered.add(event.event_id);
           await stream.writeSSE({
-            id: event.eventId,
+            id: event.event_id,
             event: event.method,
             data: serialiseAsDict(event),
           });

@@ -7,7 +7,6 @@ import type {
   StreamMode,
 } from "../storage/types.mjs";
 import type { RunCommand } from "../command.mjs";
-import { store as graphStore } from "../storage/store.mjs";
 import type {
   CapabilityAdvertisement,
   ProtocolCommand,
@@ -23,10 +22,6 @@ import type {
   ProtocolTarget,
   ProtocolTransportName,
   StateGetResult,
-  StoreItem,
-  StorePutParams,
-  StoreSearchParams,
-  StoreSearchResult,
   SubscribeResult,
   TransportProfile,
   ModuleCapability,
@@ -123,13 +118,13 @@ const MODULE_CAPABILITIES: ModuleCapability[] = [
   ...STREAM_CHANNEL_CAPABILITIES,
   {
     name: "state",
-    commands: ["state.get", "state.storeSearch", "state.storePut"],
+    commands: ["state.get", "state.listCheckpoints", "state.fork"],
     channels: ["state"],
   },
 ];
 
 const CONTENT_BLOCK_TYPES: NonNullable<
-  CapabilityAdvertisement["contentBlockTypes"]
+  CapabilityAdvertisement["content_block_types"]
 > = [
   "text",
   "reasoning",
@@ -146,7 +141,7 @@ const CONTENT_BLOCK_TYPES: NonNullable<
   "non_standard",
 ];
 
-const PAYLOAD_TYPES: NonNullable<CapabilityAdvertisement["payloadTypes"]> = [
+const PAYLOAD_TYPES: NonNullable<CapabilityAdvertisement["payload_types"]> = [
   "LifecycleEvent",
   "MessagesEvent",
   "ToolsEvent",
@@ -166,10 +161,10 @@ const defaultTransportProfile = (
   transportName: ProtocolTransportName
 ): TransportProfile => ({
   name: transportName,
-  eventOrdering: "seq",
-  commandDelivery:
+  event_ordering: "seq",
+  command_delivery:
     transportName === "websocket" ? "in-band" : "request-response",
-  mediaTransferModes:
+  media_transfer_modes:
     transportName === "websocket"
       ? ["artifact-only"]
       : ["artifact-only", "upgrade-to-websocket"],
@@ -197,20 +192,6 @@ const getThreadIdFromConfig = (value: unknown): string | undefined => {
   return typeof configurable.thread_id === "string"
     ? configurable.thread_id
     : undefined;
-};
-
-const normalizeStoreItem = (item: any): StoreItem => ({
-  namespace: item.namespace,
-  key: item.key,
-  value: item.value,
-  ...(item.createdAt ? { createdAt: item.createdAt } : {}),
-  ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
-});
-
-const normalizeStoreNamespace = (value: unknown): string[] | undefined => {
-  if (!Array.isArray(value)) return undefined;
-  if (!value.every((entry) => typeof entry === "string")) return undefined;
-  return value as string[];
 };
 
 const normalizeKeys = (value: unknown): string[] | undefined => {
@@ -260,14 +241,14 @@ export class ProtocolService {
     const sessionId = uuid7();
     const record: SessionRecord = {
       sessionId,
-      protocolVersion: PROTOCOL_VERSION,
+      protocol_version: PROTOCOL_VERSION,
       transport: defaultTransportProfile(options.transportName),
       auth: options.auth,
       target: options.target,
       capabilities: {
         modules: MODULE_CAPABILITIES.map((module) => ({ ...module })),
-        payloadTypes: PAYLOAD_TYPES.slice(),
-        contentBlockTypes: CONTENT_BLOCK_TYPES.slice(),
+        payload_types: PAYLOAD_TYPES.slice(),
+        content_block_types: CONTENT_BLOCK_TYPES.slice(),
       },
       seq: 0,
       session: undefined,
@@ -298,14 +279,14 @@ export class ProtocolService {
         type: "success",
         id: 0,
         result: {
-          sessionId,
-          protocolVersion: record.protocolVersion,
+          session_id: sessionId,
+          protocol_version: record.protocol_version,
           transport: record.transport,
           capabilities: record.capabilities,
         } satisfies SessionResult,
         meta: {
-          sessionId,
-          appliedThroughSeq: record.seq,
+          session_id: sessionId,
+          applied_through_seq: record.seq,
         },
       },
     };
@@ -317,14 +298,14 @@ export class ProtocolService {
       type: "success",
       id: 0,
       result: {
-        sessionId: record.sessionId,
-        protocolVersion: record.protocolVersion,
+        session_id: record.sessionId,
+        protocol_version: record.protocol_version,
         transport: record.transport,
         capabilities: record.capabilities,
       } satisfies SessionResult,
       meta: {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
+        session_id: record.sessionId,
+        applied_through_seq: record.seq,
       },
     };
   }
@@ -369,9 +350,7 @@ export class ProtocolService {
       command.method !== "input.respond" &&
       command.method !== "session.describe" &&
       command.method !== "session.close" &&
-      command.method !== "state.get" &&
-      command.method !== "state.storeSearch" &&
-      command.method !== "state.storePut"
+      command.method !== "state.get"
     ) {
       record.pendingCommands.push(command);
       return {
@@ -380,13 +359,13 @@ export class ProtocolService {
         result:
           command.method === "subscription.subscribe"
             ? ({
-                subscriptionId: uuid7(),
-                replayedEvents: 0,
+                subscription_id: uuid7(),
+                replayed_events: 0,
               } satisfies SubscribeResult)
             : {},
         meta: {
-          sessionId: record.sessionId,
-          appliedThroughSeq: record.seq,
+          session_id: record.sessionId,
+          applied_through_seq: record.seq,
         },
       };
     }
@@ -397,14 +376,14 @@ export class ProtocolService {
           type: "success",
           id: command.id,
           result: {
-            sessionId: record.sessionId,
-            protocolVersion: record.protocolVersion,
+            session_id: record.sessionId,
+            protocol_version: record.protocol_version,
             transport: record.transport,
             capabilities: record.capabilities,
           } satisfies SessionResult,
           meta: {
-            sessionId: record.sessionId,
-            appliedThroughSeq: record.seq,
+            session_id: record.sessionId,
+            applied_through_seq: record.seq,
           },
         };
       case "session.close":
@@ -414,8 +393,8 @@ export class ProtocolService {
           id: command.id,
           result: {},
           meta: {
-            sessionId,
-            appliedThroughSeq: record.seq,
+            session_id: sessionId,
+            applied_through_seq: record.seq,
           },
         };
       case "run.input":
@@ -424,10 +403,6 @@ export class ProtocolService {
         return await this.handleInputRespond(record, command);
       case "state.get":
         return await this.handleStateGet(record, command);
-      case "state.storeSearch":
-        return await this.handleStoreSearch(record, command);
-      case "state.storePut":
-        return await this.handleStorePut(record, command);
       default:
         return await this.forwardToRunSession(record, command);
     }
@@ -447,10 +422,10 @@ export class ProtocolService {
     return {
       type: "success",
       id: command.id,
-      result: { runId: run.run_id } satisfies RunResult,
+      result: { run_id: run.run_id } satisfies RunResult,
       meta: {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
+        session_id: record.sessionId,
+        applied_through_seq: record.seq,
       },
     };
   }
@@ -465,11 +440,11 @@ export class ProtocolService {
         >)
       : {};
 
-    if (typeof params.interruptId !== "string") {
+    if (typeof params.interrupt_id !== "string") {
       return this.error(
         command.id,
         "invalid_argument",
-        "input.respond requires an interruptId."
+        "input.respond requires an interrupt_id."
       );
     }
 
@@ -498,7 +473,7 @@ export class ProtocolService {
     }
 
     await this.createOrResumeRun(record, {
-      input: { [params.interruptId]: params.response },
+      input: { [params.interrupt_id]: params.response },
       config: undefined,
       metadata: undefined,
     });
@@ -508,8 +483,8 @@ export class ProtocolService {
       id: command.id,
       result: {},
       meta: {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
+        session_id: record.sessionId,
+        applied_through_seq: record.seq,
       },
     };
   }
@@ -602,8 +577,8 @@ export class ProtocolService {
     await this.ensureRunSession(record, run);
     for (const pending of record.pendingCommands.splice(0)) {
       await record.session?.handleProtocolCommand(pending, {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
+        session_id: record.sessionId,
+        applied_through_seq: record.seq,
       });
     }
 
@@ -685,78 +660,8 @@ export class ProtocolService {
         checkpoint,
       } satisfies StateGetResult,
       meta: {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
-      },
-    };
-  }
-
-  private async handleStoreSearch(
-    record: SessionRecord,
-    command: ProtocolCommandByMethod<"state.storeSearch">
-  ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<StoreSearchParams>)
-      : {};
-    const storeNamespace = normalizeStoreNamespace(params.storeNamespace);
-    if (storeNamespace == null) {
-      return this.error(
-        command.id,
-        "invalid_argument",
-        "state.storeSearch requires storeNamespace as a string array."
-      );
-    }
-
-    const items = await graphStore.search(storeNamespace, {
-      query: typeof params.query === "string" ? params.query : undefined,
-      filter: isRecord(params.filter) ? params.filter : undefined,
-      limit: typeof params.limit === "number" ? params.limit : 10,
-      offset: typeof params.offset === "number" ? params.offset : 0,
-    });
-
-    return {
-      type: "success",
-      id: command.id,
-      result: {
-        items: items.map(normalizeStoreItem),
-      } satisfies StoreSearchResult,
-      meta: {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
-      },
-    };
-  }
-
-  private async handleStorePut(
-    record: SessionRecord,
-    command: ProtocolCommandByMethod<"state.storePut">
-  ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<StorePutParams>)
-      : {};
-    const storeNamespace = normalizeStoreNamespace(params.storeNamespace);
-    const key = params.key;
-    if (storeNamespace == null || typeof key !== "string") {
-      return this.error(
-        command.id,
-        "invalid_argument",
-        "state.storePut requires storeNamespace and key."
-      );
-    }
-
-    await graphStore.put(
-      storeNamespace,
-      key,
-      isRecord(params.value) ? params.value : {}
-    );
-
-    return {
-      type: "success",
-      id: command.id,
-      result: {},
-      meta: {
-        sessionId: record.sessionId,
-        appliedThroughSeq: record.seq,
+        session_id: record.sessionId,
+        applied_through_seq: record.seq,
       },
     };
   }
@@ -774,8 +679,8 @@ export class ProtocolService {
       );
     }
     return await runSession.handleProtocolCommand(command, {
-      sessionId: record.sessionId,
-      appliedThroughSeq: record.seq,
+      session_id: record.sessionId,
+      applied_through_seq: record.seq,
     });
   }
 

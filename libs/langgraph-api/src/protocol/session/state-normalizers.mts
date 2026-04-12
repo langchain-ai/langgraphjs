@@ -82,16 +82,16 @@ const normalizeAudioBlockFromAdditionalKwargs = (
     ...(typeof audio.transcript === "string"
       ? { transcript: audio.transcript }
       : {}),
-  } satisfies ContentBlockStartData["contentBlock"];
+  } satisfies ContentBlockStartData["content_block"];
 };
 
 export const normalizeProtocolContentBlock = (
   value: unknown
-): ContentBlockStartData["contentBlock"] | undefined => {
+): ContentBlockStartData["content_block"] | undefined => {
   if (!isRecord(value) || typeof value.type !== "string") return undefined;
 
   if (PROTOCOL_CONTENT_BLOCK_TYPES.has(value.type)) {
-    return value as ContentBlockStartData["contentBlock"];
+    return value as ContentBlockStartData["content_block"];
   }
 
   if (value.type === "image_url") {
@@ -130,7 +130,7 @@ export const normalizeProtocolContentBlock = (
 
 export const normalizeProtocolFinalizedContentBlock = (
   value: unknown
-): ContentBlockFinishData["contentBlock"] | undefined => {
+): ContentBlockFinishData["content_block"] | undefined => {
   const block = normalizeProtocolContentBlock(value);
   if (block == null) return undefined;
   if (
@@ -139,7 +139,7 @@ export const normalizeProtocolFinalizedContentBlock = (
   ) {
     return undefined;
   }
-  return block as ContentBlockFinishData["contentBlock"];
+  return block as ContentBlockFinishData["content_block"];
 };
 
 export const normalizeProtocolMessageContent = (
@@ -152,7 +152,7 @@ export const normalizeProtocolMessageContent = (
     );
     if (audioBlock == null) return content;
 
-    const blocks: ContentBlockStartData["contentBlock"][] = [];
+    const blocks: ContentBlockStartData["content_block"][] = [];
     if (content.length > 0) {
       blocks.push({ type: "text", text: content });
     }
@@ -167,7 +167,7 @@ export const normalizeProtocolMessageContent = (
     return audioBlock != null ? [audioBlock] : content;
   }
 
-  const blocks: ContentBlockStartData["contentBlock"][] = [];
+  const blocks: ContentBlockStartData["content_block"][] = [];
   for (const entry of content) {
     if (typeof entry === "string") {
       blocks.push({ type: "text", text: entry });
@@ -236,12 +236,15 @@ export const toProtocolUsageInfo = (value: unknown) => {
   const usage = {
     ...(pickNumericField(value, ["inputTokens", "input_tokens"]) != null
       ? {
-          inputTokens: pickNumericField(value, ["inputTokens", "input_tokens"]),
+          input_tokens: pickNumericField(value, [
+            "inputTokens",
+            "input_tokens",
+          ]),
         }
       : {}),
     ...(pickNumericField(value, ["outputTokens", "output_tokens"]) != null
       ? {
-          outputTokens: pickNumericField(value, [
+          output_tokens: pickNumericField(value, [
             "outputTokens",
             "output_tokens",
           ]),
@@ -249,12 +252,15 @@ export const toProtocolUsageInfo = (value: unknown) => {
       : {}),
     ...(pickNumericField(value, ["totalTokens", "total_tokens"]) != null
       ? {
-          totalTokens: pickNumericField(value, ["totalTokens", "total_tokens"]),
+          total_tokens: pickNumericField(value, [
+            "totalTokens",
+            "total_tokens",
+          ]),
         }
       : {}),
     ...(pickNumericField(value, ["cachedTokens", "cached_tokens"]) != null
       ? {
-          cachedTokens: pickNumericField(value, [
+          cached_tokens: pickNumericField(value, [
             "cachedTokens",
             "cached_tokens",
           ]),
@@ -263,7 +269,7 @@ export const toProtocolUsageInfo = (value: unknown) => {
     ...(inputTokenDetails != null &&
     pickNumericField(inputTokenDetails, ["cache_read"]) != null
       ? {
-          cachedTokens: pickNumericField(inputTokenDetails, ["cache_read"]),
+          cached_tokens: pickNumericField(inputTokenDetails, ["cache_read"]),
         }
       : {}),
   };
