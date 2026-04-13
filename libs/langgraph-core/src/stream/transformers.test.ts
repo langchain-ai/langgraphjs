@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createMessagesReducer, createValuesReducer } from "./reducers.js";
+import {
+  createMessagesTransformer,
+  createValuesTransformer,
+} from "./transformers.js";
 import type { ProtocolEvent } from "./types.js";
 
 function makeEvent(
@@ -31,47 +34,47 @@ async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
 }
 
 /**
- * Root-level reducer tests use path=[] and emit events at namespace
- * ["agent"] (depth 1), because the MessagesReducer only captures events
+ * Root-level transformer tests use path=[] and emit events at namespace
+ * ["agent"] (depth 1), because the MessagesTransformer only captures events
  * at exactly path.length + 1 — the graph's own node namespace depth.
  */
-describe("createMessagesReducer", () => {
+describe("createMessagesTransformer", () => {
   const agentNs = ["agent"];
 
   it("creates ChatModelStreams from message-start events", () => {
-    const reducer = createMessagesReducer([]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const collected = collect(proj.messages);
     return expect(collected).resolves.toHaveLength(1);
   });
 
   it("forwards content-block-delta to active stream", async () => {
-    const reducer = createMessagesReducer([]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
         content_block: { type: "text", text: "hello" },
       }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -81,16 +84,16 @@ describe("createMessagesReducer", () => {
   });
 
   it("closes stream on message-finish", async () => {
-    const reducer = createMessagesReducer([]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -101,10 +104,10 @@ describe("createMessagesReducer", () => {
   });
 
   it("nodeFilter only processes events from matching node", async () => {
-    const reducer = createMessagesReducer([], "agent");
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer([], "agent");
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent(
         "messages",
         { event: "message-start", role: "ai" },
@@ -112,7 +115,7 @@ describe("createMessagesReducer", () => {
         "other"
       )
     );
-    reducer.process(
+    transformer.process(
       makeEvent(
         "messages",
         { event: "message-finish", reason: "stop" },
@@ -121,7 +124,7 @@ describe("createMessagesReducer", () => {
       )
     );
 
-    reducer.process(
+    transformer.process(
       makeEvent(
         "messages",
         { event: "message-start", role: "ai" },
@@ -129,7 +132,7 @@ describe("createMessagesReducer", () => {
         "agent"
       )
     );
-    reducer.process(
+    transformer.process(
       makeEvent(
         "messages",
         { event: "message-finish", reason: "stop" },
@@ -137,7 +140,7 @@ describe("createMessagesReducer", () => {
         "agent"
       )
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -145,17 +148,17 @@ describe("createMessagesReducer", () => {
   });
 
   it("captures events only at depth + 1 (direct child nodes)", async () => {
-    const reducer = createMessagesReducer(["root"]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer(["root"]);
+    const proj = transformer.init();
 
     // Direct child node (depth + 1) — should be captured
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, [
         "root",
         "node",
       ])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, [
         "root",
         "node",
@@ -163,14 +166,14 @@ describe("createMessagesReducer", () => {
     );
 
     // Same depth as path (chain-level replay) — should be ignored
-    reducer.process(
+    transformer.process(
       makeEvent(
         "messages",
         { event: "message-start", role: "ai" },
         ["root"]
       )
     );
-    reducer.process(
+    transformer.process(
       makeEvent(
         "messages",
         { event: "message-finish", reason: "stop" },
@@ -178,7 +181,7 @@ describe("createMessagesReducer", () => {
       )
     );
 
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -186,18 +189,18 @@ describe("createMessagesReducer", () => {
   });
 
   it("ignores events from deeply nested namespaces (depth + 2 or more)", async () => {
-    const reducer = createMessagesReducer(["root"]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer(["root"]);
+    const proj = transformer.init();
 
     // Deeply nested — should be ignored (belongs to a subgraph's own nodes)
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, [
         "root",
         "sub",
         "inner",
       ])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, [
         "root",
         "sub",
@@ -206,20 +209,20 @@ describe("createMessagesReducer", () => {
     );
 
     // Direct child — should be captured
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, [
         "root",
         "node",
       ])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, [
         "root",
         "node",
       ])
     );
 
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -227,25 +230,25 @@ describe("createMessagesReducer", () => {
   });
 
   it("ignores events from unrelated namespaces", async () => {
-    const reducer = createMessagesReducer(["root"]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer(["root"]);
+    const proj = transformer.init();
 
     // Unrelated namespace — should be ignored
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, ["other", "node"])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, ["other", "node"])
     );
 
     // Correct namespace at depth+1 — should be captured
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, ["root", "node"])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, ["root", "node"])
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -253,20 +256,20 @@ describe("createMessagesReducer", () => {
   });
 
   it("finalize closes the log", async () => {
-    const reducer = createMessagesReducer([]);
-    const proj = reducer.init();
-    reducer.finalize();
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(0);
   });
 
   it("fail propagates error to active stream and log", async () => {
-    const reducer = createMessagesReducer([]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
     const error = new Error("boom");
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, agentNs)
     );
 
@@ -280,43 +283,43 @@ describe("createMessagesReducer", () => {
     stream.reasoning.then(() => {}, () => {});
     stream.usage.then(() => {}, () => {});
 
-    reducer.fail(error);
+    transformer.fail(error);
 
     await expect(iter.next()).rejects.toThrow("boom");
   });
 
   it("multiple message lifecycles create separate ChatModelStreams", async () => {
-    const reducer = createMessagesReducer([]);
-    const proj = reducer.init();
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
         content_block: { type: "text", text: "first" },
       }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
         content_block: { type: "text", text: "second" },
       }, agentNs)
     );
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(2);
@@ -328,68 +331,68 @@ describe("createMessagesReducer", () => {
   });
 });
 
-describe("createValuesReducer", () => {
+describe("createValuesTransformer", () => {
   it("captures values events at the target namespace depth", async () => {
-    const reducer = createValuesReducer(["root"]);
-    const proj = reducer.init();
+    const transformer = createValuesTransformer(["root"]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("values", { count: 1 }, ["root"])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("values", { count: 2 }, ["root"])
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toEqual([{ count: 1 }, { count: 2 }]);
   });
 
   it("ignores events from different namespaces", async () => {
-    const reducer = createValuesReducer(["root"]);
-    const proj = reducer.init();
+    const transformer = createValuesTransformer(["root"]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("values", { x: 1 }, ["other"])
     );
-    reducer.process(
+    transformer.process(
       makeEvent("values", { x: 2 }, ["root", "child"])
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toHaveLength(0);
   });
 
   it("ignores non-values events", async () => {
-    const reducer = createValuesReducer(["root"]);
-    const proj = reducer.init();
+    const transformer = createValuesTransformer(["root"]);
+    const proj = transformer.init();
 
-    reducer.process(
+    transformer.process(
       makeEvent("messages", { event: "message-start" }, ["root"])
     );
-    reducer.finalize();
+    transformer.finalize();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toHaveLength(0);
   });
 
   it("finalize closes the log", async () => {
-    const reducer = createValuesReducer([]);
-    const proj = reducer.init();
-    reducer.finalize();
+    const transformer = createValuesTransformer([]);
+    const proj = transformer.init();
+    transformer.finalize();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toHaveLength(0);
   });
 
   it("fail propagates error", async () => {
-    const reducer = createValuesReducer([]);
-    const proj = reducer.init();
+    const transformer = createValuesTransformer([]);
+    const proj = transformer.init();
     const error = new Error("fail");
 
-    reducer.process(makeEvent("values", { a: 1 }, []));
-    reducer.fail(error);
+    transformer.process(makeEvent("values", { a: 1 }, []));
+    transformer.fail(error);
 
     await expect(
       collect(proj._valuesLog.toAsyncIterable())

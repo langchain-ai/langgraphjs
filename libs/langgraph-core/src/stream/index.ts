@@ -18,7 +18,10 @@ export {
   SubgraphRunStream,
   createGraphRunStream,
 } from "./run-stream.js";
-export { createMessagesReducer, createValuesReducer } from "./reducers.js";
+export {
+  createMessagesTransformer,
+  createValuesTransformer,
+} from "./transformers.js";
 export { convertToProtocolEvent } from "./convert.js";
 export type {
   Namespace,

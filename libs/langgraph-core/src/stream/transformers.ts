@@ -1,12 +1,12 @@
 /**
- * Built-in graph-level reducers.
+ * Built-in graph-level stream transformers.
  *
- * These reducers are registered automatically for every graph run:
+ * These transformers are registered automatically for every graph run:
  *
- *   ValuesReducer   — captures values events and resolves run.output.
- *   MessagesReducer — groups messages events into ChatModelStream lifecycles.
+ *   ValuesTransformer   — captures values events and resolves run.output.
+ *   MessagesTransformer — groups messages events into ChatModelStream lifecycles.
  *
- * They run in a fixed order: ValuesReducer first, then MessagesReducer.
+ * They run in a fixed order: ValuesTransformer first, then MessagesTransformer.
  */
 
 import { EventLog } from "./event-log.js";
@@ -21,11 +21,11 @@ import type {
 import { hasPrefix } from "./mux.js";
 
 /**
- * The projection shape merged into a run stream by the messages reducer.
+ * The projection shape merged into a run stream by the messages transformer.
  * Exposes a `messages` async iterable that yields one {@link ChatModelStream}
  * per AI message lifecycle observed during the run.
  */
-export interface MessagesReducerProjection {
+export interface MessagesTransformerProjection {
   messages: AsyncIterable<ChatModelStream>;
 }
 
@@ -44,10 +44,10 @@ export interface MessagesReducerProjection {
  * @returns A `StreamTransformer` whose projection contains the `messages`
  *   async iterable.
  */
-export function createMessagesReducer(
+export function createMessagesTransformer(
   path: Namespace,
   nodeFilter?: string
-): StreamTransformer<MessagesReducerProjection> {
+): StreamTransformer<MessagesTransformerProjection> {
   const log = new EventLog<ChatModelStream>();
   let active: ChatModelStreamImpl | undefined;
 
@@ -125,11 +125,11 @@ export function createMessagesReducer(
 }
 
 /**
- * The projection shape merged into a run stream by the values reducer.
+ * The projection shape merged into a run stream by the values transformer.
  * Exposes the underlying {@link EventLog} so that `StreamMux` can resolve
  * the final output value on close.
  */
-export interface ValuesReducerProjection {
+export interface ValuesTransformerProjection {
   _valuesLog: EventLog<Record<string, unknown>>;
 }
 
@@ -140,15 +140,15 @@ export interface ValuesReducerProjection {
  * ignored.
  *
  * The final snapshot is resolved by {@link StreamMux.close} directly;
- * this reducer only accumulates intermediate values.
+ * this transformer only accumulates intermediate values.
  *
  * @param path - Namespace prefix to match against incoming events.
  * @returns A `StreamTransformer` whose projection contains the internal
  *   `_valuesLog` event log.
  */
-export function createValuesReducer(
+export function createValuesTransformer(
   path: Namespace
-): StreamTransformer<ValuesReducerProjection> {
+): StreamTransformer<ValuesTransformerProjection> {
   const valuesLog = new EventLog<Record<string, unknown>>();
 
   return {

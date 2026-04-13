@@ -46,8 +46,8 @@ export {
   ChatModelStreamImpl,
   STREAM_V2_MODES,
   createGraphRunStream,
-  createMessagesReducer,
-  createValuesReducer,
+  createMessagesTransformer,
+  createValuesTransformer,
 } from "./stream/index.js";
 export type {
   ProtocolEvent,

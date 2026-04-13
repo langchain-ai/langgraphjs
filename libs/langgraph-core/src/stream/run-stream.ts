@@ -16,7 +16,10 @@
 import type { StreamChunk } from "../pregel/stream.js";
 import { EventLog } from "./event-log.js";
 import { StreamMux, pump } from "./mux.js";
-import { createMessagesReducer, createValuesReducer } from "./reducers.js";
+import {
+  createMessagesTransformer,
+  createValuesTransformer,
+} from "./transformers.js";
 import type {
   ChatModelStream,
   InferExtensions,
@@ -190,7 +193,7 @@ export class GraphRunStream<
     // Lazily create a messages transformer scoped to this stream's path.
     // This handles SubgraphRunStream instances that are created
     // dynamically by StreamMux and don't have a transformer pre-wired.
-    const transformer = createMessagesReducer(this.path);
+    const transformer = createMessagesTransformer(this.path);
     this._mux.addTransformer(transformer);
     const projection = transformer.init();
     this.#messagesIterable = projection.messages;
@@ -205,7 +208,7 @@ export class GraphRunStream<
    * @returns An async iterable of chat model streams from the given node.
    */
   messagesFrom(node: string): AsyncIterable<ChatModelStream> {
-    const transformer = createMessagesReducer(this.path, node);
+    const transformer = createMessagesTransformer(this.path, node);
     this._mux.addTransformer(transformer);
     const projection = transformer.init();
     return projection.messages;
@@ -390,8 +393,8 @@ export function createGraphRunStream<
       new SubgraphRunStream(path, m, discoveryStart, eventStart)
   );
 
-  const valuesTransformer = createValuesReducer([]);
-  const messagesTransformer = createMessagesReducer([]);
+  const valuesTransformer = createValuesTransformer([]);
+  const messagesTransformer = createMessagesTransformer([]);
   mux.addTransformer(valuesTransformer);
   mux.addTransformer(messagesTransformer);
 
