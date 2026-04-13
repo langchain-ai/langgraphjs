@@ -57,15 +57,15 @@ Shows: `run.subgraphs`, `sub.messages`, `sub.name`, `sub.index`, recursive walki
 
 ### `custom-reducer.ts` — Domain-specific projections
 
-Extends `streamV2()` with a custom `StreamReducer` that counts tool calls and
-tracks token usage. The reducer is passed via the `reducers` option; its
+Extends `streamV2()` with a custom `StreamTransformer` that counts tool calls and
+tracks token usage. The transformer is passed via the `transformers` option; its
 projections appear on `run.extensions`.
 
 ```bash
 npx tsx src/custom-reducer.ts
 ```
 
-Shows: `StreamReducer`, `graph.streamV2(input, { reducers: [...] })`, `run.extensions`
+Shows: `StreamTransformer`, `graph.streamV2(input, { transformers: [...] })`, `run.extensions`
 
 ### `parallel.ts` — Concurrent projection consumption
 
@@ -95,8 +95,8 @@ Shows: `interrupt()`, `run.interrupted`, `run.interrupts`, `Command({ resume })`
 
 ### `a2a.ts` — A2A protocol over a deployed server
 
-End-to-end deployment example for custom stream reducers. The research
-pipeline is compiled with an A2A reducer (`createA2AReducer`) that emits
+End-to-end deployment example for custom stream transformers. The research
+pipeline is compiled with an A2A transformer (`createA2ATransformer`) that emits
 A2A-formatted status updates and artifacts. The graph is deployed via the
 LangGraph dev server, and the SDK client subscribes to the `custom` channel
 to receive only A2A events.
@@ -105,7 +105,7 @@ to receive only A2A events.
 npx tsx src/a2a.ts
 ```
 
-Shows: `.compile({ reducers: [createA2AReducer] })`, `streamStateV2()`, SDK `client.runs.stream()`, `streamMode: ["custom"]`
+Shows: `.compile({ transformers: [createA2ATransformer] })`, `streamStateV2()`, SDK `client.runs.stream()`, `streamMode: ["custom"]`
 
 ## Agents
 
@@ -116,7 +116,7 @@ The example agents live in `src/agents/` and `src/a2a/`:
 | Simple tool graph | `agents/simple-tool-graph.ts` | Single ReAct loop with search + calculator |
 | Research pipeline | `agents/research-pipeline.ts` | Two sequential subgraphs with separate tools |
 | Approval graph | `agents/approval-graph.ts` | Planner → human approval → executor with interrupt/resume |
-| A2A research | `a2a/agent.ts` | Research pipeline with A2A stream reducer at compile time |
+| A2A research | `a2a/agent.ts` | Research pipeline with A2A stream transformer at compile time |
 
 ## API Surface
 
@@ -150,8 +150,8 @@ for await (const snapshot of run.values) { ... }
 // Messages from a specific node
 for await (const msg of run.messagesFrom("agent")) { ... }
 
-// Custom reducers
-const run = await graph.streamV2(input, { reducers: [myReducer] });
+// Custom transformers
+const run = await graph.streamV2(input, { transformers: [myTransformer] });
 const custom = await run.extensions.myProjection;
 
 // Human-in-the-loop

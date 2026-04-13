@@ -1,15 +1,15 @@
 /**
- * A2A stream reducer — emits A2A protocol-compliant streaming events.
+ * A2A stream transformer — emits A2A protocol-compliant streaming events.
  *
  * Uses the official `@a2a-js/sdk` types to ensure emitted events satisfy
  * `TaskStatusUpdateEvent` and `TaskArtifactUpdateEvent` shapes.
  *
  * Events are wrapped as `{ type: "a2a", payload: A2AStreamEvent }` on
  * the `custom` channel so clients can distinguish them from other custom
- * reducer output.
+ * transformer output.
  */
 
-import type { ProtocolEvent, StreamReducer } from "@langchain/langgraph";
+import type { ProtocolEvent, StreamTransformer } from "@langchain/langgraph";
 import { EventLog } from "@langchain/langgraph";
 import type {
   TaskStatusUpdateEvent,
@@ -18,7 +18,7 @@ import type {
 
 type A2AStreamEvent = TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
-export const createA2AReducer = (): StreamReducer<{
+export const createA2ATransformer = (): StreamTransformer<{
   a2a: AsyncIterable<A2AStreamEvent>;
 }> => {
   const log = new EventLog<A2AStreamEvent>();

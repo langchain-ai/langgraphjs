@@ -10,7 +10,7 @@
  *   .interrupted   — whether the run ended due to an interrupt
  *   .interrupts    — interrupt payloads
  *   .abort()       — programmatic cancellation
- *   .extensions    — merged reducer projections
+ *   .extensions    — merged transformer projections
  */
 
 import type { StreamChunk } from "../pregel/stream.js";
@@ -23,7 +23,7 @@ import type {
   InterruptPayload,
   Namespace,
   ProtocolEvent,
-  StreamReducer,
+  StreamTransformer,
 } from "./types.js";
 
 /**
@@ -34,7 +34,7 @@ import type {
  * interrupts. Created by {@link createGraphRunStream}.
  *
  * @typeParam TValues - Shape of the graph's state values.
- * @typeParam TExtensions - Shape of additional reducer projections merged
+ * @typeParam TExtensions - Shape of additional transformer projections merged
  *   into {@link GraphRunStream.extensions}.
  */
 export class GraphRunStream<
@@ -48,13 +48,13 @@ export class GraphRunStream<
   readonly path: Namespace;
 
   /**
-   * Merged projections from user-supplied {@link StreamReducer} factories.
-   * Each reducer's `init()` return value is spread into this object.
+   * Merged projections from user-supplied {@link StreamTransformer} factories.
+   * Each transformer's `init()` return value is spread into this object.
    */
   readonly extensions: TExtensions;
 
   /**
-   * The central stream multiplexer that drives event dispatch and reducer
+   * The central stream multiplexer that drives event dispatch and transformer
    * pipelines. Accessible to subclasses for direct event subscription.
    *
    * @internal
@@ -78,7 +78,7 @@ export class GraphRunStream<
    * @param mux - The {@link StreamMux} driving this run.
    * @param discoveryStart - Cursor offset into the mux discovery log.
    * @param eventStart - Cursor offset into the mux event log.
-   * @param extensions - Pre-initialized reducer projections.
+   * @param extensions - Pre-initialized transformer projections.
    * @param abortController - Controller for programmatic cancellation.
    */
   constructor(
@@ -185,12 +185,12 @@ export class GraphRunStream<
    */
   get messages(): AsyncIterable<ChatModelStream> {
     if (this.#messagesIterable) return this.#messagesIterable;
-    // Lazily create a MessagesReducer scoped to this stream's path.
+    // Lazily create a messages transformer scoped to this stream's path.
     // This handles SubgraphRunStream instances that are created
-    // dynamically by StreamMux and don't have a reducer pre-wired.
-    const reducer = createMessagesReducer(this.path);
-    this._mux.addReducer(reducer);
-    const projection = reducer.init();
+    // dynamically by StreamMux and don't have a transformer pre-wired.
+    const transformer = createMessagesReducer(this.path);
+    this._mux.addTransformer(transformer);
+    const projection = transformer.init();
     this.#messagesIterable = projection.messages;
     return this.#messagesIterable;
   }
@@ -203,9 +203,9 @@ export class GraphRunStream<
    * @returns An async iterable of chat model streams from the given node.
    */
   messagesFrom(node: string): AsyncIterable<ChatModelStream> {
-    const reducer = createMessagesReducer(this.path, node);
-    this._mux.addReducer(reducer);
-    const projection = reducer.init();
+    const transformer = createMessagesReducer(this.path, node);
+    this._mux.addTransformer(transformer);
+    const projection = transformer.init();
     return projection.messages;
   }
 
@@ -281,10 +281,10 @@ export class GraphRunStream<
   }
 
   /**
-   * Attach the reducer-populated event log backing the `.values` iterable.
+   * Attach the transformer-populated event log backing the `.values` iterable.
    * Called during stream setup in {@link createGraphRunStream}.
    *
-   * @param log - The event log from the values reducer projection.
+   * @param log - The event log from the values transformer projection.
    * @internal
    */
   _setValuesLog(log: EventLog<Record<string, unknown>>): void {
@@ -292,10 +292,10 @@ export class GraphRunStream<
   }
 
   /**
-   * Attach the reducer-populated async iterable backing the `.messages`
+   * Attach the transformer-populated async iterable backing the `.messages`
    * accessor. Called during stream setup in {@link createGraphRunStream}.
    *
-   * @param iterable - The async iterable from the messages reducer projection.
+   * @param iterable - The async iterable from the messages transformer projection.
    * @internal
    */
   _setMessagesIterable(iterable: AsyncIterable<ChatModelStream>): void {
@@ -312,7 +312,7 @@ export class GraphRunStream<
  * when no numeric suffix is present, {@link index} defaults to `0`.
  *
  * @typeParam TValues - Shape of the subgraph's state values.
- * @typeParam TExtensions - Shape of additional reducer projections.
+ * @typeParam TExtensions - Shape of additional transformer projections.
  */
 export class SubgraphRunStream<
   TValues = Record<string, unknown>,
@@ -335,7 +335,7 @@ export class SubgraphRunStream<
    * @param mux - The {@link StreamMux} driving this run.
    * @param discoveryStart - Cursor offset into the mux discovery log.
    * @param eventStart - Cursor offset into the mux event log.
-   * @param extensions - Pre-initialized reducer projections.
+   * @param extensions - Pre-initialized transformer projections.
    * @param abortController - Controller for programmatic cancellation.
    */
   constructor(
@@ -364,56 +364,56 @@ export class SubgraphRunStream<
 setRunStreamClasses(GraphRunStream, SubgraphRunStream);
 
 /**
- * Creates a {@link GraphRunStream} with built-in reducers and kicks off the
- * background pump that feeds raw stream chunks through the reducer pipeline.
+ * Creates a {@link GraphRunStream} with built-in transformers and kicks off the
+ * background pump that feeds raw stream chunks through the transformer pipeline.
  *
- * Built-in reducers (values and messages) are registered first, followed by
- * any user-supplied reducer factories. The root stream is registered with the
+ * Built-in transformers (values and messages) are registered first, followed by
+ * any user-supplied transformer factories. The root stream is registered with the
  * mux and the pump is started in the background.
  *
  * @typeParam TValues - Shape of the graph's state values.
  * @param source - Raw async iterable from `graph.stream(…, { subgraphs: true })`.
- * @param reducers - User-supplied reducer factories.
+ * @param transformers - User-supplied transformer factories.
  * @param abortController - Optional controller for cancellation.
  * @returns A {@link GraphRunStream} for the root namespace.
  */
 export function createGraphRunStream<
   TValues = Record<string, unknown>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const TReducers extends ReadonlyArray<() => StreamReducer<any>> = [],
+  const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 >(
   source: AsyncIterable<StreamChunk>,
-  reducers: TReducers = [] as unknown as TReducers,
+  transformers: TTransformers = [] as unknown as TTransformers,
   abortController?: AbortController
-): GraphRunStream<TValues, InferExtensions<TReducers>> {
+): GraphRunStream<TValues, InferExtensions<TTransformers>> {
   const mux = new StreamMux();
 
-  const valuesReducer = createValuesReducer([]);
-  const messagesReducer = createMessagesReducer([]);
-  mux.addReducer(valuesReducer);
-  mux.addReducer(messagesReducer);
+  const valuesTransformer = createValuesReducer([]);
+  const messagesTransformer = createMessagesReducer([]);
+  mux.addTransformer(valuesTransformer);
+  mux.addTransformer(messagesTransformer);
 
   const extensions: Record<string, unknown> = {};
-  for (const factory of reducers) {
-    const reducer = factory();
-    mux.addReducer(reducer);
-    Object.assign(extensions, reducer.init());
+  for (const factory of transformers) {
+    const transformer = factory();
+    mux.addTransformer(transformer);
+    Object.assign(extensions, transformer.init());
   }
 
-  const root = new GraphRunStream<TValues, InferExtensions<TReducers>>(
+  const root = new GraphRunStream<TValues, InferExtensions<TTransformers>>(
     [],
     mux,
     0,
     0,
-    extensions as InferExtensions<TReducers>,
+    extensions as InferExtensions<TTransformers>,
     abortController
   );
 
-  // Wire reducer projections into the root stream.
-  const valuesProjection = valuesReducer.init();
+  // Wire transformer projections into the root stream.
+  const valuesProjection = valuesTransformer.init();
   root._setValuesLog(valuesProjection._valuesLog);
 
-  const messagesProjection = messagesReducer.init();
+  const messagesProjection = messagesTransformer.init();
   root._setMessagesIterable(messagesProjection.messages);
 
   mux.register([], root);

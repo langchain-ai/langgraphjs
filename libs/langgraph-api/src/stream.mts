@@ -168,9 +168,9 @@ export async function* streamState(
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
-  // Delegate to streamStateV2 when the graph has compile-time reducers,
+  // Delegate to streamStateV2 when the graph has compile-time transformers,
   // so custom stream projections flow to clients automatically.
-  if (graph.streamReducers?.length > 0) {
+  if (graph.streamTransformers?.length > 0) {
     yield* streamStateV2(run, { ...options, graph });
     return;
   }
@@ -402,8 +402,8 @@ export async function* streamState(
  * `ProtocolEvent` objects into the `{ event, data }` shape consumed by
  * both the legacy SSE path and the protocol v2 session.
  *
- * This path activates graph-level `streamReducers` (registered via
- * `.compile({ reducers })`) so that custom reducer output flows to
+ * This path activates graph-level `streamTransformers` (registered via
+ * `.compile({ transformers })`) so that custom transformer output flows to
  * clients automatically.
  *
  * @param run - The queued run to execute.

@@ -98,7 +98,7 @@ import {
   GraphRunStream,
   STREAM_V2_MODES,
 } from "../stream/index.js";
-import type { InferExtensions, StreamReducer } from "../stream/index.js";
+import type { InferExtensions, StreamTransformer } from "../stream/index.js";
 import type {
   Durability,
   GetStateOptions,
@@ -405,7 +405,7 @@ export class Pregel<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StreamCustom = any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TStreamReducers extends ReadonlyArray<() => StreamReducer<any>> = [],
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 >
   extends PartialRunnable<
     InputType | CommandType | null,
@@ -523,9 +523,9 @@ export class Pregel<
   /**
    * Stream reducer factories registered at compile time.  These run
    * automatically for every `streamV2()` call, before any call-site
-   * reducers passed via `streamV2(input, { reducers })`.
+   * transformers passed via `streamV2(input, { transformers })`.
    */
-  streamReducers: TStreamReducers;
+  streamTransformers: TStreamTransformers;
 
   /**
    * The trigger to node mapping for the graph run.
@@ -538,7 +538,7 @@ export class Pregel<
    *
    * @internal
    */
-  constructor(fields: PregelParams<Nodes, Channels, TStreamReducers>) {
+  constructor(fields: PregelParams<Nodes, Channels, TStreamTransformers>) {
     super(fields);
 
     let { streamMode } = fields;
@@ -579,7 +579,7 @@ export class Pregel<
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
     this.userInterrupt = fields.userInterrupt;
-    this.streamReducers = (fields.streamReducers ?? []) as TStreamReducers;
+    this.streamTransformers = (fields.streamTransformers ?? []) as TStreamTransformers;
 
     if (this.autoValidate) {
       this.validate();
@@ -1960,7 +1960,7 @@ export class Pregel<
    */
   async streamV2<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const TReducers extends ReadonlyArray<() => StreamReducer<any>> = [],
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
   >(
     input: InputType | CommandType | null,
     options?: Partial<
@@ -1969,16 +1969,16 @@ export class Pregel<
         "encoding" | "subgraphs"
       >
     > & {
-      /** User-supplied reducer factories for custom projections. */
-      reducers?: TReducers;
+      /** User-supplied transformer factories for custom projections. */
+      transformers?: TTransformers;
     }
   ): Promise<
     GraphRunStream<
       OutputType,
-      InferExtensions<readonly [...TStreamReducers, ...TReducers]>
+      InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
     >
   > {
-    const { reducers: userReducers, ...restOptions } = options ?? {};
+    const { transformers: userTransformers, ...restOptions } = options ?? {};
 
     const streamOptions = {
       recursionLimit: this.config?.recursionLimit,
@@ -2007,13 +2007,13 @@ export class Pregel<
       },
     };
 
-    type TMerged = readonly [...TStreamReducers, ...TReducers];
-    const mergedReducers = [
-      ...(this.streamReducers ?? []),
-      ...(userReducers ?? []),
+    type TMerged = readonly [...TStreamTransformers, ...TTransformers];
+    const mergedTransformers = [
+      ...(this.streamTransformers ?? []),
+      ...(userTransformers ?? []),
     ] as unknown as TMerged;
 
-    return createGraphRunStream<OutputType, TMerged>(source, mergedReducers);
+    return createGraphRunStream<OutputType, TMerged>(source, mergedTransformers);
   }
 
   /**

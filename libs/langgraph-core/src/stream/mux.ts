@@ -1,7 +1,7 @@
 /**
- * StreamMux — central dispatcher with reducer pipeline.
+ * StreamMux — central dispatcher with transformer pipeline.
  *
- * Routes raw stream chunks through registered StreamReducers, then appends
+ * Routes raw stream chunks through registered StreamTransformers, then appends
  * the resulting ProtocolEvents to the main EventLog.  Also tracks namespace
  * discovery for SubgraphRunStream creation.
  *
@@ -9,10 +9,10 @@
  *   graph.streamV2(input)
  *     ├─ StreamMux starts pumping from graph.stream(…, { subgraphs: true })
  *     ├─ For each ProtocolEvent:
- *     │   ├─ reducer_1.process(event)
- *     │   ├─ reducer_2.process(event)
+ *     │   ├─ transformer_1.process(event)
+ *     │   ├─ transformer_2.process(event)
  *     │   └─ event appended to _events (unless suppressed)
- *     └─ On close: reducer_n.finalize() called in registration order
+ *     └─ On close: transformer_n.finalize() called in registration order
  */
 
 import type { StreamChunk } from "../pregel/stream.js";
@@ -23,7 +23,7 @@ import type {
   InterruptPayload,
   Namespace,
   ProtocolEvent,
-  StreamReducer,
+  StreamTransformer,
 } from "./types.js";
 
 export { STREAM_V2_MODES };
@@ -62,7 +62,7 @@ export function setRunStreamClasses(
 
 /**
  * Central event dispatcher that routes {@link ProtocolEvent}s through a
- * pipeline of {@link StreamReducer}s, manages namespace discovery for
+ * pipeline of {@link StreamTransformer}s, manages namespace discovery for
  * subgraph streams, and exposes async iteration over filtered event
  * sequences.
  *
@@ -79,7 +79,7 @@ export class StreamMux {
   #nextEmitSeq = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly #reducers: StreamReducer<any>[] = [];
+  readonly #transformers: StreamTransformer<any>[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly #streamMap = new Map<string, any>();
   readonly #seenNs = new Set<string>();
@@ -100,18 +100,18 @@ export class StreamMux {
   }
 
   /**
-   * Appends a reducer to the pipeline.  Reducers run in registration order
-   * for every event passed to {@link push}.
+   * Appends a transformer to the pipeline.  Transformers run in registration
+   * order for every event passed to {@link push}.
    *
-   * @param reducer - The reducer to add.
+   * @param transformer - The transformer to add.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  addReducer(reducer: StreamReducer<any>): void {
-    this.#reducers.push(reducer);
+  addTransformer(transformer: StreamTransformer<any>): void {
+    this.#transformers.push(transformer);
   }
 
   /**
-   * Distributes an event through the reducer pipeline, then appends it to
+   * Distributes an event through the transformer pipeline, then appends it to
    * the main event log.  Creates {@link SubgraphDiscovery} entries for any
    * namespace segments not yet seen.
    *
@@ -163,8 +163,8 @@ export class StreamMux {
     };
 
     let keep = true;
-    for (const reducer of this.#reducers) {
-      if (!reducer.process(event, emit)) {
+    for (const transformer of this.#transformers) {
+      if (!transformer.process(event, emit)) {
         keep = false;
       }
     }
@@ -180,7 +180,7 @@ export class StreamMux {
 
   /**
    * Gracefully ends the stream: resolves values promises on all known
-   * streams, finalizes every reducer, and closes both event logs.
+   * streams, finalizes every transformer, and closes both event logs.
    */
   close(): void {
     for (const [key, values] of this.#latestValues.entries()) {
@@ -198,8 +198,8 @@ export class StreamMux {
       });
     };
 
-    for (const reducer of this.#reducers) {
-      reducer.finalize(finalizeEmit);
+    for (const transformer of this.#transformers) {
+      transformer.finalize(finalizeEmit);
     }
 
     this._events.close();
@@ -211,7 +211,7 @@ export class StreamMux {
   }
 
   /**
-   * Propagates a failure to all reducers, event logs, and stream handles.
+   * Propagates a failure to all transformers, event logs, and stream handles.
    *
    * @param err - The error that caused the run to fail.
    */
@@ -225,8 +225,8 @@ export class StreamMux {
       });
     };
 
-    for (const reducer of this.#reducers) {
-      reducer.fail(err, failEmit);
+    for (const transformer of this.#transformers) {
+      transformer.fail(err, failEmit);
     }
     this._events.fail(err);
     this._discoveries.fail(err);

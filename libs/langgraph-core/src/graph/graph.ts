@@ -428,26 +428,26 @@ export class Graph<
 
   compile<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const TReducers extends ReadonlyArray<
-      () => import("../stream/types.js").StreamReducer<any>
-    > = [],
+    const TTransformers extends ReadonlyArray<
+    () => import("../stream/types.js").StreamTransformer<any>
+  > = [],
   >({
     checkpointer,
     interruptBefore,
     interruptAfter,
     name,
-    reducers,
+    transformers,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
     /**
-     * Stream reducer factories baked into the compiled graph.  These run
+     * Stream transformer factories baked into the compiled graph.  These run
      * automatically for every `streamV2()` call, before any call-site
-     * reducers.
+     * transformers.
      */
-    reducers?: TReducers;
+    transformers?: TTransformers;
   } = {}): CompiledGraph<
     N,
     RunInput,
@@ -458,7 +458,7 @@ export class Graph<
     unknown,
     unknown,
     any,
-    TReducers
+    TTransformers
   > {
     // eslint-disable-line @typescript-eslint/no-explicit-any
     // validate the graph
@@ -484,7 +484,7 @@ export class Graph<
       streamChannels: [] as N[],
       streamMode: "values",
       name,
-      streamReducers: reducers,
+      streamTransformers: transformers,
     });
 
     // attach nodes, edges and branches
@@ -588,8 +588,8 @@ export class CompiledGraph<
   NodeReturnType = unknown,
   CommandType = unknown,
   StreamCustomType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  TStreamReducers extends ReadonlyArray<
-    () => import("../stream/types.js").StreamReducer<any>
+  TStreamTransformers extends ReadonlyArray<
+    () => import("../stream/types.js").StreamTransformer<any>
   > = [], // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
@@ -602,7 +602,7 @@ export class CompiledGraph<
   NodeReturnType,
   CommandType,
   StreamCustomType,
-  TStreamReducers
+  TStreamTransformers
 > {
   declare "~NodeType": N;
 
@@ -620,7 +620,7 @@ export class CompiledGraph<
   }: { builder: Graph<N, State, Update> } & PregelParams<
     Record<N | typeof START, PregelNode<State, Update>>,
     Record<N | typeof START | typeof END | string, BaseChannel>,
-    TStreamReducers
+    TStreamTransformers
   >) {
     super(rest);
     this.builder = builder;

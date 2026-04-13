@@ -57,7 +57,7 @@ export type {
   MessagesEventData,
   ToolsEventData,
   UpdatesEventData,
-  StreamReducer,
+  StreamTransformer,
   ChatModelStream,
   ToolCallStatus,
   ToolCallStream,

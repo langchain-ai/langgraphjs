@@ -6,7 +6,7 @@ import {
   hasPrefix,
   setRunStreamClasses,
 } from "./mux.js";
-import type { ProtocolEvent, StreamReducer } from "./types.js";
+import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
 class MockSubgraphStream {
   constructor(
@@ -137,15 +137,15 @@ describe("StreamMux", () => {
     });
   });
 
-  it("push runs reducer pipeline — events suppressed when reducer returns false", () => {
+  it("push runs transformer pipeline — events suppressed when transformer returns false", () => {
     const mux = new StreamMux();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: (event) => event.method !== "debug",
       finalize: () => {},
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     mux.push([], makeEvent("messages", [], 0));
     mux.push([], makeEvent("debug", [], 1));
@@ -161,7 +161,7 @@ describe("StreamMux", () => {
 
   it("emit callback injects events into the main log after the original", async () => {
     const mux = new StreamMux();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: (_event, emit) => {
         if (_event.method === "messages") {
@@ -172,7 +172,7 @@ describe("StreamMux", () => {
       finalize: () => {},
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     mux.push([], makeEvent("messages", [], 0));
     mux._events.close();
@@ -189,7 +189,7 @@ describe("StreamMux", () => {
 
   it("emit callback can inject multiple events from a single process call", async () => {
     const mux = new StreamMux();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: (_event, emit) => {
         emit?.("lifecycle", { event: "spawned" });
@@ -199,7 +199,7 @@ describe("StreamMux", () => {
       finalize: () => {},
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     mux.push([], makeEvent("updates", [], 0));
     mux._events.close();
@@ -213,7 +213,7 @@ describe("StreamMux", () => {
 
   it("emitted events inherit the namespace of the triggering event", async () => {
     const mux = new StreamMux();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: (_event, emit) => {
         emit?.("tools", { event: "tool-started" });
@@ -222,7 +222,7 @@ describe("StreamMux", () => {
       finalize: () => {},
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     mux.push(["agent"], makeEvent("messages", ["agent"], 0));
     mux._events.close();
@@ -233,7 +233,7 @@ describe("StreamMux", () => {
 
   it("emitted events get sequential seq numbers", async () => {
     const mux = new StreamMux();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: (_event, emit) => {
         emit?.("tools", { a: 1 });
@@ -243,7 +243,7 @@ describe("StreamMux", () => {
       finalize: () => {},
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     mux.push([], makeEvent("messages", [], 5));
     mux._events.close();
@@ -254,11 +254,11 @@ describe("StreamMux", () => {
     expect(events[2].seq).toBe(7);
   });
 
-  it("addReducer + process order", () => {
+  it("addTransformer + process order", () => {
     const mux = new StreamMux();
     const order: number[] = [];
 
-    const makeReducer = (id: number): StreamReducer => ({
+    const makeTransformer = (id: number): StreamTransformer => ({
       init: () => ({}),
       process: () => {
         order.push(id);
@@ -268,24 +268,24 @@ describe("StreamMux", () => {
       fail: () => {},
     });
 
-    mux.addReducer(makeReducer(1));
-    mux.addReducer(makeReducer(2));
-    mux.addReducer(makeReducer(3));
+    mux.addTransformer(makeTransformer(1));
+    mux.addTransformer(makeTransformer(2));
+    mux.addTransformer(makeTransformer(3));
 
     mux.push([], makeEvent("messages"));
     expect(order).toEqual([1, 2, 3]);
   });
 
-  it("close finalizes reducers, closes event and discovery logs", () => {
+  it("close finalizes transformers, closes event and discovery logs", () => {
     const mux = new StreamMux();
     const finalizeSpy = vi.fn();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: () => true,
       finalize: finalizeSpy,
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
     mux.close();
 
     expect(finalizeSpy).toHaveBeenCalledOnce();
@@ -316,16 +316,16 @@ describe("StreamMux", () => {
     expect(resolveSpy).toHaveBeenCalledWith({ count: 42 });
   });
 
-  it("fail calls fail on all reducers, events, discoveries, and streams", () => {
+  it("fail calls fail on all transformers, events, discoveries, and streams", () => {
     const mux = new StreamMux();
     const failSpy = vi.fn();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: () => true,
       finalize: () => {},
       fail: failSpy,
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     const mockStream = new MockSubgraphStream([], mux, 0, 0);
     const rejectSpy = vi.spyOn(mockStream, "_rejectValues");

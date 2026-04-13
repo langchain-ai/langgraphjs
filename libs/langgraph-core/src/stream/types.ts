@@ -4,7 +4,7 @@
  * Channel event data types (`MessagesEventData`, `ToolsEventData`,
  * `UpdatesEventData`, `UsageInfo`, `FinishReason`) are re-exported from
  * `@langchain/protocol` — the generated TypeScript bindings for the
- * canonical CDDL schema.  Stream-specific types (`StreamReducer`,
+ * canonical CDDL schema.  Stream-specific types (`StreamTransformer`,
  * `ChatModelStream`, `ToolCallStream`, `InterruptPayload`) are defined here.
  */
 
@@ -86,25 +86,27 @@ export interface ProtocolEvent {
  * `TProjection` is merged into the run stream's public `.extensions` object.
  */
 /**
- * Infers the merged extensions type from a tuple of reducer factory functions.
+ * Infers the merged extensions type from a tuple of transformer factory functions.
  *
- * Given `[() => StreamReducer<{ a: number }>, () => StreamReducer<{ b: string }>]`,
+ * Given `[() => StreamTransformer<{ a: number }>, () => StreamTransformer<{ b: string }>]`,
  * produces `{ a: number } & { b: string }`.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type InferExtensions<T extends ReadonlyArray<() => StreamReducer<any>>> =
+export type InferExtensions<
+  T extends ReadonlyArray<() => StreamTransformer<any>>,
+> =
   T extends readonly []
     ? Record<string, never>
     : // eslint-disable-next-line @typescript-eslint/no-explicit-any
       T extends readonly [
-          () => StreamReducer<infer P>,
-          ...infer Rest extends ReadonlyArray<() => StreamReducer<any>>,
+          () => StreamTransformer<infer P>,
+          ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
         ]
       ? P & InferExtensions<Rest>
       : Record<string, unknown>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface StreamReducer<TProjection = any> {
+export interface StreamTransformer<TProjection = any> {
   /**
    * Called once before the run starts.
    *
@@ -134,7 +136,7 @@ export interface StreamReducer<TProjection = any> {
    * Called once when the underlying Pregel run completes without throwing.
    *
    * @param emit - Same emit callback as in `process()`, allowing the
-   *   reducer to inject terminal events (e.g. "completed" status) into
+   *   transformer to inject terminal events (e.g. "completed" status) into
    *   the protocol stream before it closes.
    */
   finalize(emit?: (method: string, data: unknown) => void): void;
@@ -144,7 +146,7 @@ export interface StreamReducer<TProjection = any> {
    *
    * @param err - Failure reason from the engine or user code.
    * @param emit - Same emit callback as in `process()`, allowing the
-   *   reducer to inject terminal events (e.g. "failed" status) into the
+   *   transformer to inject terminal events (e.g. "failed" status) into the
    *   protocol stream before it closes.
    */
   fail(err: unknown, emit?: (method: string, data: unknown) => void): void;

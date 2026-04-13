@@ -1,7 +1,7 @@
 /**
  * A2A streaming over a deployed LangGraph server using the v2 protocol.
  *
- * The research pipeline is compiled with `createA2AReducer` which emits
+ * The research pipeline is compiled with `createA2ATransformer` which emits
  * A2A protocol-compliant `TaskStatusUpdateEvent` and `TaskArtifactUpdateEvent`
  * events (from `@a2a-js/sdk`) on the `"custom:a2a"` channel.
  *

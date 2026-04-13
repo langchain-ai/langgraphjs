@@ -9,7 +9,7 @@ import { MessagesValue } from "../state/prebuilt/messages.js";
 import { END, START } from "../constants.js";
 import type {
   ProtocolEvent,
-  StreamReducer,
+  StreamTransformer,
   ChatModelStream,
   InferExtensions,
   ToolCallStream,
@@ -109,7 +109,7 @@ describe("streamV2 on a simple StateGraph", () => {
     expectTypeOf(run.signal).toEqualTypeOf<AbortSignal>();
   });
 
-  it("extensions defaults to empty record when no reducers", async () => {
+  it("extensions defaults to empty record when no transformers", async () => {
     const run = await graph.streamV2({ count: 0 });
     expectTypeOf(run.extensions).toEqualTypeOf<Record<string, never>>();
   });
@@ -137,8 +137,8 @@ describe("streamV2 with MessagesValue state", () => {
   });
 });
 
-describe("streamV2 with compile-time reducers", () => {
-  const eventCounter = (): StreamReducer<{
+describe("streamV2 with compile-time transformers", () => {
+  const eventCounter = (): StreamTransformer<{
     eventCount: Promise<number>;
   }> => ({
     init: () => ({ eventCount: Promise.resolve(0) }),
@@ -153,14 +153,14 @@ describe("streamV2 with compile-time reducers", () => {
     }),
   });
 
-  it("merges compile-time and call-site reducer projections", async () => {
+  it("merges compile-time and call-site transformer projections", async () => {
     const graph = new StateGraph(CompileState)
       .addNode("echo", (s) => ({ value: s.value }))
       .addEdge(START, "echo")
       .addEdge("echo", END)
-      .compile({ reducers: [eventCounter] });
+      .compile({ transformers: [eventCounter] });
 
-    const callSiteReducer = (): StreamReducer<{
+    const callSiteTransformer = (): StreamTransformer<{
       flag: boolean;
     }> => ({
       init: () => ({ flag: true }),
@@ -171,7 +171,7 @@ describe("streamV2 with compile-time reducers", () => {
 
     const run = await graph.streamV2(
       { value: "test" },
-      { reducers: [callSiteReducer] }
+      { transformers: [callSiteTransformer] }
     );
 
     expectTypeOf(run.extensions.eventCount).toEqualTypeOf<Promise<number>>();
@@ -179,7 +179,7 @@ describe("streamV2 with compile-time reducers", () => {
   });
 });
 
-describe("streamV2 with call-site reducers", () => {
+describe("streamV2 with call-site transformers", () => {
   const ValueState = new StateSchema({
     value: new ReducedValue(z.string().default(() => ""), {
       reducer: (_: string, b: string) => b,
@@ -193,7 +193,7 @@ describe("streamV2 with call-site reducers", () => {
     .compile();
 
   it("infers single reducer projection type on extensions", async () => {
-    const tokenReducer = (): StreamReducer<{
+    const tokenReducer = (): StreamTransformer<{
       totalTokens: Promise<number>;
     }> => ({
       init: () => ({ totalTokens: Promise.resolve(0) }),
@@ -204,14 +204,14 @@ describe("streamV2 with call-site reducers", () => {
 
     const run = await graph.streamV2(
       { value: "test" },
-      { reducers: [tokenReducer] }
+      { transformers: [tokenReducer] }
     );
 
     expectTypeOf(run.extensions.totalTokens).toEqualTypeOf<Promise<number>>();
   });
 
-  it("intersects projections from multiple reducers", async () => {
-    const countReducer = (): StreamReducer<{
+  it("intersects projections from multiple transformers", async () => {
+    const countReducer = (): StreamTransformer<{
       eventCount: Promise<number>;
     }> => ({
       init: () => ({ eventCount: Promise.resolve(0) }),
@@ -220,7 +220,7 @@ describe("streamV2 with call-site reducers", () => {
       fail: () => {},
     });
 
-    const labelReducer = (): StreamReducer<{
+    const labelReducer = (): StreamTransformer<{
       lastNode: Promise<string>;
     }> => ({
       init: () => ({ lastNode: Promise.resolve("") }),
@@ -231,7 +231,7 @@ describe("streamV2 with call-site reducers", () => {
 
     const run = await graph.streamV2(
       { value: "test" },
-      { reducers: [countReducer, labelReducer] }
+      { transformers: [countReducer, labelReducer] }
     );
 
     expectTypeOf(run.extensions.eventCount).toEqualTypeOf<Promise<number>>();
@@ -239,7 +239,7 @@ describe("streamV2 with call-site reducers", () => {
   });
 
   it("output type is preserved alongside custom extensions", async () => {
-    const reducer = (): StreamReducer<{ flag: boolean }> => ({
+    const reducer = (): StreamTransformer<{ flag: boolean }> => ({
       init: () => ({ flag: true }),
       process: () => true,
       finalize: () => {},
@@ -248,7 +248,7 @@ describe("streamV2 with call-site reducers", () => {
 
     const run = await graph.streamV2(
       { value: "test" },
-      { reducers: [reducer] }
+      { transformers: [reducer] }
     );
 
     const output = await run.output;
@@ -314,7 +314,7 @@ describe("InferExtensions utility type", () => {
   });
 
   it("infers a single projection", () => {
-    type Factories = [() => StreamReducer<{ count: number }>];
+    type Factories = [() => StreamTransformer<{ count: number }>];
     expectTypeOf<InferExtensions<Factories>>().toExtend<{
       count: number;
     }>();
@@ -322,9 +322,9 @@ describe("InferExtensions utility type", () => {
 
   it("intersects multiple projections", () => {
     type Factories = [
-      () => StreamReducer<{ a: number }>,
-      () => StreamReducer<{ b: string }>,
-      () => StreamReducer<{ c: boolean }>,
+      () => StreamTransformer<{ a: number }>,
+      () => StreamTransformer<{ b: string }>,
+      () => StreamTransformer<{ c: boolean }>,
     ];
     type Result = InferExtensions<Factories>;
     expectTypeOf<Result>().toExtend<{ a: number }>();
@@ -333,7 +333,7 @@ describe("InferExtensions utility type", () => {
   });
 
   it("falls back to Record<string, unknown> for widened arrays", () => {
-    type Widened = InferExtensions<Array<() => StreamReducer<any>>>;
+    type Widened = InferExtensions<Array<() => StreamTransformer<any>>>;
     expectTypeOf<Widened>().toEqualTypeOf<Record<string, unknown>>();
   });
 });

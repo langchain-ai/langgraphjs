@@ -1,8 +1,8 @@
 /**
- * Research pipeline compiled with an A2A stream reducer.
+ * Research pipeline compiled with an A2A stream transformer.
  *
  * This is the same research pipeline from `../agents/research-pipeline.ts`
- * but compiled with `reducers: [createA2AReducer]` so that A2A events
+ * but compiled with `transformers: [createA2ATransformer]` so that A2A events
  * are automatically emitted during every `streamV2()` call — including
  * when the graph is deployed and run through the LangGraph API server.
  */
@@ -19,7 +19,7 @@ import { tool } from "langchain";
 import { z } from "zod/v4";
 
 import { model, searchWeb } from "../agents/shared.js";
-import { createA2AReducer } from "./reducer.js";
+import { createA2ATransformer } from "./reducer.js";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -120,8 +120,8 @@ const analystGraph = new StateGraph(MessagesAnnotation)
  * The compiled graph with A2A reducer baked in.
  *
  * When deployed via `langgraph.json`, the API server detects
- * `graph.streamReducers` and routes execution through `streamStateV2()`,
- * which runs the A2A reducer server-side.  A2A events flow to clients
+ * `graph.streamTransformers` and routes execution through `streamStateV2()`,
+ * which runs the A2A transformer server-side.  A2A events flow to clients
  * as protocol events on the `custom` channel.
  */
 export const graph = new StateGraph(MessagesAnnotation)
@@ -130,4 +130,4 @@ export const graph = new StateGraph(MessagesAnnotation)
   .addEdge(START, "researcher")
   .addEdge("researcher", "analyst")
   .addEdge("analyst", END)
-  .compile({ reducers: [createA2AReducer] });
+  .compile({ transformers: [createA2ATransformer] });
