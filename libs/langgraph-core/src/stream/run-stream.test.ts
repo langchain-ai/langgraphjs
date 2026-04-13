@@ -4,10 +4,12 @@ import {
   SubgraphRunStream,
   createGraphRunStream,
 } from "./run-stream.js";
-import { StreamMux, setRunStreamClasses } from "./mux.js";
+import { StreamMux } from "./mux.js";
+import type { SubgraphStreamFactory } from "./mux.js";
 import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
-setRunStreamClasses(GraphRunStream, SubgraphRunStream);
+const subgraphFactory: SubgraphStreamFactory = (path, mux, discoveryStart, eventStart) =>
+  new SubgraphRunStream(path, mux, discoveryStart, eventStart);
 
 function makeEvent(
   method: string,
@@ -61,7 +63,7 @@ describe("GraphRunStream", () => {
   });
 
   it("subgraphs getter yields SubgraphRunStream on discovery", async () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(subgraphFactory);
     const root = new GraphRunStream([], mux);
     mux.register([], root);
 

@@ -29,36 +29,34 @@ import type {
 export { STREAM_V2_MODES };
 
 /**
+ * Minimal interface that {@link StreamMux} requires from stream handles
+ * for lifecycle resolution. This avoids a direct dependency on
+ * `GraphRunStream` / `SubgraphRunStream`.
+ */
+export interface StreamHandle {
+  _resolveValues(values: unknown): void;
+  _rejectValues(err: unknown): void;
+}
+
+/**
+ * Factory function that creates a subgraph stream handle for a newly
+ * discovered namespace. Injected into {@link StreamMux} at construction
+ * time, keeping mux decoupled from the concrete stream classes.
+ */
+export type SubgraphStreamFactory = (
+  path: Namespace,
+  mux: StreamMux,
+  discoveryStart: number,
+  eventStart: number
+) => StreamHandle;
+
+/**
  * A discovered subgraph namespace paired with its run stream handle.
  */
 export type SubgraphDiscovery = {
   ns: Namespace;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: any;
+  stream: StreamHandle;
 };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _SubgraphRunStreamCtor: new (...args: any[]) => any;
-
-/**
- * Registers the concrete run-stream constructors used by {@link StreamMux}
- * to create subgraph stream handles.  Called once by `run-stream.ts` at
- * module load to break the circular dependency.
- *
- * @internal
- * @param _graphCtor - The graph-level run stream constructor (unused here,
- *   accepted for symmetry with the registration call).
- * @param subCtor - The subgraph run stream constructor instantiated for
- *   each newly discovered namespace.
- */
-export function setRunStreamClasses(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _graphCtor: new (...args: any[]) => any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  subCtor: new (...args: any[]) => any
-): void {
-  _SubgraphRunStreamCtor = subCtor;
-}
 
 /**
  * Central event dispatcher that routes {@link ProtocolEvent}s through a
@@ -78,14 +76,26 @@ export class StreamMux {
   /** Monotonic counter for events emitted by reducers via `emit()`. */
   #nextEmitSeq = 0;
 
+  /** Whether the run was interrupted. */
+  #interrupted = false;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly #transformers: StreamTransformer<any>[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly #streamMap = new Map<string, any>();
+  readonly #streamMap = new Map<string, StreamHandle>();
   readonly #seenNs = new Set<string>();
   readonly #latestValues = new Map<string, Record<string, unknown>>();
   readonly #interrupts: InterruptPayload[] = [];
-  #interrupted = false;
+  readonly #createSubgraphStream: SubgraphStreamFactory | undefined;
+
+  /**
+   * @param createSubgraphStream - Optional factory for creating subgraph
+   *   stream handles when new namespaces are discovered. When omitted,
+   *   subgraph discovery is disabled (useful for unit-testing the mux
+   *   in isolation).
+   */
+  constructor(createSubgraphStream?: SubgraphStreamFactory) {
+    this.#createSubgraphStream = createSubgraphStream;
+  }
 
   /**
    * Associates a pre-existing stream handle with a namespace so that
@@ -94,8 +104,7 @@ export class StreamMux {
    * @param path - The namespace path to register.
    * @param stream - The run stream handle for that namespace.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register(path: Namespace, stream: any): void {
+  register(path: Namespace, stream: StreamHandle): void {
     this.#streamMap.set(nsKey(path), stream);
   }
 
@@ -125,12 +134,12 @@ export class StreamMux {
     // subgraph and should not appear as user-facing SubgraphRunStream
     // instances.  We still track them in #seenNs / #streamMap so that
     // values resolution and event filtering work correctly.
-    if (ns.length > 0) {
+    if (ns.length > 0 && this.#createSubgraphStream) {
       const topNs = ns.slice(0, 1);
       const topKey = nsKey(topNs);
       if (!this.#seenNs.has(topKey)) {
         this.#seenNs.add(topKey);
-        const subStream = new _SubgraphRunStreamCtor(
+        const subStream = this.#createSubgraphStream(
           topNs,
           this,
           this._discoveries.size,
@@ -300,18 +309,16 @@ export class StreamMux {
   subscribeSubgraphs(
     path: Namespace,
     startAt = 0
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): AsyncIterator<any> {
+  ): AsyncIterator<StreamHandle> {
     const base = this._discoveries.iterate(startAt);
     const targetDepth = path.length + 1;
     return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async next(): Promise<IteratorResult<any>> {
+      async next(): Promise<IteratorResult<StreamHandle>> {
         // eslint-disable-next-line no-constant-condition
         while (true) {
           const result = await base.next();
           if (result.done) {
-            return { value: undefined, done: true };
+            return { value: undefined as unknown as StreamHandle, done: true };
           }
           const { ns, stream } = result.value;
           if (ns.length === targetDepth && hasPrefix(ns, path)) {

@@ -4,8 +4,8 @@ import {
   pump,
   nsKey,
   hasPrefix,
-  setRunStreamClasses,
 } from "./mux.js";
+import type { SubgraphStreamFactory } from "./mux.js";
 import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
 class MockSubgraphStream {
@@ -19,8 +19,8 @@ class MockSubgraphStream {
   _rejectValues(_e: unknown) {}
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-setRunStreamClasses(MockSubgraphStream as any, MockSubgraphStream as any);
+const mockFactory: SubgraphStreamFactory = (path, mux, discoveryStart, eventStart) =>
+  new MockSubgraphStream(path, mux, discoveryStart, eventStart);
 
 function makeEvent(
   method: string,
@@ -88,7 +88,7 @@ describe("hasPrefix", () => {
 
 describe("StreamMux", () => {
   it("push creates subgraph discoveries for new namespaces", () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(mockFactory);
     mux.push(["agent"], makeEvent("messages", ["agent"]));
 
     const discoveries: unknown[] = [];
@@ -113,7 +113,7 @@ describe("StreamMux", () => {
   });
 
   it("push creates discoveries only for top-level namespace segments", () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(mockFactory);
     mux.push(
       ["parent", "child"],
       makeEvent("messages", ["parent", "child"])
@@ -127,7 +127,7 @@ describe("StreamMux", () => {
   });
 
   it("push does not create duplicate discoveries", () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(mockFactory);
     mux.push(["agent"], makeEvent("messages", ["agent"], 0));
     mux.push(["agent"], makeEvent("messages", ["agent"], 1));
     mux._discoveries.close();
@@ -212,7 +212,7 @@ describe("StreamMux", () => {
   });
 
   it("emitted events inherit the namespace of the triggering event", async () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(mockFactory);
     const transformer: StreamTransformer = {
       init: () => ({}),
       process: (_event, emit) => {
@@ -341,7 +341,7 @@ describe("StreamMux", () => {
   });
 
   it("subscribeEvents filters by namespace prefix", async () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(mockFactory);
 
     mux.push([], makeEvent("messages", [], 0));
     mux.push(["agent"], makeEvent("messages", ["agent"], 1));
@@ -356,7 +356,7 @@ describe("StreamMux", () => {
   });
 
   it("subscribeSubgraphs yields only top-level discovered subgraphs", async () => {
-    const mux = new StreamMux();
+    const mux = new StreamMux(mockFactory);
 
     // Deep namespace — only top-level ["parent"] is announced as a discovery
     mux.push(

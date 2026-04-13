@@ -15,7 +15,7 @@
 
 import type { StreamChunk } from "../pregel/stream.js";
 import { EventLog } from "./event-log.js";
-import { StreamMux, setRunStreamClasses, pump } from "./mux.js";
+import { StreamMux, pump } from "./mux.js";
 import { createMessagesReducer, createValuesReducer } from "./reducers.js";
 import type {
   ChatModelStream,
@@ -119,7 +119,10 @@ export class GraphRunStream<
    */
   get subgraphs(): AsyncIterable<SubgraphRunStream> {
     const iter = this._mux.subscribeSubgraphs(this.path, this.#discoveryStart);
-    return { [Symbol.asyncIterator]: () => iter };
+    return {
+      [Symbol.asyncIterator]: () =>
+        iter as AsyncIterator<SubgraphRunStream>,
+    };
   }
 
   /**
@@ -360,9 +363,6 @@ export class SubgraphRunStream<
   }
 }
 
-// Register constructors with StreamMux to break the circular dependency.
-setRunStreamClasses(GraphRunStream, SubgraphRunStream);
-
 /**
  * Creates a {@link GraphRunStream} with built-in transformers and kicks off the
  * background pump that feeds raw stream chunks through the transformer pipeline.
@@ -386,7 +386,10 @@ export function createGraphRunStream<
   transformers: TTransformers = [] as unknown as TTransformers,
   abortController?: AbortController
 ): GraphRunStream<TValues, InferExtensions<TTransformers>> {
-  const mux = new StreamMux();
+  const mux = new StreamMux(
+    (path, m, discoveryStart, eventStart) =>
+      new SubgraphRunStream(path, m, discoveryStart, eventStart)
+  );
 
   const valuesTransformer = createValuesReducer([]);
   const messagesTransformer = createMessagesReducer([]);
