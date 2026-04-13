@@ -4,13 +4,13 @@
  * Uses the official `@a2a-js/sdk` types to ensure emitted events satisfy
  * `TaskStatusUpdateEvent` and `TaskArtifactUpdateEvent` shapes.
  *
- * Events are wrapped as `{ type: "a2a", payload: A2AStreamEvent }` on
- * the `custom` channel so clients can distinguish them from other custom
- * transformer output.
+ * Events are surfaced via a {@link StreamChannel} named `"a2a"`:
+ *   - In-process consumers iterate `run.extensions.a2a` directly.
+ *   - Remote SDK clients subscribe via `session.subscribe("custom:a2a")`.
  */
 
 import type { ProtocolEvent, StreamTransformer } from "@langchain/langgraph";
-import { EventLog } from "@langchain/langgraph";
+import { StreamChannel } from "@langchain/langgraph";
 import type {
   TaskStatusUpdateEvent,
   TaskArtifactUpdateEvent,
@@ -19,9 +19,9 @@ import type {
 type A2AStreamEvent = TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
 export const createA2ATransformer = (): StreamTransformer<{
-  a2a: AsyncIterable<A2AStreamEvent>;
+  a2a: StreamChannel<A2AStreamEvent>;
 }> => {
-  const log = new EventLog<A2AStreamEvent>();
+  const a2a = new StreamChannel<A2AStreamEvent>("a2a");
   let started = false;
 
   let activeNode: string | undefined;
@@ -35,14 +35,6 @@ export const createA2ATransformer = (): StreamTransformer<{
 
   const contextId = crypto.randomUUID();
   const taskId = crypto.randomUUID();
-
-  const pushAndEmit = (
-    event: A2AStreamEvent,
-    emit?: (method: string, data: unknown) => void
-  ) => {
-    log.push(event);
-    emit?.("a2a", event);
-  };
 
   const makeStatusEvent = (
     state: TaskStatusUpdateEvent["status"]["state"],
@@ -82,27 +74,22 @@ export const createA2ATransformer = (): StreamTransformer<{
   });
 
   return {
-    init: () => ({ a2a: log.toAsyncIterable() }),
+    init: () => ({ a2a }),
 
-    process(event: ProtocolEvent, emit) {
+    process(event: ProtocolEvent) {
       if (!started) {
         started = true;
-        pushAndEmit(
-          makeStatusEvent("working", "Agent started processing", false),
-          emit
+        a2a.push(
+          makeStatusEvent("working", "Agent started processing", false)
         );
       }
 
-      // Announce top-level subgraphs as they appear
       if (event.params.namespace.length >= 1) {
         const segment = event.params.namespace[0];
         const nodeName = segment.split(":")[0];
         if (!announcedNodes.has(nodeName)) {
           announcedNodes.add(nodeName);
-          pushAndEmit(
-            makeStatusEvent("working", `${nodeName} started`, false),
-            emit
-          );
+          a2a.push(makeStatusEvent("working", `${nodeName} started`, false));
         }
       }
 
@@ -118,8 +105,6 @@ export const createA2ATransformer = (): StreamTransformer<{
           isToolCall = false;
         }
 
-        // Detect tool call content blocks — these produce tool_use
-        // finish reasons and should not be emitted as text artifacts
         if (data.event === "content-block-start") {
           const cb = data.content_block as Record<string, unknown>;
           if (
@@ -131,7 +116,6 @@ export const createA2ATransformer = (): StreamTransformer<{
           }
         }
 
-        // Only stream AI-authored text, skip tool calls and tool results
         if (
           activeRole === "ai" &&
           !isToolCall &&
@@ -140,7 +124,7 @@ export const createA2ATransformer = (): StreamTransformer<{
           const cb = data.content_block as Record<string, unknown>;
           if (cb?.type === "text" && typeof cb.text === "string") {
             accumulatedText += cb.text;
-            pushAndEmit(makeArtifactEvent(cb.text, false), emit);
+            a2a.push(makeArtifactEvent(cb.text, false));
           }
         }
 
@@ -150,14 +134,13 @@ export const createA2ATransformer = (): StreamTransformer<{
           data.event === "message-finish" &&
           accumulatedText.length > 0
         ) {
-          pushAndEmit(makeArtifactEvent(accumulatedText, true), emit);
+          a2a.push(makeArtifactEvent(accumulatedText, true));
           artifactIndex += 1;
           accumulatedText = "";
           activeNode = undefined;
           activeRole = undefined;
         }
 
-        // Reset tool call flag on message finish regardless
         if (data.event === "message-finish") {
           isToolCall = false;
         }
@@ -166,15 +149,13 @@ export const createA2ATransformer = (): StreamTransformer<{
       return true;
     },
 
-    finalize(emit?) {
-      pushAndEmit(
-        makeStatusEvent("completed", "Agent finished successfully", true),
-        emit
+    finalize() {
+      a2a.push(
+        makeStatusEvent("completed", "Agent finished successfully", true)
       );
-      log.close();
     },
 
-    fail(err, emit?) {
+    fail(err) {
       const message =
         typeof err === "object" &&
         err !== null &&
@@ -183,8 +164,7 @@ export const createA2ATransformer = (): StreamTransformer<{
           ? (err as { message: string }).message
           : String(err);
 
-      pushAndEmit(makeStatusEvent("failed", message, true), emit);
-      log.close();
+      a2a.push(makeStatusEvent("failed", message, true));
     },
   };
 };

@@ -51,7 +51,7 @@ describe("createMessagesTransformer", () => {
     transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const collected = collect(proj.messages);
     return expect(collected).resolves.toHaveLength(1);
@@ -74,7 +74,7 @@ describe("createMessagesTransformer", () => {
     transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -93,7 +93,7 @@ describe("createMessagesTransformer", () => {
     transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -140,7 +140,7 @@ describe("createMessagesTransformer", () => {
         "agent"
       )
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -151,7 +151,6 @@ describe("createMessagesTransformer", () => {
     const transformer = createMessagesTransformer(["root"]);
     const proj = transformer.init();
 
-    // Direct child node (depth + 1) — should be captured
     transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, [
         "root",
@@ -165,7 +164,6 @@ describe("createMessagesTransformer", () => {
       ])
     );
 
-    // Same depth as path (chain-level replay) — should be ignored
     transformer.process(
       makeEvent(
         "messages",
@@ -181,7 +179,7 @@ describe("createMessagesTransformer", () => {
       )
     );
 
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -192,7 +190,6 @@ describe("createMessagesTransformer", () => {
     const transformer = createMessagesTransformer(["root"]);
     const proj = transformer.init();
 
-    // Deeply nested — should be ignored (belongs to a subgraph's own nodes)
     transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, [
         "root",
@@ -208,7 +205,6 @@ describe("createMessagesTransformer", () => {
       ])
     );
 
-    // Direct child — should be captured
     transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, [
         "root",
@@ -222,7 +218,7 @@ describe("createMessagesTransformer", () => {
       ])
     );
 
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -233,7 +229,6 @@ describe("createMessagesTransformer", () => {
     const transformer = createMessagesTransformer(["root"]);
     const proj = transformer.init();
 
-    // Unrelated namespace — should be ignored
     transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, ["other", "node"])
     );
@@ -241,14 +236,13 @@ describe("createMessagesTransformer", () => {
       makeEvent("messages", { event: "message-finish", reason: "stop" }, ["other", "node"])
     );
 
-    // Correct namespace at depth+1 — should be captured
     transformer.process(
       makeEvent("messages", { event: "message-start", role: "ai" }, ["root", "node"])
     );
     transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, ["root", "node"])
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(1);
@@ -258,7 +252,7 @@ describe("createMessagesTransformer", () => {
   it("finalize closes the log", async () => {
     const transformer = createMessagesTransformer([]);
     const proj = transformer.init();
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(0);
@@ -283,7 +277,7 @@ describe("createMessagesTransformer", () => {
     stream.reasoning.then(() => {}, () => {});
     stream.usage.then(() => {}, () => {});
 
-    transformer.fail(error);
+    transformer.fail?.(error);
 
     await expect(iter.next()).rejects.toThrow("boom");
   });
@@ -319,7 +313,7 @@ describe("createMessagesTransformer", () => {
     transformer.process(
       makeEvent("messages", { event: "message-finish", reason: "stop" }, agentNs)
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const streams = await collect(proj.messages);
     expect(streams).toHaveLength(2);
@@ -329,6 +323,7 @@ describe("createMessagesTransformer", () => {
     expect(text0).toBe("first");
     expect(text1).toBe("second");
   });
+
 });
 
 describe("createValuesTransformer", () => {
@@ -342,7 +337,7 @@ describe("createValuesTransformer", () => {
     transformer.process(
       makeEvent("values", { count: 2 }, ["root"])
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toEqual([{ count: 1 }, { count: 2 }]);
@@ -358,7 +353,7 @@ describe("createValuesTransformer", () => {
     transformer.process(
       makeEvent("values", { x: 2 }, ["root", "child"])
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toHaveLength(0);
@@ -371,7 +366,7 @@ describe("createValuesTransformer", () => {
     transformer.process(
       makeEvent("messages", { event: "message-start" }, ["root"])
     );
-    transformer.finalize();
+    transformer.finalize?.();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toHaveLength(0);
@@ -380,7 +375,7 @@ describe("createValuesTransformer", () => {
   it("finalize closes the log", async () => {
     const transformer = createValuesTransformer([]);
     const proj = transformer.init();
-    transformer.finalize();
+    transformer.finalize?.();
 
     const items = await collect(proj._valuesLog.toAsyncIterable());
     expect(items).toHaveLength(0);
@@ -392,10 +387,11 @@ describe("createValuesTransformer", () => {
     const error = new Error("fail");
 
     transformer.process(makeEvent("values", { a: 1 }, []));
-    transformer.fail(error);
+    transformer.fail?.(error);
 
     await expect(
       collect(proj._valuesLog.toAsyncIterable())
     ).rejects.toThrow("fail");
   });
+
 });

@@ -19,6 +19,7 @@ import type { StreamChunk } from "../pregel/stream.js";
 import { INTERRUPT, isInterrupted, type Interrupt } from "../constants.js";
 import { EventLog } from "./event-log.js";
 import { convertToProtocolEvent, STREAM_V2_MODES } from "./convert.js";
+import { isStreamChannel, type StreamChannel } from "./stream-channel.js";
 import type {
   InterruptPayload,
   Namespace,
@@ -73,14 +74,23 @@ export class StreamMux {
   /** @internal New-namespace discovery notifications. */
   readonly _discoveries = new EventLog<SubgraphDiscovery>();
 
-  /** Monotonic counter for events emitted by reducers via `emit()`. */
+  /** Monotonic counter for auto-forwarded channel events. */
   #nextEmitSeq = 0;
 
   /** Whether the run was interrupted. */
   #interrupted = false;
 
+  /**
+   * Namespace of the event currently being processed by
+   * {@link push}.  Read by {@link StreamChannel} wiring callbacks so
+   * auto-forwarded events inherit the triggering event's namespace.
+   */
+  #currentNamespace: Namespace = [];
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly #transformers: StreamTransformer<any>[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly #channels: StreamChannel<any>[] = [];
   readonly #streamMap = new Map<string, StreamHandle>();
   readonly #seenNs = new Set<string>();
   readonly #latestValues = new Map<string, Record<string, unknown>>();
@@ -117,6 +127,31 @@ export class StreamMux {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addTransformer(transformer: StreamTransformer<any>): void {
     this.#transformers.push(transformer);
+  }
+
+  /**
+   * Scans a transformer projection for {@link StreamChannel} instances and
+   * wires each one to auto-forward pushes as protocol events.
+   *
+   * @param projection - The object returned by `transformer.init()`.
+   */
+  wireChannels(projection: Record<string, unknown>): void {
+    for (const value of Object.values(projection)) {
+      if (!isStreamChannel(value)) continue;
+      this.#channels.push(value);
+      value._wire((item: unknown) => {
+        this._events.push({
+          type: "event",
+          seq: this.#nextEmitSeq++,
+          method: value.channelName as ProtocolEvent["method"],
+          params: {
+            namespace: this.#currentNamespace,
+            timestamp: Date.now(),
+            data: item,
+          },
+        });
+      });
+    }
   }
 
   /**
@@ -157,39 +192,32 @@ export class StreamMux {
       );
     }
 
-    // Track seq from the incoming event so reducer-emitted events
+    // Track seq from the incoming event so channel-forwarded events
     // get subsequent sequence numbers.
     this.#nextEmitSeq = Math.max(this.#nextEmitSeq, event.seq + 1);
 
-    const pendingEmissions: ProtocolEvent[] = [];
-    const emit = (method: string, data: unknown) => {
-      pendingEmissions.push({
-        type: "event",
-        seq: this.#nextEmitSeq++,
-        method: method as ProtocolEvent["method"],
-        params: { namespace: ns, timestamp: Date.now(), data },
-      });
-    };
+    // Set current namespace so StreamChannel auto-forward callbacks
+    // can attach it to emitted protocol events.
+    this.#currentNamespace = ns;
 
     let keep = true;
     for (const transformer of this.#transformers) {
-      if (!transformer.process(event, emit)) {
+      if (!transformer.process(event)) {
         keep = false;
       }
     }
 
+    this.#currentNamespace = [];
+
     if (keep) {
       this._events.push(event);
-    }
-
-    for (const emitted of pendingEmissions) {
-      this._events.push(emitted);
     }
   }
 
   /**
    * Gracefully ends the stream: resolves values promises on all known
-   * streams, finalizes every transformer, and closes both event logs.
+   * streams, finalizes every transformer, auto-closes channels, and
+   * closes both event logs.
    */
   close(): void {
     for (const [key, values] of this.#latestValues.entries()) {
@@ -198,17 +226,12 @@ export class StreamMux {
       stream?._resolveValues(values);
     }
 
-    const finalizeEmit = (method: string, data: unknown) => {
-      this._events.push({
-        type: "event",
-        seq: this.#nextEmitSeq++,
-        method: method as ProtocolEvent["method"],
-        params: { namespace: [], timestamp: Date.now(), data },
-      });
-    };
-
     for (const transformer of this.#transformers) {
-      transformer.finalize(finalizeEmit);
+      transformer.finalize?.();
+    }
+
+    for (const channel of this.#channels) {
+      channel._close();
     }
 
     this._events.close();
@@ -220,22 +243,17 @@ export class StreamMux {
   }
 
   /**
-   * Propagates a failure to all transformers, event logs, and stream handles.
+   * Propagates a failure to all transformers, channels, event logs, and
+   * stream handles.
    *
    * @param err - The error that caused the run to fail.
    */
   fail(err: unknown): void {
-    const failEmit = (method: string, data: unknown) => {
-      this._events.push({
-        type: "event",
-        seq: this.#nextEmitSeq++,
-        method: method as ProtocolEvent["method"],
-        params: { namespace: [], timestamp: Date.now(), data },
-      });
-    };
-
     for (const transformer of this.#transformers) {
-      transformer.fail(err, failEmit);
+      transformer.fail?.(err);
+    }
+    for (const channel of this.#channels) {
+      channel._fail(err);
     }
     this._events.fail(err);
     this._discoveries.fail(err);

@@ -6,6 +6,7 @@ import {
   hasPrefix,
 } from "./mux.js";
 import type { SubgraphStreamFactory } from "./mux.js";
+import { StreamChannel } from "./stream-channel.js";
 import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
 class MockSubgraphStream {
@@ -159,70 +160,48 @@ describe("StreamMux", () => {
     });
   });
 
-  it("emit callback injects events into the main log after the original", async () => {
+  it("StreamChannel auto-forwards pushes into the main event log", async () => {
     const mux = new StreamMux();
+    const channel = new StreamChannel<{ event: string }>("tools");
     const transformer: StreamTransformer = {
-      init: () => ({}),
-      process: (_event, emit) => {
+      init: () => ({ tools: channel }),
+      process: (_event) => {
         if (_event.method === "messages") {
-          emit?.("tools", { event: "tool-started", tool_name: "search" });
+          channel.push({ event: "tool-started", tool_name: "search" } as never);
         }
         return true;
       },
-      finalize: () => {},
-      fail: () => {},
     };
     mux.addTransformer(transformer);
+    mux.wireChannels(transformer.init() as Record<string, unknown>);
 
     mux.push([], makeEvent("messages", [], 0));
     mux._events.close();
 
     const events = await collect(mux._events.iterate());
     expect(events).toHaveLength(2);
-    expect(events[0].method).toBe("messages");
-    expect(events[1].method).toBe("tools");
-    expect(events[1].params.data).toEqual({
+    // Channel-forwarded events appear during process(), before the
+    // original event is appended by the mux.
+    expect(events[0].method).toBe("tools");
+    expect(events[0].params.data).toEqual({
       event: "tool-started",
       tool_name: "search",
     });
+    expect(events[1].method).toBe("messages");
   });
 
-  it("emit callback can inject multiple events from a single process call", async () => {
-    const mux = new StreamMux();
-    const transformer: StreamTransformer = {
-      init: () => ({}),
-      process: (_event, emit) => {
-        emit?.("lifecycle", { event: "spawned" });
-        emit?.("custom", { type: "status", status: "working" });
-        return true;
-      },
-      finalize: () => {},
-      fail: () => {},
-    };
-    mux.addTransformer(transformer);
-
-    mux.push([], makeEvent("updates", [], 0));
-    mux._events.close();
-
-    const events = await collect(mux._events.iterate());
-    expect(events).toHaveLength(3);
-    expect(events[0].method).toBe("updates");
-    expect(events[1].method).toBe("lifecycle");
-    expect(events[2].method).toBe("custom");
-  });
-
-  it("emitted events inherit the namespace of the triggering event", async () => {
+  it("StreamChannel auto-forwarded events inherit the triggering namespace", async () => {
     const mux = new StreamMux(mockFactory);
+    const channel = new StreamChannel<{ event: string }>("tools");
     const transformer: StreamTransformer = {
-      init: () => ({}),
-      process: (_event, emit) => {
-        emit?.("tools", { event: "tool-started" });
+      init: () => ({ tools: channel }),
+      process: (_event) => {
+        channel.push({ event: "tool-started" });
         return true;
       },
-      finalize: () => {},
-      fail: () => {},
     };
     mux.addTransformer(transformer);
+    mux.wireChannels(transformer.init() as Record<string, unknown>);
 
     mux.push(["agent"], makeEvent("messages", ["agent"], 0));
     mux._events.close();
@@ -231,27 +210,72 @@ describe("StreamMux", () => {
     expect(events[1].params.namespace).toEqual(["agent"]);
   });
 
-  it("emitted events get sequential seq numbers", async () => {
+  it("StreamChannel auto-forwarded events get sequential seq numbers", async () => {
     const mux = new StreamMux();
+    const ch1 = new StreamChannel<unknown>("tools");
+    const ch2 = new StreamChannel<unknown>("custom");
     const transformer: StreamTransformer = {
-      init: () => ({}),
-      process: (_event, emit) => {
-        emit?.("tools", { a: 1 });
-        emit?.("custom", { b: 2 });
+      init: () => ({ ch1, ch2 }),
+      process: (_event) => {
+        ch1.push({ a: 1 });
+        ch2.push({ b: 2 });
         return true;
       },
-      finalize: () => {},
-      fail: () => {},
     };
     mux.addTransformer(transformer);
+    mux.wireChannels(transformer.init() as Record<string, unknown>);
 
     mux.push([], makeEvent("messages", [], 5));
     mux._events.close();
 
     const events = await collect(mux._events.iterate());
-    expect(events[0].seq).toBe(5);
-    expect(events[1].seq).toBe(6);
-    expect(events[2].seq).toBe(7);
+    // Channel events (seq 6, 7) appear before the original (seq 5)
+    // because pushes happen during process().
+    expect(events[0].seq).toBe(6);
+    expect(events[1].seq).toBe(7);
+    expect(events[2].seq).toBe(5);
+  });
+
+  it("mux auto-closes StreamChannels on close", async () => {
+    const mux = new StreamMux();
+    const channel = new StreamChannel<number>("stats");
+    const transformer: StreamTransformer = {
+      init: () => ({ stats: channel }),
+      process: (_event) => {
+        channel.push(42);
+        return true;
+      },
+    };
+    mux.addTransformer(transformer);
+    mux.wireChannels(transformer.init() as Record<string, unknown>);
+
+    mux.push([], makeEvent("values", [], 0));
+    mux.close();
+
+    const items: number[] = [];
+    for await (const item of channel) {
+      items.push(item);
+    }
+    expect(items).toEqual([42]);
+  });
+
+  it("mux auto-fails StreamChannels on fail", async () => {
+    const mux = new StreamMux();
+    const channel = new StreamChannel<number>("stats");
+    const transformer: StreamTransformer = {
+      init: () => ({ stats: channel }),
+      process: () => true,
+    };
+    mux.addTransformer(transformer);
+    mux.wireChannels(transformer.init() as Record<string, unknown>);
+
+    mux.fail(new Error("boom"));
+
+    await expect(async () => {
+      for await (const _ of channel) {
+        void _;
+      }
+    }).rejects.toThrow("boom");
   });
 
   it("addTransformer + process order", () => {
@@ -334,7 +358,7 @@ describe("StreamMux", () => {
     const error = new Error("test failure");
     mux.fail(error);
 
-    expect(failSpy).toHaveBeenCalledWith(error, expect.any(Function));
+    expect(failSpy).toHaveBeenCalledWith(error);
     expect(mux._events.done).toBe(true);
     expect(mux._discoveries.done).toBe(true);
     expect(rejectSpy).toHaveBeenCalledWith(error);

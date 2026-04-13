@@ -79,13 +79,6 @@ export interface ProtocolEvent {
 }
 
 /**
- * Observes protocol events and builds typed derived projections as secondary
- * event logs.
- *
- * @remarks
- * `TProjection` is merged into the run stream's public `.extensions` object.
- */
-/**
  * Infers the merged extensions type from a tuple of transformer factory functions.
  *
  * Given `[() => StreamTransformer<{ a: number }>, () => StreamTransformer<{ b: string }>]`,
@@ -104,11 +97,38 @@ export type InferExtensions<
     ? P & InferExtensions<Rest>
     : Record<string, unknown>;
 
+/**
+ * Observes {@link ProtocolEvent}s during a graph run and builds typed derived
+ * projections (secondary event logs, promises, etc.).
+ *
+ * Data is surfaced to consumers through **projections** returned from
+ * `init()`.  Projections are merged into `GraphRunStream.extensions` for
+ * in-process consumers.  Use `EventLog<T>.toAsyncIterable()` or
+ * `Promise<T>` for final values.
+ *
+ * To make projection data available to **remote** clients (SDK consumers
+ * over WebSocket / SSE), use {@link StreamChannel} instead of a raw
+ * `EventLog`.  The {@link StreamMux} detects `StreamChannel` instances in
+ * the `init()` return and auto-forwards every `push()` as a
+ * {@link ProtocolEvent} on the channel's named method.  Remote clients
+ * subscribe via `session.subscribe("custom:<channelName>")`.
+ *
+ * `finalize` and `fail` are optional.  When a transformer uses
+ * `StreamChannel`, the mux auto-closes/fails the channels on run
+ * completion — no manual lifecycle management needed.  Implement
+ * `finalize`/`fail` only for non-channel teardown (e.g. resolving a
+ * `Promise`).
+ *
+ * @typeParam TProjection - Shape returned by {@link init}, merged into
+ *   `GraphRunStream.extensions`.
+ */
 export interface StreamTransformer<TProjection = unknown> {
   /**
    * Called once before the run starts.
    *
    * @returns Initial projection merged into `GraphRunStream.extensions`.
+   *   Any {@link StreamChannel} instances in the return value are
+   *   automatically wired to the protocol event stream by the mux.
    */
   init(): TProjection;
 
@@ -116,47 +136,25 @@ export interface StreamTransformer<TProjection = unknown> {
    * Called for each {@link ProtocolEvent} before it is appended to the main log.
    *
    * @param event - Next protocol envelope for this run.
-   * @param emit - Callback to inject a new event into the main event stream.
-   *   The `method` argument becomes the event's channel name.  For
-   *   user-defined (extension) transformers the convention is:
-   *
-   *   - Use any descriptive name, e.g. `emit("a2a", data)`.
-   *   - The projection is available in-process via
-   *     `run.extensions.<name>`.
-   *   - Remote clients subscribe via
-   *     `session.subscribe("custom:<name>")`.
-   *
-   *   Internal (native) transformers emit on protocol-defined channels
-   *   (`"tools"`, `"lifecycle"`, etc.) and their projections appear as
-   *   direct getters on `GraphRunStream` subclasses.
-   *
    * @returns `false` to drop the original event from the main log (use
    *   sparingly; prefer keeping events visible and adding derived data
    *   alongside).
    */
-  process(
-    event: ProtocolEvent,
-    emit: (method: string, data: unknown) => void
-  ): boolean;
+  process(event: ProtocolEvent): boolean;
 
   /**
    * Called once when the underlying Pregel run completes without throwing.
-   *
-   * @param emit - Same emit callback as in `process()`, allowing the
-   *   transformer to inject terminal events (e.g. "completed" status) into
-   *   the protocol stream before it closes.
+   * Optional — only needed for non-channel teardown (e.g. resolving promises).
    */
-  finalize(emit?: (method: string, data: unknown) => void): void;
+  finalize?(): void;
 
   /**
    * Called once when the run fails; `err` is the rejection or error value.
+   * Optional — only needed for non-channel teardown (e.g. rejecting promises).
    *
    * @param err - Failure reason from the engine or user code.
-   * @param emit - Same emit callback as in `process()`, allowing the
-   *   transformer to inject terminal events (e.g. "failed" status) into the
-   *   protocol stream before it closes.
    */
-  fail(err: unknown, emit?: (method: string, data: unknown) => void): void;
+  fail?(err: unknown): void;
 }
 
 import type { MessagesData as MessagesEventDataImport } from "@langchain/protocol";

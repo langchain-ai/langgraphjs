@@ -407,7 +407,11 @@ export function createGraphRunStream<
   for (const factory of transformers) {
     const transformer = factory();
     mux.addTransformer(transformer);
-    Object.assign(extensions, transformer.init());
+    const projection = transformer.init();
+    Object.assign(extensions, projection);
+    if (typeof projection === "object" && projection !== null) {
+      mux.wireChannels(projection as Record<string, unknown>);
+    }
   }
 
   const root = new GraphRunStream<TValues, InferExtensions<TTransformers>>(

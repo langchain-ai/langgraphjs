@@ -71,6 +71,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "message-start",
           message_id: "msg-123",
+          role: "ai",
         },
       ],
       [
@@ -148,6 +149,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "message-start",
           message_id: "msg-456",
+          role: "ai",
         },
       ],
       [

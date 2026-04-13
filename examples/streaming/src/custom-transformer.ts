@@ -6,14 +6,15 @@
  *   1. Final values — promises resolved once when the run ends (e.g. total
  *      token count).  Consumers `await` them after the stream is done.
  *
- *   2. Streaming updates — an AsyncIterable backed by an EventLog that
- *      yields incremental items as events arrive.  Consumers iterate them
- *      concurrently with the main event stream.
+ *   2. Streaming updates — a StreamChannel that yields incremental items as
+ *      events arrive.  Consumers iterate them concurrently with the main
+ *      event stream.  StreamChannel also auto-forwards items to remote
+ *      clients via the protocol event stream.
  *
  * Both patterns use the same StreamTransformer interface.  The difference is
  * what you put in the projection returned from `init()`:
  *   - A `Promise` for final values
- *   - An `AsyncIterable` (via `EventLog`) for streaming updates
+ *   - A `StreamChannel` for streaming updates (in-process + remote)
  *
  * Run:
  *   ANTHROPIC_API_KEY=sk-... npx tsx src/custom-reducer.ts
@@ -25,7 +26,7 @@ import type {
   MessagesEventData,
   ToolsEventData,
 } from "@langchain/langgraph";
-import { EventLog } from "@langchain/langgraph";
+import { StreamChannel } from "@langchain/langgraph";
 import { graph } from "./agents/simple-tool-graph.js";
 
 const DIM = "\x1b[2m";
@@ -89,35 +90,33 @@ const statsTransformer = (): StreamTransformer<{
 /**
  * Pattern 2: Streaming updates — yields tool activity as it happens.
  *
- * The EventLog acts as the async buffer: the transformer pushes items into it
- * during `process()`, and the consumer iterates them in a concurrent
- * `for await` loop.  The log is closed in `finalize()` / `fail()` so the
- * iterator ends when the run ends.
+ * StreamChannel acts as both the async buffer for in-process consumers and
+ * the auto-forwarding mechanism for remote SDK clients.  The mux auto-closes
+ * the channel when the run ends — no manual finalize/fail needed.
  */
 const toolActivityTransformer = (): StreamTransformer<{
-  toolActivity: AsyncIterable<{ name: string; status: string }>;
+  toolActivity: StreamChannel<{ name: string; status: string }>;
 }> => {
-  const log = new EventLog<{ name: string; status: string }>();
+  const toolActivity = new StreamChannel<{ name: string; status: string }>(
+    "toolActivity"
+  );
 
   return {
-    init: () => ({ toolActivity: log.toAsyncIterable() }),
+    init: () => ({ toolActivity }),
 
     process(event: ProtocolEvent): boolean {
       if (event.method !== "tools") return true;
 
       const data = event.params.data as ToolsEventData;
       if (data.event === "tool-started") {
-        log.push({ name: data.toolName, status: "started" });
+        toolActivity.push({ name: data.toolName, status: "started" });
       } else if (data.event === "tool-finished") {
-        log.push({ name: data.toolCallId, status: "finished" });
+        toolActivity.push({ name: data.toolCallId, status: "finished" });
       } else if (data.event === "tool-error") {
-        log.push({ name: data.toolCallId, status: "error" });
+        toolActivity.push({ name: data.toolCallId, status: "error" });
       }
       return true;
     },
-
-    finalize: () => log.close(),
-    fail: (err) => log.fail(err),
   };
 };
 
