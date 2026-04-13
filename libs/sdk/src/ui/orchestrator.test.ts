@@ -510,8 +510,11 @@ describe("StreamOrchestrator", () => {
 
       expect(orch.interrupts).toEqual([]);
       expect(orch.interrupt).toBeUndefined();
-      expect(toolImpl.execute).toHaveBeenCalledWith({ city: "SF" });
-      expect(client.runs.stream).toHaveBeenCalledTimes(2);
+
+      await vi.waitFor(() => {
+        expect(toolImpl.execute).toHaveBeenCalledWith({ city: "SF" });
+        expect(client.runs.stream).toHaveBeenCalledTimes(2);
+      });
 
       orch.dispose();
     });

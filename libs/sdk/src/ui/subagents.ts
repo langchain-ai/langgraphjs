@@ -985,16 +985,17 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       this.matchSubgraphToSubagent(namespaceKey, serialized.content);
     }
 
-    // Resolve the actual tool call ID from the namespace mapping
+    // Resolve the actual tool call ID from the namespace mapping.
+    // If the namespace hasn't been mapped yet, buffer the message so it can
+    // be replayed once the mapping is established (e.g. via a later human
+    // message or values event).
     const toolCallId = this.resolveToolCallIdForNamespace(namespaceKey);
     if (!toolCallId) {
+      this.queuePendingMessage(namespaceKey, serialized, metadata);
       return;
     }
     const existing = this.subagents.get(toolCallId);
 
-    // If we still don't have a match, the mapping hasn't been established yet.
-    // Buffer the message so early AI/tool-call chunks are replayed once the
-    // values event or a later human message establishes the mapping.
     if (!existing) {
       this.queuePendingMessage(namespaceKey, serialized, metadata);
       return;

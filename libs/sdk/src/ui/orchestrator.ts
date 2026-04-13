@@ -898,6 +898,9 @@ export class StreamOrchestrator<
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          this.#flushPendingHeadlessToolInterrupts(
+            this.stream.values as Record<string, unknown> | null | undefined
+          );
         },
       }
     );
@@ -1073,6 +1076,9 @@ export class StreamOrchestrator<
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          this.#flushPendingHeadlessToolInterrupts(
+            this.stream.values as Record<string, unknown> | null | undefined
+          );
         },
       }
     );
