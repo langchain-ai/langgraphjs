@@ -16,7 +16,7 @@ import type {
   MessagesEventData,
   Namespace,
   ProtocolEvent,
-  StreamReducer,
+  StreamTransformer,
 } from "./types.js";
 import { hasPrefix } from "./mux.js";
 
@@ -30,7 +30,7 @@ export interface MessagesReducerProjection {
 }
 
 /**
- * Creates a {@link StreamReducer} that groups `messages` channel events into
+ * Creates a {@link StreamTransformer} that groups `messages` channel events into
  * per-message {@link ChatModelStream} instances.
  *
  * A new `ChatModelStream` is created on `message-start` and closed on
@@ -41,13 +41,13 @@ export interface MessagesReducerProjection {
  * @param path - Namespace prefix to match against incoming events.
  * @param nodeFilter - If provided, only events emitted by this graph node
  *   are processed; all others are skipped.
- * @returns A `StreamReducer` whose projection contains the `messages`
+ * @returns A `StreamTransformer` whose projection contains the `messages`
  *   async iterable.
  */
 export function createMessagesReducer(
   path: Namespace,
   nodeFilter?: string
-): StreamReducer<MessagesReducerProjection> {
+): StreamTransformer<MessagesReducerProjection> {
   const log = new EventLog<ChatModelStream>();
   let active: ChatModelStreamImpl | undefined;
 
@@ -134,7 +134,7 @@ export interface ValuesReducerProjection {
 }
 
 /**
- * Creates a {@link StreamReducer} that captures `values` channel events
+ * Creates a {@link StreamTransformer} that captures `values` channel events
  * into an {@link EventLog}.  Only events whose namespace exactly matches
  * {@link path} are recorded; events from child or sibling namespaces are
  * ignored.
@@ -143,12 +143,12 @@ export interface ValuesReducerProjection {
  * this reducer only accumulates intermediate values.
  *
  * @param path - Namespace prefix to match against incoming events.
- * @returns A `StreamReducer` whose projection contains the internal
+ * @returns A `StreamTransformer` whose projection contains the internal
  *   `_valuesLog` event log.
  */
 export function createValuesReducer(
   path: Namespace
-): StreamReducer<ValuesReducerProjection> {
+): StreamTransformer<ValuesReducerProjection> {
   const valuesLog = new EventLog<Record<string, unknown>>();
 
   return {

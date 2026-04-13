@@ -23,9 +23,11 @@ export type ProtocolCompatibleMessageMetadata = MessageMetadata &
 /**
  * Subscription state tracked for each connected client.
  */
+export type SubscriptionChannel = SupportedChannel | `custom:${string}`;
+
 export type Subscription = {
   id: string;
-  channels: Set<SupportedChannel>;
+  channels: Set<SubscriptionChannel>;
   namespaces?: Namespace[];
   depth?: number;
   active: boolean;
@@ -49,7 +51,7 @@ export type MessageBlockState = {
   finished: boolean;
   id?: string;
   name?: string;
-  contentBlock?: ContentBlockFinishData["contentBlock"];
+  contentBlock?: ContentBlockFinishData["content_block"];
 };
 
 /**

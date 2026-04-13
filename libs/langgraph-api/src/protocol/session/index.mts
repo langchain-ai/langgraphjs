@@ -34,6 +34,7 @@ import type {
   NamespaceInfo,
   ProtocolEventDataMap,
   Subscription,
+  SubscriptionChannel,
 } from "./internal-types.mjs";
 import {
   SUPPORTED_CHANNELS,
@@ -156,7 +157,7 @@ export class RunProtocolSession {
     await this.pushEvent(
       this.createEvent("lifecycle", [], {
         event: toLifecycleStatus(this.initialRun.status),
-        graphName: this.rootGraphName,
+        graph_name: this.rootGraphName,
       })
     );
 
@@ -496,6 +497,15 @@ export class RunProtocolSession {
         );
         return;
       default:
+        // Route unknown methods as named custom events. This allows
+        // reducers to emit("a2a", data) and have it appear on the
+        // custom channel with name set for client-side filtering.
+        await this.pushEvent(
+          this.createEvent("custom", namespace, {
+            name: method,
+            payload: event.data,
+          } satisfies CustomData)
+        );
         return;
     }
   }
@@ -516,7 +526,7 @@ export class RunProtocolSession {
       await this.pushEvent(
         this.createEvent("lifecycle", partial, {
           event: "spawned",
-          graphName,
+          graph_name: graphName,
         })
       );
     }
@@ -583,7 +593,7 @@ export class RunProtocolSession {
     await this.pushEvent(
       this.createEvent("lifecycle", namespace, {
         event: status,
-        graphName,
+        graph_name: graphName,
         ...(options?.error != null ? { error: options.error } : {}),
       })
     );
@@ -666,7 +676,7 @@ export class RunProtocolSession {
         : data;
     return {
       type: "event",
-      eventId: String(this.nextSeq),
+      event_id: String(this.nextSeq),
       seq: this.nextSeq,
       method: eventMethod,
       params: {
@@ -717,9 +727,22 @@ export class RunProtocolSession {
         : isSupportedChannel(event.method)
           ? event.method
           : undefined;
-    if (channel == null || !subscription.channels.has(channel)) {
-      return false;
+    if (channel == null) return false;
+
+    // Support "custom:name" subscriptions: "custom:a2a" matches custom
+    // events with data.name === "a2a", while "custom" matches all.
+    let channelMatched = subscription.channels.has(channel);
+    if (!channelMatched && channel === "custom") {
+      const params = event.params as Record<string, unknown>;
+      const eventName =
+        isRecord(params.data) && typeof params.data.name === "string"
+          ? params.data.name
+          : undefined;
+      if (eventName != null) {
+        channelMatched = subscription.channels.has(`custom:${eventName}`);
+      }
     }
+    if (!channelMatched) return false;
 
     if (
       subscription.namespaces == null ||
@@ -746,10 +769,10 @@ export class RunProtocolSession {
     requests: ProtocolEventDataMap["input"][]
   ) {
     for (const request of requests) {
-      if (this.pendingInterruptIds.has(request.interruptId)) {
+      if (this.pendingInterruptIds.has(request.interrupt_id)) {
         continue;
       }
-      this.pendingInterruptIds.add(request.interruptId);
+      this.pendingInterruptIds.add(request.interrupt_id);
       await this.pushEvent(this.createEvent("input", namespace, request));
     }
   }
@@ -788,7 +811,7 @@ export class RunProtocolSession {
     return {
       namespace: current.namespace,
       status: current.status,
-      graphName: current.graphName,
+      graph_name: current.graphName,
       ...(children.length > 0 ? { children } : {}),
     } satisfies AgentTreeNode;
   }
@@ -804,7 +827,7 @@ export class RunProtocolSession {
     const params = isRecord(command.params)
       ? (command.params as Partial<SubscribeParams>)
       : undefined;
-    const rawChannels = params?.channels;
+    const rawChannels = params?.channels as unknown[] | undefined;
     if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
       await this.sendError(
         command.id,
@@ -815,9 +838,10 @@ export class RunProtocolSession {
     }
 
     const channels = rawChannels.filter(
-      (value): value is SupportedChannel =>
+      (value): value is SubscriptionChannel =>
         typeof value === "string" &&
-        SUPPORTED_CHANNELS.has(value as SupportedChannel)
+        (SUPPORTED_CHANNELS.has(value as SupportedChannel) ||
+          value.startsWith("custom:"))
     );
 
     if (channels.length !== rawChannels.length) {
@@ -864,8 +888,8 @@ export class RunProtocolSession {
     );
 
     await this.sendSuccess(command.id, {
-      subscriptionId: subscription.id,
-      replayedEvents: snapshot.length,
+      subscription_id: subscription.id,
+      replayed_events: snapshot.length,
     } satisfies SubscribeResult);
 
     for (const event of snapshot) {
@@ -903,7 +927,7 @@ export class RunProtocolSession {
     const params = isRecord(command.params)
       ? (command.params as Partial<SubscribeParams>)
       : undefined;
-    const rawChannels = params?.channels;
+    const rawChannels = params?.channels as unknown[] | undefined;
     if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
       return this.error(
         command.id,
@@ -914,9 +938,10 @@ export class RunProtocolSession {
     }
 
     const channels = rawChannels.filter(
-      (value): value is SupportedChannel =>
+      (value): value is SubscriptionChannel =>
         typeof value === "string" &&
-        SUPPORTED_CHANNELS.has(value as SupportedChannel)
+        (SUPPORTED_CHANNELS.has(value as SupportedChannel) ||
+          value.startsWith("custom:"))
     );
 
     if (channels.length !== rawChannels.length) {
@@ -984,8 +1009,8 @@ export class RunProtocolSession {
     return this.success(
       command.id,
       {
-        subscriptionId: subscription.id,
-        replayedEvents: snapshot.length,
+        subscription_id: subscription.id,
+        replayed_events: snapshot.length,
       } satisfies SubscribeResult,
       meta
     );
@@ -1002,12 +1027,12 @@ export class RunProtocolSession {
     const params = isRecord(command.params)
       ? (command.params as Partial<UnsubscribeParams>)
       : undefined;
-    const subscriptionId = params?.subscriptionId;
+    const subscriptionId = params?.subscription_id;
     if (typeof subscriptionId !== "string") {
       await this.sendError(
         command.id,
         "invalid_argument",
-        "subscription.unsubscribe requires a subscriptionId."
+        "subscription.unsubscribe requires a subscription_id."
       );
       return;
     }
@@ -1038,12 +1063,12 @@ export class RunProtocolSession {
     const params = isRecord(command.params)
       ? (command.params as Partial<UnsubscribeParams>)
       : undefined;
-    const subscriptionId = params?.subscriptionId;
+    const subscriptionId = params?.subscription_id;
     if (typeof subscriptionId !== "string") {
       return this.error(
         command.id,
         "invalid_argument",
-        "subscription.unsubscribe requires a subscriptionId.",
+        "subscription.unsubscribe requires a subscription_id.",
         meta
       );
     }
@@ -1071,7 +1096,7 @@ export class RunProtocolSession {
     const params = isRecord(command.params)
       ? (command.params as Partial<FlowCapacityParams>)
       : undefined;
-    const maxBufferSize = params?.maxBufferSize;
+    const maxBufferSize = params?.max_buffer_size;
     if (
       typeof maxBufferSize !== "number" ||
       !Number.isInteger(maxBufferSize) ||
@@ -1080,7 +1105,7 @@ export class RunProtocolSession {
       await this.sendError(
         command.id,
         "invalid_argument",
-        "flow.setCapacity requires maxBufferSize to be a positive integer."
+        "flow.setCapacity requires max_buffer_size to be a positive integer."
       );
       return;
     }
@@ -1107,7 +1132,7 @@ export class RunProtocolSession {
     const params = isRecord(command.params)
       ? (command.params as Partial<FlowCapacityParams>)
       : undefined;
-    const maxBufferSize = params?.maxBufferSize;
+    const maxBufferSize = params?.max_buffer_size;
     if (
       typeof maxBufferSize !== "number" ||
       !Number.isInteger(maxBufferSize) ||
@@ -1116,7 +1141,7 @@ export class RunProtocolSession {
       return this.error(
         command.id,
         "invalid_argument",
-        "flow.setCapacity requires maxBufferSize to be a positive integer.",
+        "flow.setCapacity requires max_buffer_size to be a positive integer.",
         meta
       );
     }

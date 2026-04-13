@@ -7,7 +7,7 @@ import type { MessagesEventData, UsageInfo } from "./types.js";
 const textDelta = (text: string, index = 0): MessagesEventData => ({
   event: "content-block-delta",
   index,
-  contentBlock: { type: "text", text },
+  content_block: { type: "text", text },
 });
 
 const reasoningDelta = (
@@ -16,7 +16,7 @@ const reasoningDelta = (
 ): MessagesEventData => ({
   event: "content-block-delta",
   index,
-  contentBlock: { type: "reasoning", reasoning },
+  content_block: { type: "reasoning", reasoning },
 });
 
 const messageStart = (): MessagesEventData => ({
@@ -35,7 +35,7 @@ const messageFinish = (
 const imageDelta = (index = 0): MessagesEventData => ({
   event: "content-block-delta",
   index,
-  contentBlock: { type: "image", url: "https://example.com/img.png" },
+  content_block: { type: "image", url: "https://example.com/img.png" },
 });
 
 async function collectAsync<T>(iter: AsyncIterable<T>): Promise<T[]> {
@@ -75,9 +75,9 @@ describe("ChatModelStreamImpl", () => {
   it("usage is resolved from message-finish data", async () => {
     const stream = new ChatModelStreamImpl(["agent"], "chatModel");
     const usage: UsageInfo = {
-      inputTokens: 10,
-      outputTokens: 25,
-      totalTokens: 35,
+      input_tokens: 10,
+      output_tokens: 25,
+      total_tokens: 35,
     };
 
     stream.pushEvent(messageStart());

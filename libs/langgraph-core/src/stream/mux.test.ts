@@ -6,7 +6,7 @@ import {
   hasPrefix,
   setRunStreamClasses,
 } from "./mux.js";
-import type { ProtocolEvent, StreamReducer } from "./types.js";
+import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
 class MockSubgraphStream {
   constructor(
@@ -137,15 +137,15 @@ describe("StreamMux", () => {
     });
   });
 
-  it("push runs reducer pipeline — events suppressed when reducer returns false", () => {
+  it("push runs transformer pipeline — events suppressed when transformer returns false", () => {
     const mux = new StreamMux();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: (event) => event.method !== "debug",
       finalize: () => {},
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     mux.push([], makeEvent("messages", [], 0));
     mux.push([], makeEvent("debug", [], 1));
@@ -159,11 +159,106 @@ describe("StreamMux", () => {
     });
   });
 
-  it("addReducer + process order", () => {
+  it("emit callback injects events into the main log after the original", async () => {
+    const mux = new StreamMux();
+    const transformer: StreamTransformer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        if (_event.method === "messages") {
+          emit?.("tools", { event: "tool-started", tool_name: "search" });
+        }
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addTransformer(transformer);
+
+    mux.push([], makeEvent("messages", [], 0));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(2);
+    expect(events[0].method).toBe("messages");
+    expect(events[1].method).toBe("tools");
+    expect(events[1].params.data).toEqual({
+      event: "tool-started",
+      tool_name: "search",
+    });
+  });
+
+  it("emit callback can inject multiple events from a single process call", async () => {
+    const mux = new StreamMux();
+    const transformer: StreamTransformer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        emit?.("lifecycle", { event: "spawned" });
+        emit?.("custom", { type: "status", status: "working" });
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addTransformer(transformer);
+
+    mux.push([], makeEvent("updates", [], 0));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(3);
+    expect(events[0].method).toBe("updates");
+    expect(events[1].method).toBe("lifecycle");
+    expect(events[2].method).toBe("custom");
+  });
+
+  it("emitted events inherit the namespace of the triggering event", async () => {
+    const mux = new StreamMux();
+    const transformer: StreamTransformer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        emit?.("tools", { event: "tool-started" });
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addTransformer(transformer);
+
+    mux.push(["agent"], makeEvent("messages", ["agent"], 0));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events[1].params.namespace).toEqual(["agent"]);
+  });
+
+  it("emitted events get sequential seq numbers", async () => {
+    const mux = new StreamMux();
+    const transformer: StreamTransformer = {
+      init: () => ({}),
+      process: (_event, emit) => {
+        emit?.("tools", { a: 1 });
+        emit?.("custom", { b: 2 });
+        return true;
+      },
+      finalize: () => {},
+      fail: () => {},
+    };
+    mux.addTransformer(transformer);
+
+    mux.push([], makeEvent("messages", [], 5));
+    mux._events.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events[0].seq).toBe(5);
+    expect(events[1].seq).toBe(6);
+    expect(events[2].seq).toBe(7);
+  });
+
+  it("addTransformer + process order", () => {
     const mux = new StreamMux();
     const order: number[] = [];
 
-    const makeReducer = (id: number): StreamReducer => ({
+    const makeTransformer = (id: number): StreamTransformer => ({
       init: () => ({}),
       process: () => {
         order.push(id);
@@ -173,24 +268,24 @@ describe("StreamMux", () => {
       fail: () => {},
     });
 
-    mux.addReducer(makeReducer(1));
-    mux.addReducer(makeReducer(2));
-    mux.addReducer(makeReducer(3));
+    mux.addTransformer(makeTransformer(1));
+    mux.addTransformer(makeTransformer(2));
+    mux.addTransformer(makeTransformer(3));
 
     mux.push([], makeEvent("messages"));
     expect(order).toEqual([1, 2, 3]);
   });
 
-  it("close finalizes reducers, closes event and discovery logs", () => {
+  it("close finalizes transformers, closes event and discovery logs", () => {
     const mux = new StreamMux();
     const finalizeSpy = vi.fn();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: () => true,
       finalize: finalizeSpy,
       fail: () => {},
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
     mux.close();
 
     expect(finalizeSpy).toHaveBeenCalledOnce();
@@ -221,16 +316,16 @@ describe("StreamMux", () => {
     expect(resolveSpy).toHaveBeenCalledWith({ count: 42 });
   });
 
-  it("fail calls fail on all reducers, events, discoveries, and streams", () => {
+  it("fail calls fail on all transformers, events, discoveries, and streams", () => {
     const mux = new StreamMux();
     const failSpy = vi.fn();
-    const reducer: StreamReducer = {
+    const transformer: StreamTransformer = {
       init: () => ({}),
       process: () => true,
       finalize: () => {},
       fail: failSpy,
     };
-    mux.addReducer(reducer);
+    mux.addTransformer(transformer);
 
     const mockStream = new MockSubgraphStream([], mux, 0, 0);
     const rejectSpy = vi.spyOn(mockStream, "_rejectValues");
@@ -239,7 +334,7 @@ describe("StreamMux", () => {
     const error = new Error("test failure");
     mux.fail(error);
 
-    expect(failSpy).toHaveBeenCalledWith(error);
+    expect(failSpy).toHaveBeenCalledWith(error, expect.any(Function));
     expect(mux._events.done).toBe(true);
     expect(mux._discoveries.done).toBe(true);
     expect(rejectSpy).toHaveBeenCalledWith(error);

@@ -1,0 +1,7 @@
+{
+  "node_version": "22",
+  "graphs": {
+    "a2a-research": "./src/a2a/agent.ts:graph"
+  },
+  "env": ".env"
+}

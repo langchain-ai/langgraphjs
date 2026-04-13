@@ -5,7 +5,7 @@ import {
   createGraphRunStream,
 } from "./run-stream.js";
 import { StreamMux, setRunStreamClasses } from "./mux.js";
-import type { ProtocolEvent, StreamReducer } from "./types.js";
+import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
 setRunStreamClasses(GraphRunStream, SubgraphRunStream);
 
@@ -260,10 +260,10 @@ describe("createGraphRunStream", () => {
     expect(result).toEqual({ step: 2 });
   });
 
-  it("custom reducers receive events and produce extensions", async () => {
+  it("custom transformers receive events and produce extensions", async () => {
     let processedCount = 0;
 
-    const customReducerFactory = (): StreamReducer<{ counter: number }> => ({
+    const customTransformerFactory = (): StreamTransformer<{ counter: number }> => ({
       init: () => ({ counter: 0 }),
       process(_event: ProtocolEvent): boolean {
         processedCount += 1;
@@ -278,7 +278,7 @@ describe("createGraphRunStream", () => {
       [[], "values", { x: 2 }],
     ]);
 
-    const stream = createGraphRunStream(source, [customReducerFactory]);
+    const stream = createGraphRunStream(source, [customTransformerFactory]);
     await stream.output;
 
     expect(processedCount).toBeGreaterThan(0);

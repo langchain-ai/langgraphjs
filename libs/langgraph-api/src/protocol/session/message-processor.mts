@@ -359,7 +359,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "message-start",
             role: rawMessage.type as MessageRole,
-            messageId: messageId,
+            message_id: messageId,
             ...(state.metadata != null ? { metadata: state.metadata } : {}),
           } satisfies MessageStartData)
         );
@@ -367,7 +367,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "content-block-start",
             index: 0,
-            contentBlock: { type: "text", text: "" },
+            content_block: { type: "text", text: "" },
           } satisfies ContentBlockStartData)
         );
         state.started = true;
@@ -381,7 +381,7 @@ export class SessionMessageProcessor {
             this.callbacks.createMessagesEvent(messageNamespace, {
               event: "content-block-delta",
               index: 0,
-              contentBlock: { type: "text", text: delta },
+              content_block: { type: "text", text: delta },
             } satisfies ContentBlockDeltaData)
           );
         }
@@ -414,7 +414,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "content-block-finish",
             index: 0,
-            contentBlock: { type: "text", text: state.lastText },
+            content_block: { type: "text", text: state.lastText },
           } satisfies ContentBlockFinishData)
         );
         await this.callbacks.pushEvent(
@@ -451,7 +451,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "message-start",
         role: type,
-        messageId: id,
+        message_id: id,
       } satisfies MessageStartData)
     );
 
@@ -461,7 +461,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-start",
           index: 0,
-          contentBlock: { type: "text", text: "" },
+          content_block: { type: "text", text: "" },
         } satisfies ContentBlockStartData)
       );
       if (normalizedContent.length > 0) {
@@ -469,7 +469,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(namespace, {
             event: "content-block-delta",
             index: 0,
-            contentBlock: { type: "text", text: normalizedContent },
+            content_block: { type: "text", text: normalizedContent },
           } satisfies ContentBlockDeltaData)
         );
       }
@@ -477,7 +477,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-finish",
           index: 0,
-          contentBlock: { type: "text", text: normalizedContent },
+          content_block: { type: "text", text: normalizedContent },
         } satisfies ContentBlockFinishData)
       );
     } else if (Array.isArray(normalizedContent)) {
@@ -491,7 +491,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(namespace, {
             event: "content-block-start",
             index,
-            contentBlock:
+            content_block:
               block.type === "text"
                 ? { type: "text", text: "" }
                 : block.type === "reasoning"
@@ -504,7 +504,7 @@ export class SessionMessageProcessor {
             this.callbacks.createMessagesEvent(namespace, {
               event: "content-block-delta",
               index,
-              contentBlock: { type: "text", text: block.text },
+              content_block: { type: "text", text: block.text },
             } satisfies ContentBlockDeltaData)
           );
         } else if (block.type === "reasoning" && block.reasoning.length > 0) {
@@ -512,7 +512,7 @@ export class SessionMessageProcessor {
             this.callbacks.createMessagesEvent(namespace, {
               event: "content-block-delta",
               index,
-              contentBlock: { type: "reasoning", reasoning: block.reasoning },
+              content_block: { type: "reasoning", reasoning: block.reasoning },
             } satisfies ContentBlockDeltaData)
           );
         }
@@ -520,7 +520,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(namespace, {
             event: "content-block-finish",
             index,
-            contentBlock: block,
+            content_block: block,
           } satisfies ContentBlockFinishData)
         );
       }
@@ -553,7 +553,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "message-start",
         role: type,
-        messageId: id,
+        message_id: id,
         ...(state.metadata != null ? { metadata: state.metadata } : {}),
       } satisfies MessageStartData)
     );
@@ -584,7 +584,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-start",
           index,
-          contentBlock:
+          content_block:
             type === "text"
               ? { type: "text", text: "" }
               : { type: "reasoning", reasoning: "" },
@@ -604,7 +604,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-delta",
         index,
-        contentBlock:
+        content_block:
           type === "text"
             ? { type: "text", text: value }
             : { type: "reasoning", reasoning: value },
@@ -624,7 +624,7 @@ export class SessionMessageProcessor {
     namespace: Namespace,
     state: MessageState,
     index: number,
-    contentBlock: ContentBlockFinishData["contentBlock"]
+    contentBlock: ContentBlockFinishData["content_block"]
   ) {
     const existing = state.blocks.get(index);
     if (existing != null) return;
@@ -633,14 +633,14 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-start",
         index,
-        contentBlock,
+        content_block: contentBlock,
       } satisfies ContentBlockStartData)
     );
     await this.callbacks.pushEvent(
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-finish",
         index,
-        contentBlock,
+        content_block: contentBlock,
       } satisfies ContentBlockFinishData)
     );
     state.blocks.set(index, {
@@ -673,7 +673,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-start",
           index,
-          contentBlock: {
+          content_block: {
             type: "tool_call_chunk",
             ...(options?.id != null ? { id: options.id } : {}),
             ...(options?.name != null ? { name: options.name } : {}),
@@ -701,7 +701,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-delta",
         index,
-        contentBlock: {
+        content_block: {
           type: "tool_call_chunk",
           ...(options?.id != null ? { id: options.id } : {}),
           ...(options?.name != null ? { name: options.name } : {}),
@@ -733,7 +733,7 @@ export class SessionMessageProcessor {
     for (const [index, block] of blocks) {
       if (block.finished) continue;
 
-      let contentBlock: ContentBlockFinishData["contentBlock"];
+      let contentBlock: ContentBlockFinishData["content_block"];
       if (block.type === "text") {
         contentBlock = { type: "text", text: block.value };
       } else if (block.type === "reasoning") {
@@ -753,7 +753,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-finish",
           index,
-          contentBlock,
+          content_block: contentBlock,
         } satisfies ContentBlockFinishData)
       );
       block.finished = true;

@@ -46,7 +46,10 @@ import type {
   ProtocolClientOptions,
   SessionModules,
   SessionOrderingState,
+  SubscribableChannel,
   SubscribeOptions,
+  YieldForChannel,
+  YieldForChannels,
 } from "./types.js";
 import type { AssembledMessage } from "./messages.js";
 import type { TransportAdapter } from "./transport.js";
@@ -102,14 +105,17 @@ type CommandParamsMap = {
   "usage.setBudget": UsageBudgetParams;
 };
 
-type InternalEventSubscription = EventSubscription<Event> & {
+type InternalEventSubscription = EventSubscription<unknown> & {
   filter: SubscribeParams;
   push(event: Event): void;
   close(): void;
 };
 
 function normalizeSubscribeParams(
-  paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
+  paramsOrChannels:
+    | SubscribeParams
+    | SubscribableChannel
+    | readonly SubscribableChannel[],
   options: SubscribeOptions = {}
 ): SubscribeParams {
   if (
@@ -121,8 +127,8 @@ function normalizeSubscribeParams(
   }
 
   const channels = Array.isArray(paramsOrChannels)
-    ? [...paramsOrChannels]
-    : [paramsOrChannels];
+    ? ([...paramsOrChannels] as Channel[])
+    : ([paramsOrChannels] as Channel[]);
   return {
     ...options,
     channels,
@@ -146,37 +152,47 @@ export class ProtocolError extends Error {
 
 /**
  * Async iterable handle for raw event subscriptions.
+ *
+ * An optional `transform` maps each incoming event before it is queued
+ * or delivered to a waiting consumer. This is used by named custom
+ * channel subscriptions (e.g. `"custom:a2a"`) to unwrap the payload
+ * so callers receive the raw emitted data instead of the protocol
+ * event envelope.
  */
-export class SubscriptionHandle<TEvent extends Event = Event>
-  implements AsyncIterable<TEvent>, EventSubscription<TEvent>
+export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
+  implements AsyncIterable<TYield>, EventSubscription<TYield>
 {
   readonly subscriptionId: string;
   readonly params: SubscribeParams;
-  private readonly queue: TEvent[] = [];
-  private readonly waiters: Array<(value: IteratorResult<TEvent>) => void> = [];
+  private readonly queue: TYield[] = [];
+  private readonly waiters: Array<(value: IteratorResult<TYield>) => void> = [];
   private closed = false;
   private readonly onUnsubscribe: (id: string) => Promise<void>;
+  private readonly transform: (event: TEvent) => TYield;
 
   constructor(
     subscriptionId: string,
     params: SubscribeParams,
-    onUnsubscribe: (id: string) => Promise<void>
+    onUnsubscribe: (id: string) => Promise<void>,
+    transform?: (event: TEvent) => TYield
   ) {
     this.subscriptionId = subscriptionId;
     this.params = params;
     this.onUnsubscribe = onUnsubscribe;
+    this.transform = transform ?? ((event) => event as unknown as TYield);
   }
 
   push(event: TEvent): void {
     if (this.closed) {
       return;
     }
+    const value = this.transform(event);
     const waiter = this.waiters.shift();
     if (waiter) {
-      waiter({ done: false, value: event });
+      waiter({ done: false, value });
       return;
     }
-    this.queue.push(event);
+    this.queue.push(value);
   }
 
   close(): void {
@@ -195,7 +211,7 @@ export class SubscriptionHandle<TEvent extends Event = Event>
     await this.onUnsubscribe(this.subscriptionId);
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<TEvent> {
+  [Symbol.asyncIterator](): AsyncIterator<TYield> {
     return {
       next: async () => {
         if (this.queue.length > 0) {
@@ -205,7 +221,7 @@ export class SubscriptionHandle<TEvent extends Event = Event>
         if (this.closed) {
           return { done: true, value: undefined };
         }
-        return await new Promise<IteratorResult<TEvent>>((resolve) => {
+        return await new Promise<IteratorResult<TYield>>((resolve) => {
           this.waiters.push(resolve);
         });
       },
@@ -446,25 +462,46 @@ export class Session {
     }
   }
 
-  async subscribe<TChannel extends Channel>(
+  async subscribe<TChannel extends SubscribableChannel>(
     channel: TChannel,
     options?: SubscribeOptions
-  ): Promise<SubscriptionHandle<EventForChannel<TChannel>>>;
-  async subscribe<const TChannels extends readonly Channel[]>(
+  ): Promise<
+    SubscriptionHandle<EventForChannel<TChannel>, YieldForChannel<TChannel>>
+  >;
+  async subscribe<const TChannels extends readonly SubscribableChannel[]>(
     channels: TChannels,
     options?: SubscribeOptions
-  ): Promise<SubscriptionHandle<EventForChannels<TChannels>>>;
+  ): Promise<
+    SubscriptionHandle<EventForChannels<TChannels>, YieldForChannels<TChannels>>
+  >;
   async subscribe(params: SubscribeParams): Promise<SubscriptionHandle<Event>>;
   async subscribe(
-    paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
+    paramsOrChannels:
+      | SubscribeParams
+      | SubscribableChannel
+      | readonly SubscribableChannel[],
     options: SubscribeOptions = {}
-  ): Promise<SubscriptionHandle<Event>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<SubscriptionHandle<Event, any>> {
     const params = normalizeSubscribeParams(paramsOrChannels, options);
+    const hasOnlyNamedCustom =
+      params.channels.length > 0 &&
+      params.channels.every((ch) => ch.startsWith("custom:"));
     for (const channel of params.channels) {
-      this.assertSupportsChannel(channel);
+      if (!channel.startsWith("custom:")) {
+        this.assertSupportsChannel(channel);
+      }
     }
     const result = await this.send("subscription.subscribe", params);
-    const handle = new SubscriptionHandle<Event>(
+    const transform = hasOnlyNamedCustom
+      ? (event: Event) =>
+          (
+            (event.params as Record<string, unknown>).data as {
+              payload?: unknown;
+            }
+          )?.payload ?? event
+      : undefined;
+    const handle = new SubscriptionHandle<Event, unknown>(
       result.subscription_id,
       params,
       async (id) => {
@@ -473,7 +510,8 @@ export class Session {
         if (!this.closed) {
           await this.send("subscription.unsubscribe", { subscription_id: id });
         }
-      }
+      },
+      transform
     );
     const subscription = Object.assign(handle, { filter: params });
     this.activeFilters.set(result.subscription_id, params);

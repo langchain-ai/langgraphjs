@@ -28,10 +28,6 @@ import type {
   RunResult,
   SessionResult,
   StateGetResult,
-  StoreItem,
-  StorePutParams,
-  StoreSearchParams,
-  StoreSearchResult,
   SubscribeParams,
   SubscribeResult,
   ToolErrorData,
@@ -59,7 +55,7 @@ export type SourceStreamEvent = {
 /**
  * Protocol version currently implemented by the API transport layer.
  */
-export type ProtocolVersion = SessionResult["protocolVersion"];
+export type ProtocolVersion = SessionResult["protocol_version"];
 
 /**
  * Transport profiles currently exposed by the LangGraph API implementation.
@@ -134,10 +130,6 @@ export type {
   RunResult,
   SessionResult,
   StateGetResult,
-  StoreItem,
-  StorePutParams,
-  StoreSearchParams,
-  StoreSearchResult,
   SubscribeParams,
   SubscribeResult,
   ToolErrorData,
@@ -174,9 +166,9 @@ export type ProtocolSessionTarget = ProtocolTarget;
  * WebSocket transport adapters.
  */
 export type ProtocolOpenRequest = {
-  protocolVersion: string;
-  preferredTransports?: string[];
-  mediaTransferModes?: string[];
+  protocol_version: string;
+  preferred_transports?: string[];
+  media_transfer_modes?: string[];
   target: ProtocolTarget;
   transport: ProtocolTransportName;
 };
@@ -190,7 +182,7 @@ export type ProtocolOpenRequest = {
  */
 export type SessionRecord = {
   sessionId: string;
-  protocolVersion: ProtocolVersion;
+  protocol_version: ProtocolVersion;
   transport: TransportProfile;
   auth?: AuthContext;
   target: ProtocolTarget;

@@ -33,7 +33,7 @@ export type {
   ToolOutputDeltaData,
   ToolFinishedData,
   ToolErrorData,
-  StreamReducer,
+  StreamTransformer,
   InferExtensions,
   ChatModelStream,
   ToolCallStatus,

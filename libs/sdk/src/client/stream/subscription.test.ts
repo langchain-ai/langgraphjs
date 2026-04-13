@@ -1,4 +1,4 @@
-import type { Event } from "@langchain/protocol";
+import type { Channel, Event } from "@langchain/protocol";
 import { describe, expect, it } from "vitest";
 
 import { inferChannel, matchesSubscription } from "./subscription.js";
@@ -38,6 +38,19 @@ describe("inferChannel", () => {
         },
       } as unknown as Event)
     ).toBe("sandbox");
+  });
+
+  it("returns 'custom' for unnamed custom events", () => {
+    const event = eventOf("custom", { payload: "hello" });
+    expect(inferChannel(event)).toBe("custom");
+  });
+
+  it("returns 'custom:name' for named custom events", () => {
+    const event = eventOf("custom", {
+      name: "a2a",
+      payload: { status: "working" },
+    });
+    expect(inferChannel(event)).toBe("custom:a2a");
   });
 });
 
@@ -92,5 +105,34 @@ describe("matchesSubscription", () => {
         depth: 2,
       })
     ).toBe(true);
+  });
+
+  it("'custom' channel matches all custom events including named", () => {
+    const unnamed = eventOf("custom", { payload: "x" });
+    const named = eventOf("custom", { name: "a2a", payload: { s: 1 } });
+    expect(matchesSubscription(unnamed, { channels: ["custom"] })).toBe(true);
+    expect(matchesSubscription(named, { channels: ["custom"] })).toBe(true);
+  });
+
+  it("'custom:name' channel matches only named custom events", () => {
+    const a2a = eventOf("custom", { name: "a2a", payload: {} });
+    const other = eventOf("custom", { name: "metrics", payload: {} });
+    const unnamed = eventOf("custom", { payload: "x" });
+
+    expect(
+      matchesSubscription(a2a, {
+        channels: ["custom:a2a" as Channel],
+      })
+    ).toBe(true);
+    expect(
+      matchesSubscription(other, {
+        channels: ["custom:a2a" as Channel],
+      })
+    ).toBe(false);
+    expect(
+      matchesSubscription(unnamed, {
+        channels: ["custom:a2a" as Channel],
+      })
+    ).toBe(false);
   });
 });

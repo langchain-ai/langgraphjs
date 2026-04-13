@@ -113,7 +113,7 @@ export const normalizeInputRequestedData = (
     }
     return [
       {
-        interruptId: entry.id,
+        interrupt_id: entry.id,
         payload: "value" in entry ? entry.value : undefined,
       } satisfies ProtocolEventDataByMethod<"input">,
     ];
@@ -167,7 +167,7 @@ export const normalizeToolData = (
   if (!isRecord(value) || typeof value.event !== "string") {
     return {
       event: "tool-output-delta",
-      toolCallId: fallbackToolCallId,
+      tool_call_id: fallbackToolCallId,
       delta: extractErrorMessage(value),
     } satisfies ToolOutputDeltaData;
   }
@@ -178,14 +178,14 @@ export const normalizeToolData = (
     case "on_tool_start":
       return {
         event: "tool-started",
-        toolCallId,
-        toolName: typeof value.name === "string" ? value.name : "tool",
+        tool_call_id: toolCallId,
+        tool_name: typeof value.name === "string" ? value.name : "tool",
         input: value.input,
       } satisfies ToolStartedData;
     case "on_tool_event":
       return {
         event: "tool-output-delta",
-        toolCallId,
+        tool_call_id: toolCallId,
         delta:
           typeof value.data === "string"
             ? value.data
@@ -194,19 +194,19 @@ export const normalizeToolData = (
     case "on_tool_end":
       return {
         event: "tool-finished",
-        toolCallId,
+        tool_call_id: toolCallId,
         output: value.output,
       } satisfies ToolFinishedData;
     case "on_tool_error":
       return {
         event: "tool-error",
-        toolCallId,
+        tool_call_id: toolCallId,
         message: extractErrorMessage(value.error),
       } satisfies ToolErrorData;
     default:
       return {
         event: "tool-output-delta",
-        toolCallId,
+        tool_call_id: toolCallId,
         delta: safeStringify(value),
       } satisfies ToolOutputDeltaData;
   }

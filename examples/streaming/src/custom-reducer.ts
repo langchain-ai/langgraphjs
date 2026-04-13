@@ -1,7 +1,7 @@
 /**
- * Custom StreamReducer — extend streamV2() with domain-specific projections.
+ * Custom StreamTransformer — extend streamV2() with domain-specific projections.
  *
- * This example shows two reducer patterns:
+ * This example shows two transformer patterns:
  *
  *   1. Final values — promises resolved once when the run ends (e.g. total
  *      token count).  Consumers `await` them after the stream is done.
@@ -10,7 +10,7 @@
  *      yields incremental items as events arrive.  Consumers iterate them
  *      concurrently with the main event stream.
  *
- * Both patterns use the same StreamReducer interface.  The difference is
+ * Both patterns use the same StreamTransformer interface.  The difference is
  * what you put in the projection returned from `init()`:
  *   - A `Promise` for final values
  *   - An `AsyncIterable` (via `EventLog`) for streaming updates
@@ -21,7 +21,7 @@
 
 import type {
   ProtocolEvent,
-  StreamReducer,
+  StreamTransformer,
   MessagesEventData,
   ToolsEventData,
 } from "@langchain/langgraph";
@@ -38,7 +38,7 @@ const GREEN = "\x1b[32m";
 /**
  * Pattern 1: Final values — resolved once at the end of the run.
  */
-const statsReducer = (): StreamReducer<{
+const statsTransformer = (): StreamTransformer<{
   toolCallCount: Promise<number>;
   totalTokens: Promise<number>;
 }> => {
@@ -89,12 +89,12 @@ const statsReducer = (): StreamReducer<{
 /**
  * Pattern 2: Streaming updates — yields tool activity as it happens.
  *
- * The EventLog acts as the async buffer: the reducer pushes items into it
+ * The EventLog acts as the async buffer: the transformer pushes items into it
  * during `process()`, and the consumer iterates them in a concurrent
  * `for await` loop.  The log is closed in `finalize()` / `fail()` so the
  * iterator ends when the run ends.
  */
-const toolActivityReducer = (): StreamReducer<{
+const toolActivityTransformer = (): StreamTransformer<{
   toolActivity: AsyncIterable<{ name: string; status: string }>;
 }> => {
   const log = new EventLog<{ name: string; status: string }>();
@@ -131,7 +131,7 @@ const run = await graph.streamV2(
       },
     ],
   },
-  { reducers: [statsReducer, toolActivityReducer] }
+  { transformers: [statsTransformer, toolActivityTransformer] }
 );
 
 console.log(`${BOLD}--- Parallel consumers ---${RESET}\n`);
@@ -151,7 +151,7 @@ await Promise.all([
     }
   })(),
 
-  // Consumer 2: stream tool activity (custom reducer projection)
+  // Consumer 2: stream tool activity (custom transformer projection)
   (async () => {
     for await (const activity of run.extensions.toolActivity) {
       const icon = activity.status === "started" ? YELLOW : GREEN;
@@ -160,6 +160,6 @@ await Promise.all([
   })(),
 ]);
 
-console.log(`\n${BOLD}--- Final stats (from statsReducer) ---${RESET}`);
+console.log(`\n${BOLD}--- Final stats (from statsTransformer) ---${RESET}`);
 console.log(`  Tool calls:   ${await run.extensions.toolCallCount}`);
 console.log(`  Total tokens: ${await run.extensions.totalTokens}`);
