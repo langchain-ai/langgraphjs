@@ -1142,7 +1142,7 @@ export class StateGraph<
       NodeReturnType,
       InterruptType,
       WriterType,
-      TReducers
+      TTransformers
     >({
       builder: this,
       checkpointer,
