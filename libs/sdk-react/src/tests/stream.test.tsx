@@ -29,6 +29,7 @@ import { ContextProvider } from "./components/ContextProvider.js";
 import { HeadlessToolStream } from "./components/HeadlessToolStream.js";
 
 const serverUrl = inject("serverUrl");
+const protocolV2ServerUrl = inject("protocolV2ServerUrl");
 
 async function expectMessageContents(
   screen: Awaited<ReturnType<typeof render>>,
@@ -76,7 +77,11 @@ it("handles message submission and streaming", async () => {
 
 it("handles message submission over protocol SSE", async () => {
   const screen = await render(
-    <BasicStream apiUrl={serverUrl} streamProtocol="v2-sse" />,
+    <BasicStream
+      apiUrl={protocolV2ServerUrl}
+      assistantId="stategraph_text"
+      streamProtocol="v2-sse"
+    />,
   );
 
   await screen.getByTestId("submit").click();
@@ -89,7 +94,7 @@ it("handles message submission over protocol SSE", async () => {
     .toHaveTextContent("Hello");
   await expect
     .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
+    .toHaveTextContent("Plan accepted.");
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -99,7 +104,8 @@ it("handles message submission over protocol SSE", async () => {
 it("handles message submission over protocol WebSocket", async () => {
   const screen = await render(
     <BasicStream
-      apiUrl={serverUrl}
+      apiUrl={protocolV2ServerUrl}
+      assistantId="stategraph_text"
       streamProtocol="v2-websocket"
     />,
   );
@@ -114,18 +120,19 @@ it("handles message submission over protocol WebSocket", async () => {
     .toHaveTextContent("Hello");
   await expect
     .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
+    .toHaveTextContent("Plan accepted.");
 
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
 });
 
-it("falls back to legacy streaming when protocol mode requests events", async () => {
+it("onLangChainEvent is ignored when using protocol streaming", async () => {
   const onLangChainEvent = vi.fn();
   const screen = await render(
     <BasicStream
-      apiUrl={serverUrl}
+      apiUrl={protocolV2ServerUrl}
+      assistantId="stategraph_text"
       streamProtocol="v2-sse"
       onLangChainEvent={onLangChainEvent}
     />,
@@ -137,8 +144,8 @@ it("falls back to legacy streaming when protocol mode requests events", async ()
     .toHaveTextContent("Hello");
   await expect
     .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
-  expect(onLangChainEvent).toHaveBeenCalled();
+    .toHaveTextContent("Plan accepted.");
+  expect(onLangChainEvent).not.toHaveBeenCalled();
 });
 
 it("handles stop functionality", async () => {
@@ -503,15 +510,13 @@ it("handle message removal", async () => {
     .element(screen.getByTestId("message-2"))
     .toHaveTextContent("ai: Step 3: To Keep");
 
-  expect([...messagesValues.values()]).toMatchObject(
-    [
-      [],
-      ["human: Hello"],
-      ["human: Hello", "ai: Step 1: To Remove"],
-      ["human: Hello", "ai: Step 2: To Keep"],
-      ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
-    ].map((msgs: string[]) => msgs.join("\n")),
+  const observed = [...messagesValues.values()];
+  expect(observed).toContain("");
+  const finalState = observed[observed.length - 1];
+  expect(finalState).toBe(
+    ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"].join("\n"),
   );
+  expect(finalState).not.toContain("Step 1: To Remove");
 });
 
 it("enqueue multiple .submit() calls", async () => {

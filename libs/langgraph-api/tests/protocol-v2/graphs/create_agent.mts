@@ -5,12 +5,14 @@ import { z } from "zod/v4";
 import { createDeterministicToolCallingModel } from "./shared.mjs";
 
 const weatherTool = tool(
-  async ({ city }: { city: string }) =>
-    JSON.stringify({
+  async ({ city }: { city: string }) => {
+    await new Promise((r) => setTimeout(r, 200));
+    return JSON.stringify({
       city,
       temp_f: 64,
       condition: "Foggy",
-    }),
+    });
+  },
   {
     name: "get_weather",
     description: "Get weather for a city",
