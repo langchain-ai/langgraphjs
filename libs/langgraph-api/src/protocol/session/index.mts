@@ -425,10 +425,21 @@ export class RunProtocolSession {
         }
         return;
       case "updates": {
+        if (event.normalized) {
+          const data = event.data as { node?: string; values: unknown };
+          await this.pushEvent(
+            this.createEvent(
+              "updates",
+              namespace,
+              data.values as ProtocolEventDataMap["updates"],
+              data.node
+            )
+          );
+          return;
+        }
+
         const normalized = normalizeUpdatesData(event.data);
         if (normalized.node === "__interrupt__") {
-          // Interrupt-only updates should surface on the dedicated input channel,
-          // not through protocol state/update events.
           await this.emitInputRequestedEvents(
             namespace,
             normalizeInputRequestedData(event.data)
@@ -459,6 +470,16 @@ export class RunProtocolSession {
         return;
       }
       case "custom":
+        if (event.normalized) {
+          await this.pushEvent(
+            this.createEvent(
+              "custom",
+              namespace,
+              event.data as ProtocolEventDataMap["custom"]
+            )
+          );
+          return;
+        }
         await this.pushEvent(
           this.createEvent("custom", namespace, {
             payload: event.data,
@@ -479,6 +500,16 @@ export class RunProtocolSession {
         );
         return;
       case "tools":
+        if (event.normalized) {
+          await this.pushEvent(
+            this.createEvent(
+              "tools",
+              namespace,
+              event.data as ProtocolEventDataMap["tools"]
+            )
+          );
+          return;
+        }
         await this.pushEvent(
           this.createEvent(
             "tools",

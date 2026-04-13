@@ -11,6 +11,7 @@ import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_MESSAGES_STREAM_CONFIG_KEY } from "./protocol/constants.mjs";
+import type { SourceStreamEvent } from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -156,7 +157,7 @@ export async function* streamState(
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
   }
-): AsyncGenerator<{ event: string; data: unknown }> {
+): AsyncGenerator<SourceStreamEvent> {
   const kwargs = run.kwargs;
   const graphId = kwargs.config?.configurable?.graph_id;
 
@@ -424,7 +425,7 @@ export async function* streamStateV2(
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
   }
-): AsyncGenerator<{ event: string; data: unknown }> {
+): AsyncGenerator<SourceStreamEvent> {
   const kwargs = run.kwargs;
   const graph = options.graph;
 
@@ -530,7 +531,20 @@ export async function* streamStateV2(
     }
 
     const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
-    yield { event: sseEvent, data };
+
+    /**
+     * These modes have already been converted to their protocol shape by
+     * core's `convertToProtocolEvent`, so the session can skip
+     * re-normalization.  Other modes (values, debug, checkpoints, tasks)
+     * still require API-specific processing (interrupt stripping, state
+     * message normalization, checkpoint preprocessing).
+     */
+    const normalized =
+      mode === "tools" ||
+      mode === "updates" ||
+      mode === "custom" ||
+      mode === "messages";
+    yield { event: sseEvent, data, normalized };
   }
 
   if (kwargs.feedback_keys) {

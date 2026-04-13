@@ -45,11 +45,16 @@ import type { RunProtocolSession } from "./session/index.mjs";
 /**
  * Raw events emitted by the existing LangGraph run stream implementation before
  * they are normalized into protocol-framed events.
+ *
+ * When {@link normalized} is `true` the payload has already been converted to
+ * its protocol shape by the in-process streaming layer (`streamV2`) and should
+ * be passed through without re-normalization.
  */
 export type SourceStreamEvent = {
   id?: string;
   event: string;
   data: unknown;
+  normalized?: boolean;
 };
 
 /**
