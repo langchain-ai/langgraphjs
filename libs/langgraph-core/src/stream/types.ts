@@ -104,8 +104,7 @@ export type InferExtensions<
     ? P & InferExtensions<Rest>
     : Record<string, unknown>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface StreamTransformer<TProjection = any> {
+export interface StreamTransformer<TProjection = unknown> {
   /**
    * Called once before the run starts.
    *
@@ -117,11 +116,20 @@ export interface StreamTransformer<TProjection = any> {
    * Called for each {@link ProtocolEvent} before it is appended to the main log.
    *
    * @param event - Next protocol envelope for this run.
-   * @param emit - Callback to inject a new event into the main event stream
-   *   with a specific channel method (e.g. `"tools"`, `"lifecycle"`,
-   *   `"custom"`) and data payload.  Emitted events appear in the stream
-   *   alongside raw events and flow through the protocol's channel-based
-   *   subscription system to remote clients.
+   * @param emit - Callback to inject a new event into the main event stream.
+   *   The `method` argument becomes the event's channel name.  For
+   *   user-defined (extension) transformers the convention is:
+   *
+   *   - Use any descriptive name, e.g. `emit("a2a", data)`.
+   *   - The projection is available in-process via
+   *     `run.extensions.<name>`.
+   *   - Remote clients subscribe via
+   *     `session.subscribe("custom:<name>")`.
+   *
+   *   Internal (native) transformers emit on protocol-defined channels
+   *   (`"tools"`, `"lifecycle"`, etc.) and their projections appear as
+   *   direct getters on `GraphRunStream` subclasses.
+   *
    * @returns `false` to drop the original event from the main log (use
    *   sparingly; prefer keeping events visible and adding derived data
    *   alongside).
@@ -259,12 +267,48 @@ export interface ToolCallStream<
 }
 
 /**
+ * Marker interface for transformers provided by internal LangChain products
+ * (e.g. ReactAgent's ToolCallTransformer, DeepAgent's SubagentTransformer).
+ *
+ * Native transformers differ from user-defined extension transformers in
+ * where their projection lands on the run stream:
+ *
+ *   - **Native** — projections become direct getters on a
+ *     `GraphRunStream` subclass (e.g. `run.toolCalls`, `run.subagents`).
+ *     They emit events on protocol-defined channels (`tools`, `lifecycle`,
+ *     `tasks`, etc.).
+ *
+ *   - **Extension** (user-defined) — projections are merged into
+ *     `run.extensions`.  Events emitted via `emit()` use an
+ *     application-chosen method name (e.g. `emit("a2a", data)`) and are
+ *     accessible to remote clients via `session.subscribe("custom:<name>")`.
+ *
+ * The `__native` brand is used by downstream stream factory functions
+ * to distinguish native transformers from extension transformers at
+ * registration time.  See `docs/native-stream-transformers.md` for the
+ * full pattern.
+ */
+export interface NativeStreamTransformer<TProjection = unknown>
+  extends StreamTransformer<TProjection> {
+  readonly __native: true;
+}
+
+/**
+ * Type guard that tests whether a transformer is a {@link NativeStreamTransformer}.
+ */
+export function isNativeTransformer(
+  t: StreamTransformer<unknown>
+): t is NativeStreamTransformer {
+  return "__native" in t && (t as NativeStreamTransformer).__native === true;
+}
+
+/**
  * Human-in-the-loop interrupt: stable id plus opaque payload for resume UIs.
  */
-export interface InterruptPayload {
+export interface InterruptPayload<TPayload = unknown> {
   /** Idempotent key for this interrupt instance within the run. */
   interruptId: string;
 
   /** Arbitrary data supplied by the graph (e.g. questions, draft state). */
-  payload: unknown;
+  payload: TPayload;
 }

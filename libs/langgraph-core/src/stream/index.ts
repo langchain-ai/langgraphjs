@@ -23,6 +23,7 @@ export {
   createValuesTransformer,
 } from "./transformers.js";
 export { convertToProtocolEvent } from "./convert.js";
+export { isNativeTransformer } from "./types.js";
 export type {
   Namespace,
   ProtocolEvent,
@@ -42,6 +43,7 @@ export type {
   ToolFinishedData,
   ToolErrorData,
   StreamTransformer,
+  NativeStreamTransformer,
   InferExtensions,
   ChatModelStream,
   ToolCallStatus,

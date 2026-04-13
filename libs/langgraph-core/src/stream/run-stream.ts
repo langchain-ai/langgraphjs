@@ -11,6 +11,11 @@
  *   .interrupts    — interrupt payloads
  *   .abort()       — programmatic cancellation
  *   .extensions    — merged transformer projections
+ *
+ * Internal LangChain products (ReactAgent, DeepAgent) can subclass
+ * GraphRunStream to add native projections (e.g. `run.toolCalls`,
+ * `run.subagents`).  See docs/native-stream-transformers.md for the
+ * pattern.
  */
 
 import type { StreamChunk } from "../pregel/stream.js";
