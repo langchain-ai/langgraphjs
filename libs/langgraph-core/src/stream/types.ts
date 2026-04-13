@@ -288,8 +288,9 @@ export interface ToolCallStream<
  * registration time.  See `docs/native-stream-transformers.md` for the
  * full pattern.
  */
-export interface NativeStreamTransformer<TProjection = unknown>
-  extends StreamTransformer<TProjection> {
+export interface NativeStreamTransformer<
+  TProjection = unknown,
+> extends StreamTransformer<TProjection> {
   readonly __native: true;
 }
 

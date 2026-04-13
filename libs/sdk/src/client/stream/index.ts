@@ -111,10 +111,7 @@ type InternalEventSubscription = EventSubscription<unknown> & {
 };
 
 function normalizeSubscribeParams(
-  paramsOrChannels:
-    | SubscribeParams
-    | Channel
-    | readonly Channel[],
+  paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
   options: SubscribeOptions = {}
 ): SubscribeParams {
   if (
@@ -475,10 +472,7 @@ export class Session {
   >;
   async subscribe(params: SubscribeParams): Promise<SubscriptionHandle<Event>>;
   async subscribe(
-    paramsOrChannels:
-      | SubscribeParams
-      | Channel
-      | readonly Channel[],
+    paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
     options: SubscribeOptions = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<SubscriptionHandle<Event, any>> {
