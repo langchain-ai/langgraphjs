@@ -429,8 +429,8 @@ export class Graph<
   compile<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TTransformers extends ReadonlyArray<
-    () => import("../stream/types.js").StreamTransformer<any>
-  > = [],
+      () => import("../stream/types.js").StreamTransformer<any>
+    > = [],
   >({
     checkpointer,
     interruptBefore,

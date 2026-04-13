@@ -579,7 +579,8 @@ export class Pregel<
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
     this.userInterrupt = fields.userInterrupt;
-    this.streamTransformers = (fields.streamTransformers ?? []) as TStreamTransformers;
+    this.streamTransformers = (fields.streamTransformers ??
+      []) as TStreamTransformers;
 
     if (this.autoValidate) {
       this.validate();
@@ -1960,7 +1961,8 @@ export class Pregel<
    */
   async streamV2<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
   >(
     input: InputType | CommandType | null,
     options?: Partial<
@@ -2013,7 +2015,10 @@ export class Pregel<
       ...(userTransformers ?? []),
     ] as unknown as TMerged;
 
-    return createGraphRunStream<OutputType, TMerged>(source, mergedTransformers);
+    return createGraphRunStream<OutputType, TMerged>(
+      source,
+      mergedTransformers
+    );
   }
 
   /**

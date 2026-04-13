@@ -120,8 +120,7 @@ export class GraphRunStream<
   get subgraphs(): AsyncIterable<SubgraphRunStream> {
     const iter = this._mux.subscribeSubgraphs(this.path, this.#discoveryStart);
     return {
-      [Symbol.asyncIterator]: () =>
-        iter as AsyncIterator<SubgraphRunStream>,
+      [Symbol.asyncIterator]: () => iter as AsyncIterator<SubgraphRunStream>,
     };
   }
 

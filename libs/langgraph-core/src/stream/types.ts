@@ -94,16 +94,15 @@ export interface ProtocolEvent {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type InferExtensions<
   T extends ReadonlyArray<() => StreamTransformer<any>>,
-> =
-  T extends readonly []
-    ? Record<string, never>
-    : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      T extends readonly [
-          () => StreamTransformer<infer P>,
-          ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
-        ]
-      ? P & InferExtensions<Rest>
-      : Record<string, unknown>;
+> = T extends readonly []
+  ? Record<string, never>
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    T extends readonly [
+        () => StreamTransformer<infer P>,
+        ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
+      ]
+    ? P & InferExtensions<Rest>
+    : Record<string, unknown>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface StreamTransformer<TProjection = any> {

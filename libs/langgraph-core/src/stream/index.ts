@@ -7,13 +7,7 @@
 
 export { EventLog } from "./event-log.js";
 export { ChatModelStreamImpl } from "./chat-model-stream.js";
-export {
-  StreamMux,
-  pump,
-  nsKey,
-  hasPrefix,
-  STREAM_V2_MODES,
-} from "./mux.js";
+export { StreamMux, pump, nsKey, hasPrefix, STREAM_V2_MODES } from "./mux.js";
 export type {
   StreamHandle,
   SubgraphStreamFactory,
