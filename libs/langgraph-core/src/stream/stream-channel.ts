@@ -68,5 +68,6 @@ export class StreamChannel<T> implements AsyncIterable<T> {
 export function isStreamChannel(
   value: unknown
 ): value is StreamChannel<unknown> {
+  // oxlint-disable-next-line no-instanceof/no-instanceof
   return value instanceof StreamChannel;
 }
