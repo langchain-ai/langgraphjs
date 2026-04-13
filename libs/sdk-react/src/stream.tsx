@@ -9,6 +9,7 @@ import type {
   WithClassMessages,
 } from "@langchain/langgraph-sdk/ui";
 import { useStreamLGP } from "./stream.lgp.js";
+import { useStreamProtocol } from "./stream.protocol.js";
 import { useStreamCustom } from "./stream.custom.js";
 import type { UseStreamCustomOptions } from "./types.js";
 
@@ -23,7 +24,19 @@ function isCustomOptions<
   return "transport" in options;
 }
 
-type UseStreamImplementation = typeof useStreamLGP | typeof useStreamCustom;
+function isProtocolOptions(
+  options: UseStreamOptions<Record<string, unknown>, BagTemplate>
+): boolean {
+  return (
+    options.streamProtocol === "v2-sse" ||
+    options.streamProtocol === "v2-websocket"
+  );
+}
+
+type UseStreamImplementation =
+  | typeof useStreamLGP
+  | typeof useStreamProtocol
+  | typeof useStreamCustom;
 
 type AnyUseStreamOptions =
   | UseStreamOptions<Record<string, unknown>, BagTemplate>
@@ -32,7 +45,9 @@ type AnyUseStreamOptions =
 function selectStreamImplementation(
   options: AnyUseStreamOptions
 ): UseStreamImplementation {
-  return isCustomOptions(options) ? useStreamCustom : useStreamLGP;
+  if (isCustomOptions(options)) return useStreamCustom;
+  if (isProtocolOptions(options)) return useStreamProtocol;
+  return useStreamLGP;
 }
 
 export type {

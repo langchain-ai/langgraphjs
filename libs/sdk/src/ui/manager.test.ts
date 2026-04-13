@@ -281,6 +281,406 @@ describe("StreamManager", () => {
         { namespace: undefined, mutate: expect.any(Function) }
       );
     });
+
+    it("binds protocol tool namespaces so subagent message chunks propagate", async () => {
+      const protocolStreamManager = new StreamManager<TestState>(
+        new MessageTupleManager(),
+        {
+          throttle: false,
+          filterSubagentMessages: true,
+        }
+      );
+
+      const events = [
+        {
+          event: "updates" as const,
+          data: {
+            coordinator: {
+              messages: [
+                {
+                  id: "root_ai_1",
+                  type: "ai",
+                  content: "",
+                  tool_calls: [
+                    {
+                      id: "call_1234",
+                      name: "task",
+                      args: {
+                        description: "Research protocol details",
+                        subagent_type: "protocol-researcher",
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          event: "tools|tools:internal_worker_1" as const,
+          data: {
+            event: "on_tool_start" as const,
+            name: "task",
+            toolCallId: "call_1234",
+            input: '{"description":"Research protocol details"}',
+          },
+        },
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "subgraph_ai_1",
+              type: "ai",
+              content: "Working through the checklist",
+            },
+            {
+              langgraph_checkpoint_ns: "tools:internal_worker_1|model_request:abc",
+              checkpoint_ns: "tools:internal_worker_1|model_request:abc",
+            },
+          ] as [
+            { id: string; content: string; type: string },
+            Record<string, unknown>
+          ],
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (protocolStreamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError: vi.fn(),
+      });
+
+      const subagent = protocolStreamManager.getSubagent("call_1234");
+      expect(subagent).toBeDefined();
+      expect(subagent?.status).toBe("running");
+      expect(subagent?.namespace).toEqual(["tools:internal_worker_1"]);
+      expect(subagent?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "subgraph_ai_1",
+            type: "ai",
+            content: "Working through the checklist",
+          }),
+        ])
+      );
+    });
+
+    it("tracks sibling nested task subgraphs under one parent namespace", async () => {
+      const protocolStreamManager = new StreamManager<TestState>(
+        new MessageTupleManager(),
+        {
+          throttle: false,
+          filterSubagentMessages: true,
+        }
+      );
+
+      const events = [
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_start" as const,
+            name: "task",
+            toolCallId: "call_nested_1",
+            input: '{"description":"alpha-worker","subagent_type":"parallel-worker"}',
+          },
+        },
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_start" as const,
+            name: "task",
+            toolCallId: "call_nested_2",
+            input: '{"description":"beta-worker","subagent_type":"parallel-worker"}',
+          },
+        },
+        {
+          event: "values|tools:parent_worker" as const,
+          data: {
+            messages: [
+              {
+                id: "subgraph_human_1",
+                type: "human",
+                content: "Start work",
+              },
+              {
+                id: "subgraph_ai_1",
+                type: "ai",
+                content: "Poem A complete",
+                tool_calls: [],
+              },
+            ],
+          } as TestState,
+        },
+        {
+          event: "values|tools:parent_worker|1" as const,
+          data: {
+            messages: [
+              {
+                id: "subgraph_human_2",
+                type: "human",
+                content: "Start work",
+              },
+              {
+                id: "subgraph_ai_2",
+                type: "ai",
+                content: "Poem B complete",
+                tool_calls: [],
+              },
+            ],
+          } as TestState,
+        },
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_end" as const,
+            name: "task",
+            toolCallId: "wrapped_result_1",
+            output: "Poem A complete",
+          },
+        },
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_end" as const,
+            name: "task",
+            toolCallId: "wrapped_result_2",
+            output: "Poem B complete",
+          },
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (protocolStreamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError: vi.fn(),
+      });
+
+      const subagentA = protocolStreamManager.getSubagent("call_nested_1");
+      const subagentB = protocolStreamManager.getSubagent("call_nested_2");
+
+      expect(subagentA).toBeDefined();
+      expect(subagentB).toBeDefined();
+      expect(protocolStreamManager.getSubagents().size).toBe(2);
+
+      expect(subagentA?.status).toBe("complete");
+      expect(subagentA?.namespace).toEqual(["tools:parent_worker"]);
+      expect(subagentA?.toolCall.args).toMatchObject({
+        description: "alpha-worker",
+        subagent_type: "parallel-worker",
+      });
+      expect(subagentA?.result).toBe("Poem A complete");
+      expect(subagentA?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "subgraph_human_1",
+            type: "human",
+            content: "Start work",
+          }),
+          expect.objectContaining({
+            id: "subgraph_ai_1",
+            type: "ai",
+            content: "Poem A complete",
+          }),
+        ])
+      );
+
+      expect(subagentB?.status).toBe("complete");
+      expect(subagentB?.namespace).toEqual(["tools:parent_worker", "1"]);
+      expect(subagentB?.toolCall.args).toMatchObject({
+        description: "beta-worker",
+        subagent_type: "parallel-worker",
+      });
+      expect(subagentB?.result).toBe("Poem B complete");
+      expect(subagentB?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "subgraph_human_2",
+            type: "human",
+            content: "Start work",
+          }),
+          expect.objectContaining({
+            id: "subgraph_ai_2",
+            type: "ai",
+            content: "Poem B complete",
+          }),
+        ])
+      );
+    });
+
+    it("does not mark a live subagent complete from values alone", async () => {
+      const protocolStreamManager = new StreamManager<TestState>(
+        new MessageTupleManager(),
+        {
+          throttle: false,
+          filterSubagentMessages: true,
+        }
+      );
+
+      const events = [
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_start" as const,
+            name: "task",
+            toolCallId: "call_live_1",
+            input:
+              '{"description":"steady-worker","subagent_type":"parallel-worker"}',
+          },
+        },
+        {
+          event: "values|tools:parent_worker" as const,
+          data: {
+            messages: [
+              {
+                id: "subgraph_human_1",
+                type: "human",
+                content: "Do the work",
+              },
+              {
+                id: "subgraph_ai_1",
+                type: "ai",
+                content: "Final answer",
+                tool_calls: [],
+              },
+            ],
+          } as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (protocolStreamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError: vi.fn(),
+      });
+
+      const subagent = protocolStreamManager.getSubagent("call_live_1");
+      expect(subagent).toBeDefined();
+      expect(subagent?.status).toBe("running");
+      expect(subagent?.result).toBeNull();
+    });
+
+    it("keeps a completed subagent complete when late updates and messages arrive", async () => {
+      const protocolStreamManager = new StreamManager<TestState>(
+        new MessageTupleManager(),
+        {
+          throttle: false,
+          filterSubagentMessages: true,
+        }
+      );
+
+      const events = [
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_start" as const,
+            name: "task",
+            toolCallId: "call_complete_1",
+            input:
+              '{"description":"steady-worker","subagent_type":"parallel-worker"}',
+          },
+        },
+        {
+          event: "values|tools:parent_worker" as const,
+          data: {
+            messages: [
+              {
+                id: "subgraph_human_1",
+                type: "human",
+                content: "Do the work",
+              },
+              {
+                id: "subgraph_ai_1",
+                type: "ai",
+                content: "Final answer",
+                tool_calls: [],
+              },
+            ],
+          } as TestState,
+        },
+        {
+          event: "tools|tools:parent_worker" as const,
+          data: {
+            event: "on_tool_end" as const,
+            name: "task",
+            toolCallId: "wrapped_result_complete_1",
+            output: "Final answer",
+          },
+        },
+        {
+          event: "updates|tools:parent_worker" as const,
+          data: {
+            after_finalize: {
+              messages: [],
+            },
+          },
+        },
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "subgraph_ai_2",
+              type: "ai",
+              content: "Trailing stream chunk",
+            },
+            {
+              langgraph_checkpoint_ns: "tools:parent_worker|model_request:abc",
+              checkpoint_ns: "tools:parent_worker|model_request:abc",
+            },
+          ] as [
+            { id: string; content: string; type: string },
+            Record<string, unknown>
+          ],
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (protocolStreamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => null,
+        onError: vi.fn(),
+      });
+
+      const subagent = protocolStreamManager.getSubagent("call_complete_1");
+      expect(subagent).toBeDefined();
+      expect(subagent?.status).toBe("complete");
+      expect(subagent?.result).toBe("Final answer");
+      expect(subagent?.messages.length).toBeGreaterThan(0);
+    });
   });
 
   describe("multiple interrupts", () => {
@@ -1173,6 +1573,158 @@ describe("StreamManager", () => {
         expect(typeof (msg as CoreBaseMessage).getType).toBe("undefined");
         expect(msg.type).toBeDefined();
       }
+    });
+
+    it("prefers richer subagent values messages over partial streamed messages", () => {
+      const mgr = createSubagentManager();
+
+      mgr.registerFromToolCalls(
+        [
+          {
+            id: "task-1",
+            name: "task",
+            args: {
+              subagent_type: "researcher",
+              description: "Search the web for protocol risks",
+            },
+          },
+        ],
+        "main-ai-1",
+      );
+      mgr.markRunning("task-1");
+
+      // Simulate partial live streaming where the initial AI tool-call message
+      // was missed before namespace mapping settled.
+      mgr.addMessageToSubagent("task-1", {
+        type: "human",
+        id: "sub-human-1",
+        content: "Search the web for protocol risks",
+      });
+      mgr.addMessageToSubagent("task-1", {
+        type: "tool",
+        id: "sub-tool-1",
+        tool_call_id: "search-1",
+        name: "search_web",
+        content: "{\"status\":\"success\"}",
+      });
+      mgr.addMessageToSubagent("task-1", {
+        type: "ai",
+        id: "sub-ai-final-1",
+        content: "Research completed.",
+        tool_calls: [],
+      });
+
+      // Protocol values events already contain the full subagent history.
+      mgr.updateSubagentValues("task-1", {
+        messages: [
+          {
+            type: "human",
+            id: "sub-human-1",
+            content: "Search the web for protocol risks",
+          },
+          {
+            type: "ai",
+            id: "search-1-message",
+            content: "",
+            tool_calls: [
+              {
+                id: "search-1",
+                name: "search_web",
+                args: { query: "protocol risks" },
+              },
+            ],
+          },
+          {
+            type: "tool",
+            id: "sub-tool-1",
+            tool_call_id: "search-1",
+            name: "search_web",
+            content: "{\"status\":\"success\"}",
+          },
+          {
+            type: "ai",
+            id: "sub-ai-final-1",
+            content: "Research completed.",
+            tool_calls: [],
+          },
+        ],
+      });
+
+      const subagent = mgr.getSubagent("task-1");
+      expect(subagent).toBeDefined();
+      expect(subagent!.toolCalls).toHaveLength(1);
+      expect(subagent!.toolCalls[0]?.call.name).toBe("search_web");
+    });
+
+    it("updates reconstructed subagent messages when fetched subgraph history is richer", () => {
+      const mgr = createSubagentManager();
+
+      mgr.registerFromToolCalls(
+        [
+          {
+            id: "task-1",
+            name: "task",
+            args: {
+              subagent_type: "researcher",
+              description: "Search the web for protocol risks",
+            },
+          },
+        ],
+        "main-ai-1",
+      );
+      mgr.markRunning("task-1");
+      mgr.addMessageToSubagent("task-1", {
+        type: "human",
+        id: "sub-human-1",
+        content: "Search the web for protocol risks",
+      });
+      mgr.addMessageToSubagent("task-1", {
+        type: "ai",
+        id: "sub-ai-final-1",
+        content: "Research completed.",
+        tool_calls: [],
+      });
+
+      expect(mgr.getSubagent("task-1")?.toolCalls).toHaveLength(0);
+
+      const updated = mgr.updateSubagentFromSubgraphState("task-1", [
+        {
+          type: "human",
+          id: "sub-human-1",
+          content: "Search the web for protocol risks",
+        },
+        {
+          type: "ai",
+          id: "search-1-message",
+          content: "",
+          tool_calls: [
+            {
+              id: "search-1",
+              name: "search_web",
+              args: { query: "protocol risks" },
+            },
+          ],
+        },
+        {
+          type: "tool",
+          id: "sub-tool-1",
+          tool_call_id: "search-1",
+          name: "search_web",
+          content: "{\"status\":\"success\"}",
+        },
+        {
+          type: "ai",
+          id: "sub-ai-final-1",
+          content: "Research completed.",
+          tool_calls: [],
+        },
+      ]);
+
+      expect(updated).toBe(true);
+      expect(mgr.getSubagent("task-1")?.toolCalls).toHaveLength(1);
+      expect(mgr.getSubagent("task-1")?.toolCalls[0]?.call.name).toBe(
+        "search_web",
+      );
     });
   });
 

@@ -74,6 +74,73 @@ it("handles message submission and streaming", async () => {
     .toHaveTextContent("Not loading");
 });
 
+it("handles message submission over protocol SSE", async () => {
+  const screen = await render(
+    <BasicStream apiUrl={serverUrl} streamProtocol="v2-sse" />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("handles message submission over protocol WebSocket", async () => {
+  const screen = await render(
+    <BasicStream
+      apiUrl={serverUrl}
+      streamProtocol="v2-websocket"
+    />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+});
+
+it("falls back to legacy streaming when protocol mode requests events", async () => {
+  const onLangChainEvent = vi.fn();
+  const screen = await render(
+    <BasicStream
+      apiUrl={serverUrl}
+      streamProtocol="v2-sse"
+      onLangChainEvent={onLangChainEvent}
+    />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+  expect(onLangChainEvent).toHaveBeenCalled();
+});
+
 it("handles stop functionality", async () => {
   const screen = await render(<BasicStream apiUrl={serverUrl} />);
 

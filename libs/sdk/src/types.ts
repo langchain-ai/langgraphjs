@@ -7,10 +7,12 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
+export type StreamProtocol = "legacy" | "v2-sse" | "v2-websocket";
 export type StreamEvent =
   | "events"
   | "metadata"
   | "debug"
+  | "input"
   | "updates"
   | "values"
   | "messages/partial"
@@ -185,6 +187,18 @@ export interface RunsStreamPayload<
    * If true, the stream can be resumed and replayed in its entirety even after disconnection.
    */
   streamResumable?: boolean;
+
+  /**
+   * Streaming transport to use for this request.
+   * - `"legacy"`: use the existing `/runs/stream` SSE endpoints.
+   * - `"v2-sse"`: use the session-based protocol over HTTP + SSE.
+   *
+   * Requests automatically fall back to `"legacy"` when the selected stream
+   * modes are not yet supported by the protocol transport.
+   *
+   * @default "legacy"
+   */
+  streamProtocol?: StreamProtocol;
 
   /**
    * Pass one or more feedbackKeys if you want to request short-lived signed URLs

@@ -51,19 +51,22 @@
     "directory": "libs/langgraph-api"
   },
   "scripts": {
-    "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/",
+    "clean": "rm -rf dist/ .turbo/ ./tests/graphs/.langgraph_api/ ./tests/protocol-v2/graphs/.langgraph_api/",
     "build": "pnpm turbo build:internal --filter=@langchain/langgraph-api",
     "build:internal": "pnpm clean && node scripts/build.mjs",
     "dev": "tsx ./tests/utils.server.mts --dev",
     "prepublish": "pnpm build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:protocol-v2": "vitest run tests/protocol-v2"
   },
   "dependencies": {
     "@babel/code-frame": "^7.26.2",
     "@hono/node-server": "^1.19.13",
+    "@hono/node-ws": "^1.3.0",
     "@hono/zod-validator": "^0.7.6",
     "@langchain/langgraph-ui": "workspace:*",
+    "@langchain/protocol": "^0.0.5",
     "@types/json-schema": "^7.0.15",
     "@typescript/vfs": "^1.6.0",
     "dedent": "^1.5.3",
@@ -104,7 +107,9 @@
     "@types/react-dom": "^19.0.3",
     "@types/semver": "^7.7.0",
     "@types/uuid": "^10.0.0",
+    "deepagents": "^1.9.0",
     "jose": "^6.0.10",
+    "langchain": "^1.2.30",
     "postgres": "^3.4.5",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4",

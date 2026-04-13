@@ -1,6 +1,30 @@
 export { Client, getApiKey } from "./client.js";
 export type { ClientConfig, RequestHook } from "./client.js";
 
+export {
+  ProtocolClient,
+  ProtocolError,
+  Session,
+  SubscriptionHandle,
+  MessageSubscriptionHandle,
+  EventBuffer,
+  MessageAssembler,
+  ProtocolSseTransportAdapter,
+  ProtocolWebSocketTransportAdapter,
+} from "./client.js";
+
+export type {
+  TransportAdapter,
+  AssembledMessage,
+  ProtocolClientOptions,
+  SessionOrderingState,
+  EventSubscription,
+  MessageSubscription,
+  ProtocolRequestHook,
+  ProtocolSseTransportOptions,
+  ProtocolWebSocketTransportOptions,
+} from "./client.js";
+
 export type {
   Assistant,
   AssistantBase,
@@ -32,6 +56,7 @@ export type {
   Command,
   OnConflictBehavior,
   RunsInvokePayload,
+  StreamProtocol,
   StreamEvent,
 } from "./types.js";
 export type {
