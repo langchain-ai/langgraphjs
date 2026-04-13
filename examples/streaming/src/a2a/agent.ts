@@ -19,7 +19,7 @@ import { tool } from "langchain";
 import { z } from "zod/v4";
 
 import { model, searchWeb } from "../agents/shared.js";
-import { createA2ATransformer } from "./reducer.js";
+import { createA2ATransformer } from "./transformer.js";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

@@ -91,14 +91,14 @@ export interface ProtocolEvent {
  * Given `[() => StreamTransformer<{ a: number }>, () => StreamTransformer<{ b: string }>]`,
  * produces `{ a: number } & { b: string }`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type InferExtensions<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends ReadonlyArray<() => StreamTransformer<any>>,
 > = T extends readonly []
   ? Record<string, never>
-  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    T extends readonly [
+  : T extends readonly [
         () => StreamTransformer<infer P>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
       ]
     ? P & InferExtensions<Rest>

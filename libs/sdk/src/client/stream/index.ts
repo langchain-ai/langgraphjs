@@ -46,7 +46,6 @@ import type {
   ProtocolClientOptions,
   SessionModules,
   SessionOrderingState,
-  SubscribableChannel,
   SubscribeOptions,
   YieldForChannel,
   YieldForChannels,
@@ -114,8 +113,8 @@ type InternalEventSubscription = EventSubscription<unknown> & {
 function normalizeSubscribeParams(
   paramsOrChannels:
     | SubscribeParams
-    | SubscribableChannel
-    | readonly SubscribableChannel[],
+    | Channel
+    | readonly Channel[],
   options: SubscribeOptions = {}
 ): SubscribeParams {
   if (
@@ -462,13 +461,13 @@ export class Session {
     }
   }
 
-  async subscribe<TChannel extends SubscribableChannel>(
+  async subscribe<TChannel extends Channel>(
     channel: TChannel,
     options?: SubscribeOptions
   ): Promise<
     SubscriptionHandle<EventForChannel<TChannel>, YieldForChannel<TChannel>>
   >;
-  async subscribe<const TChannels extends readonly SubscribableChannel[]>(
+  async subscribe<const TChannels extends readonly Channel[]>(
     channels: TChannels,
     options?: SubscribeOptions
   ): Promise<
@@ -478,8 +477,8 @@ export class Session {
   async subscribe(
     paramsOrChannels:
       | SubscribeParams
-      | SubscribableChannel
-      | readonly SubscribableChannel[],
+      | Channel
+      | readonly Channel[],
     options: SubscribeOptions = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<SubscriptionHandle<Event, any>> {

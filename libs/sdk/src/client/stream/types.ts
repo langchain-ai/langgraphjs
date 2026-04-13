@@ -32,12 +32,6 @@ import type { TransportAdapter } from "./transport.js";
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;
 
-/**
- * Extends the protocol `Channel` type with support for named custom
- * channels like `"custom:a2a"`, allowing fine-grained subscriptions.
- */
-export type SubscribableChannel = Channel | `custom:${string}`;
-
 export type EventMethodByChannel = {
   values: "values";
   updates: "updates";
@@ -56,14 +50,14 @@ export type EventMethodByChannel = {
   tasks: "tasks";
 };
 
-export type EventForChannel<TChannel extends SubscribableChannel> =
-  TChannel extends Channel
+export type EventForChannel<TChannel extends Channel> =
+  TChannel extends keyof EventMethodByChannel
     ? Extract<Event, { method: EventMethodByChannel[TChannel] }>
     : TChannel extends `custom:${string}`
       ? Extract<Event, { method: "custom" }>
       : never;
 
-export type EventForChannels<TChannels extends readonly SubscribableChannel[]> =
+export type EventForChannels<TChannels extends readonly Channel[]> =
   EventForChannel<TChannels[number]>;
 
 /**
@@ -72,10 +66,10 @@ export type EventForChannels<TChannels extends readonly SubscribableChannel[]> =
  * - `"custom:name"` channels yield `unknown` (the raw emitted payload).
  * - All other channels yield the full protocol `Event`.
  */
-export type YieldForChannel<TChannel extends SubscribableChannel> =
+export type YieldForChannel<TChannel extends Channel> =
   TChannel extends `custom:${string}` ? unknown : EventForChannel<TChannel>;
 
-export type YieldForChannels<TChannels extends readonly SubscribableChannel[]> =
+export type YieldForChannels<TChannels extends readonly Channel[]> =
   YieldForChannel<TChannels[number]>;
 
 export interface ProtocolClientOptions {
