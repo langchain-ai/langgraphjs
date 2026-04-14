@@ -24,7 +24,7 @@ const websocketIt =
 
 const projectStategraphParityTranscript = (transcript: any) => ({
   tree: {
-    graphName: transcript.tree?.graphName,
+    graph_name: transcript.tree?.graph_name,
     status: transcript.tree?.status,
   },
   finalAiContent: [...(transcript.values?.messages ?? [])]
@@ -38,12 +38,12 @@ const projectStategraphParityTranscript = (transcript: any) => ({
         event: data.event,
         index: data.index,
         reason: data.reason,
-        contentBlock:
-          data.contentBlock == null
+        content_block:
+          data.content_block == null
             ? undefined
             : {
-                type: data.contentBlock.type,
-                text: data.contentBlock.text,
+                type: data.content_block.type,
+                text: data.content_block.text,
               },
       };
     }),
@@ -51,7 +51,7 @@ const projectStategraphParityTranscript = (transcript: any) => ({
 
 const projectCreateAgentParityTranscript = (transcript: any) => ({
   tree: {
-    graphName: transcript.tree?.graphName,
+    graph_name: transcript.tree?.graph_name,
     status: transcript.tree?.status,
   },
   finalAiContent: [...(transcript.values?.messages ?? [])]
@@ -65,14 +65,14 @@ const projectCreateAgentParityTranscript = (transcript: any) => ({
         event: data.event,
         index: data.index,
         reason: data.reason,
-        contentBlock:
-          data.contentBlock == null
+        content_block:
+          data.content_block == null
             ? undefined
             : {
-                type: data.contentBlock.type,
-                text: data.contentBlock.text,
-                name: data.contentBlock.name,
-                args: data.contentBlock.args,
+                type: data.content_block.type,
+                text: data.content_block.text,
+                name: data.content_block.name,
+                args: data.content_block.args,
               },
       };
     }),
@@ -89,7 +89,7 @@ const projectDeepAgentParityTranscript = (transcript: any) => {
 
   return {
     tree: {
-      graphName: transcript.tree?.graphName,
+      graph_name: transcript.tree?.graph_name,
       status: transcript.tree?.status,
     },
     finalAiContent: [...messages]
@@ -112,7 +112,7 @@ const projectDeepAgentParityTranscript = (transcript: any) => {
         return {
           namespace: event.params?.namespace ?? [],
           event: data.event,
-          graphName: data.graphName,
+          graph_name: data.graph_name,
         };
       }),
   };
@@ -257,7 +257,7 @@ describe("protocol v2 snapshots", () => {
       expect(runResponse).toMatchObject({
         type: "success",
         id: 2,
-        result: { runId: expect.any(String) },
+        result: { run_id: expect.any(String) },
       });
 
       const initialEvents = await readSseEventsUntilIdle(eventsResponse, 1_000);
@@ -271,7 +271,7 @@ describe("protocol v2 snapshots", () => {
         params: {
           namespace: [],
           data: {
-            interruptId: expect.any(String),
+            interrupt_id: expect.any(String),
             payload: {
               prompt: "Approve the outbound action?",
               request: "Send the rollout update.",
@@ -287,9 +287,9 @@ describe("protocol v2 snapshots", () => {
 
       const interruptId = (
         inputEvent?.data as {
-          params?: { data?: { interruptId?: string } };
+          params?: { data?: { interrupt_id?: string } };
         }
-      )?.params?.data?.interruptId;
+      )?.params?.data?.interrupt_id;
       expect(typeof interruptId).toBe("string");
 
       const respondResponse = await sendSessionCommand(sessionId, {
@@ -297,7 +297,7 @@ describe("protocol v2 snapshots", () => {
         method: "input.respond",
         params: {
           namespace: [],
-          interruptId,
+          interrupt_id: interruptId,
           response: {
             approved: true,
             reviewer: "protocol-v2",

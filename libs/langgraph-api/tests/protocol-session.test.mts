@@ -85,14 +85,14 @@ describe("RunProtocolSession", () => {
     expect(sent).toEqual([
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "input.requested",
         params: {
           namespace: [],
           timestamp: expect.any(Number),
           data: {
-            interruptId: "interrupt_1",
+            interrupt_id: "interrupt_1",
             payload: {
               prompt: "Approve deployment?",
             },
@@ -101,7 +101,7 @@ describe("RunProtocolSession", () => {
       },
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "values",
         params: {
@@ -140,13 +140,13 @@ describe("RunProtocolSession", () => {
         type: "success",
         id: 1,
         result: {
-          subscriptionId: expect.any(String),
-          replayedEvents: 1,
+          subscription_id: expect.any(String),
+          replayed_events: 1,
         },
       },
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "updates",
         params: {
@@ -255,7 +255,7 @@ describe("RunProtocolSession", () => {
 
     expect(streamedEvent).toEqual({
       type: "event",
-      eventId: expect.any(String),
+      event_id: expect.any(String),
       seq: expect.any(Number),
       method: "values",
       params: {
@@ -312,7 +312,7 @@ describe("RunProtocolSession", () => {
         namespace: ["tools:call_123", "model:worker_456"],
         data: {
           event: "message-start",
-          messageId: "message_1",
+          message_id: "message_1",
         },
       },
     });
@@ -373,7 +373,8 @@ describe("RunProtocolSession", () => {
         timestamp: expect.any(Number),
         data: {
           event: "message-start",
-          messageId: "message_1",
+          message_id: "message_1",
+          role: "ai",
         },
       },
       {
@@ -382,7 +383,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-start",
           index: 0,
-          contentBlock: { type: "text", text: "" },
+          content_block: { type: "text", text: "" },
         },
       },
       {
@@ -391,7 +392,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-delta",
           index: 0,
-          contentBlock: { type: "text", text: "Hel" },
+          content_block: { type: "text", text: "Hel" },
         },
       },
     ]);
@@ -497,7 +498,8 @@ describe("RunProtocolSession", () => {
         timestamp: expect.any(Number),
         data: {
           event: "message-start",
-          messageId: "chatcmpl-1",
+          message_id: "chatcmpl-1",
+          role: "ai",
           metadata: {
             provider: "openai",
             model: "gpt-4o-mini",
@@ -513,7 +515,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-start",
           index: 0,
-          contentBlock: { type: "tool_call_chunk", args: "" },
+          content_block: { type: "tool_call_chunk", args: "" },
         },
       },
       {
@@ -522,7 +524,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-delta",
           index: 0,
-          contentBlock: { type: "tool_call_chunk", args: "scrip" },
+          content_block: { type: "tool_call_chunk", args: "scrip" },
         },
       },
     ]);
@@ -599,7 +601,8 @@ describe("RunProtocolSession", () => {
         timestamp: expect.any(Number),
         data: {
           event: "message-start",
-          messageId: "chatcmpl-final",
+          message_id: "chatcmpl-final",
+          role: "ai",
           metadata: {
             provider: "openai",
           },
@@ -611,7 +614,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-start",
           index: 0,
-          contentBlock: {
+          content_block: {
             type: "tool_call_chunk",
             id: "call_123",
             name: "task",
@@ -625,7 +628,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-delta",
           index: 0,
-          contentBlock: {
+          content_block: {
             type: "tool_call_chunk",
             id: "call_123",
             name: "task",
@@ -639,7 +642,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-finish",
           index: 0,
-          contentBlock: {
+          content_block: {
             type: "tool_call",
             id: "call_123",
             name: "task",
@@ -762,7 +765,7 @@ describe("RunProtocolSession", () => {
     expect(sent).toEqual([
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "values",
         params: {
@@ -897,8 +900,9 @@ describe("RunProtocolSession", () => {
             namespace: ["tools:call_123"],
             data: {
               event: "spawned",
-              graphName: "tools",
+              graph_name: "tools",
             },
+            timestamp: expect.any(Number),
           }),
         }),
         expect.objectContaining({
@@ -907,7 +911,7 @@ describe("RunProtocolSession", () => {
             namespace: ["tools:call_123"],
             data: expect.objectContaining({
               event: "message-start",
-              messageId: "subagent:call_123:human",
+              message_id: "subagent:call_123:human",
             }),
           }),
         }),
@@ -918,7 +922,7 @@ describe("RunProtocolSession", () => {
             data: expect.objectContaining({
               event: "content-block-delta",
               index: 0,
-              contentBlock: {
+              content_block: {
                 type: "text",
                 text: "Research protocol details",
               },
@@ -949,7 +953,7 @@ describe("RunProtocolSession", () => {
             namespace: ["tools:call_123"],
             data: {
               event: "completed",
-              graphName: "tools",
+              graph_name: "tools",
             },
           }),
         }),
@@ -1022,7 +1026,7 @@ describe("RunProtocolSession", () => {
         timestamp: expect.any(Number),
         data: {
           event: "message-start",
-          messageId: "message_1",
+          message_id: "message_1",
           metadata: {
             provider: "openai",
             model: "fake",
@@ -1033,6 +1037,7 @@ describe("RunProtocolSession", () => {
             serviceTier: "default",
             temperature: 0.2,
           },
+          role: "ai",
         },
       },
       {
@@ -1041,7 +1046,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-start",
           index: 0,
-          contentBlock: { type: "text", text: "" },
+          content_block: { type: "text", text: "" },
         },
       },
       {
@@ -1050,7 +1055,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-delta",
           index: 0,
-          contentBlock: { type: "text", text: "Hel" },
+          content_block: { type: "text", text: "Hel" },
         },
       },
       {
@@ -1059,7 +1064,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-delta",
           index: 0,
-          contentBlock: { type: "text", text: "lo" },
+          content_block: { type: "text", text: "lo" },
         },
       },
       {
@@ -1068,7 +1073,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-finish",
           index: 0,
-          contentBlock: { type: "text", text: "Hello" },
+          content_block: { type: "text", text: "Hello" },
         },
       },
       {
@@ -1161,7 +1166,7 @@ describe("RunProtocolSession", () => {
     expect(messageEvents).toEqual([
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "messages",
         params: {
@@ -1169,13 +1174,14 @@ describe("RunProtocolSession", () => {
           timestamp: expect.any(Number),
           data: {
             event: "message-start",
-            messageId: "internal_ai_1",
+            message_id: "internal_ai_1",
+            role: "ai",
           },
         },
       },
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "messages",
         params: {
@@ -1184,13 +1190,13 @@ describe("RunProtocolSession", () => {
           data: {
             event: "content-block-start",
             index: 0,
-            contentBlock: { type: "text", text: "" },
+            content_block: { type: "text", text: "" },
           },
         },
       },
       {
         type: "event",
-        eventId: expect.any(String),
+        event_id: expect.any(String),
         seq: expect.any(Number),
         method: "messages",
         params: {
@@ -1199,7 +1205,7 @@ describe("RunProtocolSession", () => {
           data: {
             event: "content-block-delta",
             index: 0,
-            contentBlock: { type: "text", text: "timestamp" },
+            content_block: { type: "text", text: "timestamp" },
           },
         },
       },
@@ -1235,17 +1241,17 @@ describe("RunProtocolSession", () => {
           tree: {
             namespace: [],
             status: "running",
-            graphName: "nested",
+            graph_name: "nested",
             children: [
               {
                 namespace: ["gp_two"],
                 status: "spawned",
-                graphName: "gp_two",
+                graph_name: "gp_two",
                 children: [
                   {
                     namespace: ["gp_two", "p_two"],
                     status: "spawned",
-                    graphName: "p_two",
+                    graph_name: "p_two",
                   },
                 ],
               },

@@ -1274,8 +1274,8 @@ describe("runs", () => {
         type: "success",
         id: 1,
         result: {
-          subscriptionId: expect.any(String),
-          replayedEvents: expect.any(Number),
+          subscription_id: expect.any(String),
+          replayed_events: expect.any(Number),
         },
       });
 
@@ -1320,7 +1320,7 @@ describe("runs", () => {
         result: {
           tree: {
             namespace: [],
-            graphName: "nested",
+            graph_name: "nested",
             children: [
               {
                 namespace: ["gp_two"],

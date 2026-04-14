@@ -128,13 +128,13 @@ export const openSseSession = async (target: ProtocolTarget) => {
     body: JSON.stringify({
       method: "session.open",
       params: {
-        protocolVersion: "0.3.0",
+        protocol_version: "0.3.0",
         target,
       },
     }),
   }).then((response) => response.json());
 
-  const sessionId = openResponse.result.sessionId as string;
+  const sessionId = openResponse.result.session_id as string;
   const eventsResponse = await fetch(
     `${TEST_API_URL}/v2/sessions/${sessionId}/events`,
     {
@@ -166,7 +166,7 @@ export const openWebSocketSession = async (target: ProtocolTarget) => {
       id: 0,
       method: "session.open",
       params: {
-        protocolVersion: "0.3.0",
+        protocol_version: "0.3.0",
         target,
       },
     })
@@ -418,11 +418,11 @@ export const normalizeForSnapshot = (value: unknown): unknown => {
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
         if (key === "timestamp") return [key, "<timestamp>"];
         if (key === "seq") return [key, "<seq>"];
-        if (key === "eventId") return [key, "<event-id>"];
-        if (key === "sessionId") return [key, "<session-id>"];
-        if (key === "subscriptionId") return [key, "<subscription-id>"];
-        if (key === "runId") return [key, "<run-id>"];
-        if (key === "threadId") return [key, "<thread-id>"];
+        if (key === "event_id") return [key, "<event-id>"];
+        if (key === "session_id") return [key, "<session-id>"];
+        if (key === "subscription_id") return [key, "<subscription-id>"];
+        if (key === "run_id") return [key, "<run-id>"];
+        if (key === "thread_id") return [key, "<thread-id>"];
         return [key, normalizeForSnapshot(entry)];
       })
     );
@@ -458,11 +458,11 @@ export const normalizeForTransportParity = (value: unknown): unknown => {
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
         if (key === "timestamp") return [key, "<timestamp>"];
         if (key === "seq") return [key, "<seq>"];
-        if (key === "eventId") return [key, "<event-id>"];
-        if (key === "sessionId") return [key, "<session-id>"];
-        if (key === "subscriptionId") return [key, "<subscription-id>"];
-        if (key === "runId") return [key, "<run-id>"];
-        if (key === "threadId") return [key, "<thread-id>"];
+        if (key === "event_id") return [key, "<event-id>"];
+        if (key === "session_id") return [key, "<session-id>"];
+        if (key === "subscription_id") return [key, "<subscription-id>"];
+        if (key === "run_id") return [key, "<run-id>"];
+        if (key === "thread_id") return [key, "<thread-id>"];
         return [key, normalizeForTransportParity(entry)];
       })
     );

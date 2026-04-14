@@ -197,7 +197,7 @@ describe("protocol transports", () => {
         id: 0,
         method: "session.open",
         params: {
-          protocolVersion: "0.3.0",
+          protocol_version: "0.3.0",
           target: { kind: "graph", id: "nested" },
         },
       })
@@ -210,11 +210,11 @@ describe("protocol transports", () => {
       type: "success",
       id: 0,
       result: {
-        sessionId: expect.any(String),
-        protocolVersion: "0.3.0",
+        session_id: expect.any(String),
+        protocol_version: "0.3.0",
         transport: {
           name: "websocket",
-          commandDelivery: "in-band",
+          command_delivery: "in-band",
         },
         capabilities: {
           modules: expect.arrayContaining([
@@ -241,8 +241,8 @@ describe("protocol transports", () => {
         },
       },
       meta: {
-        sessionId: expect.any(String),
-        appliedThroughSeq: expect.any(Number),
+        session_id: expect.any(String),
+        applied_through_seq: expect.any(Number),
       },
     });
 
@@ -275,7 +275,7 @@ describe("protocol transports", () => {
     expect(runResponse).toMatchObject({
       type: "success",
       id: 2,
-      result: { runId: expect.any(String) },
+      result: { run_id: expect.any(String) },
     });
 
     const observedEvents: ProtocolMessage[] = [];
@@ -319,7 +319,7 @@ describe("protocol transports", () => {
       result: {
         tree: {
           namespace: [],
-          graphName: "nested",
+          graph_name: "nested",
           children: [
             {
               namespace: ["gp_two"],
@@ -347,7 +347,7 @@ describe("protocol transports", () => {
       body: JSON.stringify({
         method: "session.open",
         params: {
-          protocolVersion: "0.3.0",
+          protocol_version: "0.3.0",
           target: { kind: "graph", id: "nested" },
         },
       }),
@@ -356,10 +356,10 @@ describe("protocol transports", () => {
     expect(openResponse).toMatchObject({
       type: "success",
       result: {
-        sessionId: expect.any(String),
+        session_id: expect.any(String),
         transport: {
           name: "sse-http",
-          commandDelivery: "request-response",
+          command_delivery: "request-response",
         },
         capabilities: {
           modules: expect.arrayContaining([
@@ -382,7 +382,7 @@ describe("protocol transports", () => {
       },
     });
 
-    const sessionId = openResponse.result.sessionId as string;
+    const sessionId = openResponse.result.session_id as string;
     const eventsResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/events`, {
       headers: { Accept: "text/event-stream" },
     });
@@ -408,11 +408,11 @@ describe("protocol transports", () => {
       type: "success",
       id: 1,
       result: {
-        subscriptionId: expect.any(String),
+        subscription_id: expect.any(String),
       },
       meta: {
-        sessionId,
-        appliedThroughSeq: expect.any(Number),
+        session_id: sessionId,
+        applied_through_seq: expect.any(Number),
       },
     });
 
@@ -435,11 +435,11 @@ describe("protocol transports", () => {
       type: "success",
       id: 11,
       result: {
-        subscriptionId: expect.any(String),
+        subscription_id: expect.any(String),
       },
       meta: {
-        sessionId,
-        appliedThroughSeq: expect.any(Number),
+        session_id: sessionId,
+        applied_through_seq: expect.any(Number),
       },
     });
 
@@ -464,10 +464,10 @@ describe("protocol transports", () => {
     expect(runResponse).toMatchObject({
       type: "success",
       id: 2,
-      result: { runId: expect.any(String) },
+      result: { run_id: expect.any(String) },
       meta: {
-        sessionId,
-        appliedThroughSeq: expect.any(Number),
+        session_id: sessionId,
+        applied_through_seq: expect.any(Number),
       },
     });
 
@@ -522,13 +522,13 @@ describe("protocol transports", () => {
       body: JSON.stringify({
         method: "session.open",
         params: {
-          protocolVersion: "0.3.0",
+          protocol_version: "0.3.0",
           target: { kind: "graph", id: "agent" },
         },
       }),
     }).then((response) => response.json());
 
-    const sessionId = openResponse.result.sessionId as string;
+    const sessionId = openResponse.result.session_id as string;
     const eventsResponse = await fetch(`${TEST_API_URL}/v2/sessions/${sessionId}/events`, {
       headers: { Accept: "text/event-stream" },
     });
@@ -553,7 +553,7 @@ describe("protocol transports", () => {
       type: "success",
       id: 1,
       result: {
-        subscriptionId: expect.any(String),
+        subscription_id: expect.any(String),
       },
     });
 
@@ -582,7 +582,7 @@ describe("protocol transports", () => {
     expect(runResponse).toMatchObject({
       type: "success",
       id: 2,
-      result: { runId: expect.any(String) },
+      result: { run_id: expect.any(String) },
     });
 
     const events = await readSseEvents(eventsResponse, {
@@ -648,8 +648,8 @@ describe("protocol transports", () => {
       type: "success",
       id: 1,
       result: {
-        subscriptionId: expect.any(String),
-        replayedEvents: expect.any(Number),
+        subscription_id: expect.any(String),
+        replayed_events: expect.any(Number),
       },
     });
 
@@ -694,7 +694,7 @@ describe("protocol transports", () => {
       result: {
         tree: {
           namespace: [],
-          graphName: "nested",
+          graph_name: "nested",
           children: [
             {
               namespace: ["gp_two"],
