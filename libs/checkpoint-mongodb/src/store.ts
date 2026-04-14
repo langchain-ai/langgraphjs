@@ -209,7 +209,9 @@ export class MongoDBStore extends BaseStore {
         } else if ("namespacePrefix" in readOp) {
           results[i] = await this.searchOp(readOp as SearchOperation);
         } else {
-          results[i] = await this.listNamespacesOp(readOp as ListNamespacesOperation);
+          results[i] = await this.listNamespacesOp(
+            readOp as ListNamespacesOperation
+          );
         }
         i++;
       }
@@ -313,7 +315,10 @@ export class MongoDBStore extends BaseStore {
         const embeddingIndex = Array.from(embeddingMap.entries()).find(
           ([_, opIdx]) => opIdx === i
         )?.[0];
-        if (embeddingIndex !== undefined && embeddingIndex < embeddingsList.length) {
+        if (
+          embeddingIndex !== undefined &&
+          embeddingIndex < embeddingsList.length
+        ) {
           doc.embedding = embeddingsList[embeddingIndex];
         }
 
@@ -347,7 +352,7 @@ export class MongoDBStore extends BaseStore {
     }
   }
 
-/**
+  /**
    * Retrieve an item by namespace and key.
    * If refreshOnRead is enabled, resets the TTL timer.
    */
@@ -360,7 +365,9 @@ export class MongoDBStore extends BaseStore {
       const now = new Date();
       const updateDoc: Record<string, any> = { updatedAt: now };
       if (this.ttl) {
-        updateDoc.expiresAt = new Date(now.getTime() + this.ttl.defaultTtl * 1000);
+        updateDoc.expiresAt = new Date(
+          now.getTime() + this.ttl.defaultTtl * 1000
+        );
       }
       doc = await this.db
         .collection(this.collectionName)
@@ -380,10 +387,10 @@ export class MongoDBStore extends BaseStore {
     }
 
     // Deserialize the value
-    const value = (await this.serde.loadsTyped(
-      doc.type,
-      doc.value
-    )) as Record<string, any>;
+    const value = (await this.serde.loadsTyped(doc.type, doc.value)) as Record<
+      string,
+      any
+    >;
 
     return {
       value,
@@ -400,10 +407,11 @@ export class MongoDBStore extends BaseStore {
   private async listNamespacesOp(
     op: ListNamespacesOperation
   ): Promise<string[][]> {
-    const { limit, offset, namespacePrefix, maxDepth } = op as ListNamespacesOperation & {
-      namespacePrefix?: string[];
-      maxDepth?: number;
-    };
+    const { limit, offset, namespacePrefix, maxDepth } =
+      op as ListNamespacesOperation & {
+        namespacePrefix?: string[];
+        maxDepth?: number;
+      };
 
     // Build aggregation pipeline
     const pipeline: Record<string, any>[] = [];
@@ -472,16 +480,17 @@ export class MongoDBStore extends BaseStore {
    * If a query string is provided and embeddings are configured, performs semantic search.
    */
   private async searchOp(op: SearchOperation): Promise<SearchItem[]> {
-    const { namespacePrefix, filter, limit = 100, offset = 0, query } = op as SearchOperation & { query?: string };
+    const {
+      namespacePrefix,
+      filter,
+      limit = 100,
+      offset = 0,
+      query,
+    } = op as SearchOperation & { query?: string };
 
     // If query is provided and embeddings are configured, use vector search
     if (query && this.embeddings) {
-      return this.vectorSearch(
-        query,
-        namespacePrefix || [],
-        limit,
-        offset
-      );
+      return this.vectorSearch(query, namespacePrefix || [], limit, offset);
     }
 
     // Otherwise, perform structured field-based search
@@ -559,7 +568,7 @@ export class MongoDBStore extends BaseStore {
     return items;
   }
 
-/**
+  /**
    * Perform vector similarity search.
    * Requires embeddings to be configured.
    * Uses Atlas $vectorSearch if indexConfig is set, otherwise uses in-memory cosine similarity.
