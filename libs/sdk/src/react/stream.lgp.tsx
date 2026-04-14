@@ -196,6 +196,7 @@ export function useStreamLGP<
         apiKey: options.apiKey,
         callerOptions: options.callerOptions,
         defaultHeaders: options.defaultHeaders,
+        streamProtocol: options.streamProtocol,
       }),
     [
       options.client,
@@ -203,6 +204,7 @@ export function useStreamLGP<
       options.apiUrl,
       options.callerOptions,
       options.defaultHeaders,
+      options.streamProtocol,
     ]
   );
 
@@ -376,39 +378,38 @@ export function useStreamLGP<
     options.initialValues ??
     ({} as StateType);
 
-  // Reconstruct subagents from history when:
-  // 1. History is loaded (not loading, has data)
-  // 2. No active stream is running
-  // 3. Subagent filtering is enabled (otherwise subagents aren't tracked)
-  // This ensures subagent visualization persists after page refresh or stream completion
+  // Hydrate subagent state once the thread is available and either:
+  // 1. Main thread history has messages we can reconstruct from, or
+  // 2. Live streaming has already discovered subagents that need their internal
+  //    checkpoint history backfilled.
   const historyMessages = getMessages(historyValues);
-  const shouldReconstructSubagents =
+  const shouldHydrateSubagents =
     options.filterSubagentMessages &&
-    !stream.isLoading &&
     !history.isLoading &&
-    historyMessages.length > 0;
+    threadId != null &&
+    (historyMessages.length > 0 || stream.hasSubagents());
 
   useEffect(() => {
-    if (shouldReconstructSubagents) {
-      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
-      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+    if (shouldHydrateSubagents && threadId) {
+      if (historyMessages.length > 0) {
+        // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
+        stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+      }
       // Fetch internal messages for each subagent from their subgraph checkpoints.
       // These messages are not in the main thread state but are persisted in the
       // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      if (threadId) {
-        const controller = new AbortController();
-        void stream.fetchSubagentHistory(client.threads, threadId, {
-          messagesKey: options.messagesKey ?? "messages",
-          signal: controller.signal,
-        });
-        return () => controller.abort();
-      }
+      const controller = new AbortController();
+      void stream.fetchSubagentHistory(client.threads, threadId, {
+        messagesKey: options.messagesKey ?? "messages",
+        signal: controller.signal,
+      });
+      return () => controller.abort();
     }
 
-    // We intentionally only run this when shouldReconstructSubagents changes
-    // to avoid unnecessary reconstructions during streaming
+    // We intentionally only run this when hydration prerequisites change
+    // to avoid unnecessary reconstruction/fetch loops during streaming.
     return undefined;
-  }, [shouldReconstructSubagents, historyMessages.length]);
+  }, [shouldHydrateSubagents, historyMessages.length, threadId]);
 
   const historyError = (() => {
     const error = branchContext.threadHead?.tasks?.at(-1)?.error;
@@ -593,6 +594,7 @@ export function useStreamLGP<
           streamSubgraphs: submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
+          streamProtocol: options.streamProtocol,
           onRunCreated(params) {
             callbackMeta = {
               run_id: params.run_id,
@@ -923,27 +925,27 @@ export function useStreamLGP<
     },
 
     get subagents() {
-      trackStreamMode("updates", "messages-tuple");
+      trackStreamMode("updates", "messages-tuple", "values", "tools");
       return stream.getSubagents();
     },
 
     get activeSubagents() {
-      trackStreamMode("updates", "messages-tuple");
+      trackStreamMode("updates", "messages-tuple", "values", "tools");
       return stream.getActiveSubagents();
     },
 
     getSubagent(toolCallId: string) {
-      trackStreamMode("updates", "messages-tuple");
+      trackStreamMode("updates", "messages-tuple", "values", "tools");
       return stream.getSubagent(toolCallId);
     },
 
     getSubagentsByType(type: string) {
-      trackStreamMode("updates", "messages-tuple");
+      trackStreamMode("updates", "messages-tuple", "values", "tools");
       return stream.getSubagentsByType(type);
     },
 
     getSubagentsByMessage(messageId: string) {
-      trackStreamMode("updates", "messages-tuple");
+      trackStreamMode("updates", "messages-tuple", "values", "tools");
       return stream.getSubagentsByMessage(messageId);
     },
   };

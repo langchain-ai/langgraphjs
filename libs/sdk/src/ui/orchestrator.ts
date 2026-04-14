@@ -898,6 +898,9 @@ export class StreamOrchestrator<
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          this.#flushPendingHeadlessToolInterrupts(
+            this.stream.values as Record<string, unknown> | null | undefined
+          );
         },
       }
     );
@@ -1073,6 +1076,9 @@ export class StreamOrchestrator<
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          this.#flushPendingHeadlessToolInterrupts(
+            this.stream.values as Record<string, unknown> | null | undefined
+          );
         },
       }
     );
@@ -1080,13 +1086,15 @@ export class StreamOrchestrator<
 
   #drainQueue(): void {
     if (!this.isLoading && !this.#submitting && this.pendingRuns.size > 0) {
+      this.#submitting = true;
       const next = this.pendingRuns.shift();
       if (next) {
-        this.#submitting = true;
         void this.joinStream(next.id).finally(() => {
           this.#submitting = false;
           this.#drainQueue();
         });
+      } else {
+        this.#submitting = false;
       }
     }
   }

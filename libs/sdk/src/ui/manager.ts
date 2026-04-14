@@ -20,7 +20,7 @@ import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import {
   SubagentManager,
-  extractToolCallIdFromNamespace,
+  getSubagentNamespaceKey,
   isSubagentNamespace,
 } from "./subagents.js";
 import type { SubagentStreamInterface } from "./types.js";
@@ -202,6 +202,8 @@ export class StreamManager<
 
   private queueSize: number = 0;
 
+  private notifyScheduled = false;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
@@ -349,7 +351,7 @@ export class StreamManager<
      * Only fetch for subagents that have no messages (reconstructed from history)
      */
     const toFetch = [...this.subagentManager.getSubagents().entries()].filter(
-      ([, s]) => s.messages.length === 0
+      ([, s]) => s.messages.length === 0 || s.toolCalls.length === 0
     );
 
     /**
@@ -615,8 +617,22 @@ export class StreamManager<
     this.notifyListeners();
   };
 
+  // Deferred via setTimeout so that rapid-fire state changes from the
+  // async stream event loop are coalesced into a single subscriber
+  // notification. The for-await loop in enqueue() yields between
+  // iterations at microtask boundaries, so queueMicrotask would fire
+  // before the next iteration even starts and give React no batching
+  // window. setTimeout(fn, 0) defers to after the microtask queue
+  // drains, matching the existing throttle: true behavior and
+  // preventing useSyncExternalStore from triggering "Maximum update
+  // depth exceeded" errors.
   private notifyListeners = () => {
-    this.listeners.forEach((listener) => listener());
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+    setTimeout(() => {
+      this.notifyScheduled = false;
+      this.listeners.forEach((listener) => listener());
+    }, 0);
   };
 
   subscribe = (listener: () => void): (() => void) => {
@@ -753,7 +769,6 @@ export class StreamManager<
 
       const run = await action(this.abortRef.signal);
       let clearedPreviousInterrupts = false;
-
       let streamError: StreamError | undefined;
       for await (const { event, data } of run) {
         if (event === "error") {
@@ -777,10 +792,10 @@ export class StreamManager<
           // Mark the subagent as running when we receive updates
           // The actual message content is handled via addMessageToSubagent
           if (namespace && isSubagentNamespace(namespace)) {
-            const namespaceId = extractToolCallIdFromNamespace(namespace);
-            if (namespaceId && this.filterSubagentMessages) {
+            const namespaceKey = getSubagentNamespaceKey(namespace);
+            if (namespaceKey && this.filterSubagentMessages) {
               this.subagentManager.markRunningFromNamespace(
-                namespaceId,
+                namespaceKey,
                 namespace
               );
             }
@@ -864,15 +879,97 @@ export class StreamManager<
         }
 
         if (this.matchEventType("tools", event, data)) {
-          options.callbacks.onToolEvent?.(data, { namespace, mutate });
+          const toolData = data as ToolsStreamEvent["data"];
+          const toolCallId =
+            typeof toolData.toolCallId === "string" &&
+            toolData.toolCallId.length > 0
+              ? toolData.toolCallId
+              : undefined;
+
+          // Protocol-v2 can emit nested subagent task invocations entirely inside
+          // the tools channel (e.g. task() calls launched from js_eval). In that
+          // case there is no parent AI message tool_call to seed subagent state,
+          // so we register and complete the subagent directly from tool events.
+          if (
+            toolCallId &&
+            this.subagentManager.isSubagentToolCall(toolData.name)
+          ) {
+            if (toolData.event === "on_tool_start") {
+              const subagentInput =
+                typeof toolData.input === "string"
+                  ? toolData.input
+                  : toolData.input != null &&
+                      typeof toolData.input === "object" &&
+                      !Array.isArray(toolData.input)
+                    ? (toolData.input as Record<string, unknown>)
+                    : {};
+              this.subagentManager.registerFromToolCalls(
+                [
+                  {
+                    id: toolCallId,
+                    name: toolData.name,
+                    args: subagentInput,
+                  },
+                ],
+                undefined
+              );
+            } else if (toolData.event === "on_tool_end") {
+              this.subagentManager.processToolMessage(
+                toolCallId,
+                typeof toolData.output === "string"
+                  ? toolData.output
+                  : JSON.stringify(toolData.output ?? null),
+                "success"
+              );
+            } else if (toolData.event === "on_tool_error") {
+              this.subagentManager.processToolMessage(
+                toolCallId,
+                typeof toolData.error === "string"
+                  ? toolData.error
+                  : JSON.stringify(toolData.error ?? null),
+                "error"
+              );
+            }
+          }
+
+          if (
+            namespace &&
+            isSubagentNamespace(namespace) &&
+            this.filterSubagentMessages
+          ) {
+            const namespaceKey = getSubagentNamespaceKey(namespace);
+            if (
+              namespaceKey &&
+              toolCallId &&
+              toolData.event !== "on_tool_end" &&
+              toolData.event !== "on_tool_error"
+            ) {
+              this.subagentManager.queueToolCallForNamespace(
+                namespaceKey,
+                toolCallId
+              );
+            }
+
+            if (
+              namespaceKey &&
+              toolData.event === "on_tool_end" &&
+              typeof toolData.output === "string"
+            ) {
+              this.subagentManager.processToolEndForNamespace(
+                namespaceKey,
+                toolData.output
+              );
+            }
+          }
+          options.callbacks.onToolEvent?.(toolData, { namespace, mutate });
         }
 
         // Handle values events - use startsWith to match both "values" and "values|tools:xxx"
         if (event === "values" || event.startsWith("values|")) {
           // Check if this is a subgraph values event (for namespace mapping and values)
           if (namespace && isSubagentNamespace(namespace)) {
-            const namespaceId = extractToolCallIdFromNamespace(namespace);
-            if (namespaceId && this.filterSubagentMessages) {
+            const namespaceKey = getSubagentNamespaceKey(namespace);
+            if (namespaceKey && this.filterSubagentMessages) {
               const valuesData = data as Record<string, unknown>;
 
               // Try to establish namespace mapping from the initial human message
@@ -884,7 +981,7 @@ export class StreamManager<
                   typeof firstMsg?.content === "string"
                 ) {
                   this.subagentManager.matchSubgraphToSubagent(
-                    namespaceId,
+                    namespaceKey,
                     firstMsg.content
                   );
                 }
@@ -892,17 +989,13 @@ export class StreamManager<
 
               // Update the subagent's values with the full state
               this.subagentManager.updateSubagentValues(
-                namespaceId,
+                namespaceKey,
                 valuesData
               );
             }
           } else {
             if (!clearedPreviousInterrupts) {
-              // Clear stale __interrupt__ from the previous run once the new
-              // stream starts delivering main values. This avoids carrying
-              // resumed interrupts forward while still preserving the previous
-              // interrupt state if the new stream fails before any values
-              // arrive.
+              clearedPreviousInterrupts = true;
               this.setStreamValues((prev) => {
                 if (prev && "__interrupt__" in prev) {
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -911,7 +1004,6 @@ export class StreamManager<
                 }
                 return prev;
               });
-              clearedPreviousInterrupts = true;
             }
 
             if (data && typeof data === "object" && "__interrupt__" in data) {
@@ -985,17 +1077,15 @@ export class StreamManager<
             (metadata?.checkpoint_ns as string | undefined);
           const checkpointNs: string | undefined =
             typeof rawCheckpointNs === "string" ? rawCheckpointNs : undefined;
-          const isFromSubagent = isSubagentNamespace(checkpointNs);
-          const toolCallId = isFromSubagent
-            ? extractToolCallIdFromNamespace(checkpointNs?.split("|"))
-            : undefined;
+          const namespaceKey = getSubagentNamespaceKey(checkpointNs);
+          const isFromSubagent = namespaceKey != null;
 
           // If filtering is enabled and this is a subagent message,
           // add it to the subagent's messages instead of the main stream
-          if (this.filterSubagentMessages && isFromSubagent && toolCallId) {
+          if (this.filterSubagentMessages && isFromSubagent && namespaceKey) {
             // Add to subagent's message list
             this.subagentManager.addMessageToSubagent(
-              toolCallId,
+              namespaceKey,
               serialized,
               metadata
             );

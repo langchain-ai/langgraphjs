@@ -9,7 +9,10 @@ export default defineConfig({
     globals: true,
     testTimeout: 30_000,
     retry: 2,
-    globalSetup: ["./src/tests/fixtures/mock-server.ts"],
+    globalSetup: [
+      "./src/tests/fixtures/mock-server.ts",
+      "./src/tests/fixtures/protocol-v2-server.ts",
+    ],
     browser: {
       enabled: true,
       connectTimeout: 120_000,
@@ -21,6 +24,7 @@ export default defineConfig({
     typecheck: {
       enabled: true,
       include: ["**/*.test-d.ts"],
+      tsconfig: "./tsconfig.typecheck.json",
     },
   },
 });

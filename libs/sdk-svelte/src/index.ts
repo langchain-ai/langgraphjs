@@ -239,10 +239,14 @@ function useStreamLGP<
     }
   });
 
-  // Queue draining - must track isLoading specifically (not just version)
-  // so the drain fires exactly when stream transitions from loading → idle
-  const isLoadingForDrain = derived(version, () => orchestrator.isLoading);
-  const unsubDrain = isLoadingForDrain.subscribe(() => {
+  // Queue draining - track both isLoading and queueSize so that
+  // drainQueue fires when the stream transitions loading → idle *and*
+  // when new items are added to the queue while already idle.
+  const drainKey = derived(
+    version,
+    () => `${orchestrator.isLoading}|${orchestrator.queueSize}`
+  );
+  const unsubDrain = drainKey.subscribe(() => {
     orchestrator.drainQueue();
   });
 

@@ -23,6 +23,58 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import waitPort from "wait-port";
 
+const createSocketCollector = (socket: WebSocket) => {
+  const queue: unknown[] = [];
+  const waiters: Array<(payload: unknown) => void> = [];
+
+  socket.addEventListener("message", (event) => {
+    const payload = JSON.parse(String(event.data));
+    const waiter = waiters.shift();
+    if (waiter) {
+      waiter(payload);
+    } else {
+      queue.push(payload);
+    }
+  });
+
+  return {
+    async next<T>(
+      predicate: (payload: T) => boolean,
+      options?: { timeoutMs?: number }
+    ): Promise<T> {
+      const timeoutMs = options?.timeoutMs ?? 10_000;
+      const matchFromQueue = () => {
+        const index = queue.findIndex((payload) => predicate(payload as T));
+        if (index === -1) return undefined;
+        return queue.splice(index, 1)[0] as T;
+      };
+
+      const queued = matchFromQueue();
+      if (queued != null) return queued;
+
+      return new Promise<T>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          const index = waiters.indexOf(onPayload);
+          if (index >= 0) waiters.splice(index, 1);
+          reject(new Error("Timed out waiting for websocket message"));
+        }, timeoutMs);
+
+        const onPayload = (payload: unknown) => {
+          if (!predicate(payload as T)) {
+            queue.push(payload);
+            waiters.push(onPayload);
+            return;
+          }
+          clearTimeout(timeout);
+          resolve(payload as T);
+        };
+
+        waiters.push(onPayload);
+      });
+    },
+  };
+};
+
 const API_URL = "http://localhost:2024";
 const client = new Client<any>({ apiUrl: API_URL });
 let server: ChildProcess | undefined;
@@ -1174,6 +1226,124 @@ describe("runs", () => {
     const run = await client.runs.get(thread.thread_id, runId!);
     expect(run.status).toBe("success");
   });
+
+  it.skipIf(typeof globalThis.WebSocket === "undefined").concurrent(
+    "websocket protocol endpoint filters and replays subscribed namespaces",
+    { timeout: 20_000 },
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "nested" });
+      const thread = await client.threads.create();
+
+      const run = await client.runs.create(thread.thread_id, assistant.assistant_id, {
+        input: { messages: ["input"] },
+        streamMode: ["values", "updates"],
+        streamSubgraphs: true,
+        streamResumable: true,
+        config: globalConfig,
+      });
+
+      const socket = new WebSocket(
+        `${API_URL.replace("http", "ws")}/threads/${thread.thread_id}/runs/${run.run_id}/protocol`
+      );
+      const collector = createSocketCollector(socket);
+
+      await new Promise<void>((resolve, reject) => {
+        socket.addEventListener("open", () => resolve(), { once: true });
+        socket.addEventListener(
+          "error",
+          () => reject(new Error("Failed to open websocket")),
+          { once: true }
+        );
+      });
+
+      socket.send(
+        JSON.stringify({
+          id: 1,
+          method: "subscription.subscribe",
+          params: {
+            channels: ["values", "updates"],
+            namespaces: [["gp_two"]],
+          },
+        })
+      );
+
+      const subscribeAck = await collector.next<Record<string, unknown>>(
+        (payload) => payload.type === "success" && payload.id === 1
+      );
+      expect(subscribeAck).toMatchObject({
+        type: "success",
+        id: 1,
+        result: {
+          subscription_id: expect.any(String),
+          replayed_events: expect.any(Number),
+        },
+      });
+
+      const observedEvents: Array<Record<string, unknown>> = [];
+      while (true) {
+        const payload = await collector.next<Record<string, unknown>>(
+          (message) => message.type === "event"
+        );
+        observedEvents.push(payload);
+
+        if (
+          payload.method === "values" &&
+          JSON.stringify(payload.params).includes("Entered c_two node")
+        ) {
+          break;
+        }
+      }
+
+      expect(observedEvents.length).toBeGreaterThan(0);
+      for (const event of observedEvents) {
+        expect(event.method === "values" || event.method === "updates" || event.method === "lifecycle").toBe(
+          true
+        );
+        expect((event.params as { namespace: string[] }).namespace[0]).toMatch(/^gp_two(:|$)/);
+      }
+
+      const treeRequestId = 2;
+      socket.send(
+        JSON.stringify({
+          id: treeRequestId,
+          method: "agent.getTree",
+          params: {},
+        })
+      );
+
+      const treeResponse = await collector.next<Record<string, unknown>>(
+        (payload) => payload.type === "success" && payload.id === treeRequestId
+      );
+      expect(treeResponse).toMatchObject({
+        type: "success",
+        id: treeRequestId,
+        result: {
+          tree: {
+            namespace: [],
+            graph_name: "nested",
+            children: [
+              {
+                namespace: [expect.stringMatching(/^gp_two(:|$)/)],
+                children: [
+                  {
+                    namespace: [
+                      expect.stringMatching(/^gp_two(:|$)/),
+                      expect.stringMatching(/^p_two(:|$)/),
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      socket.close();
+      await client.runs.join(thread.thread_id, run.run_id);
+      const runState = await client.runs.get(thread.thread_id, run.run_id);
+      expect(runState.status).toBe("success");
+    }
+  );
 
   it.concurrent(
     "human in the loop - no modification",

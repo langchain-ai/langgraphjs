@@ -46,6 +46,33 @@ export type {
 } from "./pregel/types.js";
 export type { PregelNode } from "./pregel/read.js";
 export type { Pregel } from "./pregel/index.js";
+export {
+  EventLog,
+  StreamChannel,
+  GraphRunStream,
+  SubgraphRunStream,
+  ChatModelStreamImpl,
+  STREAM_V2_MODES,
+  isNativeTransformer,
+  createGraphRunStream,
+  createMessagesTransformer,
+  createValuesTransformer,
+} from "./stream/index.js";
+export type {
+  ProtocolEvent,
+  Namespace,
+  FinishReason,
+  UsageInfo,
+  MessagesEventData,
+  ToolsEventData,
+  UpdatesEventData,
+  StreamTransformer,
+  NativeStreamTransformer,
+  ChatModelStream,
+  ToolCallStatus,
+  ToolCallStream,
+  InterruptPayload,
+} from "./stream/index.js";
 export * from "./errors.js";
 export {
   BaseChannel,

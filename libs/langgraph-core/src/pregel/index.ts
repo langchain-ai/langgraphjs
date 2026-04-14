@@ -80,6 +80,10 @@ import {
 import { mapInput, readChannels } from "./io.js";
 import { PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
+import {
+  PROTOCOL_MESSAGES_STREAM_CONFIG_KEY,
+  StreamProtocolMessagesHandler,
+} from "./messages-v2.js";
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig, type ServerInfo } from "./runnable_types.js";
 import { PregelRunner } from "./runner.js";
@@ -89,6 +93,12 @@ import {
   StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
+import {
+  createGraphRunStream,
+  GraphRunStream,
+  STREAM_V2_MODES,
+} from "../stream/index.js";
+import type { InferExtensions, StreamTransformer } from "../stream/index.js";
 import type {
   Durability,
   GetStateOptions,
@@ -394,6 +404,8 @@ export class Pregel<
   CommandType = CommandInstance,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StreamCustom = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 >
   extends PartialRunnable<
     InputType | CommandType | null,
@@ -509,6 +521,13 @@ export class Pregel<
   private userInterrupt?: unknown;
 
   /**
+   * Stream reducer factories registered at compile time.  These run
+   * automatically for every `stream_experimental()` call, before any call-site
+   * transformers passed via `stream_experimental(input, { transformers })`.
+   */
+  streamTransformers: TStreamTransformers;
+
+  /**
    * The trigger to node mapping for the graph run.
    * @internal
    */
@@ -519,7 +538,7 @@ export class Pregel<
    *
    * @internal
    */
-  constructor(fields: PregelParams<Nodes, Channels>) {
+  constructor(fields: PregelParams<Nodes, Channels, TStreamTransformers>) {
     super(fields);
 
     let { streamMode } = fields;
@@ -560,6 +579,8 @@ export class Pregel<
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
     this.userInterrupt = fields.userInterrupt;
+    this.streamTransformers = (fields.streamTransformers ??
+      []) as TStreamTransformers;
 
     if (this.autoValidate) {
       this.validate();
@@ -1894,6 +1915,113 @@ export class Pregel<
   }
 
   /**
+   * Ergonomic v2 stream API for a single graph run.
+   *
+   * `stream_experimental()` is the recommended way to consume graph execution when you
+   * need typed, recursive access to subgraph events, tool lifecycle, and
+   * message content-block streaming.
+   *
+   * Returns a `Promise<GraphRunStream>` that resolves immediately (no async
+   * setup needed), kept async for a uniform call pattern across graph, agent,
+   * and deep agent levels (§ 15.8).
+   *
+   * The returned `GraphRunStream` is an `AsyncIterable<ProtocolEvent>`.
+   *
+   * Built-in projections:
+   *  - `run.output`        — `Promise<OutputType>` for the final state
+   *  - `run.values`        — `AsyncIterable` of state snapshots + `PromiseLike`
+   *  - `run.subgraphs`     — `AsyncIterable<SubgraphRunStream>` for child graphs
+   *  - `run.messages`      — `AsyncIterable<ChatModelStream>` for message lifecycles
+   *  - `run.messagesFrom`  — node-filtered messages
+   *  - `run.interrupted`   — whether the run ended due to an interrupt
+   *  - `run.interrupts`    — interrupt payloads
+   *  - `run.abort()`       — programmatic cancellation
+   *  - `run.extensions`    — merged reducer projections
+   *
+   * Example:
+   * ```typescript
+   * const run = await graph.stream_experimental(input, { configurable: { thread_id: "t1" } });
+   *
+   * for await (const event of run) {
+   *   console.log(event.method, event.params.data);
+   * }
+   *
+   * for await (const msg of run.messages) {
+   *   for await (const token of msg.text) { process.stdout.write(token); }
+   * }
+   *
+   * for await (const sub of run.subgraphs) {
+   *   for await (const event of sub) { … }
+   * }
+   *
+   * const finalState = await run.output;
+   * ```
+   *
+   * The v1 `stream()` API remains unchanged.
+   */
+  async stream_experimental<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    input: InputType | CommandType | null,
+    options?: Partial<
+      Omit<
+        PregelOptions<Nodes, Channels, ContextType>,
+        "encoding" | "subgraphs"
+      >
+    > & {
+      /** User-supplied transformer factories for custom projections. */
+      transformers?: TTransformers;
+    }
+  ): Promise<
+    GraphRunStream<
+      OutputType,
+      InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
+    >
+  > {
+    const { transformers: userTransformers, ...restOptions } = options ?? {};
+
+    const streamOptions = {
+      recursionLimit: this.config?.recursionLimit,
+      ...restOptions,
+      configurable: {
+        ...this.config?.configurable,
+        ...restOptions?.configurable,
+        [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
+      },
+      streamMode: STREAM_V2_MODES,
+      subgraphs: true as const,
+      encoding: undefined,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sourcePromise = this.stream(input, streamOptions as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const source: AsyncIterable<any> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [Symbol.asyncIterator]: async function* (): AsyncGenerator<any> {
+        const src = await sourcePromise;
+        for await (const chunk of src) {
+          yield chunk;
+        }
+      },
+    };
+
+    type TMerged = readonly [...TStreamTransformers, ...TTransformers];
+    const mergedTransformers = [
+      ...(this.streamTransformers ?? []),
+      ...(userTransformers ?? []),
+    ] as unknown as TMerged;
+
+    return createGraphRunStream<OutputType, TMerged>(
+      source,
+      mergedTransformers
+    );
+  }
+
+  /**
    * @inheritdoc
    */
   override streamEvents(
@@ -2043,9 +2171,10 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const messageStreamer = new StreamMessagesHandler((chunk) =>
-        stream.push(chunk)
-      );
+      const messageStreamer =
+        config.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true
+          ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
+          : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];

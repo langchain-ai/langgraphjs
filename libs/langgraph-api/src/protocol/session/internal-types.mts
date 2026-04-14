@@ -1,0 +1,157 @@
+import type {
+  AgentStatus,
+  ContentBlockFinishData,
+  MessageMetadata,
+  Namespace,
+  ProtocolEvent,
+  ProtocolEventByMethod,
+  SupportedChannel,
+  UpdatesEvent,
+} from "../types.mjs";
+
+/**
+ * Scalar metadata values that can be forwarded directly in protocol events.
+ */
+export type ProtocolMetadataScalar = string | number | boolean | null;
+
+/**
+ * Concise message metadata shape exposed to protocol clients.
+ */
+export type ProtocolCompatibleMessageMetadata = MessageMetadata &
+  Record<string, ProtocolMetadataScalar>;
+
+/**
+ * Subscription state tracked for each connected client.
+ */
+export type SubscriptionChannel = SupportedChannel | `custom:${string}`;
+
+export type Subscription = {
+  id: string;
+  channels: Set<SubscriptionChannel>;
+  namespaces?: Namespace[];
+  depth?: number;
+  active: boolean;
+};
+
+/**
+ * Cached lifecycle information for a namespace in the agent tree.
+ */
+export type NamespaceInfo = {
+  namespace: Namespace;
+  status: AgentStatus;
+  graphName: string;
+};
+
+/**
+ * Incremental state for a single streamed content block.
+ */
+export type MessageBlockState = {
+  type: "text" | "reasoning" | "tool_call_chunk" | "finalized";
+  value: string;
+  finished: boolean;
+  id?: string;
+  name?: string;
+  contentBlock?: ContentBlockFinishData["content_block"];
+};
+
+/**
+ * Incremental state for a single streamed message.
+ */
+export type MessageState = {
+  metadata?: ProtocolCompatibleMessageMetadata;
+  namespace?: Namespace;
+  started: boolean;
+  lastText: string;
+  finished: boolean;
+  blocks: Map<number, MessageBlockState>;
+};
+
+/**
+ * Synthetic state created for task tool calls that represent subagents.
+ */
+export type SyntheticSubagentState = {
+  namespace: Namespace;
+  messages: Array<Record<string, unknown>>;
+  completed: boolean;
+};
+
+/**
+ * Normalized representation of an updates payload emitted by the run stream.
+ */
+export type NormalizedUpdatesData = {
+  node?: string;
+  values: UpdatesEvent["params"]["data"]["values"];
+};
+
+/**
+ * Mapping between supported event methods and their payload shapes.
+ */
+export type ProtocolEventDataMap = {
+  values: ProtocolEventByMethod<"values">["params"]["data"];
+  updates:
+    | ProtocolEventByMethod<"updates">["params"]["data"]
+    | UpdatesEvent["params"]["data"]["values"];
+  messages: ProtocolEventByMethod<"messages">["params"]["data"];
+  tools: ProtocolEventByMethod<"tools">["params"]["data"];
+  custom: ProtocolEventByMethod<"custom">["params"]["data"];
+  lifecycle: ProtocolEventByMethod<"lifecycle">["params"]["data"];
+  input: ProtocolEventByMethod<"input">["params"]["data"];
+  debug: ProtocolEventByMethod<"debug">["params"]["data"];
+  checkpoints: ProtocolEventByMethod<"checkpoints">["params"]["data"];
+  tasks: ProtocolEventByMethod<"tasks">["params"]["data"];
+};
+
+/**
+ * Callback surface used by the message processor to emit normalized events.
+ */
+export type MessageProcessorCallbacks = {
+  ensureNamespaces: (namespace: Namespace) => Promise<void>;
+  pushEvent: (event: ProtocolEvent) => Promise<void>;
+  emitLifecycleEvent: (
+    namespace: Namespace,
+    status: AgentStatus,
+    options?: { graphName?: string; error?: string }
+  ) => Promise<void>;
+  createMessagesEvent: (
+    namespace: Namespace,
+    data: ProtocolEventDataMap["messages"]
+  ) => ProtocolEventByMethod<"messages">;
+  createValuesEvent: (
+    namespace: Namespace,
+    data: ProtocolEventDataMap["values"]
+  ) => ProtocolEventByMethod<"values">;
+};
+
+/**
+ * Channel names supported by the run-scoped protocol session.
+ */
+export const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
+  "values",
+  "updates",
+  "messages",
+  "tools",
+  "custom",
+  "lifecycle",
+  "input",
+  "debug",
+  "checkpoints",
+  "tasks",
+]);
+
+/**
+ * Checks whether a value is a non-null object record.
+ *
+ * @param value - Candidate value to inspect.
+ * @returns Whether the value can be treated as a keyed object.
+ */
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * Checks whether a channel name is supported by the session transport.
+ *
+ * @param value - Raw channel name.
+ * @returns Whether the name matches a supported protocol channel.
+ */
+export const isSupportedChannel = (value: string): value is SupportedChannel =>
+  SUPPORTED_CHANNELS.has(value as SupportedChannel);

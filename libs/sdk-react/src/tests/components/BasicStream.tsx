@@ -4,33 +4,39 @@ import { useStream } from "../../index.js";
 interface Props {
   apiUrl: string;
   assistantId?: string;
+  streamProtocol?: "legacy" | "v2-sse" | "v2-websocket";
   submitInput?: Record<string, unknown>;
   submitOptions?: Record<string, unknown>;
   onCheckpointEvent?: (...args: unknown[]) => void;
   onTaskEvent?: (...args: unknown[]) => void;
   onUpdateEvent?: (...args: unknown[]) => void;
   onCustomEvent?: (...args: unknown[]) => void;
+  onLangChainEvent?: (...args: unknown[]) => void;
   fetchStateHistory?: boolean | { limit: number };
 }
 
 export function BasicStream({
   apiUrl,
   assistantId = "agent",
+  streamProtocol,
   submitInput = { messages: [{ content: "Hello", type: "human" }] },
   submitOptions,
   onCheckpointEvent,
   onTaskEvent,
   onUpdateEvent,
   onCustomEvent,
+  onLangChainEvent,
   fetchStateHistory,
 }: Props) {
   const thread = useStream<{ messages: Message[] }>({
     assistantId,
     apiUrl,
+    streamProtocol,
     onCheckpointEvent,
     onTaskEvent,
     onUpdateEvent,
     onCustomEvent,
+    onLangChainEvent,
     fetchStateHistory,
   });
 
