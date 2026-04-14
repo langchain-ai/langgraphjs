@@ -1,7 +1,7 @@
 /* eslint-disable no-param-reassign */
 import {
+  CallbackManager,
   _coerceToRunnable,
-  getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
   Runnable,
@@ -2094,7 +2094,17 @@ export class Pregel<
       config.serverInfo = _buildServerInfo(config);
     }
 
-    const callbackManager = await getCallbackManagerForConfig(config);
+    const callbackManager = await CallbackManager._configureSync(
+      config?.callbacks,
+      undefined,
+      config?.tags,
+      undefined,
+      config?.metadata,
+      undefined,
+      {
+        tracerInheritableMetadata: _getTracingMetadataDefaults(config),
+      }
+    );
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(), // chain
       _coerceToDict(input, "input"), // inputs
@@ -2375,4 +2385,36 @@ function _buildServerInfo(
     };
   }
   return undefined;
+}
+
+const OMITTED_KEYS = new Set(["key", "token", "secret", "password", "auth"]);
+
+function _excludeAsMetadata(key: string, value: unknown): boolean {
+  const keyLower = key.toLowerCase();
+  return (
+    key.startsWith("__") ||
+    !(
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) ||
+    OMITTED_KEYS.some((substr) => keyLower.includes(substr))
+  );
+}
+
+function _getTracingMetadataDefaults(
+  config: RunnableConfig
+): Record<string, unknown> | undefined {
+  const configurable = config.configurable;
+  if (!configurable) {
+    return undefined;
+  }
+  const metadata: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(configurable)) {
+    if (_excludeAsMetadata(key, value)) {
+      continue;
+    }
+    metadata[key] = value;
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

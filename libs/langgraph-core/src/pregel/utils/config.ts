@@ -35,6 +35,15 @@ const CONFIG_KEYS = [
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
+const PROPAGATE_TO_METADATA = new Set([
+  "thread_id",
+  "checkpoint_id",
+  "checkpoint_ns",
+  "task_id",
+  "run_id",
+  "assistant_id",
+  "graph_id",
+]);
 
 export function ensureLangGraphConfig(
   ...configs: (LangGraphRunnableConfig | undefined)[]
@@ -89,19 +98,18 @@ export function ensureLangGraphConfig(
     }
   }
 
-  for (const [key, value] of Object.entries(empty.configurable!)) {
-    empty.metadata = empty.metadata ?? {};
-    if (
-      !key.startsWith("__") &&
-      (typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean") &&
-      !(key in empty.metadata!)
-    ) {
-      empty.metadata[key] = value;
+  const configurable = empty.configurable;
+  if (configurable && empty.metadata != null) {
+    for (const key of PROPAGATE_TO_METADATA) {
+      if (key in empty.metadata) {
+        continue;
+      }
+      const value = configurable[key];
+      if (value) {
+        empty.metadata[key] = value;
+      }
     }
   }
-
   return empty;
 }
 
