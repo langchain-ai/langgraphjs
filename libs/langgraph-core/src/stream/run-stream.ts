@@ -25,13 +25,14 @@ import {
   createMessagesTransformer,
   createValuesTransformer,
 } from "./transformers.js";
-import type {
-  ChatModelStream,
-  InferExtensions,
-  InterruptPayload,
-  Namespace,
-  ProtocolEvent,
-  StreamTransformer,
+import {
+  isNativeTransformer,
+  type ChatModelStream,
+  type InferExtensions,
+  type InterruptPayload,
+  type Namespace,
+  type ProtocolEvent,
+  type StreamTransformer,
 } from "./types.js";
 
 /**
@@ -404,11 +405,16 @@ export function createGraphRunStream<
   mux.addTransformer(messagesTransformer);
 
   const extensions: Record<string, unknown> = {};
+  const nativeProjections: Record<string, unknown>[] = [];
   for (const factory of transformers) {
     const transformer = factory();
     mux.addTransformer(transformer);
     const projection = transformer.init();
-    Object.assign(extensions, projection);
+    if (isNativeTransformer(transformer)) {
+      nativeProjections.push(projection);
+    } else {
+      Object.assign(extensions, projection);
+    }
     if (typeof projection === "object" && projection !== null) {
       mux.wireChannels(projection as Record<string, unknown>);
     }
@@ -422,6 +428,13 @@ export function createGraphRunStream<
     extensions as InferExtensions<TTransformers>,
     abortController
   );
+
+  /**
+   * Assign native transformer projections to the root stream.
+   */
+  for (const proj of nativeProjections) {
+    Object.assign(root, proj);
+  }
 
   // Wire transformer projections into the root stream.
   const valuesProjection = valuesTransformer.init();
