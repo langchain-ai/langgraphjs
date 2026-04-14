@@ -2398,7 +2398,7 @@ function _excludeAsMetadata(key: string, value: unknown): boolean {
       typeof value === "number" ||
       typeof value === "boolean"
     ) ||
-    OMITTED_KEYS.some((substr) => keyLower.includes(substr))
+    [...OMITTED_KEYS].some((substr) => keyLower.includes(substr))
   );
 }
 
