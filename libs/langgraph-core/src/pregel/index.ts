@@ -2391,6 +2391,13 @@ const OMITTED_KEYS = new Set(["key", "token", "secret", "password", "auth"]);
 
 function _excludeAsMetadata(key: string, value: unknown): boolean {
   const keyLower = key.toLowerCase();
+  let hasOmittedSubstring = false;
+  for (const substr of OMITTED_KEYS) {
+    if (keyLower.includes(substr)) {
+      hasOmittedSubstring = true;
+      break;
+    }
+  }
   return (
     key.startsWith("__") ||
     !(
@@ -2398,7 +2405,7 @@ function _excludeAsMetadata(key: string, value: unknown): boolean {
       typeof value === "number" ||
       typeof value === "boolean"
     ) ||
-    [...OMITTED_KEYS].some((substr) => keyLower.includes(substr))
+    hasOmittedSubstring
   );
 }
 
