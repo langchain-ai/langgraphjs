@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import type { Server } from "node:http";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { Hono } from "hono";
 import { contextStorage } from "hono/context-storage";
@@ -237,7 +238,7 @@ export async function startServer(
         (c) => {
           resolve({ host: `${c.address}:${c.port}`, cleanup });
         }
-      );
+      ) as Server;
 
       closeServer = async () =>
         await new Promise<void>((resolveClose, rejectClose) => {

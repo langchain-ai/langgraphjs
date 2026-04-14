@@ -45,8 +45,9 @@ export const SET_VALUES_LOG: unique symbol = Symbol("setValuesLog");
  * Symbol key for attaching the messages iterable to a stream handle.
  * Using a symbol keeps this off the public autocomplete surface.
  */
-export const SET_MESSAGES_ITERABLE: unique symbol =
-  Symbol("setMessagesIterable");
+export const SET_MESSAGES_ITERABLE: unique symbol = Symbol(
+  "setMessagesIterable"
+);
 
 /**
  * Primary run stream for a LangGraph execution.
