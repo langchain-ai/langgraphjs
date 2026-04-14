@@ -1227,7 +1227,7 @@ describe("runs", () => {
     expect(run.status).toBe("success");
   });
 
-  it.concurrent(
+  it.skipIf(typeof globalThis.WebSocket === "undefined").concurrent(
     "websocket protocol endpoint filters and replays subscribed namespaces",
     { timeout: 20_000 },
     async () => {
