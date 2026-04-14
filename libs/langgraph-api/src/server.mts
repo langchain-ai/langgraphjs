@@ -241,6 +241,7 @@ export async function startServer(
 
       closeServer = async () =>
         await new Promise<void>((resolveClose, rejectClose) => {
+          server.closeAllConnections();
           server.close((error) => {
             if (error) {
               rejectClose(error);

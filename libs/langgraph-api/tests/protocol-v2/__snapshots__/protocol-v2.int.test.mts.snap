@@ -1,0 +1,4737 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`protocol v2 snapshots > captures a createAgent ReAct transcript snapshot 1`] = `
+{
+  "events": [
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "call-weather-1-message",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-create-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "",
+              "id": "call-weather-1",
+              "name": "get_weather",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "{"city":"San Francisco"}",
+              "id": "call-weather-1",
+              "name": "get_weather",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "call-weather-1-message",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "city": "San Francisco",
+                    },
+                    "id": "call-weather-1",
+                    "name": "get_weather",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-started",
+            "input": "{"city":"San Francisco"}",
+            "tool_call_id": "call-weather-1",
+            "tool_name": "get_weather",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-finished",
+            "output": {
+              "additional_kwargs": {},
+              "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
+              "metadata": {
+                "versions": {
+                  "@langchain/core": "1.1.39",
+                },
+              },
+              "name": "get_weather",
+              "response_metadata": {},
+              "status": "success",
+              "tool_call_id": "call-weather-1",
+              "type": "tool",
+            },
+            "tool_call_id": "call-weather-1",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "run-<id>",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "name": "tools",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-create-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "tool",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "call-weather-1-message",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "city": "San Francisco",
+                    },
+                    "id": "call-weather-1",
+                    "name": "get_weather",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
+                "id": "run-<id>",
+                "name": "get_weather",
+                "status": "success",
+                "tool_call_id": "call-weather-1",
+                "type": "tool",
+              },
+            ],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "call-weather-1-final",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-create-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "It's 64F and foggy in San Francisco.",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "What is the weather in San Francisco?",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "call-weather-1-message",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "city": "San Francisco",
+                    },
+                    "id": "call-weather-1",
+                    "name": "get_weather",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
+                "id": "run-<id>",
+                "name": "get_weather",
+                "status": "success",
+                "tool_call_id": "call-weather-1",
+                "type": "tool",
+              },
+              {
+                "content": "It's 64F and foggy in San Francisco.",
+                "id": "call-weather-1-final",
+                "name": "model",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+  ],
+  "openResponse": {
+    "id": 0,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "capabilities": {
+        "content_block_types": [
+          "text",
+          "reasoning",
+          "tool_call",
+          "tool_call_chunk",
+          "invalid_tool_call",
+          "server_tool_call",
+          "server_tool_call_chunk",
+          "server_tool_call_result",
+          "image",
+          "audio",
+          "video",
+          "file",
+          "non_standard",
+        ],
+        "modules": [
+          {
+            "commands": [
+              "session.open",
+              "session.describe",
+              "session.close",
+            ],
+            "name": "session",
+          },
+          {
+            "commands": [
+              "run.input",
+            ],
+            "name": "run",
+          },
+          {
+            "commands": [
+              "subscription.subscribe",
+              "subscription.unsubscribe",
+              "subscription.reconnect",
+            ],
+            "name": "subscription",
+          },
+          {
+            "channels": [
+              "input",
+            ],
+            "commands": [
+              "input.respond",
+            ],
+            "name": "input",
+          },
+          {
+            "channels": [
+              "lifecycle",
+            ],
+            "commands": [
+              "agent.getTree",
+            ],
+            "events": [
+              "spawned",
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+            ],
+            "name": "agent",
+          },
+          {
+            "channels": [
+              "values",
+            ],
+            "name": "values",
+          },
+          {
+            "channels": [
+              "updates",
+            ],
+            "name": "updates",
+          },
+          {
+            "channels": [
+              "messages",
+            ],
+            "name": "messages",
+          },
+          {
+            "channels": [
+              "tools",
+            ],
+            "name": "tools",
+          },
+          {
+            "channels": [
+              "custom",
+            ],
+            "name": "custom",
+          },
+          {
+            "channels": [
+              "debug",
+            ],
+            "name": "debug",
+          },
+          {
+            "channels": [
+              "checkpoints",
+            ],
+            "name": "checkpoints",
+          },
+          {
+            "channels": [
+              "tasks",
+            ],
+            "name": "tasks",
+          },
+          {
+            "channels": [
+              "state",
+            ],
+            "commands": [
+              "state.get",
+              "state.listCheckpoints",
+              "state.fork",
+            ],
+            "name": "state",
+          },
+        ],
+        "payload_types": [
+          "LifecycleEvent",
+          "MessagesEvent",
+          "ToolsEvent",
+          "ValuesEvent",
+          "UpdatesEvent",
+          "InputRequestedEvent",
+          "CustomEvent",
+          "DebugEvent",
+          "CheckpointsEvent",
+          "TasksEvent",
+        ],
+      },
+      "commandsUrl": "/v2/sessions/<id>/commands",
+      "eventsUrl": "/v2/sessions/<id>/events",
+      "protocol_version": "0.3.0",
+      "session_id": "<session-id>",
+      "transport": {
+        "command_delivery": "request-response",
+        "event_ordering": "seq",
+        "media_transfer_modes": [
+          "artifact-only",
+          "upgrade-to-websocket",
+        ],
+        "name": "sse-http",
+      },
+    },
+    "type": "success",
+  },
+  "runResponse": {
+    "id": 2,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "run_id": "<run-id>",
+    },
+    "type": "success",
+  },
+  "stateResponse": {
+    "id": "<command-id>",
+    "meta": {
+      "applied_through_seq": 42,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "checkpoint": {
+        "id": "<uuid>",
+        "ns": "",
+      },
+      "values": {
+        "messages": [
+          {
+            "additional_kwargs": {},
+            "content": "What is the weather in San Francisco?",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "",
+            "id": "call-weather-1-message",
+            "invalid_tool_calls": [],
+            "name": "model",
+            "response_metadata": {},
+            "tool_call_chunks": [
+              {
+                "args": "{"city":"San Francisco"}",
+                "id": "call-weather-1",
+                "index": 0,
+                "name": "get_weather",
+                "type": "tool_call_chunk",
+              },
+            ],
+            "tool_calls": [
+              {
+                "args": {
+                  "city": "San Francisco",
+                },
+                "id": "call-weather-1",
+                "name": "get_weather",
+                "type": "tool_call",
+              },
+            ],
+            "type": "ai",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "{"city":"San Francisco","temp_f":64,"condition":"Foggy"}",
+            "id": "run-<id>",
+            "metadata": {
+              "versions": {
+                "@langchain/core": "1.1.39",
+              },
+            },
+            "name": "get_weather",
+            "response_metadata": {},
+            "status": "success",
+            "tool_call_id": "call-weather-1",
+            "type": "tool",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "It's 64F and foggy in San Francisco.",
+            "id": "call-weather-1-final",
+            "invalid_tool_calls": [],
+            "name": "model",
+            "response_metadata": {},
+            "tool_call_chunks": [],
+            "tool_calls": [],
+            "type": "ai",
+          },
+        ],
+      },
+    },
+    "type": "success",
+  },
+  "subscribeResponse": {
+    "id": 1,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "replayed_events": 0,
+      "subscription_id": "<subscription-id>",
+    },
+    "type": "success",
+  },
+  "treeResponse": {
+    "id": "<command-id>",
+    "meta": {
+      "applied_through_seq": 42,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "tree": {
+        "children": [
+          {
+            "graph_name": "model_request",
+            "namespace": [
+              "model_request:<uuid>",
+            ],
+            "status": "spawned",
+          },
+          {
+            "graph_name": "model_request",
+            "namespace": [
+              "model_request:<uuid>",
+            ],
+            "status": "spawned",
+          },
+          {
+            "graph_name": "tools",
+            "namespace": [
+              "tools:<uuid>",
+            ],
+            "status": "spawned",
+          },
+        ],
+        "graph_name": "create_agent",
+        "namespace": [],
+        "status": "completed",
+      },
+    },
+    "type": "success",
+  },
+}
+`;
+
+exports[`protocol v2 snapshots > captures a createDeepAgent transcript snapshot 1`] = `
+{
+  "events": [
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "running",
+            "graph_name": "deep_agent",
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {},
+          "namespace": [],
+          "node": "FilesystemMiddleware.before_agent",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {},
+          "namespace": [],
+          "node": "patchToolCallsMiddleware.before_agent",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "model_request",
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "deep-orchestrator-tool-call",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "",
+              "id": "task-1",
+              "name": "task",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "{"description":"Search the web for protocol risks","subagent_type":"researcher"}",
+              "id": "task-1",
+              "name": "task",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "",
+              "id": "task-2",
+              "name": "task",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-start",
+            "index": 1,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "{"description":"Inspect the sample dataset","subagent_type":"data-analyst"}",
+              "id": "task-2",
+              "name": "task",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-delta",
+            "index": 1,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "",
+                "id": "deep-orchestrator-tool-call",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "description": "Search the web for protocol risks",
+                      "subagent_type": "researcher",
+                    },
+                    "id": "task-1",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                  {
+                    "args": {
+                      "description": "Inspect the sample dataset",
+                      "subagent_type": "data-analyst",
+                    },
+                    "id": "task-2",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [],
+          "node": "model_request",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "subagent:task-1:human",
+            "role": "human",
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Search the web for protocol risks",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Search the web for protocol risks",
+              "type": "text",
+            },
+            "event": "content-block-finish",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-finish",
+            "reason": "stop",
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Search the web for protocol risks",
+                "id": "subagent:task-1:human",
+                "type": "human",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "subagent:task-2:human",
+            "role": "human",
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Inspect the sample dataset",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Inspect the sample dataset",
+              "type": "text",
+            },
+            "event": "content-block-finish",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-finish",
+            "reason": "stop",
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Inspect the sample dataset",
+                "id": "subagent:task-2:human",
+                "type": "human",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "deep-orchestrator-tool-call",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "description": "Search the web for protocol risks",
+                      "subagent_type": "researcher",
+                    },
+                    "id": "task-1",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                  {
+                    "args": {
+                      "description": "Inspect the sample dataset",
+                      "subagent_type": "data-analyst",
+                    },
+                    "id": "task-2",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {},
+          "namespace": [],
+          "node": "todoListMiddleware.after_model",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "deep-orchestrator-tool-call",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "description": "Search the web for protocol risks",
+                      "subagent_type": "researcher",
+                    },
+                    "id": "task-1",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                  {
+                    "args": {
+                      "description": "Inspect the sample dataset",
+                      "subagent_type": "data-analyst",
+                    },
+                    "id": "task-2",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-started",
+            "input": "{"description":"Search the web for protocol risks","subagent_type":"researcher"}",
+            "tool_call_id": "task-1",
+            "tool_name": "task",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-started",
+            "input": "{"description":"Inspect the sample dataset","subagent_type":"data-analyst"}",
+            "tool_call_id": "task-2",
+            "tool_name": "task",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Search the web for protocol risks",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Inspect the sample dataset",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "model_request",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "search-1-message",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "",
+              "id": "search-1",
+              "name": "search_web",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "{"query":"protocol risks"}",
+              "id": "search-1",
+              "name": "search_web",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "model_request",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "query-1-message",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "",
+              "id": "query-1",
+              "name": "query_database",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "args": "{"table":"sample_data"}",
+              "id": "query-1",
+              "name": "query_database",
+              "type": "tool_call_chunk",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "",
+                "id": "search-1-message",
+                "name": "researcher",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "query": "protocol risks",
+                    },
+                    "id": "search-1",
+                    "name": "search_web",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "node": "model_request",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "",
+                "id": "query-1-message",
+                "name": "data-analyst",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "table": "sample_data",
+                    },
+                    "id": "query-1",
+                    "name": "query_database",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "node": "model_request",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Search the web for protocol risks",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "search-1-message",
+                "name": "researcher",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "query": "protocol risks",
+                    },
+                    "id": "search-1",
+                    "name": "search_web",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Inspect the sample dataset",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "query-1-message",
+                "name": "data-analyst",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "table": "sample_data",
+                    },
+                    "id": "query-1",
+                    "name": "query_database",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-started",
+            "input": "{"query":"protocol risks"}",
+            "tool_call_id": "search-1",
+            "tool_name": "search_web",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-started",
+            "input": "{"table":"sample_data"}",
+            "tool_call_id": "query-1",
+            "tool_name": "query_database",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-finished",
+            "output": {
+              "additional_kwargs": {},
+              "content": "{"status":"success","query":"protocol risks","results":[{"title":"Result for: protocol risks","url":"https://example.com/1"},{"title":"More on: protocol risks","url":"https://example.com/2"}]}",
+              "id": "run-<id>",
+              "metadata": {
+                "versions": {
+                  "@langchain/core": "1.1.39",
+                },
+              },
+              "name": "search_web",
+              "response_metadata": {},
+              "status": "success",
+              "tool_call_id": "search-1",
+              "type": "tool",
+            },
+            "tool_call_id": "search-1",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-finished",
+            "output": {
+              "goto": [],
+              "lg_name": "Command",
+              "update": {
+                "messages": [
+                  {
+                    "additional_kwargs": {},
+                    "content": "{"status":"success","table":"sample_data","records":[{"id":1,"name":"Record A","value":42},{"id":2,"name":"Record B","value":87}],"count":2}",
+                    "id": "<uuid>",
+                    "name": "query_database",
+                    "response_metadata": {},
+                    "tool_call_id": "query-1",
+                    "type": "tool",
+                  },
+                ],
+              },
+            },
+            "tool_call_id": "query-1",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "run-<id>",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "name": "tools",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "tool",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "{"status":"success","query":"protocol risks","results":[{"title":"Result for: protocol risks","url":"https://example.com/1"},{"title":"More on: protocol risks","url":"https://example.com/2"}]}",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "{"status":"success","query":"protocol risks","results":[{"title":"Result for: protocol risks","url":"https://example.com/1"},{"title":"More on: protocol risks","url":"https://example.com/2"}]}",
+                "id": "run-<id>",
+                "name": "search_web",
+                "status": "success",
+                "tool_call_id": "search-1",
+                "type": "tool",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "node": "tools",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "{"status":"success","table":"sample_data","records":[{"id":1,"name":"Record A","value":42},{"id":2,"name":"Record B","value":87}],"count":2}",
+                "id": "<uuid>",
+                "name": "query_database",
+                "tool_call_id": "query-1",
+                "type": "tool",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "node": "tools",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Search the web for protocol risks",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "search-1-message",
+                "name": "researcher",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "query": "protocol risks",
+                    },
+                    "id": "search-1",
+                    "name": "search_web",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "{"status":"success","query":"protocol risks","results":[{"title":"Result for: protocol risks","url":"https://example.com/1"},{"title":"More on: protocol risks","url":"https://example.com/2"}]}",
+                "id": "run-<id>",
+                "name": "search_web",
+                "status": "success",
+                "tool_call_id": "search-1",
+                "type": "tool",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Inspect the sample dataset",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "query-1-message",
+                "name": "data-analyst",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "table": "sample_data",
+                    },
+                    "id": "query-1",
+                    "name": "query_database",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "{"status":"success","table":"sample_data","records":[{"id":1,"name":"Record A","value":42},{"id":2,"name":"Record B","value":87}],"count":2}",
+                "id": "<uuid>",
+                "name": "query_database",
+                "tool_call_id": "query-1",
+                "type": "tool",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "model_request",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "search-1-final",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Research completed: reconnect and lifecycle handling need coverage.",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "model_request",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "query-1-final",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Analysis completed: found 2 sample records.",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:<uuid>",
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "id": "search-1-final",
+                "name": "researcher",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "node": "model_request",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "query-1-final",
+                "name": "data-analyst",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "node": "model_request",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Search the web for protocol risks",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "search-1-message",
+                "name": "researcher",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "query": "protocol risks",
+                    },
+                    "id": "search-1",
+                    "name": "search_web",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "{"status":"success","query":"protocol risks","results":[{"title":"Result for: protocol risks","url":"https://example.com/1"},{"title":"More on: protocol risks","url":"https://example.com/2"}]}",
+                "id": "run-<id>",
+                "name": "search_web",
+                "status": "success",
+                "tool_call_id": "search-1",
+                "type": "tool",
+              },
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "id": "search-1-final",
+                "name": "researcher",
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Inspect the sample dataset",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "query-1-message",
+                "name": "data-analyst",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "table": "sample_data",
+                    },
+                    "id": "query-1",
+                    "name": "query_database",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "{"status":"success","table":"sample_data","records":[{"id":1,"name":"Record A","value":42},{"id":2,"name":"Record B","value":87}],"count":2}",
+                "id": "<uuid>",
+                "name": "query_database",
+                "tool_call_id": "query-1",
+                "type": "tool",
+              },
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "query-1-final",
+                "name": "data-analyst",
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-finished",
+            "output": {
+              "goto": [],
+              "lg_name": "Command",
+              "update": {
+                "files": {},
+                "messages": [
+                  {
+                    "additional_kwargs": {},
+                    "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                    "name": "task",
+                    "response_metadata": {},
+                    "tool_call_id": "task-1",
+                    "type": "tool",
+                  },
+                ],
+              },
+            },
+            "tool_call_id": "task-1",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "name": "task",
+                "tool_call_id": "task-1",
+                "type": "tool",
+              },
+            ],
+          },
+          "namespace": [],
+          "node": "tools",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "subagent:task-1:ai",
+            "role": "ai",
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Research completed: reconnect and lifecycle handling need coverage.",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Research completed: reconnect and lifecycle handling need coverage.",
+              "type": "text",
+            },
+            "event": "content-block-finish",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-finish",
+            "reason": "stop",
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Search the web for protocol risks",
+                "id": "subagent:task-1:human",
+                "type": "human",
+              },
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "id": "subagent:task-1:ai",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "completed",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:task-1",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "tools",
+        "params": {
+          "data": {
+            "event": "tool-finished",
+            "output": {
+              "goto": [],
+              "lg_name": "Command",
+              "update": {
+                "files": {},
+                "messages": [
+                  {
+                    "additional_kwargs": {},
+                    "content": "Analysis completed: found 2 sample records.",
+                    "name": "task",
+                    "response_metadata": {},
+                    "tool_call_id": "task-2",
+                    "type": "tool",
+                  },
+                ],
+              },
+            },
+            "tool_call_id": "task-2",
+          },
+          "namespace": [
+            "tools:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "tools",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-2",
+                "type": "tool",
+              },
+            ],
+          },
+          "namespace": [],
+          "node": "tools",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "subagent:<uuid>",
+            "role": "ai",
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Analysis completed: found 2 sample records.",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Analysis completed: found 2 sample records.",
+              "type": "text",
+            },
+            "event": "content-block-finish",
+            "index": 0,
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-finish",
+            "reason": "stop",
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Inspect the sample dataset",
+                "id": "subagent:task-2:human",
+                "type": "human",
+              },
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "subagent:<uuid>",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "completed",
+            "graph_name": "tools",
+          },
+          "namespace": [
+            "tools:task-2",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "deep-orchestrator-tool-call",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "description": "Search the web for protocol risks",
+                      "subagent_type": "researcher",
+                    },
+                    "id": "task-1",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                  {
+                    "args": {
+                      "description": "Inspect the sample dataset",
+                      "subagent_type": "data-analyst",
+                    },
+                    "id": "task-2",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-1",
+                "type": "tool",
+              },
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-2",
+                "type": "tool",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "spawned",
+            "graph_name": "model_request",
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "deep-orchestrator-final",
+            "metadata": {
+              "__protocol_messages_stream": true,
+              "modelType": "chat",
+              "provider": "DeterministicToolCallingModel",
+              "runId": "<uuid>",
+              "threadId": "protocol-v2-deep-agent-thread",
+              "user_id": "protocol-v2-user",
+            },
+            "role": "ai",
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Both subagents completed their tasks successfully.",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "model_request:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Both subagents completed their tasks successfully.",
+                "id": "deep-orchestrator-final",
+                "name": "model",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [],
+          "node": "model_request",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "deep-orchestrator-tool-call",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "description": "Search the web for protocol risks",
+                      "subagent_type": "researcher",
+                    },
+                    "id": "task-1",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                  {
+                    "args": {
+                      "description": "Inspect the sample dataset",
+                      "subagent_type": "data-analyst",
+                    },
+                    "id": "task-2",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-1",
+                "type": "tool",
+              },
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-2",
+                "type": "tool",
+              },
+              {
+                "content": "Both subagents completed their tasks successfully.",
+                "id": "deep-orchestrator-final",
+                "name": "model",
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "updates",
+        "params": {
+          "data": {},
+          "namespace": [],
+          "node": "todoListMiddleware.after_model",
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "updates",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "files": {},
+            "messages": [
+              {
+                "content": "Research protocol risks and inspect the sample dataset.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "",
+                "id": "deep-orchestrator-tool-call",
+                "name": "model",
+                "tool_calls": [
+                  {
+                    "args": {
+                      "description": "Search the web for protocol risks",
+                      "subagent_type": "researcher",
+                    },
+                    "id": "task-1",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                  {
+                    "args": {
+                      "description": "Inspect the sample dataset",
+                      "subagent_type": "data-analyst",
+                    },
+                    "id": "task-2",
+                    "name": "task",
+                    "type": "tool_call",
+                  },
+                ],
+                "type": "ai",
+              },
+              {
+                "content": "Research completed: reconnect and lifecycle handling need coverage.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-1",
+                "type": "tool",
+              },
+              {
+                "content": "Analysis completed: found 2 sample records.",
+                "id": "<uuid>",
+                "name": "task",
+                "tool_call_id": "task-2",
+                "type": "tool",
+              },
+              {
+                "content": "Both subagents completed their tasks successfully.",
+                "id": "deep-orchestrator-final",
+                "name": "model",
+                "type": "ai",
+              },
+            ],
+            "todos": [],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "lifecycle",
+        "params": {
+          "data": {
+            "event": "completed",
+            "graph_name": "deep_agent",
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "lifecycle",
+      "id": "<event-id>",
+    },
+  ],
+  "openResponse": {
+    "id": 0,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "capabilities": {
+        "content_block_types": [
+          "text",
+          "reasoning",
+          "tool_call",
+          "tool_call_chunk",
+          "invalid_tool_call",
+          "server_tool_call",
+          "server_tool_call_chunk",
+          "server_tool_call_result",
+          "image",
+          "audio",
+          "video",
+          "file",
+          "non_standard",
+        ],
+        "modules": [
+          {
+            "commands": [
+              "session.open",
+              "session.describe",
+              "session.close",
+            ],
+            "name": "session",
+          },
+          {
+            "commands": [
+              "run.input",
+            ],
+            "name": "run",
+          },
+          {
+            "commands": [
+              "subscription.subscribe",
+              "subscription.unsubscribe",
+              "subscription.reconnect",
+            ],
+            "name": "subscription",
+          },
+          {
+            "channels": [
+              "input",
+            ],
+            "commands": [
+              "input.respond",
+            ],
+            "name": "input",
+          },
+          {
+            "channels": [
+              "lifecycle",
+            ],
+            "commands": [
+              "agent.getTree",
+            ],
+            "events": [
+              "spawned",
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+            ],
+            "name": "agent",
+          },
+          {
+            "channels": [
+              "values",
+            ],
+            "name": "values",
+          },
+          {
+            "channels": [
+              "updates",
+            ],
+            "name": "updates",
+          },
+          {
+            "channels": [
+              "messages",
+            ],
+            "name": "messages",
+          },
+          {
+            "channels": [
+              "tools",
+            ],
+            "name": "tools",
+          },
+          {
+            "channels": [
+              "custom",
+            ],
+            "name": "custom",
+          },
+          {
+            "channels": [
+              "debug",
+            ],
+            "name": "debug",
+          },
+          {
+            "channels": [
+              "checkpoints",
+            ],
+            "name": "checkpoints",
+          },
+          {
+            "channels": [
+              "tasks",
+            ],
+            "name": "tasks",
+          },
+          {
+            "channels": [
+              "state",
+            ],
+            "commands": [
+              "state.get",
+              "state.listCheckpoints",
+              "state.fork",
+            ],
+            "name": "state",
+          },
+        ],
+        "payload_types": [
+          "LifecycleEvent",
+          "MessagesEvent",
+          "ToolsEvent",
+          "ValuesEvent",
+          "UpdatesEvent",
+          "InputRequestedEvent",
+          "CustomEvent",
+          "DebugEvent",
+          "CheckpointsEvent",
+          "TasksEvent",
+        ],
+      },
+      "commandsUrl": "/v2/sessions/<id>/commands",
+      "eventsUrl": "/v2/sessions/<id>/events",
+      "protocol_version": "0.3.0",
+      "session_id": "<session-id>",
+      "transport": {
+        "command_delivery": "request-response",
+        "event_ordering": "seq",
+        "media_transfer_modes": [
+          "artifact-only",
+          "upgrade-to-websocket",
+        ],
+        "name": "sse-http",
+      },
+    },
+    "type": "success",
+  },
+  "runResponse": {
+    "id": 2,
+    "meta": {
+      "applied_through_seq": 1,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "run_id": "<run-id>",
+    },
+    "type": "success",
+  },
+  "stateResponse": {
+    "id": "<command-id>",
+    "meta": {
+      "applied_through_seq": 243,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "checkpoint": {
+        "id": "<uuid>",
+        "ns": "",
+      },
+      "values": {
+        "files": {},
+        "messages": [
+          {
+            "additional_kwargs": {},
+            "content": "Research protocol risks and inspect the sample dataset.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "",
+            "id": "deep-orchestrator-tool-call",
+            "invalid_tool_calls": [],
+            "name": "model",
+            "response_metadata": {},
+            "tool_call_chunks": [
+              {
+                "args": "{"description":"Search the web for protocol risks","subagent_type":"researcher"}",
+                "id": "task-1",
+                "index": 0,
+                "name": "task",
+                "type": "tool_call_chunk",
+              },
+              {
+                "args": "{"description":"Inspect the sample dataset","subagent_type":"data-analyst"}",
+                "id": "task-2",
+                "index": 1,
+                "name": "task",
+                "type": "tool_call_chunk",
+              },
+            ],
+            "tool_calls": [
+              {
+                "args": {
+                  "description": "Search the web for protocol risks",
+                  "subagent_type": "researcher",
+                },
+                "id": "task-1",
+                "name": "task",
+                "type": "tool_call",
+              },
+              {
+                "args": {
+                  "description": "Inspect the sample dataset",
+                  "subagent_type": "data-analyst",
+                },
+                "id": "task-2",
+                "name": "task",
+                "type": "tool_call",
+              },
+            ],
+            "type": "ai",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Research completed: reconnect and lifecycle handling need coverage.",
+            "id": "<uuid>",
+            "name": "task",
+            "response_metadata": {},
+            "tool_call_id": "task-1",
+            "type": "tool",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Analysis completed: found 2 sample records.",
+            "id": "<uuid>",
+            "name": "task",
+            "response_metadata": {},
+            "tool_call_id": "task-2",
+            "type": "tool",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Both subagents completed their tasks successfully.",
+            "id": "deep-orchestrator-final",
+            "invalid_tool_calls": [],
+            "name": "model",
+            "response_metadata": {},
+            "tool_call_chunks": [],
+            "tool_calls": [],
+            "type": "ai",
+          },
+        ],
+        "todos": [],
+      },
+    },
+    "type": "success",
+  },
+  "subscribeResponse": {
+    "id": 1,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "replayed_events": 0,
+      "subscription_id": "<subscription-id>",
+    },
+    "type": "success",
+  },
+  "treeResponse": {
+    "id": "<command-id>",
+    "meta": {
+      "applied_through_seq": 243,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "tree": {
+        "children": [
+          {
+            "graph_name": "model_request",
+            "namespace": [
+              "model_request:<uuid>",
+            ],
+            "status": "spawned",
+          },
+          {
+            "graph_name": "model_request",
+            "namespace": [
+              "model_request:<uuid>",
+            ],
+            "status": "spawned",
+          },
+          {
+            "children": [
+              {
+                "graph_name": "model_request",
+                "namespace": [
+                  "tools:<uuid>",
+                  "model_request:<uuid>",
+                ],
+                "status": "spawned",
+              },
+              {
+                "graph_name": "model_request",
+                "namespace": [
+                  "tools:<uuid>",
+                  "model_request:<uuid>",
+                ],
+                "status": "spawned",
+              },
+              {
+                "graph_name": "tools",
+                "namespace": [
+                  "tools:<uuid>",
+                  "tools:<uuid>",
+                ],
+                "status": "spawned",
+              },
+            ],
+            "graph_name": "tools",
+            "namespace": [
+              "tools:<uuid>",
+            ],
+            "status": "spawned",
+          },
+          {
+            "children": [
+              {
+                "graph_name": "model_request",
+                "namespace": [
+                  "tools:<uuid>",
+                  "model_request:<uuid>",
+                ],
+                "status": "spawned",
+              },
+              {
+                "graph_name": "model_request",
+                "namespace": [
+                  "tools:<uuid>",
+                  "model_request:<uuid>",
+                ],
+                "status": "spawned",
+              },
+              {
+                "graph_name": "tools",
+                "namespace": [
+                  "tools:<uuid>",
+                  "tools:<uuid>",
+                ],
+                "status": "spawned",
+              },
+            ],
+            "graph_name": "tools",
+            "namespace": [
+              "tools:<uuid>",
+            ],
+            "status": "spawned",
+          },
+          {
+            "graph_name": "tools",
+            "namespace": [
+              "tools:task-1",
+            ],
+            "status": "completed",
+          },
+          {
+            "graph_name": "tools",
+            "namespace": [
+              "tools:task-2",
+            ],
+            "status": "completed",
+          },
+        ],
+        "graph_name": "deep_agent",
+        "namespace": [],
+        "status": "completed",
+      },
+    },
+    "type": "success",
+  },
+}
+`;
+
+exports[`protocol v2 snapshots > captures a stategraph transcript snapshot 1`] = `
+{
+  "events": [
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+            ],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-start",
+            "message_id": "stategraph-message-0",
+            "role": "ai",
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "",
+              "type": "text",
+            },
+            "event": "content-block-start",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "P",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "l",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "a",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "n",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": " ",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "a",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "c",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "c",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "e",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "p",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "t",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "e",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "d",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": ".",
+              "type": "text",
+            },
+            "event": "content-block-delta",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "content_block": {
+              "text": "Plan accepted.",
+              "type": "text",
+            },
+            "event": "content-block-finish",
+            "index": 0,
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "messages",
+        "params": {
+          "data": {
+            "event": "message-finish",
+            "metadata": {},
+            "reason": "stop",
+          },
+          "namespace": [
+            "agent:<uuid>",
+          ],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "messages",
+      "id": "<event-id>",
+    },
+    {
+      "data": {
+        "event_id": "<event-id>",
+        "method": "values",
+        "params": {
+          "data": {
+            "messages": [
+              {
+                "content": "Summarize the protocol draft.",
+                "id": "<uuid>",
+                "type": "human",
+              },
+              {
+                "content": "Plan accepted.",
+                "id": "stategraph-message-0",
+                "type": "ai",
+              },
+            ],
+          },
+          "namespace": [],
+          "timestamp": "<timestamp>",
+        },
+        "seq": "<seq>",
+        "type": "event",
+      },
+      "event": "values",
+      "id": "<event-id>",
+    },
+  ],
+  "openResponse": {
+    "id": 0,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "capabilities": {
+        "content_block_types": [
+          "text",
+          "reasoning",
+          "tool_call",
+          "tool_call_chunk",
+          "invalid_tool_call",
+          "server_tool_call",
+          "server_tool_call_chunk",
+          "server_tool_call_result",
+          "image",
+          "audio",
+          "video",
+          "file",
+          "non_standard",
+        ],
+        "modules": [
+          {
+            "commands": [
+              "session.open",
+              "session.describe",
+              "session.close",
+            ],
+            "name": "session",
+          },
+          {
+            "commands": [
+              "run.input",
+            ],
+            "name": "run",
+          },
+          {
+            "commands": [
+              "subscription.subscribe",
+              "subscription.unsubscribe",
+              "subscription.reconnect",
+            ],
+            "name": "subscription",
+          },
+          {
+            "channels": [
+              "input",
+            ],
+            "commands": [
+              "input.respond",
+            ],
+            "name": "input",
+          },
+          {
+            "channels": [
+              "lifecycle",
+            ],
+            "commands": [
+              "agent.getTree",
+            ],
+            "events": [
+              "spawned",
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+            ],
+            "name": "agent",
+          },
+          {
+            "channels": [
+              "values",
+            ],
+            "name": "values",
+          },
+          {
+            "channels": [
+              "updates",
+            ],
+            "name": "updates",
+          },
+          {
+            "channels": [
+              "messages",
+            ],
+            "name": "messages",
+          },
+          {
+            "channels": [
+              "tools",
+            ],
+            "name": "tools",
+          },
+          {
+            "channels": [
+              "custom",
+            ],
+            "name": "custom",
+          },
+          {
+            "channels": [
+              "debug",
+            ],
+            "name": "debug",
+          },
+          {
+            "channels": [
+              "checkpoints",
+            ],
+            "name": "checkpoints",
+          },
+          {
+            "channels": [
+              "tasks",
+            ],
+            "name": "tasks",
+          },
+          {
+            "channels": [
+              "state",
+            ],
+            "commands": [
+              "state.get",
+              "state.listCheckpoints",
+              "state.fork",
+            ],
+            "name": "state",
+          },
+        ],
+        "payload_types": [
+          "LifecycleEvent",
+          "MessagesEvent",
+          "ToolsEvent",
+          "ValuesEvent",
+          "UpdatesEvent",
+          "InputRequestedEvent",
+          "CustomEvent",
+          "DebugEvent",
+          "CheckpointsEvent",
+          "TasksEvent",
+        ],
+      },
+      "commandsUrl": "/v2/sessions/<id>/commands",
+      "eventsUrl": "/v2/sessions/<id>/events",
+      "protocol_version": "0.3.0",
+      "session_id": "<session-id>",
+      "transport": {
+        "command_delivery": "request-response",
+        "event_ordering": "seq",
+        "media_transfer_modes": [
+          "artifact-only",
+          "upgrade-to-websocket",
+        ],
+        "name": "sse-http",
+      },
+    },
+    "type": "success",
+  },
+  "runResponse": {
+    "id": 2,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "run_id": "<run-id>",
+    },
+    "type": "success",
+  },
+  "stateResponse": {
+    "id": "<command-id>",
+    "meta": {
+      "applied_through_seq": 31,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "checkpoint": {
+        "id": "<uuid>",
+        "ns": "",
+      },
+      "values": {
+        "messages": [
+          {
+            "additional_kwargs": {},
+            "content": "Summarize the protocol draft.",
+            "id": "<uuid>",
+            "response_metadata": {},
+            "type": "human",
+          },
+          {
+            "additional_kwargs": {},
+            "content": "Plan accepted.",
+            "id": "stategraph-message-0",
+            "invalid_tool_calls": [],
+            "response_metadata": {},
+            "tool_call_chunks": [],
+            "tool_calls": [],
+            "type": "ai",
+          },
+        ],
+      },
+    },
+    "type": "success",
+  },
+  "subscribeResponse": {
+    "id": 1,
+    "meta": {
+      "applied_through_seq": 0,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "replayed_events": 0,
+      "subscription_id": "<subscription-id>",
+    },
+    "type": "success",
+  },
+  "treeResponse": {
+    "id": "<command-id>",
+    "meta": {
+      "applied_through_seq": 31,
+      "session_id": "<session-id>",
+    },
+    "result": {
+      "tree": {
+        "children": [
+          {
+            "graph_name": "agent",
+            "namespace": [
+              "agent:<uuid>",
+            ],
+            "status": "spawned",
+          },
+        ],
+        "graph_name": "stategraph_text",
+        "namespace": [],
+        "status": "completed",
+      },
+    },
+    "type": "success",
+  },
+}
+`;

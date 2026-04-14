@@ -20,7 +20,7 @@
 
 import type { StreamChunk } from "../pregel/stream.js";
 import { EventLog } from "./event-log.js";
-import { StreamMux, pump } from "./mux.js";
+import { StreamMux, pump, RESOLVE_VALUES, REJECT_VALUES } from "./mux.js";
 import {
   createMessagesTransformer,
   createValuesTransformer,
@@ -34,6 +34,19 @@ import {
   type ProtocolEvent,
   type StreamTransformer,
 } from "./types.js";
+
+/**
+ * Symbol key for attaching the values log to a stream handle.
+ * Using a symbol keeps this off the public autocomplete surface.
+ */
+export const SET_VALUES_LOG: unique symbol = Symbol("setValuesLog");
+
+/**
+ * Symbol key for attaching the messages iterable to a stream handle.
+ * Using a symbol keeps this off the public autocomplete surface.
+ */
+export const SET_MESSAGES_ITERABLE: unique symbol =
+  Symbol("setMessagesIterable");
 
 /**
  * Primary run stream for a LangGraph execution.
@@ -274,7 +287,7 @@ export class GraphRunStream<
    * @param values - The final state values, or `undefined` if none.
    * @internal
    */
-  _resolveValues(values: TValues | undefined): void {
+  [RESOLVE_VALUES](values: TValues | undefined): void {
     this.#resolveValuesFn?.(values as TValues);
     this.#resolveValuesFn = undefined;
   }
@@ -286,7 +299,7 @@ export class GraphRunStream<
    * @param err - The error that caused the run to fail.
    * @internal
    */
-  _rejectValues(err: unknown): void {
+  [REJECT_VALUES](err: unknown): void {
     this.#rejectValuesFn?.(err);
     this.#rejectValuesFn = undefined;
   }
@@ -298,7 +311,7 @@ export class GraphRunStream<
    * @param log - The event log from the values transformer projection.
    * @internal
    */
-  _setValuesLog(log: EventLog<Record<string, unknown>>): void {
+  [SET_VALUES_LOG](log: EventLog<Record<string, unknown>>): void {
     this.#valuesLog = log;
   }
 
@@ -309,7 +322,7 @@ export class GraphRunStream<
    * @param iterable - The async iterable from the messages transformer projection.
    * @internal
    */
-  _setMessagesIterable(iterable: AsyncIterable<ChatModelStream>): void {
+  [SET_MESSAGES_ITERABLE](iterable: AsyncIterable<ChatModelStream>): void {
     this.#messagesIterable = iterable;
   }
 }
@@ -438,10 +451,10 @@ export function createGraphRunStream<
 
   // Wire transformer projections into the root stream.
   const valuesProjection = valuesTransformer.init();
-  root._setValuesLog(valuesProjection._valuesLog);
+  root[SET_VALUES_LOG](valuesProjection._valuesLog);
 
   const messagesProjection = messagesTransformer.init();
-  root._setMessagesIterable(messagesProjection.messages);
+  root[SET_MESSAGES_ITERABLE](messagesProjection.messages);
 
   mux.register([], root);
 

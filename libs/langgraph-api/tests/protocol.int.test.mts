@@ -299,7 +299,7 @@ describe("protocol transports", () => {
     ).toBe(true);
     expect(
       observedEvents.every(
-        (event) => (event.params?.namespace as string[] | undefined)?.[0] === "gp_two"
+        (event) => /^gp_two(:|$)/.test((event.params?.namespace as string[] | undefined)?.[0] ?? "")
       )
     ).toBe(true);
 
@@ -322,10 +322,13 @@ describe("protocol transports", () => {
           graph_name: "nested",
           children: [
             {
-              namespace: ["gp_two"],
+              namespace: [expect.stringMatching(/^gp_two(:|$)/)],
               children: [
                 {
-                  namespace: ["gp_two", "p_two"],
+                  namespace: [
+                    expect.stringMatching(/^gp_two(:|$)/),
+                    expect.stringMatching(/^p_two(:|$)/),
+                  ],
                 },
               ],
             },
@@ -674,7 +677,7 @@ describe("protocol transports", () => {
     ).toBe(true);
     expect(
       observedEvents.every(
-        (event) => (event.params?.namespace as string[] | undefined)?.[0] === "gp_two"
+        (event) => /^gp_two(:|$)/.test((event.params?.namespace as string[] | undefined)?.[0] ?? "")
       )
     ).toBe(true);
 
@@ -697,10 +700,13 @@ describe("protocol transports", () => {
           graph_name: "nested",
           children: [
             {
-              namespace: ["gp_two"],
+              namespace: [expect.stringMatching(/^gp_two(:|$)/)],
               children: [
                 {
-                  namespace: ["gp_two", "p_two"],
+                  namespace: [
+                    expect.stringMatching(/^gp_two(:|$)/),
+                    expect.stringMatching(/^p_two(:|$)/),
+                  ],
                 },
               ],
             },

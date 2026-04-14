@@ -30,13 +30,25 @@ import type {
 export { STREAM_V2_MODES };
 
 /**
+ * Symbol key used by {@link StreamMux} to resolve the values promise on a
+ * stream handle. Using a symbol keeps this off the public autocomplete surface.
+ */
+export const RESOLVE_VALUES: unique symbol = Symbol("resolveValues");
+
+/**
+ * Symbol key used by {@link StreamMux} to reject the values promise on a
+ * stream handle. Using a symbol keeps this off the public autocomplete surface.
+ */
+export const REJECT_VALUES: unique symbol = Symbol("rejectValues");
+
+/**
  * Minimal interface that {@link StreamMux} requires from stream handles
  * for lifecycle resolution. This avoids a direct dependency on
  * `GraphRunStream` / `SubgraphRunStream`.
  */
 export interface StreamHandle {
-  _resolveValues(values: unknown): void;
-  _rejectValues(err: unknown): void;
+  [RESOLVE_VALUES](values: unknown): void;
+  [REJECT_VALUES](err: unknown): void;
 }
 
 /**
@@ -223,7 +235,7 @@ export class StreamMux {
     for (const [key, values] of this.#latestValues.entries()) {
       const ns = key ? key.split("\x00") : [];
       const stream = this.#streamMap.get(nsKey(ns));
-      stream?._resolveValues(values);
+      stream?.[RESOLVE_VALUES](values);
     }
 
     for (const transformer of this.#transformers) {
@@ -238,7 +250,7 @@ export class StreamMux {
     this._discoveries.close();
 
     for (const stream of this.#streamMap.values()) {
-      stream._resolveValues(undefined);
+      stream[RESOLVE_VALUES](undefined);
     }
   }
 
@@ -258,7 +270,7 @@ export class StreamMux {
     this._events.fail(err);
     this._discoveries.fail(err);
     for (const stream of this.#streamMap.values()) {
-      stream._rejectValues(err);
+      stream[REJECT_VALUES](err);
     }
   }
 

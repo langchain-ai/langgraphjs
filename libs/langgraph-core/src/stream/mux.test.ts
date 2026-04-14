@@ -4,6 +4,8 @@ import {
   pump,
   nsKey,
   hasPrefix,
+  RESOLVE_VALUES,
+  REJECT_VALUES,
 } from "./mux.js";
 import type { SubgraphStreamFactory } from "./mux.js";
 import { StreamChannel } from "./stream-channel.js";
@@ -16,8 +18,8 @@ class MockSubgraphStream {
     public discoveryStart: number,
     public eventStart: number
   ) {}
-  _resolveValues(_v: unknown) {}
-  _rejectValues(_e: unknown) {}
+  [RESOLVE_VALUES](_v: unknown) {}
+  [REJECT_VALUES](_e: unknown) {}
 }
 
 const mockFactory: SubgraphStreamFactory = (path, mux, discoveryStart, eventStart) =>
@@ -320,7 +322,7 @@ describe("StreamMux", () => {
   it("close resolves values on registered streams", () => {
     const mux = new StreamMux();
     const mockStream = new MockSubgraphStream([], mux, 0, 0);
-    const resolveSpy = vi.spyOn(mockStream, "_resolveValues");
+    const resolveSpy = vi.spyOn(mockStream, RESOLVE_VALUES);
     mux.register([], mockStream);
 
     const valuesEvent: ProtocolEvent = {
@@ -352,7 +354,7 @@ describe("StreamMux", () => {
     mux.addTransformer(transformer);
 
     const mockStream = new MockSubgraphStream([], mux, 0, 0);
-    const rejectSpy = vi.spyOn(mockStream, "_rejectValues");
+    const rejectSpy = vi.spyOn(mockStream, REJECT_VALUES);
     mux.register(["sub"], mockStream);
 
     const error = new Error("test failure");

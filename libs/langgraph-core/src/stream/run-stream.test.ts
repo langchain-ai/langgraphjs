@@ -3,7 +3,9 @@ import {
   GraphRunStream,
   SubgraphRunStream,
   createGraphRunStream,
+  SET_MESSAGES_ITERABLE,
 } from "./run-stream.js";
+import { RESOLVE_VALUES, REJECT_VALUES } from "./mux.js";
 import { StreamMux } from "./mux.js";
 import type { SubgraphStreamFactory } from "./mux.js";
 import type { ProtocolEvent, StreamTransformer } from "./types.js";
@@ -111,7 +113,7 @@ describe("GraphRunStream", () => {
     const root = new GraphRunStream<{ answer: number }>([], mux);
 
     const outputPromise = root.output;
-    root._resolveValues({ answer: 42 });
+    root[RESOLVE_VALUES]({ answer: 42 });
 
     const result = await outputPromise;
     expect(result).toEqual({ answer: 42 });
@@ -122,7 +124,7 @@ describe("GraphRunStream", () => {
     const root = new GraphRunStream([], mux);
 
     const outputPromise = root.output;
-    root._rejectValues(new Error("run failed"));
+    root[REJECT_VALUES](new Error("run failed"));
 
     await expect(outputPromise).rejects.toThrow("run failed");
   });
@@ -146,7 +148,7 @@ describe("GraphRunStream", () => {
       },
     };
 
-    root._setMessagesIterable(custom);
+    root[SET_MESSAGES_ITERABLE](custom);
     const collected: unknown[] = [];
     for await (const msg of root.messages) {
       collected.push(msg);

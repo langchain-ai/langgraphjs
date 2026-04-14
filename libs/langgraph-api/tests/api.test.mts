@@ -1299,7 +1299,7 @@ describe("runs", () => {
         expect(event.method === "values" || event.method === "updates" || event.method === "lifecycle").toBe(
           true
         );
-        expect((event.params as { namespace: string[] }).namespace[0]).toBe("gp_two");
+        expect((event.params as { namespace: string[] }).namespace[0]).toMatch(/^gp_two(:|$)/);
       }
 
       const treeRequestId = 2;
@@ -1323,10 +1323,13 @@ describe("runs", () => {
             graph_name: "nested",
             children: [
               {
-                namespace: ["gp_two"],
+                namespace: [expect.stringMatching(/^gp_two(:|$)/)],
                 children: [
                   {
-                    namespace: ["gp_two", "p_two"],
+                    namespace: [
+                      expect.stringMatching(/^gp_two(:|$)/),
+                      expect.stringMatching(/^p_two(:|$)/),
+                    ],
                   },
                 ],
               },
