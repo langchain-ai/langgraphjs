@@ -1,6 +1,6 @@
 /* eslint-disable no-param-reassign */
+import { CallbackManager } from "@langchain/core/callbacks/manager";
 import {
-  CallbackManager,
   _coerceToRunnable,
   mergeConfigs,
   patchConfig,
