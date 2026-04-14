@@ -73,7 +73,31 @@ function fetchHistory<StateType extends Record<string, unknown>>(
   }
 
   const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads.getHistory<StateType>(threadId, { limit });
+  return client.threads
+    .getHistory<StateType>(threadId, { limit })
+    .then(async (history) => {
+      if (history.length < limit) return history;
+
+      const result = [...history];
+      let before = history.at(-1)?.checkpoint?.checkpoint_id;
+
+      while (before != null) {
+        const page = await client.threads.getHistory<StateType>(threadId, {
+          limit,
+          before: before as any,
+        });
+        if (page.length === 0) break;
+
+        result.push(...page);
+        if (page.length < limit) break;
+
+        const nextBefore = page.at(-1)?.checkpoint?.checkpoint_id;
+        if (nextBefore == null || nextBefore === before) break;
+        before = nextBefore;
+      }
+
+      return result;
+    });
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(
