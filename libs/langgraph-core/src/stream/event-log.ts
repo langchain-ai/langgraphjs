@@ -159,6 +159,22 @@ export class EventLog<T> {
   }
 
   /**
+   * Returns the item at the given zero-based index.
+   *
+   * @param index - Zero-based position in the log.
+   * @returns The item at that position.
+   * @throws {RangeError} If the index is out of bounds.
+   */
+  get(index: number): T {
+    if (index < 0 || index >= this.#items.length) {
+      throw new RangeError(
+        `EventLog index ${index} out of bounds (size=${this.#items.length})`
+      );
+    }
+    return this.#items[index];
+  }
+
+  /**
    * The number of items currently in the log.
    */
   get size(): number {

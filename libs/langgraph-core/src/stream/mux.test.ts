@@ -400,6 +400,110 @@ describe("StreamMux", () => {
     expect((rootChildren[1] as MockSubgraphStream).path).toEqual(["sibling"]);
   });
 
+  it("addTransformer replays buffered events to the new transformer", () => {
+    const mux = new StreamMux();
+    mux.push([], makeEvent("messages", [], 0));
+    mux.push([], makeEvent("updates", [], 1));
+    mux.push([], makeEvent("values", [], 2));
+
+    const replayedMethods: string[] = [];
+    const lateTransformer: StreamTransformer = {
+      init: () => ({}),
+      process: (event) => {
+        replayedMethods.push(event.method);
+        return true;
+      },
+    };
+
+    mux.addTransformer(lateTransformer);
+
+    expect(replayedMethods).toEqual(["messages", "updates", "values"]);
+  });
+
+  it("addTransformer replays then processes future events", () => {
+    const mux = new StreamMux();
+    mux.push([], makeEvent("messages", [], 0));
+
+    const processedMethods: string[] = [];
+    const lateTransformer: StreamTransformer = {
+      init: () => ({}),
+      process: (event) => {
+        processedMethods.push(event.method);
+        return true;
+      },
+    };
+
+    mux.addTransformer(lateTransformer);
+    expect(processedMethods).toEqual(["messages"]);
+
+    mux.push([], makeEvent("updates", [], 1));
+    expect(processedMethods).toEqual(["messages", "updates"]);
+  });
+
+  it("addTransformer calls finalize if mux already closed", () => {
+    const mux = new StreamMux();
+    mux.push([], makeEvent("messages", [], 0));
+    mux.close();
+
+    const finalized = vi.fn();
+    const lateTransformer: StreamTransformer = {
+      init: () => ({}),
+      process: () => true,
+      finalize: finalized,
+    };
+
+    mux.addTransformer(lateTransformer);
+    expect(finalized).toHaveBeenCalledOnce();
+  });
+
+  it("addTransformer calls fail if mux already failed", () => {
+    const mux = new StreamMux();
+    mux.push([], makeEvent("messages", [], 0));
+    const error = new Error("run failed");
+    mux.fail(error);
+
+    const failSpy = vi.fn();
+    const lateTransformer: StreamTransformer = {
+      init: () => ({}),
+      process: () => true,
+      fail: failSpy,
+    };
+
+    mux.addTransformer(lateTransformer);
+    expect(failSpy).toHaveBeenCalledWith(error);
+  });
+
+  it("addTransformer replays only events buffered before registration", () => {
+    const mux = new StreamMux();
+    mux.push([], makeEvent("messages", [], 0));
+    mux.push([], makeEvent("values", [], 1));
+
+    const replayedSeqs: number[] = [];
+    const lateTransformer: StreamTransformer = {
+      init: () => ({}),
+      process: (event) => {
+        replayedSeqs.push(event.seq);
+        return true;
+      },
+    };
+
+    // Suppress one of the events to ensure we replay from the log
+    // (which only contains kept events), not from the raw push history.
+    const suppressDebug: StreamTransformer = {
+      init: () => ({}),
+      process: (event) => event.method !== "debug",
+    };
+    mux.addTransformer(suppressDebug);
+    mux.push([], makeEvent("debug", [], 2));
+    mux.push([], makeEvent("updates", [], 3));
+
+    mux.addTransformer(lateTransformer);
+
+    // Late transformer sees all events that made it into the log
+    // (messages seq=0, values seq=1, updates seq=3 — debug was suppressed)
+    expect(replayedSeqs).toEqual([0, 1, 3]);
+  });
+
   it("markInterrupted sets interrupted flag and stores payloads", () => {
     const mux = new StreamMux();
     expect(mux.interrupted).toBe(false);

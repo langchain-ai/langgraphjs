@@ -172,6 +172,31 @@ describe("EventLog", () => {
     expect(results).toEqual(["b", "c"]);
   });
 
+  it("get(index) returns the item at that position", () => {
+    const log = new EventLog<string>();
+    log.push("a");
+    log.push("b");
+    log.push("c");
+
+    expect(log.get(0)).toBe("a");
+    expect(log.get(1)).toBe("b");
+    expect(log.get(2)).toBe("c");
+  });
+
+  it("get(index) throws RangeError for out-of-bounds", () => {
+    const log = new EventLog<number>();
+    log.push(1);
+
+    expect(() => log.get(-1)).toThrow(RangeError);
+    expect(() => log.get(1)).toThrow(RangeError);
+    expect(() => log.get(100)).toThrow(RangeError);
+  });
+
+  it("get(index) throws RangeError on empty log", () => {
+    const log = new EventLog<number>();
+    expect(() => log.get(0)).toThrow(RangeError);
+  });
+
   it("multiple cursors at different positions", async () => {
     const log = new EventLog<number>();
     log.push(0);

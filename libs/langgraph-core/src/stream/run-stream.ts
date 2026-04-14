@@ -213,9 +213,11 @@ export class GraphRunStream<
     // Lazily create a messages transformer scoped to this stream's path.
     // This handles SubgraphRunStream instances that are created
     // dynamically by StreamMux and don't have a transformer pre-wired.
+    // Uses addTransformer (which replays buffered events) so that
+    // messages emitted before the getter is first accessed are not lost.
     const transformer = createMessagesTransformer(this.path);
-    this._mux.addTransformer(transformer);
     const projection = transformer.init();
+    this._mux.addTransformer(transformer);
     this.#messagesIterable = projection.messages;
     return this.#messagesIterable;
   }
@@ -229,8 +231,8 @@ export class GraphRunStream<
    */
   messagesFrom(node: string): AsyncIterable<ChatModelStream> {
     const transformer = createMessagesTransformer(this.path, node);
-    this._mux.addTransformer(transformer);
     const projection = transformer.init();
+    this._mux.addTransformer(transformer);
     return projection.messages;
   }
 

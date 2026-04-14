@@ -89,6 +89,12 @@ export class StreamMux {
   /** Monotonic counter for auto-forwarded channel events. */
   #nextEmitSeq = 0;
 
+  /** Whether the mux has been closed or failed. */
+  #closed = false;
+
+  /** The error passed to {@link fail}, if any. */
+  #error: unknown;
+
   /** Whether the run was interrupted. */
   #interrupted = false;
 
@@ -99,10 +105,8 @@ export class StreamMux {
    */
   #currentNamespace: Namespace = [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly #transformers: StreamTransformer<any>[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly #channels: StreamChannel<any>[] = [];
+  readonly #transformers: StreamTransformer<unknown>[] = [];
+  readonly #channels: StreamChannel<unknown>[] = [];
   readonly #streamMap = new Map<string, StreamHandle>();
   readonly #seenNs = new Set<string>();
   readonly #latestValues = new Map<string, Record<string, unknown>>();
@@ -131,14 +135,36 @@ export class StreamMux {
   }
 
   /**
-   * Appends a transformer to the pipeline.  Transformers run in registration
-   * order for every event passed to {@link push}.
+   * Registers a transformer and replays all buffered events through it so
+   * it catches up with events already processed by the mux.  When the event
+   * log is empty (typical at construction time) the replay is a no-op.
    *
-   * @param transformer - The transformer to add.
+   * The transformer must already have been initialised (i.e. `init()` called
+   * and any projection wired).  The sequence is:
+   *
+   *   1. Snapshot the current event log length.
+   *   2. Append the transformer so future {@link push} calls reach it.
+   *   3. Replay events `[0, snapshot)` through `process()`.
+   *   4. If the mux is already closed, call `finalize()` (or `fail()`)
+   *      immediately so the transformer's log/channel terminates cleanly.
+   *
+   * @param transformer - An already-initialised transformer to register.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  addTransformer(transformer: StreamTransformer<any>): void {
+  addTransformer(transformer: StreamTransformer<unknown>): void {
+    const snapshot = this._events.size;
     this.#transformers.push(transformer);
+
+    for (let i = 0; i < snapshot; i += 1) {
+      transformer.process(this._events.get(i));
+    }
+
+    if (this.#closed) {
+      if (this.#error !== undefined) {
+        transformer.fail?.(this.#error);
+      } else {
+        transformer.finalize?.();
+      }
+    }
   }
 
   /**
@@ -232,6 +258,7 @@ export class StreamMux {
    * closes both event logs.
    */
   close(): void {
+    this.#closed = true;
     for (const [key, values] of this.#latestValues.entries()) {
       const ns = key ? key.split("\x00") : [];
       const stream = this.#streamMap.get(nsKey(ns));
@@ -261,6 +288,8 @@ export class StreamMux {
    * @param err - The error that caused the run to fail.
    */
   fail(err: unknown): void {
+    this.#closed = true;
+    this.#error = err;
     for (const transformer of this.#transformers) {
       transformer.fail?.(err);
     }

@@ -137,6 +137,53 @@ describe("GraphRunStream", () => {
     expect(typeof iterable[Symbol.asyncIterator]).toBe("function");
   });
 
+  it("messagesFrom replays buffered messages events via addTransformer", async () => {
+    const mux = new StreamMux();
+    const root = new GraphRunStream([], mux);
+    mux.register([], root);
+
+    const ts = Date.now();
+
+    // Push a complete message lifecycle at depth 1 with node attribution
+    // before anyone accesses messagesFrom().
+    mux.push(["agent:0"], {
+      type: "event",
+      seq: 0,
+      method: "messages" as ProtocolEvent["method"],
+      params: { namespace: ["agent:0"], timestamp: ts, node: "agent", data: { event: "message-start" } },
+    });
+    mux.push(["agent:0"], {
+      type: "event",
+      seq: 1,
+      method: "messages" as ProtocolEvent["method"],
+      params: {
+        namespace: ["agent:0"],
+        timestamp: ts,
+        node: "agent",
+        data: { event: "content-block-delta", content_block: { type: "text", text: "hello" } },
+      },
+    });
+    mux.push(["agent:0"], {
+      type: "event",
+      seq: 2,
+      method: "messages" as ProtocolEvent["method"],
+      params: { namespace: ["agent:0"], timestamp: ts, node: "agent", data: { event: "message-finish", reason: "stop" } },
+    });
+    mux.close();
+
+    // Late call — the messages transformer is registered after all events.
+    // addTransformer replays buffered events so messagesFrom catches up.
+    const filtered = root.messagesFrom("agent");
+    const messages: unknown[] = [];
+    for await (const msg of filtered) {
+      messages.push(msg);
+    }
+
+    expect(messages).toHaveLength(1);
+    const msg = messages[0] as { text: AsyncIterable<string> & PromiseLike<string> };
+    expect(await msg.text).toBe("hello");
+  });
+
   it("messages getter returns provided iterable when set", async () => {
     const mux = new StreamMux();
     const root = new GraphRunStream([], mux);
