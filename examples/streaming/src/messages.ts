@@ -12,7 +12,7 @@
 
 import { graph } from "./agents/simple-tool-graph.js";
 
-const run = await graph.streamV2({
+const run = await graph.stream_experimental({
   messages: [
     {
       role: "user",

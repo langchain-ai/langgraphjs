@@ -6,7 +6,7 @@
  * discovery for SubgraphRunStream creation.
  *
  * lifecycle:
- *   graph.streamV2(input)
+ *   graph.stream_experimental(input)
  *     ├─ StreamMux starts pumping from graph.stream(…, { subgraphs: true })
  *     ├─ For each ProtocolEvent:
  *     │   ├─ transformer_1.process(event)
@@ -77,7 +77,7 @@ export type SubgraphDiscovery = {
  * subgraph streams, and exposes async iteration over filtered event
  * sequences.
  *
- * One `StreamMux` instance exists per top-level `streamV2()` invocation.
+ * One `StreamMux` instance exists per top-level `stream_experimental()` invocation.
  */
 export class StreamMux {
   /** @internal All protocol events in arrival order (after reducer pipeline). */

@@ -12,7 +12,7 @@ import type {
 } from "./types.js";
 
 /**
- * The complete set of stream modes requested by `streamV2()`, ensuring every
+ * The complete set of stream modes requested by `stream_experimental()`, ensuring every
  * protocol-defined channel is captured.
  */
 export const STREAM_V2_MODES: StreamMode[] = [

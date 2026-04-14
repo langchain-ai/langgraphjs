@@ -1,7 +1,7 @@
 /**
  * Human-in-the-loop — interrupt, inspect, resume.
  *
- * Demonstrates the streamV2() interrupt/resume lifecycle:
+ * Demonstrates the stream_experimental() interrupt/resume lifecycle:
  *
  *   Turn 1: graph runs until interrupt() → run.interrupted is true,
  *           run.interrupts contains the interrupt payloads.
@@ -23,7 +23,7 @@ const config = { configurable: { thread_id: threadId } };
 
 console.log("=== Turn 1: Run until interrupt ===\n");
 
-const run1 = await graph.streamV2(
+const run1 = await graph.stream_experimental(
   { messages: [{ role: "user", content: "Deploy the latest build to staging." }] },
   config
 );
@@ -55,7 +55,7 @@ console.log(`\n  User decision: ${userApproves ? "APPROVED" : "REJECTED"}`);
 
 console.log("\n=== Turn 2: Resume after approval ===\n");
 
-const run2 = await graph.streamV2(
+const run2 = await graph.stream_experimental(
   new Command({ resume: { approved: userApproves } }),
   config
 );

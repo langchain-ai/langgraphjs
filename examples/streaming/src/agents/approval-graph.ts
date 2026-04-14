@@ -2,7 +2,7 @@
  * Approval graph: model proposes an action, human approves or rejects.
  *
  * Demonstrates the `interrupt()` / `Command({ resume })` pattern with
- * `streamV2()`. The graph has three nodes:
+ * `stream_experimental()`. The graph has three nodes:
  *
  *   1. planner — model proposes an action
  *   2. approval — calls interrupt() with the proposed action

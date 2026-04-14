@@ -47,7 +47,7 @@ import type { RunProtocolSession } from "./session/index.mjs";
  * they are normalized into protocol-framed events.
  *
  * When {@link normalized} is `true` the payload has already been converted to
- * its protocol shape by the in-process streaming layer (`streamV2`) and should
+ * its protocol shape by the in-process streaming layer (`stream_experimental`) and should
  * be passed through without re-normalization.
  */
 export type SourceStreamEvent = {

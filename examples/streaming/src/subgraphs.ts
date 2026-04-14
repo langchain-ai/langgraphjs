@@ -36,7 +36,7 @@ const input = {
 async function hierarchical() {
   console.log("=== Approach 1: Hierarchical (per-subgraph messages) ===\n");
 
-  const run = await graph.streamV2(input);
+  const run = await graph.stream_experimental(input);
 
   async function observe(sub: SubgraphRunStream, depth = 1) {
     const indent = "  ".repeat(depth);
@@ -86,7 +86,7 @@ async function hierarchical() {
 export async function flat() {
   console.log("=== Approach 2: Flat (all messages from root) ===\n");
 
-  const run = await graph.streamV2(input);
+  const run = await graph.stream_experimental(input);
 
   let count = 0;
   for await (const msg of run.messages) {

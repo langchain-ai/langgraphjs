@@ -3,7 +3,7 @@
  *
  * This is the same research pipeline from `../agents/research-pipeline.ts`
  * but compiled with `transformers: [createA2ATransformer]` so that A2A events
- * are automatically emitted during every `streamV2()` call — including
+ * are automatically emitted during every `stream_experimental()` call — including
  * when the graph is deployed and run through the LangGraph API server.
  */
 

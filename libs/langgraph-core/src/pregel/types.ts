@@ -556,7 +556,7 @@ export type PregelParams<
 
   /**
    * Stream transformer factories registered at compile time.  These run
-   * automatically for every `streamV2()` call, before any call-site
+   * automatically for every `stream_experimental()` call, before any call-site
    * transformers.
    */
   streamTransformers?: TStreamTransformers;

@@ -522,8 +522,8 @@ export class Pregel<
 
   /**
    * Stream reducer factories registered at compile time.  These run
-   * automatically for every `streamV2()` call, before any call-site
-   * transformers passed via `streamV2(input, { transformers })`.
+   * automatically for every `stream_experimental()` call, before any call-site
+   * transformers passed via `stream_experimental(input, { transformers })`.
    */
   streamTransformers: TStreamTransformers;
 
@@ -1917,7 +1917,7 @@ export class Pregel<
   /**
    * Ergonomic v2 stream API for a single graph run.
    *
-   * `streamV2()` is the recommended way to consume graph execution when you
+   * `stream_experimental()` is the recommended way to consume graph execution when you
    * need typed, recursive access to subgraph events, tool lifecycle, and
    * message content-block streaming.
    *
@@ -1940,7 +1940,7 @@ export class Pregel<
    *
    * Example:
    * ```typescript
-   * const run = await graph.streamV2(input, { configurable: { thread_id: "t1" } });
+   * const run = await graph.stream_experimental(input, { configurable: { thread_id: "t1" } });
    *
    * for await (const event of run) {
    *   console.log(event.method, event.params.data);
@@ -1959,7 +1959,7 @@ export class Pregel<
    *
    * The v1 `stream()` API remains unchanged.
    */
-  async streamV2<
+  async stream_experimental<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
       [],

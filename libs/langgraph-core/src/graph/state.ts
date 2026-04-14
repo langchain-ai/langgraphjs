@@ -1097,7 +1097,7 @@ export class StateGraph<
     description?: string;
     /**
      * Stream transformer factories baked into the compiled graph.  These run
-     * automatically for every `streamV2()` call, before any call-site
+     * automatically for every `stream_experimental()` call, before any call-site
      * transformers.
      */
     transformers?: TTransformers;

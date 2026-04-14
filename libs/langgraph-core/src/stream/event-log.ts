@@ -17,6 +17,66 @@
  * {@link EventLog.toAsyncIterable | toAsyncIterable}.
  *
  * @typeParam T - The type of items stored in the log.
+ *
+ * @example Working — multiple concurrent consumers each see every item:
+ * ```ts
+ * const log = new EventLog<number>();
+ *
+ * // Two independent consumers over the same log
+ * const iterA = log.toAsyncIterable();
+ * const iterB = log.toAsyncIterable();
+ *
+ * log.push(1);
+ * log.push(2);
+ * log.close();
+ *
+ * for await (const n of iterA) console.log("A:", n); // A: 1, A: 2
+ * for await (const n of iterB) console.log("B:", n); // B: 1, B: 2
+ * ```
+ *
+ * This is how `GraphRunStream` exposes `.values` and `.messages` as
+ * separate projections over the same event flow — each projection gets
+ * its own cursor and reads independently.
+ *
+ * @example Not working — a plain `AsyncGenerator` can only be consumed once:
+ * ```ts
+ * async function* generate() { yield 1; yield 2; }
+ * const gen = generate();
+ *
+ * for await (const n of gen) console.log("A:", n); // A: 1, A: 2
+ * for await (const n of gen) console.log("B:", n); // (nothing — already exhausted)
+ * ```
+ *
+ * With a plain generator the second consumer gets nothing.  `EventLog`
+ * retains all items, so late or concurrent cursors never miss events.
+ *
+ * @example Working — late subscribers catch up from any position:
+ * ```ts
+ * const log = new EventLog<string>();
+ * log.push("a");
+ * log.push("b");
+ *
+ * // Subscriber joins after items have already been pushed
+ * const late = log.toAsyncIterable();
+ * log.push("c");
+ * log.close();
+ *
+ * for await (const s of late) console.log(s); // "a", "b", "c"
+ * ```
+ *
+ * @example Working — errors propagate to all active iterators:
+ * ```ts
+ * const log = new EventLog<number>();
+ * const iterA = log.toAsyncIterable();
+ * const iterB = log.toAsyncIterable();
+ *
+ * log.push(1);
+ * log.fail(new Error("graph crashed"));
+ *
+ * // Both consumers see the item, then receive the error
+ * for await (const n of iterA) {} // yields 1, then throws
+ * for await (const n of iterB) {} // yields 1, then throws
+ * ```
  */
 export class EventLog<T> {
   #items: T[] = [];

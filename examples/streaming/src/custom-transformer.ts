@@ -1,5 +1,5 @@
 /**
- * Custom StreamTransformer — extend streamV2() with domain-specific projections.
+ * Custom StreamTransformer — extend stream_experimental() with domain-specific projections.
  *
  * This example shows two transformer patterns:
  *
@@ -120,7 +120,7 @@ const toolActivityTransformer = (): StreamTransformer<{
   };
 };
 
-const run = await graph.streamV2(
+const run = await graph.stream_experimental(
   {
     messages: [
       {
