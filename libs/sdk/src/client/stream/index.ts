@@ -336,6 +336,11 @@ export class Session {
   private readonly activeFilters = new Map<string, SubscribeParams>();
   private closed = false;
 
+  /**
+   * Whether the session capabilities were advertised by the agent.
+   */
+  private readonly capabilitiesAdvertised: boolean;
+
   constructor(
     transportAdapter: TransportAdapter,
     sessionResult: SessionResult,
@@ -345,6 +350,7 @@ export class Session {
     this.sessionId = sessionResult.session_id;
     this.capabilities = sessionResult.capabilities;
     this.transport = sessionResult.transport;
+    this.capabilitiesAdvertised = this.capabilities.modules.length > 0;
     this.nextCommandId = options.startingCommandId ?? 1;
     this.buffer = new EventBuffer(options.eventBufferSize);
     this.run = {
@@ -403,16 +409,34 @@ export class Session {
   }
 
   hasModule(name: string): boolean {
+    /**
+     * skip enforcement if now capability is advertised
+     */
+    if (!this.capabilitiesAdvertised) {
+      return true;
+    }
     return this.capabilities.modules.some((module) => module.name === name);
   }
 
   supportsChannel(channel: Channel): boolean {
+    /**
+     * skip enforcement if now capability is advertised
+     */
+    if (!this.capabilitiesAdvertised) {
+      return true;
+    }
     return this.capabilities.modules.some((module) =>
       (module.channels ?? []).includes(channel)
     );
   }
 
   supportsCommand(method: string): boolean {
+    /**
+     * skip enforcement if now capability is advertised
+     */
+    if (!this.capabilitiesAdvertised) {
+      return true;
+    }
     const [moduleName, commandName] = method.split(".");
     return this.capabilities.modules.some(
       (module) =>

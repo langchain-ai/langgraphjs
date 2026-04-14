@@ -180,6 +180,37 @@ describe("ProtocolClient", () => {
     ).rejects.toThrow(/not advertised/);
   });
 
+  it("skips capability enforcement when modules is empty", async () => {
+    const transport = new MockTransport({
+      capabilities: { modules: [], payload_types: [], content_block_types: [] },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    expect(session.hasModule("run")).toBe(true);
+    expect(session.hasModule("anything")).toBe(true);
+    expect(session.supportsChannel("messages")).toBe(true);
+    expect(session.supportsCommand("run.input")).toBe(true);
+
+    expect(session.input).toBeDefined();
+    expect(session.state).toBeDefined();
+    expect(session.resource).toBeDefined();
+    expect(session.sandbox).toBeDefined();
+    expect(session.usage).toBeDefined();
+
+    const result = await session.run.input({
+      input: { messages: [{ role: "user", content: "hi" }] },
+    });
+    expect(result.run_id).toBe("run_1");
+
+    const sub = await session.subscribe("messages");
+    transport.pushEvent(
+      eventOf("messages", { event: "message-start", message_id: "m1" }, { namespace: [], seq: 1 })
+    );
+    const received = await nextValue(sub);
+    expect(received.method).toBe("messages");
+  });
+
   it("closes session and transport cleanly", async () => {
     const transport = new MockTransport();
     const client = new ProtocolClient(transport);
