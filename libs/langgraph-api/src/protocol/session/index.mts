@@ -565,10 +565,10 @@ export class RunProtocolSession {
       if (this.namespaces.has(key)) continue;
 
       const graphName = guessGraphName(partial);
-      this.setNamespaceInfo(partial, "spawned", { graphName });
+      this.setNamespaceInfo(partial, "started", { graphName });
       await this.pushEvent(
         this.createEvent("lifecycle", partial, {
-          event: "spawned",
+          event: "started",
           graph_name: graphName,
         })
       );
@@ -875,7 +875,7 @@ export class RunProtocolSession {
       this.namespaces.get(key) ??
       ({
         namespace,
-        status: "spawned",
+        status: "started",
         graphName:
           namespace.length === 0
             ? this.rootGraphName
