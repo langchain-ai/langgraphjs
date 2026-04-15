@@ -2094,6 +2094,10 @@ export class Pregel<
       config.serverInfo = _buildServerInfo(config);
     }
 
+    const callbackManagerOptions = {
+      tracerInheritableMetadata: _getTracingMetadataDefaults(config),
+    } as unknown as Parameters<typeof CallbackManager._configureSync>[6];
+
     const callbackManager = await CallbackManager._configureSync(
       config?.callbacks,
       undefined,
@@ -2101,9 +2105,7 @@ export class Pregel<
       undefined,
       config?.metadata,
       undefined,
-      {
-        tracerInheritableMetadata: _getTracingMetadataDefaults(config),
-      }
+      callbackManagerOptions
     );
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(), // chain
