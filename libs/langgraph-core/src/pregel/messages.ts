@@ -36,17 +36,19 @@ function normalizeStreamMetadata(
   if (!metadata) {
     return undefined;
   }
-  const checkpointNs =
-    (metadata.checkpoint_ns as string | undefined) ??
-    (metadata.langgraph_checkpoint_ns as string | undefined);
-  if (!checkpointNs) {
+  const streamNamespace = metadata.langgraph_checkpoint_ns as
+    | string
+    | undefined;
+  const checkpointNs = metadata.checkpoint_ns as string | undefined;
+  const namespace = streamNamespace ?? checkpointNs;
+  if (!namespace) {
     return undefined;
   }
   const normalizedMetadata = { ...metadata };
   if (normalizedMetadata.checkpoint_ns === undefined) {
-    normalizedMetadata.checkpoint_ns = checkpointNs;
+    normalizedMetadata.checkpoint_ns = checkpointNs ?? namespace;
   }
-  return [checkpointNs.split("|"), { tags, name, ...normalizedMetadata }];
+  return [namespace.split("|"), { tags, name, ...normalizedMetadata }];
 }
 
 /**
