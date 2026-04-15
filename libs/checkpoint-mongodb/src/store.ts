@@ -296,7 +296,7 @@ export class MongoDBStore extends BaseStore {
         const doc: Record<string, any> = {
           namespace,
           key,
-          value,  // Store JSON directly
+          value, // Store JSON directly
           valueIndex: value,
           namespacePath: computeNamespacePath(namespace),
           updatedAt: now,
@@ -485,9 +485,9 @@ export class MongoDBStore extends BaseStore {
       if (!this.embeddings) {
         throw new Error(
           "Vector search is not supported when embeddings are not configured. " +
-          "You appear to be using MongoDB Atlas auto-embedding mode. " +
-          "In auto-embed mode, semantic search (query parameter) is not available. " +
-          "Use field-based filtering (filter parameter) instead, or provide an embeddings interface to enable semantic search."
+            "You appear to be using MongoDB Atlas auto-embedding mode. " +
+            "In auto-embed mode, semantic search (query parameter) is not available. " +
+            "Use field-based filtering (filter parameter) instead, or provide an embeddings interface to enable semantic search."
         );
       }
       return this.vectorSearch(query, namespacePrefix || [], limit, offset);
