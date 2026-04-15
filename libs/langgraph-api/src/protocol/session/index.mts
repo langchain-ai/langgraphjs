@@ -8,6 +8,7 @@ import type {
   AgentTreeNode,
   CustomData,
   FlowCapacityParams,
+  FlowStrategy,
   Namespace,
   ProtocolCommand,
   ProtocolCommandByMethod,
@@ -94,6 +95,14 @@ export class RunProtocolSession {
 
   private maxBufferSize = 1000;
 
+  private flowStrategy: FlowStrategy = "drop-oldest";
+
+  private sampleCounter = 0;
+
+  private pauseGate: Promise<void> | undefined;
+
+  private resumePause: (() => void) | undefined;
+
   private rootGraphName = "root";
 
   private terminalLifecycleEmitted = false;
@@ -171,6 +180,9 @@ export class RunProtocolSession {
    */
   async close() {
     this.abortController.abort();
+    this.resumePause?.();
+    this.pauseGate = undefined;
+    this.resumePause = undefined;
     await this.sourceTask?.catch(() => undefined);
     await this.sendQueue.catch(() => undefined);
   }
@@ -721,14 +733,42 @@ export class RunProtocolSession {
 
   /**
    * Buffers an event and delivers it to all matching subscriptions.
+   * Applies the active flow-control strategy when the buffer is at capacity.
    *
    * @param event - Protocol event to buffer and fan out.
    */
   private async pushEvent(event: ProtocolEvent) {
-    this.buffer.push(event);
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
+    if (this.pauseGate != null) {
+      await this.pauseGate;
     }
+
+    const atCapacity = this.buffer.length >= this.maxBufferSize;
+
+    if (atCapacity) {
+      switch (this.flowStrategy) {
+        case "pause-producer": {
+          this.pauseGate = new Promise<void>((resolve) => {
+            this.resumePause = resolve;
+          });
+          break;
+        }
+        case "sample": {
+          this.sampleCounter += 1;
+          const isLifecycle = event.method === "lifecycle";
+          if (!isLifecycle && this.sampleCounter % 2 !== 0) {
+            return;
+          }
+          this.buffer.splice(0, 1);
+          break;
+        }
+        case "drop-oldest":
+        default:
+          this.buffer.splice(0, this.buffer.length - this.maxBufferSize + 1);
+          break;
+      }
+    }
+
+    this.buffer.push(event);
 
     for (const subscription of this.subscriptions.values()) {
       if (
@@ -738,6 +778,21 @@ export class RunProtocolSession {
         continue;
       }
       await this.sendJson(event);
+    }
+  }
+
+  /**
+   * Releases the pause-producer gate when the buffer has capacity again.
+   * Called after consumers drain events (e.g. via subscription replay).
+   */
+  private tryResumePause() {
+    if (
+      this.resumePause != null &&
+      this.buffer.length < this.maxBufferSize
+    ) {
+      this.resumePause();
+      this.pauseGate = undefined;
+      this.resumePause = undefined;
     }
   }
 
@@ -1141,11 +1196,23 @@ export class RunProtocolSession {
       return;
     }
 
-    this.maxBufferSize = maxBufferSize;
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
+    const strategy = params?.strategy;
+    if (
+      strategy != null &&
+      strategy !== "drop-oldest" &&
+      strategy !== "pause-producer" &&
+      strategy !== "sample"
+    ) {
+      await this.sendError(
+        command.id,
+        "invalid_argument",
+        `Unsupported flow strategy: ${String(strategy)}. ` +
+          `Supported values: drop-oldest, pause-producer, sample.`
+      );
+      return;
     }
 
+    this.applyFlowCapacity(maxBufferSize, strategy ?? "drop-oldest");
     await this.sendSuccess(command.id, {});
   }
 
@@ -1177,12 +1244,53 @@ export class RunProtocolSession {
       );
     }
 
+    const strategy = params?.strategy;
+    if (
+      strategy != null &&
+      strategy !== "drop-oldest" &&
+      strategy !== "pause-producer" &&
+      strategy !== "sample"
+    ) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        `Unsupported flow strategy: ${String(strategy)}. ` +
+          `Supported values: drop-oldest, pause-producer, sample.`,
+        meta
+      );
+    }
+
+    this.applyFlowCapacity(maxBufferSize, strategy ?? "drop-oldest");
+    return this.success(command.id, {}, meta);
+  }
+
+  /**
+   * Applies new flow-control settings and reconciles the buffer with the new
+   * strategy and capacity.
+   */
+  private applyFlowCapacity(
+    maxBufferSize: number,
+    strategy: FlowStrategy
+  ) {
+    const previousStrategy = this.flowStrategy;
     this.maxBufferSize = maxBufferSize;
+    this.flowStrategy = strategy;
+
+    if (strategy !== "sample") {
+      this.sampleCounter = 0;
+    }
+
+    if (previousStrategy === "pause-producer" && strategy !== "pause-producer") {
+      this.resumePause?.();
+      this.pauseGate = undefined;
+      this.resumePause = undefined;
+    }
+
     if (this.buffer.length > this.maxBufferSize) {
       this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
     }
 
-    return this.success(command.id, {}, meta);
+    this.tryResumePause();
   }
 
   /**

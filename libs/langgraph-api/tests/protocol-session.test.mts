@@ -1261,4 +1261,347 @@ describe("RunProtocolSession", () => {
       },
     ]);
   });
+
+  describe("flow.setCapacity", () => {
+    it("accepts a valid strategy parameter", async () => {
+      const sent: unknown[] = [];
+      const session = createSession(sent);
+      await session.start();
+      sent.length = 0;
+
+      await session.handleCommand(
+        JSON.stringify({
+          id: 1,
+          method: "flow.setCapacity",
+          params: { max_buffer_size: 50, strategy: "drop-oldest" },
+        })
+      );
+
+      expect(sent).toEqual([{ type: "success", id: 1, result: {} }]);
+    });
+
+    it("rejects an invalid strategy", async () => {
+      const sent: unknown[] = [];
+      const session = createSession(sent);
+      await session.start();
+      sent.length = 0;
+
+      await session.handleCommand(
+        JSON.stringify({
+          id: 1,
+          method: "flow.setCapacity",
+          params: { max_buffer_size: 50, strategy: "yolo" },
+        })
+      );
+
+      expect(sent).toEqual([
+        {
+          type: "error",
+          id: 1,
+          error: "invalid_argument",
+          message: expect.stringContaining("Unsupported flow strategy"),
+        },
+      ]);
+    });
+
+    it("defaults to drop-oldest when strategy is omitted", async () => {
+      const sent: unknown[] = [];
+      const session = createSession(sent);
+      await session.start();
+      sent.length = 0;
+
+      await session.handleCommand(
+        JSON.stringify({
+          id: 1,
+          method: "flow.setCapacity",
+          params: { max_buffer_size: 5 },
+        })
+      );
+
+      expect(sent).toEqual([{ type: "success", id: 1, result: {} }]);
+    });
+
+    describe("drop-oldest strategy", () => {
+      it("discards oldest events when buffer exceeds capacity", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+        sent.length = 0;
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 1,
+            method: "flow.setCapacity",
+            params: { max_buffer_size: 3, strategy: "drop-oldest" },
+          })
+        );
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 2,
+            method: "subscription.subscribe",
+            params: { channels: ["values"] },
+          })
+        );
+        sent.length = 0;
+
+        for (let i = 0; i < 6; i++) {
+          await session.ingestSourceEvent({
+            id: String(i),
+            event: "values",
+            data: { count: i },
+          });
+        }
+
+        const events = sent.filter(
+          (m: any) => m.type === "event" && m.method === "values"
+        );
+        expect(events).toHaveLength(6);
+
+        sent.length = 0;
+        await session.handleCommand(
+          JSON.stringify({
+            id: 3,
+            method: "subscription.subscribe",
+            params: { channels: ["values"] },
+          })
+        );
+
+        const replayed = sent.filter(
+          (m: any) => m.type === "event" && m.method === "values"
+        );
+        expect(replayed).toHaveLength(3);
+        expect(replayed.map((e: any) => e.params.data.count)).toEqual([
+          3, 4, 5,
+        ]);
+      });
+    });
+
+    describe("pause-producer strategy", () => {
+      it("blocks event production when buffer is full until capacity is freed", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 1,
+            method: "flow.setCapacity",
+            params: { max_buffer_size: 3, strategy: "pause-producer" },
+          })
+        );
+        sent.length = 0;
+
+        for (let i = 0; i < 3; i++) {
+          await session.ingestSourceEvent({
+            id: String(i),
+            event: "values",
+            data: { count: i },
+          });
+        }
+
+        let fourthResolved = false;
+        const fourthPromise = session
+          .ingestSourceEvent({
+            id: "3",
+            event: "values",
+            data: { count: 3 },
+          })
+          .then(() => {
+            fourthResolved = true;
+          });
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(fourthResolved).toBe(false);
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 2,
+            method: "flow.setCapacity",
+            params: { max_buffer_size: 10, strategy: "drop-oldest" },
+          })
+        );
+
+        await fourthPromise;
+        expect(fourthResolved).toBe(true);
+      });
+
+      it("unblocks when session is closed", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 1,
+            method: "flow.setCapacity",
+            params: { max_buffer_size: 2, strategy: "pause-producer" },
+          })
+        );
+        sent.length = 0;
+
+        for (let i = 0; i < 2; i++) {
+          await session.ingestSourceEvent({
+            id: String(i),
+            event: "values",
+            data: { count: i },
+          });
+        }
+
+        let resolved = false;
+        const blocked = session
+          .ingestSourceEvent({
+            id: "2",
+            event: "values",
+            data: { count: 2 },
+          })
+          .then(() => {
+            resolved = true;
+          });
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(resolved).toBe(false);
+
+        await session.close();
+        await blocked;
+        expect(resolved).toBe(true);
+      });
+    });
+
+    describe("sample strategy", () => {
+      it("delivers every other non-lifecycle event when buffer is at capacity", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+
+        // Buffer size 5 = 1 (initial lifecycle) + 4 room for values
+        await session.handleCommand(
+          JSON.stringify({
+            id: 1,
+            method: "flow.setCapacity",
+            params: { max_buffer_size: 5, strategy: "sample" },
+          })
+        );
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 2,
+            method: "subscription.subscribe",
+            params: { channels: ["values"] },
+          })
+        );
+        sent.length = 0;
+
+        // Fill exactly to capacity (4 values + 1 lifecycle = 5)
+        for (let i = 0; i < 4; i++) {
+          await session.ingestSourceEvent({
+            id: String(i),
+            event: "values",
+            data: { count: i },
+          });
+        }
+
+        const preCapacity = sent.filter(
+          (m: any) => m.type === "event" && m.method === "values"
+        );
+        expect(preCapacity).toHaveLength(4);
+        sent.length = 0;
+
+        // Push 6 more events while at capacity — sampling should drop some
+        for (let i = 4; i < 10; i++) {
+          await session.ingestSourceEvent({
+            id: String(i),
+            event: "values",
+            data: { count: i },
+          });
+        }
+
+        const sampled = sent.filter(
+          (m: any) => m.type === "event" && m.method === "values"
+        );
+        expect(sampled.length).toBeLessThan(6);
+        expect(sampled.length).toBeGreaterThan(0);
+      });
+
+      it("always delivers lifecycle events even under sampling pressure", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 1,
+            method: "flow.setCapacity",
+            params: { max_buffer_size: 2, strategy: "sample" },
+          })
+        );
+
+        await session.handleCommand(
+          JSON.stringify({
+            id: 2,
+            method: "subscription.subscribe",
+            params: { channels: ["values", "lifecycle"] },
+          })
+        );
+        sent.length = 0;
+
+        for (let i = 0; i < 3; i++) {
+          await session.ingestSourceEvent({
+            id: String(i),
+            event: "values",
+            data: { count: i },
+          });
+        }
+
+        await session.ingestSourceEvent({
+          id: "child-event",
+          event: "values|child_agent",
+          data: { messages: ["hello"] },
+        });
+
+        const lifecycle = sent.filter(
+          (m: any) => m.type === "event" && m.method === "lifecycle"
+        );
+        expect(lifecycle.length).toBeGreaterThan(0);
+      });
+    });
+
+    describe("handleProtocolCommand", () => {
+      it("validates strategy via the response path", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+
+        const result = await session.handleProtocolCommand({
+          id: 1,
+          method: "flow.setCapacity",
+          params: { max_buffer_size: 10, strategy: "sample" },
+        });
+
+        expect(result).toEqual({ type: "success", id: 1, result: {} });
+      });
+
+      it("rejects invalid strategy via the response path", async () => {
+        const sent: unknown[] = [];
+        const session = createSession(sent);
+        await session.start();
+
+        const result = await session.handleProtocolCommand({
+          id: 1,
+          method: "flow.setCapacity",
+          params: {
+            max_buffer_size: 10,
+            strategy: "bogus" as any,
+          },
+        });
+
+        expect(result).toEqual({
+          type: "error",
+          id: 1,
+          error: "invalid_argument",
+          message: expect.stringContaining("Unsupported flow strategy"),
+        });
+      });
+    });
+  });
 });
