@@ -105,7 +105,7 @@ export function ensureLangGraphConfig(
         continue;
       }
       const value = configurable[key];
-      if (value) {
+      if (value !== undefined) {
         empty.metadata[key] = value;
       }
     }

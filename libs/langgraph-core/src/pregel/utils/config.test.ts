@@ -166,6 +166,26 @@ describe("ensureLangGraphConfig", () => {
 
     expect(result.metadata?.key).toEqual("original value");
   });
+
+  it("should propagate empty checkpoint_ns to metadata", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const config = {
+      configurable: {
+        thread_id: "thread-1",
+        checkpoint_ns: "",
+      },
+    };
+
+    const result = ensureLangGraphConfig(config);
+
+    expect(result.metadata).toEqual({
+      thread_id: "thread-1",
+      checkpoint_ns: "",
+    });
+  });
 });
 
 describe("getStore, getWriter, getConfig", () => {
