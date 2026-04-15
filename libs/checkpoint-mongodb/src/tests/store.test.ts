@@ -1,35 +1,15 @@
 import { MongoDBStore } from "../store";
 import type {
   PutOperation,
-  SerializerProtocol,
 } from "@langchain/langgraph-checkpoint";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
-// Mock serde
-const createMockSerde = (): SerializerProtocol => {
-  return {
-    dumpsTyped: vi.fn(async (obj: any) => {
-      const buffer = Buffer.from(JSON.stringify(obj));
-      return [
-        "application/json",
-        buffer as unknown as Uint8Array,
-      ] as const as [string, Uint8Array];
-    }),
-    loadsTyped: vi.fn(async (_type: string, data: any) => {
-      if (typeof data === "string") {
-        return JSON.parse(data);
-      }
-      return JSON.parse(data.toString());
-    }),
-  } as SerializerProtocol;
-};
 
 describe("MongoDBStore", () => {
   let store: MongoDBStore;
   let mockClient: any;
   let mockDb: any;
   let mockCollection: any;
-  let mockSerde: SerializerProtocol;
 
   beforeEach(() => {
     // Create mocks and link them so they're consistent
@@ -67,17 +47,13 @@ describe("MongoDBStore", () => {
     };
 
     mockCollection = collectionMock;
-    mockSerde = createMockSerde();
 
-    store = new MongoDBStore(
-      {
-        client: mockClient as any,
-        dbName: "test",
-        collectionName: "store",
-        enableTimestamps: false,
-      },
-      mockSerde
-    );
+    store = new MongoDBStore({
+      client: mockClient as any,
+      dbName: "test",
+      collectionName: "store",
+      enableTimestamps: false,
+    });
   });
 
   describe("Put operation", () => {
@@ -90,23 +66,23 @@ describe("MongoDBStore", () => {
 
       await store.batch([operation]);
 
-      expect(mockCollection.bulkWrite).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            updateOne: expect.objectContaining({
-              filter: { namespace: ["documents", "user123"], key: "doc1" },
-              update: expect.objectContaining({
-                $set: expect.objectContaining({
-                  namespace: ["documents", "user123"],
-                  key: "doc1",
-                  type: "application/json",
-                }),
-              }),
-              upsert: true,
-            }),
-          }),
-        ])
-      );
+      expect(mockCollection.bulkWrite).toHaveBeenCalled();
+      const calls = mockCollection.bulkWrite.mock.calls[0][0];
+      expect(calls).toHaveLength(1);
+      const { updateOne } = calls[0];
+      expect(updateOne.filter).toEqual({
+        namespace: ["documents", "user123"],
+        key: "doc1",
+      });
+      expect(updateOne.update.$set.value).toEqual({
+        title: "Test",
+        content: "Hello",
+      });
+      expect(updateOne.update.$set.namespace).toEqual([
+        "documents",
+        "user123",
+      ]);
+      expect(updateOne.upsert).toBe(true);
     });
 
     it("should throw InvalidNamespaceError for empty namespace", async () => {
@@ -182,23 +158,20 @@ describe("MongoDBStore", () => {
 
     it("should embed only specified fields when index is array", async () => {
       // Create a store with embeddings
-      const storeWithEmbeddings = new MongoDBStore(
-        {
-          client: mockClient,
-          dbName: "test",
-          collectionName: "store",
-          enableTimestamps: false,
-          embeddings: {
-            embedQuery: vi
-              .fn()
-              .mockResolvedValue([0.1, 0.2, 0.3]),
-            embedDocuments: vi
-              .fn()
-              .mockResolvedValue([[0.1, 0.2, 0.3]]),
-          } as any,
-        },
-        mockSerde
-      );
+      const storeWithEmbeddings = new MongoDBStore({
+        client: mockClient,
+        dbName: "test",
+        collectionName: "store",
+        enableTimestamps: false,
+        embeddings: {
+          embedQuery: vi
+            .fn()
+            .mockResolvedValue([0.1, 0.2, 0.3]),
+          embedDocuments: vi
+            .fn()
+            .mockResolvedValue([[0.1, 0.2, 0.3]]),
+        } as any,
+      });
 
       const operation: PutOperation = {
         namespace: ["documents"],
@@ -237,8 +210,7 @@ describe("MongoDBStore", () => {
       mockCollection.findOne.mockResolvedValueOnce({
         namespace: ["documents"],
         key: "doc1",
-        value: Buffer.from(JSON.stringify({ title: "Test" })),
-        type: "application/json",
+        value: { title: "Test" },
         createdAt: now,
         updatedAt: now,
       });
@@ -355,8 +327,7 @@ describe("MongoDBStore", () => {
       const mockDoc = {
         namespace: ["users"],
         key: "user1",
-        value: Buffer.from(JSON.stringify({ status: "active", name: "Alice" })),
-        type: "application/json",
+        value: { status: "active", name: "Alice" },
         createdAt: now,
         updatedAt: now,
       };
@@ -390,16 +361,14 @@ describe("MongoDBStore", () => {
         {
           namespace: ["products"],
           key: "product1",
-          value: Buffer.from(JSON.stringify({ price: 150, name: "Premium" })),
-          type: "application/json",
+          value: { price: 150, name: "Premium" },
           createdAt: now,
           updatedAt: now,
         },
         {
           namespace: ["products"],
           key: "product2",
-          value: Buffer.from(JSON.stringify({ price: 200, name: "Luxury" })),
-          type: "application/json",
+          value: { price: 200, name: "Luxury" },
           createdAt: now,
           updatedAt: now,
         },
@@ -433,8 +402,7 @@ describe("MongoDBStore", () => {
       const mockDoc = {
         namespace: ["users", "profiles"],
         key: "profile1",
-        value: Buffer.from(JSON.stringify({ bio: "Engineer" })),
-        type: "application/json",
+        value: { bio: "Engineer" },
         createdAt: now,
         updatedAt: now,
       };
@@ -468,16 +436,14 @@ describe("MongoDBStore", () => {
         {
           namespace: ["docs"],
           key: "doc2",
-          value: Buffer.from(JSON.stringify({ active: true })),
-          type: "application/json",
+          value: { active: true },
           createdAt: now,
           updatedAt: now,
         },
         {
           namespace: ["docs"],
           key: "doc3",
-          value: Buffer.from(JSON.stringify({ active: true })),
-          type: "application/json",
+          value: { active: true },
           createdAt: now,
           updatedAt: now,
         },
@@ -511,8 +477,7 @@ describe("MongoDBStore", () => {
       const mockDoc = {
         namespace: ["articles"],
         key: "article1",
-        value: Buffer.from(JSON.stringify({ category: "tech", published: true })),
-        type: "application/json",
+        value: { category: "tech", published: true },
         createdAt: now,
         updatedAt: now,
       };
@@ -548,8 +513,7 @@ describe("MongoDBStore", () => {
       const mockDoc = {
         namespace: ["events"],
         key: "event1",
-        value: Buffer.from(JSON.stringify({ date: "2024-06-01", count: 50 })),
-        type: "application/json",
+        value: { date: "2024-06-01", count: 50 },
         createdAt: now,
         updatedAt: now,
       };

@@ -11,7 +11,6 @@ import {
   type SearchItem,
   InvalidNamespaceError,
 } from "@langchain/langgraph-checkpoint";
-import type { SerializerProtocol } from "@langchain/langgraph-checkpoint";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 
 /**
@@ -109,7 +108,6 @@ export class MongoDBStore extends BaseStore {
   protected db: MongoDatabase;
   collectionName = "store";
   protected enableTimestamps: boolean;
-  protected serde: SerializerProtocol;
   protected embeddings?: EmbeddingsInterface;
   protected indexConfig?: IndexConfig;
   protected ttl?: TTLConfig;
@@ -120,18 +118,15 @@ export class MongoDBStore extends BaseStore {
       : {};
   }
 
-  constructor(
-    {
-      client,
-      dbName,
-      collectionName,
-      enableTimestamps,
-      embeddings,
-      indexConfig,
-      ttl,
-    }: MongoDBStoreParams,
-    serde: SerializerProtocol
-  ) {
+  constructor({
+    client,
+    dbName,
+    collectionName,
+    enableTimestamps,
+    embeddings,
+    indexConfig,
+    ttl,
+  }: MongoDBStoreParams) {
     super();
     this.client = client;
     this.client.appendMetadata({
@@ -140,7 +135,6 @@ export class MongoDBStore extends BaseStore {
     this.db = this.client.db(dbName);
     this.collectionName = collectionName ?? this.collectionName;
     this.enableTimestamps = enableTimestamps ?? false;
-    this.serde = serde;
     this.embeddings = embeddings;
     this.indexConfig = indexConfig;
     this.ttl = ttl;
@@ -150,18 +144,16 @@ export class MongoDBStore extends BaseStore {
    * Factory method to create a MongoDBStore from a connection string.
    * Automatically creates and connects a MongoDB client.
    * @param connString MongoDB connection string
-   * @param params Store configuration including required serde parameter
-   * @param serde Required serializer protocol for value serialization
+   * @param params Store configuration
    */
   static async fromConnString(
     connString: string,
-    params: Omit<MongoDBStoreParams, "client">,
-    serde: SerializerProtocol
+    params?: Omit<MongoDBStoreParams, "client">
   ): Promise<MongoDBStore> {
     const { MongoClient: MC } = await import("mongodb");
     const client = new MC(connString);
     await client.connect();
-    const store = new MongoDBStore({ ...params, client }, serde);
+    const store = new MongoDBStore({ ...params, client });
     await store.start();
     return store;
   }
@@ -296,16 +288,12 @@ export class MongoDBStore extends BaseStore {
           continue;
         }
 
-        // Serialize the value
-        const [type, serializedValue] = await this.serde.dumpsTyped(value);
-
         // Build document
         const now = new Date();
         const doc: Record<string, any> = {
           namespace,
           key,
-          value: serializedValue,
-          type,
+          value,  // Store JSON directly
           valueIndex: value,
           namespacePath: computeNamespacePath(namespace),
           updatedAt: now,
@@ -386,14 +374,8 @@ export class MongoDBStore extends BaseStore {
       return null;
     }
 
-    // Deserialize the value
-    const value = (await this.serde.loadsTyped(doc.type, doc.value)) as Record<
-      string,
-      any
-    >;
-
     return {
-      value,
+      value: doc.value,
       key: doc.key,
       namespace: doc.namespace,
       createdAt: doc.createdAt,
@@ -551,13 +533,8 @@ export class MongoDBStore extends BaseStore {
     // Deserialize only the matched documents
     const items: SearchItem[] = [];
     for (const doc of docs) {
-      const value = (await this.serde.loadsTyped(
-        doc.type,
-        doc.value
-      )) as Record<string, any>;
-
       items.push({
-        value,
+        value: doc.value,
         key: doc.key,
         namespace: doc.namespace,
         createdAt: doc.createdAt,
@@ -670,10 +647,7 @@ export class MongoDBStore extends BaseStore {
     // Deserialize values from matched documents
     const items: SearchItem[] = [];
     for (const doc of docs) {
-      const value = (await this.serde.loadsTyped(
-        doc.type,
-        doc.value
-      )) as Record<string, any>;
+      const value = doc.value as Record<string, any>;
 
       items.push({
         value,
@@ -726,10 +700,7 @@ export class MongoDBStore extends BaseStore {
     // Deserialize values from matched documents
     const items: SearchItem[] = [];
     for (const { doc, similarity } of sorted) {
-      const value = (await this.serde.loadsTyped(
-        doc.type,
-        doc.value
-      )) as Record<string, any>;
+      const value = doc.value as Record<string, any>;
 
       items.push({
         value,

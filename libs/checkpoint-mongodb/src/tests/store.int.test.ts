@@ -5,7 +5,6 @@ import {
   type GetOperation,
   type ListNamespacesOperation,
   type SearchOperation,
-  type SerializerProtocol,
 } from "@langchain/langgraph-checkpoint";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -17,20 +16,6 @@ describe("MongoDBStore Integration Tests", () => {
   let storeWithEmbeddings: MongoDBStore;
   const dbName = "langgraph_test";
   const mongoUrl = getEnvironmentVariable("MONGODB_URL") || "mongodb://localhost:27017";
-
-  // Simple JSON serializer for integration tests
-  const createSerializer = (): SerializerProtocol => ({
-    dumpsTyped: async (obj: any) => {
-      const buffer = Buffer.from(JSON.stringify(obj));
-      return ["application/json", buffer as unknown as Uint8Array];
-    },
-    loadsTyped: async (_type: string, data: any) => {
-      if (typeof data === "string") {
-        return JSON.parse(data);
-      }
-      return JSON.parse(data.toString());
-    },
-  });
 
   // Simple embeddings for testing - creates consistent embeddings from text hash
   const createTestEmbeddings = (): EmbeddingsInterface => {
@@ -69,14 +54,11 @@ describe("MongoDBStore Integration Tests", () => {
     await client.connect();
 
     // Create store with real MongoDB connection
-    store = new MongoDBStore(
-      {
-        client,
-        dbName,
-        collectionName: "test_store",
-      },
-      createSerializer()
-    );
+    store = new MongoDBStore({
+      client,
+      dbName,
+      collectionName: "test_store",
+    });
 
     // Initialize (create indexes)
     await store.start();
@@ -86,15 +68,12 @@ describe("MongoDBStore Integration Tests", () => {
     await client.db(dbName).collection("test_store_vectors").deleteMany({});
 
     // Create store with embeddings for vector search tests
-    storeWithEmbeddings = new MongoDBStore(
-      {
-        client,
-        dbName,
-        collectionName: "test_store_embeddings",
-        embeddings: createTestEmbeddings(),
-      },
-      createSerializer()
-    );
+    storeWithEmbeddings = new MongoDBStore({
+      client,
+      dbName,
+      collectionName: "test_store_embeddings",
+      embeddings: createTestEmbeddings(),
+    });
 
     await storeWithEmbeddings.start();
     await client.db(dbName).collection("test_store_embeddings").deleteMany({});
