@@ -532,5 +532,27 @@ describe("MongoDBStore", () => {
 
       expect(items).toHaveLength(1);
     });
+
+    it("should throw clear error when vector search is attempted without embeddings (auto-embed mode)", async () => {
+      const operation = {
+        namespacePrefix: ["documents"],
+        query: "find something",  // Vector search requested
+        limit: 100,
+        offset: 0,
+      };
+
+      // Store without embeddings, which implies auto-embed mode
+      const storeWithoutEmbeddings = new MongoDBStore({
+        client: mockClient,
+        dbName: "test",
+        collectionName: "store",
+        enableTimestamps: false,
+        // No embeddings provided - implies MongoDB Atlas auto-embedding
+      });
+
+      await expect(storeWithoutEmbeddings.batch([operation])).rejects.toThrow(
+        /auto-embed/i
+      );
+    });
   });
 });

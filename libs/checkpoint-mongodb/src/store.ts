@@ -236,6 +236,9 @@ export class MongoDBStore extends BaseStore {
       const embeddingMap = new Map<number, number>();
       const textsToEmbed: string[] = [];
 
+      // When embeddings are NOT provided, we assume MongoDB Atlas auto-embedding is enabled.
+      // Documents are stored without an embedding field, and MongoDB will generate embeddings
+      // automatically. Vector search is not supported in this mode (see searchOp for details).
       if (this.embeddings) {
         for (let i = 0; i < opsList.length; i++) {
           const { op } = opsList[i];
@@ -459,7 +462,13 @@ export class MongoDBStore extends BaseStore {
   /**
    * Search for items by namespace prefix and filter criteria.
    * Supports both field-based filtering (structured search) and vector similarity search.
-   * If a query string is provided and embeddings are configured, performs semantic search.
+   *
+   * Field-based search (filter parameter): Always available, searches valueIndex fields.
+   * Vector search (query parameter): Requires embeddings to be configured.
+   *   - If embeddings are provided: Performs semantic search on the query
+   *   - If embeddings are NOT provided: Throws an error. In this mode, MongoDB Atlas
+   *     auto-embedding is assumed to be enabled, but semantic search is not supported.
+   *     Use field-based filtering instead.
    */
   private async searchOp(op: SearchOperation): Promise<SearchItem[]> {
     const {
@@ -470,8 +479,17 @@ export class MongoDBStore extends BaseStore {
       query,
     } = op as SearchOperation & { query?: string };
 
-    // If query is provided and embeddings are configured, use vector search
-    if (query && this.embeddings) {
+    // If query is provided, vector search is requested
+    if (query) {
+      // Vector search requires embeddings
+      if (!this.embeddings) {
+        throw new Error(
+          "Vector search is not supported when embeddings are not configured. " +
+          "You appear to be using MongoDB Atlas auto-embedding mode. " +
+          "In auto-embed mode, semantic search (query parameter) is not available. " +
+          "Use field-based filtering (filter parameter) instead, or provide an embeddings interface to enable semantic search."
+        );
+      }
       return this.vectorSearch(query, namespacePrefix || [], limit, offset);
     }
 
@@ -556,12 +574,9 @@ export class MongoDBStore extends BaseStore {
     limit: number,
     offset: number
   ): Promise<SearchItem[]> {
-    if (!this.embeddings) {
-      throw new Error("Vector search requires embeddings to be configured.");
-    }
-
-    // Generate embedding for the query
-    const queryEmbedding = await this.embeddings.embedQuery(query);
+    // This method is only called after embeddings have been verified to exist
+    // in searchOp, so we can safely assume embeddings is configured here
+    const queryEmbedding = await this.embeddings!.embedQuery(query);
 
     // If indexConfig is set, use Atlas $vectorSearch
     if (this.indexConfig) {
