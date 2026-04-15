@@ -120,6 +120,16 @@ const getStreamModes = (
   };
 };
 
+const PROPAGATE_TO_METADATA = new Set([
+  "thread_id",
+  "checkpoint_id",
+  "checkpoint_ns",
+  "task_id",
+  "run_id",
+  "assistant_id",
+  "graph_id",
+]);
+
 /**
  * The `RemoteGraph` class is a client implementation for calling remote
  * APIs that implement the LangGraph Server API specification.
@@ -244,6 +254,47 @@ export class RemoteGraph<
         );
       }
     };
+
+    const propagateMetadataDefaults = (obj: unknown) => {
+      const seen = new WeakSet<object>();
+      const visit = (value: unknown) => {
+        if (typeof value !== "object" || value == null) {
+          return;
+        }
+        if (seen.has(value)) {
+          return;
+        }
+        seen.add(value);
+        const record = value as Record<string, unknown>;
+        const configurable = record.configurable;
+        if (
+          typeof configurable === "object" &&
+          configurable != null &&
+          !Array.isArray(configurable)
+        ) {
+          if (
+            typeof record.metadata !== "object" ||
+            record.metadata == null ||
+            Array.isArray(record.metadata)
+          ) {
+            record.metadata = {};
+          }
+          const metadata = record.metadata as Record<string, unknown>;
+          for (const key of PROPAGATE_TO_METADATA) {
+            const configValue = (configurable as Record<string, unknown>)[key];
+            if (metadata[key] === undefined && configValue !== undefined) {
+              metadata[key] = configValue;
+            }
+          }
+        }
+        for (const nestedValue of Object.values(record)) {
+          visit(nestedValue);
+        }
+      };
+      visit(obj);
+    };
+
+    propagateMetadataDefaults(config);
 
     // Remove non-JSON serializable fields from the config
     const sanitizedConfig = sanitizeObj(config);
