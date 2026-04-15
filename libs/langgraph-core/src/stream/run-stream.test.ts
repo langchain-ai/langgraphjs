@@ -8,7 +8,12 @@ import {
 import { RESOLVE_VALUES, REJECT_VALUES } from "./mux.js";
 import { StreamMux } from "./mux.js";
 import type { SubgraphStreamFactory } from "./mux.js";
-import type { ProtocolEvent, StreamTransformer } from "./types.js";
+import type {
+  NativeStreamTransformer,
+  ProtocolEvent,
+  StreamTransformer,
+} from "./types.js";
+import { StreamChannel } from "./stream-channel.js";
 
 const subgraphFactory: SubgraphStreamFactory = (path, mux, discoveryStart, eventStart) =>
   new SubgraphRunStream(path, mux, discoveryStart, eventStart);
@@ -355,5 +360,142 @@ describe("createGraphRunStream", () => {
       { count: 20 },
       { count: 30 },
     ]);
+  });
+
+  it("wires StreamChannel projections from extension transformers to the protocol stream", async () => {
+    const channel = new StreamChannel<{ msg: string }>("custom-ext");
+
+    const extensionFactory = (): StreamTransformer<{
+      myChannel: StreamChannel<{ msg: string }>;
+    }> => ({
+      init: () => ({ myChannel: channel }),
+      process(event: ProtocolEvent): boolean {
+        if (event.method === "values") {
+          channel.push({ msg: "forwarded" });
+        }
+        return true;
+      },
+    });
+
+    const source = makeSource([[[], "values", { x: 1 }]]);
+    const stream = createGraphRunStream(source, [extensionFactory]);
+
+    const events: ProtocolEvent[] = [];
+    for await (const e of stream) {
+      events.push(e);
+    }
+
+    const channelEvents = events.filter(
+      (e) => (e.method as string) === "custom-ext"
+    );
+    expect(channelEvents).toHaveLength(1);
+    expect(channelEvents[0].params.data).toEqual({ msg: "forwarded" });
+
+    expect(stream.extensions).toHaveProperty("myChannel");
+  });
+
+  it("does NOT wire StreamChannel projections from native transformers", async () => {
+    const channel = new StreamChannel<{ obj: Promise<number> }>("native-ch");
+
+    const nativeFactory = (): NativeStreamTransformer<{
+      nativeProp: StreamChannel<{ obj: Promise<number> }>;
+    }> => ({
+      __native: true,
+      init: () => ({ nativeProp: channel }),
+      process(event: ProtocolEvent): boolean {
+        if (event.method === "values") {
+          channel.push({ obj: Promise.resolve(42) });
+        }
+        return true;
+      },
+    });
+
+    const source = makeSource([[[], "values", { x: 1 }]]);
+    const stream = createGraphRunStream(source, [nativeFactory]);
+
+    const events: ProtocolEvent[] = [];
+    for await (const e of stream) {
+      events.push(e);
+    }
+
+    const channelEvents = events.filter(
+      (e) => (e.method as string) === "native-ch"
+    );
+    expect(channelEvents).toHaveLength(0);
+
+    expect(stream.extensions).not.toHaveProperty("nativeProp");
+  });
+
+  it("native projections are assigned directly to the root stream, not extensions", async () => {
+    const nativeFactory = (): NativeStreamTransformer<{
+      toolCalls: string[];
+    }> => ({
+      __native: true,
+      init: () => ({ toolCalls: ["call_1"] }),
+      process(): boolean {
+        return true;
+      },
+    });
+
+    const source = makeSource([[[], "values", { x: 1 }]]);
+    const stream = createGraphRunStream(source, [nativeFactory]);
+    await stream.output;
+
+    expect(stream.extensions).not.toHaveProperty("toolCalls");
+    expect((stream as unknown as Record<string, unknown>).toolCalls).toEqual([
+      "call_1",
+    ]);
+  });
+
+  it("mixed native and extension transformers: only extension channels are wired", async () => {
+    const extChannel = new StreamChannel<string>("ext-data");
+    const nativeChannel = new StreamChannel<string>("native-data");
+
+    const extensionFactory = (): StreamTransformer<{
+      extData: StreamChannel<string>;
+    }> => ({
+      init: () => ({ extData: extChannel }),
+      process(event: ProtocolEvent): boolean {
+        if (event.method === "values") {
+          extChannel.push("ext-item");
+        }
+        return true;
+      },
+    });
+
+    const nativeFactory = (): NativeStreamTransformer<{
+      nativeData: StreamChannel<string>;
+    }> => ({
+      __native: true,
+      init: () => ({ nativeData: nativeChannel }),
+      process(event: ProtocolEvent): boolean {
+        if (event.method === "values") {
+          nativeChannel.push("native-item");
+        }
+        return true;
+      },
+    });
+
+    const source = makeSource([[[], "values", { x: 1 }]]);
+    const stream = createGraphRunStream(source, [
+      extensionFactory,
+      nativeFactory,
+    ]);
+
+    const events: ProtocolEvent[] = [];
+    for await (const e of stream) {
+      events.push(e);
+    }
+
+    const extEvents = events.filter(
+      (e) => (e.method as string) === "ext-data"
+    );
+    expect(extEvents).toHaveLength(1);
+    expect(extEvents[0].params.data).toBe("ext-item");
+
+    const nativeEvents = events.filter(
+      (e) => (e.method as string) === "native-data"
+    );
+    expect(nativeEvents).toHaveLength(0);
   });
 });

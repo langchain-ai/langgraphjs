@@ -431,7 +431,15 @@ export function createGraphRunStream<
     } else {
       Object.assign(extensions, projection);
     }
-    if (typeof projection === "object" && projection !== null) {
+    // Only wire channels for extension transformers. Native transformers
+    // produce non-serializable projections (Promises, AsyncIterables) that
+    // must stay in-process — wiring them would inject garbage into the
+    // protocol event stream.
+    if (
+      typeof projection === "object" &&
+      projection !== null &&
+      !isNativeTransformer(transformer)
+    ) {
       mux.wireChannels(projection as Record<string, unknown>);
     }
   }
