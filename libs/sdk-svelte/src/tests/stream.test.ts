@@ -575,6 +575,39 @@ it("branching", async () => {
     .toHaveTextContent("1 / 2");
 });
 
+it("branching: regenerating the first ai message after a long chat resets to that checkpoint", async () => {
+  const screen = render(Branching, {
+    apiUrl: serverUrl,
+  });
+
+  for (let i = 0; i < 7; i += 1) {
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId(`content-${i * 2}`), { timeout: 10_000 })
+      .toHaveTextContent("Hello");
+    await expect
+      .element(screen.getByTestId(`content-${i * 2 + 1}`), { timeout: 10_000 })
+      .toHaveTextContent("Hey");
+  }
+
+  await expect
+    .element(screen.getByTestId("message-13"), { timeout: 10_000 })
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("regenerate-1").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"), { timeout: 10_000 })
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"), { timeout: 10_000 })
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"), { timeout: 10_000 })
+    .toHaveTextContent("2 / 2");
+  await expect.element(screen.getByTestId("message-2")).not.toBeInTheDocument();
+});
+
 it("fetchStateHistory: { limit: 2 }", async () => {
   const onRequestCalls: Array<{ url: string; body?: Record<string, unknown> }> = [];
   const client = new Client({

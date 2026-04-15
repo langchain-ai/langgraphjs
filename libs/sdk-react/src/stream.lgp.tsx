@@ -25,6 +25,7 @@ import type {
 import { Client, getClientConfigHash } from "@langchain/langgraph-sdk/client";
 import {
   filterStream,
+  fetchHistory,
   unique,
   StreamError,
   getBranchContext,
@@ -62,46 +63,6 @@ function getFetchHistoryKey(
   limit: boolean | number
 ) {
   return [getClientConfigHash(client), threadId, limit].join(":");
-}
-
-function fetchHistory<StateType extends Record<string, unknown>>(
-  client: Client,
-  threadId: string,
-  options?: { limit?: boolean | number }
-) {
-  if (options?.limit === false) {
-    return client.threads.getState<StateType>(threadId).then((state) => {
-      if (state.checkpoint == null) return [];
-      return [state];
-    });
-  }
-
-  const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads
-    .getHistory<StateType>(threadId, { limit })
-    .then(async (history) => {
-      if (history.length < limit) return history;
-
-      const result = [...history];
-      let before = history.at(-1)?.checkpoint?.checkpoint_id;
-
-      while (before != null) {
-        const page = await client.threads.getHistory<StateType>(threadId, {
-          limit,
-          before: before as any,
-        });
-        if (page.length === 0) break;
-
-        result.push(...page);
-        if (page.length < limit) break;
-
-        const nextBefore = page.at(-1)?.checkpoint?.checkpoint_id;
-        if (nextBefore == null || nextBefore === before) break;
-        before = nextBefore;
-      }
-
-      return result;
-    });
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(

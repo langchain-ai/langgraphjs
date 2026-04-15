@@ -21,7 +21,12 @@ import {
   userFacingInterruptsFromThreadTasks,
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
-import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
+import {
+  unique,
+  filterStream,
+  onFinishRequiresThreadState,
+  fetchHistory,
+} from "./utils.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
@@ -41,53 +46,6 @@ interface RunMetadataStorage {
   getItem(key: `lg:stream:${string}`): string | null;
   setItem(key: `lg:stream:${string}`, value: string): void;
   removeItem(key: `lg:stream:${string}`): void;
-}
-
-/**
- * Fetch the history of a thread.
- * @param client - The client to use.
- * @param threadId - The ID of the thread to fetch the history of.
- * @param options - The options to use.
- * @returns The history of the thread.
- */
-function fetchHistory<StateType extends Record<string, unknown>>(
-  client: Client,
-  threadId: string,
-  options?: { limit?: boolean | number }
-) {
-  if (options?.limit === false) {
-    return client.threads.getState<StateType>(threadId).then((state) => {
-      if (state.checkpoint == null) return [];
-      return [state];
-    });
-  }
-
-  const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads
-    .getHistory<StateType>(threadId, { limit })
-    .then(async (history) => {
-      if (history.length < limit) return history;
-
-      const result = [...history];
-      let before = history.at(-1)?.checkpoint?.checkpoint_id;
-
-      while (before != null) {
-        const page = await client.threads.getHistory<StateType>(threadId, {
-          limit,
-          before: before as any,
-        });
-        if (page.length === 0) break;
-
-        result.push(...page);
-        if (page.length < limit) break;
-
-        const nextBefore = page.at(-1)?.checkpoint?.checkpoint_id;
-        if (nextBefore == null || nextBefore === before) break;
-        before = nextBefore;
-      }
-
-      return result;
-    });
 }
 
 /**
