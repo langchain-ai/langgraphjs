@@ -616,7 +616,6 @@ describe("RemoteGraph", () => {
           metadata: {
             source: "test",
             circular: "[Circular]",
-            thread_id: "thread_1",
           },
           tags: [
             {
@@ -628,7 +627,6 @@ describe("RemoteGraph", () => {
               metadata: {
                 source: "test",
                 circular: "[Circular]",
-                thread_id: "thread_1",
               },
               tags: ["[Circular]"],
             },
