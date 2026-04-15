@@ -44,11 +44,7 @@ function normalizeStreamMetadata(
   if (!namespace) {
     return undefined;
   }
-  const normalizedMetadata = { ...metadata };
-  if (normalizedMetadata.checkpoint_ns === undefined) {
-    normalizedMetadata.checkpoint_ns = checkpointNs ?? namespace;
-  }
-  return [namespace.split("|"), { tags, name, ...normalizedMetadata }];
+  return [namespace.split("|"), { tags, name, ...metadata }];
 }
 
 /**
