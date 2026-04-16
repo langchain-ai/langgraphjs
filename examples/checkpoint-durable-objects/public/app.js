@@ -103,20 +103,27 @@ function addSystemMsg(text) {
 // --- Sidebar ---
 
 function renderSidebar() {
-  sidebarEl.innerHTML =
-    '<div style="padding:8px;font-weight:600;font-size:13px;color:#888">Checkpoints</div>';
+  sidebarEl.replaceChildren();
+  const header = document.createElement("div");
+  header.style.cssText = "padding:8px;font-weight:600;font-size:13px;color:#888";
+  header.textContent = "Checkpoints";
+  sidebarEl.appendChild(header);
+
   historyData.forEach((h) => {
     const div = document.createElement("div");
     div.className =
       "cp" + (h.checkpointId === currentCheckpointId ? " active" : "");
-    div.innerHTML =
-      '<div class="step">Step ' +
-      h.step +
-      '</div><div class="meta">' +
-      h.messageCount +
-      " msgs &middot; " +
-      h.checkpointId.slice(0, 8) +
-      "</div>";
+
+    const stepDiv = document.createElement("div");
+    stepDiv.className = "step";
+    stepDiv.textContent = "Step " + h.step;
+
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "meta";
+    metaDiv.textContent = h.messageCount + " msgs \u00b7 " + String(h.checkpointId).slice(0, 8);
+
+    div.appendChild(stepDiv);
+    div.appendChild(metaDiv);
     div.onclick = () => forkTo(h.checkpointId);
     sidebarEl.appendChild(div);
   });
@@ -170,11 +177,13 @@ function renderTree() {
 
   roots.forEach((r) => layout(r, 0));
 
-  // SVG dimensions
+  const NS = "http://www.w3.org/2000/svg";
   const maxX = Math.max(...[...positions.values()].map((p) => p.x)) + 40;
   const maxY = Math.max(...[...positions.values()].map((p) => p.y)) + 40;
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${maxX}" height="${maxY}" id="tree-svg">`;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", maxX);
+  svg.setAttribute("height", maxY);
 
   // Edges
   historyData.forEach((h) => {
@@ -182,7 +191,13 @@ function renderTree() {
       const from = positions.get(h.parentCheckpointId);
       const to = positions.get(h.checkpointId);
       if (from && to) {
-        svg += `<line class="edge" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>`;
+        const line = document.createElementNS(NS, "line");
+        line.setAttribute("class", "edge");
+        line.setAttribute("x1", from.x);
+        line.setAttribute("y1", from.y);
+        line.setAttribute("x2", to.x);
+        line.setAttribute("y2", to.y);
+        svg.appendChild(line);
       }
     }
   });
@@ -191,15 +206,27 @@ function renderTree() {
   historyData.forEach((h) => {
     const pos = positions.get(h.checkpointId);
     if (!pos) return;
-    const active = h.checkpointId === currentCheckpointId ? " active" : "";
-    svg += `<g class="node${active}" onclick="forkTo('${h.checkpointId}')">`;
-    svg += `<circle cx="${pos.x}" cy="${pos.y}" r="${radius}"/>`;
-    svg += `<text x="${pos.x}" y="${pos.y - radius - 4}" text-anchor="middle">${h.step}</text>`;
-    svg += `</g>`;
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("class", "node" + (h.checkpointId === currentCheckpointId ? " active" : ""));
+    g.addEventListener("click", () => forkTo(h.checkpointId));
+
+    const circle = document.createElementNS(NS, "circle");
+    circle.setAttribute("cx", pos.x);
+    circle.setAttribute("cy", pos.y);
+    circle.setAttribute("r", radius);
+    g.appendChild(circle);
+
+    const text = document.createElementNS(NS, "text");
+    text.setAttribute("x", pos.x);
+    text.setAttribute("y", pos.y - radius - 4);
+    text.setAttribute("text-anchor", "middle");
+    text.textContent = h.step;
+    g.appendChild(text);
+
+    svg.appendChild(g);
   });
 
-  svg += `</svg>`;
-  treeEl.innerHTML = svg;
+  treeEl.replaceChildren(svg);
 }
 
 // Auto-connect
