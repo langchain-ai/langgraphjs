@@ -36,6 +36,6 @@
     "tailwindcss": "^4.2.1",
     "tw-shimmer": "^0.4.8",
     "typescript": "^5",
-    "vite": "^7.3.2"
+    "vite": "^8.0.0"
   }
 }
