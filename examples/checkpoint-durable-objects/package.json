@@ -1,0 +1,21 @@
+{
+  "name": "checkpoint-do-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "eliza & wrangler dev --port 7303",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint-durable-objects": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.4.5",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.14.0",
+    "ws": "^8.18.0"
+  }
+}

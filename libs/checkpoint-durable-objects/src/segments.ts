@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+// Use Web Crypto API (works in both Node.js and Cloudflare Workers)
+const randomUUID = (): string => crypto.randomUUID();
 
 export interface SegmentRef {
   sid: string;

@@ -1,0 +1,17 @@
+name = "checkpoint-do-example"
+main = "src/index.ts"
+compatibility_date = "2026-04-07"
+
+[assets]
+directory = "./public"
+
+[vars]
+OPENAI_BASE_URL = "http://localhost:17978"
+
+[[durable_objects.bindings]]
+name = "CHAT"
+class_name = "ChatDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatDO"]

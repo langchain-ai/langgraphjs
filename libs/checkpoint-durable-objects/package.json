@@ -56,13 +56,6 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./better-sqlite3": {
-      "input": "./src/backends/better-sqlite3.ts",
-      "import": {
-        "types": "./dist/backends/better-sqlite3.d.ts",
-        "default": "./dist/backends/better-sqlite3.js"
-      }
-    },
     "./package.json": "./package.json"
   },
   "files": [

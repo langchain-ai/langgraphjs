@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chat</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="header">
+  <span style="font-weight:600">Thread:</span>
+  <input id="thread-id" value="default" placeholder="thread ID">
+  <button onclick="connectThread()">Connect</button>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div style="padding:8px;font-weight:600;font-size:13px;color:#888">Checkpoints</div>
+  </div>
+  <div id="chat">
+    <div id="messages"></div>
+    <div id="input-bar">
+      <input id="msg-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button id="send-btn" onclick="sendMsg()" disabled>Send</button>
+    </div>
+  </div>
+  <div id="tree-panel">
+    <h3>Tree</h3>
+    <div id="tree-svg"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
