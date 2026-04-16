@@ -1,7 +1,7 @@
 {
-  "name": "@langchain/langgraph-checkpoint-sqlite",
-  "version": "1.0.1",
-  "description": "LangGraph",
+  "name": "@langchain/langgraph-checkpoint-durable-objects",
+  "version": "0.0.1",
+  "description": "LangGraph checkpointer for Cloudflare Durable Objects SQLite with normalized storage",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -11,40 +11,31 @@
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
-    "directory": "libs/checkpoint-sqlite"
+    "directory": "libs/checkpoint-durable-objects"
   },
   "scripts": {
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-sqlite",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-sqlite",
-    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
-    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
-    "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
-    "prepublish": "pnpm build",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-durable-objects",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-durable-objects",
+    "clean": "rm -rf dist/ .turbo/",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:int": "vitest run --mode int",
     "measure": "tsx src/measure_row_sizes.ts",
     "measure:time": "tsx src/measure_write_time.ts"
   },
   "author": "LangChain",
   "license": "MIT",
-  "dependencies": {
-    "better-sqlite3": "^12.6.0"
-  },
+  "dependencies": {},
   "peerDependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.0.1",
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
     "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint-validation": "workspace:*",
     "@langchain/scripts": ">=0.1.3 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/better-sqlite3": "^7.6.12",
-    "@types/uuid": "^10",
     "better-sqlite3": "^12.6.0",
-    "dotenv": "^16.3.1",
-    "dpdm": "^3.12.0",
-    "rollup": "^4.37.0",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4"
@@ -56,7 +47,6 @@
   "exports": {
     ".": {
       "input": "./src/index.ts",
-      "typedoc": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -64,6 +54,13 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      }
+    },
+    "./better-sqlite3": {
+      "input": "./src/backends/better-sqlite3.ts",
+      "import": {
+        "types": "./dist/backends/better-sqlite3.d.ts",
+        "default": "./dist/backends/better-sqlite3.js"
       }
     },
     "./package.json": "./package.json"

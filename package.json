@@ -76,10 +76,15 @@
       "yaml@>=2 <2.8.3": ">=2.8.3"
     },
     "onlyBuiltDependencies": [
+      "@parcel/watcher",
       "@swc/core",
       "better-sqlite3",
       "cpu-features",
+      "edgedriver",
       "esbuild",
+      "geckodriver",
+      "lmdb",
+      "msgpackr-extract",
       "msw",
       "protobufjs",
       "sharp",
