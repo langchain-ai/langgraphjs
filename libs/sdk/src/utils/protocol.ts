@@ -130,21 +130,17 @@ const toMessageMetadata = (
 const toUsageMetadata = (value: unknown) => {
   if (!isRecord(value)) return undefined;
   return {
-    ...(typeof value.inputTokens === "number"
-      ? { input_tokens: value.inputTokens }
+    ...(typeof value.input_tokens === "number"
+      ? { input_tokens: value.input_tokens }
       : {}),
-    ...(typeof value.outputTokens === "number"
-      ? { output_tokens: value.outputTokens }
+    ...(typeof value.output_tokens === "number"
+      ? { output_tokens: value.output_tokens }
       : {}),
-    ...(typeof value.totalTokens === "number"
-      ? { total_tokens: value.totalTokens }
+    ...(typeof value.total_tokens === "number"
+      ? { total_tokens: value.total_tokens }
       : {}),
-    ...(typeof value.cachedTokens === "number"
-      ? {
-          input_token_details: {
-            cache_read: value.cachedTokens,
-          },
-        }
+    ...(typeof value.cached_tokens === "number"
+      ? { input_token_details: { cache_read: value.cached_tokens } }
       : {}),
   };
 };

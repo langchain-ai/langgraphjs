@@ -222,9 +222,24 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       const fetchImpl = await this.resolveFetch();
       const response = await fetchImpl(url.toString(), requestInit);
       if (!response.ok) {
-        throw new Error(
-          `Protocol request failed: ${response.status} ${response.statusText}`
-        );
+        let detail = "";
+        try {
+          const body = await response.text();
+          const parsed = JSON.parse(body);
+          if (typeof parsed === "object" && parsed != null) {
+            detail =
+              (parsed as Record<string, unknown>).message as string ??
+              (parsed as Record<string, unknown>).error as string ??
+              "";
+          }
+          if (!detail) detail = body;
+        } catch {
+          // body unreadable or not JSON — fall through
+        }
+        const message = detail
+          ? `Protocol request failed: ${response.status} ${response.statusText} — ${detail}`
+          : `Protocol request failed: ${response.status} ${response.statusText}`;
+        throw new Error(message);
       }
       return response;
     } catch (error) {

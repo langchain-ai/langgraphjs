@@ -164,8 +164,8 @@ const finalizeContentBlock = (
 };
 
 /**
- * Converts LangChain's snake_case `usage_metadata` into the protocol's
- * camelCase `UsageInfo` shape expected by `@langchain/protocol`.
+ * Converts LangChain's `usage_metadata` into the protocol's
+ * `UsageInfo` shape defined by `@langchain/protocol`.
  *
  * @param usage - LangChain-format usage metadata.
  * @returns Protocol-compatible usage info, or `undefined` if input is nullish.
@@ -175,14 +175,14 @@ const toProtocolUsage = (
 ): Record<string, unknown> | undefined => {
   if (usage == null) return undefined;
   return {
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    totalTokens: usage.total_tokens,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    total_tokens: usage.total_tokens,
     ...(usage.input_token_details != null
-      ? { inputTokenDetails: usage.input_token_details }
+      ? { input_token_details: usage.input_token_details }
       : {}),
     ...(usage.output_token_details != null
-      ? { outputTokenDetails: usage.output_token_details }
+      ? { output_token_details: usage.output_token_details }
       : {}),
   };
 };

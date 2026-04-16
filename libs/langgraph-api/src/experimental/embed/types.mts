@@ -74,6 +74,7 @@ export interface EmbedSession {
   sendEvent?: (message: ProtocolEvent) => Promise<void> | void;
   queuedEvents: ProtocolEvent[];
   pendingCommands: ProtocolCommand[];
+  activeSubscriptions: ProtocolCommand[];
   currentRun?: Run;
   currentThreadId?: string;
 }

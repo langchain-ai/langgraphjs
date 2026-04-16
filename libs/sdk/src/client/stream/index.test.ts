@@ -6,6 +6,7 @@ import {
   ProtocolError,
   SubscriptionHandle,
 } from "./index.js";
+import { ToolCallAssembler } from "./handles/tools.js";
 import { MockTransport, eventOf, nextValue } from "./test/utils.js";
 
 describe("ProtocolClient", () => {
@@ -14,7 +15,8 @@ describe("ProtocolClient", () => {
     const client = new ProtocolClient(transport);
     const session = await client.open({ protocol_version: "0.3.0" });
 
-    const subscription = await session.subscribe("messages", {
+    const subscription = await session.subscribe({
+      channels: ["messages"],
       namespaces: [["agent_1"]],
     });
 
@@ -62,7 +64,7 @@ describe("ProtocolClient", () => {
     const client = new ProtocolClient(transport);
     const session = await client.open({ protocol_version: "0.3.0" });
 
-    const messages = await session.subscribeMessages({ namespaces: [[]] });
+    const messages = await session.subscribe("messages", { namespaces: [[]] });
 
     transport.pushEvent(
       eventOf(
@@ -107,10 +109,10 @@ describe("ProtocolClient", () => {
       )
     );
 
-    const assembled = await nextValue(messages);
-    expect(assembled.finishReason).toBe("stop");
-    expect(assembled.usage?.total_tokens).toBe(4);
-    expect(assembled.blocks).toEqual([{ type: "text", text: "Hello world" }]);
+    const msg = await nextValue(messages);
+    const fullText = await msg.text;
+    expect(fullText).toBe("Hello world");
+    expect((await msg.usage)?.total_tokens).toBe(4);
   });
 
   it("forwards object-shaped helper params to protocol commands", async () => {
@@ -123,7 +125,7 @@ describe("ProtocolClient", () => {
           { name: "agent", commands: ["getTree"] },
           { name: "resource", commands: ["list", "read", "write", "download"], channels: ["resource"] },
           { name: "input", commands: ["respond", "inject"], channels: ["input"] },
-          { name: "state", commands: ["get", "listCheckpoints", "fork"], channels: ["state"] },
+          { name: "state", commands: ["get", "listCheckpoints", "fork"] },
         ],
       },
     });
@@ -203,7 +205,7 @@ describe("ProtocolClient", () => {
     });
     expect(result.run_id).toBe("run_1");
 
-    const sub = await session.subscribe("messages");
+    const sub = await session.subscribe({ channels: ["messages"] });
     transport.pushEvent(
       eventOf("messages", { event: "message-start", message_id: "m1" }, { namespace: [], seq: 1 })
     );
@@ -239,7 +241,7 @@ describe("ProtocolClient", () => {
     const client = new ProtocolClient(transport);
     const session = await client.open({ protocol_version: "0.3.0" });
 
-    const subscription = await session.subscribe("messages");
+    const subscription = await session.subscribe({ channels: ["messages"] });
     await subscription.unsubscribe();
 
     expect(
@@ -391,5 +393,701 @@ describe("ProtocolError", () => {
     expect(error.code).toBe("invalid_argument");
     expect(error.message).toBe("Missing required field");
     expect(error.response.type).toBe("error");
+  });
+});
+
+describe("ToolCallAssembler", () => {
+  it("assembles tool-started into AssembledToolCall with promise lifecycle", async () => {
+    const assembler = new ToolCallAssembler();
+    const startEvent = eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "tc_1",
+      tool_name: "search",
+      input: { query: "weather" },
+    }, { namespace: ["agent"] });
+
+    const tc = assembler.consume(startEvent as import("@langchain/protocol").ToolsEvent);
+    expect(tc).toBeDefined();
+    expect(tc!.name).toBe("search");
+    expect(tc!.callId).toBe("tc_1");
+    expect(tc!.input).toEqual({ query: "weather" });
+    expect(tc!.namespace).toEqual(["agent"]);
+
+    const finishEvent = eventOf("tools", {
+      event: "tool-finished",
+      tool_call_id: "tc_1",
+      output: { content: "Sunny in Paris" },
+    }, { namespace: ["agent"] });
+
+    assembler.consume(finishEvent as import("@langchain/protocol").ToolsEvent);
+
+    await expect(tc!.output).resolves.toEqual({ content: "Sunny in Paris" });
+    await expect(tc!.status).resolves.toBe("finished");
+    await expect(tc!.error).resolves.toBeUndefined();
+  });
+
+  it("resolves error status on tool-error", async () => {
+    const assembler = new ToolCallAssembler();
+    const tc = assembler.consume(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "tc_err",
+      tool_name: "fail_tool",
+      input: {},
+    }) as import("@langchain/protocol").ToolsEvent);
+
+    assembler.consume(eventOf("tools", {
+      event: "tool-error",
+      tool_call_id: "tc_err",
+      message: "Connection timeout",
+    }) as import("@langchain/protocol").ToolsEvent);
+
+    await expect(tc!.status).resolves.toBe("error");
+    await expect(tc!.error).resolves.toBe("Connection timeout");
+    await expect(tc!.output).rejects.toThrow("Connection timeout");
+  });
+
+  it("ignores tool-output-delta events (returns undefined)", () => {
+    const assembler = new ToolCallAssembler();
+    assembler.consume(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "tc_d",
+      tool_name: "stream_tool",
+      input: {},
+    }) as import("@langchain/protocol").ToolsEvent);
+
+    const result = assembler.consume(eventOf("tools", {
+      event: "tool-output-delta",
+      tool_call_id: "tc_d",
+      delta: "partial",
+    }) as import("@langchain/protocol").ToolsEvent);
+
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("subscribe(\"toolCalls\")", () => {
+  it("yields assembled tool calls through the subscription", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const tools = await session.subscribe("toolCalls");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "tc_sub_1",
+      tool_name: "calculator",
+      input: { a: 3, b: 4 },
+    }, { namespace: [], seq: 1 }));
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-finished",
+      tool_call_id: "tc_sub_1",
+      output: { result: 7 },
+    }, { namespace: [], seq: 2 }));
+
+    const tc = await nextValue(tools);
+    expect(tc.name).toBe("calculator");
+    expect(tc.callId).toBe("tc_sub_1");
+    expect(tc.input).toEqual({ a: 3, b: 4 });
+    await expect(tc.output).resolves.toEqual({ result: 7 });
+    await expect(tc.status).resolves.toBe("finished");
+  });
+});
+
+describe("subscribe(\"values\")", () => {
+  it("raw subscribe via params form delivers events", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "values", channels: ["values"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const rawSub = await session.subscribe({ channels: ["values"] });
+
+    transport.pushEvent(eventOf("values", {
+      messages: [{ role: "user", content: "hi" }],
+    }, { namespace: [], seq: 1 }));
+
+    const event = await nextValue(rawSub);
+    expect(event.method).toBe("values");
+  });
+
+  it("extracts state data from values events", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "values", channels: ["values"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+    const values = await session.subscribe("values");
+
+    transport.pushEvent(eventOf("values", {
+      messages: [{ role: "user", content: "hi" }],
+      count: 1,
+    }, { namespace: [], seq: 1 }));
+
+    const snapshot = await nextValue(values);
+    expect(snapshot).toEqual({
+      messages: [{ role: "user", content: "hi" }],
+      count: 1,
+    });
+  });
+
+  it("resolves output promise with final value on close", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "values", channels: ["values"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+    const values = await session.subscribe("values");
+
+    transport.pushEvent(eventOf("values", { step: 1 }, { namespace: [], seq: 1 }));
+    transport.pushEvent(eventOf("values", { step: 2 }, { namespace: [], seq: 2 }));
+
+    await new Promise((r) => setTimeout(r, 10));
+    await transport.close();
+
+    const final = await values.output;
+    expect(final).toEqual({ step: 2 });
+  });
+});
+
+describe("subscribe(\"subgraphs\")", () => {
+  it("discovers subgraphs from lifecycle started events", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subgraphs = await session.subscribe("subgraphs");
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "researcher",
+      trigger_call_id: "call_abc",
+    }, { namespace: ["researcher:0"], seq: 1 }));
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "coder",
+    }, { namespace: ["coder:1"], seq: 2 }));
+
+    const first = await nextValue(subgraphs);
+    expect(first.name).toBe("researcher");
+    expect(first.index).toBe(0);
+    expect(first.namespace).toEqual(["researcher:0"]);
+    expect(first.triggerCallId).toBe("call_abc");
+    expect(first.graphName).toBe("researcher");
+
+    const second = await nextValue(subgraphs);
+    expect(second.name).toBe("coder");
+    expect(second.index).toBe(1);
+    expect(second.namespace).toEqual(["coder:1"]);
+    expect(second.triggerCallId).toBeUndefined();
+    expect(second.graphName).toBe("coder");
+  });
+
+  it("ignores non-started lifecycle events", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subgraphs = await session.subscribe("subgraphs");
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "running",
+      graph_name: "agent",
+    }, { namespace: ["agent:0"], seq: 1 }));
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "actual_sub",
+    }, { namespace: ["actual_sub:0"], seq: 2 }));
+
+    const first = await nextValue(subgraphs);
+    expect(first.name).toBe("actual_sub");
+  });
+
+  it("deduplicates same namespace", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subgraphs = await session.subscribe("subgraphs");
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "worker",
+    }, { namespace: ["worker:0"], seq: 1 }));
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "worker",
+    }, { namespace: ["worker:0"], seq: 2 }));
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "other",
+    }, { namespace: ["other:0"], seq: 3 }));
+
+    const first = await nextValue(subgraphs);
+    expect(first.name).toBe("worker");
+
+    const second = await nextValue(subgraphs);
+    expect(second.name).toBe("other");
+  });
+
+  it("SubgraphHandle.subscribe() scopes to the subgraph namespace", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+          { name: "values", channels: ["values"] },
+          { name: "tools", channels: ["tools"] },
+          { name: "messages", channels: ["messages"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subgraphs = await session.subscribe("subgraphs");
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "researcher",
+    }, { namespace: ["researcher:0"], seq: 1 }));
+
+    const sub = await nextValue(subgraphs);
+    expect(sub.name).toBe("researcher");
+
+    const values = await sub.subscribe("values");
+    transport.pushEvent(eventOf("values", {
+      messages: ["from researcher"],
+    }, { namespace: ["researcher:0"], seq: 2 }));
+
+    transport.pushEvent(eventOf("values", {
+      messages: ["from root"],
+    }, { namespace: [], seq: 3 }));
+
+    const snapshot = await nextValue(values);
+    expect(snapshot).toEqual({ messages: ["from researcher"] });
+
+    const subscribeCommands = transport.sentCommands.filter(
+      (c) => c.method === "subscription.subscribe"
+    );
+    const lastSubscribe = subscribeCommands[subscribeCommands.length - 1];
+    expect(lastSubscribe.params).toHaveProperty("namespaces");
+    expect((lastSubscribe.params as { namespaces: string[][] }).namespaces).toEqual([
+      ["researcher:0"],
+    ]);
+  });
+
+  it("SubgraphHandle.subscribe(\"toolCalls\") returns ToolSubscriptionHandle", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+          { name: "tools", channels: ["tools"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subgraphs = await session.subscribe("subgraphs");
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "started",
+      graph_name: "worker",
+    }, { namespace: ["worker:0"], seq: 1 }));
+
+    const sub = await nextValue(subgraphs);
+    const tools = await sub.subscribe("toolCalls");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "tc_sub",
+      tool_name: "search",
+      input: { q: "test" },
+    }, { namespace: ["worker:0"], seq: 2 }));
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-finished",
+      tool_call_id: "tc_sub",
+      output: { result: "found" },
+    }, { namespace: ["worker:0"], seq: 3 }));
+
+    const tc = await nextValue(tools);
+    expect(tc.name).toBe("search");
+    expect(tc.callId).toBe("tc_sub");
+    await expect(tc.output).resolves.toEqual({ result: "found" });
+  });
+});
+
+describe("subscribe(\"messages\")", () => {
+  it("yields StreamingMessage with text deltas and final text", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const messages = await session.subscribe("messages");
+
+    transport.pushEvent(eventOf("messages", {
+      event: "message-start",
+      message_id: "msg_1",
+    }, { namespace: [], node: "agent", seq: 1 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-start",
+      index: 0,
+      content_block: { type: "text", text: "" },
+    }, { namespace: [], node: "agent", seq: 2 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-delta",
+      index: 0,
+      content_block: { type: "text", text: "Hello " },
+    }, { namespace: [], node: "agent", seq: 3 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-delta",
+      index: 0,
+      content_block: { type: "text", text: "world" },
+    }, { namespace: [], node: "agent", seq: 4 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-finish",
+      index: 0,
+      content_block: { type: "text", text: "Hello world" },
+    }, { namespace: [], node: "agent", seq: 5 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "message-finish",
+      reason: "stop",
+      usage: { total_tokens: 10 },
+    }, { namespace: [], node: "agent", seq: 6 }));
+
+    const msg = await nextValue(messages);
+    expect(msg.node).toBe("agent");
+    expect(msg.messageId).toBe("msg_1");
+
+    const fullText = await msg.text;
+    expect(fullText).toBe("Hello world");
+
+    const usage = await msg.usage;
+    expect(usage?.total_tokens).toBe(10);
+  });
+
+  it("streams reasoning deltas", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const messages = await session.subscribe("messages");
+
+    transport.pushEvent(eventOf("messages", {
+      event: "message-start",
+      message_id: "msg_r",
+    }, { namespace: [], node: "agent", seq: 1 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-start",
+      index: 0,
+      content_block: { type: "reasoning", reasoning: "" },
+    }, { namespace: [], node: "agent", seq: 2 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-delta",
+      index: 0,
+      content_block: { type: "reasoning", reasoning: "Let me think..." },
+    }, { namespace: [], node: "agent", seq: 3 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "content-block-finish",
+      index: 0,
+      content_block: { type: "reasoning", reasoning: "Let me think..." },
+    }, { namespace: [], node: "agent", seq: 4 }));
+
+    transport.pushEvent(eventOf("messages", {
+      event: "message-finish",
+      reason: "stop",
+    }, { namespace: [], node: "agent", seq: 5 }));
+
+    const msg = await nextValue(messages);
+    const fullReasoning = await msg.reasoning;
+    expect(fullReasoning).toBe("Let me think...");
+  });
+});
+
+describe("subscribe(\"subagents\")", () => {
+  it("discovers subagents from task tool-started events", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subagents = await session.subscribe("subagents");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "task_1",
+      tool_name: "task",
+      input: { description: "Research AI trends", subagent_type: "researcher" },
+    } as Event["params"]["data"], { namespace: [], seq: 1 }));
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "task_2",
+      tool_name: "task",
+      input: { description: "Write code", subagent_type: "coder" },
+    } as Event["params"]["data"], { namespace: [], seq: 2 }));
+
+    const first = await nextValue(subagents);
+    expect(first.name).toBe("researcher");
+    expect(first.callId).toBe("task_1");
+    await expect(first.taskInput).resolves.toBe("Research AI trends");
+
+    const second = await nextValue(subagents);
+    expect(second.name).toBe("coder");
+    expect(second.callId).toBe("task_2");
+    await expect(second.taskInput).resolves.toBe("Write code");
+  });
+
+  it("resolves output on tool-finished", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subagents = await session.subscribe("subagents");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "task_r",
+      tool_name: "task",
+      input: { description: "Research", subagent_type: "researcher" },
+    } as Event["params"]["data"], { namespace: [], seq: 1 }));
+
+    const sub = await nextValue(subagents);
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-finished",
+      tool_call_id: "task_r",
+      output: { result: "AI is growing fast" },
+    } as Event["params"]["data"], { namespace: [], seq: 2 }));
+
+    await expect(sub.output).resolves.toEqual({ result: "AI is growing fast" });
+  });
+
+  it("rejects output on tool-error", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subagents = await session.subscribe("subagents");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "task_e",
+      tool_name: "task",
+      input: { description: "Fail", subagent_type: "broken" },
+    } as Event["params"]["data"], { namespace: [], seq: 1 }));
+
+    const sub = await nextValue(subagents);
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-error",
+      tool_call_id: "task_e",
+      message: "Subagent crashed",
+    } as Event["params"]["data"], { namespace: [], seq: 2 }));
+
+    await expect(sub.output).rejects.toThrow("Subagent crashed");
+  });
+
+  it("ignores non-task tool events", async () => {
+    const transport = new MockTransport();
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subagents = await session.subscribe("subagents");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "regular_1",
+      tool_name: "search",
+      input: { query: "test" },
+    } as Event["params"]["data"], { namespace: [], seq: 1 }));
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "task_1",
+      tool_name: "task",
+      input: { description: "Do work", subagent_type: "worker" },
+    } as Event["params"]["data"], { namespace: [], seq: 2 }));
+
+    const first = await nextValue(subagents);
+    expect(first.name).toBe("worker");
+  });
+
+  it("SubagentHandle.subscribe() scopes to subagent namespace", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "tools", channels: ["tools"] },
+          { name: "values", channels: ["values"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    const subagents = await session.subscribe("subagents");
+
+    transport.pushEvent(eventOf("tools", {
+      event: "tool-started",
+      tool_call_id: "task_w",
+      tool_name: "task",
+      input: { description: "Work", subagent_type: "worker" },
+    } as Event["params"]["data"], { namespace: ["tools:task_w"], seq: 1 }));
+
+    const sub = await nextValue(subagents);
+    expect(sub.namespace).toEqual(["tools:task_w"]);
+
+    const values = await sub.subscribe("values");
+    transport.pushEvent(eventOf("values", {
+      step: 1,
+    } as Event["params"]["data"], { namespace: ["tools:task_w"], seq: 2 }));
+
+    const snapshot = await nextValue(values);
+    expect(snapshot).toEqual({ step: 1 });
+
+    const subscribeCommands = transport.sentCommands.filter(
+      (c) => c.method === "subscription.subscribe"
+    );
+    const lastSubscribe = subscribeCommands[subscribeCommands.length - 1];
+    expect((lastSubscribe.params as { namespaces: string[][] }).namespaces).toEqual([
+      ["tools:task_w"],
+    ]);
+  });
+});
+
+describe("interrupts", () => {
+  it("tracks interrupted state from lifecycle events", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+          { name: "input", commands: ["respond", "inject"], channels: ["input"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    expect(session.interrupted).toBe(false);
+    expect(session.interrupts).toEqual([]);
+
+    transport.pushEvent(eventOf("input.requested", {
+      interrupt_id: "int_1",
+      payload: { question: "Approve?" },
+    }, { namespace: ["agent"], seq: 1 }));
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "interrupted",
+    }, { namespace: ["agent"], seq: 2 }));
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(session.interrupted).toBe(true);
+    expect(session.interrupts).toHaveLength(1);
+    expect(session.interrupts[0].interruptId).toBe("int_1");
+    expect(session.interrupts[0].payload).toEqual({
+      question: "Approve?",
+    });
+    expect(session.interrupts[0].namespace).toEqual(["agent"]);
+  });
+
+  it("handles multiple interrupt payloads", async () => {
+    const transport = new MockTransport({
+      capabilities: {
+        modules: [
+          { name: "session", commands: ["open", "describe", "close"] },
+          { name: "subscription", commands: ["subscribe", "unsubscribe", "reconnect"] },
+          { name: "agent", commands: ["getTree"], channels: ["lifecycle"] },
+          { name: "input", commands: ["respond", "inject"], channels: ["input"] },
+        ],
+      },
+    });
+    const client = new ProtocolClient(transport);
+    const session = await client.open({ protocol_version: "0.3.0" });
+
+    transport.pushEvent(eventOf("input.requested", {
+      interrupt_id: "int_a",
+      payload: { question: "First?" },
+    }, { namespace: [], seq: 1 }));
+
+    transport.pushEvent(eventOf("input.requested", {
+      interrupt_id: "int_b",
+      payload: { question: "Second?" },
+    }, { namespace: [], seq: 2 }));
+
+    transport.pushEvent(eventOf("lifecycle", {
+      event: "interrupted",
+    }, { namespace: [], seq: 3 }));
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(session.interrupts).toHaveLength(2);
+    expect(session.interrupts[0].interruptId).toBe("int_a");
+    expect(session.interrupts[1].interruptId).toBe("int_b");
   });
 });

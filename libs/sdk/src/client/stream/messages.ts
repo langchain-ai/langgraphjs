@@ -27,6 +27,157 @@ export interface AssembledMessage {
 }
 
 /**
+ * Symbol keys for assembler → StreamingMessage communication.
+ * Module-private: invisible to external consumers, accessible to
+ * {@link StreamingMessageAssembler} within this file.
+ */
+const PUSH_TEXT: unique symbol = Symbol("pushText");
+const PUSH_REASONING: unique symbol = Symbol("pushReasoning");
+const FINISH: unique symbol = Symbol("finish");
+const ERROR: unique symbol = Symbol("error");
+
+/**
+ * Live streaming view of a single message lifecycle, matching the
+ * in-process `ChatModelStream` dual-interface pattern.
+ *
+ * - `text` / `reasoning`: iterate for streaming deltas, or await for
+ *   the full concatenated string after the message completes.
+ * - `usage`: promise that resolves with token usage on message-finish.
+ * - `blocks`: the assembled content blocks (updated as deltas arrive).
+ *
+ * Created by {@link StreamingMessageAssembler} and yielded by
+ * {@link StreamingMessageSubscriptionHandle}.
+ */
+export class StreamingMessage {
+  readonly namespace: string[];
+  readonly node: string | undefined;
+  readonly messageId: string | undefined;
+  readonly metadata: MessageMetadata | undefined;
+  readonly assembled: AssembledMessage;
+
+  #textChunks: string[] = [];
+  #reasoningChunks: string[] = [];
+  #textWaiters: Array<(value: IteratorResult<string>) => void> = [];
+  #reasoningWaiters: Array<(value: IteratorResult<string>) => void> = [];
+  #textDone = false;
+  #reasoningDone = false;
+
+  #resolveText!: (v: string) => void;
+  #resolveReasoning!: (v: string) => void;
+  #resolveUsage!: (v: UsageInfo | undefined) => void;
+  readonly #textPromise: Promise<string>;
+  readonly #reasoningPromise: Promise<string>;
+  readonly #usagePromise: Promise<UsageInfo | undefined>;
+
+  constructor(assembled: AssembledMessage) {
+    this.assembled = assembled;
+    this.namespace = assembled.namespace;
+    this.node = assembled.node;
+    this.messageId = assembled.messageId;
+    this.metadata = assembled.metadata;
+    this.#textPromise = new Promise<string>((r) => {
+      this.#resolveText = r;
+    });
+    this.#reasoningPromise = new Promise<string>((r) => {
+      this.#resolveReasoning = r;
+    });
+    this.#usagePromise = new Promise<UsageInfo | undefined>((r) => {
+      this.#resolveUsage = r;
+    });
+  }
+
+  get text(): AsyncIterable<string> & PromiseLike<string> {
+    const chunks = this.#textChunks;
+    const waiters = this.#textWaiters;
+    // oxlint-disable-next-line typescript/no-this-alias
+    const self = this;
+    let cursor = 0;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          async next(): Promise<IteratorResult<string>> {
+            if (cursor < chunks.length) {
+              return { done: false, value: chunks[cursor++] };
+            }
+            if (self.#textDone) {
+              return { done: true, value: undefined };
+            }
+            return await new Promise<IteratorResult<string>>((resolve) => {
+              waiters.push(resolve);
+            });
+          },
+        };
+      },
+      then: self.#textPromise.then.bind(self.#textPromise),
+    };
+  }
+
+  get reasoning(): AsyncIterable<string> & PromiseLike<string> {
+    const chunks = this.#reasoningChunks;
+    const waiters = this.#reasoningWaiters;
+    // oxlint-disable-next-line typescript/no-this-alias
+    const self = this;
+    let cursor = 0;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          async next(): Promise<IteratorResult<string>> {
+            if (cursor < chunks.length) {
+              return { done: false, value: chunks[cursor++] };
+            }
+            if (self.#reasoningDone) {
+              return { done: true, value: undefined };
+            }
+            return await new Promise<IteratorResult<string>>((resolve) => {
+              waiters.push(resolve);
+            });
+          },
+        };
+      },
+      then: self.#reasoningPromise.then.bind(self.#reasoningPromise),
+    };
+  }
+
+  get usage(): PromiseLike<UsageInfo | undefined> {
+    return this.#usagePromise;
+  }
+
+  get blocks(): ContentBlock[] {
+    return this.assembled.blocks;
+  }
+
+  [PUSH_TEXT](delta: string): void {
+    this.#textChunks.push(delta);
+    const waiter = this.#textWaiters.shift();
+    if (waiter) waiter({ done: false, value: delta });
+  }
+
+  [PUSH_REASONING](delta: string): void {
+    this.#reasoningChunks.push(delta);
+    const waiter = this.#reasoningWaiters.shift();
+    if (waiter) waiter({ done: false, value: delta });
+  }
+
+  [FINISH](usage: UsageInfo | undefined): void {
+    this.#textDone = true;
+    this.#reasoningDone = true;
+    this.#resolveText(this.#textChunks.join(""));
+    this.#resolveReasoning(this.#reasoningChunks.join(""));
+    this.#resolveUsage(usage);
+    while (this.#textWaiters.length > 0) {
+      this.#textWaiters.shift()?.({ done: true, value: undefined });
+    }
+    while (this.#reasoningWaiters.length > 0) {
+      this.#reasoningWaiters.shift()?.({ done: true, value: undefined });
+    }
+  }
+
+  [ERROR](): void {
+    this[FINISH](undefined);
+  }
+}
+
+/**
  * Emitted by `MessageAssembler.consume()` to describe how a message changed in
  * response to a single protocol event.
  */
@@ -232,6 +383,72 @@ export class MessageAssembler {
           message: structuredClone(message),
           event,
         };
+      }
+    }
+  }
+}
+
+/**
+ * Assembles `messages` events into {@link StreamingMessage} instances
+ * with live text/reasoning delta streams, matching the in-process
+ * `ChatModelStream` dual-interface pattern.
+ */
+export class StreamingMessageAssembler {
+  readonly #assembler = new MessageAssembler();
+  readonly #activeStreaming = new Map<string, StreamingMessage>();
+
+  /**
+   * Folds a single event and returns a new {@link StreamingMessage}
+   * when a `message-start` is seen, or `undefined` for continuation
+   * events (deltas, finish, error).
+   */
+  consume(event: MessagesEvent): StreamingMessage | undefined {
+    const update = this.#assembler.consume(event);
+
+    switch (update.kind) {
+      case "message-start": {
+        const streaming = new StreamingMessage(update.message);
+        this.#activeStreaming.set(update.key, streaming);
+        return streaming;
+      }
+      case "content-block-start": {
+        const streaming = this.#activeStreaming.get(update.key);
+        if (streaming && update.block.type === "text" && "text" in update.block && update.block.text) {
+          streaming[PUSH_TEXT](update.block.text);
+        }
+        if (streaming && update.block.type === "reasoning" && "reasoning" in update.block && update.block.reasoning) {
+          streaming[PUSH_REASONING](update.block.reasoning);
+        }
+        return undefined;
+      }
+      case "content-block-delta": {
+        const streaming = this.#activeStreaming.get(update.key);
+        if (!streaming) return undefined;
+        if (update.block.type === "text" && "text" in update.block) {
+          streaming[PUSH_TEXT](update.block.text);
+        }
+        if (update.block.type === "reasoning" && "reasoning" in update.block) {
+          streaming[PUSH_REASONING](update.block.reasoning);
+        }
+        return undefined;
+      }
+      case "content-block-finish":
+        return undefined;
+      case "message-finish": {
+        const streaming = this.#activeStreaming.get(update.key);
+        if (streaming) {
+          streaming[FINISH](update.message.usage);
+          this.#activeStreaming.delete(update.key);
+        }
+        return undefined;
+      }
+      case "message-error": {
+        const streaming = this.#activeStreaming.get(update.key);
+        if (streaming) {
+          streaming[ERROR]();
+          this.#activeStreaming.delete(update.key);
+        }
+        return undefined;
       }
     }
   }

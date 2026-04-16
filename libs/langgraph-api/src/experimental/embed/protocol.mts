@@ -81,6 +81,7 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
         };
       },
       source,
+      startSeq: session.seq,
       send: async (payload) => {
         const parsed = JSON.parse(payload) as ProtocolEvent;
         session.seq = Math.max(session.seq, parsed.seq ?? session.seq);
@@ -133,8 +134,14 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
     const protocolSession = attachRunSession(session, run, threadId);
     await protocolSession.start();
 
-    for (const pending of session.pendingCommands.splice(0)) {
-      await protocolSession.handleProtocolCommand(pending, {
+    const pending = session.pendingCommands.splice(0);
+    for (const cmd of pending) {
+      if (cmd.method === "subscription.subscribe") {
+        session.activeSubscriptions.push(cmd);
+      }
+    }
+    for (const cmd of session.activeSubscriptions) {
+      await protocolSession.handleProtocolCommand(cmd, {
         session_id: session.sessionId,
         applied_through_seq: session.seq,
       });
@@ -144,6 +151,68 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
       type: "success",
       id: command.id,
       result: { run_id: run.run_id },
+      meta: {
+        session_id: session.sessionId,
+        applied_through_seq: session.seq,
+      },
+    });
+  }
+
+  async function handleInputRespond(
+    session: EmbedSession,
+    command: ProtocolCommand
+  ) {
+    const params = isRecord(command.params) ? command.params : {};
+    const interruptId = params.interrupt_id;
+
+    if (typeof interruptId !== "string") {
+      return jsonResponse({
+        type: "error",
+        id: command.id,
+        code: "invalid_argument",
+        message: "input.respond requires an interrupt_id.",
+      });
+    }
+
+    const threadId = session.currentThreadId;
+    if (threadId == null) {
+      return jsonResponse({
+        type: "error",
+        id: command.id,
+        code: "no_such_run",
+        message: "No interrupted run is bound to this session.",
+      });
+    }
+
+    const targetId = session.target.id;
+    const run = createStubRun(threadId, {
+      assistant_id: targetId,
+      on_disconnect: "cancel",
+      input: null,
+      command: { resume: { [interruptId]: params.response } },
+      config: {
+        configurable: {
+          [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
+        },
+      },
+      stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
+      stream_subgraphs: true,
+    } as unknown as z.infer<typeof schemas.RunCreate>);
+
+    const protocolSession = attachRunSession(session, run, threadId);
+    await protocolSession.start();
+
+    for (const cmd of session.activeSubscriptions) {
+      await protocolSession.handleProtocolCommand(cmd, {
+        session_id: session.sessionId,
+        applied_through_seq: session.seq,
+      });
+    }
+
+    return jsonResponse({
+      type: "success",
+      id: command.id,
+      result: {},
       meta: {
         session_id: session.sessionId,
         applied_through_seq: session.seq,
@@ -199,6 +268,10 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
       return await handleRunInput(session, command);
     }
 
+    if (command.method === "input.respond") {
+      return await handleInputRespond(session, command);
+    }
+
     if (session.runSession == null) {
       session.pendingCommands.push(command);
       const result: Record<string, unknown> = {};
@@ -215,6 +288,10 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
           applied_through_seq: session.seq,
         },
       });
+    }
+
+    if (command.method === "subscription.subscribe") {
+      session.activeSubscriptions.push(command);
     }
 
     return jsonResponse(
@@ -245,6 +322,7 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
         seq: 0,
         queuedEvents: [],
         pendingCommands: [],
+        activeSubscriptions: [],
       };
       sessions.set(sessionId, session);
 

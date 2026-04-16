@@ -1,5 +1,5 @@
 import { v7 as uuid7 } from "uuid";
-import { getAssistantId } from "../graph/load.mjs";
+import { assertGraphExists, getAssistantId } from "../graph/load.mjs";
 import type {
   Run,
   RunsRepo,
@@ -113,7 +113,7 @@ const MODULE_CAPABILITIES: ModuleCapability[] = [
     name: "agent",
     commands: ["agent.getTree"],
     channels: ["lifecycle"],
-    events: ["spawned", "running", "completed", "failed", "interrupted"],
+    events: ["started", "running", "completed", "failed", "interrupted"],
   },
   ...STREAM_CHANNEL_CAPABILITIES,
   {
@@ -238,6 +238,10 @@ export class ProtocolService {
     record: SessionRecord;
     response: ProtocolSuccess;
   }> {
+    if (!("kind" in options.target && options.target.kind === "run")) {
+      assertGraphExists(options.target.id);
+    }
+
     const sessionId = uuid7();
     const record: SessionRecord = {
       sessionId,
@@ -257,6 +261,7 @@ export class ProtocolService {
       sendEvent: options.sendEvent,
       queuedEvents: [],
       pendingCommands: [],
+      activeSubscriptions: [],
     };
     this.sessions.set(sessionId, record);
     if ("kind" in record.target && record.target.kind === "run") {
@@ -572,11 +577,15 @@ export class ProtocolService {
       record.auth
     );
 
+    await this.ensureRunSession(record, run);
     record.currentRunId = run.run_id;
     record.currentThreadId = run.thread_id;
-    await this.ensureRunSession(record, run);
-    for (const pending of record.pendingCommands.splice(0)) {
-      await record.session?.handleProtocolCommand(pending, {
+    const pending = record.pendingCommands.splice(0);
+    for (const cmd of pending) {
+      if (cmd.method === "subscription.subscribe") {
+        record.activeSubscriptions.push(cmd);
+      }
+      await record.session?.handleProtocolCommand(cmd, {
         session_id: record.sessionId,
         applied_through_seq: record.seq,
       });
@@ -678,6 +687,9 @@ export class ProtocolService {
         "No active run is bound to this session."
       );
     }
+    if (command.method === "subscription.subscribe") {
+      record.activeSubscriptions.push(command);
+    }
     return await runSession.handleProtocolCommand(command, {
       session_id: record.sessionId,
       applied_through_seq: record.seq,
@@ -718,6 +730,7 @@ export class ProtocolService {
           record.auth
         ),
       source,
+      startSeq: record.seq,
       send: async (payload) => {
         const parsed = JSON.parse(payload) as ProtocolEvent;
         record.seq = Math.max(record.seq, parsed.seq ?? record.seq);
@@ -731,6 +744,13 @@ export class ProtocolService {
 
     record.session = session;
     await session.start();
+
+    for (const cmd of record.activeSubscriptions) {
+      await session.handleProtocolCommand(cmd, {
+        session_id: record.sessionId,
+        applied_through_seq: record.seq,
+      });
+    }
   }
 
   private requireSession(sessionId: string) {

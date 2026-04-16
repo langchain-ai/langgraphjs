@@ -127,12 +127,16 @@ export class RunProtocolSession {
     } | null>;
     send: (payload: string) => Promise<void> | void;
     source?: AsyncIterable<SourceStreamEvent>;
+    startSeq?: number;
   }) {
     this.initialRun = options.initialRun;
     this.getRun = options.getRun;
     this.getThreadState = options.getThreadState;
     this.send = options.send;
     this.source = options.source;
+    if (options.startSeq != null) {
+      this.nextSeq = options.startSeq;
+    }
     this.messageProcessor = new SessionMessageProcessor({
       ensureNamespaces: async (namespace) => this.ensureNamespaces(namespace),
       pushEvent: async (event) => this.pushEvent(event),
@@ -354,17 +358,32 @@ export class RunProtocolSession {
 
     let status: NamespaceInfo["status"] = toLifecycleStatus(currentRun.status);
     if (status === "completed") {
-      const threadState = await this.getThreadState?.();
-      const hasPendingInterrupts = (threadState?.tasks ?? []).some(
-        (task) => Array.isArray(task.interrupts) && task.interrupts.length > 0
-      );
-      if (hasPendingInterrupts) {
+      if (this.pendingInterruptIds.size > 0) {
         status = "interrupted";
+      } else {
+        const threadState = await this.getThreadState?.();
+        const hasPendingInterrupts = (threadState?.tasks ?? []).some(
+          (task) => Array.isArray(task.interrupts) && task.interrupts.length > 0
+        );
+        if (hasPendingInterrupts) {
+          status = "interrupted";
+        }
       }
     }
     if (status === "running") return;
 
     this.terminalLifecycleEmitted = true;
+
+    // Cascade terminal status to child namespaces still in "started" state.
+    const childStatus = status === "interrupted" ? "interrupted" : status;
+    for (const info of this.namespaces.values()) {
+      if (info.namespace.length > 0 && info.status === "started") {
+        await this.emitNamespaceLifecycle(info.namespace, childStatus, {
+          graphName: info.graphName,
+        });
+      }
+    }
+
     await this.emitNamespaceLifecycle([], status, {
       graphName: this.rootGraphName,
     });
@@ -380,6 +399,13 @@ export class RunProtocolSession {
 
     if (event.event === "error") {
       this.terminalLifecycleEmitted = true;
+      for (const info of this.namespaces.values()) {
+        if (info.namespace.length > 0 && info.status === "started") {
+          await this.emitNamespaceLifecycle(info.namespace, "failed", {
+            graphName: info.graphName,
+          });
+        }
+      }
       await this.emitNamespaceLifecycle([], "failed", {
         graphName: this.rootGraphName,
         error: serializeError(event.data).message,
@@ -439,6 +465,13 @@ export class RunProtocolSession {
       case "updates": {
         if (event.normalized) {
           const data = event.data as { node?: string; values: unknown };
+          if (data.node === "__interrupt__") {
+            await this.emitInputRequestedEvents(
+              namespace,
+              normalizeInputRequestedData(data.values)
+            );
+            return;
+          }
           await this.pushEvent(
             this.createEvent(
               "updates",

@@ -55,9 +55,12 @@ function mediaTypeMatches(
 /**
  * Maps a protocol event method to its subscription channel.
  *
+ * Returns `undefined` for unrecognized methods so that new server-side
+ * channels (e.g. from extension transformers) don't break existing clients.
+ *
  * @param event - Event whose method should be mapped to a channel.
  */
-export function inferChannel(event: Event): Channel {
+export function inferChannel(event: Event): Channel | undefined {
   switch (event.method) {
     case "values":
       return "values";
@@ -85,8 +88,6 @@ export function inferChannel(event: Event): Channel {
       return "sandbox";
     case "input.requested":
       return "input";
-    case "state.updated":
-      return "state";
     case "usage.llmCall":
     case "usage.summary":
       return "usage";
@@ -97,9 +98,7 @@ export function inferChannel(event: Event): Channel {
     case "tasks":
       return "tasks";
     default:
-      throw new Error(
-        `Unknown event method: ${String((event as { method?: string }).method)}`
-      );
+      return undefined;
   }
 }
 
@@ -114,8 +113,9 @@ export function matchesSubscription(
   definition: SubscribeParams
 ): boolean {
   const channel = inferChannel(event);
+  if (channel === undefined) return false;
+
   const channels = definition.channels as Channel[];
-  // "custom:a2a" matches exactly; "custom" matches all custom events
   const channelMatched =
     channels.includes(channel) ||
     (channel.startsWith("custom:") && channels.includes("custom"));

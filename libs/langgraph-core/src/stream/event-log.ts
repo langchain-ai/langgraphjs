@@ -7,6 +7,13 @@
  *
  * Items are retained for the lifetime of the log (no eviction).  A
  * bounded-buffer variant may be substituted for very long-running agents.
+ *
+ * Events are **not** flushed between runs.  Each `createGraphRunStream()`
+ * call creates a fresh `StreamMux`, which in turn instantiates new
+ * `EventLog` instances for its event and discovery logs.  Once the run
+ * completes, `close()` or `fail()` seals the log permanently — there is
+ * no reset.  The entire object tree becomes eligible for GC once all
+ * consumers finish iterating and release their references.
  */
 
 /**

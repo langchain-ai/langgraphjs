@@ -176,7 +176,7 @@ describe("SDK streaming subscriptions against embed server", () => {
     });
   });
 
-  describe("subscribe(\"tools\")", () => {
+  describe("subscribe(\"toolCalls\")", () => {
     it("receives assembled tool calls from an agent with tools", async () => {
       const client = createClient();
       const session = await client.open({
@@ -186,7 +186,7 @@ describe("SDK streaming subscriptions against embed server", () => {
 
       const toolCalls = await runAndCollect(
         session,
-        () => session.subscribe("tools"),
+        () => session.subscribe("toolCalls"),
         { messages: [{ role: "user", content: "What is the weather in SF?" }] }
       );
 
@@ -225,7 +225,8 @@ describe("SDK streaming subscriptions against embed server", () => {
       expect(events.length).toBeGreaterThan(0);
       expect(events.every((e) => e.method === "messages")).toBe(true);
       const lifecycle = events.map(
-        (e) => e.params.data as { event?: string }
+        (e) =>
+          (e.params as { data: { event?: string } }).data
       );
       expect(lifecycle.some((m) => m.event === "message-start")).toBe(true);
       expect(

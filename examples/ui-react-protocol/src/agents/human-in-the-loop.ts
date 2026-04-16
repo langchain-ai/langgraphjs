@@ -2,7 +2,7 @@ import { MemorySaver } from "@langchain/langgraph";
 import { createAgent, humanInTheLoopMiddleware, tool } from "langchain";
 import { z } from "zod/v4";
 
-import { model, protocolSystemPrompt } from "./shared";
+import { model } from "./shared";
 
 const sendReleaseUpdateEmail = tool(
   async ({
@@ -51,10 +51,10 @@ export const agent = createAgent({
   tools: [sendReleaseUpdateEmail],
   middleware: [hitlMiddleware],
   checkpointer: new MemorySaver(),
-  systemPrompt: `${protocolSystemPrompt}
-
-This runtime demonstrates a simple human-in-the-loop workflow.
-When the user asks you to notify, email, or announce something, draft a concise
-message and call send_release_update_email so the run pauses for review.
-Once the tool call is approved and finishes, summarize the outcome briefly.`,
+  systemPrompt: `You are a helpful assistant that sends emails on behalf of the user.
+When the user asks you to send, notify, email, or announce something, you MUST
+immediately call the send_release_update_email tool. Draft a professional subject
+and body yourself based on the user's request. Use "team@example.com" as the
+default recipient unless the user specifies someone else.
+Never ask clarifying questions — just draft and send.`,
 });

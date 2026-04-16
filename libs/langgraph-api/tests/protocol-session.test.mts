@@ -899,7 +899,7 @@ describe("RunProtocolSession", () => {
           params: expect.objectContaining({
             namespace: ["tools:call_123"],
             data: {
-              event: "spawned",
+              event: "started",
               graph_name: "tools",
             },
             timestamp: expect.any(Number),
@@ -1245,12 +1245,12 @@ describe("RunProtocolSession", () => {
             children: [
               {
                 namespace: ["gp_two"],
-                status: "spawned",
+                status: "started",
                 graph_name: "gp_two",
                 children: [
                   {
                     namespace: ["gp_two", "p_two"],
-                    status: "spawned",
+                    status: "started",
                     graph_name: "p_two",
                   },
                 ],

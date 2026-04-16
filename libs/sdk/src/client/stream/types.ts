@@ -32,6 +32,21 @@ import type { TransportAdapter } from "./transport.js";
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;
 
+/**
+ * Projection names for assembled subscription handles.
+ *
+ * These map to in-process `GraphRunStream` property names and are
+ * distinct from wire-level {@link Channel} names. Use projection
+ * names with `session.subscribe()` to get assembled handles; use
+ * `subscribe({ channels: [...] })` for raw protocol events.
+ */
+export type Projection =
+  | "toolCalls"
+  | "messages"
+  | "values"
+  | "subgraphs"
+  | "subagents";
+
 export type EventMethodByChannel = {
   values: "values";
   updates: "updates";
@@ -43,7 +58,6 @@ export type EventMethodByChannel = {
   resource: "resource.changed";
   sandbox: "sandbox.started" | "sandbox.output" | "sandbox.exited";
   input: "input.requested";
-  state: "state.updated";
   usage: "usage.llmCall" | "usage.summary";
   debug: "debug";
   checkpoints: "checkpoints";
@@ -143,4 +157,14 @@ export interface ClientOpenResult {
   capabilities: CapabilityAdvertisement;
   transport: TransportProfile;
   adapter: TransportAdapter;
+}
+
+/**
+ * Human-in-the-loop interrupt payload surfaced from lifecycle events.
+ * Matches the in-process `InterruptPayload` type.
+ */
+export interface InterruptPayload<TPayload = unknown> {
+  interruptId: string;
+  payload: TPayload;
+  namespace: string[];
 }

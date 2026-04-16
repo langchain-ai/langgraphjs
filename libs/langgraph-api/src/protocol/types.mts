@@ -201,4 +201,5 @@ export type SessionRecord = {
   sendEvent?: ((message: ProtocolEvent) => Promise<void> | void) | undefined;
   queuedEvents: ProtocolEvent[];
   pendingCommands: ProtocolCommand[];
+  activeSubscriptions: ProtocolCommand[];
 };

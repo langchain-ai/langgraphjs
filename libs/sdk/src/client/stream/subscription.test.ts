@@ -52,6 +52,26 @@ describe("inferChannel", () => {
     });
     expect(inferChannel(event)).toBe("custom:a2a");
   });
+
+  it("returns undefined for unknown event methods", () => {
+    const event = {
+      type: "event",
+      method: "unknown.future.method",
+      params: { namespace: [], timestamp: 0, data: {} },
+    } as unknown as Event;
+    expect(inferChannel(event)).toBeUndefined();
+  });
+});
+
+describe("matchesSubscription with unknown methods", () => {
+  it("drops events with unknown methods", () => {
+    const event = {
+      type: "event",
+      method: "unknown.future.method",
+      params: { namespace: [], timestamp: 0, data: {} },
+    } as unknown as Event;
+    expect(matchesSubscription(event, { channels: ["messages"] })).toBe(false);
+  });
 });
 
 describe("matchesSubscription", () => {
