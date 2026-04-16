@@ -1,5 +1,16 @@
 # @langchain/langgraph
 
+## 1.2.9
+
+### Patch Changes
+
+- [#2315](https://github.com/langchain-ai/langgraphjs/pull/2315) [`9102d52`](https://github.com/langchain-ai/langgraphjs/commit/9102d526c858a4cdbe9b47dcdd062b93da93e49f) Thanks [@hntrl](https://github.com/hntrl)! - propagate tracer metadata defaults from configurable
+
+- [#2311](https://github.com/langchain-ai/langgraphjs/pull/2311) [`b7c196b`](https://github.com/langchain-ai/langgraphjs/commit/b7c196b2142fb888dfcd9ceb1dfb4365d803c8b6) Thanks [@open-swe](https://github.com/apps/open-swe)! - fix: export missing types for typescript 6.0 declaration file compatibility
+
+- Updated dependencies [[`458d66b`](https://github.com/langchain-ai/langgraphjs/commit/458d66bf665468854abb8133594d4d4f966054ed)]:
+  - @langchain/langgraph-sdk@1.8.9
+
 ## 1.2.8
 
 ### Patch Changes
