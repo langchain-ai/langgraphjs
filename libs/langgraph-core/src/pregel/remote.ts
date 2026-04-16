@@ -43,6 +43,7 @@ import {
   INTERRUPT,
   isCommand,
 } from "../constants.js";
+import { propagateConfigurableToMetadata } from "./utils/config.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
@@ -119,16 +120,6 @@ const getStreamModes = (
     reqSingle,
   };
 };
-
-const PROPAGATE_TO_METADATA = new Set([
-  "thread_id",
-  "checkpoint_id",
-  "checkpoint_ns",
-  "task_id",
-  "run_id",
-  "assistant_id",
-  "graph_id",
-]);
 
 /**
  * The `RemoteGraph` class is a client implementation for calling remote
@@ -272,20 +263,17 @@ export class RemoteGraph<
           configurable != null &&
           !Array.isArray(configurable)
         ) {
-          if (
-            typeof record.metadata !== "object" ||
-            record.metadata == null ||
-            Array.isArray(record.metadata)
-          ) {
-            record.metadata = {};
-          }
-          const metadata = record.metadata as Record<string, unknown>;
-          for (const key of PROPAGATE_TO_METADATA) {
-            const configValue = (configurable as Record<string, unknown>)[key];
-            if (metadata[key] === undefined && configValue !== undefined) {
-              metadata[key] = configValue;
-            }
-          }
+          const metadata =
+            typeof record.metadata === "object" &&
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
+              ? (record.metadata as Record<string, unknown>)
+              : undefined;
+          record.metadata =
+            propagateConfigurableToMetadata(
+              configurable as Record<string, unknown>,
+              metadata
+            ) ?? record.metadata;
         }
         for (const nestedValue of Object.values(record)) {
           visit(nestedValue);

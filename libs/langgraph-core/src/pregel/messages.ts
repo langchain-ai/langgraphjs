@@ -18,7 +18,11 @@ import {
 } from "@langchain/core/outputs";
 import { ChainValues } from "@langchain/core/utils/types";
 
-import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import {
+  CHECKPOINT_NAMESPACE_END,
+  TAG_HIDDEN,
+  TAG_NOSTREAM,
+} from "../constants.js";
 import { StreamChunk } from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,15 +40,29 @@ function normalizeStreamMetadata(
   if (!metadata) {
     return undefined;
   }
-  const streamNamespace = metadata.langgraph_checkpoint_ns as
+  const taskCheckpointNs = metadata.langgraph_checkpoint_ns as
     | string
     | undefined;
-  const checkpointNs = metadata.checkpoint_ns as string | undefined;
-  const namespace = streamNamespace ?? checkpointNs;
+  const namespace = taskCheckpointNs ?? (metadata.checkpoint_ns as string);
   if (!namespace) {
     return undefined;
   }
-  return [namespace.split("|"), { tags, name, ...metadata }];
+  const normalizedCheckpointNs = (() => {
+    if (!taskCheckpointNs) {
+      return namespace;
+    }
+    const splitIndex = taskCheckpointNs.lastIndexOf(CHECKPOINT_NAMESPACE_END);
+    if (splitIndex === -1) {
+      return taskCheckpointNs;
+    }
+    return `${taskCheckpointNs.slice(0, splitIndex)}${CHECKPOINT_NAMESPACE_END}`;
+  })();
+  const streamMetadata = {
+    ...metadata,
+    langgraph_checkpoint_ns: normalizedCheckpointNs,
+    checkpoint_ns: normalizedCheckpointNs,
+  };
+  return [namespace.split("|"), { tags, name, ...streamMetadata }];
 }
 
 /**

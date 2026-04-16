@@ -35,7 +35,7 @@ const CONFIG_KEYS = [
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
-const PROPAGATE_TO_METADATA = new Set([
+export const PROPAGATE_TO_METADATA = new Set([
   "thread_id",
   "checkpoint_id",
   "checkpoint_ns",
@@ -44,6 +44,26 @@ const PROPAGATE_TO_METADATA = new Set([
   "assistant_id",
   "graph_id",
 ]);
+
+export function propagateConfigurableToMetadata(
+  configurable?: Record<string, unknown>,
+  metadata?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (!configurable) {
+    return metadata;
+  }
+  const result = metadata ?? {};
+  for (const key of PROPAGATE_TO_METADATA) {
+    if (key in result) {
+      continue;
+    }
+    const value = configurable[key];
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 export function ensureLangGraphConfig(
   ...configs: (LangGraphRunnableConfig | undefined)[]
@@ -98,18 +118,11 @@ export function ensureLangGraphConfig(
     }
   }
 
-  const configurable = empty.configurable;
-  if (configurable && empty.metadata != null) {
-    for (const key of PROPAGATE_TO_METADATA) {
-      if (key in empty.metadata) {
-        continue;
-      }
-      const value = configurable[key];
-      if (value !== undefined) {
-        empty.metadata[key] = value;
-      }
-    }
-  }
+  empty.metadata =
+    propagateConfigurableToMetadata(
+      empty.configurable as Record<string, unknown> | undefined,
+      empty.metadata as Record<string, unknown> | undefined
+    ) ?? {};
   return empty;
 }
 
