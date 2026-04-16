@@ -31,7 +31,7 @@
     "zod": "^3.25.76 || ^4"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "^0.2.72 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5"
   },
   "devDependencies": {

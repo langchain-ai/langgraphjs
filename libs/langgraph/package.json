@@ -28,7 +28,7 @@
     "@langchain/langgraph": "workspace:*"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.40",
     "zod": "^3.25.32 || ^4.1.0",
     "zod-to-json-schema": "^3.x"
   },

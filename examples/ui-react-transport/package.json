@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.13",
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "workspace:*",
     "@langchain/react": "workspace:*",
     "@langchain/openai": "^1.4.1",

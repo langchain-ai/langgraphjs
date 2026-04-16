@@ -638,6 +638,7 @@ export function _prepareSingleTask<
       langgraph_triggers: triggers,
       langgraph_path: outputTaskPath,
       langgraph_checkpoint_ns: taskCheckpointNamespace,
+      checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {
       const writes: [keyof Cc, unknown][] = [];
@@ -785,6 +786,7 @@ export function _prepareSingleTask<
       langgraph_triggers: triggers,
       langgraph_path: taskPath.slice(0, 3),
       langgraph_checkpoint_ns: taskCheckpointNamespace,
+      checkpoint_ns: taskCheckpointNamespace,
     };
     if (forExecution) {
       const proc = processes[packet.node];
@@ -969,6 +971,7 @@ export function _prepareSingleTask<
         langgraph_triggers: [trigger],
         langgraph_path: taskPath,
         langgraph_checkpoint_ns: taskCheckpointNamespace,
+        checkpoint_ns: taskCheckpointNamespace,
       };
       if (forExecution) {
         const node = proc.getNode();
