@@ -143,7 +143,7 @@ describe("StreamMessagesHandler", () => {
 
       expect(handler.metadatas[runId]).toEqual([
         ["ns1", "ns2"],
-        { tags: [], name: "ModelName", checkpoint_ns: "ns1|ns2", ...metadata },
+        { tags: [], name: "ModelName", ...metadata },
       ]);
     });
 
@@ -385,7 +385,7 @@ describe("StreamMessagesHandler", () => {
 
       expect(handler.metadatas[runId]).toEqual([
         ["ns1", "ns2"],
-        { tags: [], name: "NodeName", checkpoint_ns: "ns1|ns2", ...metadata },
+        { tags: [], name: "NodeName", ...metadata },
       ]);
     });
 
