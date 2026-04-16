@@ -10,8 +10,10 @@
 
 <div id="header">
   <span style="font-weight:600">Thread:</span>
-  <input id="thread-id" value="default" placeholder="thread ID">
+  <select id="thread-select"><option value="">-- select --</option></select>
+  <input id="thread-id" value="default" placeholder="or enter thread ID">
   <button onclick="connectThread()">Connect</button>
+  <button onclick="newThread()">New</button>
 </div>
 
 <div id="main">

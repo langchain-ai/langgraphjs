@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { uuid6 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { DurableObjectSqliteSaver } from "../index.js";
+import { IncrementalSqliteSaver } from "../index.js";
 import { BetterSqliteBackend } from "../backends/better-sqlite3.js";
 
 const CF_MAX_ROW = 2 * 1024 * 1024; // 2MB
 
 function createSaver(): {
-  saver: DurableObjectSqliteSaver;
+  saver: IncrementalSqliteSaver;
   backend: BetterSqliteBackend;
 } {
   const backend = BetterSqliteBackend.fromConnString(":memory:");
-  const saver = new DurableObjectSqliteSaver(backend, {
+  const saver = new IncrementalSqliteSaver(backend, {
     listChannels: new Set(["messages"]),
   });
   return { saver, backend };
@@ -25,7 +25,7 @@ function generateMessage(idx: number): Record<string, unknown> {
 }
 
 describe("Large conversation simulation", () => {
-  let saver: DurableObjectSqliteSaver;
+  let saver: IncrementalSqliteSaver;
   let backend: BetterSqliteBackend;
 
   beforeEach(() => {

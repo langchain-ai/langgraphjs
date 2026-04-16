@@ -1,7 +1,7 @@
 {
-  "name": "@langchain/langgraph-checkpoint-durable-objects",
+  "name": "@langchain/langgraph-checkpoint-sqlite-incremental",
   "version": "0.0.1",
-  "description": "LangGraph checkpointer for Cloudflare Durable Objects SQLite with normalized storage",
+  "description": "Incremental LangGraph SQLite checkpointer with normalized storage — O(delta) writes, bounded row sizes, suitable for long conversations and constrained environments like Cloudflare Durable Objects",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -11,11 +11,11 @@
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
-    "directory": "libs/checkpoint-durable-objects"
+    "directory": "libs/checkpoint-sqlite-incremental"
   },
   "scripts": {
-    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-durable-objects",
-    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-durable-objects",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-sqlite-incremental",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-sqlite-incremental",
     "clean": "rm -rf dist/ .turbo/",
     "test": "vitest run",
     "test:watch": "vitest watch",

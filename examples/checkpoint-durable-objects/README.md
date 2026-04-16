@@ -1,6 +1,6 @@
 # Durable Objects Checkpointer — WebSocket Chat Example
 
-A Cloudflare Worker that demonstrates the `DurableObjectSqliteSaver` checkpointer with a WebSocket chat API supporting conversation forking.
+A Cloudflare Worker that demonstrates the `IncrementalSqliteSaver` checkpointer with a WebSocket chat API supporting conversation forking.
 
 ## Setup
 
@@ -55,4 +55,4 @@ Connect to `ws://localhost:8787/thread/:threadId`
 
 ## Architecture
 
-Each thread gets its own Durable Object (keyed by thread ID). The DO owns a `DurableObjectSqliteSaver` backed by `ctx.storage`. Messages are stored individually in the `channel_items` table — never duplicated across checkpoints. WebSocket connections use the Hibernation API so the DO can sleep between messages.
+Each thread gets its own Durable Object (keyed by thread ID). The DO owns a `IncrementalSqliteSaver` backed by `ctx.storage`. Messages are stored individually in the `channel_items` table — never duplicated across checkpoints. WebSocket connections use the Hibernation API so the DO can sleep between messages.

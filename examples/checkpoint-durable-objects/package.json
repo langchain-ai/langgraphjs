@@ -3,16 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "eliza & wrangler dev --port 7303",
+    "dev": "wrangler dev --port 7303",
+    "ws": "NO_PROXY=localhost tsx src/ws-client.ts",
     "test": "vitest run",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@langchain/langgraph-checkpoint": "workspace:*",
-    "@langchain/langgraph-checkpoint-durable-objects": "workspace:*"
+    "@langchain/langgraph-checkpoint-sqlite-incremental": "workspace:*"
   },
   "devDependencies": {
     "@types/ws": "^8.5.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.4.5",
     "vitest": "^3.2.4",
     "wrangler": "^4.14.0",

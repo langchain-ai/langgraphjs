@@ -1,23 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { uuid6 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { DurableObjectSqliteSaver } from "../index.js";
+import { IncrementalSqliteSaver } from "../index.js";
 import { BetterSqliteBackend } from "../backends/better-sqlite3.js";
 
 function createSaver() {
   const backend = BetterSqliteBackend.fromConnString(":memory:");
-  return new DurableObjectSqliteSaver(backend, {
+  return new IncrementalSqliteSaver(backend, {
     listChannels: new Set(["messages"]),
   });
 }
 
-function closeSaver(saver: DurableObjectSqliteSaver) {
+function closeSaver(saver: IncrementalSqliteSaver) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ((saver as any).backend as BetterSqliteBackend).close();
 }
 
 async function putCheckpoint(
-  saver: DurableObjectSqliteSaver,
+  saver: IncrementalSqliteSaver,
   threadId: string,
   parentCheckpointId: string | undefined,
   messages: unknown[],
@@ -50,7 +50,7 @@ async function putCheckpoint(
 }
 
 async function getMessages(
-  saver: DurableObjectSqliteSaver,
+  saver: IncrementalSqliteSaver,
   config: RunnableConfig
 ): Promise<unknown[]> {
   const tuple = await saver.getTuple(config);
@@ -58,7 +58,7 @@ async function getMessages(
 }
 
 describe("Segment-specific tests", () => {
-  let saver: DurableObjectSqliteSaver;
+  let saver: IncrementalSqliteSaver;
 
   beforeEach(() => {
     saver = createSaver();

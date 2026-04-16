@@ -1,6 +1,6 @@
 import { describe } from "vitest";
 import { specTest } from "@langchain/langgraph-checkpoint-validation";
-import { DurableObjectSqliteSaver } from "../index.js";
+import { IncrementalSqliteSaver } from "../index.js";
 import { BetterSqliteBackend } from "../backends/better-sqlite3.js";
 
 // Test 1: Blob-only mode (no list channels)
@@ -8,12 +8,12 @@ import { BetterSqliteBackend } from "../backends/better-sqlite3.js";
 describe("blob-only mode", () => {
   specTest({
     checkpointerName:
-      "@langchain/langgraph-checkpoint-durable-objects (blob-only)",
+      "@langchain/langgraph-checkpoint-sqlite-incremental (blob-only)",
     createCheckpointer() {
       const backend = BetterSqliteBackend.fromConnString(":memory:");
-      return new DurableObjectSqliteSaver(backend);
+      return new IncrementalSqliteSaver(backend);
     },
-    destroyCheckpointer(saver: DurableObjectSqliteSaver) {
+    destroyCheckpointer(saver: IncrementalSqliteSaver) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((saver as any).backend as BetterSqliteBackend).close();
     },
@@ -25,14 +25,14 @@ describe("blob-only mode", () => {
 describe("segments mode", () => {
   specTest({
     checkpointerName:
-      "@langchain/langgraph-checkpoint-durable-objects (segments)",
+      "@langchain/langgraph-checkpoint-sqlite-incremental (segments)",
     createCheckpointer() {
       const backend = BetterSqliteBackend.fromConnString(":memory:");
-      return new DurableObjectSqliteSaver(backend, {
+      return new IncrementalSqliteSaver(backend, {
         listChannels: new Set(["animals"]),
       });
     },
-    destroyCheckpointer(saver: DurableObjectSqliteSaver) {
+    destroyCheckpointer(saver: IncrementalSqliteSaver) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((saver as any).backend as BetterSqliteBackend).close();
     },

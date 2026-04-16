@@ -97,7 +97,7 @@ export interface DurableObjectSaverOptions {
   listChannels?: Set<string>;
 }
 
-export class DurableObjectSqliteSaver extends BaseCheckpointSaver {
+export class IncrementalSqliteSaver extends BaseCheckpointSaver {
   private backend: SqlBackend;
   private isSetup = false;
   private listChannels: Set<string>;
