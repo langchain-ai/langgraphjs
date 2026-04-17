@@ -2,7 +2,6 @@ import type {
   AgentResult,
   AgentStatus,
   AgentTreeNode,
-  CheckpointsEvent,
   Channel,
   Command,
   CommandResponse,
@@ -10,7 +9,6 @@ import type {
   ContentBlockFinishData,
   ContentBlockStartData,
   CustomData,
-  DebugEvent,
   ErrorCode,
   ErrorResponse,
   Event,
@@ -35,6 +33,7 @@ import type {
   ToolsData,
   UnsubscribeParams,
   UpdatesEvent,
+  ValuesCheckpoint,
 } from "@langchain/protocol";
 import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session/index.mjs";
@@ -68,8 +67,6 @@ export type SupportedChannel = Extract<
   | "custom"
   | "lifecycle"
   | "input"
-  | "debug"
-  | "checkpoints"
   | "tasks"
 >;
 
@@ -81,8 +78,6 @@ export type EventMethodByChannel = {
   custom: "custom";
   lifecycle: "lifecycle";
   input: "input.requested";
-  debug: "debug";
-  checkpoints: "checkpoints";
   tasks: "tasks";
 };
 
@@ -103,12 +98,10 @@ export type {
   AgentResult,
   AgentStatus,
   AgentTreeNode,
-  CheckpointsEvent,
   ContentBlockDeltaData,
   ContentBlockFinishData,
   ContentBlockStartData,
   CustomData,
-  DebugEvent,
   ErrorCode,
   FlowCapacityParams,
   FlowStrategy,
@@ -130,6 +123,7 @@ export type {
   ToolsData,
   UnsubscribeParams,
   UpdatesEvent,
+  ValuesCheckpoint,
 };
 
 /**

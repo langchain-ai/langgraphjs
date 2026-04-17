@@ -96,8 +96,6 @@ export type ProtocolEventDataMap = {
   custom: ProtocolEventByMethod<"custom">["params"]["data"];
   lifecycle: ProtocolEventByMethod<"lifecycle">["params"]["data"];
   input: ProtocolEventByMethod<"input">["params"]["data"];
-  debug: ProtocolEventByMethod<"debug">["params"]["data"];
-  checkpoints: ProtocolEventByMethod<"checkpoints">["params"]["data"];
   tasks: ProtocolEventByMethod<"tasks">["params"]["data"];
 };
 
@@ -133,8 +131,6 @@ export const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
   "custom",
   "lifecycle",
   "input",
-  "debug",
-  "checkpoints",
   "tasks",
 ]);
 

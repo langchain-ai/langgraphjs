@@ -1,6 +1,5 @@
 import type { Run } from "../../storage/types.mjs";
 import type {
-  DebugEvent,
   ProtocolEventDataByMethod,
   ToolErrorData,
   ToolFinishedData,
@@ -212,40 +211,3 @@ export const normalizeToolData = (
   }
 };
 
-/**
- * Checks whether a debug payload type is supported by the protocol.
- *
- * @param value - Raw debug payload type.
- * @returns Whether the type is one of the protocol debug variants.
- */
-export const isDebugChunkType = (
-  value: unknown
-): value is DebugEvent["params"]["data"]["type"] =>
-  value === "checkpoint" || value === "task" || value === "task_result";
-
-/**
- * Normalizes raw debug payloads into protocol debug events.
- *
- * @param value - Raw debug payload.
- * @returns A normalized protocol debug payload.
- */
-export const normalizeDebugData = (
-  value: unknown
-): DebugEvent["params"]["data"] => {
-  if (
-    isRecord(value) &&
-    typeof value.step === "number" &&
-    isDebugChunkType(value.type)
-  ) {
-    return {
-      step: value.step,
-      type: value.type,
-      payload: value.payload,
-    };
-  }
-  return {
-    step: -1,
-    type: "task",
-    payload: value,
-  };
-};

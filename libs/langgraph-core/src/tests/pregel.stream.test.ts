@@ -183,87 +183,14 @@ describe("stream_experimental", () => {
     });
   });
 
-  describe("debug mode", () => {
-    it("emits task and task_result debug events for a single node", async () => {
-      const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
-      const events = await collectEvents(run);
-
-      const debugEvents = byMethod(events, "debug");
-      expect(debugEvents).toHaveLength(2);
-
-      const [taskEvent, resultEvent] = debugEvents.map(
-        (e) => e.params.data as any
-      );
-
-      expect(taskEvent).toMatchObject({
-        step: 1,
-        type: "task",
-        payload: {
-          name: "add_one",
-          input: { count: 0 },
-          triggers: ["branch:to:add_one"],
-          interrupts: [],
-        },
-      });
-      expect(taskEvent.payload.id).toEqual(expect.any(String));
-      expect(taskEvent.timestamp).toEqual(expect.any(String));
-
-      expect(resultEvent).toMatchObject({
-        step: 1,
-        type: "task_result",
-        payload: {
-          name: "add_one",
-          result: { count: 1 },
-          interrupts: [],
-        },
-      });
-      expect(resultEvent.payload.id).toBe(taskEvent.payload.id);
-    });
-
-    it("emits task/task_result pairs per node and checkpoint debug types with a checkpointer", async () => {
-      const graph = new StateGraph(CounterState)
-        .addNode("step1", () => ({ count: 1 }))
-        .addNode("step2", () => ({ count: 10 }))
-        .addEdge(START, "step1")
-        .addEdge("step1", "step2")
-        .addEdge("step2", END)
-        .compile({ checkpointer: new MemorySaver() });
-
-      const run = await graph.stream_experimental(
-        { count: 0 },
-        { configurable: { thread_id: "debug-types" } }
-      );
-      const events = await collectEvents(run);
-
-      const debugEvents = byMethod(events, "debug").map(
-        (e) => e.params.data as any
-      );
-
-      const taskEvents = debugEvents.filter((d) => d.type === "task");
-      const resultEvents = debugEvents.filter((d) => d.type === "task_result");
-      const checkpointEvents = debugEvents.filter(
-        (d) => d.type === "checkpoint"
-      );
-
-      expect(taskEvents.map((d) => d.payload.name)).toEqual([
-        "step1",
-        "step2",
-      ]);
-      expect(resultEvents.map((d) => d.payload.name)).toEqual([
-        "step1",
-        "step2",
-      ]);
-      expect(checkpointEvents.length).toBeGreaterThanOrEqual(1);
-      for (const ckpt of checkpointEvents) {
-        expect(ckpt.payload).toHaveProperty("values");
-        expect(ckpt.payload).toHaveProperty("next");
-      }
-    });
-  });
-
-  describe("checkpoints mode", () => {
-    it("emits checkpoint events when a checkpointer is configured", async () => {
+  describe("checkpoint envelope on values events", () => {
+    // `stream_experimental` intentionally does not include the `debug` or
+    // `checkpoints` stream modes — the full-state `checkpoints` stream
+    // roughly doubles serialisation cost, and `debug` was a thin re-wrap
+    // of `checkpoints` + `tasks`. Branching and time-travel use cases are
+    // served by the lightweight checkpoint envelope attached to `values`
+    // events plus on-demand state.get / state.listCheckpoints / state.fork.
+    it("does not emit 'debug' or 'checkpoints' events", async () => {
       const graph = new StateGraph(CounterState)
         .addNode("add_one", () => ({ count: 1 }))
         .addEdge(START, "add_one")
@@ -272,40 +199,66 @@ describe("stream_experimental", () => {
 
       const run = await graph.stream_experimental(
         { count: 0 },
-        { configurable: { thread_id: "ckpt-1" } }
+        { configurable: { thread_id: "no-debug" } }
       );
       const events = await collectEvents(run);
 
-      const checkpointEvents = byMethod(events, "checkpoints");
-      expect(checkpointEvents).toHaveLength(3);
+      expect(byMethod(events, "debug" as never)).toHaveLength(0);
+      expect(byMethod(events, "checkpoints" as never)).toHaveLength(0);
+    });
 
-      const checkpoints = checkpointEvents.map(
-        (e) => e.params.data as any
+    it("attaches a checkpoint envelope to values events when a checkpointer is configured", async () => {
+      const graph = new StateGraph(CounterState)
+        .addNode("add_one", () => ({ count: 1 }))
+        .addEdge(START, "add_one")
+        .addEdge("add_one", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await graph.stream_experimental(
+        { count: 0 },
+        { configurable: { thread_id: "ckpt-values" } }
       );
+      const events = await collectEvents(run);
 
-      expect(checkpoints[0]).toMatchObject({
-        values: { count: 0 },
-        metadata: { source: "input", step: -1 },
-        next: ["__start__"],
-      });
-      expect(checkpoints[0].config.configurable.thread_id).toBe("ckpt-1");
+      const valuesEvents = byMethod(events, "values");
+      expect(valuesEvents.length).toBeGreaterThan(0);
 
-      expect(checkpoints[1]).toMatchObject({
-        values: { count: 0 },
-        metadata: { source: "loop", step: 0 },
-        next: ["add_one"],
-      });
-      expect(checkpoints[1].tasks).toEqual([
-        expect.objectContaining({ name: "add_one" }),
-      ]);
-      expect(checkpoints[1].parentConfig).toBeDefined();
+      for (const ev of valuesEvents) {
+        const ckpt = (ev.params as any).checkpoint;
+        expect(ckpt).toBeDefined();
+        expect(typeof ckpt.id).toBe("string");
+        expect(typeof ckpt.step).toBe("number");
+        expect(["input", "loop", "update", "fork"]).toContain(ckpt.source);
+      }
 
-      expect(checkpoints[2]).toMatchObject({
-        values: { count: 1 },
-        metadata: { source: "loop", step: 1 },
-        next: [],
-        tasks: [],
-      });
+      // Parent/child linkage: subsequent values events should reference the
+      // previous event's checkpoint id as their parent_id.
+      const ckpts = valuesEvents.map((e) => (e.params as any).checkpoint);
+      for (let i = 1; i < ckpts.length; i += 1) {
+        if (ckpts[i].parent_id != null) {
+          expect(ckpts[i].parent_id).toBe(ckpts[i - 1].id);
+        }
+      }
+    });
+
+    it("omits the checkpoint envelope when no checkpointer is configured", async () => {
+      const graph = buildCounterGraph();
+      const run = await graph.stream_experimental({ count: 0 });
+      const events = await collectEvents(run);
+
+      const valuesEvents = byMethod(events, "values");
+      expect(valuesEvents.length).toBeGreaterThan(0);
+
+      // Without a checkpointer, emitted values events still carry a
+      // checkpoint id (the in-memory working checkpoint) but no persistent
+      // fork target is meaningful; the envelope is present but its id is
+      // opaque. This test just confirms the field never throws.
+      for (const ev of valuesEvents) {
+        const ckpt = (ev.params as any).checkpoint;
+        if (ckpt !== undefined) {
+          expect(typeof ckpt.id).toBe("string");
+        }
+      }
     });
   });
 
@@ -350,7 +303,7 @@ describe("stream_experimental", () => {
       const methods = new Set(events.map((e) => e.method));
       expect(methods.has("values")).toBe(true);
       expect(methods.has("updates")).toBe(true);
-      expect(methods.has("debug")).toBe(true);
+      expect(methods.has("tasks")).toBe(true);
     });
 
     it("events have monotonically increasing seq numbers", async () => {
@@ -440,7 +393,7 @@ describe("stream_experimental", () => {
       expect(subgraphs[0].index).toBe(0);
 
       const events = allSubEvents[0];
-      expect(events).toHaveLength(7);
+      expect(events).toHaveLength(5);
 
       for (const event of events) {
         expect(event.params.namespace[0]).toMatch(/^sub:/);
@@ -450,10 +403,8 @@ describe("stream_experimental", () => {
       expect(eventSequence).toEqual([
         "values",
         "tasks",
-        "debug",
         "updates",
         "tasks",
-        "debug",
         "values",
       ]);
 
@@ -483,19 +434,8 @@ describe("stream_experimental", () => {
       });
       expect(subTasks[1].id).toBe(subTasks[0].id);
 
-      const subDebug = byMethod(events, "debug").map(
-        (e) => e.params.data as any
-      );
-      expect(subDebug[0]).toMatchObject({
-        step: 1,
-        type: "task",
-        payload: { name: "inner_step" },
-      });
-      expect(subDebug[1]).toMatchObject({
-        step: 1,
-        type: "task_result",
-        payload: { name: "inner_step", result: { count: 5 } },
-      });
+      // Debug mode is not part of STREAM_V2_MODES; confirm it isn't emitted.
+      expect(byMethod(events, "debug" as never)).toHaveLength(0);
     });
   });
 

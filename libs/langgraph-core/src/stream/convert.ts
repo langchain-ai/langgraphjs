@@ -1,9 +1,10 @@
 /**
- * Protocol event conversion — maps raw `[ns, mode, payload]` stream chunks
- * from graph.stream() to CDDL-aligned ProtocolEvents.
+ * Protocol event conversion — maps raw `[ns, mode, payload, meta?]` stream
+ * chunks from graph.stream() to CDDL-aligned ProtocolEvents.
  */
 
 import type { StreamMode } from "../pregel/types.js";
+import type { StreamChunkMeta } from "../pregel/stream.js";
 import type {
   Namespace,
   ProtocolEvent,
@@ -12,8 +13,17 @@ import type {
 } from "./types.js";
 
 /**
- * The complete set of stream modes requested by `stream_experimental()`, ensuring every
- * protocol-defined channel is captured.
+ * The set of stream modes requested by `stream_experimental()` — every mode
+ * the protocol maps to a channel.
+ *
+ * The full-state `"checkpoints"` and verbose `"debug"` modes are intentionally
+ * excluded: a dedicated `checkpoints` stream roughly doubles the serialisation
+ * cost of a run for clients that only need fork pointers, and `debug` was a
+ * thin re-wrap of `checkpoints` + `tasks` carrying no new information.
+ * Branching and time-travel use cases are served by the lightweight
+ * checkpoint envelope carried on `values` events (see
+ * {@link StreamChunkMeta.checkpoint}) combined with on-demand `state.get` /
+ * `state.listCheckpoints` / `state.fork` commands.
  */
 export const STREAM_V2_MODES: StreamMode[] = [
   "values",
@@ -21,13 +31,11 @@ export const STREAM_V2_MODES: StreamMode[] = [
   "messages",
   "tools",
   "custom",
-  "debug",
-  "checkpoints",
   "tasks",
 ];
 
 /**
- * Converts a raw `[ns, mode, payload]` stream chunk emitted by
+ * Converts a raw `[ns, mode, payload, meta?]` stream chunk emitted by
  * `graph.stream()` into a CDDL-aligned {@link ProtocolEvent}.
  *
  * Returns `null` for stream modes that have no protocol mapping.
@@ -38,6 +46,8 @@ export const STREAM_V2_MODES: StreamMode[] = [
  *   `"tools"`).
  * @param payload - The raw payload emitted by the stream for this mode.
  * @param seq - Monotonically increasing sequence number for ordering.
+ * @param meta - Optional chunk-level metadata (e.g. the checkpoint envelope
+ *   attached to `values` events).
  * @returns A {@link ProtocolEvent} ready for downstream reducers, or `null`
  *   if the mode is unrecognised.
  */
@@ -45,7 +55,8 @@ export function convertToProtocolEvent(
   ns: Namespace,
   mode: StreamMode,
   payload: unknown,
-  seq: number
+  seq: number,
+  meta?: StreamChunkMeta
 ): ProtocolEvent | null {
   const timestamp = Date.now();
   const base = { type: "event" as const, seq };
@@ -73,7 +84,12 @@ export function convertToProtocolEvent(
       return {
         ...base,
         method: "values",
-        params: { namespace: ns, timestamp, data: payload },
+        params: {
+          namespace: ns,
+          timestamp,
+          data: payload,
+          ...(meta?.checkpoint ? { checkpoint: meta.checkpoint } : {}),
+        },
       };
 
     case "updates":
@@ -92,20 +108,6 @@ export function convertToProtocolEvent(
         ...base,
         method: "custom",
         params: { namespace: ns, timestamp, data: { payload } },
-      };
-
-    case "debug":
-      return {
-        ...base,
-        method: "debug",
-        params: { namespace: ns, timestamp, data: payload },
-      };
-
-    case "checkpoints":
-      return {
-        ...base,
-        method: "checkpoints",
-        params: { namespace: ns, timestamp, data: payload },
       };
 
     case "tasks":

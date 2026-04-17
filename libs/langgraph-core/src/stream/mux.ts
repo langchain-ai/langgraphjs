@@ -495,7 +495,7 @@ export async function pump(
   let seq = 0;
   try {
     for await (const chunk of source) {
-      const [ns, mode, payload] = chunk;
+      const [ns, mode, payload, meta] = chunk;
 
       // Detect interrupt payloads attached to values-mode chunks.
       if (mode === "values" && isInterrupted(payload)) {
@@ -508,7 +508,7 @@ export async function pump(
         );
       }
 
-      const event = convertToProtocolEvent(ns, mode, payload, seq);
+      const event = convertToProtocolEvent(ns, mode, payload, seq, meta);
       seq += 1;
       if (event !== null) {
         mux.push(ns, event);

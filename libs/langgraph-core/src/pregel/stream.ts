@@ -2,11 +2,30 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { Serialized } from "@langchain/core/load/serializable";
+import type { ValuesCheckpoint } from "@langchain/protocol";
 import type { StreamMode, StreamOutputMap } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
 
-// [namespace, streamMode, payload]
-export type StreamChunk = [string[], StreamMode, unknown];
+/**
+ * Optional chunk-level metadata carried alongside the payload. Used by the
+ * v2 protocol stream (`stream_experimental`) to enrich certain events —
+ * e.g. attaching a lightweight checkpoint envelope to `values` events so
+ * clients can build branching / time-travel UIs without subscribing to a
+ * full `checkpoints` stream.
+ *
+ * v1 consumers that destructure `StreamChunk` as `[ns, mode, payload]`
+ * ignore the 4th element and are unaffected.
+ */
+export interface StreamChunkMeta {
+  /**
+   * Lightweight checkpoint envelope attached to `values` events. Shape is
+   * the canonical {@link ValuesCheckpoint} generated from `protocol.cddl`.
+   */
+  checkpoint?: ValuesCheckpoint;
+}
+
+// [namespace, streamMode, payload, meta?]
+export type StreamChunk = [string[], StreamMode, unknown, StreamChunkMeta?];
 
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",

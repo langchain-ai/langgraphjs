@@ -33,7 +33,11 @@ export type {
   ToolOutputDeltaData,
   ToolFinishedData,
   ToolErrorData,
+  ValuesCheckpoint,
+  CheckpointSource,
 } from "@langchain/protocol";
+
+import type { ValuesCheckpoint } from "@langchain/protocol";
 
 /**
  * Hierarchical path identifying a position in the agent tree.
@@ -75,6 +79,18 @@ export interface ProtocolEvent {
 
     /** Opaque channel payload; shape depends on `method`. */
     readonly data: unknown;
+
+    /**
+     * Lightweight checkpoint envelope, present only on `values` events that
+     * correspond to a newly persisted checkpoint. Clients use this to build
+     * branching / time-travel UIs (`id` as the `state.fork` target,
+     * `parent_id` for tree linkage, `step` and `source` as timeline labels)
+     * without a dedicated full-state `checkpoints` stream.
+     *
+     * Shape matches the canonical {@link ValuesCheckpoint} from
+     * `@langchain/protocol`.
+     */
+    readonly checkpoint?: ValuesCheckpoint;
   };
 }
 

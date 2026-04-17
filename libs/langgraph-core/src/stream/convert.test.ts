@@ -119,15 +119,51 @@ describe("convertToProtocolEvent", () => {
     });
   });
 
-  it("converts 'debug', 'checkpoints', 'tasks' mode events", () => {
-    for (const mode of ["debug", "checkpoints", "tasks"] as const) {
-      const payload = { info: mode };
-      const result = convertToProtocolEvent(ns, mode, payload, 10);
-      expect(result).toMatchObject({
-        method: mode,
-        params: { namespace: ns, data: payload },
-      });
+  it("converts 'tasks' mode events", () => {
+    const payload = { info: "tasks" };
+    const result = convertToProtocolEvent(ns, "tasks", payload, 10);
+    expect(result).toMatchObject({
+      method: "tasks",
+      params: { namespace: ns, data: payload },
+    });
+  });
+
+  it("returns null for 'debug' and 'checkpoints' modes (not part of V2)", () => {
+    for (const mode of ["debug", "checkpoints"] as const) {
+      const result = convertToProtocolEvent(ns, mode, { info: mode }, 10);
+      expect(result).toBeNull();
     }
+  });
+
+  it("attaches checkpoint envelope meta to 'values' events", () => {
+    const payload = { count: 1 };
+    const meta = {
+      checkpoint: {
+        id: "ckpt-2",
+        parent_id: "ckpt-1",
+        step: 1,
+        source: "loop" as const,
+      },
+    };
+    const result = convertToProtocolEvent(ns, "values", payload, 20, meta);
+    expect(result).toMatchObject({
+      method: "values",
+      params: {
+        namespace: ns,
+        data: payload,
+        checkpoint: {
+          id: "ckpt-2",
+          parent_id: "ckpt-1",
+          step: 1,
+          source: "loop",
+        },
+      },
+    });
+  });
+
+  it("omits checkpoint envelope on 'values' events when meta is absent", () => {
+    const result = convertToProtocolEvent(ns, "values", { count: 1 }, 21);
+    expect(result).not.toHaveProperty("params.checkpoint");
   });
 
   it("returns null for unknown modes", () => {

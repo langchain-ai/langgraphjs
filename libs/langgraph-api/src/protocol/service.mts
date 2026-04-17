@@ -45,8 +45,6 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
   "messages",
   "tools",
   "custom",
-  "debug",
-  "checkpoints",
   "tasks",
 ];
 

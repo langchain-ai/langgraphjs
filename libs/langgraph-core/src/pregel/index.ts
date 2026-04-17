@@ -2318,7 +2318,7 @@ export class Pregel<
         if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload] = chunk;
+        const [namespace, mode, payload, meta] = chunk;
         if (streamMode.includes(mode)) {
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
@@ -2329,7 +2329,12 @@ export class Pregel<
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            yield [namespace, mode, payload];
+            // Preserve chunk meta (e.g. the checkpoint envelope on `values`
+            // events) so `stream_experimental` / `pump()` can surface it on
+            // the protocol stream.
+            yield meta !== undefined
+              ? [namespace, mode, payload, meta]
+              : [namespace, mode, payload];
           } else if (!streamModeSingle) {
             yield [mode, payload];
           } else if (streamSubgraphs) {

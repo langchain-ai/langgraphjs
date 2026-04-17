@@ -24,7 +24,6 @@ import type {
   UnsubscribeParams,
 } from "../types.mjs";
 import {
-  normalizeDebugData,
   normalizeInputRequestedData,
   normalizeToolData,
   normalizeUpdatesData,
@@ -540,18 +539,8 @@ export class RunProtocolSession {
           } satisfies CustomData)
         );
         return;
-      case "debug":
-        await this.pushEvent(
-          this.createEvent("debug", namespace, normalizeDebugData(event.data))
-        );
-        return;
       case "tasks":
         await this.pushEvent(this.createEvent("tasks", namespace, event.data));
-        return;
-      case "checkpoints":
-        await this.pushEvent(
-          this.createEvent("checkpoints", namespace, event.data)
-        );
         return;
       case "tools":
         if (event.normalized) {
@@ -722,16 +711,6 @@ export class RunProtocolSession {
     namespace: Namespace,
     data: ProtocolEventDataMap["lifecycle"]
   ): ProtocolEventByMethod<"lifecycle">;
-  private createEvent(
-    method: "debug",
-    namespace: Namespace,
-    data: ProtocolEventDataMap["debug"]
-  ): ProtocolEventByMethod<"debug">;
-  private createEvent(
-    method: "checkpoints",
-    namespace: Namespace,
-    data: ProtocolEventDataMap["checkpoints"]
-  ): ProtocolEventByMethod<"checkpoints">;
   private createEvent(
     method: "tasks",
     namespace: Namespace,
