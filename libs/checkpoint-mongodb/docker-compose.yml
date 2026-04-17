@@ -1,12 +1,9 @@
-version: "3.8"
-
 services:
   mongodb:
-    image: mongo:latest
+    image: mongodb/mongodb-atlas-local:preview
     environment:
-      MONGO_INITDB_ROOT_USERNAME: user
-      MONGO_INITDB_ROOT_PASSWORD: password
-      MONGO_INITDB_DATABASE: testdb
+      MONGODB_INITDB_ROOT_USERNAME: user
+      MONGODB_INITDB_ROOT_PASSWORD: password
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
     ports:
       - "27017:27017"
-    command: mongod --auth --logpath /var/log/mongodb/mongod.log --logappend

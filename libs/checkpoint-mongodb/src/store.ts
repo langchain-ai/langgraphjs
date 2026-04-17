@@ -1,4 +1,5 @@
 import { type MongoClient, type Db as MongoDatabase } from "mongodb";
+import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import {
   BaseStore,
   type Operation,
@@ -11,6 +12,23 @@ import {
   type SearchItem,
   InvalidNamespaceError,
 } from "@langchain/langgraph-checkpoint";
+
+/**
+ * Computes the namespace path prefixes for denormalization.
+ * E.g., ["a", "b", "c"] → ["a", "a/b", "a/b/c"]
+ *
+ * Stored on each document as `namespacePath` to enable prefix filtering
+ * in $vectorSearch, which does not support $expr or $slice.
+ * MongoDB array equality matches if any element equals the filter value,
+ * so filtering by "a/b" matches any document whose namespace starts with ["a", "b"].
+ */
+function computeNamespacePath(namespace: string[]): string[] {
+  const paths: string[] = [];
+  for (let i = 1; i <= namespace.length; i++) {
+    paths.push(namespace.slice(0, i).join("/"));
+  }
+  return paths;
+}
 
 /**
  * Validates the provided namespace.
@@ -47,6 +65,56 @@ function validateNamespace(namespace: string[]): void {
 }
 
 /**
+ * Configuration for MongoDB vector search index.
+ *
+ * Two modes depending on whether `embeddings` is provided on the store:
+ *
+ * **Manual embedding** — `embeddings` is set on MongoDBStoreParams.
+ *   The store computes vectors via embedDocuments() / embedQuery() and stores
+ *   float arrays in the `embedding` field. Requires `dims` and `similarityFunction`.
+ *
+ * **Auto embedding** — no `embeddings` on MongoDBStoreParams.
+ *   MongoDB generates embeddings server-side via Voyage AI using the configured `model`.
+ *   The store does not write an embedding field — MongoDB reads the source text directly
+ *   from the field specified by `path` (e.g. "value.content"). Requires `model` and `path`.
+ */
+export type IndexConfig = {
+  /** Vector search index name */
+  name: string;
+  /**
+   * Embedding dimensionality. Required for manual embedding so that the
+   * vector search index can be created with the correct number of dimensions.
+   * Not required for auto embedding, where the model determines dimensionality.
+   */
+  dims?: number;
+  /** Similarity function (default: "cosine"). Required for manual embedding. */
+  similarityFunction?: "cosine" | "euclidean" | "dotProduct";
+  /**
+   * Sub-field of value to embed (e.g. "content"). If omitted, the entire
+   * value object is serialized and embedded.
+   */
+  embeddingKey?: string;
+  /**
+   * Field path used in the $vectorSearch stage and vector search index definition.
+   * - For manual embedding: the field where the store writes computed vectors.
+   *   Defaults to "embedding".
+   * - For auto embedding: the field containing the source text that MongoDB
+   *   will embed server-side (e.g. "value.content"). Required for auto embedding.
+   */
+  path?: string;
+  /**
+   * Voyage AI model name for auto embedding (e.g. "voyage-4", "voyage-4-lite",
+   * "voyage-4-large", "voyage-code-3"). Required for auto embedding.
+   * MongoDB uses this model to generate embeddings server-side.
+   */
+  model?: string;
+  /** Modality for auto embedding (default: "text"). */
+  modality?: string;
+  /** Additional filter fields to declare in the vector search index. */
+  filters?: string[];
+};
+
+/**
  * Time-to-live configuration for automatic document expiration.
  *
  * Uses a MongoDB TTL index on the `expiresAt` field. Each document's
@@ -69,6 +137,8 @@ export type MongoDBStoreParams = {
   collectionName?: string;
   enableTimestamps?: boolean;
   ttl?: TTLConfig;
+  embeddings?: EmbeddingsInterface;
+  indexConfig?: IndexConfig;
 };
 
 /**
@@ -81,6 +151,8 @@ export class MongoDBStore extends BaseStore {
   protected collectionName: string;
   protected enableTimestamps: boolean;
   protected ttl?: TTLConfig;
+  protected embeddings?: EmbeddingsInterface;
+  protected indexConfig?: IndexConfig;
 
   private get timestampOp() {
     return this.enableTimestamps
@@ -94,6 +166,8 @@ export class MongoDBStore extends BaseStore {
     collectionName = "store",
     enableTimestamps,
     ttl,
+    embeddings,
+    indexConfig,
   }: MongoDBStoreParams) {
     super();
     this.client = client;
@@ -104,6 +178,8 @@ export class MongoDBStore extends BaseStore {
     this.collectionName = collectionName;
     this.enableTimestamps = enableTimestamps ?? false;
     this.ttl = ttl;
+    this.embeddings = embeddings;
+    this.indexConfig = indexConfig;
   }
 
   /**
@@ -197,6 +273,48 @@ export class MongoDBStore extends BaseStore {
       const bulkOps: any[] = [];
       const opsList = Array.from(deduped.values());
 
+      // Manual embedding: collect texts and compute vectors client-side.
+      // Auto embedding: nothing to do here — MongoDB reads the text directly
+      // from the field specified by indexConfig.path (e.g. "value.content")
+      // and generates embeddings server-side.
+      const embeddingByOpIndex = new Map<number, number[]>();
+
+      if (this.indexConfig && this.embeddings) {
+        const textsToEmbed: { opIndex: number; text: string }[] = [];
+
+        for (let i = 0; i < opsList.length; i++) {
+          const { op } = opsList[i];
+          if (op.value === null || op.index === false) continue;
+
+          let text: string;
+          if (Array.isArray(op.index)) {
+            // Per-operation override: embed only specified fields
+            const fields: Record<string, any> = {};
+            for (const field of op.index) {
+              fields[field] = op.value?.[field];
+            }
+            text = JSON.stringify(fields);
+          } else if (this.indexConfig!.embeddingKey) {
+            // Store-level config: embed a specific sub-field of value
+            text = JSON.stringify(op.value?.[this.indexConfig!.embeddingKey]);
+          } else {
+            // Default: embed the entire value
+            text = JSON.stringify(op.value);
+          }
+
+          textsToEmbed.push({ opIndex: i, text });
+        }
+
+        if (textsToEmbed.length > 0) {
+          const vectors = await this.embeddings.embedDocuments(
+            textsToEmbed.map((t) => t.text)
+          );
+          for (let j = 0; j < textsToEmbed.length; j++) {
+            embeddingByOpIndex.set(textsToEmbed[j].opIndex, vectors[j]);
+          }
+        }
+      }
+
       // Build bulk write operations
       for (let i = 0; i < opsList.length; i++) {
         const { op } = opsList[i];
@@ -219,14 +337,30 @@ export class MongoDBStore extends BaseStore {
         const now = new Date();
         const doc: Record<string, any> = {
           namespace,
+          namespaceStr: namespace.join("/"),
           key,
           value, // Store JSON directly
           updatedAt: now,
         };
 
+        // Add namespacePath for $vectorSearch prefix filtering
+        if (this.indexConfig) {
+          doc.namespacePath = computeNamespacePath(namespace);
+        }
+
         // Set expiration time if TTL is configured
         if (this.ttl) {
           doc.expiresAt = new Date(now.getTime() + this.ttl.defaultTtl * 1000);
+        }
+
+        // Add embedding vector for manual mode.
+        // In auto mode, MongoDB reads the text directly from the document
+        // (at the path configured in the vector search index), so no
+        // separate embedding field is needed.
+        const embeddingVector = embeddingByOpIndex.get(i);
+        if (embeddingVector !== undefined) {
+          const embeddingField = this.indexConfig!.path ?? "embedding";
+          doc[embeddingField] = embeddingVector;
         }
 
         bulkOps.push({
@@ -424,12 +558,13 @@ export class MongoDBStore extends BaseStore {
       query,
     } = op as SearchOperation & { query?: string };
 
-    // Vector search is not supported without embedding configuration
     if (query) {
-      throw new Error(
-        "Vector search (query parameter) requires embedding support, " +
-          "which is not configured. Use field-based filtering (filter parameter) instead."
-      );
+      if (!this.indexConfig) {
+        throw new Error(
+          "Vector search (query parameter) requires indexConfig to be configured."
+        );
+      }
+      return this.vectorSearch(query, namespacePrefix, limit, offset);
     }
 
     // Perform structured field-based search
@@ -509,16 +644,149 @@ export class MongoDBStore extends BaseStore {
   }
 
   /**
+   * Perform vector similarity search using MongoDB $vectorSearch.
+   *
+   * Manual mode (embeddings configured): computes query vector via embedQuery(),
+   * sends as queryVector to $vectorSearch.
+   *
+   * Auto mode (no embeddings): sends the query text directly via query.text,
+   * MongoDB generates the query embedding server-side.
+   */
+  private async vectorSearch(
+    query: string,
+    namespacePrefix: string[],
+    limit: number,
+    offset: number
+  ): Promise<SearchItem[]> {
+    const path = this.indexConfig!.path ?? "embedding";
+    const vectorSearchStage: Record<string, any> = {
+      $vectorSearch: {
+        index: this.indexConfig!.name,
+        path,
+        // numCandidates should be 10-20x limit for good recall, capped at 10000.
+        // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
+        numCandidates: Math.min((limit + offset) * 20, 10000),
+        limit: limit + offset,
+      },
+    };
+
+    if (this.embeddings) {
+      // Manual: compute query vector client-side
+      vectorSearchStage.$vectorSearch.queryVector =
+        await this.embeddings.embedQuery(query);
+    } else {
+      // Auto: send query text, MongoDB embeds it server-side
+      vectorSearchStage.$vectorSearch.query = { text: query };
+    }
+
+    // Namespace prefix filter for $vectorSearch
+    if (namespacePrefix.length > 0) {
+      vectorSearchStage.$vectorSearch.filter = {
+        namespacePath: namespacePrefix.join("/"),
+      };
+    }
+
+    const pipeline: Record<string, any>[] = [
+      vectorSearchStage,
+      { $addFields: { score: { $meta: "vectorSearchScore" } } },
+    ];
+
+    // Strip the embedding field from manual mode results (vectors can be large)
+    if (this.embeddings) {
+      pipeline.push({ $project: { [path]: 0 } });
+    }
+
+    if (offset > 0) {
+      pipeline.push({ $skip: offset });
+    }
+    pipeline.push({ $limit: limit });
+
+    const docs = await this.db
+      .collection(this.collectionName)
+      .aggregate(pipeline)
+      .toArray();
+
+    return docs.map((doc) => ({
+      value: doc.value,
+      key: doc.key,
+      namespace: doc.namespace,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      score: doc.score,
+    }));
+  }
+
+  /**
    * Initialize the store: creates the {namespace, key} unique index and an optional
    * TTL index.
    */
   async start(): Promise<void> {
     const collection = this.db.collection(this.collectionName);
 
-    await collection.createIndex({ namespace: 1, key: 1 }, { unique: true });
+    // Use a unique index on the joined namespace string + key, not on the
+    // namespace array directly. MongoDB multikey indexes on arrays index each
+    // element separately, so two documents with different namespaces that share
+    // a common element and the same key would collide (e.g. ["users", "alice",
+    // "preferences"] and ["users", "bob", "preferences"] both with key "food").
+    await collection.createIndex({ namespaceStr: 1, key: 1 }, { unique: true });
 
     if (this.ttl) {
       await collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    }
+
+    if (this.indexConfig) {
+      const fields: Record<string, any>[] = [];
+      const path = this.indexConfig.path ?? "embedding";
+
+      if (this.embeddings) {
+        // Manual: standard vector field
+        fields.push({
+          type: "vector",
+          path,
+          numDimensions: this.indexConfig.dims,
+          similarity: this.indexConfig.similarityFunction ?? "cosine",
+        });
+      } else {
+        // Auto: MongoDB embeds the text server-side
+        fields.push({
+          type: "autoEmbed",
+          path,
+          model: this.indexConfig.model,
+          modality: this.indexConfig.modality ?? "text",
+        });
+      }
+
+      // Always include namespacePath for $vectorSearch pre-filtering
+      fields.push({ type: "filter", path: "namespacePath" });
+
+      for (const filterField of this.indexConfig.filters ?? []) {
+        fields.push({ type: "filter", path: filterField });
+      }
+
+      try {
+        await collection.createSearchIndex({
+          name: this.indexConfig.name,
+          type: "vectorSearch",
+          definition: { fields },
+        } as any);
+      } catch (err: any) {
+        if (!err?.message?.toLowerCase().includes("already exists")) {
+          throw err;
+        }
+      }
+
+      // Wait for the index to become queryable. createSearchIndex returns
+      // immediately but the index builds asynchronously.
+      const indexName = this.indexConfig.name;
+      const deadline = Date.now() + 120_000;
+      while (Date.now() < deadline) {
+        const indexes = await collection.listSearchIndexes(indexName).toArray();
+        const ready = indexes.some(
+          (idx: any) => idx.name === indexName && idx.status === "READY"
+        );
+        if (ready) break;
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
     }
   }
 

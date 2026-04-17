@@ -148,10 +148,10 @@ describe("MongoDBStore", () => {
       });
     });
 
-    it("should throw when query is provided without embedding support", async () => {
+    it("should throw when query is provided without indexConfig", async () => {
       await expect(
         store.batch([{ namespacePrefix: ["docs"], query: "find something", limit: 10, offset: 0 }])
-      ).rejects.toThrow(/embedding support/i);
+      ).rejects.toThrow(/indexConfig/i);
     });
   });
 
@@ -259,6 +259,162 @@ describe("MongoDBStore", () => {
       expect(results[0]).toBeUndefined();
       expect(results[1]).toBeUndefined();
       expect(results[2]?.value).toEqual({ num: 1 });
+    });
+  });
+
+  describe("vector search", () => {
+    it("should store embeddings on put in manual mode", async () => {
+      const embedDocuments = vi.fn().mockResolvedValue([[0.1, 0.2]]);
+      const storeWithEmbeddings = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        embeddings: { embedQuery: vi.fn().mockResolvedValue([0.1, 0.2]), embedDocuments } as any,
+        indexConfig: { name: "test_index", dims: 2 },
+      });
+
+      await storeWithEmbeddings.batch([{
+        namespace: ["memories", "alice"],
+        key: "mem1",
+        value: { text: "hello world" },
+      } as PutOperation]);
+
+      expect(embedDocuments).toHaveBeenCalledWith([JSON.stringify({ text: "hello world" })]);
+      const calls = mockCollection.bulkWrite.mock.calls[0][0];
+      const doc = calls[0].updateOne.update.$set;
+      expect(doc.embedding).toEqual([0.1, 0.2]);
+      expect(doc.namespacePath).toEqual(["memories", "memories/alice"]);
+    });
+
+    it("should not write embedding field on put in auto mode", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4", path: "value.content" },
+      });
+
+      await storeAuto.batch([{
+        namespace: ["memories", "alice"],
+        key: "mem1",
+        value: { content: "hello world" },
+      } as PutOperation]);
+
+      const calls = mockCollection.bulkWrite.mock.calls[0][0];
+      const doc = calls[0].updateOne.update.$set;
+      // Auto mode: no embedding field written, MongoDB reads value.content directly
+      expect(doc.embedding).toBeUndefined();
+      expect(doc.value).toEqual({ content: "hello world" });
+      expect(doc.namespacePath).toEqual(["memories", "memories/alice"]);
+    });
+
+    it("should skip embedding when op.index is false", async () => {
+      const embedDocuments = vi.fn().mockResolvedValue([]);
+      const storeWithEmbeddings = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        embeddings: { embedQuery: vi.fn(), embedDocuments } as any,
+        indexConfig: { name: "test_index", dims: 2 },
+      });
+
+      await storeWithEmbeddings.batch([{
+        namespace: ["memories", "alice"],
+        key: "mem1",
+        value: { text: "hello world" },
+        index: false,
+      } as PutOperation]);
+
+      expect(embedDocuments).not.toHaveBeenCalled();
+      const calls = mockCollection.bulkWrite.mock.calls[0][0];
+      const doc = calls[0].updateOne.update.$set;
+      expect(doc.embedding).toBeUndefined();
+    });
+
+    it("should use queryVector in manual mode search", async () => {
+      const embedQuery = vi.fn().mockResolvedValue([0.1, 0.2]);
+      const storeWithEmbeddings = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        embeddings: { embedQuery, embedDocuments: vi.fn() } as any,
+        indexConfig: { name: "test_index", dims: 2 },
+      });
+
+      const capturedPipelines: any[][] = [];
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        capturedPipelines.push(pipeline);
+        return { toArray: vi.fn().mockResolvedValue([]) };
+      });
+
+      await storeWithEmbeddings.batch([{
+        namespacePrefix: ["memories"],
+        query: "find something",
+        limit: 10,
+        offset: 0,
+      }]);
+
+      expect(embedQuery).toHaveBeenCalledWith("find something");
+      const vectorSearchStage = capturedPipelines[0][0].$vectorSearch;
+      expect(vectorSearchStage.queryVector).toEqual([0.1, 0.2]);
+      expect(vectorSearchStage.query).toBeUndefined();
+    });
+
+    it("should use query.text in auto mode search", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4" },
+      });
+
+      const capturedPipelines: any[][] = [];
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        capturedPipelines.push(pipeline);
+        return { toArray: vi.fn().mockResolvedValue([]) };
+      });
+
+      await storeAuto.batch([{
+        namespacePrefix: ["memories"],
+        query: "find something",
+        limit: 10,
+        offset: 0,
+      }]);
+
+      const vectorSearchStage = capturedPipelines[0][0].$vectorSearch;
+      expect(vectorSearchStage.query).toEqual({ text: "find something" });
+      expect(vectorSearchStage.queryVector).toBeUndefined();
+    });
+
+    it("should include namespacePath filter in $vectorSearch", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4" },
+      });
+
+      const capturedPipelines: any[][] = [];
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        capturedPipelines.push(pipeline);
+        return { toArray: vi.fn().mockResolvedValue([]) };
+      });
+
+      await storeAuto.batch([{
+        namespacePrefix: ["memories", "alice"],
+        query: "find something",
+        limit: 10,
+        offset: 0,
+      }]);
+
+      const vectorSearchStage = capturedPipelines[0][0].$vectorSearch;
+      expect(vectorSearchStage.filter).toEqual({ namespacePath: "memories/alice" });
+    });
+
+    it("should throw when query is provided without indexConfig", async () => {
+      await expect(
+        store.batch([{ namespacePrefix: ["docs"], query: "find something", limit: 10, offset: 0 }])
+      ).rejects.toThrow(/indexConfig/i);
     });
   });
 });
