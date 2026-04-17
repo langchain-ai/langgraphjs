@@ -16,28 +16,25 @@ describe("inferChannel", () => {
     expect(
       inferChannel({
         type: "event",
-        method: "media.streamStart",
+        method: "lifecycle",
         params: {
           namespace: [],
           timestamp: 0,
-          data: {},
-          media_type: "image/png",
-          stream_id: "s1",
-          codec: "raw",
+          data: { event: "started" },
         },
       } as unknown as Event)
-    ).toBe("media");
+    ).toBe("lifecycle");
     expect(
       inferChannel({
         type: "event",
-        method: "sandbox.started",
+        method: "input.requested",
         params: {
           namespace: [],
           timestamp: 0,
-          data: { terminal_id: "t1", command: "bash" },
+          data: { interrupt_id: "i1", payload: {} },
         },
       } as unknown as Event)
-    ).toBe("sandbox");
+    ).toBe("input");
   });
 
   it("returns 'custom' for unnamed custom events", () => {

@@ -1,51 +1,23 @@
 import type {
   AgentResult,
-  CapabilityAdvertisement,
   Channel,
   Event,
   InputInjectParams,
   InputRespondParams,
   ListCheckpointsParams,
   ListCheckpointsResult,
-  ResourceDownloadParams,
-  ResourceDownloadResult,
-  ResourceListParams,
-  ResourceListResult,
-  ResourceReadParams,
-  ResourceReadResult,
-  ResourceWriteParams,
   RunInputParams,
   RunResult,
-  SandboxInputParams,
-  SandboxKillParams,
   StateForkParams,
   StateForkResult,
   StateGetParams,
   StateGetResult,
   SubscribeParams,
-  TransportProfile,
-  UsageBudgetParams,
 } from "@langchain/protocol";
 
 import type { AssembledMessage } from "./messages.js";
-import type { TransportAdapter } from "./transport.js";
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;
-
-/**
- * Projection names for assembled subscription handles.
- *
- * These map to in-process `GraphRunStream` property names and are
- * distinct from wire-level {@link Channel} names. Use projection
- * names with `session.subscribe()` to get assembled handles; use
- * `subscribe({ channels: [...] })` for raw protocol events.
- */
-export type Projection =
-  | "toolCalls"
-  | "messages"
-  | "values"
-  | "subgraphs"
-  | "subagents";
 
 export type EventMethodByChannel = {
   values: "values";
@@ -54,11 +26,7 @@ export type EventMethodByChannel = {
   tools: "tools";
   custom: "custom";
   lifecycle: "lifecycle";
-  media: "media.streamStart" | "media.streamEnd" | "media.artifact";
-  resource: "resource.changed";
-  sandbox: "sandbox.started" | "sandbox.output" | "sandbox.exited";
   input: "input.requested";
-  usage: "usage.llmCall" | "usage.summary";
   debug: "debug";
   checkpoints: "checkpoints";
   tasks: "tasks";
@@ -86,8 +54,36 @@ export type YieldForChannel<TChannel extends Channel> =
 export type YieldForChannels<TChannels extends readonly Channel[]> =
   YieldForChannel<TChannels[number]>;
 
-export interface ProtocolClientOptions {
-  eventBufferSize?: number;
+/**
+ * Wire transport used by {@link ThreadStream}.
+ *
+ * - `"sse"` (default): HTTP commands + one SSE event stream per
+ *   subscription. Works in browsers without extra setup.
+ * - `"websocket"`: single bidirectional WebSocket. Lower overhead for
+ *   long-lived, multi-subscription sessions.
+ */
+export type ThreadStreamTransport = "sse" | "websocket";
+
+/**
+ * Options for {@link ThreadStream} construction.
+ */
+export interface ThreadStreamOptions {
+  /**
+   * Assistant that this thread runs on. A thread is bound to one
+   * assistant for its lifetime — subsequent `run.input` calls always
+   * use this assistant.
+   */
+  assistantId: string;
+  /**
+   * Wire transport to use. Defaults to the client-level
+   * `streamProtocol` (`"v2-websocket"` → `"websocket"`, otherwise
+   * `"sse"`).
+   */
+  transport?: ThreadStreamTransport;
+  /**
+   * Starting command ID for the internal command counter. Mostly
+   * useful for tests.
+   */
   startingCommandId?: number;
 }
 
@@ -111,18 +107,6 @@ export interface MessageSubscription extends AsyncIterable<AssembledMessage> {
   unsubscribe(): Promise<void>;
 }
 
-export interface ResourceModule {
-  list(params: ResourceListParams): Promise<ResourceListResult>;
-  read(params: ResourceReadParams): Promise<ResourceReadResult>;
-  write(params: ResourceWriteParams): Promise<void>;
-  download(params: ResourceDownloadParams): Promise<ResourceDownloadResult>;
-}
-
-export interface SandboxModule {
-  input(params: SandboxInputParams): Promise<void>;
-  kill(params: SandboxKillParams): Promise<void>;
-}
-
 export interface InputModule {
   respond(params: InputRespondParams): Promise<void>;
   inject(params: InputInjectParams): Promise<void>;
@@ -136,27 +120,23 @@ export interface StateModule {
   fork(params: StateForkParams): Promise<StateForkResult>;
 }
 
-export interface SessionModules {
+/**
+ * Modules exposed by the high-level {@link ThreadStream} wrapper.
+ */
+export interface ThreadModules {
   run: {
-    input(params: RunInputParams): Promise<RunResult>;
+    /**
+     * Start a new run, resume an interrupted run, or inject input into
+     * an active run on this thread. The assistant is fixed by the
+     * {@link ThreadStream} constructor and cannot be changed per-call.
+     */
+    input(params: Omit<RunInputParams, "assistant_id">): Promise<RunResult>;
   };
   agent: {
     getTree(params?: { run_id?: string }): Promise<AgentResult>;
   };
-  resource?: ResourceModule;
-  sandbox?: SandboxModule;
-  input?: InputModule;
-  state?: StateModule;
-  usage?: {
-    setBudget(params: UsageBudgetParams): Promise<void>;
-  };
-}
-
-export interface ClientOpenResult {
-  sessionId: string;
-  capabilities: CapabilityAdvertisement;
-  transport: TransportProfile;
-  adapter: TransportAdapter;
+  input: InputModule;
+  state: StateModule;
 }
 
 /**
@@ -168,3 +148,69 @@ export interface InterruptPayload<TPayload = unknown> {
   payload: TPayload;
   namespace: string[];
 }
+
+/**
+ * Remote counterpart of an in-process `run.extensions.<name>` projection.
+ *
+ * Each extension is the client-side view of a compile-time
+ * {@link StreamTransformer} projection. The server auto-forwards
+ * transformer outputs on the `custom:<name>` channel, and this handle
+ * exposes them via two dual interfaces:
+ *
+ *  - `AsyncIterable<T>` — iterate every item pushed by a streaming
+ *    transformer (e.g. a `StreamChannel`).
+ *  - `PromiseLike<T>` — `await` resolves with the final value observed
+ *    when the run terminates. For streaming transformers this is the
+ *    last item pushed; for final-value transformers it is the single
+ *    value emitted on run end.
+ *
+ * Subscribing is lazy: the underlying `custom:<name>` subscription is
+ * opened on first property access and cached.
+ */
+export interface ThreadExtension<T = unknown>
+  extends AsyncIterable<T>,
+    PromiseLike<T> {}
+
+/**
+ * Unwrap a single in-process projection value to its observable payload
+ * type:
+ *
+ *   - `Promise<T>` / `PromiseLike<T>` → `T` (final-value transformers)
+ *   - `StreamChannel<T>` / `AsyncIterable<T>` → `T` (streaming transformers)
+ *   - anything else → the value itself
+ *
+ * This lets a `ThreadStream<TExtensions>` generic accept the same shape
+ * that `graph.stream_experimental()` returns in-process
+ * (via `InferExtensions<TTransformers>` from `@langchain/langgraph`),
+ * without forcing users to redeclare payload types on the remote side.
+ */
+export type UnwrapExtension<T> = T extends PromiseLike<infer U>
+  ? U
+  : T extends AsyncIterable<infer U>
+    ? U
+    : T;
+
+/**
+ * Keyed map of {@link ThreadExtension} handles, typed off a declared
+ * transformer projection shape.
+ *
+ * Used as the return type of `ThreadStream.extensions`. `TExtensions`
+ * is expected to match the in-process `run.extensions` shape (i.e. the
+ * output of `InferExtensions<TTransformers>` from
+ * `@langchain/langgraph`); each value type is unwrapped via
+ * {@link UnwrapExtension} so `thread.extensions.foo` resolves with the
+ * transformer's emitted payload, not the in-process `Promise<T>` /
+ * `StreamChannel<T>` wrapper.
+ *
+ * Access any string key to obtain a `ThreadExtension<unknown>`; keys
+ * that appear in `TExtensions` narrow to their declared payload type.
+ */
+export type ThreadExtensions<
+  TExtensions extends Record<string, unknown> = Record<string, unknown>,
+> = {
+  readonly [K in keyof TExtensions]: ThreadExtension<
+    UnwrapExtension<TExtensions[K]>
+  >;
+} & {
+  readonly [name: string]: ThreadExtension<unknown>;
+};

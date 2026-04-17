@@ -3,69 +3,26 @@ import type {
   CommandResponse,
   Event,
   Message,
-  SessionOpenParams,
-  SessionResult,
+  SubscribeParams,
 } from "@langchain/protocol";
 
-import type { TransportAdapter } from "../transport.js";
+import { matchesSubscription } from "../subscription.js";
+import type { TransportAdapter, EventStreamHandle } from "../transport.js";
 
 export class MockTransport implements TransportAdapter {
+  readonly threadId: string;
   private readonly eventQueue: Message[] = [];
   private readonly waiters: Array<(result: IteratorResult<Message>) => void> =
     [];
   readonly sentCommands: Command[] = [];
-  readonly sessionResult: SessionResult;
   closed = false;
 
-  constructor(sessionResult?: Partial<SessionResult>) {
-    this.sessionResult = {
-      session_id: "sess_test",
-      protocol_version: "0.3.0",
-      transport: {
-        name: "in-process",
-        event_ordering: "seq",
-        command_delivery: "direct-call",
-      },
-      capabilities: {
-        modules: [
-          {
-            name: "session",
-            commands: ["open", "describe", "close"],
-          },
-          {
-            name: "subscription",
-            commands: ["subscribe", "unsubscribe", "reconnect"],
-          },
-          {
-            name: "run",
-            commands: ["input"],
-          },
-          {
-            name: "agent",
-            commands: ["getTree"],
-            channels: ["lifecycle"],
-          },
-          {
-            name: "messages",
-            channels: ["messages"],
-          },
-          {
-            name: "tools",
-            channels: ["tools"],
-          },
-          {
-            name: "usage",
-            commands: ["setBudget"],
-            channels: ["usage"],
-          },
-        ],
-      },
-      ...sessionResult,
-    };
+  constructor(options?: { threadId?: string }) {
+    this.threadId = options?.threadId ?? "thread_test";
   }
 
-  async open(_params: SessionOpenParams): Promise<SessionResult> {
-    return this.sessionResult;
+  async open(): Promise<void> {
+    // no-op for the mock
   }
 
   async send(command: Command): Promise<CommandResponse> {
@@ -79,8 +36,6 @@ export class MockTransport implements TransportAdapter {
           result: { subscription_id: `sub_${command.id}` },
         };
       case "subscription.unsubscribe":
-      case "session.close":
-      case "usage.setBudget":
         return {
           type: "success",
           id: command.id,
@@ -92,18 +47,6 @@ export class MockTransport implements TransportAdapter {
           id: command.id,
           result: { run_id: "run_1" },
           meta: { applied_through_seq: 9 },
-        };
-      case "subscription.reconnect":
-        return {
-          type: "success",
-          id: command.id,
-          result: { restored: true, missed_events: 2 },
-        };
-      case "session.describe":
-        return {
-          type: "success",
-          id: command.id,
-          result: this.sessionResult,
         };
       default:
         return {
@@ -149,6 +92,142 @@ export class MockTransport implements TransportAdapter {
         },
       }),
     };
+  }
+}
+
+/**
+ * Mock SSE-style transport: each subscription gets its own filtered stream
+ * (via `openEventStream`) with a replay buffer, mirroring
+ * `ProtocolSseTransportAdapter`. Every pushed event is stored in the buffer
+ * and fanned out to every open stream whose filter matches — so opening
+ * a second subscription replays all prior matching events, exactly like
+ * the real server.
+ */
+export class MockSseTransport implements TransportAdapter {
+  readonly threadId: string;
+  readonly sentCommands: Command[] = [];
+  closed = false;
+
+  private readonly buffer: Event[] = [];
+  private readonly streams = new Set<{
+    params: SubscribeParams;
+    push: (event: Event) => void;
+    closed: boolean;
+  }>();
+
+  constructor(options?: { threadId?: string }) {
+    this.threadId = options?.threadId ?? "thread_test";
+  }
+
+  async open(): Promise<void> {
+    // no-op for the mock
+  }
+
+  async send(command: Command): Promise<CommandResponse> {
+    this.sentCommands.push(command);
+    switch (command.method) {
+      case "run.input":
+        return {
+          type: "success",
+          id: command.id,
+          result: { run_id: "run_1" },
+          meta: { applied_through_seq: 9 },
+        };
+      default:
+        return {
+          type: "success",
+          id: command.id,
+          result: {},
+        };
+    }
+  }
+
+  events(): AsyncIterable<Message> {
+    return {
+      [Symbol.asyncIterator]: () => ({
+        next: async () => ({ done: true, value: undefined }),
+      }),
+    };
+  }
+
+  openEventStream(params: SubscribeParams): EventStreamHandle {
+    const queue: Message[] = [];
+    const waiters: Array<(result: IteratorResult<Message>) => void> = [];
+    const stream = {
+      params,
+      closed: false,
+      push: (event: Event) => {
+        if (stream.closed) return;
+        const waiter = waiters.shift();
+        if (waiter) {
+          waiter({ done: false, value: event });
+          return;
+        }
+        queue.push(event);
+      },
+    };
+    this.streams.add(stream);
+
+    for (const event of this.buffer) {
+      if (matchesSubscription(event, params)) {
+        stream.push(event);
+      }
+    }
+
+    const close = () => {
+      if (stream.closed) return;
+      stream.closed = true;
+      this.streams.delete(stream);
+      while (waiters.length > 0) {
+        waiters.shift()?.({ done: true, value: undefined });
+      }
+    };
+
+    return {
+      ready: Promise.resolve(),
+      events: {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<Message>> => {
+            if (queue.length > 0) {
+              return { done: false, value: queue.shift()! };
+            }
+            if (stream.closed) {
+              return { done: true, value: undefined };
+            }
+            return await new Promise<IteratorResult<Message>>((resolve) => {
+              waiters.push(resolve);
+            });
+          },
+          return: async () => {
+            close();
+            return { done: true, value: undefined };
+          },
+        }),
+      },
+      close,
+    };
+  }
+
+  /**
+   * Broadcast an event to all matching open streams and add it to the
+   * buffer for later-attaching subscriptions (server-replay simulation).
+   */
+  pushEvent(event: Event): void {
+    this.buffer.push(event);
+    for (const stream of this.streams) {
+      if (stream.closed) continue;
+      if (matchesSubscription(event, stream.params)) {
+        stream.push(event);
+      }
+    }
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    for (const stream of Array.from(this.streams)) {
+      stream.closed = true;
+    }
+    this.streams.clear();
   }
 }
 

@@ -1,17 +1,24 @@
 /**
- * Integration tests verifying that the SDK's streaming subscription handles
- * (`subscribeTools`, `subscribeValues`, `subscribeStreamingMessages`)
- * work end-to-end against the embed server over real HTTP/SSE.
+ * Integration tests verifying that the SDK's ThreadStream projections
+ * (`thread.values`, `thread.toolCalls`, `thread.messages`, etc.) work
+ * end-to-end against the embed server over real HTTP/SSE.
  */
 import type { Server } from "node:http";
-import { afterAll, beforeAll, beforeEach, describe, it, expect } from "vitest";
+import { v7 as uuidv7 } from "uuid";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  it,
+  expect,
+} from "vitest";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import {
-  ProtocolClient,
   ProtocolSseTransportAdapter,
-  type Session,
+  ThreadStream,
 } from "@langchain/langgraph-sdk";
 import type { Pregel } from "@langchain/langgraph";
 
@@ -21,7 +28,7 @@ import {
 } from "../../src/experimental/embed.mjs";
 import { graph as agent } from "../graphs/agent.mjs";
 import { graph as agentWithToolsGraph } from "../graphs/agent_with_tools.mjs";
-
+import { graph as agentWithStatsGraph } from "../graphs/agent_with_stats.mjs";
 
 const threads = (() => {
   let store: Record<
@@ -75,6 +82,8 @@ beforeAll(async () => {
     graph: {
       agent: agent as unknown as Pregel<any, any, any, any, any>,
       agent_with_tools: agentWithToolsGraph,
+      agent_with_stats:
+        agentWithStatsGraph as unknown as Pregel<any, any, any, any, any>,
     },
     checkpointer,
     threads,
@@ -100,10 +109,13 @@ beforeEach(() => {
   threads.truncate();
 });
 
-function createClient() {
-  return new ProtocolClient(
-    () => new ProtocolSseTransportAdapter({ apiUrl: serverUrl })
-  );
+function createThread(assistantId: string): ThreadStream {
+  const threadId = uuidv7();
+  const transport = new ProtocolSseTransportAdapter({
+    apiUrl: serverUrl,
+    threadId,
+  });
+  return new ThreadStream(transport, { assistantId });
 }
 
 /**
@@ -122,7 +134,10 @@ async function collectWithTimeout<T>(
     const result = await Promise.race([
       iter.next(),
       new Promise<IteratorResult<T>>((resolve) =>
-        setTimeout(() => resolve({ done: true, value: undefined as T }), Math.max(0, deadline - Date.now()))
+        setTimeout(
+          () => resolve({ done: true, value: undefined as T }),
+          Math.max(0, deadline - Date.now())
+        )
       ),
     ]);
     if (result.done) break;
@@ -133,34 +148,29 @@ async function collectWithTimeout<T>(
 }
 
 /**
- * Run a graph and wait for events to settle, then close the session.
+ * Run a graph and wait for events to settle, then close the thread.
  */
 async function runAndCollect<T>(
-  session: Session,
-  subscribe: () => Promise<AsyncIterable<T>>,
+  thread: ThreadStream,
+  iterable: AsyncIterable<T>,
   input: Record<string, unknown>,
   config?: Record<string, unknown>
 ): Promise<T[]> {
-  const iterable = await subscribe();
-  await session.run.input({ input, config });
+  await thread.run.input({ input, config });
 
   const items = await collectWithTimeout(iterable, 15000);
-  await session.close();
+  await thread.close();
   return items;
 }
 
-describe("SDK streaming subscriptions against embed server", () => {
-  describe("subscribe(\"values\")", () => {
+describe("SDK streaming projections against embed server", () => {
+  describe("thread.values", () => {
     it("receives state snapshots from a simple agent run", async () => {
-      const client = createClient();
-      const session = await client.open({
-        protocol_version: "0.3.0",
-        target: { id: "agent" },
-      });
+      const thread = createThread("agent");
 
       const snapshots = await runAndCollect(
-        session,
-        () => session.subscribe("values"),
+        thread,
+        thread.values,
         { messages: [{ role: "user", content: "should_end" }] },
         { configurable: { user_id: "test-values" } }
       );
@@ -176,17 +186,13 @@ describe("SDK streaming subscriptions against embed server", () => {
     });
   });
 
-  describe("subscribe(\"toolCalls\")", () => {
+  describe("thread.toolCalls", () => {
     it("receives assembled tool calls from an agent with tools", async () => {
-      const client = createClient();
-      const session = await client.open({
-        protocol_version: "0.3.0",
-        target: { id: "agent_with_tools" },
-      });
+      const thread = createThread("agent_with_tools");
 
       const toolCalls = await runAndCollect(
-        session,
-        () => session.subscribe("toolCalls"),
+        thread,
+        thread.toolCalls,
         { messages: [{ role: "user", content: "What is the weather in SF?" }] }
       );
 
@@ -207,17 +213,14 @@ describe("SDK streaming subscriptions against embed server", () => {
     });
   });
 
-  describe("subscribe(\"messages\")", () => {
+  describe("raw subscribe (messages channel)", () => {
     it("receives raw messages events from the agent graph", async () => {
-      const client = createClient();
-      const session = await client.open({
-        protocol_version: "0.3.0",
-        target: { id: "agent" },
-      });
+      const thread = createThread("agent");
 
+      const sub = await thread.subscribe({ channels: ["messages"] });
       const events = await runAndCollect(
-        session,
-        () => session.subscribe({ channels: ["messages"] }),
+        thread,
+        sub,
         { messages: [{ role: "user", content: "hello" }] },
         { configurable: { user_id: "test-raw-messages" } }
       );
@@ -225,8 +228,7 @@ describe("SDK streaming subscriptions against embed server", () => {
       expect(events.length).toBeGreaterThan(0);
       expect(events.every((e) => e.method === "messages")).toBe(true);
       const lifecycle = events.map(
-        (e) =>
-          (e.params as { data: { event?: string } }).data
+        (e) => (e.params as { data: { event?: string } }).data
       );
       expect(lifecycle.some((m) => m.event === "message-start")).toBe(true);
       expect(
@@ -239,17 +241,14 @@ describe("SDK streaming subscriptions against embed server", () => {
     });
   });
 
-  describe("raw subscribe (params form)", () => {
+  describe("raw subscribe (values channel)", () => {
     it("receives raw protocol events on the values channel", async () => {
-      const client = createClient();
-      const session = await client.open({
-        protocol_version: "0.3.0",
-        target: { id: "agent" },
-      });
+      const thread = createThread("agent");
 
+      const sub = await thread.subscribe({ channels: ["values"] });
       const events = await runAndCollect(
-        session,
-        () => session.subscribe({ channels: ["values"] }),
+        thread,
+        sub,
         { messages: [{ role: "user", content: "should_end" }] },
         { configurable: { user_id: "test-raw" } }
       );
@@ -258,4 +257,42 @@ describe("SDK streaming subscriptions against embed server", () => {
       expect(events[0].method).toBe("values");
     });
   });
+
+  describe("thread.extensions (final-value transformers)", () => {
+    it("resolves final-value transformer projections remotely", async () => {
+      const thread = createThread(
+        "agent_with_stats"
+      ) as ThreadStream<{
+        toolCallCount: number;
+        totalTokens: number;
+      }>;
+
+      await thread.run.input({
+        input: {
+          messages: [{ role: "user", content: "What is the weather in SF?" }],
+        },
+      });
+
+      // Drive the run to completion via the values projection so that
+      // by the time we touch `.extensions.*` the server has buffered
+      // every `custom:<name>` event emitted by the final-value flush.
+      await collectWithTimeout(thread.values, 15000);
+
+      // Lazy access AFTER the run has ended — the SDK opens a single
+      // shared `custom` subscription and relies on server replay to
+      // deliver the buffered final-value events. Specific counts
+      // depend on the graph shape; the important invariant is that
+      // the handles resolve to *something* (not `undefined`), proving
+      // the mux → server buffer → client replay → dispatcher pipeline.
+      await expect(thread.extensions.toolCallCount).resolves.toBeTypeOf(
+        "number"
+      );
+      await expect(thread.extensions.totalTokens).resolves.toBeTypeOf(
+        "number"
+      );
+
+      await thread.close();
+    });
+  });
+
 });

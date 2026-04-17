@@ -46,7 +46,7 @@ const ERROR: unique symbol = Symbol("error");
  * - `blocks`: the assembled content blocks (updated as deltas arrive).
  *
  * Created by {@link StreamingMessageAssembler} and yielded by
- * {@link StreamingMessageSubscriptionHandle}.
+ * the `session.messages` lazy getter.
  */
 export class StreamingMessage {
   readonly namespace: string[];
@@ -308,9 +308,21 @@ export class MessageAssembler {
 
     const activeKey = this.activeByNamespaceNode.get(namespaceNodeKey);
     if (!activeKey) {
-      throw new Error(
-        `Received messages event ${data.event} before message-start for namespace ${namespaceNodeKey}`
-      );
+      // A continuation event (delta/finish/error) arrived without a
+      // prior `message-start`. This can happen on late-attaching
+      // subscriptions when the server has already trimmed the
+      // `message-start` from its replay buffer. Synthesize a minimal
+      // active message so the assembler can still fold subsequent
+      // events instead of hard-failing the caller.
+      const syntheticKey = `${namespaceNodeKey}::`;
+      this.activeByNamespaceNode.set(namespaceNodeKey, syntheticKey);
+      const synthetic: AssembledMessage = {
+        namespace: [...event.params.namespace],
+        node: event.params.node,
+        blocks: [],
+      };
+      this.activeMessages.set(syntheticKey, synthetic);
+      return this.consume(event);
     }
 
     const message = this.activeMessages.get(activeKey);
@@ -413,10 +425,20 @@ export class StreamingMessageAssembler {
       }
       case "content-block-start": {
         const streaming = this.#activeStreaming.get(update.key);
-        if (streaming && update.block.type === "text" && "text" in update.block && update.block.text) {
+        if (
+          streaming &&
+          update.block.type === "text" &&
+          "text" in update.block &&
+          update.block.text
+        ) {
           streaming[PUSH_TEXT](update.block.text);
         }
-        if (streaming && update.block.type === "reasoning" && "reasoning" in update.block && update.block.reasoning) {
+        if (
+          streaming &&
+          update.block.type === "reasoning" &&
+          "reasoning" in update.block &&
+          update.block.reasoning
+        ) {
           streaming[PUSH_REASONING](update.block.reasoning);
         }
         return undefined;

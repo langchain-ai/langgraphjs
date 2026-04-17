@@ -5,23 +5,13 @@ import type { MultitaskStrategy, Run } from "../../storage/types.mjs";
 import * as schemas from "../../schemas.mjs";
 import type { RunStatus } from "./types.mjs";
 
-export const ProtocolSessionOpenSchema = z.object({
-  method: z.literal("session.open"),
-  params: z.object({
-    protocol_version: z.string(),
-    target: z.object({ id: z.string() }),
-    preferred_transports: z.array(z.string()).optional(),
-    media_transfer_modes: z.array(z.string()).optional(),
-  }),
-});
-
 export const ProtocolCommandSchema = z.object({
   id: z.number().int().nonnegative(),
   method: z.string(),
   params: z.record(z.unknown()).optional(),
 });
 
-export const SessionIdSchema = z.object({ session_id: z.string() });
+export const ThreadIdSchema = z.object({ thread_id: z.string() });
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

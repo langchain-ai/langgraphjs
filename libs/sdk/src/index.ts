@@ -2,12 +2,9 @@ export { Client, getApiKey } from "./client.js";
 export type { ClientConfig, RequestHook } from "./client.js";
 
 export {
-  ProtocolClient,
   ProtocolError,
-  Session,
+  ThreadStream,
   SubscriptionHandle,
-  MessageSubscriptionHandle,
-  EventBuffer,
   MessageAssembler,
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
@@ -16,10 +13,13 @@ export {
 export type {
   TransportAdapter,
   AssembledMessage,
-  ProtocolClientOptions,
+  ThreadStreamOptions,
   SessionOrderingState,
   EventSubscription,
   MessageSubscription,
+  ThreadExtension,
+  ThreadExtensions,
+  UnwrapExtension,
   ProtocolRequestHook,
   ProtocolSseTransportOptions,
   ProtocolWebSocketTransportOptions,

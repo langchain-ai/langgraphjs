@@ -65,6 +65,7 @@ export type {
   ToolCallStatus,
   ToolCallStream,
   InterruptPayload,
+  InferExtensions,
 } from "./stream/index.js";
 export * from "./errors.js";
 export {

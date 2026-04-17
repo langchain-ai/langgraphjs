@@ -1,56 +1,42 @@
 import type {
-  AgentResult,
-  CapabilityAdvertisement,
   Channel,
   Command,
   CommandResponse,
   Event,
-  InputInjectParams,
-  InputRespondParams,
   LifecycleEvent,
-  ListCheckpointsParams,
   ListCheckpointsResult,
   Message,
-  ReconnectParams,
-  ReconnectResult,
-  ResourceDownloadParams,
-  ResourceDownloadResult,
-  ResourceListParams,
-  ResourceListResult,
-  ResourceReadParams,
-  ResourceReadResult,
-  ResourceWriteParams,
-  RunInputParams,
+  MessagesEvent,
   RunResult,
-  SandboxInputParams,
-  SandboxKillParams,
-  SessionOpenParams,
-  SessionResult,
-  StateForkParams,
   StateForkResult,
-  StateGetParams,
   StateGetResult,
   SubscribeParams,
   SubscribeResult,
-  TransportProfile,
-  UsageBudgetParams,
+  ToolsEvent,
+  ValuesEvent,
 } from "@langchain/protocol";
-import { EventBuffer } from "./buffer.js";
 import { matchesSubscription } from "./subscription.js";
+import { MultiCursorBuffer } from "./multi-cursor-buffer.js";
+import { ensureMessageInstances } from "../../ui/messages.js";
 import {
-  ToolSubscriptionHandle,
-  ValuesSubscriptionHandle,
+  ToolCallAssembler,
   SubgraphDiscoveryHandle,
+  SubgraphHandle,
   SubagentDiscoveryHandle,
-  StreamingMessageSubscriptionHandle,
+  SubagentHandle,
 } from "./handles/index.js";
+import { StreamingMessageAssembler } from "./messages.js";
+import type { StreamingMessage } from "./messages.js";
+import type { AssembledToolCall } from "./handles/tools.js";
 import type {
   EventSubscription,
   EventForChannel,
   EventForChannels,
   InterruptPayload,
-  ProtocolClientOptions,
-  SessionModules,
+  ThreadExtension,
+  ThreadExtensions,
+  ThreadModules,
+  ThreadStreamOptions,
   SessionOrderingState,
   SubscribeOptions,
   YieldForChannel,
@@ -65,56 +51,83 @@ type PendingCommand = {
 };
 
 type CommandResultMap = {
-  "session.open": SessionResult;
-  "session.describe": SessionResult;
-  "session.close": Record<string, unknown>;
   "run.input": RunResult;
   "subscription.subscribe": SubscribeResult;
   "subscription.unsubscribe": Record<string, unknown>;
-  "subscription.reconnect": ReconnectResult;
-  "agent.getTree": AgentResult;
-  "resource.list": ResourceListResult;
-  "resource.read": ResourceReadResult;
-  "resource.write": Record<string, unknown>;
-  "resource.download": ResourceDownloadResult;
-  "sandbox.input": Record<string, unknown>;
-  "sandbox.kill": Record<string, unknown>;
+  "agent.getTree": Record<string, unknown>;
   "input.respond": Record<string, unknown>;
   "input.inject": Record<string, unknown>;
   "state.get": StateGetResult;
   "state.listCheckpoints": ListCheckpointsResult;
   "state.fork": StateForkResult;
-  "usage.setBudget": Record<string, unknown>;
 };
 
 type CommandParamsMap = {
-  "session.open": SessionOpenParams;
-  "session.describe": Record<string, unknown>;
-  "session.close": Record<string, unknown>;
-  "run.input": RunInputParams;
+  "run.input": Record<string, unknown>;
   "subscription.subscribe": SubscribeParams;
   "subscription.unsubscribe": { subscription_id: string };
-  "subscription.reconnect": ReconnectParams;
   "agent.getTree": { run_id?: string };
-  "resource.list": ResourceListParams;
-  "resource.read": ResourceReadParams;
-  "resource.write": ResourceWriteParams;
-  "resource.download": ResourceDownloadParams;
-  "sandbox.input": SandboxInputParams;
-  "sandbox.kill": SandboxKillParams;
-  "input.respond": InputRespondParams;
-  "input.inject": InputInjectParams;
-  "state.get": StateGetParams;
-  "state.listCheckpoints": ListCheckpointsParams;
-  "state.fork": StateForkParams;
-  "usage.setBudget": UsageBudgetParams;
+  "input.respond": Record<string, unknown>;
+  "input.inject": Record<string, unknown>;
+  "state.get": Record<string, unknown>;
+  "state.listCheckpoints": Record<string, unknown>;
+  "state.fork": Record<string, unknown>;
 };
 
 type InternalEventSubscription = EventSubscription<unknown> & {
   filter: SubscribeParams;
   push(event: Event): void;
   close(): void;
+  pause(): void;
+  resume(): void;
 };
+
+const MESSAGE_LIKE_TYPES = new Set([
+  "human",
+  "user",
+  "ai",
+  "assistant",
+  "tool",
+  "system",
+  "function",
+  "remove",
+]);
+
+/**
+ * When the state payload has a `messages` array containing plain
+ * serialized messages (objects with a recognized `type` field), coerce
+ * them into `@langchain/core/messages` class instances so remote runs
+ * expose the same shape as in-process runs.
+ *
+ * Returns the input unchanged when the payload is not an object, does
+ * not include a `messages` key, or contains entries that are already
+ * class instances / not message-like.
+ */
+function coerceStateMessages(value: unknown): unknown {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const state = value as Record<string, unknown>;
+  const messages = state.messages;
+  if (!Array.isArray(messages) || messages.length === 0) return value;
+
+  const needsCoercion = messages.some((msg) => {
+    if (msg == null || typeof msg !== "object") return false;
+    if (typeof (msg as { getType?: () => string }).getType === "function") {
+      return false;
+    }
+    const type = (msg as { type?: unknown }).type;
+    return typeof type === "string" && MESSAGE_LIKE_TYPES.has(type);
+  });
+  if (!needsCoercion) return value;
+
+  return {
+    ...state,
+    messages: ensureMessageInstances(
+      messages as Parameters<typeof ensureMessageInstances>[0]
+    ),
+  };
+}
 
 function normalizeSubscribeParams(
   paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
@@ -136,8 +149,6 @@ function normalizeSubscribeParams(
     channels,
   };
 }
-
-
 
 /**
  * Async iterable handle for raw event subscriptions.
@@ -264,21 +275,30 @@ export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
 }
 
 /**
- * High-level session wrapper that exposes capability-aware command modules,
- * subscription management, replay, and ordering metadata.
+ * High-level wrapper around a protocol connection to a specific thread.
+ *
+ * In the thread-centric protocol, threads are durable (backed by
+ * checkpoints) and connections are ephemeral. A `ThreadStream` is the
+ * client-side handle for interacting with a thread: starting runs,
+ * subscribing to events, consuming assembled projections (`messages`,
+ * `values`, `toolCalls`, etc.), and responding to interrupts.
+ *
+ * Construct via `client.threads.stream(threadId?, { assistantId? })`.
+ *
+ * @typeParam TExtensions - Optional map of `{ name: payload }` pairs
+ *   describing the transformer projections the bound assistant exposes
+ *   on `custom:<name>` channels. Narrows `thread.extensions.<name>` to
+ *   `ThreadExtension<payload>`. Defaults to `Record<string, unknown>`.
  */
-export class Session {
-  readonly sessionId: string;
-  readonly capabilities: CapabilityAdvertisement;
-  readonly transport: TransportProfile;
+export class ThreadStream<
+  TExtensions extends Record<string, unknown> = Record<string, unknown>,
+> {
+  readonly threadId: string;
   readonly ordering: SessionOrderingState = {};
-  readonly run: SessionModules["run"];
-  readonly agent: SessionModules["agent"];
-  readonly resource?: SessionModules["resource"];
-  readonly sandbox?: SessionModules["sandbox"];
-  readonly input?: SessionModules["input"];
-  readonly state?: SessionModules["state"];
-  readonly usage?: SessionModules["usage"];
+  readonly run: ThreadModules["run"];
+  readonly agent: ThreadModules["agent"];
+  readonly input: ThreadModules["input"];
+  readonly state: ThreadModules["state"];
 
   /**
    * Whether the run was interrupted (a lifecycle "interrupted" event
@@ -287,105 +307,183 @@ export class Session {
   interrupted = false;
 
   /**
-   * Interrupt payloads collected during the session, if any.
+   * Interrupt payloads collected during the run, if any.
    * Mirrors the in-process `run.interrupts`.
    */
   readonly interrupts: InterruptPayload[] = [];
 
+  readonly assistantId: string;
+
   #nextCommandId: number;
   readonly #transportAdapter: TransportAdapter;
   readonly #pending = new Map<number, PendingCommand>();
-  readonly #buffer: EventBuffer;
   readonly #subscriptions = new Map<string, InternalEventSubscription>();
-  readonly #activeFilters = new Map<string, SubscribeParams>();
+  // Tracks `event_id`s that have already been processed for thread-level
+  // side effects (interrupt tracking, `input.requested` capture). In SSE
+  // transport mode, multiple independent server-side streams can deliver
+  // the same event via replay; without this dedup the same interrupt
+  // would be recorded multiple times.
+  readonly #seenEventIds = new Set<string>();
   #closed = false;
-  readonly #capabilitiesAdvertised: boolean;
+  #opened = false;
+  #openPromise?: Promise<void>;
+
   #lifecycleSubId: string | null = null;
+  #lifecycleStartPromise?: Promise<void>;
+
+  #messagesIterable?: AsyncIterable<StreamingMessage>;
+  #valuesProjection?: AsyncIterable<unknown> & PromiseLike<unknown>;
+  #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
+  #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
+  #subagentsIterable?: AsyncIterable<SubagentHandle>;
+  #outputPromise?: Promise<unknown>;
+  #extensionsProxy?: ThreadExtensions<TExtensions>;
+  readonly #extensionsCache = new Map<string, ThreadExtension<unknown>>();
+
+  /**
+   * Shared state for the single `"custom"` channel subscription that
+   * backs every `thread.extensions.<name>` handle.
+   *
+   * One subscription is opened eagerly from {@link run.input} (mirroring
+   * the {@link values} eager-start pattern) so that per-name handles
+   * created before, during, or after the run can all resolve correctly.
+   *
+   *  - `events` retains every custom event for backfill into
+   *    late-constructed handles.
+   *  - `eventListeners` fan new events out to live per-name handlers.
+   *  - `endListeners` fire when the dispatcher's run terminates, so each
+   *    handle can resolve its `PromiseLike` side with its last-seen
+   *    payload.
+   */
+  #extensionsDispatcherStarted = false;
+  #extensionsEnded = false;
+  readonly #extensionsEvents: Event[] = [];
+  readonly #extensionsEventListeners: Array<(event: Event) => void> = [];
+  readonly #extensionsEndListeners: Array<() => void> = [];
 
   constructor(
     transportAdapter: TransportAdapter,
-    sessionResult: SessionResult,
-    options: ProtocolClientOptions = {}
+    options: ThreadStreamOptions
   ) {
+    if (!options?.assistantId) {
+      throw new Error("ThreadStream requires an assistantId option.");
+    }
     this.#transportAdapter = transportAdapter;
-    this.sessionId = sessionResult.session_id;
-    this.capabilities = sessionResult.capabilities;
-    this.transport = sessionResult.transport;
-    this.#capabilitiesAdvertised = this.capabilities.modules.length > 0;
+    this.threadId = transportAdapter.threadId;
+    this.assistantId = options.assistantId;
     this.#nextCommandId = options.startingCommandId ?? 1;
-    this.#buffer = new EventBuffer(options.eventBufferSize);
     this.run = {
       input: async (params) => {
         this.#prepareForNextRun();
-        return await this.#send("run.input", params);
+        this.#ensureLifecycleTracking();
+        // Eagerly start the values projection so `thread.output` /
+        // `thread.values` resolve with the final state regardless of
+        // whether they are accessed before or after the run completes.
+        // Without this, late access would open a fresh subscription
+        // that misses every `values` event from the run.
+        void this.values;
+        // NOTE: `thread.extensions.<name>` is NOT eagerly subscribed.
+        // The shared custom dispatcher is opened lazily on first
+        // extension access and relies on the server's event buffer to
+        // replay any custom events that were emitted before the
+        // subscription landed. This keeps the zero-extensions hot path
+        // free of an unused `custom` subscription per run.
+        return await this.#send("run.input", {
+          ...params,
+          assistant_id: this.assistantId,
+        });
       },
     };
     this.agent = {
-      getTree: async (params = {}) => await this.#send("agent.getTree", params),
+      getTree: async (params = {}) =>
+        (await this.#send("agent.getTree", params)) as {
+          tree: unknown;
+        } as never,
     };
-    if (this.hasModule("resource")) {
-      this.resource = {
-        list: async (params) => await this.#send("resource.list", params),
-        read: async (params) => await this.#send("resource.read", params),
-        write: async (params) => {
-          await this.#send("resource.write", params);
-        },
-        download: async (params) =>
-          await this.#send("resource.download", params),
-      };
+    this.input = {
+      respond: async (params) => {
+        this.#prepareForNextRun();
+        this.#ensureLifecycleTracking();
+        // See note in `run.input` — keep `thread.output` working
+        // across resumes regardless of access order.
+        void this.values;
+        await this.#send(
+          "input.respond",
+          params as unknown as CommandParamsMap["input.respond"]
+        );
+      },
+      inject: async (params) => {
+        await this.#send(
+          "input.inject",
+          params as unknown as CommandParamsMap["input.inject"]
+        );
+      },
+    };
+    this.state = {
+      get: async (params) =>
+        await this.#send(
+          "state.get",
+          params as unknown as CommandParamsMap["state.get"]
+        ),
+      listCheckpoints: async (params) =>
+        await this.#send(
+          "state.listCheckpoints",
+          params as unknown as CommandParamsMap["state.listCheckpoints"]
+        ),
+      fork: async (params) =>
+        await this.#send(
+          "state.fork",
+          params as unknown as CommandParamsMap["state.fork"]
+        ),
+    };
+    // SSE transports deliver events via openEventStream — the events()
+    // iterable is inert. Skip the consumer loop in that case.
+    if (this.#transportAdapter.openEventStream == null) {
+      void this.#consumeEvents();
     }
-    if (this.hasModule("sandbox")) {
-      this.sandbox = {
-        input: async (params) => {
-          await this.#send("sandbox.input", params);
-        },
-        kill: async (params) => {
-          await this.#send("sandbox.kill", params);
-        },
-      };
-    }
-    if (this.hasModule("input")) {
-      this.input = {
-        respond: async (params) => {
-          this.#prepareForNextRun();
-          await this.#send("input.respond", params);
-        },
-        inject: async (params) => {
-          await this.#send("input.inject", params);
-        },
-      };
-    }
-    if (this.hasModule("state")) {
-      this.state = {
-        get: async (params) => await this.#send("state.get", params),
-        listCheckpoints: async (params) =>
-          await this.#send("state.listCheckpoints", params),
-        fork: async (params) => await this.#send("state.fork", params),
-      };
-    }
-    if (this.hasModule("usage")) {
-      this.usage = {
-        setBudget: async (params) => {
-          await this.#send("usage.setBudget", params);
-        },
-      };
-    }
-    void this.#consumeEvents();
   }
 
   /**
-   * Subscribe to lifecycle and input channels so that session-level
-   * interrupt tracking works even when the user only subscribes to
-   * data channels like `"values"`.  Called automatically by
-   * {@link ProtocolClient.open}.
+   * Ensure the underlying transport is connected.
+   *
+   * For HTTP/SSE this is a no-op. For WebSocket this performs the
+   * handshake. Called lazily on first command; safe to call multiple times.
    */
-  async initLifecycleTracking(): Promise<void> {
-    const channels: Channel[] = [];
-    if (this.supportsChannel("lifecycle")) channels.push("lifecycle");
-    if (this.supportsChannel("input")) channels.push("input");
-    if (channels.length === 0) return;
-    const sub = await this.#subscribeRaw({ channels });
-    this.#lifecycleSubId = sub.subscriptionId;
+  async #ensureOpen(): Promise<void> {
+    if (this.#opened) return;
+    if (this.#openPromise == null) {
+      this.#openPromise = this.#transportAdapter.open().then(() => {
+        this.#opened = true;
+      });
+    }
+    await this.#openPromise;
+  }
+
+  /**
+   * Channels bundled into every lazy getter's SSE filter so that
+   * interrupt tracking works without a separate lifecycle subscription.
+   */
+  #lifecycleChannels(): Channel[] {
+    return ["lifecycle", "input"];
+  }
+
+  /**
+   * Lazily start a dedicated lifecycle+input subscription so that
+   * `thread.interrupted` / `thread.interrupts` work even when the
+   * caller never accesses a lazy getter (e.g. they only call
+   * `run.input` and `subscribe({ channels: ["custom:..."] })`).
+   *
+   * Idempotent and fire-and-forget — invoked from `run.input` and
+   * `input.respond`.
+   */
+  #ensureLifecycleTracking(): void {
+    if (this.#lifecycleStartPromise != null) return;
+    this.#lifecycleStartPromise = (async () => {
+      const sub = await this.#subscribeRaw({
+        channels: this.#lifecycleChannels(),
+      });
+      this.#lifecycleSubId = sub.subscriptionId;
+    })().catch(() => undefined);
   }
 
   /**
@@ -403,53 +501,297 @@ export class Session {
     }
   }
 
-  hasModule(name: string): boolean {
-    if (!this.#capabilitiesAdvertised) {
-      return true;
-    }
-    return this.capabilities.modules.some((module) => module.name === name);
+  // ---------- Lazy getters mirroring in-process GraphRunStream ----------
+
+  /**
+   * Streaming messages. Each `for await` loop gets an independent cursor
+   * over the shared buffer; late consumers see all previously emitted
+   * messages.  Mirrors the in-process `run.messages`.
+   */
+  get messages(): AsyncIterable<StreamingMessage> {
+    if (this.#messagesIterable) return this.#messagesIterable;
+    const buffer = new MultiCursorBuffer<StreamingMessage>();
+    this.#messagesIterable = buffer;
+    const assembler = new StreamingMessageAssembler();
+    void this.#startProjection(
+      ["messages", ...this.#lifecycleChannels()],
+      (event) => {
+        if (event.method !== "messages") return;
+        const msg = assembler.consume(event as MessagesEvent);
+        if (msg) buffer.push(msg);
+      },
+      () => buffer.close()
+    );
+    return buffer;
   }
 
-  supportsChannel(channel: Channel): boolean {
-    if (!this.#capabilitiesAdvertised) {
-      return true;
-    }
-    return this.capabilities.modules.some((module) =>
-      (module.channels ?? []).includes(channel)
+  /**
+   * State values. Iterable for intermediate snapshots; also
+   * `PromiseLike` — `await thread.values` resolves with the final
+   * state.  Mirrors the in-process `run.values`.
+   */
+  get values(): AsyncIterable<unknown> & PromiseLike<unknown> {
+    if (this.#valuesProjection) return this.#valuesProjection;
+    const buffer = new MultiCursorBuffer<unknown>();
+    let lastValue: unknown;
+    let resolveOutput!: (value: unknown) => void;
+    const outputPromise = new Promise<unknown>((resolve) => {
+      resolveOutput = resolve;
+    });
+    this.#outputPromise = outputPromise;
+    const projection = Object.assign(buffer, {
+      then: <TResult1 = unknown, TResult2 = never>(
+        onfulfilled?:
+          | ((value: unknown) => TResult1 | PromiseLike<TResult1>)
+          | null,
+        onrejected?:
+          | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
+          | null
+      ): Promise<TResult1 | TResult2> =>
+        outputPromise.then(onfulfilled, onrejected),
+    }) as AsyncIterable<unknown> & PromiseLike<unknown>;
+    this.#valuesProjection = projection;
+    void this.#startProjection(
+      ["values", ...this.#lifecycleChannels()],
+      (event) => {
+        if (event.method !== "values") return;
+        const data = coerceStateMessages(
+          (event as ValuesEvent).params.data
+        );
+        lastValue = data;
+        buffer.push(data);
+      },
+      () => {
+        resolveOutput(lastValue);
+        buffer.close();
+      }
+    );
+    return projection;
+  }
+
+  /**
+   * Tool calls with promise-based output/status/error.
+   * Mirrors the in-process `run.toolCalls`.
+   */
+  get toolCalls(): AsyncIterable<AssembledToolCall> {
+    if (this.#toolCallsIterable) return this.#toolCallsIterable;
+    const buffer = new MultiCursorBuffer<AssembledToolCall>();
+    this.#toolCallsIterable = buffer;
+    const assembler = new ToolCallAssembler();
+    void this.#startProjection(
+      ["tools", ...this.#lifecycleChannels()],
+      (event) => {
+        if (event.method !== "tools") return;
+        const tc = assembler.consume(event as ToolsEvent);
+        if (tc) buffer.push(tc);
+      },
+      () => buffer.close()
+    );
+    return buffer;
+  }
+
+  /**
+   * Discovered subgraphs. Mirrors the in-process `run.subgraphs`.
+   */
+  get subgraphs(): AsyncIterable<SubgraphHandle> {
+    if (this.#subgraphsIterable) return this.#subgraphsIterable;
+    const buffer = new MultiCursorBuffer<SubgraphHandle>();
+    this.#subgraphsIterable = buffer;
+    void (async () => {
+      const rawHandle = await this.#subscribeRaw({
+        channels: ["lifecycle", ...this.#lifecycleChannels()],
+      });
+      const discovery = new SubgraphDiscoveryHandle(rawHandle, this, []);
+      for await (const sub of discovery) {
+        buffer.push(sub);
+      }
+      buffer.close();
+    })();
+    return buffer;
+  }
+
+  /**
+   * Discovered subagents. Mirrors the in-process deep-agent pattern.
+   */
+  get subagents(): AsyncIterable<SubagentHandle> {
+    if (this.#subagentsIterable) return this.#subagentsIterable;
+    const buffer = new MultiCursorBuffer<SubagentHandle>();
+    this.#subagentsIterable = buffer;
+    void (async () => {
+      const rawHandle = await this.#subscribeRaw({
+        channels: ["tools", "lifecycle", ...this.#lifecycleChannels()],
+      });
+      const discovery = new SubagentDiscoveryHandle(rawHandle, this);
+      for await (const sub of discovery) {
+        buffer.push(sub);
+      }
+      buffer.close();
+    })();
+    return buffer;
+  }
+
+  /**
+   * Promise that resolves with the final state value when the run
+   * completes.  Shares the `values` getter's SSE connection.
+   * Mirrors the in-process `run.output`.
+   */
+  get output(): Promise<unknown> {
+    // Accessing `this.values` ensures the projection is started.
+    void this.values;
+    return this.#outputPromise!;
+  }
+
+  /**
+   * Proxy over compile-time {@link StreamTransformer} projections
+   * exposed by the bound assistant on `custom:<name>` channels.
+   *
+   * Each access (e.g. `thread.extensions.toolActivity`) lazily opens a
+   * dedicated `custom:<name>` subscription, returns a cached
+   * {@link ThreadExtension} handle that is both `AsyncIterable<T>`
+   * (streaming items as they arrive) and `PromiseLike<T>` (resolves
+   * with the final value when the run terminates), and reuses the same
+   * handle on subsequent access.
+   *
+   * Mirrors the in-process `run.extensions.<name>` shape.
+   */
+  get extensions(): ThreadExtensions<TExtensions> {
+    if (this.#extensionsProxy) return this.#extensionsProxy;
+    const cache = this.#extensionsCache;
+    const createExtension = (name: string) => this.#createExtension(name);
+    this.#extensionsProxy = new Proxy(
+      Object.create(null) as ThreadExtensions<TExtensions>,
+      {
+        get: (_target, prop) => {
+          if (typeof prop !== "string") return undefined;
+          const cached = cache.get(prop);
+          if (cached) return cached;
+          const extension = createExtension(prop);
+          cache.set(prop, extension);
+          return extension;
+        },
+        has: (_target, prop) => typeof prop === "string",
+      }
+    );
+    return this.#extensionsProxy;
+  }
+
+  /**
+   * Lazily open one shared subscription on the `custom` channel that
+   * buffers every custom event for this run and fans it out to any
+   * per-name extension handles.
+   *
+   * Deliberately **lazy**: the dispatcher only starts on first access
+   * to `thread.extensions.<name>`. Runs that never touch extensions
+   * pay no subscription cost. Runs that touch extensions after events
+   * have already fired rely on the server's per-session event buffer,
+   * which replays matching events to new subscriptions.
+   *
+   * Each handle retains a PromiseLike that resolves with the
+   * transformer's last-observed payload, independent of when the
+   * caller grabs the handle (before, during, or after the run), as
+   * long as the server still has the events buffered.
+   *
+   * Idempotent. Invoked only from {@link #createExtension}.
+   */
+  #ensureExtensionsDispatcher(): void {
+    if (this.#extensionsDispatcherStarted) return;
+    this.#extensionsDispatcherStarted = true;
+    void this.#startProjection(
+      ["custom", ...this.#lifecycleChannels()],
+      (event) => {
+        if (event.method !== "custom") return;
+        this.#extensionsEvents.push(event);
+        for (const listener of this.#extensionsEventListeners) {
+          listener(event);
+        }
+      },
+      () => {
+        this.#extensionsEnded = true;
+        const listeners = this.#extensionsEndListeners.splice(0);
+        for (const listener of listeners) listener();
+      }
     );
   }
 
-  supportsCommand(method: string): boolean {
-    if (!this.#capabilitiesAdvertised) {
-      return true;
+  /**
+   * Build a single {@link ThreadExtension} handle for a named
+   * `custom:<name>` projection.
+   *
+   * The handle reads from the shared extensions dispatcher: past events
+   * matching {@link name} are backfilled on construction, future events
+   * arrive via a registered listener, and the handle's `PromiseLike`
+   * side resolves with its last-seen payload once the run terminates
+   * (which may already have happened, in which case it resolves on the
+   * next microtask).
+   */
+  #createExtension(name: string): ThreadExtension<unknown> {
+    this.#ensureExtensionsDispatcher();
+
+    const buffer = new MultiCursorBuffer<unknown>();
+    let lastValue: unknown;
+    let resolveFinal!: (value: unknown) => void;
+    const finalPromise = new Promise<unknown>((resolve) => {
+      resolveFinal = resolve;
+    });
+
+    const handleEvent = (event: Event) => {
+      const data = event.params.data as {
+        name?: string;
+        payload?: unknown;
+      } | undefined;
+      if (data?.name !== name) return;
+      lastValue = data.payload;
+      buffer.push(data.payload);
+    };
+
+    // Backfill from events already seen by the dispatcher so handles
+    // constructed mid-run or post-run still observe their payload.
+    for (const event of this.#extensionsEvents) handleEvent(event);
+
+    // Live events — routed through the shared dispatcher.
+    this.#extensionsEventListeners.push(handleEvent);
+
+    const settle = () => {
+      resolveFinal(lastValue);
+      buffer.close();
+    };
+    if (this.#extensionsEnded) {
+      settle();
+    } else {
+      this.#extensionsEndListeners.push(settle);
     }
-    const [moduleName, commandName] = method.split(".");
-    return this.capabilities.modules.some(
-      (module) =>
-        module.name === moduleName &&
-        ((module.commands ?? []).includes(method) ||
-          (module.commands ?? []).includes(commandName ?? ""))
-    );
+
+    return Object.assign(buffer, {
+      then: <TResult1 = unknown, TResult2 = never>(
+        onfulfilled?:
+          | ((value: unknown) => TResult1 | PromiseLike<TResult1>)
+          | null,
+        onrejected?:
+          | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
+          | null
+      ): Promise<TResult1 | TResult2> =>
+        finalPromise.then(onfulfilled, onrejected),
+    }) as ThreadExtension<unknown>;
   }
 
-  assertSupportsChannel(channel: Channel): void {
-    if (!this.supportsChannel(channel)) {
-      throw new Error(
-        `Channel "${channel}" is not advertised by the session capabilities`
-      );
+  /**
+   * Generic projection starter: opens a raw subscription with the given
+   * channels, feeds events through the consumer, and calls onDone when
+   * the stream ends.
+   */
+  async #startProjection(
+    channels: Channel[],
+    onEvent: (event: Event) => void,
+    onDone: () => void
+  ): Promise<void> {
+    try {
+      const rawHandle = await this.#subscribeRaw({ channels });
+      for await (const event of rawHandle) {
+        onEvent(event);
+      }
+    } finally {
+      onDone();
     }
-  }
-
-  assertSupportsCommand(method: string): void {
-    if (!this.supportsCommand(method)) {
-      throw new Error(
-        `Command "${method}" is not advertised by the session capabilities`
-      );
-    }
-  }
-
-  async describe(): Promise<SessionResult> {
-    return await this.#send("session.describe", {});
   }
 
   async close(): Promise<void> {
@@ -457,51 +799,20 @@ export class Session {
       return;
     }
     this.#closed = true;
-    try {
-      await this.#send("session.close", {});
-    } finally {
-      for (const subscription of this.#subscriptions.values()) {
-        subscription.close();
-      }
-      this.#subscriptions.clear();
-      await this.#transportAdapter.close();
+    for (const subscription of this.#subscriptions.values()) {
+      subscription.close();
     }
+    this.#subscriptions.clear();
+    await this.#transportAdapter.close();
   }
 
   /**
-   * Subscribe to a projection or raw channel and receive events.
+   * Subscribe to raw wire channels and receive protocol events.
    *
-   * **Projection names** return assembled handles matching the
-   * in-process `GraphRunStream` property names:
-   * - `"toolCalls"` → {@link ToolSubscriptionHandle} (wire: `tools`)
-   * - `"values"` → {@link ValuesSubscriptionHandle} with `.output` (wire: `values`)
-   * - `"messages"` → {@link StreamingMessageSubscriptionHandle} (wire: `messages`)
-   * - `"subgraphs"` → {@link SubgraphDiscoveryHandle} (wire: `lifecycle`)
-   * - `"subagents"` → {@link SubagentDiscoveryHandle} (wire: `tools` + `lifecycle`)
-   *
-   * **Raw wire channels** (via params or array form) return a raw
-   * {@link SubscriptionHandle} with protocol events.
+   * For assembled projections, use the lazy getters instead:
+   * `thread.messages`, `thread.values`, `thread.toolCalls`,
+   * `thread.subgraphs`, `thread.subagents`, `thread.output`.
    */
-  async subscribe(
-    projection: "toolCalls",
-    options?: SubscribeOptions
-  ): Promise<ToolSubscriptionHandle>;
-  async subscribe(
-    projection: "values",
-    options?: SubscribeOptions
-  ): Promise<ValuesSubscriptionHandle>;
-  async subscribe(
-    projection: "messages",
-    options?: SubscribeOptions
-  ): Promise<StreamingMessageSubscriptionHandle>;
-  async subscribe(
-    projection: "subgraphs",
-    options?: SubscribeOptions
-  ): Promise<SubgraphDiscoveryHandle>;
-  async subscribe(
-    projection: "subagents",
-    options?: SubscribeOptions
-  ): Promise<SubagentDiscoveryHandle>;
   async subscribe<TChannel extends Channel>(
     channel: TChannel,
     options?: SubscribeOptions
@@ -516,71 +827,24 @@ export class Session {
   >;
   async subscribe(params: SubscribeParams): Promise<SubscriptionHandle<Event>>;
   async subscribe(
-    paramsOrChannels: SubscribeParams | Channel | string | readonly Channel[],
+    paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
     options: SubscribeOptions = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
-    const isSingleString =
-      typeof paramsOrChannels === "string" && !Array.isArray(paramsOrChannels);
-    const name = isSingleString ? paramsOrChannels : undefined;
-
-    if (name === "subgraphs") {
-      const rawHandle = await this.#subscribeRaw({
-        ...options,
-        channels: ["lifecycle"],
-      });
-      const parentNamespace = options.namespaces?.[0] ?? [];
-      return new SubgraphDiscoveryHandle(rawHandle, this, parentNamespace);
-    }
-
-    if (name === "subagents") {
-      const rawHandle = await this.#subscribeRaw({
-        ...options,
-        channels: ["tools", "lifecycle"],
-      });
-      return new SubagentDiscoveryHandle(rawHandle, this);
-    }
-
-    if (name === "toolCalls") {
-      const rawHandle = await this.#subscribeRaw({
-        ...options,
-        channels: ["tools"],
-      });
-      return new ToolSubscriptionHandle(rawHandle);
-    }
-
     const params = normalizeSubscribeParams(
       paramsOrChannels as SubscribeParams | Channel | readonly Channel[],
       options
     );
-    const rawHandle = await this.#subscribeRaw(params);
-
-    if (isSingleString) {
-      switch (name) {
-        case "values":
-          return new ValuesSubscriptionHandle(rawHandle);
-        case "messages":
-          return new StreamingMessageSubscriptionHandle(rawHandle);
-        default:
-          break;
-      }
-    }
-
-    return rawHandle;
+    return await this.#subscribeRaw(params);
   }
 
   async #subscribeRaw(
     params: SubscribeParams
   ): Promise<SubscriptionHandle<Event>> {
+    await this.#ensureOpen();
     const hasOnlyNamedCustom =
       params.channels.length > 0 &&
       params.channels.every((ch) => ch.startsWith("custom:"));
-    for (const channel of params.channels) {
-      if (!channel.startsWith("custom:")) {
-        this.assertSupportsChannel(channel);
-      }
-    }
-    const result = await this.#send("subscription.subscribe", params);
     const transform = hasOnlyNamedCustom
       ? (event: Event) =>
           (
@@ -589,50 +853,89 @@ export class Session {
             }
           )?.payload ?? event
       : undefined;
+
+    if (this.#transportAdapter.openEventStream != null) {
+      return this.#subscribeViaEventStream(params, transform);
+    }
+
+    return this.#subscribeViaCommand(params, transform);
+  }
+
+  /**
+   * Open an independent SSE event stream for this subscription.
+   * Used by SSE transports where each subscription = one POST connection.
+   * Awaits the underlying connection's ready signal so callers can
+   * depend on the subscription being active server-side on return.
+   */
+  async #subscribeViaEventStream(
+    params: SubscribeParams,
+    transform?: (event: Event) => unknown
+  ): Promise<SubscriptionHandle<Event>> {
+    const streamHandle = this.#transportAdapter.openEventStream!(params);
+    const subscriptionId = `stream-${this.#nextCommandId++}`;
+
+    const handle = new SubscriptionHandle<Event, unknown>(
+      subscriptionId,
+      params,
+      async (id) => {
+        this.#subscriptions.delete(id);
+        streamHandle.close();
+      },
+      transform
+    );
+
+    const subscription = Object.assign(handle, { filter: params });
+    this.#subscriptions.set(subscriptionId, subscription);
+
+    void (async () => {
+      try {
+        for await (const message of streamHandle.events) {
+          if (this.#closed) break;
+          this.#handleIncoming(message, subscription);
+        }
+      } catch {
+        // stream closed or errored — handle already cleaned up
+      }
+    })();
+
+    await streamHandle.ready;
+    return handle as SubscriptionHandle<Event>;
+  }
+
+  /**
+   * Command-based subscription (WebSocket fallback). The server replays
+   * matching buffered events on subscribe via the same WebSocket stream.
+   */
+  async #subscribeViaCommand(
+    params: SubscribeParams,
+    transform?: (event: Event) => unknown
+  ): Promise<SubscriptionHandle<Event>> {
+    const result = await this.#send("subscription.subscribe", params);
     const handle = new SubscriptionHandle<Event, unknown>(
       result.subscription_id,
       params,
       async (id) => {
-        this.#activeFilters.delete(id);
         this.#subscriptions.delete(id);
         if (!this.#closed) {
-          await this.#send("subscription.unsubscribe", { subscription_id: id })
-            .catch((err: unknown) => {
-              if (
-                // oxlint-disable-next-line no-instanceof/no-instanceof
-                err instanceof ProtocolError &&
-                err.code === "no_such_subscription"
-              ) {
-                return;
-              }
-              throw err;
-            });
+          await this.#send("subscription.unsubscribe", {
+            subscription_id: id,
+          }).catch((err: unknown) => {
+            if (
+              // oxlint-disable-next-line no-instanceof/no-instanceof
+              err instanceof ProtocolError &&
+              err.code === "no_such_subscription"
+            ) {
+              return;
+            }
+            throw err;
+          });
         }
       },
       transform
     );
     const subscription = Object.assign(handle, { filter: params });
-    this.#activeFilters.set(result.subscription_id, params);
     this.#subscriptions.set(result.subscription_id, subscription);
-    for (const buffered of this.#buffer.replay(params)) {
-      handle.push(buffered);
-    }
     return handle as SubscriptionHandle<Event>;
-  }
-
-  async reconnect(params: ReconnectParams): Promise<ReconnectResult> {
-    const result = await this.#send("subscription.reconnect", params);
-    if (result.restored) {
-      for (const [id, filter] of this.#activeFilters) {
-        if (params.subscriptions && !params.subscriptions.includes(id)) {
-          continue;
-        }
-        for (const event of this.#buffer.replay(filter, params.last_event_id)) {
-          this.#subscriptions.get(id)?.push(event);
-        }
-      }
-    }
-    return result;
   }
 
   async #consumeEvents(): Promise<void> {
@@ -657,14 +960,29 @@ export class Session {
     }
   }
 
-  #handleIncoming(message: Message): void {
+  #handleIncoming(
+    message: Message,
+    ownerSubscription?: InternalEventSubscription
+  ): void {
     if (message.type === "event") {
-      this.#buffer.push(message);
       if (typeof message.seq === "number") {
         this.ordering.lastSeenSeq = message.seq;
       }
       if (message.event_id) {
         this.ordering.lastEventId = message.event_id;
+      }
+
+      // Dedup thread-level side-effects across streams. In SSE mode each
+      // subscription gets its own filtered server stream, and the server
+      // replays buffered events on attach, so the same event (same
+      // `event_id`) can reach the client multiple times — once per stream
+      // whose filter matches it. Without this guard, an interrupt/input
+      // request would be recorded multiple times.
+      const eventId = message.event_id ?? undefined;
+      const alreadyProcessed =
+        eventId != null && this.#seenEventIds.has(eventId);
+      if (eventId != null) {
+        this.#seenEventIds.add(eventId);
       }
 
       const TERMINAL_LIFECYCLE_EVENTS = new Set([
@@ -673,26 +991,40 @@ export class Session {
         "failed",
       ]);
 
-      if (message.method === "lifecycle") {
-        const lifecycle = message as LifecycleEvent;
-        if (lifecycle.params.data.event === "interrupted") {
-          this.interrupted = true;
+      if (!alreadyProcessed) {
+        if (message.method === "lifecycle") {
+          const lifecycle = message as LifecycleEvent;
+          if (lifecycle.params.data.event === "interrupted") {
+            this.interrupted = true;
+          }
+        }
+
+        if (message.method === "input.requested") {
+          const data = message.params.data;
+          this.interrupts.push({
+            interruptId:
+              data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
+            payload: data.payload,
+            namespace: [...message.params.namespace],
+          });
         }
       }
 
-      if (message.method === "input.requested") {
-        const data = message.params.data;
-        this.interrupts.push({
-          interruptId:
-            data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
-          payload: data.payload,
-          namespace: [...message.params.namespace],
-        });
-      }
-
-      for (const subscription of this.#subscriptions.values()) {
-        if (matchesSubscription(message, subscription.filter)) {
-          subscription.push(message);
+      if (ownerSubscription != null) {
+        // SSE transport: the server already filtered events for this
+        // subscription's stream. Deliver only to the owning subscription
+        // so the same event is not pushed multiple times (which would
+        // otherwise surface as duplicate subagent/subgraph discovery
+        // and out-of-order message assembly on late-attaching streams).
+        ownerSubscription.push(message);
+      } else if (!alreadyProcessed) {
+        // WebSocket transport: a single shared stream delivers all
+        // events. Fan-out to every matching subscription. Dedup on
+        // `event_id` is a safety net for transports that might redeliver.
+        for (const subscription of this.#subscriptions.values()) {
+          if (matchesSubscription(message, subscription.filter)) {
+            subscription.push(message);
+          }
         }
       }
 
@@ -701,9 +1033,25 @@ export class Session {
         message.params.namespace.length === 0 &&
         TERMINAL_LIFECYCLE_EVENTS.has(message.params.data.event)
       ) {
-        for (const [id, subscription] of this.#subscriptions) {
-          if (id !== this.#lifecycleSubId) {
-            subscription.pause();
+        if (ownerSubscription != null) {
+          // SSE transport: each subscription has its own independent
+          // server stream, and terminal lifecycle events are replayed
+          // on every new stream. Only pause the stream that delivered
+          // this terminal event — pausing peer subscriptions would
+          // prematurely kill handles (e.g. a freshly-opened extensions
+          // dispatcher) whose own stream hasn't delivered its terminal
+          // event yet.
+          if (ownerSubscription.subscriptionId !== this.#lifecycleSubId) {
+            ownerSubscription.pause();
+          }
+        } else {
+          // WebSocket transport: a single shared stream delivers every
+          // subscription's events, so a terminal event applies to all
+          // currently active non-lifecycle subscriptions.
+          for (const [id, subscription] of this.#subscriptions) {
+            if (id !== this.#lifecycleSubId) {
+              subscription.pause();
+            }
           }
         }
       }
@@ -733,9 +1081,7 @@ export class Session {
     method: TMethod,
     params: CommandParamsMap[TMethod]
   ): Promise<CommandResultMap[TMethod]> {
-    if (method !== "session.describe" && method !== "session.close") {
-      this.assertSupportsCommand(method);
-    }
+    await this.#ensureOpen();
     const id = this.#nextCommandId++;
     const command = {
       id,
@@ -762,52 +1108,24 @@ export class Session {
   }
 }
 
-/**
- * Entry point for opening protocol sessions over a transport implementation.
- */
-export class ProtocolClient {
-  private readonly transportFactory:
-    | TransportAdapter
-    | (() => TransportAdapter | Promise<TransportAdapter>);
-  private readonly options: ProtocolClientOptions;
-
-  constructor(
-    transportFactory:
-      | TransportAdapter
-      | (() => TransportAdapter | Promise<TransportAdapter>),
-    options: ProtocolClientOptions = {}
-  ) {
-    this.transportFactory = transportFactory;
-    this.options = options;
-  }
-
-  async open(params: SessionOpenParams): Promise<Session> {
-    const transport =
-      typeof this.transportFactory === "function"
-        ? await this.transportFactory()
-        : this.transportFactory;
-    const response = await transport.open(params);
-    const session = new Session(transport, response, this.options);
-    await session.initLifecycleTracking();
-    return session;
-  }
-}
-
-export { EventBuffer } from "./buffer.js";
-export { MessageAssembler, StreamingMessageAssembler, StreamingMessage } from "./messages.js";
+export {
+  MessageAssembler,
+  StreamingMessageAssembler,
+  StreamingMessage,
+} from "./messages.js";
 export type { AssembledMessage, MessageAssemblyUpdate } from "./messages.js";
 export {
   ToolCallAssembler,
-  ToolSubscriptionHandle,
-  ValuesSubscriptionHandle,
   SubgraphDiscoveryHandle,
   SubgraphHandle,
   SubagentHandle,
   SubagentDiscoveryHandle,
-  MessageSubscriptionHandle,
-  StreamingMessageSubscriptionHandle,
 } from "./handles/index.js";
-export type { AssembledToolCall, ToolCallStatus, Subscribable } from "./handles/index.js";
+export type {
+  AssembledToolCall,
+  ToolCallStatus,
+  Subscribable,
+} from "./handles/index.js";
 export { inferChannel, matchesSubscription } from "./subscription.js";
 export type { TransportAdapter } from "./transport.js";
 export type * from "./types.js";

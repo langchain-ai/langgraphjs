@@ -21,7 +21,7 @@ type ProtocolSuccessResponse = {
   id: number;
   result: Record<string, unknown>;
   meta?: {
-    sessionId?: string;
+    threadId?: string;
     appliedThroughSeq?: number;
   };
 };
@@ -36,17 +36,6 @@ type ProtocolErrorResponse = {
 export type ProtocolCommandResponse =
   | ProtocolSuccessResponse
   | ProtocolErrorResponse;
-
-export type ProtocolOpenSessionResponse = ProtocolSuccessResponse & {
-  result: {
-    sessionId: string;
-    protocolVersion: string;
-    transport: { name: string };
-    capabilities: Record<string, unknown>;
-    eventsUrl?: string;
-    commandsUrl?: string;
-  };
-};
 
 export type ProtocolEventMessage = {
   type: "event";

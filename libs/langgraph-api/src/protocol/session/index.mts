@@ -112,6 +112,13 @@ export class RunProtocolSession {
   private readonly pendingInterruptIds = new Set<string>();
 
   /**
+   * When true, every event is sent unconditionally via {@link sendJson}
+   * regardless of subscription state. Used for SSE transports where
+   * per-connection filtering is handled by the outer service layer.
+   */
+  private readonly passthrough: boolean;
+
+  /**
    * Creates a run-scoped protocol session.
    *
    * @param options - Session construction options and transport bindings.
@@ -128,12 +135,14 @@ export class RunProtocolSession {
     send: (payload: string) => Promise<void> | void;
     source?: AsyncIterable<SourceStreamEvent>;
     startSeq?: number;
+    passthrough?: boolean;
   }) {
     this.initialRun = options.initialRun;
     this.getRun = options.getRun;
     this.getThreadState = options.getThreadState;
     this.send = options.send;
     this.source = options.source;
+    this.passthrough = options.passthrough ?? false;
     if (options.startSeq != null) {
       this.nextSeq = options.startSeq;
     }
@@ -803,14 +812,18 @@ export class RunProtocolSession {
 
     this.buffer.push(event);
 
-    for (const subscription of this.subscriptions.values()) {
-      if (
-        !subscription.active ||
-        !this.matchesSubscription(subscription, event)
-      ) {
-        continue;
-      }
+    if (this.passthrough) {
       await this.sendJson(event);
+    } else {
+      for (const subscription of this.subscriptions.values()) {
+        if (
+          !subscription.active ||
+          !this.matchesSubscription(subscription, event)
+        ) {
+          continue;
+        }
+        await this.sendJson(event);
+      }
     }
   }
 
@@ -819,10 +832,7 @@ export class RunProtocolSession {
    * Called after consumers drain events (e.g. via subscription replay).
    */
   private tryResumePause() {
-    if (
-      this.resumePause != null &&
-      this.buffer.length < this.maxBufferSize
-    ) {
+    if (this.resumePause != null && this.buffer.length < this.maxBufferSize) {
       this.resumePause();
       this.pauseGate = undefined;
       this.resumePause = undefined;
@@ -1301,10 +1311,7 @@ export class RunProtocolSession {
    * Applies new flow-control settings and reconciles the buffer with the new
    * strategy and capacity.
    */
-  private applyFlowCapacity(
-    maxBufferSize: number,
-    strategy: FlowStrategy
-  ) {
+  private applyFlowCapacity(maxBufferSize: number, strategy: FlowStrategy) {
     const previousStrategy = this.flowStrategy;
     this.maxBufferSize = maxBufferSize;
     this.flowStrategy = strategy;
@@ -1313,7 +1320,10 @@ export class RunProtocolSession {
       this.sampleCounter = 0;
     }
 
-    if (previousStrategy === "pause-producer" && strategy !== "pause-producer") {
+    if (
+      previousStrategy === "pause-producer" &&
+      strategy !== "pause-producer"
+    ) {
       this.resumePause?.();
       this.pauseGate = undefined;
       this.resumePause = undefined;

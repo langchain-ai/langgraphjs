@@ -255,42 +255,7 @@ describe("Client streaming with retry", () => {
         new Response(
           JSON.stringify({
             type: "success",
-            id: 0,
-            result: {
-              sessionId: "session-1",
-              protocolVersion: "0.3.0",
-              transport: { name: "sse-http" },
-              capabilities: {},
-              eventsUrl: "/v2/sessions/session-1/events",
-              commandsUrl: "/v2/sessions/session-1/commands",
-            },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        ),
-      );
-
-      mockFetch.mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            type: "success",
             id: 1,
-            result: { subscriptionId: "sub-1", replayedEvents: 0 },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        ),
-      );
-
-      mockFetch.mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            type: "success",
-            id: 2,
             result: { runId: "run-1" },
           }),
           {
@@ -364,12 +329,6 @@ describe("Client streaming with retry", () => {
         ),
       );
 
-      mockFetch.mockResolvedValueOnce(
-        new Response(null, {
-          status: 204,
-        }),
-      );
-
       const stream = client.runs.stream("thread-1", "assistant-1", {
         input: { message: "test" },
         streamMode: ["messages-tuple", "values"],
@@ -404,9 +363,13 @@ describe("Client streaming with retry", () => {
         ]),
       );
 
-      expect(mockFetch.mock.calls[0][0].toString()).toContain("/v2/sessions");
-      expect(mockFetch.mock.calls[3][0].toString()).toContain(
-        "/v2/sessions/session-1/events",
+      // First call: run.input command to the commands endpoint.
+      expect(mockFetch.mock.calls[0][0].toString()).toContain(
+        "/v2/threads/thread-1/commands",
+      );
+      // Second call: events SSE stream.
+      expect(mockFetch.mock.calls[1][0].toString()).toContain(
+        "/v2/threads/thread-1/events",
       );
     });
 

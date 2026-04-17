@@ -1,11 +1,9 @@
 import type {
-  Event,
   ToolsEvent,
   ToolStartedData,
   ToolFinishedData,
   ToolErrorData,
 } from "@langchain/protocol";
-import type { SubscriptionHandle } from "../index.js";
 
 /**
  * High-level outcome of a single tool call.
@@ -143,81 +141,5 @@ export class ToolCallAssembler {
     entry.rejectOutput(new Error(data.message));
     entry.resolveStatus("error");
     entry.resolveError(data.message);
-  }
-}
-
-/**
- * Async iterable handle that assembles raw `tools` events into
- * {@link AssembledToolCall} instances with promise-based lifecycle.
- *
- * Mirrors the in-process `run.toolCalls` pattern for remote consumers.
- */
-export class ToolSubscriptionHandle implements AsyncIterable<AssembledToolCall> {
-  readonly params;
-  readonly subscriptionId: string;
-  private readonly source: SubscriptionHandle<Event>;
-  private readonly assembler = new ToolCallAssembler();
-  private readonly queue: AssembledToolCall[] = [];
-  private readonly waiters: Array<
-    (value: IteratorResult<AssembledToolCall>) => void
-  > = [];
-  private sourcePump?: Promise<void>;
-  private closed = false;
-
-  constructor(source: SubscriptionHandle<Event>) {
-    this.source = source;
-    this.subscriptionId = source.subscriptionId;
-    this.params = source.params;
-  }
-
-  private start(): void {
-    if (this.sourcePump) return;
-    this.sourcePump = (async () => {
-      for await (const event of this.source) {
-        if (event.method !== "tools") continue;
-        const assembled = this.assembler.consume(event as ToolsEvent);
-        if (assembled) {
-          const waiter = this.waiters.shift();
-          if (waiter) {
-            waiter({ done: false, value: assembled });
-          } else {
-            this.queue.push(assembled);
-          }
-        }
-      }
-      this.closed = true;
-      while (this.waiters.length > 0) {
-        this.waiters.shift()?.({ done: true, value: undefined });
-      }
-    })();
-  }
-
-  async unsubscribe(): Promise<void> {
-    this.closed = true;
-    this.assembler.failAll(new Error("Subscription closed"));
-    await this.source.unsubscribe();
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<AssembledToolCall> {
-    this.start();
-    return {
-      next: async () => {
-        if (this.queue.length > 0) {
-          return { done: false, value: this.queue.shift()! };
-        }
-        if (this.closed) {
-          return { done: true, value: undefined };
-        }
-        return await new Promise<IteratorResult<AssembledToolCall>>(
-          (resolve) => {
-            this.waiters.push(resolve);
-          }
-        );
-      },
-      return: async () => {
-        await this.unsubscribe();
-        return { done: true, value: undefined };
-      },
-    };
   }
 }

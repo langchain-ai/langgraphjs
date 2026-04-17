@@ -1,10 +1,16 @@
 import type {
   Channel,
   Event,
+  MessagesEvent,
   SubscribeParams,
   ToolsEvent,
 } from "@langchain/protocol";
 import type { SubscriptionHandle } from "../index.js";
+import { MultiCursorBuffer } from "../multi-cursor-buffer.js";
+import { StreamingMessageAssembler } from "../messages.js";
+import type { StreamingMessage } from "../messages.js";
+import { ToolCallAssembler } from "./tools.js";
+import type { AssembledToolCall } from "./tools.js";
 import type {
   EventForChannel,
   EventForChannels,
@@ -12,11 +18,9 @@ import type {
   YieldForChannel,
   YieldForChannels,
 } from "../types.js";
-import type { ToolSubscriptionHandle } from "./tools.js";
-import type { ValuesSubscriptionHandle } from "./values.js";
-import type { StreamingMessageSubscriptionHandle } from "./messages.js";
-import type {
-  Subscribable,
+import {
+  type Subscribable,
+  type SubgraphHandle,
   SubgraphDiscoveryHandle,
 } from "./subgraphs.js";
 
@@ -28,8 +32,8 @@ import type {
  * `tool_name === "task"` is observed. The `taskInput` and `output`
  * promises resolve from the task tool's lifecycle events.
  *
- * Use `.subscribe()` to create namespace-scoped subscriptions for
- * this subagent's child events (tools, messages, values, etc.).
+ * Use lazy getters (`sub.messages`, `sub.toolCalls`, etc.) for
+ * namespace-scoped projections.
  */
 export class SubagentHandle {
   readonly name: string;
@@ -38,6 +42,10 @@ export class SubagentHandle {
   readonly output: Promise<unknown>;
   readonly namespace: string[];
   readonly #session: Subscribable;
+
+  #messagesIterable?: AsyncIterable<StreamingMessage>;
+  #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
+  #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
 
   constructor(
     name: string,
@@ -55,30 +63,65 @@ export class SubagentHandle {
     this.#session = session;
   }
 
+  get messages(): AsyncIterable<StreamingMessage> {
+    if (this.#messagesIterable) return this.#messagesIterable;
+    const buffer = new MultiCursorBuffer<StreamingMessage>();
+    this.#messagesIterable = buffer;
+    const assembler = new StreamingMessageAssembler();
+    void this.#startProjection(
+      ["messages"],
+      (event) => {
+        if (event.method !== "messages") return;
+        const msg = assembler.consume(event as MessagesEvent);
+        if (msg) buffer.push(msg);
+      },
+      () => buffer.close()
+    );
+    return buffer;
+  }
+
+  get toolCalls(): AsyncIterable<AssembledToolCall> {
+    if (this.#toolCallsIterable) return this.#toolCallsIterable;
+    const buffer = new MultiCursorBuffer<AssembledToolCall>();
+    this.#toolCallsIterable = buffer;
+    const assembler = new ToolCallAssembler();
+    void this.#startProjection(
+      ["tools"],
+      (event) => {
+        if (event.method !== "tools") return;
+        const tc = assembler.consume(event as ToolsEvent);
+        if (tc) buffer.push(tc);
+      },
+      () => buffer.close()
+    );
+    return buffer;
+  }
+
+  get subgraphs(): AsyncIterable<SubgraphHandle> {
+    if (this.#subgraphsIterable) return this.#subgraphsIterable;
+    const buffer = new MultiCursorBuffer<SubgraphHandle>();
+    this.#subgraphsIterable = buffer;
+    void (async () => {
+      const rawHandle = await this.#session.subscribe({
+        channels: ["lifecycle"],
+        namespaces: [this.namespace],
+      });
+      const discovery = new SubgraphDiscoveryHandle(
+        rawHandle,
+        this.#session,
+        this.namespace
+      );
+      for await (const sub of discovery) {
+        buffer.push(sub);
+      }
+      buffer.close();
+    })();
+    return buffer;
+  }
+
   /**
-   * Create a subscription scoped to this subagent's namespace.
-   * Delegates to the session with `namespaces: [this.namespace]`.
+   * Create a raw channel subscription scoped to this subagent's namespace.
    */
-  subscribe(
-    projection: "toolCalls",
-    options?: SubscribeOptions
-  ): Promise<ToolSubscriptionHandle>;
-  subscribe(
-    projection: "values",
-    options?: SubscribeOptions
-  ): Promise<ValuesSubscriptionHandle>;
-  subscribe(
-    projection: "messages",
-    options?: SubscribeOptions
-  ): Promise<StreamingMessageSubscriptionHandle>;
-  subscribe(
-    projection: "subgraphs",
-    options?: SubscribeOptions
-  ): Promise<SubgraphDiscoveryHandle>;
-  subscribe(
-    projection: "subagents",
-    options?: SubscribeOptions
-  ): Promise<SubagentDiscoveryHandle>;
   subscribe<TChannel extends Channel>(
     channel: TChannel,
     options?: SubscribeOptions
@@ -108,10 +151,28 @@ export class SubagentHandle {
       });
     }
 
-    return this.#session.subscribe(
-      paramsOrChannels as Channel,
-      { ...options, namespaces: options.namespaces ?? [this.namespace] }
-    );
+    return this.#session.subscribe(paramsOrChannels as Channel, {
+      ...options,
+      namespaces: options.namespaces ?? [this.namespace],
+    });
+  }
+
+  async #startProjection(
+    channels: Channel[],
+    onEvent: (event: Event) => void,
+    onDone: () => void
+  ): Promise<void> {
+    try {
+      const rawHandle = await this.#session.subscribe({
+        channels,
+        namespaces: [this.namespace],
+      });
+      for await (const event of rawHandle) {
+        onEvent(event);
+      }
+    } finally {
+      onDone();
+    }
   }
 }
 
@@ -124,15 +185,12 @@ export class SubagentHandle {
  * `subagent_type` and `description` from the input, and resolves
  * `output` on `tool-finished`.
  */
-export class SubagentDiscoveryHandle
-  implements AsyncIterable<SubagentHandle>
-{
+export class SubagentDiscoveryHandle implements AsyncIterable<SubagentHandle> {
   readonly #source: SubscriptionHandle<Event>;
   readonly #session: Subscribable;
   readonly #queue: SubagentHandle[] = [];
-  readonly #waiters: Array<
-    (value: IteratorResult<SubagentHandle>) => void
-  > = [];
+  readonly #waiters: Array<(value: IteratorResult<SubagentHandle>) => void> =
+    [];
   readonly #pending = new Map<
     string,
     {
@@ -143,10 +201,7 @@ export class SubagentDiscoveryHandle
   #sourcePump?: Promise<void>;
   #closed = false;
 
-  constructor(
-    source: SubscriptionHandle<Event>,
-    session: Subscribable,
-  ) {
+  constructor(source: SubscriptionHandle<Event>, session: Subscribable) {
     this.#source = source;
     this.#session = session;
   }
@@ -155,10 +210,8 @@ export class SubagentDiscoveryHandle
     if (event.method !== "tools") return undefined;
     const tools = event as ToolsEvent;
     const data = tools.params.data;
-    const toolCallId = (data as Record<string, unknown>)
-      .tool_call_id as string;
-    const toolName = (data as Record<string, unknown>)
-      .tool_name as string;
+    const toolCallId = (data as Record<string, unknown>).tool_call_id as string;
+    const toolName = (data as Record<string, unknown>).tool_name as string;
 
     if (toolName === "task" && data.event === "tool-started") {
       const rawInput = (data as Record<string, unknown>).input;

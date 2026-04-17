@@ -11,33 +11,52 @@ import { serialiseAsDict } from "../../utils/serde.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_MESSAGES_STREAM_CONFIG_KEY } from "../../protocol/constants.mjs";
+import { matchesSinkFilter } from "../../protocol/service.mjs";
 import type {
+  EventSinkFilter,
   ProtocolCommand,
   ProtocolEvent,
-  ProtocolTarget,
   SourceStreamEvent,
 } from "../../protocol/types.mjs";
 
-import type { EmbedRouteContext, EmbedSession } from "./types.mjs";
+import type { EmbedRouteContext, EmbedThread } from "./types.mjs";
 import {
-  ProtocolSessionOpenSchema,
   ProtocolCommandSchema,
-  SessionIdSchema,
+  ThreadIdSchema,
   isRecord,
   createStubRun,
 } from "./utils.mjs";
-import {
-  PROTOCOL_VERSION,
-  DEFAULT_PROTOCOL_STREAM_MODES,
-} from "./constants.mjs";
+import { DEFAULT_PROTOCOL_STREAM_MODES } from "./constants.mjs";
+
+const EventsFilterSchema = z
+  .object({
+    channels: z.array(z.string()),
+    namespaces: z.array(z.array(z.string())).optional(),
+    depth: z.number().int().nonnegative().optional(),
+  })
+  .strict();
 
 /**
- * Register v2 protocol session routes on an embed server Hono app.
+ * Register thread-centric v2 protocol routes on an embed server Hono app.
  *
  * @experimental Does not follow semver.
  */
 export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
-  const sessions = new Map<string, EmbedSession>();
+  const threads = new Map<string, EmbedThread>();
+
+  function ensureThread(threadId: string): EmbedThread {
+    let thread = threads.get(threadId);
+    if (thread == null) {
+      thread = {
+        threadId,
+        seq: 0,
+        eventSinks: new Map(),
+        queuedEvents: [],
+      };
+      threads.set(threadId, thread);
+    }
+    return thread;
+  }
 
   async function* trackRunStatus(
     source: AsyncGenerator<SourceStreamEvent>,
@@ -52,7 +71,7 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
     }
   }
 
-  function attachRunSession(session: EmbedSession, run: Run, threadId: string) {
+  function attachRunSession(thread: EmbedThread, run: Run) {
     const rawSource = streamState(run, {
       attempt: 1,
       getGraph: context.getGraph,
@@ -62,16 +81,16 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
 
     const protocolSession = new RunProtocolSession({
       runId: run.run_id,
-      threadId,
+      threadId: thread.threadId,
       initialRun: run,
-      getRun: async () => session.currentRun ?? null,
+      getRun: async () => thread.currentRun ?? null,
       getThreadState: async () => {
-        const thread = await context.threads.get(threadId);
-        const graphId = thread?.metadata?.graph_id as string | undefined;
+        const persisted = await context.threads.get(thread.threadId);
+        const graphId = persisted?.metadata?.graph_id as string | undefined;
         if (!graphId) return null;
         const graph = await context.getGraph(graphId);
         const snapshot = await graph.getState(
-          { configurable: { thread_id: threadId } },
+          { configurable: { thread_id: thread.threadId } },
           { subgraphs: true }
         );
         return {
@@ -81,39 +100,71 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
         };
       },
       source,
-      startSeq: session.seq,
+      startSeq: thread.seq,
+      passthrough: true,
       send: async (payload) => {
         const parsed = JSON.parse(payload) as ProtocolEvent;
-        session.seq = Math.max(session.seq, parsed.seq ?? session.seq);
-        if (session.sendEvent != null) {
-          await session.sendEvent(parsed);
-        } else {
-          session.queuedEvents.push(parsed);
+        thread.seq = Math.max(thread.seq, parsed.seq ?? thread.seq);
+        // Always buffer events so late-attaching sinks can replay
+        // matching history. Sinks with `pendingReplay` are skipped
+        // here; their replay loop delivers this event in buffer order.
+        thread.queuedEvents.push(parsed);
+        for (const sink of thread.eventSinks.values()) {
+          if (sink.pendingReplay) continue;
+          if (matchesSinkFilter(sink.filter, parsed)) {
+            await sink.send(parsed);
+          }
         }
       },
     });
 
-    session.runSession = protocolSession;
-    session.currentRun = run;
-    session.currentThreadId = threadId;
+    thread.runSession = protocolSession;
+    thread.currentRun = run;
     return protocolSession;
   }
 
-  async function handleRunInput(
-    session: EmbedSession,
-    command: ProtocolCommand
-  ) {
-    const params = isRecord(command.params) ? command.params : {};
-    const targetId = session.target.id;
-    const threadId = uuidv7();
+  async function handleRunInput(thread: EmbedThread, command: ProtocolCommand) {
+    const params: Record<string, unknown> = isRecord(command.params)
+      ? command.params
+      : {};
+    const assistantId =
+      typeof params.assistant_id === "string" ? params.assistant_id : undefined;
 
-    await context.threads.set(threadId, {
-      kind: "put",
-      metadata: { graph_id: targetId, assistant_id: targetId },
-    });
+    if (!assistantId) {
+      return jsonResponse({
+        type: "error",
+        id: command.id,
+        error: "invalid_argument",
+        message: "run.input requires an assistant_id.",
+      });
+    }
+    if (thread.assistantId != null && thread.assistantId !== assistantId) {
+      return jsonResponse({
+        type: "error",
+        id: command.id,
+        error: "invalid_argument",
+        message: `Thread ${thread.threadId} is bound to assistant ${thread.assistantId}; cannot run ${assistantId}.`,
+      });
+    }
+    thread.assistantId = assistantId;
 
-    const run = createStubRun(threadId, {
-      assistant_id: targetId,
+    // Lazily create the persisted thread on first use.
+    let persisted: Awaited<ReturnType<typeof context.threads.get>> | null =
+      null;
+    try {
+      persisted = await context.threads.get(thread.threadId);
+    } catch {
+      persisted = null;
+    }
+    if (persisted == null) {
+      await context.threads.set(thread.threadId, {
+        kind: "put",
+        metadata: { graph_id: assistantId, assistant_id: assistantId },
+      });
+    }
+
+    const run = createStubRun(thread.threadId, {
+      assistant_id: assistantId,
       on_disconnect: "cancel",
       input: params.input ?? null,
       config: {
@@ -131,62 +182,50 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
       stream_subgraphs: true,
     } as unknown as z.infer<typeof schemas.RunCreate>);
 
-    const protocolSession = attachRunSession(session, run, threadId);
+    const protocolSession = attachRunSession(thread, run);
     await protocolSession.start();
-
-    const pending = session.pendingCommands.splice(0);
-    for (const cmd of pending) {
-      if (cmd.method === "subscription.subscribe") {
-        session.activeSubscriptions.push(cmd);
-      }
-    }
-    for (const cmd of session.activeSubscriptions) {
-      await protocolSession.handleProtocolCommand(cmd, {
-        session_id: session.sessionId,
-        applied_through_seq: session.seq,
-      });
-    }
 
     return jsonResponse({
       type: "success",
       id: command.id,
       result: { run_id: run.run_id },
       meta: {
-        session_id: session.sessionId,
-        applied_through_seq: session.seq,
+        thread_id: thread.threadId,
+        applied_through_seq: thread.seq,
       },
     });
   }
 
   async function handleInputRespond(
-    session: EmbedSession,
+    thread: EmbedThread,
     command: ProtocolCommand
   ) {
-    const params = isRecord(command.params) ? command.params : {};
+    const params: Record<string, unknown> = isRecord(command.params)
+      ? command.params
+      : {};
     const interruptId = params.interrupt_id;
 
     if (typeof interruptId !== "string") {
       return jsonResponse({
         type: "error",
         id: command.id,
-        code: "invalid_argument",
+        error: "invalid_argument",
         message: "input.respond requires an interrupt_id.",
       });
     }
 
-    const threadId = session.currentThreadId;
-    if (threadId == null) {
+    const assistantId = thread.assistantId;
+    if (assistantId == null) {
       return jsonResponse({
         type: "error",
         id: command.id,
-        code: "no_such_run",
-        message: "No interrupted run is bound to this session.",
+        error: "no_such_run",
+        message: "Thread has no active assistant; call run.input first.",
       });
     }
 
-    const targetId = session.target.id;
-    const run = createStubRun(threadId, {
-      assistant_id: targetId,
+    const run = createStubRun(thread.threadId, {
+      assistant_id: assistantId,
       on_disconnect: "cancel",
       input: null,
       command: { resume: { [interruptId]: params.response } },
@@ -199,105 +238,42 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
       stream_subgraphs: true,
     } as unknown as z.infer<typeof schemas.RunCreate>);
 
-    const protocolSession = attachRunSession(session, run, threadId);
+    const protocolSession = attachRunSession(thread, run);
     await protocolSession.start();
-
-    for (const cmd of session.activeSubscriptions) {
-      await protocolSession.handleProtocolCommand(cmd, {
-        session_id: session.sessionId,
-        applied_through_seq: session.seq,
-      });
-    }
 
     return jsonResponse({
       type: "success",
       id: command.id,
       result: {},
       meta: {
-        session_id: session.sessionId,
-        applied_through_seq: session.seq,
+        thread_id: thread.threadId,
+        applied_through_seq: thread.seq,
       },
     });
   }
 
-  async function handleSessionCommand(
-    session: EmbedSession,
+  async function handleThreadCommand(
+    thread: EmbedThread,
     command: ProtocolCommand
   ) {
-    if (command.method === "session.describe") {
-      return jsonResponse({
-        type: "success",
-        id: command.id,
-        result: {
-          session_id: session.sessionId,
-          protocol_version: PROTOCOL_VERSION,
-          transport: {
-            name: "sse-http",
-            event_ordering: "seq",
-            command_delivery: "request-response",
-            media_transfer_modes: ["artifact-only", "upgrade-to-websocket"],
-          },
-          capabilities: {
-            modules: [],
-            payload_types: [],
-            content_block_types: [],
-          },
-        },
-        meta: {
-          session_id: session.sessionId,
-          applied_through_seq: session.seq,
-        },
-      });
-    }
-
-    if (command.method === "session.close") {
-      await session.runSession?.close();
-      sessions.delete(session.sessionId);
-      return jsonResponse({
-        type: "success",
-        id: command.id,
-        result: {},
-        meta: {
-          session_id: session.sessionId,
-          applied_through_seq: session.seq,
-        },
-      });
-    }
-
     if (command.method === "run.input") {
-      return await handleRunInput(session, command);
+      return await handleRunInput(thread, command);
     }
-
     if (command.method === "input.respond") {
-      return await handleInputRespond(session, command);
+      return await handleInputRespond(thread, command);
     }
-
-    if (session.runSession == null) {
-      session.pendingCommands.push(command);
-      const result: Record<string, unknown> = {};
-      if (command.method === "subscription.subscribe") {
-        result.subscription_id = uuidv7();
-        result.replayed_events = 0;
-      }
+    if (thread.runSession == null) {
       return jsonResponse({
-        type: "success",
+        type: "error",
         id: command.id,
-        result,
-        meta: {
-          session_id: session.sessionId,
-          applied_through_seq: session.seq,
-        },
+        error: "no_such_run",
+        message: "No active run is bound to this thread.",
       });
     }
-
-    if (command.method === "subscription.subscribe") {
-      session.activeSubscriptions.push(command);
-    }
-
     return jsonResponse(
-      await session.runSession.handleProtocolCommand(command, {
-        session_id: session.sessionId,
-        applied_through_seq: session.seq,
+      await thread.runSession.handleProtocolCommand(command, {
+        thread_id: thread.threadId,
+        applied_through_seq: thread.seq,
       })
     );
   }
@@ -309,98 +285,41 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
   }
 
   api.post(
-    "/v2/sessions",
-    zValidator("json", ProtocolSessionOpenSchema),
+    "/v2/threads/:thread_id/commands",
+    zValidator("param", ThreadIdSchema),
+    zValidator("json", ProtocolCommandSchema),
     async (c) => {
-      const payload = c.req.valid("json");
-      const sessionId = uuidv7();
-      const target: ProtocolTarget = { id: payload.params.target.id };
-
-      const session: EmbedSession = {
-        sessionId,
-        target,
-        seq: 0,
-        queuedEvents: [],
-        pendingCommands: [],
-        activeSubscriptions: [],
-      };
-      sessions.set(sessionId, session);
-
-      return jsonExtra(c, {
-        type: "success",
-        id: 0,
-        result: {
-          session_id: sessionId,
-          protocol_version: PROTOCOL_VERSION,
-          transport: {
-            name: "sse-http",
-            event_ordering: "seq",
-            command_delivery: "request-response",
-            media_transfer_modes: ["artifact-only", "upgrade-to-websocket"],
-          },
-          capabilities: {
-            modules: [],
-            payload_types: [],
-            content_block_types: [],
-          },
-          eventsUrl: `/v2/sessions/${sessionId}/events`,
-          commandsUrl: `/v2/sessions/${sessionId}/commands`,
-        },
-        meta: {
-          session_id: sessionId,
-          applied_through_seq: 0,
-        },
-      });
+      const { thread_id } = c.req.valid("param");
+      const thread = ensureThread(thread_id);
+      const command = c.req.valid("json") as unknown as ProtocolCommand;
+      return await handleThreadCommand(thread, command);
     }
   );
 
   api.post(
-    "/v2/sessions/:session_id/commands",
-    zValidator("param", SessionIdSchema),
-    zValidator("json", ProtocolCommandSchema),
+    "/v2/threads/:thread_id/events",
+    zValidator("param", ThreadIdSchema),
+    zValidator("json", EventsFilterSchema),
     async (c) => {
-      const { session_id } = c.req.valid("param");
-      const session = sessions.get(session_id);
-      if (session == null) return c.json({ error: "Session not found" }, 404);
+      const { thread_id } = c.req.valid("param");
+      const thread = ensureThread(thread_id);
 
-      const command = c.req.valid("json") as unknown as ProtocolCommand;
-      return await handleSessionCommand(session, command);
-    }
-  );
-
-  api.get(
-    "/v2/sessions/:session_id/events",
-    zValidator("param", SessionIdSchema),
-    async (c) => {
-      const { session_id } = c.req.valid("param");
-      const session = sessions.get(session_id);
-      if (session == null) return c.body("Session not found", 404);
-
-      const lastEventId = c.req.header("Last-Event-ID") || undefined;
+      const body = c.req.valid("json");
+      const sinkId = uuidv7();
+      const filter: EventSinkFilter = {
+        channels: new Set(body.channels),
+        namespaces: body.namespaces,
+        depth: body.depth,
+      };
 
       return streamSSE(c, async (stream) => {
         const delivered = new Set<string>();
-        const queued = session.queuedEvents.filter((event) => {
-          if (
-            lastEventId != null &&
-            event.event_id != null &&
-            event.event_id <= lastEventId
-          ) {
-            return false;
-          }
-          return true;
-        });
-        for (const event of queued) {
-          if (event.event_id == null) continue;
-          delivered.add(event.event_id);
-          await stream.writeSSE({
-            id: event.event_id,
-            event: event.method,
-            data: serialiseAsDict(event),
-          });
-        }
 
-        session.sendEvent = async (event) => {
+        const writeSse = async (event: {
+          event_id?: string | null;
+          method: string;
+          [k: string]: unknown;
+        }) => {
           if (event.event_id == null) return;
           if (delivered.has(event.event_id)) return;
           delivered.add(event.event_id);
@@ -411,16 +330,32 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
           });
         };
 
-        for (const event of session.queuedEvents.splice(0)) {
-          if (event.event_id == null) continue;
-          if (delivered.has(event.event_id)) continue;
-          delivered.add(event.event_id);
-          await stream.writeSSE({
-            id: event.event_id,
-            event: event.method,
-            data: serialiseAsDict(event),
-          });
+        // Register the sink as replaying so the live `send` path skips
+        // it while we drain buffered events in order. A cursor-based
+        // drain catches any events pushed during our awaits, then we
+        // unblock live delivery.
+        const sink = {
+          id: sinkId,
+          filter,
+          send: writeSse,
+          pendingReplay: true,
+        };
+        thread.eventSinks.set(sinkId, sink);
+        try {
+          let cursor = 0;
+          while (cursor < thread.queuedEvents.length) {
+            const event = thread.queuedEvents[cursor++];
+            if (matchesSinkFilter(filter, event)) {
+              await writeSse(event);
+            }
+          }
+        } finally {
+          sink.pendingReplay = false;
         }
+
+        stream.onAbort(() => {
+          thread.eventSinks.delete(sinkId);
+        });
 
         await new Promise<void>((resolve) => {
           stream.onAbort(() => resolve());
@@ -429,17 +364,6 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
     }
   );
 
-  api.delete(
-    "/v2/sessions/:session_id",
-    zValidator("param", SessionIdSchema),
-    async (c) => {
-      const { session_id } = c.req.valid("param");
-      const session = sessions.get(session_id);
-      if (session != null) {
-        await session.runSession?.close();
-        sessions.delete(session_id);
-      }
-      return c.body(null, 204);
-    }
-  );
+  // jsonExtra is no longer needed but keep import indirection minimal.
+  void jsonExtra;
 }

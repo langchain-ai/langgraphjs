@@ -8,8 +8,10 @@ import { z } from "zod/v4";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+export const modelName = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5";
+
 export const model = new ChatAnthropic({
-  model: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5",
+  model: modelName,
   temperature: 0,
 });
 

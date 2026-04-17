@@ -134,10 +134,12 @@ export async function agent() {
     backend,
     checkpointer,
     middleware: [
+      // @ts-ignore
       createQuickJSMiddleware({
         backend,
         ptc: ["task"],
       }),
+      // @ts-ignore
       createMiddleware({
         name: "csv-fixture",
         beforeAgent: async (runtime) => {

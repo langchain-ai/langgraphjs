@@ -30,6 +30,20 @@ import type {
 export { STREAM_V2_MODES };
 
 /**
+ * Structural `PromiseLike<T>` predicate — true for thenables including
+ * native promises, user-constructed `{ then }` objects, and helper
+ * wrappers. Used by {@link StreamMux.wireChannels} to detect final-value
+ * projections distinctly from streaming `StreamChannel` values.
+ */
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value != null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+/**
  * Symbol key used by {@link StreamMux} to resolve the values promise on a
  * stream handle. Using a symbol keeps this off the public autocomplete surface.
  */
@@ -114,6 +128,16 @@ export class StreamMux {
   readonly #createSubgraphStream: SubgraphStreamFactory | undefined;
 
   /**
+   * Final-value projection keys tracked for remote surfacing. Populated
+   * by {@link wireChannels} when a transformer's projection contains a
+   * `PromiseLike` value. Each entry is flushed as a `custom:<name>`
+   * protocol event during {@link close} so that remote clients can
+   * observe final-value transformers via `thread.extensions.<name>`.
+   */
+  readonly #finalValues: Array<{ name: string; promise: Promise<unknown> }> =
+    [];
+
+  /**
    * @param createSubgraphStream - Optional factory for creating subgraph
    *   stream handles when new namespaces are discovered. When omitted,
    *   subgraph discovery is disabled (useful for unit-testing the mux
@@ -168,27 +192,52 @@ export class StreamMux {
   }
 
   /**
-   * Scans a transformer projection for {@link StreamChannel} instances and
-   * wires each one to auto-forward pushes as protocol events.
+   * Scans a transformer projection for streaming and final-value
+   * primitives and wires each one to auto-forward to the protocol
+   * event stream.
+   *
+   * Two projection shapes are recognised:
+   *
+   *   - {@link StreamChannel} values — each `push()` is forwarded
+   *     immediately as a protocol event on the channel's declared
+   *     `channelName` method (streaming transformers).
+   *
+   *   - `PromiseLike<unknown>` values — tracked as final-value
+   *     projections and flushed on {@link close} as a single
+   *     `custom:<key>` event, where `<key>` is the projection key.
+   *     This mirrors the in-process `await run.extensions.<key>`
+   *     ergonomics on remote clients via
+   *     `await thread.extensions.<key>`.
+   *
+   * Plain values that are neither are ignored — they remain
+   * in-process-only, matching prior behaviour.
    *
    * @param projection - The object returned by `transformer.init()`.
    */
   wireChannels(projection: Record<string, unknown>): void {
-    for (const value of Object.values(projection)) {
-      if (!isStreamChannel(value)) continue;
-      this.#channels.push(value);
-      value._wire((item: unknown) => {
-        this._events.push({
-          type: "event",
-          seq: this.#nextEmitSeq++,
-          method: value.channelName as ProtocolEvent["method"],
-          params: {
-            namespace: this.#currentNamespace,
-            timestamp: Date.now(),
-            data: item,
-          },
+    for (const [key, value] of Object.entries(projection)) {
+      if (isStreamChannel(value)) {
+        this.#channels.push(value);
+        value._wire((item: unknown) => {
+          this._events.push({
+            type: "event",
+            seq: this.#nextEmitSeq++,
+            method: value.channelName as ProtocolEvent["method"],
+            params: {
+              namespace: this.#currentNamespace,
+              timestamp: Date.now(),
+              data: item,
+            },
+          });
         });
-      });
+        continue;
+      }
+      if (isPromiseLike(value)) {
+        this.#finalValues.push({
+          name: key,
+          promise: Promise.resolve(value),
+        });
+      }
     }
   }
 
@@ -254,8 +303,16 @@ export class StreamMux {
 
   /**
    * Gracefully ends the stream: resolves values promises on all known
-   * streams, finalizes every transformer, auto-closes channels, and
-   * closes both event logs.
+   * streams, finalizes every transformer, auto-closes streaming
+   * channels, flushes any final-value projections as `custom:<name>`
+   * events, and closes both event logs.
+   *
+   * When final-value projections are present, `_events.close()` is
+   * deferred until every tracked projection promise has settled so
+   * remote consumers observe the flushed values before their event
+   * stream ends. Callers do not need to await — `close()` returns
+   * synchronously and any downstream consumer iterating
+   * {@link _events} naturally waits for the final events.
    */
   close(): void {
     this.#closed = true;
@@ -273,8 +330,40 @@ export class StreamMux {
       channel._close();
     }
 
-    this._events.close();
-    this._discoveries.close();
+    const finalValues = this.#finalValues;
+    if (finalValues.length === 0) {
+      this._events.close();
+      this._discoveries.close();
+    } else {
+      void Promise.allSettled(
+        finalValues.map(async ({ name, promise }) => {
+          try {
+            const resolved = await promise;
+            if (!this._events.done) {
+              this._events.push({
+                type: "event",
+                seq: this.#nextEmitSeq++,
+                method: "custom",
+                params: {
+                  namespace: [],
+                  timestamp: Date.now(),
+                  data: { name, payload: resolved },
+                },
+              });
+            }
+          } catch {
+            // Rejected final-value projections are intentionally dropped
+            // so a single failing extension can't poison the protocol
+            // stream. The corresponding in-process Promise still
+            // surfaces the rejection to its direct awaiters via the
+            // transformer's own `fail()` hook.
+          }
+        })
+      ).then(() => {
+        this._events.close();
+        this._discoveries.close();
+      });
+    }
 
     for (const stream of this.#streamMap.values()) {
       stream[RESOLVE_VALUES](undefined);

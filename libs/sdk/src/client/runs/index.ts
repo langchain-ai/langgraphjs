@@ -13,6 +13,8 @@ import type {
   StreamEvent,
 } from "../../types.js";
 import type { StreamMode, TypedAsyncGenerator } from "../../types.stream.js";
+import { v7 as uuidv7 } from "uuid";
+
 import {
   ProtocolEventAdapter,
   canUseProtocolSse,
@@ -20,7 +22,6 @@ import {
   isProtocolErrorResponse,
   type ProtocolCommandResponse,
   type ProtocolEventMessage,
-  type ProtocolOpenSessionResponse,
 } from "../../utils/protocol.js";
 import { BaseClient, getRunMetadataFromResponse, isRecord } from "../base.js";
 
@@ -50,26 +51,8 @@ export class RunsClient<
     return true;
   }
 
-  private async openProtocolSession(
-    assistantId: string,
-    signal?: AbortSignal
-  ): Promise<ProtocolOpenSessionResponse> {
-    return this.fetch<ProtocolOpenSessionResponse>("/v2/sessions", {
-      method: "POST",
-      json: {
-        method: "session.open",
-        params: {
-          protocolVersion: "0.3.0",
-          target: { kind: "agent", id: assistantId },
-          preferredTransports: ["sse-http"],
-        },
-      },
-      signal,
-    });
-  }
-
   private async postProtocolCommand(
-    sessionId: string,
+    threadId: string,
     command: {
       id: number;
       method: string;
@@ -78,7 +61,7 @@ export class RunsClient<
     signal?: AbortSignal
   ): Promise<ProtocolCommandResponse> {
     return this.fetch<ProtocolCommandResponse>(
-      `/v2/sessions/${sessionId}/commands`,
+      `/v2/threads/${threadId}/commands`,
       {
         method: "POST",
         json: command,
@@ -87,81 +70,27 @@ export class RunsClient<
     );
   }
 
-  private async getProtocolThreadId(sessionId: string, signal?: AbortSignal) {
-    const response = await this.postProtocolCommand(
-      sessionId,
-      {
-        id: 3,
-        method: "state.get",
-        params: {},
-      },
-      signal
-    );
-    if (isProtocolErrorResponse(response)) return undefined;
-    const checkpoint = isRecord(response.result)
-      ? response.result.checkpoint
-      : undefined;
-    return isRecord(checkpoint) && typeof checkpoint.thread_id === "string"
-      ? checkpoint.thread_id
-      : undefined;
-  }
-
   private async *streamViaProtocolSse<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
     TSubgraphs extends boolean = false,
   >(
-    threadId: string,
+    threadId: string | null,
     assistantId: string,
     payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: unknown }> {
-    const openResponse = await this.openProtocolSession(
-      assistantId,
-      payload?.signal
-    );
-    const sessionId =
-      isRecord(openResponse.result) &&
-      typeof openResponse.result.sessionId === "string"
-        ? openResponse.result.sessionId
-        : undefined;
-
-    if (!sessionId) {
-      throw new Error("Protocol session did not return a session ID.");
-    }
-
-    const subscribeResponse = await this.postProtocolCommand(
-      sessionId,
-      {
-        id: 1,
-        method: "subscription.subscribe",
-        params: {
-          channels: getProtocolChannels(payload?.streamMode),
-          ...(payload?.streamSubgraphs
-            ? {}
-            : {
-                namespaces: [[]],
-                depth: 0,
-              }),
-        },
-      },
-      payload?.signal
-    );
-
-    if (isProtocolErrorResponse(subscribeResponse)) {
-      throw new Error(
-        `Protocol subscribe failed: ${subscribeResponse.message}`
-      );
-    }
+    const resolvedThreadId = threadId ?? uuidv7();
 
     const protocolInput =
       payload?.command?.resume !== undefined && payload?.input == null
         ? payload.command.resume
         : payload?.input;
     const runResponse = await this.postProtocolCommand(
-      sessionId,
+      resolvedThreadId,
       {
-        id: 2,
+        id: 1,
         method: "run.input",
         params: {
+          assistant_id: assistantId,
           input: protocolInput ?? null,
           config: payload?.config,
           metadata: payload?.metadata,
@@ -183,49 +112,47 @@ export class RunsClient<
       throw new Error("Protocol run did not return a run ID.");
     }
 
-    const resolvedThreadId =
-      threadId ?? (await this.getProtocolThreadId(sessionId, payload?.signal));
-
     payload?.onRunCreated?.({
       run_id: runId,
-      ...(resolvedThreadId != null ? { thread_id: resolvedThreadId } : {}),
+      thread_id: resolvedThreadId,
     });
 
     const adapter = new ProtocolEventAdapter();
+    const filterBody = {
+      channels: getProtocolChannels(payload?.streamMode),
+      ...(payload?.streamSubgraphs
+        ? {}
+        : {
+            namespaces: [[]],
+            depth: 0,
+          }),
+    };
 
-    try {
-      if (resolvedThreadId != null) {
-        yield {
-          event: "metadata",
-          data: { run_id: runId, thread_id: resolvedThreadId },
-        };
+    yield {
+      event: "metadata",
+      data: { run_id: runId, thread_id: resolvedThreadId },
+    };
+
+    const eventStream = this.streamWithRetry<{
+      id?: string;
+      event: string;
+      data: unknown;
+    }>({
+      endpoint: `/v2/threads/${resolvedThreadId}/events`,
+      method: "POST",
+      json: filterBody,
+      signal: payload?.signal,
+      headers: { Accept: "text/event-stream" },
+    });
+
+    for await (const protocolEvent of eventStream) {
+      const message = isRecord(protocolEvent.data)
+        ? (protocolEvent.data as ProtocolEventMessage)
+        : undefined;
+      if (message?.type !== "event") continue;
+      for (const adapted of adapter.adapt(message)) {
+        yield adapted;
       }
-
-      const eventStream = this.streamWithRetry<{
-        id?: string;
-        event: string;
-        data: unknown;
-      }>({
-        endpoint: `/v2/sessions/${sessionId}/events`,
-        method: "GET",
-        signal: payload?.signal,
-        headers: { Accept: "text/event-stream" },
-      });
-
-      for await (const protocolEvent of eventStream) {
-        const message = isRecord(protocolEvent.data)
-          ? (protocolEvent.data as ProtocolEventMessage)
-          : undefined;
-        if (message?.type !== "event") continue;
-        for (const adapted of adapter.adapt(message)) {
-          yield adapted;
-        }
-      }
-    } finally {
-      await this.fetch<void>(`/v2/sessions/${sessionId}`, {
-        method: "DELETE",
-        signal: undefined,
-      }).catch(() => undefined);
     }
   }
 

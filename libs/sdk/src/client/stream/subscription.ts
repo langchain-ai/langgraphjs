@@ -1,7 +1,6 @@
 import type {
   Channel,
   Event,
-  MediaType,
   Namespace,
   SubscribeParams,
 } from "@langchain/protocol";
@@ -34,24 +33,6 @@ function namespaceMatches(
   });
 }
 
-function mediaTypeMatches(
-  event: Event,
-  mediaTypes: MediaType[] | undefined
-): boolean {
-  if (!mediaTypes || mediaTypes.length === 0) {
-    return true;
-  }
-
-  if (
-    event.method === "media.streamStart" ||
-    event.method === "media.artifact"
-  ) {
-    return mediaTypes.includes(event.params.media_type);
-  }
-
-  return true;
-}
-
 /**
  * Maps a protocol event method to its subscription channel.
  *
@@ -76,21 +57,8 @@ export function inferChannel(event: Event): Channel | undefined {
     }
     case "lifecycle":
       return "lifecycle";
-    case "media.streamStart":
-    case "media.streamEnd":
-    case "media.artifact":
-      return "media";
-    case "resource.changed":
-      return "resource";
-    case "sandbox.started":
-    case "sandbox.output":
-    case "sandbox.exited":
-      return "sandbox";
     case "input.requested":
       return "input";
-    case "usage.llmCall":
-    case "usage.summary":
-      return "usage";
     case "debug":
       return "debug";
     case "checkpoints":
@@ -123,15 +91,9 @@ export function matchesSubscription(
     return false;
   }
 
-  if (
-    !namespaceMatches(
-      event.params.namespace,
-      definition.namespaces,
-      definition.depth
-    )
-  ) {
-    return false;
-  }
-
-  return mediaTypeMatches(event, definition.media_types);
+  return namespaceMatches(
+    event.params.namespace,
+    definition.namespaces,
+    definition.depth
+  );
 }

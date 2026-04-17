@@ -12,9 +12,11 @@ export const toError = (error: unknown) =>
   error instanceof Error ? error : new Error(String(error));
 
 export const toWebSocketUrl = (apiUrl: string): string => {
+  // Extract path from the input (e.g. "http://host/v2/threads/X") and
+  // swap the scheme to ws/wss. The caller passes a fully-formed URL
+  // with the desired path.
   const url = new URL(apiUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/v2/runs";
   url.search = "";
   url.hash = "";
   return url.toString();

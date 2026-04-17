@@ -1,8 +1,6 @@
 import { AsyncQueue } from "./queue.js";
 import type {
   Message,
-  SessionOpenParams,
-  SessionResult,
   Command,
   CommandResponse,
   ErrorResponse,
@@ -18,10 +16,12 @@ import type {
 import type { TransportAdapter } from "../transport.js";
 
 /**
- * Transport adapter that speaks the protocol over a bidirectional WebSocket.
+ * Transport adapter that speaks the thread-centric protocol over a
+ * bidirectional WebSocket. Bound to a specific `threadId` — the socket
+ * connects to `ws://.../v2/threads/:thread_id`.
  */
 export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
-  sessionId: string | null = null;
+  readonly threadId: string;
 
   private readonly queue = new AsyncQueue<Message>();
 
@@ -43,16 +43,21 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
   constructor(options: ProtocolWebSocketTransportOptions) {
     this.apiUrl = options.apiUrl;
+    this.threadId = options.threadId;
     this.defaultHeaders = options.defaultHeaders;
     this.onRequest = options.onRequest;
     this.webSocketFactory =
       options.webSocketFactory ?? ((url) => new WebSocket(url));
   }
 
-  async open(params: SessionOpenParams): Promise<SessionResult> {
+  async open(): Promise<void> {
+    if (this.socket != null) return;
     this.assertBrowserSafeTransportConfig();
 
-    const socket = this.webSocketFactory(toWebSocketUrl(this.apiUrl));
+    const wsUrl = toWebSocketUrl(
+      `${this.apiUrl.replace(/\/$/, "")}/v2/threads/${this.threadId}`
+    );
+    const socket = this.webSocketFactory(wsUrl);
     this.socket = socket;
     this.closed = false;
     this.intentionalClose = false;
@@ -77,26 +82,6 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
       socket.addEventListener("open", onOpen, { once: true });
       socket.addEventListener("error", onError, { once: true });
     });
-
-    const response = await this.sendCommand({
-      id: 0,
-      method: "session.open",
-      params,
-    } satisfies Command);
-
-    if (response.type === "error") {
-      throw new Error(response.message);
-    }
-
-    if (
-      !isRecord(response.result) ||
-      typeof response.result.session_id !== "string"
-    ) {
-      throw new Error("Protocol session did not return a session ID.");
-    }
-
-    this.sessionId = response.result.session_id;
-    return response.result as SessionResult;
   }
 
   async send(
@@ -125,10 +110,9 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
     this.closed = true;
     this.intentionalClose = true;
-    this.sessionId = null;
 
     for (const { reject } of this.pending.values()) {
-      reject(new Error("Protocol WebSocket session closed."));
+      reject(new Error("Protocol WebSocket connection closed."));
     }
     this.pending.clear();
     this.queue.close();

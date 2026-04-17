@@ -5,11 +5,7 @@ import type {
 } from "@langchain/langgraph";
 
 import type { Metadata, Run } from "../../storage/types.mjs";
-import type {
-  ProtocolCommand,
-  ProtocolEvent,
-  ProtocolTarget,
-} from "../../protocol/types.mjs";
+import type { ProtocolEvent } from "../../protocol/types.mjs";
 import type { RunProtocolSession } from "../../protocol/session/index.mjs";
 
 export type AnyPregel = Pregel<any, any, any, any, any>;
@@ -66,15 +62,28 @@ export interface ThreadRunState {
   pendingRuns: Run[];
 }
 
-export interface EmbedSession {
-  sessionId: string;
-  target: ProtocolTarget;
+/**
+ * In-memory record for an active embed thread connection.
+ */
+export interface EmbedThread {
+  threadId: string;
+  assistantId?: string;
   seq: number;
   runSession?: RunProtocolSession;
-  sendEvent?: (message: ProtocolEvent) => Promise<void> | void;
+  /** Per-connection filtered event sinks (SSE). */
+  eventSinks: Map<
+    string,
+    {
+      id: string;
+      filter: {
+        channels: Set<string>;
+        namespaces?: string[][];
+        depth?: number;
+      };
+      send: (message: ProtocolEvent) => Promise<void> | void;
+      pendingReplay?: boolean;
+    }
+  >;
   queuedEvents: ProtocolEvent[];
-  pendingCommands: ProtocolCommand[];
-  activeSubscriptions: ProtocolCommand[];
   currentRun?: Run;
-  currentThreadId?: string;
 }

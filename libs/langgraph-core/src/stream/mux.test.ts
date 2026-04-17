@@ -280,6 +280,147 @@ describe("StreamMux", () => {
     }).rejects.toThrow("boom");
   });
 
+  it("final-value projections flush as custom:<key> events on close", async () => {
+    const mux = new StreamMux();
+    let resolveToolCallCount!: (value: number) => void;
+    const toolCallCount = new Promise<number>((r) => {
+      resolveToolCallCount = r;
+    });
+
+    const projection = { toolCallCount };
+    const transformer: StreamTransformer = {
+      init: () => projection,
+      process: () => true,
+      finalize: () => resolveToolCallCount(7),
+    };
+    mux.addTransformer(transformer);
+    mux.wireChannels(projection);
+
+    mux.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(1);
+    expect(events[0].method).toBe("custom");
+    expect(events[0].params.data).toEqual({
+      name: "toolCallCount",
+      payload: 7,
+    });
+    expect(mux._events.done).toBe(true);
+    expect(mux._discoveries.done).toBe(true);
+  });
+
+  it("uses the projection key as the custom event name", async () => {
+    const mux = new StreamMux();
+    let resolveA!: (value: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    const projection = {
+      alpha: new Promise<number>((r) => {
+        resolveA = r as (v: unknown) => void;
+      }),
+      beta: new Promise<string>((r) => {
+        resolveB = r as (v: unknown) => void;
+      }),
+    };
+    mux.addTransformer({
+      init: () => projection,
+      process: () => true,
+      finalize: () => {
+        resolveA(1);
+        resolveB("two");
+      },
+    });
+    mux.wireChannels(projection);
+    mux.close();
+
+    const events = await collect(mux._events.iterate());
+    const names = events.map((e) => (e.params.data as { name: string }).name);
+    expect(names.sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("rejected final-value promises are dropped and do not block close", async () => {
+    const mux = new StreamMux();
+    let rejectFailing!: (err: unknown) => void;
+    let resolveFine!: (value: number) => void;
+    const projection = {
+      failing: new Promise<number>((_, reject) => {
+        rejectFailing = reject;
+      }),
+      fine: new Promise<number>((r) => {
+        resolveFine = r;
+      }),
+    };
+    mux.addTransformer({
+      init: () => projection,
+      process: () => true,
+      finalize: () => {
+        rejectFailing(new Error("nope"));
+        resolveFine(42);
+      },
+    });
+    mux.wireChannels(projection);
+    mux.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(1);
+    expect(events[0].params.data).toEqual({ name: "fine", payload: 42 });
+    expect(mux._events.done).toBe(true);
+  });
+
+  it("ignores non-StreamChannel / non-Promise projection values", async () => {
+    const mux = new StreamMux();
+    const projection = {
+      plain: 42,
+      nested: { foo: "bar" },
+      fn: () => 1,
+    };
+    mux.addTransformer({
+      init: () => projection,
+      process: () => true,
+    });
+    mux.wireChannels(projection);
+    mux.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(0);
+    expect(mux._events.done).toBe(true);
+  });
+
+  it("StreamChannel and Promise projections coexist in one transformer", async () => {
+    const mux = new StreamMux();
+    const activity = new StreamChannel<{ event: string }>("activity");
+    let resolveCount!: (value: number) => void;
+    const projection = {
+      activity,
+      count: new Promise<number>((r) => {
+        resolveCount = r;
+      }),
+    };
+    mux.addTransformer({
+      init: () => projection,
+      process: () => {
+        activity.push({ event: "tool-started" });
+        return true;
+      },
+      finalize: () => resolveCount(3),
+    });
+    mux.wireChannels(projection);
+
+    mux.push([], makeEvent("messages", [], 0));
+    mux.close();
+
+    const events = await collect(mux._events.iterate());
+    const methods = events.map((e) => e.method);
+    expect(methods).toContain("activity");
+    expect(methods).toContain("custom");
+    const finalEvent = events.find(
+      (e) =>
+        e.method === "custom" &&
+        (e.params.data as { name?: string }).name === "count"
+    );
+    expect(finalEvent).toBeDefined();
+    expect((finalEvent!.params.data as { payload: number }).payload).toBe(3);
+  });
+
   it("addTransformer + process order", () => {
     const mux = new StreamMux();
     const order: number[] = [];

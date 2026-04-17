@@ -1,15 +1,10 @@
 import {
-  ProtocolClient,
   ProtocolSseTransportAdapter,
-  type ProtocolRequestHook,
   ProtocolWebSocketTransportAdapter,
+  ThreadStream,
+  type ProtocolRequestHook,
 } from "@langchain/langgraph-sdk/client";
-import type { CapabilityAdvertisement, Channel } from "@langchain/protocol";
-import type {
-  Client,
-  StreamMode,
-  StreamProtocol,
-} from "@langchain/langgraph-sdk";
+import type { Client, StreamProtocol } from "@langchain/langgraph-sdk";
 import type { EventStreamEvent } from "@langchain/langgraph-sdk/ui";
 import {
   ProtocolEventAdapter,
@@ -29,15 +24,6 @@ type RunsClientInternals = {
   };
 };
 
-type SessionOpenParams = Parameters<ProtocolClient["open"]>[0];
-type SessionOpenConfig = SessionOpenParams extends { config?: infer T }
-  ? T
-  : never;
-type RunInputParams = Parameters<
-  Awaited<ReturnType<ProtocolClient["open"]>>["run"]["input"]
->[0];
-type RunInputConfig = RunInputParams extends { config?: infer T } ? T : never;
-
 type ProtocolTransportMode = "sse-http" | "websocket";
 
 type ProtocolRuntimeConfig = ReturnType<typeof getProtocolConfig> & {
@@ -45,29 +31,6 @@ type ProtocolRuntimeConfig = ReturnType<typeof getProtocolConfig> & {
 };
 
 const ROOT_NAMESPACE: string[] = [];
-const PROTOCOL_COMMAND_MODULES: CapabilityAdvertisement["modules"] = [
-  {
-    name: "session",
-    commands: ["open", "describe", "close"],
-  },
-  {
-    name: "subscription",
-    commands: ["subscribe", "unsubscribe", "reconnect"],
-  },
-  {
-    name: "run",
-    commands: ["input"],
-  },
-  {
-    name: "input",
-    commands: ["respond"],
-    channels: ["input"],
-  },
-];
-
-const PROTOCOL_CHANNEL_MODULE_NAME: Partial<Record<Channel, string>> = {
-  lifecycle: "agent",
-};
 
 const isTerminalLifecycleEvent = (event: ProtocolEventMessage): boolean => {
   if (event.method !== "lifecycle") {
@@ -129,60 +92,10 @@ function getProtocolTransportMode(
   return streamProtocol === "v2-websocket" ? "websocket" : "sse-http";
 }
 
-function getProtocolCapabilities(
-  streamMode?: StreamMode | StreamMode[]
-): CapabilityAdvertisement {
-  const modules = new Map<
-    string,
-    { name: string; commands?: string[]; channels?: Channel[] }
-  >();
-
-  const upsertModule = (module: {
-    name: string;
-    commands?: string[];
-    channels?: Channel[];
-  }) => {
-    const existing = modules.get(module.name);
-    if (!existing) {
-      modules.set(module.name, {
-        name: module.name,
-        commands: module.commands ? [...module.commands] : undefined,
-        channels: module.channels ? [...module.channels] : undefined,
-      });
-      return;
-    }
-
-    if (module.commands?.length) {
-      existing.commands = [
-        ...new Set([...(existing.commands ?? []), ...module.commands]),
-      ];
-    }
-    if (module.channels?.length) {
-      existing.channels = [
-        ...new Set([...(existing.channels ?? []), ...module.channels]),
-      ];
-    }
-  };
-
-  for (const module of PROTOCOL_COMMAND_MODULES) {
-    upsertModule(module);
-  }
-  for (const channel of getProtocolChannels(streamMode)) {
-    upsertModule({
-      name: PROTOCOL_CHANNEL_MODULE_NAME[channel] ?? channel,
-      channels: [channel],
-    });
-  }
-
-  return {
-    modules: [...modules.values()],
-  };
-}
-
 function bindThreadConfig(
   config: unknown,
   threadId: string
-): SessionOpenConfig & RunInputConfig {
+): Record<string, unknown> {
   const base =
     config != null && typeof config === "object"
       ? (config as Record<string, unknown>)
@@ -198,7 +111,7 @@ function bindThreadConfig(
       ...configurable,
       thread_id: threadId,
     },
-  } as SessionOpenConfig & RunInputConfig;
+  };
 }
 
 export class ProtocolStreamRuntime<
@@ -214,7 +127,7 @@ export class ProtocolStreamRuntime<
 > {
   private readonly transportConfig: ProtocolRuntimeConfig;
   private readonly protocolTransport: ProtocolTransportMode;
-  private activeSession?: Awaited<ReturnType<ProtocolClient["open"]>>;
+  private activeThread?: ThreadStream;
 
   constructor(
     private readonly client: Client<StateType, UpdateType, CustomType>,
@@ -246,25 +159,29 @@ export class ProtocolStreamRuntime<
   >[0]): Promise<
     AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
   > {
-    const protocolClient = new ProtocolClient(() =>
+    const transport =
       this.protocolTransport === "websocket"
-        ? new ProtocolWebSocketTransportAdapter(this.transportConfig)
-        : new ProtocolSseTransportAdapter(this.transportConfig)
-    );
-    const boundConfig = bindThreadConfig(submitOptions?.config, threadId);
-    const sessionParams: SessionOpenParams = {
-      protocol_version: "0.3.0",
-      target: {
-        id: assistantId,
-      },
-      config: boundConfig,
-      capabilities: getProtocolCapabilities(streamMode),
-      preferred_transports: [this.protocolTransport],
-    };
-    const session = await protocolClient.open(sessionParams);
-    this.activeSession = session;
+        ? new ProtocolWebSocketTransportAdapter({
+            apiUrl: this.transportConfig.apiUrl,
+            threadId,
+            defaultHeaders: this.transportConfig.defaultHeaders,
+            onRequest: this.transportConfig.onRequest,
+            webSocketFactory: this.transportConfig.webSocketFactory,
+          })
+        : new ProtocolSseTransportAdapter({
+            apiUrl: this.transportConfig.apiUrl,
+            threadId,
+            defaultHeaders: this.transportConfig.defaultHeaders,
+            onRequest: this.transportConfig.onRequest,
+            fetch: this.transportConfig.fetch,
+          });
 
-    const subscription = await session.subscribe({
+    const thread = new ThreadStream(transport, { assistantId });
+    this.activeThread = thread;
+
+    const boundConfig = bindThreadConfig(submitOptions?.config, threadId);
+
+    const subscription = await thread.subscribe({
       channels: getProtocolChannels(streamMode),
     });
 
@@ -280,7 +197,7 @@ export class ProtocolStreamRuntime<
         ? (submitOptions.metadata as Record<string, unknown>)
         : undefined;
 
-    const runResult = await session.run.input({
+    const runResult = await thread.run.input({
       input: runInput ?? null,
       config: boundConfig,
       metadata,
@@ -288,7 +205,7 @@ export class ProtocolStreamRuntime<
 
     const runId = runResult.run_id;
     if (typeof runId !== "string" || runId.length === 0) {
-      await session.close().catch(() => undefined);
+      await thread.close().catch(() => undefined);
       throw new Error("Protocol run did not return a run ID.");
     }
 
@@ -297,10 +214,10 @@ export class ProtocolStreamRuntime<
       thread_id: threadId,
     });
 
-    const closeSession = () => {
-      void session.close().catch(() => undefined);
+    const closeThread = () => {
+      void thread.close().catch(() => undefined);
     };
-    signal.addEventListener("abort", closeSession, { once: true });
+    signal.addEventListener("abort", closeThread, { once: true });
 
     return (async function* (
       runtime: ProtocolStreamRuntime<
@@ -346,22 +263,22 @@ export class ProtocolStreamRuntime<
           }
         }
       } finally {
-        if (runtime.activeSession === session) {
-          runtime.activeSession = undefined;
+        if (runtime.activeThread === thread) {
+          runtime.activeThread = undefined;
         }
-        signal.removeEventListener("abort", closeSession);
+        signal.removeEventListener("abort", closeThread);
         await subscription.unsubscribe().catch(() => undefined);
-        await session.close().catch(() => undefined);
+        await thread.close().catch(() => undefined);
       }
     })(this);
   }
 
   async respond(args: { interruptId: string; response: unknown }) {
-    const session = this.activeSession;
-    if (session?.input == null) {
-      throw new Error("No active protocol session is waiting for input.");
+    const thread = this.activeThread;
+    if (thread == null) {
+      throw new Error("No active protocol thread is waiting for input.");
     }
-    await session.input.respond({
+    await thread.input.respond({
       namespace: ROOT_NAMESPACE,
       interrupt_id: args.interruptId,
       response: args.response,
