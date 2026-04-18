@@ -28,6 +28,14 @@ import {
 import { StreamingMessageAssembler } from "./messages.js";
 import type { StreamingMessage } from "./messages.js";
 import type { AssembledToolCall } from "./handles/tools.js";
+import { MediaAssembler } from "./media.js";
+import type {
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  VideoMedia,
+} from "./media.js";
 import type {
   EventSubscription,
   EventForChannel,
@@ -361,6 +369,23 @@ export class ThreadStream<
   readonly #extensionsEventListeners: Array<(event: Event) => void> = [];
   readonly #extensionsEndListeners: Array<() => void> = [];
 
+  /**
+   * Shared state for the single `messages`-channel subscription that
+   * backs every media handle iterable (`thread.audio`, `thread.images`,
+   * `thread.video`, `thread.files`). One subscription serves all four
+   * iterables; per-type buffers track the handles already emitted so
+   * late attachers replay through {@link MultiCursorBuffer}.
+   */
+  #mediaDispatcherStarted = false;
+  #mediaAssembler: MediaAssembler | undefined;
+  /** Object URLs minted by media handles, tracked for {@link close} cleanup. */
+  readonly #mediaHandles = new Set<AnyMediaHandle>();
+  readonly #audioBuffer = new MultiCursorBuffer<AudioMedia>();
+  readonly #imagesBuffer = new MultiCursorBuffer<ImageMedia>();
+  readonly #videoBuffer = new MultiCursorBuffer<VideoMedia>();
+  readonly #filesBuffer = new MultiCursorBuffer<FileMedia>();
+  readonly #fetchOption: typeof fetch | undefined;
+
   constructor(
     transportAdapter: TransportAdapter,
     options: ThreadStreamOptions
@@ -372,6 +397,7 @@ export class ThreadStream<
     this.threadId = transportAdapter.threadId;
     this.assistantId = options.assistantId;
     this.#nextCommandId = options.startingCommandId ?? 1;
+    this.#fetchOption = options.fetch;
     this.run = {
       input: async (params) => {
         this.#prepareForNextRun();
@@ -631,6 +657,47 @@ export class ThreadStream<
   }
 
   /**
+   * Audio media handles, one per message containing at least one
+   * `AudioBlock`. Each `for await` opens an independent cursor over
+   * the shared buffer; late consumers replay every previously emitted
+   * audio handle.
+   *
+   * Yields one item per message on the first matching
+   * `content-block-start` — messages with no audio blocks are skipped.
+   */
+  get audio(): AsyncIterable<AudioMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#audioBuffer;
+  }
+
+  /**
+   * Image media handles, one per message containing at least one
+   * `ImageBlock`. See {@link audio} for shared semantics.
+   */
+  get images(): AsyncIterable<ImageMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#imagesBuffer;
+  }
+
+  /**
+   * Video media handles, one per message containing at least one
+   * `VideoBlock`. See {@link audio} for shared semantics.
+   */
+  get video(): AsyncIterable<VideoMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#videoBuffer;
+  }
+
+  /**
+   * File media handles, one per message containing at least one
+   * `FileBlock`. See {@link audio} for shared semantics.
+   */
+  get files(): AsyncIterable<FileMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#filesBuffer;
+  }
+
+  /**
    * Promise that resolves with the final state value when the run
    * completes.  Shares the `values` getter's SSE connection.
    * Mirrors the in-process `run.output`.
@@ -709,6 +776,55 @@ export class ThreadStream<
         this.#extensionsEnded = true;
         const listeners = this.#extensionsEndListeners.splice(0);
         for (const listener of listeners) listener();
+      }
+    );
+  }
+
+  /**
+   * Open the single shared `messages`-channel subscription that backs
+   * every media iterable (audio/images/video/files). Idempotent.
+   *
+   * The {@link MediaAssembler} fans out to four per-type
+   * {@link MultiCursorBuffer}s; each buffer feeds its corresponding
+   * lazy getter. One handle is yielded per `(messageId, blockType)` on
+   * the first matching `content-block-start`, so messages without any
+   * media blocks of a given type never appear on that iterable.
+   */
+  #ensureMediaDispatcher(): void {
+    if (this.#mediaDispatcherStarted) return;
+    this.#mediaDispatcherStarted = true;
+    const assembler = new MediaAssembler({
+      fetch: this.#fetchOption,
+      onAudio: (m) => {
+        this.#mediaHandles.add(m);
+        this.#audioBuffer.push(m);
+      },
+      onImage: (m) => {
+        this.#mediaHandles.add(m);
+        this.#imagesBuffer.push(m);
+      },
+      onVideo: (m) => {
+        this.#mediaHandles.add(m);
+        this.#videoBuffer.push(m);
+      },
+      onFile: (m) => {
+        this.#mediaHandles.add(m);
+        this.#filesBuffer.push(m);
+      },
+    });
+    this.#mediaAssembler = assembler;
+    void this.#startProjection(
+      ["messages", ...this.#lifecycleChannels()],
+      (event) => {
+        if (event.method !== "messages") return;
+        assembler.consume(event as MessagesEvent);
+      },
+      () => {
+        assembler.close();
+        this.#audioBuffer.close();
+        this.#imagesBuffer.close();
+        this.#videoBuffer.close();
+        this.#filesBuffer.close();
       }
     );
   }
@@ -803,6 +919,21 @@ export class ThreadStream<
       subscription.close();
     }
     this.#subscriptions.clear();
+    // Safety net: revoke any object URLs minted by media handles so
+    // long-lived consumers don't leak after thread teardown.
+    for (const handle of this.#mediaHandles) {
+      try {
+        handle.revoke();
+      } catch {
+        // best-effort
+      }
+    }
+    this.#mediaHandles.clear();
+    this.#mediaAssembler?.close();
+    this.#audioBuffer.close();
+    this.#imagesBuffer.close();
+    this.#videoBuffer.close();
+    this.#filesBuffer.close();
     await this.#transportAdapter.close();
   }
 
@@ -1130,3 +1261,16 @@ export { inferChannel, matchesSubscription } from "./subscription.js";
 export type { TransportAdapter } from "./transport.js";
 export type * from "./types.js";
 export { ProtocolError } from "./error.js";
+export { MediaAssembler, MediaAssemblyError } from "./media.js";
+export type {
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblerCallbacks,
+  MediaAssemblerOptions,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  VideoMedia,
+} from "./media.js";

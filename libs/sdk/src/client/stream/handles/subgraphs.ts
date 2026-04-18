@@ -13,6 +13,13 @@ import { StreamingMessageAssembler } from "../messages.js";
 import type { StreamingMessage } from "../messages.js";
 import { ToolCallAssembler } from "./tools.js";
 import type { AssembledToolCall } from "./tools.js";
+import { MediaAssembler } from "../media.js";
+import type {
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  VideoMedia,
+} from "../media.js";
 import type {
   EventForChannel,
   EventForChannels,
@@ -72,6 +79,12 @@ export class SubgraphHandle {
   #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
   #subagentsIterable?: AsyncIterable<SubagentHandle>;
   #outputPromise?: Promise<unknown>;
+
+  #mediaDispatcherStarted = false;
+  #audioBuffer?: MultiCursorBuffer<AudioMedia>;
+  #imagesBuffer?: MultiCursorBuffer<ImageMedia>;
+  #videoBuffer?: MultiCursorBuffer<VideoMedia>;
+  #filesBuffer?: MultiCursorBuffer<FileMedia>;
 
   constructor(
     name: string,
@@ -201,9 +214,62 @@ export class SubgraphHandle {
     return buffer;
   }
 
+  get audio(): AsyncIterable<AudioMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#audioBuffer!;
+  }
+
+  get images(): AsyncIterable<ImageMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#imagesBuffer!;
+  }
+
+  get video(): AsyncIterable<VideoMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#videoBuffer!;
+  }
+
+  get files(): AsyncIterable<FileMedia> {
+    this.#ensureMediaDispatcher();
+    return this.#filesBuffer!;
+  }
+
   get output(): Promise<unknown> {
     void this.values;
     return this.#outputPromise!;
+  }
+
+  #ensureMediaDispatcher(): void {
+    if (this.#mediaDispatcherStarted) return;
+    this.#mediaDispatcherStarted = true;
+    const audio = new MultiCursorBuffer<AudioMedia>();
+    const images = new MultiCursorBuffer<ImageMedia>();
+    const video = new MultiCursorBuffer<VideoMedia>();
+    const files = new MultiCursorBuffer<FileMedia>();
+    this.#audioBuffer = audio;
+    this.#imagesBuffer = images;
+    this.#videoBuffer = video;
+    this.#filesBuffer = files;
+    const assembler = new MediaAssembler({
+      onAudio: (m: AudioMedia) => audio.push(m),
+      onImage: (m: ImageMedia) => images.push(m),
+      onVideo: (m: VideoMedia) => video.push(m),
+      onFile: (m: FileMedia) => files.push(m),
+    });
+    void this.#startProjection(
+      ["messages"],
+      (event) => {
+        if (event.method !== "messages") return;
+        assembler.consume(event as MessagesEvent);
+      },
+      () => {
+        assembler.close();
+        audio.close();
+        images.close();
+        video.close();
+        files.close();
+      }
+    );
   }
 
   /**

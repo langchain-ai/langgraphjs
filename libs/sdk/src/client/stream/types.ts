@@ -85,6 +85,20 @@ export interface ThreadStreamOptions {
    * useful for tests.
    */
   startingCommandId?: number;
+  /**
+   * Optional `fetch` implementation for the SSE transport. Useful for
+   * test environments, custom auth/proxy layers, or non-global fetch
+   * (e.g. Node without a global fetch, or injected mocks). Ignored for
+   * the WebSocket transport.
+   */
+  fetch?: typeof fetch;
+  /**
+   * Optional WebSocket factory for the WebSocket transport. Useful for
+   * test environments that don't ship a global `WebSocket`, or to wrap
+   * the socket with custom headers/subprotocols. Ignored for the SSE
+   * transport.
+   */
+  webSocketFactory?: (url: string) => WebSocket;
 }
 
 export interface SessionOrderingState {

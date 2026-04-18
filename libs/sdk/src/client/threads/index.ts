@@ -452,12 +452,14 @@ export class ThreadsClient<
             threadId,
             defaultHeaders: this.defaultHeaders,
             onRequest: this.onRequest,
+            webSocketFactory: options.webSocketFactory,
           })
         : new ProtocolSseTransportAdapter({
             apiUrl: this.apiUrl,
             threadId,
             defaultHeaders: this.defaultHeaders,
             onRequest: this.onRequest,
+            fetch: options.fetch,
           });
 
     return new ThreadStream<TExtensions>(transport, options);

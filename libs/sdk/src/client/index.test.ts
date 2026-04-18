@@ -44,4 +44,55 @@ describe("Client", () => {
     );
     expect(thread.assistantId).toBe("my-agent");
   });
+
+  it("threads.stream forwards webSocketFactory to the websocket adapter", async () => {
+    const client = new Client({
+      apiUrl: "http://localhost:9999",
+      apiKey: null,
+    });
+
+    const sentinel = new Error("sentinel-websocket-factory");
+    const calls: string[] = [];
+    const thread = client.threads.stream("my-thread", {
+      assistantId: "my-agent",
+      transport: "websocket",
+      webSocketFactory: (url) => {
+        calls.push(url);
+        throw sentinel;
+      },
+    });
+
+    await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("/v2/threads/my-thread");
+  });
+
+  it("threads.stream forwards fetch to the sse adapter", async () => {
+    const client = new Client({
+      apiUrl: "http://localhost:9999",
+      apiKey: null,
+    });
+
+    const sentinel = new Error("sentinel-fetch");
+    const calls: URL[] = [];
+    const customFetch = ((input: URL | RequestInfo) => {
+      calls.push(
+        // oxlint-disable-next-line no-instanceof/no-instanceof
+        input instanceof URL
+          ? input
+          : new URL(typeof input === "string" ? input : input.url)
+      );
+      return Promise.reject(sentinel);
+    }) as typeof fetch;
+
+    const thread = client.threads.stream("my-thread", {
+      assistantId: "my-agent",
+      transport: "sse",
+      fetch: customFetch,
+    });
+
+    await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].pathname).toContain("/v2/threads/my-thread/events");
+  });
 });

@@ -57,8 +57,8 @@ export class StreamingMessage {
 
   #textChunks: string[] = [];
   #reasoningChunks: string[] = [];
-  #textWaiters: Array<(value: IteratorResult<string>) => void> = [];
-  #reasoningWaiters: Array<(value: IteratorResult<string>) => void> = [];
+  #textWaiters: Array<() => void> = [];
+  #reasoningWaiters: Array<() => void> = [];
   #textDone = false;
   #reasoningDone = false;
 
@@ -96,15 +96,17 @@ export class StreamingMessage {
       [Symbol.asyncIterator]() {
         return {
           async next(): Promise<IteratorResult<string>> {
-            if (cursor < chunks.length) {
-              return { done: false, value: chunks[cursor++] };
+            while (true) {
+              if (cursor < chunks.length) {
+                return { done: false, value: chunks[cursor++] };
+              }
+              if (self.#textDone) {
+                return { done: true, value: undefined };
+              }
+              await new Promise<void>((resolve) => {
+                waiters.push(resolve);
+              });
             }
-            if (self.#textDone) {
-              return { done: true, value: undefined };
-            }
-            return await new Promise<IteratorResult<string>>((resolve) => {
-              waiters.push(resolve);
-            });
           },
         };
       },
@@ -122,15 +124,17 @@ export class StreamingMessage {
       [Symbol.asyncIterator]() {
         return {
           async next(): Promise<IteratorResult<string>> {
-            if (cursor < chunks.length) {
-              return { done: false, value: chunks[cursor++] };
+            while (true) {
+              if (cursor < chunks.length) {
+                return { done: false, value: chunks[cursor++] };
+              }
+              if (self.#reasoningDone) {
+                return { done: true, value: undefined };
+              }
+              await new Promise<void>((resolve) => {
+                waiters.push(resolve);
+              });
             }
-            if (self.#reasoningDone) {
-              return { done: true, value: undefined };
-            }
-            return await new Promise<IteratorResult<string>>((resolve) => {
-              waiters.push(resolve);
-            });
           },
         };
       },
@@ -148,14 +152,20 @@ export class StreamingMessage {
 
   [PUSH_TEXT](delta: string): void {
     this.#textChunks.push(delta);
-    const waiter = this.#textWaiters.shift();
-    if (waiter) waiter({ done: false, value: delta });
+    // Wake every caught-up iterator so each one advances its own cursor.
+    // Iterators re-check `chunks.length` before delivering, which keeps
+    // the cursor the single source of truth for what a consumer has seen.
+    const pending = this.#textWaiters.splice(0, this.#textWaiters.length);
+    for (const waiter of pending) waiter();
   }
 
   [PUSH_REASONING](delta: string): void {
     this.#reasoningChunks.push(delta);
-    const waiter = this.#reasoningWaiters.shift();
-    if (waiter) waiter({ done: false, value: delta });
+    const pending = this.#reasoningWaiters.splice(
+      0,
+      this.#reasoningWaiters.length
+    );
+    for (const waiter of pending) waiter();
   }
 
   [FINISH](usage: UsageInfo | undefined): void {
@@ -164,12 +174,13 @@ export class StreamingMessage {
     this.#resolveText(this.#textChunks.join(""));
     this.#resolveReasoning(this.#reasoningChunks.join(""));
     this.#resolveUsage(usage);
-    while (this.#textWaiters.length > 0) {
-      this.#textWaiters.shift()?.({ done: true, value: undefined });
-    }
-    while (this.#reasoningWaiters.length > 0) {
-      this.#reasoningWaiters.shift()?.({ done: true, value: undefined });
-    }
+    const textPending = this.#textWaiters.splice(0, this.#textWaiters.length);
+    for (const waiter of textPending) waiter();
+    const reasoningPending = this.#reasoningWaiters.splice(
+      0,
+      this.#reasoningWaiters.length
+    );
+    for (const waiter of reasoningPending) waiter();
   }
 
   [ERROR](): void {

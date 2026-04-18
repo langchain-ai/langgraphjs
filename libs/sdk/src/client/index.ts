@@ -100,6 +100,8 @@ export {
   StreamingMessage,
   StreamingMessageAssembler,
   MessageAssembler,
+  MediaAssembler,
+  MediaAssemblyError,
   ToolCallAssembler,
   SubgraphDiscoveryHandle,
   SubgraphHandle,
@@ -132,6 +134,16 @@ export type {
   ThreadExtension,
   ThreadExtensions,
   UnwrapExtension,
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblerCallbacks,
+  MediaAssemblerOptions,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  VideoMedia,
 } from "./stream/index.js";
 
 export {

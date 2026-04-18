@@ -59,10 +59,6 @@ export function inferChannel(event: Event): Channel | undefined {
       return "lifecycle";
     case "input.requested":
       return "input";
-    case "debug":
-      return "debug";
-    case "checkpoints":
-      return "checkpoints";
     case "tasks":
       return "tasks";
     default:
