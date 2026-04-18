@@ -762,6 +762,15 @@ export function useStreamLGP<
     lastEventId ??= "-1";
     if (!threadId) return;
 
+    // See libs/sdk/src/ui/orchestrator.ts joinStream() and issue #2028:
+    // on a full replay the MessageTupleManager would concat the replay
+    // onto the chunks from the pre-disconnect stream, doubling content.
+    // Seed current messages' indexes so the replay overwrites them in
+    // place rather than appending duplicates.
+    if (lastEventId === "-1") {
+      stream.resetChunkAccumulator(getMessages(stream.values ?? historyValues));
+    }
+
     const callbackMeta: RunCallbackMeta = {
       thread_id: threadId,
       run_id: runId,

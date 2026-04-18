@@ -1260,6 +1260,51 @@ describe("StreamManager", () => {
       expect(subagents[0]?.status).toBe("pending");
     });
 
+    it("resetChunkAccumulator drops per-subagent chunks without losing the registry (issue #2028)", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      // Partial subagent output from before a disconnect.
+      mgr.addMessageToSubagent(
+        "call_1",
+        { id: "sub-ai-1", type: "ai", content: "par" },
+        undefined
+      );
+      mgr.addMessageToSubagent(
+        "call_1",
+        { id: "sub-ai-1", type: "ai", content: "tial" },
+        undefined
+      );
+
+      expect(mgr.getSubagent("call_1")?.messages[0]?.content).toBe("partial");
+
+      // Reconnect → full replay: drop chunk state, keep registration.
+      mgr.resetChunkAccumulator();
+
+      expect(mgr.getSubagent("call_1")).toBeDefined();
+      expect(mgr.getSubagent("call_1")?.messages).toEqual([]);
+
+      // Replay delivers the same two chunks again.
+      mgr.addMessageToSubagent(
+        "call_1",
+        { id: "sub-ai-1", type: "ai", content: "par" },
+        undefined
+      );
+      mgr.addMessageToSubagent(
+        "call_1",
+        { id: "sub-ai-1", type: "ai", content: "tial" },
+        undefined
+      );
+
+      // Without the reset, concat would produce "partialpartial" /
+      // "parparttialial"; after the reset it's back to "partial".
+      expect(mgr.getSubagent("call_1")?.messages).toHaveLength(1);
+      expect(mgr.getSubagent("call_1")?.messages[0]?.content).toBe("partial");
+    });
+
     it("replays buffered subagent messages after namespace matching", () => {
       const mgr = new SubagentManager({
         subagentToolNames: ["task"],
