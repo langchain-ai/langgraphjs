@@ -82,6 +82,12 @@ export interface EmbedThread {
       };
       send: (message: ProtocolEvent) => Promise<void> | void;
       pendingReplay?: boolean;
+      /**
+       * Bypass the sink filter when true. Used for WebSocket transports
+       * which deliver the full event stream to the connected client and
+       * let the client filter locally.
+       */
+      unfiltered?: boolean;
     }
   >;
   queuedEvents: ProtocolEvent[];

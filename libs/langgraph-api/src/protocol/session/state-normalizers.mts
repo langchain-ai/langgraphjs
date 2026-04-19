@@ -62,10 +62,17 @@ const normalizeAudioBlockFromAdditionalKwargs = (
   const url = typeof audio.url === "string" ? audio.url : undefined;
   if (data == null && url == null) return undefined;
 
+  const explicitMimeType =
+    typeof audio.mime_type === "string"
+      ? audio.mime_type
+      : typeof audio.mimeType === "string"
+        ? audio.mimeType
+        : undefined;
+
   const format =
     typeof audio.format === "string"
       ? audio.format.toLowerCase()
-      : typeof audio.mimeType === "string"
+      : explicitMimeType != null
         ? undefined
         : "wav";
 
@@ -74,15 +81,94 @@ const normalizeAudioBlockFromAdditionalKwargs = (
     ...(typeof audio.id === "string" ? { id: audio.id } : {}),
     ...(url != null ? { url } : {}),
     ...(data != null ? { data } : {}),
-    ...(typeof audio.mimeType === "string"
-      ? { mimeType: audio.mimeType }
+    ...(explicitMimeType != null
+      ? { mime_type: explicitMimeType }
       : format != null && MIME_TYPE_BY_AUDIO_FORMAT[format] != null
-        ? { mimeType: MIME_TYPE_BY_AUDIO_FORMAT[format] }
+        ? { mime_type: MIME_TYPE_BY_AUDIO_FORMAT[format] }
         : {}),
     ...(typeof audio.transcript === "string"
       ? { transcript: audio.transcript }
       : {}),
   } satisfies ContentBlockStartData["content_block"];
+};
+
+const MEDIA_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "image",
+  "audio",
+  "video",
+  "file",
+]);
+
+const MIME_TYPE_BY_IMAGE_FORMAT: Record<string, string> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+/**
+ * Extracts OpenAI Responses API `image_generation_call` outputs from
+ * `additional_kwargs.tool_outputs` as protocol-shaped image blocks. These
+ * outputs carry base64 image payloads that do not appear in
+ * `message.content`, so we lift them into standard blocks for downstream
+ * consumers (including synthetic subagent emission on the public namespace).
+ *
+ * @param additionalKwargs - The message's `additional_kwargs` record.
+ * @returns An array of image blocks in the order they appear, or `[]`.
+ */
+const normalizeImageBlocksFromAdditionalKwargs = (
+  additionalKwargs: Record<string, unknown> | undefined
+): ContentBlockStartData["content_block"][] => {
+  const toolOutputs = additionalKwargs?.tool_outputs;
+  if (!Array.isArray(toolOutputs)) return [];
+
+  const blocks: ContentBlockStartData["content_block"][] = [];
+  for (const entry of toolOutputs) {
+    if (!isRecord(entry) || entry.type !== "image_generation_call") continue;
+    const data = typeof entry.result === "string" ? entry.result : undefined;
+    const url = typeof entry.url === "string" ? entry.url : undefined;
+    if (data == null && url == null) continue;
+
+    const outputFormat =
+      typeof entry.output_format === "string"
+        ? entry.output_format.toLowerCase()
+        : undefined;
+    const mimeType =
+      (outputFormat != null
+        ? MIME_TYPE_BY_IMAGE_FORMAT[outputFormat]
+        : undefined) ?? "image/png";
+
+    blocks.push({
+      type: "image",
+      ...(typeof entry.id === "string" ? { id: entry.id } : {}),
+      ...(url != null ? { url } : {}),
+      ...(data != null ? { data } : {}),
+      mime_type: mimeType,
+    } satisfies ContentBlockStartData["content_block"]);
+  }
+  return blocks;
+};
+
+/**
+ * Converts common camelCase field names produced by LangChain content blocks
+ * (e.g. `mimeType`) into the snake_case shape mandated by the protocol
+ * (`mime_type`). This keeps media blocks emitted by providers such as
+ * `ChatOpenAI` (Responses API `image_generation` tool) readable by downstream
+ * clients without requiring each provider to opt into protocol casing.
+ */
+const normalizeMediaBlockCasing = (
+  block: Record<string, unknown>
+): Record<string, unknown> => {
+  if (!MEDIA_BLOCK_TYPES.has(block.type as string)) return block;
+
+  const { mimeType, ...rest } = block as {
+    mimeType?: unknown;
+    [k: string]: unknown;
+  };
+  if (typeof mimeType !== "string") return block;
+  if (typeof rest.mime_type === "string") return rest;
+  return { ...rest, mime_type: mimeType };
 };
 
 export const normalizeProtocolContentBlock = (
@@ -91,7 +177,9 @@ export const normalizeProtocolContentBlock = (
   if (!isRecord(value) || typeof value.type !== "string") return undefined;
 
   if (PROTOCOL_CONTENT_BLOCK_TYPES.has(value.type)) {
-    return value as ContentBlockStartData["content_block"];
+    return normalizeMediaBlockCasing(
+      value
+    ) as ContentBlockStartData["content_block"];
   }
 
   if (value.type === "image_url") {
@@ -146,25 +234,32 @@ export const normalizeProtocolMessageContent = (
   content: unknown,
   options?: { additionalKwargs?: Record<string, unknown> }
 ) => {
+  const additionalKwargs = options?.additionalKwargs;
+  const extractExtras = () => {
+    const audioBlock = normalizeAudioBlockFromAdditionalKwargs(additionalKwargs);
+    const imageBlocks = normalizeImageBlocksFromAdditionalKwargs(additionalKwargs);
+    return { audioBlock, imageBlocks };
+  };
+
   if (typeof content === "string") {
-    const audioBlock = normalizeAudioBlockFromAdditionalKwargs(
-      options?.additionalKwargs
-    );
-    if (audioBlock == null) return content;
+    const { audioBlock, imageBlocks } = extractExtras();
+    if (audioBlock == null && imageBlocks.length === 0) return content;
 
     const blocks: ContentBlockStartData["content_block"][] = [];
     if (content.length > 0) {
       blocks.push({ type: "text", text: content });
     }
-    blocks.push(audioBlock);
+    blocks.push(...imageBlocks);
+    if (audioBlock != null) blocks.push(audioBlock);
     return blocks;
   }
 
   if (!Array.isArray(content)) {
-    const audioBlock = normalizeAudioBlockFromAdditionalKwargs(
-      options?.additionalKwargs
-    );
-    return audioBlock != null ? [audioBlock] : content;
+    const { audioBlock, imageBlocks } = extractExtras();
+    if (audioBlock == null && imageBlocks.length === 0) return content;
+    const blocks: ContentBlockStartData["content_block"][] = [...imageBlocks];
+    if (audioBlock != null) blocks.push(audioBlock);
+    return blocks;
   }
 
   const blocks: ContentBlockStartData["content_block"][] = [];
@@ -179,9 +274,17 @@ export const normalizeProtocolMessageContent = (
     }
   }
 
-  const audioBlock = normalizeAudioBlockFromAdditionalKwargs(
-    options?.additionalKwargs
-  );
+  const { audioBlock, imageBlocks } = extractExtras();
+  for (const imageBlock of imageBlocks) {
+    const imageId = (imageBlock as { id?: string }).id;
+    const hasMatchingImage = blocks.some(
+      (block) =>
+        block.type === "image" &&
+        (block as { id?: string }).id === imageId &&
+        imageId != null
+    );
+    if (!hasMatchingImage) blocks.push(imageBlock);
+  }
   if (audioBlock != null && !blocks.some((block) => block.type === "audio")) {
     blocks.push(audioBlock);
   }

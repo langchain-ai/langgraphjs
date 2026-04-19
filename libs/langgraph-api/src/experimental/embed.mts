@@ -1,5 +1,6 @@
 import type { BaseCheckpointSaver, BaseStore } from "@langchain/langgraph";
 import { Hono } from "hono";
+import type { UpgradeWebSocket } from "hono/ws";
 
 import { ensureContentType } from "../http/middleware.mjs";
 
@@ -13,6 +14,11 @@ export type { ThreadSaver } from "./embed/types.mjs";
 /**
  * Create a Hono server with a subset of LangGraph Platform routes.
  *
+ * Pass `upgradeWebSocket` to enable the `v2-websocket` protocol transport
+ * on `GET /v2/threads/:thread_id`. Create it with `@hono/node-ws`'s
+ * `createNodeWebSocket({ app })` and make sure to call `injectWebSocket`
+ * on the underlying HTTP server.
+ *
  * @experimental Does not follow semver.
  */
 export function createEmbedServer(options: {
@@ -20,6 +26,7 @@ export function createEmbedServer(options: {
   threads: import("./embed/types.mjs").ThreadSaver;
   checkpointer: BaseCheckpointSaver;
   store?: BaseStore;
+  upgradeWebSocket?: UpgradeWebSocket;
 }) {
   async function getGraph(graphId: string) {
     const targetGraph = options.graph[graphId];
@@ -42,7 +49,7 @@ export function createEmbedServer(options: {
 
   registerThreadRoutes(api, context);
   registerRunRoutes(api, context);
-  registerProtocolRoutes(api, context);
+  registerProtocolRoutes(api, context, options.upgradeWebSocket);
 
   api.notFound((c) => {
     return c.json(

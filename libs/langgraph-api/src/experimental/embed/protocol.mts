@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
+import type { UpgradeWebSocket } from "hono/ws";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod/v3";
 
@@ -37,11 +38,31 @@ const EventsFilterSchema = z
   .strict();
 
 /**
+ * Normalize browser/node websocket payloads into UTF-8 text so the
+ * protocol layer only needs to handle JSON strings.
+ */
+const parseSocketPayload = async (event: MessageEvent): Promise<string> => {
+  if (typeof event.data === "string") return event.data;
+  if (event.data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(event.data));
+  }
+  if (event.data instanceof Blob) {
+    const buffer = await event.data.arrayBuffer();
+    return new TextDecoder().decode(new Uint8Array(buffer));
+  }
+  return String(event.data);
+};
+
+/**
  * Register thread-centric v2 protocol routes on an embed server Hono app.
  *
  * @experimental Does not follow semver.
  */
-export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
+export function registerProtocolRoutes(
+  api: Hono,
+  context: EmbedRouteContext,
+  upgradeWebSocket?: UpgradeWebSocket
+) {
   const threads = new Map<string, EmbedThread>();
 
   function ensureThread(threadId: string): EmbedThread {
@@ -111,7 +132,7 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
         thread.queuedEvents.push(parsed);
         for (const sink of thread.eventSinks.values()) {
           if (sink.pendingReplay) continue;
-          if (matchesSinkFilter(sink.filter, parsed)) {
+          if (sink.unfiltered || matchesSinkFilter(sink.filter, parsed)) {
             await sink.send(parsed);
           }
         }
@@ -238,6 +259,12 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
       stream_subgraphs: true,
     } as unknown as z.infer<typeof schemas.RunCreate>);
 
+    // Drop the previous run's buffered events so that a sink attaching
+    // *after* this resume does not replay stale terminal lifecycle
+    // events (e.g. `lifecycle.interrupted`) from the paused run. Any
+    // sink that was already receiving live events is unaffected.
+    thread.queuedEvents.length = 0;
+
     const protocolSession = attachRunSession(thread, run);
     await protocolSession.start();
 
@@ -261,6 +288,34 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
     }
     if (command.method === "input.respond") {
       return await handleInputRespond(thread, command);
+    }
+    // WebSocket transports send `subscription.subscribe`/`unsubscribe`
+    // over the same socket before any run is bound. The embed server
+    // delivers *all* events to the WS sink and relies on the SDK to
+    // filter client-side, so we can accept these commands without
+    // additional bookkeeping.
+    if (command.method === "subscription.subscribe") {
+      const subscriptionId = uuidv7();
+      return jsonResponse({
+        type: "success",
+        id: command.id,
+        result: { subscription_id: subscriptionId },
+        meta: {
+          thread_id: thread.threadId,
+          applied_through_seq: thread.seq,
+        },
+      });
+    }
+    if (command.method === "subscription.unsubscribe") {
+      return jsonResponse({
+        type: "success",
+        id: command.id,
+        result: {},
+        meta: {
+          thread_id: thread.threadId,
+          applied_through_seq: thread.seq,
+        },
+      });
     }
     if (thread.runSession == null) {
       return jsonResponse({
@@ -363,6 +418,102 @@ export function registerProtocolRoutes(api: Hono, context: EmbedRouteContext) {
       });
     }
   );
+
+  if (upgradeWebSocket != null) {
+    api.get(
+      "/v2/threads/:thread_id",
+      zValidator("param", ThreadIdSchema),
+      upgradeWebSocket((c: any) => {
+        const { thread_id } = c.req.valid("param");
+        const thread = ensureThread(thread_id);
+        const sinkId = uuidv7();
+
+        return {
+          async onOpen(
+            _event: Event,
+            ws: { send: (source: string) => void }
+          ) {
+            // Unfiltered sink: forward every buffered + live event to the
+            // websocket in order, so the browser ThreadStream sees the
+            // complete event history regardless of subscription timing.
+            const writeWs = async (event: ProtocolEvent) => {
+              ws.send(serialiseAsDict(event));
+            };
+            const sink = {
+              id: sinkId,
+              filter: {
+                channels: new Set<string>(),
+                namespaces: undefined,
+                depth: undefined,
+              } as EventSinkFilter,
+              send: writeWs,
+              pendingReplay: true,
+              unfiltered: true,
+            };
+            thread.eventSinks.set(sinkId, sink);
+            try {
+              let cursor = 0;
+              while (cursor < thread.queuedEvents.length) {
+                await writeWs(thread.queuedEvents[cursor++]);
+              }
+            } finally {
+              sink.pendingReplay = false;
+            }
+          },
+          async onMessage(
+            event: MessageEvent,
+            ws: { send: (source: string) => void }
+          ) {
+            let payload: unknown;
+            try {
+              payload = JSON.parse(await parseSocketPayload(event));
+            } catch {
+              ws.send(
+                serialiseAsDict({
+                  type: "error",
+                  id: null,
+                  error: "invalid_argument",
+                  message: "Protocol commands must be valid JSON.",
+                })
+              );
+              return;
+            }
+
+            if (
+              typeof payload !== "object" ||
+              payload == null ||
+              typeof (payload as { id?: unknown }).id !== "number" ||
+              typeof (payload as { method?: unknown }).method !== "string"
+            ) {
+              ws.send(
+                serialiseAsDict({
+                  type: "error",
+                  id: null,
+                  error: "invalid_argument",
+                  message:
+                    "Protocol commands must include an integer id and string method.",
+                })
+              );
+              return;
+            }
+
+            const response = await handleThreadCommand(
+              thread,
+              payload as ProtocolCommand
+            );
+            const body = await response.text();
+            ws.send(body);
+          },
+          onClose() {
+            thread.eventSinks.delete(sinkId);
+          },
+          onError() {
+            thread.eventSinks.delete(sinkId);
+          },
+        } as any;
+      })
+    );
+  }
 
   // jsonExtra is no longer needed but keep import indirection minimal.
   void jsonExtra;

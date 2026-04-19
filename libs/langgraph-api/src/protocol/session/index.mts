@@ -7,7 +7,6 @@ import type {
   AgentResult,
   AgentTreeNode,
   CustomData,
-  FlowCapacityParams,
   FlowStrategy,
   Namespace,
   ProtocolCommand,
@@ -247,9 +246,6 @@ export class RunProtocolSession {
             tree: this.buildTree([]),
           } satisfies AgentResult);
           return;
-        case "flow.setCapacity":
-          await this.handleSetCapacity(command);
-          return;
         case "subscription.reconnect":
           await this.sendError(
             command.id,
@@ -293,8 +289,6 @@ export class RunProtocolSession {
           return await this.handleUnsubscribeForResponse(command, meta);
         case "agent.getTree":
           return this.success(command.id, { tree: this.buildTree([]) }, meta);
-        case "flow.setCapacity":
-          return await this.handleSetCapacityForResponse(command, meta);
         case "subscription.reconnect":
           return this.error(
             command.id,
@@ -422,7 +416,33 @@ export class RunProtocolSession {
     }
 
     const { method, namespace: rawNamespace } = parseEventName(event.event);
-    const namespace = normalizeNamespace(rawNamespace);
+    const sourceNamespace = normalizeNamespace(rawNamespace);
+
+    // Seed task-tool namespace aliases from values payloads BEFORE remapping
+    // so we bind the internal `tools:<uuid>` subagent namespace to the public
+    // `tools:call_*` namespace as early as possible. Subsequent events on
+    // that namespace (v2 messages, lifecycle, tools, custom) will then be
+    // remapped onto the client-visible namespace.
+    // Seed task-tool namespace aliases from values payloads BEFORE remapping
+    // so we bind the internal `tools:<uuid>` subagent namespace to the public
+    // `tools:call_*` namespace as early as possible. Subsequent events on
+    // that namespace (v2 messages, lifecycle, tools, custom) will then be
+    // remapped onto the client-visible namespace.
+    if (method === "values") {
+      this.messageProcessor.seedNamespaceAliasFromValues(
+        sourceNamespace,
+        event.data
+      );
+    }
+    if (method === "tools") {
+      this.messageProcessor.seedNamespaceAliasFromToolsEvent(
+        sourceNamespace,
+        event.data
+      );
+    }
+    const namespace =
+      this.messageProcessor.remapNamespaceForClient(sourceNamespace);
+
     if (method !== "messages") {
       await this.ensureNamespaces(namespace);
     }
@@ -488,6 +508,9 @@ export class RunProtocolSession {
               data.node
             )
           );
+          if (data.node != null) {
+            await this.emitChildNodeCompleted(namespace, data.node);
+          }
           return;
         }
 
@@ -506,6 +529,9 @@ export class RunProtocolSession {
           strippedUpdates.inputRequests
         );
         if (!this.hasStatePayload(strippedUpdates.values)) {
+          if (normalized.node != null) {
+            await this.emitChildNodeCompleted(namespace, normalized.node);
+          }
           return;
         }
         await this.pushEvent(
@@ -520,6 +546,9 @@ export class RunProtocolSession {
           namespace,
           strippedUpdates.values
         );
+        if (normalized.node != null) {
+          await this.emitChildNodeCompleted(namespace, normalized.node);
+        }
         return;
       }
       case "custom":
@@ -603,6 +632,50 @@ export class RunProtocolSession {
           graph_name: graphName,
         })
       );
+    }
+  }
+
+  /**
+   * Emits a `completed` lifecycle for the child namespace corresponding
+   * to a node that just finished executing. LangGraph emits an `updates`
+   * event on the PARENT namespace with `node: <name>` after a node's
+   * task completes, which is our cue that `[...parent, "<name>:<uuid>"]`
+   * is done — otherwise child namespaces stay in `"started"` until the
+   * run terminates and the whole tree is cascade-completed at once.
+   *
+   * For parallel fan-outs of the same node name, we mark the oldest
+   * still-started matching child first; LangGraph emits one `updates`
+   * per completed task, so repeated calls drain the bucket in order.
+   *
+   * @param parentNamespace - Namespace carrying the `updates` event.
+   * @param nodeName - Name of the node that just finished.
+   */
+  private async emitChildNodeCompleted(
+    parentNamespace: Namespace,
+    nodeName: string
+  ) {
+    if (nodeName.startsWith("__")) return; // skip __start__, __end__, etc.
+    const prefix = `${nodeName}:`;
+    // `this.namespaces` is a Map, iterated in insertion order. The first
+    // still-started match is therefore the oldest pending invocation.
+    for (const info of this.namespaces.values()) {
+      const ns = info.namespace;
+      if (ns.length !== parentNamespace.length + 1) continue;
+      if (info.status !== "started") continue;
+      let parentMatches = true;
+      for (let i = 0; i < parentNamespace.length; i += 1) {
+        if (ns[i] !== parentNamespace[i]) {
+          parentMatches = false;
+          break;
+        }
+      }
+      if (!parentMatches) continue;
+      const last = ns[ns.length - 1];
+      if (last !== nodeName && !last.startsWith(prefix)) continue;
+      await this.emitNamespaceLifecycle(ns, "completed", {
+        graphName: info.graphName,
+      });
+      return;
     }
   }
 
@@ -803,18 +876,6 @@ export class RunProtocolSession {
         }
         await this.sendJson(event);
       }
-    }
-  }
-
-  /**
-   * Releases the pause-producer gate when the buffer has capacity again.
-   * Called after consumers drain events (e.g. via subscription replay).
-   */
-  private tryResumePause() {
-    if (this.resumePause != null && this.buffer.length < this.maxBufferSize) {
-      this.resumePause();
-      this.pauseGate = undefined;
-      this.resumePause = undefined;
     }
   }
 
@@ -1191,128 +1252,6 @@ export class RunProtocolSession {
     }
 
     return this.success(command.id, {}, meta);
-  }
-
-  /**
-   * Handles a flow capacity command and writes the response to the transport.
-   *
-   * @param command - Flow capacity command to process.
-   */
-  private async handleSetCapacity(
-    command: ProtocolCommandByMethod<"flow.setCapacity">
-  ) {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<FlowCapacityParams>)
-      : undefined;
-    const maxBufferSize = params?.max_buffer_size;
-    if (
-      typeof maxBufferSize !== "number" ||
-      !Number.isInteger(maxBufferSize) ||
-      maxBufferSize < 1
-    ) {
-      await this.sendError(
-        command.id,
-        "invalid_argument",
-        "flow.setCapacity requires max_buffer_size to be a positive integer."
-      );
-      return;
-    }
-
-    const strategy = params?.strategy;
-    if (
-      strategy != null &&
-      strategy !== "drop-oldest" &&
-      strategy !== "pause-producer" &&
-      strategy !== "sample"
-    ) {
-      await this.sendError(
-        command.id,
-        "invalid_argument",
-        `Unsupported flow strategy: ${String(strategy)}. ` +
-          `Supported values: drop-oldest, pause-producer, sample.`
-      );
-      return;
-    }
-
-    this.applyFlowCapacity(maxBufferSize, strategy ?? "drop-oldest");
-    await this.sendSuccess(command.id, {});
-  }
-
-  /**
-   * Handles a flow capacity command and returns a typed response.
-   *
-   * @param command - Flow capacity command to process.
-   * @param meta - Optional response metadata from the outer transport.
-   * @returns A typed success or error response.
-   */
-  private async handleSetCapacityForResponse(
-    command: ProtocolCommandByMethod<"flow.setCapacity">,
-    meta?: ProtocolResponseMeta
-  ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<FlowCapacityParams>)
-      : undefined;
-    const maxBufferSize = params?.max_buffer_size;
-    if (
-      typeof maxBufferSize !== "number" ||
-      !Number.isInteger(maxBufferSize) ||
-      maxBufferSize < 1
-    ) {
-      return this.error(
-        command.id,
-        "invalid_argument",
-        "flow.setCapacity requires max_buffer_size to be a positive integer.",
-        meta
-      );
-    }
-
-    const strategy = params?.strategy;
-    if (
-      strategy != null &&
-      strategy !== "drop-oldest" &&
-      strategy !== "pause-producer" &&
-      strategy !== "sample"
-    ) {
-      return this.error(
-        command.id,
-        "invalid_argument",
-        `Unsupported flow strategy: ${String(strategy)}. ` +
-          `Supported values: drop-oldest, pause-producer, sample.`,
-        meta
-      );
-    }
-
-    this.applyFlowCapacity(maxBufferSize, strategy ?? "drop-oldest");
-    return this.success(command.id, {}, meta);
-  }
-
-  /**
-   * Applies new flow-control settings and reconciles the buffer with the new
-   * strategy and capacity.
-   */
-  private applyFlowCapacity(maxBufferSize: number, strategy: FlowStrategy) {
-    const previousStrategy = this.flowStrategy;
-    this.maxBufferSize = maxBufferSize;
-    this.flowStrategy = strategy;
-
-    if (strategy !== "sample") {
-      this.sampleCounter = 0;
-    }
-
-    if (
-      previousStrategy === "pause-producer" &&
-      strategy !== "pause-producer"
-    ) {
-      this.resumePause?.();
-      this.pauseGate = undefined;
-      this.resumePause = undefined;
-    }
-
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
-    }
-
-    this.tryResumePause();
   }
 
   /**

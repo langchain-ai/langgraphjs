@@ -216,6 +216,106 @@ export class SessionMessageProcessor {
     }
   }
 
+  /**
+   * Applies any previously-seeded task-tool namespace aliases to the given
+   * namespace. Safe to call on any incoming source namespace — returns the
+   * namespace unchanged when no alias applies.
+   */
+  remapNamespaceForClient(namespace: Namespace): Namespace {
+    return this.remapSyntheticNamespace(namespace);
+  }
+
+  /**
+   * Seeds task-tool namespace aliases from a `tools` source event. When the
+   * coordinator launches a subagent via the `task` tool, langgraph emits a
+   * `tool-started` event on the INTERNAL `tools:<uuid>` namespace carrying
+   * the public `tool_call_id` — exactly the mapping needed to bind the
+   * internal namespace to `tools:call_<id>`. Seeding here is preferable to
+   * description-matching against the first human values payload because the
+   * tool-started event lands before the subagent's first v2 message event.
+   */
+  seedNamespaceAliasFromToolsEvent(
+    namespace: Namespace,
+    data: unknown
+  ): void {
+    const toolSegment = getFirstToolSegment(namespace);
+    if (toolSegment == null || isPublicToolCallSegment(toolSegment)) return;
+    if (this.syntheticNamespaceAliases.has(toolSegment)) return;
+    if (!isRecord(data)) return;
+    // Accept both normalized (`tool-started` / `tool_name`) and raw
+    // (`on_tool_start` / `name`) shapes; `handleSourceEvent` may dispatch
+    // either form depending on whether upstream already normalized the event.
+    const isStartEvent =
+      data.event === "tool-started" || data.event === "on_tool_start";
+    if (!isStartEvent) return;
+    const toolName =
+      typeof data.tool_name === "string"
+        ? data.tool_name
+        : typeof data.name === "string"
+          ? data.name
+          : undefined;
+    if (toolName !== "task") return;
+    const toolCallId =
+      typeof data.tool_call_id === "string"
+        ? data.tool_call_id
+        : typeof data.id === "string"
+          ? data.id
+          : undefined;
+    if (toolCallId == null) return;
+
+    const syntheticState = this.syntheticSubagents.get(toolCallId);
+    const publicToolSegment = `tools:${toolCallId}`;
+    this.syntheticNamespaceAliases.set(toolSegment, publicToolSegment);
+    if (syntheticState != null && syntheticState.internalToolSegment == null) {
+      syntheticState.internalToolSegment = toolSegment;
+    }
+  }
+
+  /**
+   * Seeds task-tool namespace aliases from a values payload emitted on an
+   * internal `tools:<uuid>` namespace. The subagent's initial prompt (from the
+   * coordinator's `task` call) surfaces as the first human message in state;
+   * matching its text to a pending synthetic task registration binds the
+   * internal namespace to the public `tools:call_*` namespace so later v2
+   * stream events land on the client-visible namespace.
+   */
+  seedNamespaceAliasFromValues(namespace: Namespace, values: unknown): void {
+    const toolSegment = getFirstToolSegment(namespace);
+    if (toolSegment == null || isPublicToolCallSegment(toolSegment)) return;
+    if (this.syntheticNamespaceAliases.has(toolSegment)) return;
+    if (!isRecord(values) || !Array.isArray(values.messages)) return;
+
+    const firstHuman = values.messages.find(
+      (message): message is Record<string, unknown> =>
+        isRecord(message) && message.type === "human"
+    );
+    if (firstHuman == null) return;
+
+    const normalizedContent = normalizeProtocolMessageContent(
+      firstHuman.content,
+      {
+        additionalKwargs: isRecord(firstHuman.additional_kwargs)
+          ? firstHuman.additional_kwargs
+          : undefined,
+      }
+    );
+    const text = extractTextContent(normalizedContent) ?? "";
+    if (text.length === 0) return;
+
+    for (const [toolCallId, syntheticState] of this.syntheticSubagents) {
+      if (
+        syntheticState.description !== text ||
+        syntheticState.internalToolSegment != null
+      ) {
+        continue;
+      }
+      const publicToolSegment = `tools:${toolCallId}`;
+      this.syntheticNamespaceAliases.set(toolSegment, publicToolSegment);
+      syntheticState.internalToolSegment = toolSegment;
+      return;
+    }
+  }
+
   private remapSyntheticNamespace(namespace: Namespace): Namespace {
     let replaced = false;
     const remapped = namespace.map((segment) => {
