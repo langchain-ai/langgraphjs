@@ -32,8 +32,7 @@ type AnyUseStreamOptions =
 function selectStreamImplementation(
   options: AnyUseStreamOptions
 ): UseStreamImplementation {
-  if (isCustomOptions(options)) return useStreamCustom;
-  return useStreamLGP;
+  return isCustomOptions(options) ? useStreamCustom : useStreamLGP;
 }
 
 export type {

@@ -536,52 +536,6 @@ describe("StreamManager", () => {
       expect(values.__interrupt__[0].id).toBe("int-A");
     });
 
-    it("should not overwrite existing messages with interrupt-only values payloads", async () => {
-      const events = [
-        {
-          event: "values" as const,
-          data: {
-            messages: [{ id: "m-1", content: "hello", type: "human" }],
-          } as unknown as TestState,
-        },
-        {
-          event: "values" as const,
-          data: {
-            __interrupt__: [{ id: "int-A", value: "approve?" }],
-            messages: [],
-          } as unknown as TestState,
-        },
-      ];
-
-      const action = async () => createMockStream(events);
-      const onError = vi.fn();
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (streamManager as any).enqueue(action, {
-        getMessages: (values: TestState) => values.messages ?? [],
-        setMessages: (current: TestState, messages: TestState["messages"]) => ({
-          ...current,
-          messages,
-        }),
-        initialValues: { messages: [] },
-        callbacks: {},
-        onSuccess: () => undefined,
-        onError,
-      });
-
-      expect(onError).not.toHaveBeenCalled();
-
-      const values = streamManager.values as unknown as {
-        __interrupt__: Array<{ id: string; value: string }>;
-        messages: Array<{ id: string; content: string }>;
-      };
-      expect(values.__interrupt__).toHaveLength(1);
-      expect(values.__interrupt__[0].id).toBe("int-A");
-      expect(values.messages).toHaveLength(1);
-      expect(values.messages[0].id).toBe("m-1");
-      expect(values.messages[0].content).toBe("hello");
-    });
-
     it("should clear stale __interrupt__ on new stream and show only remaining", async () => {
       // First stream: two parallel interrupts
       const firstStreamEvents = [

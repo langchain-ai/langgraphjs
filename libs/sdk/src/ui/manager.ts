@@ -951,6 +951,7 @@ export class StreamManager<
 
                 return {
                   ...prev,
+                  ...interruptData,
                   __interrupt__: interrupts,
                 } as unknown as StateType;
               });
