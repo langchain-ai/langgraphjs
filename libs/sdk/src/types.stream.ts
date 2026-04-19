@@ -86,18 +86,6 @@ export type ErrorStreamEvent = {
 /** @internal */
 export type SubgraphErrorStreamEvent = AsSubgraph<ErrorStreamEvent>;
 
-export type InputStreamEvent = {
-  id?: string;
-  event: "input";
-  data: {
-    interruptId: string;
-    payload: unknown;
-  };
-};
-
-/** @internal */
-export type SubgraphInputStreamEvent = AsSubgraph<InputStreamEvent>;
-
 /**
  * Stream event with updates to the state after each step.
  * The streamed outputs include the name of the node that
@@ -311,7 +299,6 @@ type GetStreamModeMap<
 > =
   | {
       values: ValuesStreamEvent<TStateType>;
-      input: InputStreamEvent;
       updates: UpdatesStreamEvent<TUpdateType>;
       custom: CustomStreamEvent<TCustomType>;
       debug: DebugStreamEvent;
@@ -334,7 +321,6 @@ type GetSubgraphsStreamModeMap<
 > =
   | {
       values: SubgraphValuesStreamEvent<TStateType>;
-      input: SubgraphInputStreamEvent;
       updates: SubgraphUpdatesStreamEvent<TUpdateType>;
       custom: SubgraphCustomStreamEvent<TCustomType>;
       debug: SubgraphDebugStreamEvent;

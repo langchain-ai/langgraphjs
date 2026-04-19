@@ -19,7 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/core": "^1.1.40",
-    "@langchain/protocol": "^0.0.9",
+    "@langchain/protocol": "^0.0.10",
     "@types/json-schema": "^7.0.15",
     "p-queue": "^9.0.1",
     "p-retry": "^7.1.1",
@@ -172,6 +172,18 @@
       "require": {
         "types": "./dist/react-ui/server/index.d.cts",
         "default": "./dist/react-ui/server/index.cjs"
+      }
+    },
+    "./stream": {
+      "input": "./src/stream/index.ts",
+      "typedoc": "./src/stream/index.ts",
+      "import": {
+        "types": "./dist/stream/index.d.ts",
+        "default": "./dist/stream/index.js"
+      },
+      "require": {
+        "types": "./dist/stream/index.d.cts",
+        "default": "./dist/stream/index.cjs"
       }
     },
     "./package.json": "./package.json"

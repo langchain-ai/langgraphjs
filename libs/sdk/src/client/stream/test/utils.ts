@@ -103,20 +103,88 @@ export class MockTransport implements TransportAdapter {
  * a second subscription replays all prior matching events, exactly like
  * the real server.
  */
+/**
+ * Per-open record exposed via `mock.streamHandles` for test inspection.
+ * Test code can inspect/toggle these to simulate server behaviours.
+ */
+export interface MockSseStreamRecord {
+  index: number;
+  params: SubscribeParams;
+  closed: boolean;
+  readyResolved: boolean;
+  resolveReady: () => void;
+  rejectReady: (err: unknown) => void;
+  failPump: (err: unknown) => void;
+}
+
+export interface MockSseTransportOptions {
+  threadId?: string;
+  /**
+   * If set, new streams open in a "pending" state — their `ready` promise
+   * stays unresolved until the test calls `resolveReady(index)`.
+   * Defaults to `false`: streams are ready immediately.
+   */
+  manualReady?: boolean;
+}
+
 export class MockSseTransport implements TransportAdapter {
   readonly threadId: string;
   readonly sentCommands: Command[] = [];
   closed = false;
 
+  /** Every stream ever opened, in open-order. Inspected by tests. */
+  readonly streamHandles: MockSseStreamRecord[] = [];
+
+  private readonly manualReady: boolean;
   private readonly buffer: Event[] = [];
   private readonly streams = new Set<{
-    params: SubscribeParams;
+    record: MockSseStreamRecord;
     push: (event: Event) => void;
-    closed: boolean;
+    pushError: (err: unknown) => void;
   }>();
 
-  constructor(options?: { threadId?: string }) {
+  constructor(options?: MockSseTransportOptions) {
     this.threadId = options?.threadId ?? "thread_test";
+    this.manualReady = options?.manualReady ?? false;
+  }
+
+  /** Number of streams currently open (not closed). */
+  get activeStreamCount(): number {
+    return this.streamHandles.filter((s) => !s.closed).length;
+  }
+
+  /** Number of streams ever opened. */
+  get totalStreamCount(): number {
+    return this.streamHandles.length;
+  }
+
+  /** The filter passed to the most recent `openEventStream` call. */
+  get lastFilter(): SubscribeParams | undefined {
+    return this.streamHandles.at(-1)?.params;
+  }
+
+  /**
+   * Resolve the `ready` promise of the stream at `index`. Only useful when
+   * constructed with `{ manualReady: true }`.
+   */
+  resolveReady(index: number): void {
+    this.streamHandles[index]?.resolveReady();
+  }
+
+  /**
+   * Reject the `ready` promise of the stream at `index`, simulating a
+   * server-side open failure.
+   */
+  rejectReady(index: number, err: unknown): void {
+    this.streamHandles[index]?.rejectReady(err);
+  }
+
+  /**
+   * Simulate a mid-pump failure on the stream at `index` (e.g. the server
+   * closes the connection with an error).
+   */
+  failStream(index: number, err: unknown): void {
+    this.streamHandles[index]?.failPump(err);
   }
 
   async open(): Promise<void> {
@@ -153,17 +221,57 @@ export class MockSseTransport implements TransportAdapter {
   openEventStream(params: SubscribeParams): EventStreamHandle {
     const queue: Message[] = [];
     const waiters: Array<(result: IteratorResult<Message>) => void> = [];
-    const stream = {
+    let rejectedWith: unknown | undefined;
+    const index = this.streamHandles.length;
+
+    let resolveReady!: () => void;
+    let rejectReady!: (err: unknown) => void;
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+
+    const record: MockSseStreamRecord = {
+      index,
       params,
       closed: false,
+      readyResolved: false,
+      resolveReady: () => {
+        if (record.readyResolved) return;
+        record.readyResolved = true;
+        resolveReady();
+      },
+      rejectReady: (err) => {
+        if (record.readyResolved) return;
+        record.readyResolved = true;
+        rejectReady(err);
+      },
+      failPump: (err) => {
+        if (record.closed) return;
+        rejectedWith = err;
+        const waiter = waiters.shift();
+        if (waiter) {
+          // Reject current waiter by surfacing an error from next()
+          // — handled in the async iterator below via `rejectedWith`.
+          waiter({ done: true, value: undefined });
+        }
+      },
+    };
+    this.streamHandles.push(record);
+
+    const stream = {
+      record,
       push: (event: Event) => {
-        if (stream.closed) return;
+        if (record.closed) return;
         const waiter = waiters.shift();
         if (waiter) {
           waiter({ done: false, value: event });
           return;
         }
         queue.push(event);
+      },
+      pushError: (err: unknown) => {
+        record.failPump(err);
       },
     };
     this.streams.add(stream);
@@ -174,9 +282,11 @@ export class MockSseTransport implements TransportAdapter {
       }
     }
 
+    if (!this.manualReady) record.resolveReady();
+
     const close = () => {
-      if (stream.closed) return;
-      stream.closed = true;
+      if (record.closed) return;
+      record.closed = true;
       this.streams.delete(stream);
       while (waiters.length > 0) {
         waiters.shift()?.({ done: true, value: undefined });
@@ -184,14 +294,19 @@ export class MockSseTransport implements TransportAdapter {
     };
 
     return {
-      ready: Promise.resolve(),
+      ready,
       events: {
         [Symbol.asyncIterator]: () => ({
           next: async (): Promise<IteratorResult<Message>> => {
+            if (rejectedWith !== undefined) {
+              const err = rejectedWith;
+              rejectedWith = undefined;
+              throw err;
+            }
             if (queue.length > 0) {
               return { done: false, value: queue.shift()! };
             }
-            if (stream.closed) {
+            if (record.closed) {
               return { done: true, value: undefined };
             }
             return await new Promise<IteratorResult<Message>>((resolve) => {
@@ -215,8 +330,8 @@ export class MockSseTransport implements TransportAdapter {
   pushEvent(event: Event): void {
     this.buffer.push(event);
     for (const stream of this.streams) {
-      if (stream.closed) continue;
-      if (matchesSubscription(event, stream.params)) {
+      if (stream.record.closed) continue;
+      if (matchesSubscription(event, stream.record.params)) {
         stream.push(event);
       }
     }
@@ -225,7 +340,7 @@ export class MockSseTransport implements TransportAdapter {
   async close(): Promise<void> {
     this.closed = true;
     for (const stream of Array.from(this.streams)) {
-      stream.closed = true;
+      stream.record.closed = true;
     }
     this.streams.clear();
   }

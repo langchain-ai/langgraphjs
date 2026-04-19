@@ -13,149 +13,14 @@ import type {
   StreamEvent,
 } from "../../types.js";
 import type { StreamMode, TypedAsyncGenerator } from "../../types.stream.js";
-import { v7 as uuidv7 } from "uuid";
 
-import {
-  ProtocolEventAdapter,
-  canUseProtocolSse,
-  getProtocolChannels,
-  isProtocolErrorResponse,
-  type ProtocolCommandResponse,
-  type ProtocolEventMessage,
-} from "../../utils/protocol.js";
-import { BaseClient, getRunMetadataFromResponse, isRecord } from "../base.js";
+import { BaseClient, getRunMetadataFromResponse } from "../base.js";
 
 export class RunsClient<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
   TCustomEventType = unknown,
 > extends BaseClient {
-  private shouldUseProtocolSse<
-    TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
-  >(
-    threadId: string | null,
-    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
-  ) {
-    const requestedProtocol =
-      payload?.streamProtocol ?? this.streamProtocol ?? "legacy";
-    if (requestedProtocol !== "v2-sse") return false;
-    if (threadId == null) return false;
-    if (!canUseProtocolSse(payload?.streamMode)) return false;
-    if (
-      payload?.command != null &&
-      (payload.command.update != null || payload.command.goto != null)
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  private async postProtocolCommand(
-    threadId: string,
-    command: {
-      id: number;
-      method: string;
-      params?: Record<string, unknown>;
-    },
-    signal?: AbortSignal
-  ): Promise<ProtocolCommandResponse> {
-    return this.fetch<ProtocolCommandResponse>(
-      `/v2/threads/${threadId}/commands`,
-      {
-        method: "POST",
-        json: command,
-        signal,
-      }
-    );
-  }
-
-  private async *streamViaProtocolSse<
-    TStreamMode extends StreamMode | StreamMode[] = StreamMode,
-    TSubgraphs extends boolean = false,
-  >(
-    threadId: string | null,
-    assistantId: string,
-    payload?: RunsStreamPayload<TStreamMode, TSubgraphs>
-  ): AsyncGenerator<{ id?: string; event: StreamEvent; data: unknown }> {
-    const resolvedThreadId = threadId ?? uuidv7();
-
-    const protocolInput =
-      payload?.command?.resume !== undefined && payload?.input == null
-        ? payload.command.resume
-        : payload?.input;
-    const runResponse = await this.postProtocolCommand(
-      resolvedThreadId,
-      {
-        id: 1,
-        method: "run.input",
-        params: {
-          assistant_id: assistantId,
-          input: protocolInput ?? null,
-          config: payload?.config,
-          metadata: payload?.metadata,
-        },
-      },
-      payload?.signal
-    );
-
-    if (isProtocolErrorResponse(runResponse)) {
-      throw new Error(`Protocol run failed: ${runResponse.message}`);
-    }
-
-    const runId =
-      isRecord(runResponse.result) &&
-      typeof runResponse.result.runId === "string"
-        ? runResponse.result.runId
-        : undefined;
-    if (!runId) {
-      throw new Error("Protocol run did not return a run ID.");
-    }
-
-    payload?.onRunCreated?.({
-      run_id: runId,
-      thread_id: resolvedThreadId,
-    });
-
-    const adapter = new ProtocolEventAdapter();
-    const filterBody = {
-      channels: getProtocolChannels(payload?.streamMode),
-      ...(payload?.streamSubgraphs
-        ? {}
-        : {
-            namespaces: [[]],
-            depth: 0,
-          }),
-    };
-
-    yield {
-      event: "metadata",
-      data: { run_id: runId, thread_id: resolvedThreadId },
-    };
-
-    const eventStream = this.streamWithRetry<{
-      id?: string;
-      event: string;
-      data: unknown;
-    }>({
-      endpoint: `/v2/threads/${resolvedThreadId}/events`,
-      method: "POST",
-      json: filterBody,
-      signal: payload?.signal,
-      headers: { Accept: "text/event-stream" },
-    });
-
-    for await (const protocolEvent of eventStream) {
-      const message = isRecord(protocolEvent.data)
-        ? (protocolEvent.data as ProtocolEventMessage)
-        : undefined;
-      if (message?.type !== "event") continue;
-      for (const adapted of adapter.adapt(message)) {
-        yield adapted;
-      }
-    }
-  }
-
   stream<
     TStreamMode extends StreamMode | StreamMode[] = StreamMode,
     TSubgraphs extends boolean = false,
@@ -210,21 +75,6 @@ export class RunsClient<
     TUpdateType,
     TCustomEventType
   > {
-    if (this.shouldUseProtocolSse(threadId, payload)) {
-      yield* this.streamViaProtocolSse(
-        threadId as string,
-        assistantId,
-        payload
-      ) as TypedAsyncGenerator<
-        TStreamMode,
-        TSubgraphs,
-        TStateType,
-        TUpdateType,
-        TCustomEventType
-      >;
-      return;
-    }
-
     const json: Record<string, unknown> = {
       input: payload?.input,
       command: payload?.command,

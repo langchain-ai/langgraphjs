@@ -190,4 +190,93 @@ describe("StreamProtocolMessagesHandler", () => {
       ],
     ]);
   });
+
+  it("lifts additional_kwargs.audio into an audio content block", () => {
+    const streamFn = vi.fn();
+    const handler = new StreamProtocolMessagesHandler(streamFn);
+    const runId = "audio-run";
+
+    handler.handleChatModelStart(
+      {} as Serialized,
+      [],
+      runId,
+      undefined,
+      {},
+      [],
+      {
+        langgraph_checkpoint_ns: "ns-audio",
+        __protocol_messages_stream: true,
+      },
+      "ModelName"
+    );
+
+    handler.handleLLMEnd(
+      {
+        generations: [
+          [
+            {
+              text: "",
+              message: new AIMessage({
+                id: "msg-audio",
+                content: "",
+                additional_kwargs: {
+                  audio: {
+                    id: "audio_abc",
+                    data: "AAAA",
+                    format: "wav",
+                    transcript: "hello",
+                  },
+                },
+                response_metadata: { stop_reason: "stop" },
+              }),
+            },
+          ],
+        ],
+      } as unknown as LLMResult,
+      runId
+    );
+
+    const events = streamFn.mock.calls.map((call) => call[0][2]);
+    expect(events).toEqual([
+      { event: "message-start", message_id: "msg-audio", role: "ai" },
+      {
+        event: "content-block-start",
+        index: 0,
+        content_block: {
+          type: "audio",
+          id: "audio_abc",
+          data: "AAAA",
+          mime_type: "audio/wav",
+          transcript: "hello",
+        },
+      },
+      {
+        event: "content-block-delta",
+        index: 0,
+        content_block: {
+          type: "audio",
+          id: "audio_abc",
+          data: "AAAA",
+          mime_type: "audio/wav",
+          transcript: "hello",
+        },
+      },
+      {
+        event: "content-block-finish",
+        index: 0,
+        content_block: {
+          type: "audio",
+          id: "audio_abc",
+          data: "AAAA",
+          mime_type: "audio/wav",
+          transcript: "hello",
+        },
+      },
+      {
+        event: "message-finish",
+        reason: "stop",
+        metadata: { stop_reason: "stop" },
+      },
+    ]);
+  });
 });

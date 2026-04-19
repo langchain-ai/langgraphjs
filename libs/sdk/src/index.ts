@@ -6,6 +6,8 @@ export {
   ThreadStream,
   SubscriptionHandle,
   MessageAssembler,
+  MediaAssembler,
+  MediaAssemblyError,
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
 } from "./client.js";
@@ -23,6 +25,16 @@ export type {
   ProtocolRequestHook,
   ProtocolSseTransportOptions,
   ProtocolWebSocketTransportOptions,
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblerCallbacks,
+  MediaAssemblerOptions,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  VideoMedia,
 } from "./client.js";
 
 export type {
@@ -56,7 +68,6 @@ export type {
   Command,
   OnConflictBehavior,
   RunsInvokePayload,
-  StreamProtocol,
   StreamEvent,
 } from "./types.js";
 export type {

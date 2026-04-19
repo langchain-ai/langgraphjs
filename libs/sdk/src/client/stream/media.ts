@@ -90,7 +90,7 @@ export interface MediaBase {
   readonly url?: string;
 
   /**
-   * Live byte stream. **Single-consumer** — second access throws.
+   * Live byte stream.
    *
    * Lazy: not materialised unless accessed. On first access the
    * stream is seeded with every byte already accumulated
@@ -98,7 +98,12 @@ export interface MediaBase {
    * blocks, first access triggers `fetch()` and pipes the response
    * body through.
    *
-   * Use `stream.tee()` when you need multiple consumers.
+   * Repeated access returns the same {@link ReadableStream} reference
+   * — you can safely read it once, release the lock, and re-acquire a
+   * reader later (e.g. React StrictMode effect re-invokes). The
+   * standard `ReadableStream.locked` semantics prevent concurrent
+   * readers; use `stream.tee()` when you truly need multiple live
+   * consumers.
    */
   readonly stream: ReadableStream<Uint8Array>;
 
@@ -208,9 +213,13 @@ class MediaHandleImpl {
   #totalBytes = 0;
   #partialSnapshot: Uint8Array = new Uint8Array(0);
 
-  // Stream (lazy, single-consumer) ------------------------------------
+  // Stream (lazy, idempotent getter) ----------------------------------
+  //
+  // First access creates the `ReadableStream` and wires it to future
+  // chunks; subsequent accesses return the SAME reference. Consumers
+  // that want to fan-out must call `.tee()` explicitly — the native
+  // `ReadableStream.locked` flag prevents two concurrent readers.
 
-  #streamMaterialised = false;
   #stream: ReadableStream<Uint8Array> | undefined;
   #streamController:
     | ReadableStreamDefaultController<Uint8Array>
@@ -447,15 +456,8 @@ class MediaHandleImpl {
   }
 
   get stream(): ReadableStream<Uint8Array> {
-    if (this.#streamMaterialised) {
-      throw new Error(
-        `MediaHandle.stream is single-consumer; use stream.tee() for fan-out`
-      );
-    }
-    this.#streamMaterialised = true;
-    if (this.#urlSourced) {
-      return this.#buildUrlStream();
-    }
+    if (this.#stream != null) return this.#stream;
+    if (this.#urlSourced) return this.#buildUrlStream();
     return this.#buildInlineStream();
   }
 

@@ -50,7 +50,7 @@ import type {
   YieldForChannel,
   YieldForChannels,
 } from "./types.js";
-import type { TransportAdapter } from "./transport.js";
+import type { EventStreamHandle, TransportAdapter } from "./transport.js";
 import { ProtocolError } from "./error.js";
 
 type PendingCommand = {
@@ -88,6 +88,12 @@ type InternalEventSubscription = EventSubscription<unknown> & {
   close(): void;
   pause(): void;
   resume(): void;
+};
+
+type PendingSubResolve = {
+  filter: SubscribeParams;
+  resolve: () => void;
+  reject: (err: unknown) => void;
 };
 
 const MESSAGE_LIKE_TYPES = new Set([
@@ -135,6 +141,40 @@ function coerceStateMessages(value: unknown): unknown {
       messages as Parameters<typeof ensureMessageInstances>[0]
     ),
   };
+}
+
+/**
+ * Channel-set equality. The shared-stream filter is always permissive
+ * (no namespaces/depth), so comparing channel membership is sufficient
+ * to decide whether a rotation is needed.
+ */
+function filterEqual(
+  a: SubscribeParams | null,
+  b: SubscribeParams | null
+): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (a.channels.length !== b.channels.length) return false;
+  const aSet = new Set(a.channels as Channel[]);
+  for (const ch of b.channels as Channel[]) {
+    if (!aSet.has(ch)) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether the permissive shared-stream filter covers a narrower
+ * subscription filter. Coverage means "every event the subscription
+ * could want will be delivered on the stream"; per-subscription
+ * namespace/depth narrowing happens client-side in
+ * {@link matchesSubscription}.
+ */
+function filterCovers(
+  coverer: SubscribeParams,
+  target: SubscribeParams
+): boolean {
+  const channels = new Set(coverer.channels as Channel[]);
+  return (target.channels as Channel[]).every((ch) => channels.has(ch));
 }
 
 function normalizeSubscribeParams(
@@ -327,14 +367,32 @@ export class ThreadStream<
   readonly #pending = new Map<number, PendingCommand>();
   readonly #subscriptions = new Map<string, InternalEventSubscription>();
   // Tracks `event_id`s that have already been processed for thread-level
-  // side effects (interrupt tracking, `input.requested` capture). In SSE
-  // transport mode, multiple independent server-side streams can deliver
-  // the same event via replay; without this dedup the same interrupt
-  // would be recorded multiple times.
+  // side effects (interrupt tracking, `input.requested` capture) AND to
+  // drop duplicate fan-outs during the overlap window of SSE stream
+  // rotation (see `#reconcileStream`): the old stream and the new stream
+  // are both pumping briefly, and the server replays buffered events on
+  // new streams, so the same `event_id` can arrive twice.
+  //
+  // TODO(perf): this set grows at the rate of unique events per thread.
+  // For long-lived threads we could replace with a seq high-watermark
+  // plus `event_id` fallback for events missing a `seq` field.
   readonly #seenEventIds = new Set<string>();
   #closed = false;
   #opened = false;
   #openPromise?: Promise<void>;
+
+  // ---------- Shared SSE stream state ----------
+  // Under the SSE transport a single connection is shared across all
+  // subscriptions. Its filter is the union of every active subscription's
+  // filter (`#computeUnionFilter`); the client fans out incoming events
+  // to matching subscriptions via `matchesSubscription` in
+  // `#handleIncoming`. The stream rotates (open-before-close) whenever
+  // `subscribe`/`unsubscribe` changes the channel union.
+  #sharedStream: EventStreamHandle | null = null;
+  #sharedStreamFilter: SubscribeParams | null = null;
+  #rotationState: "idle" | "scheduled" | "rotating" = "idle";
+  /** Pending `subscribe()` promises waiting for a covering rotation. */
+  readonly #pendingSubResolves: PendingSubResolve[] = [];
 
   #lifecycleSubId: string | null = null;
   #lifecycleStartPromise?: Promise<void>;
@@ -581,9 +639,7 @@ export class ThreadStream<
       ["values", ...this.#lifecycleChannels()],
       (event) => {
         if (event.method !== "values") return;
-        const data = coerceStateMessages(
-          (event as ValuesEvent).params.data
-        );
+        const data = coerceStateMessages((event as ValuesEvent).params.data);
         lastValue = data;
         buffer.push(data);
       },
@@ -851,10 +907,12 @@ export class ThreadStream<
     });
 
     const handleEvent = (event: Event) => {
-      const data = event.params.data as {
-        name?: string;
-        payload?: unknown;
-      } | undefined;
+      const data = event.params.data as
+        | {
+            name?: string;
+            payload?: unknown;
+          }
+        | undefined;
       if (data?.name !== name) return;
       lastValue = data.payload;
       buffer.push(data.payload);
@@ -915,6 +973,22 @@ export class ThreadStream<
       return;
     }
     this.#closed = true;
+    // Reject any `subscribe()` promises still waiting for a covering
+    // rotation, and tear down the shared SSE stream. A rotation in
+    // flight will observe `#closed` after its `await ready` and bail.
+    for (const pending of this.#pendingSubResolves) {
+      pending.reject(new Error("ThreadStream closed"));
+    }
+    this.#pendingSubResolves.length = 0;
+    if (this.#sharedStream != null) {
+      try {
+        this.#sharedStream.close();
+      } catch {
+        // best-effort
+      }
+      this.#sharedStream = null;
+      this.#sharedStreamFilter = null;
+    }
     for (const subscription of this.#subscriptions.values()) {
       subscription.close();
     }
@@ -986,51 +1060,267 @@ export class ThreadStream<
       : undefined;
 
     if (this.#transportAdapter.openEventStream != null) {
-      return this.#subscribeViaEventStream(params, transform);
+      return this.#subscribeViaSharedStream(params, transform);
     }
 
     return this.#subscribeViaCommand(params, transform);
   }
 
   /**
-   * Open an independent SSE event stream for this subscription.
-   * Used by SSE transports where each subscription = one POST connection.
-   * Awaits the underlying connection's ready signal so callers can
-   * depend on the subscription being active server-side on return.
+   * Subscribe via the single shared SSE connection.
+   *
+   * The subscription is registered immediately in `#subscriptions` so
+   * fan-out can reach it the moment events begin flowing. The returned
+   * promise resolves after a stream rotation completes whose union
+   * filter covers this subscription's channels — mirroring the per-sub
+   * `await streamHandle.ready` semantics callers depended on.
+   *
+   * If the currently-active stream already covers the new subscription
+   * (its channel set is a subset of `#sharedStreamFilter`), no rotation
+   * is scheduled and the promise resolves immediately.
    */
-  async #subscribeViaEventStream(
+  async #subscribeViaSharedStream(
     params: SubscribeParams,
     transform?: (event: Event) => unknown
   ): Promise<SubscriptionHandle<Event>> {
-    const streamHandle = this.#transportAdapter.openEventStream!(params);
-    const subscriptionId = `stream-${this.#nextCommandId++}`;
-
+    const subscriptionId = `sse-${this.#nextCommandId++}`;
     const handle = new SubscriptionHandle<Event, unknown>(
       subscriptionId,
       params,
       async (id) => {
         this.#subscriptions.delete(id);
-        streamHandle.close();
+        this.#scheduleReconcile();
       },
       transform
     );
-
     const subscription = Object.assign(handle, { filter: params });
     this.#subscriptions.set(subscriptionId, subscription);
 
-    void (async () => {
-      try {
-        for await (const message of streamHandle.events) {
-          if (this.#closed) break;
-          this.#handleIncoming(message, subscription);
-        }
-      } catch {
-        // stream closed or errored — handle already cleaned up
-      }
-    })();
+    if (
+      this.#sharedStreamFilter != null &&
+      filterCovers(this.#sharedStreamFilter, params)
+    ) {
+      return handle as SubscriptionHandle<Event>;
+    }
 
-    await streamHandle.ready;
+    const covered = new Promise<void>((resolve, reject) => {
+      this.#pendingSubResolves.push({ filter: params, resolve, reject });
+    });
+    this.#scheduleReconcile();
+
+    try {
+      await covered;
+    } catch (err) {
+      this.#subscriptions.delete(subscriptionId);
+      throw err;
+    }
     return handle as SubscriptionHandle<Event>;
+  }
+
+  /**
+   * Permissive channel-union of every currently-registered subscription.
+   * Namespaces and depth are intentionally dropped: the server-side
+   * filter widens to "all events on these channels", and client-side
+   * `matchesSubscription` performs per-subscription narrowing.
+   *
+   * Returns `null` when there are no subscriptions.
+   */
+  #computeUnionFilter(): SubscribeParams | null {
+    const channels = new Set<Channel>();
+    for (const sub of this.#subscriptions.values()) {
+      for (const ch of sub.filter.channels) channels.add(ch);
+    }
+    if (channels.size === 0) return null;
+    return { channels: [...channels] as Channel[] };
+  }
+
+  /**
+   * Schedule a stream reconciliation for the next microtask.
+   *
+   * Coalesces multiple subscribe/unsubscribe calls in the same tick
+   * into a single rotation, and serializes across ticks (no two
+   * rotations ever run concurrently).
+   */
+  #scheduleReconcile(): void {
+    if (this.#closed) return;
+    if (this.#rotationState !== "idle") return;
+    this.#rotationState = "scheduled";
+    queueMicrotask(() => {
+      if (this.#closed) {
+        this.#rotationState = "idle";
+        return;
+      }
+      this.#rotationState = "idle";
+      void this.#reconcileStream();
+    });
+  }
+
+  /**
+   * Reconcile the shared SSE stream to match the desired union filter.
+   *
+   * Rotation strategy: open the new stream first, await its `ready`,
+   * then close the old one. Overlap is absorbed by `#seenEventIds`
+   * dedup in `#handleIncoming`.
+   *
+   * Error handling:
+   *   - Failure before `ready` resolves: reject all pending `subscribe`
+   *     promises whose filter isn't covered by the existing stream,
+   *     and keep the existing stream running for other subscriptions.
+   *   - Failure mid-pump on the active stream: close the thread via
+   *     {@link #failThreadWithError} so higher layers can rebind.
+   */
+  async #reconcileStream(): Promise<void> {
+    if (this.#closed) return;
+    if (this.#rotationState === "rotating") return;
+
+    const desired = this.#computeUnionFilter();
+    if (desired == null) return;
+
+    if (
+      this.#sharedStreamFilter != null &&
+      filterEqual(desired, this.#sharedStreamFilter)
+    ) {
+      this.#resolvePending();
+      return;
+    }
+
+    this.#rotationState = "rotating";
+    let newHandle: EventStreamHandle;
+    try {
+      newHandle = this.#transportAdapter.openEventStream!(desired);
+    } catch (err) {
+      this.#rotationState = "idle";
+      this.#rejectUncoveredPending(err);
+      return;
+    }
+
+    try {
+      await newHandle.ready;
+    } catch (err) {
+      this.#rotationState = "idle";
+      try {
+        newHandle.close();
+      } catch {
+        // best-effort
+      }
+      this.#rejectUncoveredPending(err);
+      return;
+    }
+
+    if (this.#closed) {
+      try {
+        newHandle.close();
+      } catch {
+        // best-effort
+      }
+      this.#rotationState = "idle";
+      return;
+    }
+
+    void this.#pumpStream(newHandle);
+
+    const oldHandle = this.#sharedStream;
+    this.#sharedStream = newHandle;
+    this.#sharedStreamFilter = desired;
+    if (oldHandle != null) {
+      try {
+        oldHandle.close();
+      } catch {
+        // best-effort
+      }
+    }
+
+    this.#rotationState = "idle";
+    this.#resolvePending();
+
+    const next = this.#computeUnionFilter();
+    if (next != null && !filterEqual(next, this.#sharedStreamFilter)) {
+      this.#scheduleReconcile();
+    }
+  }
+
+  /**
+   * Pump events from a shared-stream handle into `#handleIncoming`.
+   * One pump task runs per open stream; during rotation overlap two
+   * pumps may be active briefly, with `#seenEventIds` deduping.
+   */
+  async #pumpStream(handle: EventStreamHandle): Promise<void> {
+    try {
+      for await (const message of handle.events) {
+        if (this.#closed) break;
+        this.#handleIncoming(message);
+      }
+    } catch (err) {
+      if (handle === this.#sharedStream && !this.#closed) {
+        this.#failThreadWithError(err);
+      }
+      // Errors on an old (being-rotated-out) stream are ignored —
+      // the new stream is already pumping and holds authoritative state.
+    }
+  }
+
+  /**
+   * Resolve any pending `subscribe()` promises whose filter is now
+   * covered by the active shared stream. Called after every successful
+   * rotation (and after no-op reconciliations).
+   */
+  #resolvePending(): void {
+    if (this.#sharedStreamFilter == null) return;
+    const current = this.#sharedStreamFilter;
+    if (this.#pendingSubResolves.length === 0) return;
+    const stillPending: PendingSubResolve[] = [];
+    for (const pending of this.#pendingSubResolves) {
+      if (filterCovers(current, pending.filter)) {
+        pending.resolve();
+      } else {
+        stillPending.push(pending);
+      }
+    }
+    this.#pendingSubResolves.length = 0;
+    this.#pendingSubResolves.push(...stillPending);
+  }
+
+  /**
+   * Reject pending `subscribe()` promises whose filter isn't covered
+   * by the existing stream (they're the ones that triggered the
+   * failed rotation). Covered pending subs are resolved normally —
+   * they didn't need the new stream.
+   */
+  #rejectUncoveredPending(err: unknown): void {
+    if (this.#pendingSubResolves.length === 0) return;
+    const current = this.#sharedStreamFilter;
+    const stillPending: PendingSubResolve[] = [];
+    for (const pending of this.#pendingSubResolves) {
+      if (current != null && filterCovers(current, pending.filter)) {
+        pending.resolve();
+      } else {
+        stillPending.push(pending);
+      }
+    }
+    this.#pendingSubResolves.length = 0;
+    for (const pending of stillPending) pending.reject(err);
+  }
+
+  /**
+   * Terminate the thread due to an unrecoverable shared-stream error.
+   * Rejects pending commands, closes subscriptions, and marks the
+   * thread closed so no further rotations occur.
+   */
+  #failThreadWithError(err: unknown): void {
+    const normalized =
+      // oxlint-disable-next-line no-instanceof/no-instanceof
+      err instanceof Error ? err : new Error(String(err));
+    for (const pending of this.#pending.values()) {
+      pending.reject(normalized);
+    }
+    this.#pending.clear();
+    for (const pending of this.#pendingSubResolves) {
+      pending.reject(normalized);
+    }
+    this.#pendingSubResolves.length = 0;
+    for (const subscription of this.#subscriptions.values()) {
+      subscription.close();
+    }
   }
 
   /**
@@ -1091,10 +1381,7 @@ export class ThreadStream<
     }
   }
 
-  #handleIncoming(
-    message: Message,
-    ownerSubscription?: InternalEventSubscription
-  ): void {
+  #handleIncoming(message: Message): void {
     if (message.type === "event") {
       if (typeof message.seq === "number") {
         this.ordering.lastSeenSeq = message.seq;
@@ -1103,18 +1390,19 @@ export class ThreadStream<
         this.ordering.lastEventId = message.event_id;
       }
 
-      // Dedup thread-level side-effects across streams. In SSE mode each
-      // subscription gets its own filtered server stream, and the server
-      // replays buffered events on attach, so the same event (same
-      // `event_id`) can reach the client multiple times — once per stream
-      // whose filter matches it. Without this guard, an interrupt/input
-      // request would be recorded multiple times.
+      // Dedup across redeliveries. Two sources:
+      //  1. Shared-stream rotation overlap — during `#reconcileStream`
+      //     the old and new streams are both pumping briefly, and the
+      //     server replays buffered events to the new stream.
+      //  2. WebSocket transports whose server-side fan-out may
+      //     redeliver (a safety net).
       const eventId = message.event_id ?? undefined;
       const alreadyProcessed =
         eventId != null && this.#seenEventIds.has(eventId);
       if (eventId != null) {
         this.#seenEventIds.add(eventId);
       }
+      if (alreadyProcessed) return;
 
       const TERMINAL_LIFECYCLE_EVENTS = new Set([
         "interrupted",
@@ -1122,40 +1410,30 @@ export class ThreadStream<
         "failed",
       ]);
 
-      if (!alreadyProcessed) {
-        if (message.method === "lifecycle") {
-          const lifecycle = message as LifecycleEvent;
-          if (lifecycle.params.data.event === "interrupted") {
-            this.interrupted = true;
-          }
-        }
-
-        if (message.method === "input.requested") {
-          const data = message.params.data;
-          this.interrupts.push({
-            interruptId:
-              data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
-            payload: data.payload,
-            namespace: [...message.params.namespace],
-          });
+      if (message.method === "lifecycle") {
+        const lifecycle = message as LifecycleEvent;
+        if (lifecycle.params.data.event === "interrupted") {
+          this.interrupted = true;
         }
       }
 
-      if (ownerSubscription != null) {
-        // SSE transport: the server already filtered events for this
-        // subscription's stream. Deliver only to the owning subscription
-        // so the same event is not pushed multiple times (which would
-        // otherwise surface as duplicate subagent/subgraph discovery
-        // and out-of-order message assembly on late-attaching streams).
-        ownerSubscription.push(message);
-      } else if (!alreadyProcessed) {
-        // WebSocket transport: a single shared stream delivers all
-        // events. Fan-out to every matching subscription. Dedup on
-        // `event_id` is a safety net for transports that might redeliver.
-        for (const subscription of this.#subscriptions.values()) {
-          if (matchesSubscription(message, subscription.filter)) {
-            subscription.push(message);
-          }
+      if (message.method === "input.requested") {
+        const data = message.params.data;
+        this.interrupts.push({
+          interruptId:
+            data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
+          payload: data.payload,
+          namespace: [...message.params.namespace],
+        });
+      }
+
+      // Unified fan-out: both SSE (shared stream) and WebSocket paths
+      // deliver every event through a single connection; the client
+      // dispatches to matching subscriptions based on each sub's
+      // advertised filter.
+      for (const subscription of this.#subscriptions.values()) {
+        if (matchesSubscription(message, subscription.filter)) {
+          subscription.push(message);
         }
       }
 
@@ -1164,25 +1442,12 @@ export class ThreadStream<
         message.params.namespace.length === 0 &&
         TERMINAL_LIFECYCLE_EVENTS.has(message.params.data.event)
       ) {
-        if (ownerSubscription != null) {
-          // SSE transport: each subscription has its own independent
-          // server stream, and terminal lifecycle events are replayed
-          // on every new stream. Only pause the stream that delivered
-          // this terminal event — pausing peer subscriptions would
-          // prematurely kill handles (e.g. a freshly-opened extensions
-          // dispatcher) whose own stream hasn't delivered its terminal
-          // event yet.
-          if (ownerSubscription.subscriptionId !== this.#lifecycleSubId) {
-            ownerSubscription.pause();
-          }
-        } else {
-          // WebSocket transport: a single shared stream delivers every
-          // subscription's events, so a terminal event applies to all
-          // currently active non-lifecycle subscriptions.
-          for (const [id, subscription] of this.#subscriptions) {
-            if (id !== this.#lifecycleSubId) {
-              subscription.pause();
-            }
+        // A single shared stream delivers every subscription's events,
+        // so a terminal event applies to all currently active
+        // non-lifecycle subscriptions.
+        for (const [id, subscription] of this.#subscriptions) {
+          if (id !== this.#lifecycleSubId) {
+            subscription.pause();
           }
         }
       }
