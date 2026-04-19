@@ -1,0 +1,101 @@
+:root {
+  --bg-gradient-top: #fef6f0;
+  --bg-gradient-bottom: #eef2fb;
+  --card-bg: #ffffff;
+  --ink: #4a4360;
+  --ink-soft: #6d6587;
+  --muted: #9a94a8;
+  --accent: #d9a7c9;
+  --accent-dark: #b584a3;
+  --accent-soft: #f6e4ee;
+  --shimmer: #f0eaf4;
+  --shimmer-mid: #f7f1fa;
+  --shadow-pillow: 0 18px 48px -28px rgba(90, 70, 140, 0.28),
+    0 4px 12px -4px rgba(90, 70, 140, 0.08);
+  --radius-card: 28px;
+  --radius-pill: 999px;
+  --radius-inner: 20px;
+  --duration-fast: 140ms;
+  --duration-med: 280ms;
+  --ease-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Quicksand", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  color: var(--ink);
+  background: linear-gradient(
+    180deg,
+    var(--bg-gradient-top) 0%,
+    var(--bg-gradient-bottom) 100%
+  );
+  background-attachment: fixed;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+textarea,
+input {
+  font-family: inherit;
+}
+
+@keyframes shimmer-slide {
+  0% {
+    background-position: -300px 0;
+  }
+  100% {
+    background-position: 300px 0;
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

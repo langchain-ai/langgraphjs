@@ -1,0 +1,43 @@
+{
+  "name": "@examples/ui-multimodal",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n agent,web -c magenta,cyan \"npx --no-install langgraphjs dev --no-browser --port 2024\" \"vite\"",
+    "dev:agent": "npx --no-install langgraphjs dev --no-browser --port 2024",
+    "dev:web": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.40",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/openai": "^1.4.4",
+    "@langchain/protocol": "^0.0.10",
+    "@langchain/react": "workspace:*",
+    "deepagents": "https://pkg.pr.new/deepagents@cd6d654",
+    "langchain": "1.4.0-dev-1776378339387",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@langchain/langgraph-cli": "workspace:*",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.0",
+    "vite": "^8.0.4"
+  }
+}
