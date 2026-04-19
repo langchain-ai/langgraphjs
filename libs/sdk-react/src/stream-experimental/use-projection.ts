@@ -7,7 +7,7 @@ import type {
   ChannelRegistry,
   ProjectionSpec,
   StreamStore,
-} from "@langchain/langgraph-sdk/stream-experimental";
+} from "@langchain/langgraph-sdk/stream";
 
 /**
  * React-side primitive that composes {@link ChannelRegistry.acquire}

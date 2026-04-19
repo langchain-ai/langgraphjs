@@ -23,11 +23,11 @@ import {
   type SubagentDiscoverySnapshot,
   type SubgraphDiscoverySnapshot,
   type VideoMedia,
-} from "@langchain/langgraph-sdk/stream-experimental";
+} from "@langchain/langgraph-sdk/stream";
 import {
   getRegistry,
   type UseStreamExperimentalReturn,
-} from "./use-stream-experimental.js";
+} from "./use-stream.js";
 import { useProjection } from "./use-projection.js";
 
 /**

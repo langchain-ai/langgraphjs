@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { MediaBase } from "@langchain/langgraph-sdk/stream-experimental";
+import type { MediaBase } from "@langchain/langgraph-sdk/stream";
 
 /**
  * Resolve the lazy {@link MediaBase.objectURL} promise into a string

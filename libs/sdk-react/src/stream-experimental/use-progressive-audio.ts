@@ -3,7 +3,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MediaBase } from "@langchain/langgraph-sdk/stream-experimental";
+import type { MediaBase } from "@langchain/langgraph-sdk/stream";
 
 /**
  * Options for {@link useProgressiveAudio}.

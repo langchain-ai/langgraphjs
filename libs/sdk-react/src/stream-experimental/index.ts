@@ -16,17 +16,15 @@
  *      server.
  *
  * Framework-agnostic primitives (controller, registry, projection
- * factories) live in `@langchain/langgraph-sdk/stream-experimental`
+ * factories) live in `@langchain/langgraph-sdk/stream`
  * and are shared with Vue/Svelte/Angular bindings.
  */
 export {
   useStreamExperimental,
   STREAM_CONTROLLER,
-} from "./use-stream-experimental.js";
-export type {
-  UseStreamExperimentalOptions,
-  UseStreamExperimentalReturn,
-} from "./use-stream-experimental.js";
+  type UseStreamExperimentalOptions,
+  type UseStreamExperimentalReturn,
+} from "./use-stream.js";
 
 export { useProjection } from "./use-projection.js";
 
@@ -67,6 +65,6 @@ export type {
   StreamSubmitOptions,
   ToolCallStatus,
   VideoMedia,
-} from "@langchain/langgraph-sdk/stream-experimental";
+} from "@langchain/langgraph-sdk/stream";
 
-export { MediaAssemblyError } from "@langchain/langgraph-sdk/stream-experimental";
+export { MediaAssemblyError } from "@langchain/langgraph-sdk/stream";

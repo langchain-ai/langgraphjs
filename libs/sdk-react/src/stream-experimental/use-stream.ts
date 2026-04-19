@@ -21,12 +21,12 @@ import {
   type SubgraphByNodeMap,
   type SubgraphDiscoverySnapshot,
   type SubgraphMap,
-} from "@langchain/langgraph-sdk/stream-experimental";
+} from "@langchain/langgraph-sdk/stream";
 
 /**
  * Options accepted by {@link useStreamExperimental}. Framework-
  * agnostic options are re-exported from
- * `@langchain/langgraph-sdk/stream-experimental`; React-specific
+ * `@langchain/langgraph-sdk/stream`; React-specific
  * lifecycle callbacks live here.
  */
 export interface UseStreamExperimentalOptions<
