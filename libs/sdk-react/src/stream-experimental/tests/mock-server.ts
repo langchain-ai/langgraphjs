@@ -17,6 +17,9 @@ import { graph as stategraphText } from "./fixtures/stategraph-text.js";
 import { graph as createAgentGraph } from "./fixtures/create-agent.js";
 import { graph as deepAgentGraph } from "./fixtures/deep-agent.js";
 import { graph as interruptGraph } from "./fixtures/interrupt-graph.js";
+import { graph as errorGraph } from "./fixtures/error-graph.js";
+import { graph as subgraphGraph } from "./fixtures/subgraph-graph.js";
+import { graph as customChannelGraph } from "./fixtures/custom-channel-graph.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -63,6 +66,9 @@ const graphs: Record<string, AnyPregel> = {
   create_agent: createAgentGraph as unknown as AnyPregel,
   deep_agent: deepAgentGraph as unknown as AnyPregel,
   interrupt_graph: interruptGraph as unknown as AnyPregel,
+  error_graph: errorGraph as unknown as AnyPregel,
+  subgraph_graph: subgraphGraph as unknown as AnyPregel,
+  custom_channel_graph: customChannelGraph as unknown as AnyPregel,
 };
 
 let httpServer: Server | null = null;

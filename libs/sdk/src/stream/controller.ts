@@ -176,6 +176,14 @@ export class StreamController<
 
     if (changed) {
       await this.#teardownThread();
+      // Reset UI-facing snapshot so stale messages/values/tool-calls
+      // from the previous thread don't bleed into the new one. The
+      // new thread's state (if any) is then populated below via
+      // `#applyValues`.
+      this.rootStore.setState(() => ({
+        ...this.#createInitialSnapshot(),
+        threadId: this.#currentThreadId,
+      }));
     }
 
     if (this.#currentThreadId == null) {

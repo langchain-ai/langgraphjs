@@ -28,6 +28,24 @@ import {
   getRegistry,
   type UseStreamExperimentalReturn,
 } from "./use-stream.js";
+
+/**
+ * Selector hooks don't need to carry `InterruptType` /
+ * `ConfigurableType` — they only ever read state. Accepting a
+ * `StateType`-parameterised stream (with the other two generics
+ * widened to `any`) lets callers keep their full
+ * `useStreamExperimental<State, Interrupt, Configurable>()` handle
+ * without re-declaring the interrupt / configurable shapes at every
+ * selector call site.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StreamHandle<StateType extends object> = UseStreamExperimentalReturn<
+  StateType,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any
+>;
 import { useProjection } from "./use-projection.js";
 
 /**
@@ -71,6 +89,11 @@ function namespaceKey(namespace: readonly string[]): string {
 // reader and writer positions), so a concrete
 // `useStreamExperimental<typeof agent>()` handle wouldn't flow into
 // a `<object, unknown, object>` slot otherwise.
+//
+// Typed selectors (`useValues<S>` etc.) use {@link StreamHandle}
+// above so the concrete `StateType` flows into the return; hooks
+// that don't depend on state (`useMessages`, `useAudio`, …) stay on
+// `AnyStream` for maximum flexibility.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyStream = UseStreamExperimentalReturn<any, any, any>;
 
@@ -136,23 +159,42 @@ const EMPTY_TOOLCALLS: AssembledToolCall[] = [];
  *
  * When the payload carries a `messages` array, it is coerced to
  * `BaseMessage` instances to keep parity with the root projection.
+ *
+ * Typing:
+ *  - **Root** (`useValues(stream)`): returns the `StateType` declared
+ *    on the parent `useStreamExperimental<State>()` — no explicit
+ *    generic required. Non-nullable because the root snapshot always
+ *    carries `values` (falling back to `initialValues ?? {}`).
+ *  - **Scoped** (`useValues(stream, target)`): the scoped payload can
+ *    have a different shape than the root state (e.g. a subagent
+ *    returning its own substate). Callers should annotate the
+ *    expected shape explicitly: `useValues<SubagentState>(stream, sub)`.
+ *    Defaults to `unknown` when not annotated.
  */
+export function useValues<StateType extends object>(
+  stream: StreamHandle<StateType>
+): StateType;
 export function useValues<T = unknown>(
+  stream: AnyStream,
+  target: SelectorTarget,
+  options?: { messagesKey?: string }
+): T | undefined;
+export function useValues(
   stream: AnyStream,
   target?: SelectorTarget,
   options?: { messagesKey?: string }
-): T | undefined {
+): unknown {
   const namespace = resolveNamespace(target);
   const messagesKey = options?.messagesKey ?? "messages";
   const key = `values|${messagesKey}|${namespaceKey(namespace)}`;
   const registry = isRoot(namespace) ? null : getRegistry(stream);
-  const scoped = useProjection<T | undefined>(
+  const scoped = useProjection<unknown>(
     registry,
-    () => valuesProjection<T>(namespace, messagesKey),
+    () => valuesProjection<unknown>(namespace, messagesKey),
     key,
     undefined
   );
-  return isRoot(namespace) ? (stream.values as unknown as T) : scoped;
+  return isRoot(namespace) ? stream.values : scoped;
 }
 
 /**

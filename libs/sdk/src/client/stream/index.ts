@@ -290,6 +290,13 @@ export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
     while (this.waiters.length > 0) {
       this.waiters.shift()?.({ done: true, value: undefined });
     }
+    // A paused iterator may be parked on `waitForResume()` instead of
+    // on a regular iterator waiter. Resolving here prevents closed
+    // subscriptions from stranding pumps that observe `isPaused` and
+    // block on `waitForResume()` (e.g. the root pump in
+    // `StreamController`).
+    this.resumeResolve?.();
+    this.resumeResolve = undefined;
   }
 
   async unsubscribe(): Promise<void> {

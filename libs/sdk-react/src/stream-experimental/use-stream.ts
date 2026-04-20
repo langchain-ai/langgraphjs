@@ -98,8 +98,16 @@ export interface UseStreamExperimentalReturn<
   >;
 
   // ----- imperatives -----
+  /**
+   * Dispatch a new run on the bound thread.
+   *
+   * `input` is typed as `Partial<StateType>` so IDE autocompletion
+   * surfaces the state keys declared on the root hook. Pass `null`
+   * (or omit fields) when resuming an interrupt via `options.command.resume`
+   * — the server accepts a null payload in that case.
+   */
   submit(
-    input: unknown,
+    input: Partial<StateType> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
   stop(): Promise<void>;
@@ -181,8 +189,13 @@ export function useStreamExperimental<
     () =>
       new StreamController<StateType, InterruptType, ConfigurableType>({
         assistantId: options.assistantId,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        client: client as any,
+        // Cast: the runtime `Client` is state-shape agnostic, but the
+        // controller declares `client: Client<StateType>` so its own
+        // typings line up. Tightening `submit`'s `input` parameter to
+        // `Partial<StateType>` surfaced this variance mismatch that
+        // was previously masked — the cast is equivalent to the
+        // ClientCtor cast above.
+        client: client as unknown as Client<StateType>,
         threadId: options.threadId ?? null,
         transport: options.transport,
         fetch: options.fetch,

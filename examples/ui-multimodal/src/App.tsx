@@ -73,11 +73,15 @@ function StoryBody({ stream, onReset }: StoryBodyProps) {
   // is keyed by the name passed to `addNode(...)`; each bucket preserves
   // insertion order so parallel fan-outs with the same node name remain
   // addressable positionally.
+  //
+  // Page 1 (index 1) is the video page: its illustration comes from the
+  // `videographer_1` node (Sora 2) instead of the Responses-API image tool.
   const visualizerSubgraphs = [
     stream.subgraphsByNode.get("visualizer_0")?.[0],
-    stream.subgraphsByNode.get("visualizer_1")?.[0],
+    undefined,
     stream.subgraphsByNode.get("visualizer_2")?.[0],
   ];
+  const videographerSubgraph = stream.subgraphsByNode.get("videographer_1")?.[0];
   const narratorSubgraphs = [
     stream.subgraphsByNode.get("narrator_0")?.[0],
     stream.subgraphsByNode.get("narrator_1")?.[0],
@@ -160,7 +164,9 @@ function StoryBody({ stream, onReset }: StoryBodyProps) {
             index={i}
             text={paragraphs[i] ?? ""}
             stream={stream}
+            variant={i === 1 ? "video" : "image"}
             visualizerSubgraph={visualizerSubgraphs[i]}
+            videographerSubgraph={i === 1 ? videographerSubgraph : undefined}
             narratorSubgraph={narratorSubgraphs[i]}
           />
         ))}

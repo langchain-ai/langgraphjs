@@ -43,10 +43,16 @@ export type { SelectorTarget } from "./selectors.js";
 
 export { useMediaURL } from "./use-media-url.js";
 export {
-  useProgressiveAudio,
-  type ProgressiveAudioState,
-  type UseProgressiveAudioOptions,
-} from "./use-progressive-audio.js";
+  useAudioPlayer,
+  type AudioPlayerHandle,
+  type PlayerStatus,
+  type UseAudioPlayerOptions,
+} from "./use-audio-player.js";
+export {
+  useVideoPlayer,
+  type UseVideoPlayerOptions,
+  type VideoPlayerHandle,
+} from "./use-video-player.js";
 
 // Re-export framework-agnostic types users reach for on the React side.
 export type {

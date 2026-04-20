@@ -2,14 +2,25 @@
  * Placeholder art shown while an image is generating or when generation fails.
  * A soft watercolor moon over a pastel wash — no text, no sharp edges.
  */
-export function PlaceholderImage({ muted = false }: { muted?: boolean }) {
+export function PlaceholderImage({
+  muted = false,
+  label,
+}: {
+  muted?: boolean;
+  /**
+   * Optional caption overlaid at the bottom. Useful for long-running
+   * generations (e.g. Sora renders) where the idle moon alone doesn't
+   * convey that anything is happening.
+   */
+  label?: string;
+}) {
   return (
     <svg
       viewBox="0 0 200 200"
       width="100%"
       height="100%"
       role="img"
-      aria-label="sleeping moon placeholder"
+      aria-label={label ?? "sleeping moon placeholder"}
       style={{ opacity: muted ? 0.55 : 1 }}
     >
       <defs>
@@ -38,6 +49,19 @@ export function PlaceholderImage({ muted = false }: { muted?: boolean }) {
         fill="#4a4360"
         opacity="0.35"
       />
+      {label != null ? (
+        <text
+          x="100"
+          y="178"
+          textAnchor="middle"
+          fontSize="11"
+          fontFamily="system-ui, sans-serif"
+          fill="#4a4360"
+          opacity="0.75"
+        >
+          {label}
+        </text>
+      ) : null}
     </svg>
   );
 }

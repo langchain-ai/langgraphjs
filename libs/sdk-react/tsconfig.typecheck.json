@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/typecheck",
+    "types": ["vitest/globals", "node"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.test-d.ts", "src/**/*.d.ts", "src/**/*.ts", "src/**/*.tsx"]
+}

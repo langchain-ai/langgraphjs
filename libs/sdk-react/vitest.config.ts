@@ -11,7 +11,7 @@ export default defineConfig({
     retry: 2,
     globalSetup: [
       "./src/tests/fixtures/mock-server.ts",
-      "./src/tests/fixtures/protocol-v2-server.ts",
+      "./src/stream-experimental/tests/mock-server.ts",
     ],
     browser: {
       enabled: true,

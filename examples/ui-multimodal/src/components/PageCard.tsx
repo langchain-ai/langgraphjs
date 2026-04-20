@@ -1,9 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import {
   useAudio,
+  useAudioPlayer,
   useImages,
   useMediaURL,
-  useProgressiveAudio,
+  useVideo,
+  useVideoPlayer,
   type SubgraphDiscoverySnapshot,
 } from "@langchain/react";
 import { PlaceholderImage } from "./PlaceholderImage";
@@ -19,7 +21,22 @@ export interface PageCardProps {
   index: number;
   text: string;
   stream: StreamHandle;
-  visualizerSubgraph: SubgraphDiscoverySnapshot | undefined;
+  /**
+   * Illustration modality for this page. `"image"` pages draw from a
+   * `visualizer_*` subgraph; `"video"` pages from a `videographer_*`
+   * subgraph (e.g. Sora 2).
+   *
+   * This is passed explicitly — rather than inferred from which subgraph
+   * prop is set — because the corresponding subgraph snapshot is
+   * `undefined` until the node actually starts. Without the explicit
+   * variant, a video page would temporarily fall into image-mode and
+   * show whatever root-scoped image arrived first.
+   */
+  variant: "image" | "video";
+  /** Set when the page's illustration is a Responses-API generated image. */
+  visualizerSubgraph?: SubgraphDiscoverySnapshot | undefined;
+  /** Set when the page's illustration is a Sora-generated video. */
+  videographerSubgraph?: SubgraphDiscoverySnapshot | undefined;
   narratorSubgraph: SubgraphDiscoverySnapshot | undefined;
   onPlayRequestedPage?: (index: number) => void;
 }
@@ -30,93 +47,100 @@ export const PageCard = forwardRef<PageCardHandle, PageCardProps>(
       index,
       text,
       stream,
+      variant,
       visualizerSubgraph,
+      videographerSubgraph,
       narratorSubgraph,
     } = props;
 
+    const isVideoPage = variant === "video";
+
+    // Subscribe to both modalities unconditionally (hooks rules), but
+    // only USE the one this page is wired for. `useImages(stream,
+    // undefined)` returns root-scoped images from every visualizer —
+    // so on a video page we must ignore `images[0]` entirely, otherwise
+    // the Sora slot would borrow whatever illustration arrived first
+    // (e.g. page 0's) while the render is still in flight.
     const images = useImages(stream, visualizerSubgraph);
+    const videos = useVideo(stream, videographerSubgraph);
     const audio = useAudio(stream, narratorSubgraph);
 
-    const image = images[0];
+    const image = isVideoPage ? undefined : images[0];
+    const video = isVideoPage ? videos[0] : undefined;
     const clip = audio[0];
 
     const imageURL = useMediaURL(image);
-    const progressiveAudio = useProgressiveAudio(clip);
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    // The Sora clip is ambient wallpaper for the page — autoplay as
+    // soon as the blob URL is minted, loop forever, and don't tie it
+    // to narration. The native `loop` attribute on <video> keeps the
+    // element in "playing" indefinitely (no `ended` fires), which is
+    // fine for this hook because we never call `playToEnd()` on it.
+    const videoPlayer = useVideoPlayer(videoRef, video, { autoPlay: true });
+    const player = useAudioPlayer(clip);
 
     const imageFailed =
       visualizerSubgraph?.status === "error" || image?.error != null;
+    const videoFailed =
+      videographerSubgraph?.status === "error" ||
+      video?.error != null ||
+      videoPlayer.status === "error";
     const audioFailed =
       narratorSubgraph?.status === "error" ||
       clip?.error != null ||
-      progressiveAudio.error != null;
-
-    // Chain-play orchestration: `play()` must resolve only when the
-    // narration has actually finished playing. Capture the pending
-    // resolver in a ref and let the effect below complete it as soon
-    // as the hook reports a terminal state. Resolving synchronously
-    // would cause the caller to start every page's audio in the same
-    // tick — three narrators talking over each other.
-    const pendingResolveRef = useRef<(() => void) | null>(null);
-    const waitingForPlaybackRef = useRef(false);
-
-    useEffect(() => {
-      if (!waitingForPlaybackRef.current) return;
-      // The hook flips `isPlaying` back to false only after the last
-      // scheduled audio source has ended AND the upstream stream has
-      // signalled finish. That's the earliest moment a follow-up page
-      // can safely start without overlap.
-      if (progressiveAudio.isFinished && !progressiveAudio.isPlaying) {
-        waitingForPlaybackRef.current = false;
-        const resolve = pendingResolveRef.current;
-        pendingResolveRef.current = null;
-        resolve?.();
-      }
-    }, [progressiveAudio.isPlaying, progressiveAudio.isFinished]);
+      player.status === "error";
 
     useImperativeHandle(
       ref,
       () => ({
-        play: () =>
-          new Promise<void>((resolve) => {
-            // If a previous play() is still pending, replace its
-            // resolver with the new one; the older caller would have
-            // seen a resolve on the next terminal transition anyway.
-            pendingResolveRef.current?.();
-            pendingResolveRef.current = resolve;
-            waitingForPlaybackRef.current = true;
-            progressiveAudio.play();
-          }),
-        pause: () => {
-          waitingForPlaybackRef.current = false;
-          const resolve = pendingResolveRef.current;
-          pendingResolveRef.current = null;
-          progressiveAudio.pause();
-          resolve?.();
-        },
+        // `playToEnd` resolves on the next terminal transition
+        // (`finished` / `paused` / `idle`), rejects on `error`. That's
+        // exactly the "done narrating, safe to advance" signal the
+        // chain-play orchestrator needs. The Sora clip loops
+        // independently — no need to gate it on narration.
+        play: () => player.playToEnd(),
+        pause: () => player.pause(),
       }),
-      [progressiveAudio]
+      [player]
     );
 
-    const togglePlay = () => {
-      if (progressiveAudio.isPlaying) {
-        progressiveAudio.pause();
-      } else {
-        progressiveAudio.play();
-      }
-    };
+    const isPlaying = player.status === "playing";
+    const isStreaming =
+      player.status === "buffering" || player.status === "playing";
 
     const imageReady = imageURL != null;
-    // Audio is "ready" the instant a stream is open; progressive playback
-    // begins as soon as the first chunk lands.
-    const audioReady = clip != null && progressiveAudio.error == null;
-    const isPlaying = progressiveAudio.isPlaying;
+    const videoReady = video != null && videoPlayer.status !== "error";
+    const audioReady = clip != null && player.status !== "error";
 
     return (
       <article className="page-card" aria-label={`Page ${index + 1}`}>
         <div
-          className={`page-card__image-wrap${imageReady || imageFailed ? " page-card__image-wrap--ready" : ""}`}
+          className={`page-card__image-wrap${
+            (isVideoPage ? videoReady || videoFailed : imageReady || imageFailed)
+              ? " page-card__image-wrap--ready"
+              : ""
+          }`}
         >
-          {imageReady ? (
+          {isVideoPage ? (
+            // Always render the element so `useVideoPlayer` can bind on
+            // the first frame we receive. Hide it until the blob URL is
+            // wired so the poster area stays clean during buffering.
+            //
+            // `loop` makes the Sora clip run as ambient wallpaper, and
+            // `muted` + `playsInline` bypass mobile-browser autoplay
+            // guardrails so `autoPlay: true` on the hook actually takes
+            // effect without a user gesture.
+            <video
+              ref={videoRef}
+              className="page-card__image"
+              playsInline
+              muted
+              loop
+              style={{
+                display: videoReady && !videoFailed ? undefined : "none",
+              }}
+            />
+          ) : imageReady ? (
             <img
               className="page-card__image"
               src={imageURL}
@@ -142,7 +166,7 @@ export const PageCard = forwardRef<PageCardHandle, PageCardProps>(
             className={`audio-btn${
               audioReady && !isPlaying ? " audio-btn--pending" : ""
             }`}
-            onClick={togglePlay}
+            onClick={() => player.toggle()}
             disabled={!audioReady}
             aria-label={isPlaying ? "Pause narration" : "Play narration"}
           >
@@ -158,9 +182,11 @@ export const PageCard = forwardRef<PageCardHandle, PageCardProps>(
               {audioFailed
                 ? "🔇 audio unavailable"
                 : audioReady
-                  ? progressiveAudio.isFinished
+                  ? player.status === "finished"
                     ? "ready"
-                    : "streaming…"
+                    : isStreaming
+                      ? "streaming…"
+                      : "ready"
                   : "listening…"}
             </span>
           </div>
