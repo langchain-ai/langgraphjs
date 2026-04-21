@@ -1389,6 +1389,12 @@ export class ThreadsClient<
     options?: {
       lastEventId?: string;
       streamMode?: ThreadStreamMode | ThreadStreamMode[];
+      /**
+       * Stream output from subgraphs. By default, streams only the top graph.
+       * Must be set on this call (not only on the original run creation) —
+       * the server reads it from the request params on every stream open.
+       */
+      streamSubgraphs?: boolean;
       signal?: AbortSignal;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1400,9 +1406,12 @@ export class ThreadsClient<
       headers: options?.lastEventId
         ? { "Last-Event-ID": options.lastEventId }
         : undefined,
-      params: options?.streamMode
-        ? { stream_mode: options.streamMode }
-        : undefined,
+      params: {
+        ...(options?.streamMode ? { stream_mode: options.streamMode } : {}),
+        ...(options?.streamSubgraphs !== undefined
+          ? { stream_subgraphs: options.streamSubgraphs }
+          : {}),
+      },
     });
   }
 }
@@ -1827,6 +1836,14 @@ export class RunsClient<
           cancelOnDisconnect?: boolean;
           lastEventId?: string;
           streamMode?: StreamMode | StreamMode[];
+          /**
+           * Stream output from subgraphs. By default, streams only the top
+           * graph. Must be set on this call (not only on the original
+           * `runs.create` / `runs.stream` invocation) — the server reads it
+           * from the request params each time the stream is opened, so
+           * reconnecting via `joinStream` without it drops subgraph events.
+           */
+          streamSubgraphs?: boolean;
         }
       | AbortSignal
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1852,6 +1869,9 @@ export class RunsClient<
       params: {
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
+        ...(opts?.streamSubgraphs !== undefined
+          ? { stream_subgraphs: opts.streamSubgraphs }
+          : {}),
       },
     });
   }
