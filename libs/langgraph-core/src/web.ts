@@ -22,10 +22,17 @@ export {
   type ConditionalEdgeRouterTypes,
   type ExtractStateType,
   type ExtractUpdateType,
+  type ToStateDefinition,
   type StateDefinitionInit,
   type ContextSchemaInit,
   type StateGraphInit,
   type StateGraphOptions,
+  type NodeSpec,
+  type AddNodeOptions,
+  type StateGraphNodeSpec,
+  type StateGraphAddNodeOptions,
+  type StateGraphArgsWithStateSchema,
+  type StateGraphArgsWithInputOutputSchemas,
 } from "./graph/index.js";
 export type {
   StateSnapshot,
@@ -54,7 +61,7 @@ export {
 export type { EphemeralValue } from "./channels/ephemeral_value.js";
 export { UntrackedValueChannel } from "./channels/untracked_value.js";
 export { type AnnotationRoot } from "./graph/index.js";
-export { type RetryPolicy } from "./pregel/utils/index.js";
+export { type RetryPolicy, type CachePolicy } from "./pregel/utils/index.js";
 export {
   Send,
   Command,

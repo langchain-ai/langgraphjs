@@ -138,7 +138,7 @@ describe("StreamMessagesHandler", () => {
         {}, // extraParams
         [], // tags
         metadata, // metadata
-        "ModelName" // name
+        "ModelName", // name
       );
 
       expect(handler.metadatas[runId]).toEqual([
@@ -163,7 +163,7 @@ describe("StreamMessagesHandler", () => {
         {},
         [TAG_NOSTREAM], // nostream tag
         metadata,
-        "ModelName"
+        "ModelName",
       );
 
       // Should not store metadata due to TAG_NOSTREAM
@@ -185,7 +185,7 @@ describe("StreamMessagesHandler", () => {
       handler.handleLLMNewToken(
         "token",
         { prompt: 0, completion: 0 } as NewTokenIndices, // idx
-        runId
+        runId,
       );
 
       // Should mark run as emitted
@@ -195,7 +195,7 @@ describe("StreamMessagesHandler", () => {
       expect(emitSpy).toHaveBeenCalledWith(
         handler.metadatas[runId],
         expect.any(AIMessageChunk),
-        runId
+        runId,
       );
       expect(emitSpy.mock.calls[0][1].content).toBe("token");
     });
@@ -222,14 +222,14 @@ describe("StreamMessagesHandler", () => {
         runId,
         undefined,
         undefined,
-        { chunk } // provide the chunk
+        { chunk }, // provide the chunk
       );
 
       // Should emit the chunk's message
       expect(emitSpy).toHaveBeenCalledWith(
         handler.metadatas[runId],
         chunk.message,
-        runId
+        runId,
       );
     });
 
@@ -246,7 +246,7 @@ describe("StreamMessagesHandler", () => {
       handler.handleLLMNewToken(
         "token",
         { prompt: 0, completion: 0 } as NewTokenIndices,
-        runId
+        runId,
       );
 
       // Should mark run as emitted
@@ -274,7 +274,7 @@ describe("StreamMessagesHandler", () => {
         {
           generations: [[{ text: "test output", message }]],
         } as unknown as LLMResult,
-        runId
+        runId,
       );
 
       // Should emit the message with dedupe=true
@@ -282,7 +282,7 @@ describe("StreamMessagesHandler", () => {
         expect.anything(),
         expect.objectContaining({ content: "final result" }),
         runId,
-        true
+        true,
       );
 
       // Should clean up
@@ -312,7 +312,7 @@ describe("StreamMessagesHandler", () => {
             ],
           ],
         } as unknown as LLMResult,
-        runId
+        runId,
       );
 
       // Should not emit anything
@@ -340,7 +340,7 @@ describe("StreamMessagesHandler", () => {
             ],
           ],
         } as unknown as LLMResult,
-        "run-123"
+        "run-123",
       );
 
       // Should not emit anything
@@ -380,7 +380,7 @@ describe("StreamMessagesHandler", () => {
         [],
         metadata,
         undefined,
-        "NodeName" // Name matches langgraph_node
+        "NodeName", // Name matches langgraph_node
       );
 
       expect(handler.metadatas[runId]).toEqual([
@@ -406,7 +406,7 @@ describe("StreamMessagesHandler", () => {
         [],
         metadata,
         undefined,
-        "DifferentName" // Different from langgraph_node
+        "DifferentName", // Different from langgraph_node
       );
 
       expect(handler.metadatas[runId]).toBeUndefined();
@@ -429,7 +429,7 @@ describe("StreamMessagesHandler", () => {
         [TAG_HIDDEN], // Hidden tag
         metadata,
         undefined,
-        "NodeName"
+        "NodeName",
       );
 
       expect(handler.metadatas[runId]).toBeUndefined();
@@ -455,7 +455,7 @@ describe("StreamMessagesHandler", () => {
         expect.anything(),
         expect.objectContaining({ content: "chain result" }),
         runId,
-        true
+        true,
       );
 
       // Should clean up
@@ -484,7 +484,7 @@ describe("StreamMessagesHandler", () => {
       // Verify calls in a way that's less brittle
       const callArgs = (handler._emit as ReturnType<typeof vi.fn>).mock.calls;
       const emittedContents = callArgs.map(
-        (args) => (args[1] as BaseMessage).content
+        (args) => (args[1] as BaseMessage).content,
       );
       expect(emittedContents).toContain("result 1");
       expect(emittedContents).toContain("result 2");
@@ -512,7 +512,7 @@ describe("StreamMessagesHandler", () => {
           arrayMessages: [arrayMessage, "not a message"],
           otherProp: "something else",
         },
-        runId
+        runId,
       );
 
       // Should emit both messages
@@ -521,7 +521,7 @@ describe("StreamMessagesHandler", () => {
       // Verify calls in a way that's less brittle
       const callArgs = (handler._emit as ReturnType<typeof vi.fn>).mock.calls;
       const emittedContents = callArgs.map(
-        (args) => (args[1] as BaseMessage).content
+        (args) => (args[1] as BaseMessage).content,
       );
       expect(emittedContents).toContain("direct result");
       expect(emittedContents).toContain("array result");

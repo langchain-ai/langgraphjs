@@ -1,5 +1,19 @@
 # @example/ai-elements
 
+## 0.1.12
+
+### Patch Changes
+
+- Updated dependencies [[`9102d52`](https://github.com/langchain-ai/langgraphjs/commit/9102d526c858a4cdbe9b47dcdd062b93da93e49f), [`b7c196b`](https://github.com/langchain-ai/langgraphjs/commit/b7c196b2142fb888dfcd9ceb1dfb4365d803c8b6)]:
+  - @langchain/langgraph@1.2.9
+
+## 0.1.11
+
+### Patch Changes
+
+- Updated dependencies [[`e42c2c8`](https://github.com/langchain-ai/langgraphjs/commit/e42c2c8836e0b7e36067fea6cc51842e1eb2c60f)]:
+  - @langchain/langgraph@1.2.8
+
 ## 0.1.10
 
 ### Patch Changes

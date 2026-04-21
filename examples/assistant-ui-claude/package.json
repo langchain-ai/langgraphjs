@@ -1,6 +1,6 @@
 {
   "name": "@examples/assistant-ui-claude",
-  "version": "0.1.10",
+  "version": "0.1.12",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.12.17",
     "@assistant-ui/react-markdown": "^0.12.5",
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.4.1",
     "@langchain/react": "workspace:*",
@@ -36,6 +36,6 @@
     "tailwindcss": "^4.2.1",
     "tw-shimmer": "^0.4.8",
     "typescript": "^5",
-    "vite": "^8.0.0"
+    "vite": "^8.0.5"
   }
 }
