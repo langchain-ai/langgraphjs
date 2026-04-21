@@ -24,10 +24,7 @@ import {
   type SubgraphDiscoverySnapshot,
   type VideoMedia,
 } from "@langchain/langgraph-sdk/stream";
-import {
-  getRegistry,
-  type UseStreamExperimentalReturn,
-} from "./use-stream.js";
+import { getRegistry, type UseStreamExperimentalReturn } from "./use-stream.js";
 
 /**
  * Selector hooks don't need to carry `InterruptType` /

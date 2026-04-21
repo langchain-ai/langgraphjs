@@ -236,8 +236,10 @@ export const normalizeProtocolMessageContent = (
 ) => {
   const additionalKwargs = options?.additionalKwargs;
   const extractExtras = () => {
-    const audioBlock = normalizeAudioBlockFromAdditionalKwargs(additionalKwargs);
-    const imageBlocks = normalizeImageBlocksFromAdditionalKwargs(additionalKwargs);
+    const audioBlock =
+      normalizeAudioBlockFromAdditionalKwargs(additionalKwargs);
+    const imageBlocks =
+      normalizeImageBlocksFromAdditionalKwargs(additionalKwargs);
     return { audioBlock, imageBlocks };
   };
 

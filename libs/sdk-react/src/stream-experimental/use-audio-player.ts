@@ -306,14 +306,12 @@ function tryParseWavHeader(bytes: Uint8Array): WavHeaderResult {
   }
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let fmt:
-    | {
-        audioFormat: number;
-        sampleRate: number;
-        channels: number;
-        bitsPerSample: number;
-      }
-    | null = null;
+  let fmt: {
+    audioFormat: number;
+    sampleRate: number;
+    channels: number;
+    bitsPerSample: number;
+  } | null = null;
 
   let offset = 12;
   while (offset + 8 <= bytes.byteLength) {
@@ -606,58 +604,55 @@ export function useAudioPlayer(
   }, [ensureAnalyser]);
 
   // ── PCM scheduling ──────────────────────────────────────────────────
-  const scheduleChunk = useCallback(
-    (ctx: AudioContext, bytes: Uint8Array) => {
-      const format = formatRef.current;
-      const analyser = analyserRef.current;
-      if (format == null || analyser == null) return;
-      const { sampleRate: bufSampleRate, channels: bufChannels } = format;
+  const scheduleChunk = useCallback((ctx: AudioContext, bytes: Uint8Array) => {
+    const format = formatRef.current;
+    const analyser = analyserRef.current;
+    if (format == null || analyser == null) return;
+    const { sampleRate: bufSampleRate, channels: bufChannels } = format;
 
-      const sampleCount = Math.floor(bytes.byteLength / 2);
-      if (sampleCount === 0) return;
-      const framesPerChannel = Math.floor(sampleCount / bufChannels);
-      if (framesPerChannel === 0) return;
+    const sampleCount = Math.floor(bytes.byteLength / 2);
+    if (sampleCount === 0) return;
+    const framesPerChannel = Math.floor(sampleCount / bufChannels);
+    if (framesPerChannel === 0) return;
 
-      const buffer = ctx.createBuffer(
-        bufChannels,
-        framesPerChannel,
-        bufSampleRate
-      );
-      const view = new DataView(
-        bytes.buffer,
-        bytes.byteOffset,
-        framesPerChannel * bufChannels * 2
-      );
-      for (let channel = 0; channel < bufChannels; channel += 1) {
-        const channelData = buffer.getChannelData(channel);
-        for (let frame = 0; frame < framesPerChannel; frame += 1) {
-          const sampleOffset = (frame * bufChannels + channel) * 2;
-          const int = view.getInt16(sampleOffset, true);
-          channelData[frame] = int < 0 ? int / 0x8000 : int / 0x7fff;
-        }
+    const buffer = ctx.createBuffer(
+      bufChannels,
+      framesPerChannel,
+      bufSampleRate
+    );
+    const view = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      framesPerChannel * bufChannels * 2
+    );
+    for (let channel = 0; channel < bufChannels; channel += 1) {
+      const channelData = buffer.getChannelData(channel);
+      for (let frame = 0; frame < framesPerChannel; frame += 1) {
+        const sampleOffset = (frame * bufChannels + channel) * 2;
+        const int = view.getInt16(sampleOffset, true);
+        channelData[frame] = int < 0 ? int / 0x8000 : int / 0x7fff;
       }
+    }
 
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(analyser);
-      const now = ctx.currentTime;
-      const startAt = Math.max(now, nextStartTimeRef.current);
-      source.start(startAt);
-      nextStartTimeRef.current = startAt + buffer.duration;
-      activeSourcesRef.current.add(source);
-      source.onended = () => {
-        activeSourcesRef.current.delete(source);
-        if (
-          activeSourcesRef.current.size === 0 &&
-          upstreamFinishedRef.current &&
-          pendingChunksRef.current.length === 0
-        ) {
-          setStatus("finished");
-        }
-      };
-    },
-    []
-  );
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(analyser);
+    const now = ctx.currentTime;
+    const startAt = Math.max(now, nextStartTimeRef.current);
+    source.start(startAt);
+    nextStartTimeRef.current = startAt + buffer.duration;
+    activeSourcesRef.current.add(source);
+    source.onended = () => {
+      activeSourcesRef.current.delete(source);
+      if (
+        activeSourcesRef.current.size === 0 &&
+        upstreamFinishedRef.current &&
+        pendingChunksRef.current.length === 0
+      ) {
+        setStatus("finished");
+      }
+    };
+  }, []);
 
   const flushPendingPcm = useCallback(() => {
     if (!shouldPlayRef.current) return;
@@ -705,7 +700,13 @@ export function useAudioPlayer(
       setError(err as Error);
       setStatus("error");
     });
-  }, [media, strategy, ensureContextForPcm, ensureContextForElement, flushPendingPcm]);
+  }, [
+    media,
+    strategy,
+    ensureContextForPcm,
+    ensureContextForElement,
+    flushPendingPcm,
+  ]);
 
   const pause = useCallback(() => {
     shouldPlayRef.current = false;
@@ -936,7 +937,15 @@ export function useAudioPlayer(
     };
     // `flushPendingPcm` and `stop` are stable via useCallback deps;
     // include them to satisfy exhaustive-deps without re-running.
-  }, [media, strategy, sampleRate, channels, pcmPrefixes, flushPendingPcm, stop]);
+  }, [
+    media,
+    strategy,
+    sampleRate,
+    channels,
+    pcmPrefixes,
+    flushPendingPcm,
+    stop,
+  ]);
 
   // Element effect — await blob URL then wire an HTMLAudioElement.
   useEffect(() => {
@@ -962,7 +971,11 @@ export function useAudioPlayer(
         const onPlay = () => {
           if (statusRef.current === "error") return;
           const ctx = ensureContextForElement();
-          if (ctx != null && elementSourceRef.current == null && audio != null) {
+          if (
+            ctx != null &&
+            elementSourceRef.current == null &&
+            audio != null
+          ) {
             try {
               const src = ctx.createMediaElementSource(audio);
               src.connect(analyserRef.current!);

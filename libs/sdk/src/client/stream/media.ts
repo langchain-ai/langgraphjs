@@ -221,9 +221,7 @@ class MediaHandleImpl {
   // `ReadableStream.locked` flag prevents two concurrent readers.
 
   #stream: ReadableStream<Uint8Array> | undefined;
-  #streamController:
-    | ReadableStreamDefaultController<Uint8Array>
-    | undefined;
+  #streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
 
   // Blob / URL settlement ---------------------------------------------
 
@@ -732,9 +730,8 @@ export class MediaAssembler {
       return;
     }
 
-    const block = (
-      data as { content_block?: ContentBlock; index?: number }
-    ).content_block;
+    const block = (data as { content_block?: ContentBlock; index?: number })
+      .content_block;
     const blockIndex = (data as { index?: number }).index ?? 0;
     if (block == null) return;
     const blockType = block.type;

@@ -429,10 +429,7 @@ export function registerProtocolRoutes(
         const sinkId = uuidv7();
 
         return {
-          async onOpen(
-            _event: Event,
-            ws: { send: (source: string) => void }
-          ) {
+          async onOpen(_event: Event, ws: { send: (source: string) => void }) {
             // Unfiltered sink: forward every buffered + live event to the
             // websocket in order, so the browser ThreadStream sees the
             // complete event history regardless of subscription timing.

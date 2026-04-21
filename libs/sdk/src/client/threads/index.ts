@@ -421,15 +421,14 @@ export class ThreadsClient<
    * });
    * ```
    */
-  stream<
-    TExtensions extends Record<string, unknown> = Record<string, unknown>,
-  >(options: ThreadStreamOptions): ThreadStream<TExtensions>;
-  stream<
-    TExtensions extends Record<string, unknown> = Record<string, unknown>,
-  >(threadId: string, options: ThreadStreamOptions): ThreadStream<TExtensions>;
-  stream<
-    TExtensions extends Record<string, unknown> = Record<string, unknown>,
-  >(
+  stream<TExtensions extends Record<string, unknown> = Record<string, unknown>>(
+    options: ThreadStreamOptions
+  ): ThreadStream<TExtensions>;
+  stream<TExtensions extends Record<string, unknown> = Record<string, unknown>>(
+    threadId: string,
+    options: ThreadStreamOptions
+  ): ThreadStream<TExtensions>;
+  stream<TExtensions extends Record<string, unknown> = Record<string, unknown>>(
     threadIdOrOptions: string | ThreadStreamOptions,
     maybeOptions?: ThreadStreamOptions
   ): ThreadStream<TExtensions> {

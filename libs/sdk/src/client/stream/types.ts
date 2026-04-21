@@ -182,8 +182,7 @@ export interface InterruptPayload<TPayload = unknown> {
  * opened on first property access and cached.
  */
 export interface ThreadExtension<T = unknown>
-  extends AsyncIterable<T>,
-    PromiseLike<T> {}
+  extends AsyncIterable<T>, PromiseLike<T> {}
 
 /**
  * Unwrap a single in-process projection value to its observable payload
@@ -198,11 +197,8 @@ export interface ThreadExtension<T = unknown>
  * (via `InferExtensions<TTransformers>` from `@langchain/langgraph`),
  * without forcing users to redeclare payload types on the remote side.
  */
-export type UnwrapExtension<T> = T extends PromiseLike<infer U>
-  ? U
-  : T extends AsyncIterable<infer U>
-    ? U
-    : T;
+export type UnwrapExtension<T> =
+  T extends PromiseLike<infer U> ? U : T extends AsyncIterable<infer U> ? U : T;
 
 /**
  * Keyed map of {@link ThreadExtension} handles, typed off a declared

@@ -27,10 +27,7 @@ function normalizeSegment(segment: string): string {
  * `api/langgraph_api/protocol/namespace.py` so server-side filtering
  * and client-side per-subscription narrowing stay consistent.
  */
-function isPrefixMatch(
-  eventNamespace: Namespace,
-  prefix: Namespace
-): boolean {
+function isPrefixMatch(eventNamespace: Namespace, prefix: Namespace): boolean {
   if (prefix.length > eventNamespace.length) return false;
   for (let i = 0; i < prefix.length; i += 1) {
     const segment = prefix[i]!;

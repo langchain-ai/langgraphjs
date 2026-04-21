@@ -210,4 +210,3 @@ export const normalizeToolData = (
       } satisfies ToolOutputDeltaData;
   }
 };
-

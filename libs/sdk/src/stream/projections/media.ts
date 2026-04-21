@@ -37,10 +37,15 @@ interface MediaProjectionOptions {
   fetch?: typeof fetch;
 }
 
-function createMediaProjection<T extends AudioMedia | ImageMedia | VideoMedia | FileMedia>(
+function createMediaProjection<
+  T extends AudioMedia | ImageMedia | VideoMedia | FileMedia,
+>(
   kind: "audio" | "images" | "video" | "files",
   namespace: readonly string[],
-  buildAssembler: (push: (m: T) => void, options?: MediaProjectionOptions) => MediaAssembler,
+  buildAssembler: (
+    push: (m: T) => void,
+    options?: MediaProjectionOptions
+  ) => MediaAssembler,
   options?: MediaProjectionOptions
 ): ProjectionSpec<T[]> {
   const ns = [...namespace];

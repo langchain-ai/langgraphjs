@@ -234,10 +234,7 @@ export class SessionMessageProcessor {
    * description-matching against the first human values payload because the
    * tool-started event lands before the subagent's first v2 message event.
    */
-  seedNamespaceAliasFromToolsEvent(
-    namespace: Namespace,
-    data: unknown
-  ): void {
+  seedNamespaceAliasFromToolsEvent(namespace: Namespace, data: unknown): void {
     const toolSegment = getFirstToolSegment(namespace);
     if (toolSegment == null || isPublicToolCallSegment(toolSegment)) return;
     if (this.syntheticNamespaceAliases.has(toolSegment)) return;

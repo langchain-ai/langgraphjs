@@ -35,8 +35,7 @@ export function channelProjection(
       // second server subscription. This is the common case for
       // lightweight event-trace / debug panels.
       const covered =
-        ns.length === 0 &&
-        chs.every((c) => rootBus.channels.includes(c));
+        ns.length === 0 && chs.every((c) => rootBus.channels.includes(c));
 
       if (covered) {
         const requestedSet = new Set(chs as Channel[]);
@@ -45,10 +44,7 @@ export function channelProjection(
           const current = store.getSnapshot();
           const next =
             current.length >= bufferSize
-              ? [
-                  ...current.slice(current.length - bufferSize + 1),
-                  event,
-                ]
+              ? [...current.slice(current.length - bufferSize + 1), event]
               : [...current, event];
           store.setValue(next);
         };
