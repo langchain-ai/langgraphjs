@@ -88,6 +88,16 @@ type InternalEventSubscription = EventSubscription<unknown> & {
   close(): void;
   pause(): void;
   resume(): void;
+  /**
+   * Per-subscription dedup window. Guards against redelivery during
+   * shared-stream rotation overlap and from WebSocket server-side
+   * fan-out, while still letting newly-registered subs receive the
+   * replayed events that existing subs already consumed. Event IDs
+   * are session-local but stable across sessions for the same run
+   * (the session's monotonic `_next_seq` processes events in order),
+   * so a set-per-sub is sufficient.
+   */
+  seenEventIds: Set<string>;
 };
 
 type PendingSubResolve = {
@@ -1082,9 +1092,15 @@ export class ThreadStream<
    * filter covers this subscription's channels — mirroring the per-sub
    * `await streamHandle.ready` semantics callers depended on.
    *
-   * If the currently-active stream already covers the new subscription
-   * (its channel set is a subset of `#sharedStreamFilter`), no rotation
-   * is scheduled and the promise resolves immediately.
+   * Every subscribe schedules a stream rotation, even when the current
+   * stream's filter already covers `params`. Rotating opens a fresh
+   * server-side session that replays the run's full history from
+   * `seq=0`; without it a late-joining sub would only see events that
+   * arrive after it registered, because the shared pump's dedup drops
+   * events the existing sub already consumed. Per-sub dedup
+   * (`seenEventIds`) protects existing subs from receiving the
+   * replay as duplicates. Rapid subscribes in the same microtask are
+   * coalesced by `#scheduleReconcile` into a single rotation.
    */
   async #subscribeViaSharedStream(
     params: SubscribeParams,
@@ -1100,15 +1116,11 @@ export class ThreadStream<
       },
       transform
     );
-    const subscription = Object.assign(handle, { filter: params });
+    const subscription = Object.assign(handle, {
+      filter: params,
+      seenEventIds: new Set<string>(),
+    });
     this.#subscriptions.set(subscriptionId, subscription);
-
-    if (
-      this.#sharedStreamFilter != null &&
-      filterCovers(this.#sharedStreamFilter, params)
-    ) {
-      return handle as SubscriptionHandle<Event>;
-    }
 
     const covered = new Promise<void>((resolve, reject) => {
       this.#pendingSubResolves.push({ filter: params, resolve, reject });
@@ -1183,9 +1195,15 @@ export class ThreadStream<
     const desired = this.#computeUnionFilter();
     if (desired == null) return;
 
+    // Bail only when nothing structurally changed AND nobody is
+    // waiting on a fresh replay. A pending sub always needs a
+    // rotation even when the filter is unchanged, because the server
+    // replays buffered events only at the moment the SSE connection
+    // is opened.
     if (
       this.#sharedStreamFilter != null &&
-      filterEqual(desired, this.#sharedStreamFilter)
+      filterEqual(desired, this.#sharedStreamFilter) &&
+      this.#pendingSubResolves.length === 0
     ) {
       this.#resolvePending();
       return;
@@ -1361,7 +1379,10 @@ export class ThreadStream<
       },
       transform
     );
-    const subscription = Object.assign(handle, { filter: params });
+    const subscription = Object.assign(handle, {
+      filter: params,
+      seenEventIds: new Set<string>(),
+    });
     this.#subscriptions.set(result.subscription_id, subscription);
     return handle as SubscriptionHandle<Event>;
   }
@@ -1397,19 +1418,25 @@ export class ThreadStream<
         this.ordering.lastEventId = message.event_id;
       }
 
-      // Dedup across redeliveries. Two sources:
-      //  1. Shared-stream rotation overlap — during `#reconcileStream`
-      //     the old and new streams are both pumping briefly, and the
-      //     server replays buffered events to the new stream.
-      //  2. WebSocket transports whose server-side fan-out may
-      //     redeliver (a safety net).
+      // Two flavors of dedup live here:
+      //   1. Thread-level side effects (interrupt state, interrupt
+      //      capture) — must run AT MOST ONCE per unique event_id
+      //      regardless of how many times the event is redelivered
+      //      (rotation overlap, WebSocket fan-out). Gated by the
+      //      global `#seenEventIds`.
+      //   2. Per-subscription fan-out — gated by each sub's own
+      //      `seenEventIds`. This is what lets a rotation-triggered
+      //      replay (the server opens a fresh session that replays
+      //      from seq=0) reach newly-registered subs while NOT
+      //      redelivering events to subs that have already consumed
+      //      them. Event IDs are stable across sessions for the same
+      //      run, so per-sub set membership is the correct predicate.
       const eventId = message.event_id ?? undefined;
-      const alreadyProcessed =
+      const globallyProcessed =
         eventId != null && this.#seenEventIds.has(eventId);
       if (eventId != null) {
         this.#seenEventIds.add(eventId);
       }
-      if (alreadyProcessed) return;
 
       const TERMINAL_LIFECYCLE_EVENTS = new Set([
         "interrupted",
@@ -1417,41 +1444,51 @@ export class ThreadStream<
         "failed",
       ]);
 
-      if (message.method === "lifecycle") {
-        const lifecycle = message as LifecycleEvent;
-        if (lifecycle.params.data.event === "interrupted") {
-          this.interrupted = true;
+      if (!globallyProcessed) {
+        if (message.method === "lifecycle") {
+          const lifecycle = message as LifecycleEvent;
+          if (lifecycle.params.data.event === "interrupted") {
+            this.interrupted = true;
+          }
         }
-      }
 
-      if (message.method === "input.requested") {
-        const data = message.params.data;
-        this.interrupts.push({
-          interruptId:
-            data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
-          payload: data.payload,
-          namespace: [...message.params.namespace],
-        });
+        if (message.method === "input.requested") {
+          const data = message.params.data;
+          this.interrupts.push({
+            interruptId:
+              data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
+            payload: data.payload,
+            namespace: [...message.params.namespace],
+          });
+        }
       }
 
       // Unified fan-out: both SSE (shared stream) and WebSocket paths
       // deliver every event through a single connection; the client
       // dispatches to matching subscriptions based on each sub's
-      // advertised filter.
+      // advertised filter, with per-sub dedup.
+      let fannedToAny = false;
       for (const subscription of this.#subscriptions.values()) {
-        if (matchesSubscription(message, subscription.filter)) {
-          subscription.push(message);
+        if (!matchesSubscription(message, subscription.filter)) continue;
+        if (eventId != null) {
+          if (subscription.seenEventIds.has(eventId)) continue;
+          subscription.seenEventIds.add(eventId);
         }
+        subscription.push(message);
+        fannedToAny = true;
       }
 
       if (
+        fannedToAny &&
         message.method === "lifecycle" &&
         message.params.namespace.length === 0 &&
         TERMINAL_LIFECYCLE_EVENTS.has(message.params.data.event)
       ) {
         // A single shared stream delivers every subscription's events,
         // so a terminal event applies to all currently active
-        // non-lifecycle subscriptions.
+        // non-lifecycle subscriptions. Only fire when we actually
+        // delivered the terminal event to at least one sub this tick
+        // — a pure dedup re-arrival must not re-pause subs.
         for (const [id, subscription] of this.#subscriptions) {
           if (id !== this.#lifecycleSubId) {
             subscription.pause();

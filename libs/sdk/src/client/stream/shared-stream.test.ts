@@ -55,21 +55,28 @@ describe("ThreadStream (SSE shared stream)", () => {
     await thread.close();
   });
 
-  it("does not rotate when a new subscribe is already covered", async () => {
+  it("rotates on every subscribe so late joiners get a fresh server replay", async () => {
     const transport = new MockSseTransport();
     const thread = new ThreadStream(transport, { assistantId: "a" });
 
+    // Every subscribe opens a fresh SSE even when the union filter is
+    // unchanged: the server replays buffered events only at the moment
+    // the connection is opened, so a late-joining sub otherwise misses
+    // anything that arrived before it registered. Per-sub
+    // `seenEventIds` keeps existing subs from seeing the replay as
+    // duplicates.
     await thread.subscribe({ channels: ["messages", "values"] });
     expect(transport.totalStreamCount).toBe(1);
 
     await thread.subscribe({ channels: ["messages"] });
-    expect(transport.totalStreamCount).toBe(1);
+    expect(transport.totalStreamCount).toBe(2);
 
     await thread.subscribe({
       channels: ["values"],
       namespaces: [["agent_1"]],
     });
-    expect(transport.totalStreamCount).toBe(1);
+    expect(transport.totalStreamCount).toBe(3);
+    expect(transport.activeStreamCount).toBe(1);
 
     await thread.close();
   });
@@ -97,13 +104,18 @@ describe("ThreadStream (SSE shared stream)", () => {
     const transport = new MockSseTransport();
     const thread = new ThreadStream(transport, { assistantId: "a" });
 
+    // Two subscribes always produce two rotations (replay-on-subscribe
+    // correctness); the interesting invariant here is that
+    // *unsubscribe* does not rotate when the union filter is
+    // unchanged — the replay semantics only apply to newly-registered
+    // subs, not to leaving ones.
     const a = await thread.subscribe({ channels: ["messages"] });
     const b = await thread.subscribe({ channels: ["messages"] });
-    expect(transport.totalStreamCount).toBe(1);
+    expect(transport.totalStreamCount).toBe(2);
 
     await b.unsubscribe();
     await flush();
-    expect(transport.totalStreamCount).toBe(1);
+    expect(transport.totalStreamCount).toBe(2);
 
     await a.unsubscribe();
     await thread.close();

@@ -102,6 +102,58 @@ describe("matchesSubscription", () => {
     ).toBe(false);
   });
 
+  it("strips dynamic ':<id>' suffix on candidate segments when prefix has none", () => {
+    // Mirrors server-side `is_prefix_match` which normalizes segments
+    // like `"fetcher:abc-uuid"` down to `"fetcher"` when the user's
+    // prefix segment contains no `:`. Without this, client-side
+    // narrowing drops every event the server legitimately delivers
+    // for a namespace-prefixed subscription against subgraphs that
+    // append runtime IDs (e.g. `nested_subgraphs`).
+    const event = eventOf(
+      "values",
+      { data: {} },
+      { namespace: ["fetcher:abc-uuid"] }
+    );
+    expect(
+      matchesSubscription(event, {
+        channels: ["values"],
+        namespaces: [["fetcher"]],
+      })
+    ).toBe(true);
+
+    const deeper = eventOf(
+      "values",
+      { data: {} },
+      { namespace: ["fetcher:abc", "validator:def"] }
+    );
+    expect(
+      matchesSubscription(deeper, {
+        channels: ["values"],
+        namespaces: [["fetcher", "validator"]],
+      })
+    ).toBe(true);
+  });
+
+  it("still requires literal match when prefix segment itself contains ':'", () => {
+    const event = eventOf(
+      "values",
+      { data: {} },
+      { namespace: ["fetcher:abc"] }
+    );
+    expect(
+      matchesSubscription(event, {
+        channels: ["values"],
+        namespaces: [["fetcher:abc"]],
+      })
+    ).toBe(true);
+    expect(
+      matchesSubscription(event, {
+        channels: ["values"],
+        namespaces: [["fetcher:xyz"]],
+      })
+    ).toBe(false);
+  });
+
   it("respects depth constraint", () => {
     const event = eventOf(
       "messages",
