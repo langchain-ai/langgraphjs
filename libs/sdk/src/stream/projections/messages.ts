@@ -35,7 +35,7 @@ export function messagesProjection(
     key,
     namespace: ns,
     initial: [],
-    open({ thread, store }): ProjectionRuntime {
+    open({ thread, store, rootBus }): ProjectionRuntime {
       const assembler = new MessageAssembler();
       // Per-messageId state needed for BaseMessage projection:
       //  - `role` is only in the `message-start` event; we cache it
@@ -49,14 +49,41 @@ export function messagesProjection(
       >();
       const indexById = new Map<string, number>();
 
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+      // Root-scoped projections whose channels are already covered by
+      // the controller's root pump attach to the shared fan-out
+      // instead of opening a second server subscription. The root
+      // pump runs at `{namespaces: [[]], depth: 1}`, which is exactly
+      // the scope a root-namespace `messagesProjection` wants.
+      const rootShortCircuit =
+        ns.length === 0 && rootBus.channels.includes("messages");
+
+      if (rootShortCircuit) {
+        const unsubscribe = rootBus.subscribe((event) => {
+          if (event.method !== "messages") return;
+          if (event.params.namespace.length !== 0) return;
+          applyEvent(event as MessagesEvent);
+        });
+        return {
+          dispose() {
+            unsubscribe();
+          },
+        };
+      }
+
+      let handle: SubscriptionHandle<Event> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
           handle = await thread.subscribe({
             channels: ["messages"],
-            namespaces: ns.length > 0 ? [ns] : undefined,
+            namespaces: ns.length > 0 ? [ns] : [[]],
+            // Depth 1: a namespace-scoped projection only wants events
+            // emitted AT its namespace (e.g. a subagent's own LLM
+            // turns), not the deeper subagents it may spawn. Deeper
+            // content is covered by their own projections opened when
+            // those subagents are rendered.
+            depth: 1,
           });
           for await (const event of handle) {
             if (disposed) break;

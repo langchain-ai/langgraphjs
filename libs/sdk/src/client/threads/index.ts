@@ -396,7 +396,7 @@ export class ThreadsClient<
    * Returns a {@link ThreadStream} with lazy getters
    * (`.messages`, `.values`, `.toolCalls`, `.subgraphs`, `.subagents`,
    * `.output`) and `thread.run.input({ input, ... })` for starting runs.
-   * Mirrors the in-process `graph.stream_experimental(...)` API.
+   * Mirrors the in-process `graph.stream_v2(...)` API.
    *
    * The thread is bound to `options.assistantId` for its lifetime.
    * The wire transport defaults to SSE; pass `transport: "websocket"`

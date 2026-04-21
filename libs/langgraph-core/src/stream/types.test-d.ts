@@ -18,7 +18,7 @@ import type {
 } from "./types.js";
 import type { GraphRunStream, SubgraphRunStream } from "./run-stream.js";
 
-describe("stream_experimental on a simple StateGraph", () => {
+describe("stream_v2 on a simple StateGraph", () => {
   const CounterState = new StateSchema({
     count: new ReducedValue(z.number().default(() => 0), {
       reducer: (a: number, b: number) => a + b,
@@ -37,19 +37,19 @@ describe("stream_experimental on a simple StateGraph", () => {
     .compile();
 
   it("returns a Promise<GraphRunStream>", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run).toExtend<GraphRunStream>();
   });
 
   it("output resolves with the graph state type", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     const output = await run.output;
     expectTypeOf(output).toHaveProperty("count").toBeNumber();
     expectTypeOf(output).toHaveProperty("label").toBeString();
   });
 
   it("values is both AsyncIterable and PromiseLike of state type", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run.values).toExtend<
       AsyncIterable<{ count: number; label: string }>
     >();
@@ -59,7 +59,7 @@ describe("stream_experimental on a simple StateGraph", () => {
   });
 
   it("iterates ProtocolEvent", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     for await (const event of run) {
       expectTypeOf(event).toExtend<ProtocolEvent>();
       expectTypeOf(event.type).toEqualTypeOf<"event">();
@@ -69,7 +69,7 @@ describe("stream_experimental on a simple StateGraph", () => {
   });
 
   it("messages yields ChatModelStream", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     for await (const msg of run.messages) {
       expectTypeOf(msg).toExtend<ChatModelStream>();
       expectTypeOf(msg.text).toExtend<AsyncIterable<string>>();
@@ -80,14 +80,14 @@ describe("stream_experimental on a simple StateGraph", () => {
   });
 
   it("messagesFrom returns AsyncIterable<ChatModelStream>", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run.messagesFrom("increment")).toExtend<
       AsyncIterable<ChatModelStream>
     >();
   });
 
   it("subgraphs yields SubgraphRunStream", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     for await (const sub of run.subgraphs) {
       expectTypeOf(sub).toExtend<SubgraphRunStream>();
       expectTypeOf(sub.name).toBeString();
@@ -97,25 +97,25 @@ describe("stream_experimental on a simple StateGraph", () => {
   });
 
   it("interrupted and interrupts are typed", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run.interrupted).toBeBoolean();
     expectTypeOf(run.interrupts).toExtend<readonly InterruptPayload[]>();
   });
 
   it("abort and signal are typed", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run.abort).toBeCallableWith();
     expectTypeOf(run.abort).toBeCallableWith("reason");
     expectTypeOf(run.signal).toEqualTypeOf<AbortSignal>();
   });
 
   it("extensions defaults to empty record when no transformers", async () => {
-    const run = await graph.stream_experimental({ count: 0 });
+    const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run.extensions).toEqualTypeOf<Record<string, never>>();
   });
 });
 
-describe("stream_experimental with MessagesValue state", () => {
+describe("stream_v2 with MessagesValue state", () => {
   const ChatState = new StateSchema({
     messages: MessagesValue,
     topic: new ReducedValue(z.string().default(() => ""), {
@@ -130,14 +130,14 @@ describe("stream_experimental with MessagesValue state", () => {
     .compile();
 
   it("output includes messages and topic", async () => {
-    const run = await graph.stream_experimental({ topic: "test" });
+    const run = await graph.stream_v2({ topic: "test" });
     const output = await run.output;
     expectTypeOf(output).toHaveProperty("topic").toBeString();
     expectTypeOf(output).toHaveProperty("messages");
   });
 });
 
-describe("stream_experimental with compile-time transformers", () => {
+describe("stream_v2 with compile-time transformers", () => {
   const eventCounter = (): StreamTransformer<{
     eventCount: Promise<number>;
   }> => ({
@@ -169,7 +169,7 @@ describe("stream_experimental with compile-time transformers", () => {
       fail: () => {},
     });
 
-    const run = await graph.stream_experimental(
+    const run = await graph.stream_v2(
       { value: "test" },
       { transformers: [callSiteTransformer] }
     );
@@ -179,7 +179,7 @@ describe("stream_experimental with compile-time transformers", () => {
   });
 });
 
-describe("stream_experimental with call-site transformers", () => {
+describe("stream_v2 with call-site transformers", () => {
   const ValueState = new StateSchema({
     value: new ReducedValue(z.string().default(() => ""), {
       reducer: (_: string, b: string) => b,
@@ -202,7 +202,7 @@ describe("stream_experimental with call-site transformers", () => {
       fail: () => {},
     });
 
-    const run = await graph.stream_experimental(
+    const run = await graph.stream_v2(
       { value: "test" },
       { transformers: [tokenReducer] }
     );
@@ -229,7 +229,7 @@ describe("stream_experimental with call-site transformers", () => {
       fail: () => {},
     });
 
-    const run = await graph.stream_experimental(
+    const run = await graph.stream_v2(
       { value: "test" },
       { transformers: [countReducer, labelReducer] }
     );
@@ -246,7 +246,7 @@ describe("stream_experimental with call-site transformers", () => {
       fail: () => {},
     });
 
-    const run = await graph.stream_experimental(
+    const run = await graph.stream_v2(
       { value: "test" },
       { transformers: [reducer] }
     );
@@ -257,7 +257,7 @@ describe("stream_experimental with call-site transformers", () => {
   });
 });
 
-describe("stream_experimental with subgraph nodes", () => {
+describe("stream_v2 with subgraph nodes", () => {
   const ItemsState = new StateSchema({
     items: new ReducedValue(
       z.array(z.string()).default(() => []),
@@ -278,7 +278,7 @@ describe("stream_experimental with subgraph nodes", () => {
     .compile();
 
   it("subgraphs yield SubgraphRunStream with correct types", async () => {
-    const run = await graph.stream_experimental({ items: [] });
+    const run = await graph.stream_v2({ items: [] });
 
     for await (const sub of run.subgraphs) {
       expectTypeOf(sub).toExtend<SubgraphRunStream>();
@@ -295,7 +295,7 @@ describe("stream_experimental with subgraph nodes", () => {
   });
 
   it("recursive subgraphs are also SubgraphRunStream", async () => {
-    const run = await graph.stream_experimental({ items: [] });
+    const run = await graph.stream_v2({ items: [] });
 
     for await (const sub of run.subgraphs) {
       for await (const nested of sub.subgraphs) {

@@ -1,5 +1,5 @@
 /**
- * A2A streaming in-process using `stream_experimental()`.
+ * A2A streaming in-process using `stream_v2()`.
  *
  * The research pipeline is compiled with `createA2ATransformer` (see
  * `agents/a2a-research.ts`) which exposes a `StreamChannel` projection
@@ -13,7 +13,7 @@
 
 import { graph } from "../agents/a2a-research.js";
 
-const run = await graph.stream_experimental({
+const run = await graph.stream_v2({
   messages: [
     {
       role: "user",

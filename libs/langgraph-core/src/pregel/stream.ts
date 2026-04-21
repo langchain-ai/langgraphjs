@@ -8,7 +8,7 @@ import { TAG_HIDDEN } from "../constants.js";
 
 /**
  * Optional chunk-level metadata carried alongside the payload. Used by the
- * v2 protocol stream (`stream_experimental`) to enrich certain events —
+ * v2 protocol stream (`stream_v2`) to enrich certain events —
  * e.g. attaching a lightweight checkpoint envelope to `values` events so
  * clients can build branching / time-travel UIs without subscribing to a
  * full `checkpoints` stream.

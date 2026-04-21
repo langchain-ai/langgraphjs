@@ -55,19 +55,47 @@ function createMediaProjection<
     key,
     namespace: ns,
     initial: [],
-    open({ thread, store }): ProjectionRuntime {
+    open({ thread, store, rootBus }): ProjectionRuntime {
       const assembler = buildAssembler((media) => {
         store.setValue([...store.getSnapshot(), media]);
       }, options);
 
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+      // See `messagesProjection` — root-scoped projections short-
+      // circuit onto the root bus when the requested channels are
+      // covered by the controller's root pump.
+      const rootShortCircuit =
+        ns.length === 0 && rootBus.channels.includes("messages");
+
+      if (rootShortCircuit) {
+        const unsubscribe = rootBus.subscribe((event) => {
+          if (event.method !== "messages") return;
+          if (event.params.namespace.length !== 0) return;
+          assembler.consume(event as MessagesEvent);
+        });
+        return {
+          async dispose() {
+            unsubscribe();
+            for (const media of store.getSnapshot()) {
+              try {
+                media.revoke();
+              } catch {
+                // best-effort
+              }
+            }
+            assembler.close();
+          },
+        };
+      }
+
+      let handle: SubscriptionHandle<Event> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
           handle = await thread.subscribe({
             channels: ["messages"],
-            namespaces: ns.length > 0 ? [ns] : undefined,
+            namespaces: ns.length > 0 ? [ns] : [[]],
+            depth: 1,
           });
           for await (const event of handle) {
             if (disposed) break;

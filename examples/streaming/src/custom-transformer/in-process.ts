@@ -1,5 +1,5 @@
 /**
- * Custom StreamTransformer — extend stream_experimental() with domain-specific projections.
+ * Custom StreamTransformer — extend stream_v2() with domain-specific projections.
  *
  * This example shows two transformer patterns, both defined in
  * `shared/custom-transformers.ts`:
@@ -31,7 +31,7 @@ const CYAN = "\x1b[36m";
 const YELLOW = "\x1b[33m";
 const GREEN = "\x1b[32m";
 
-const run = await graph.stream_experimental(
+const run = await graph.stream_v2(
   {
     messages: [
       {

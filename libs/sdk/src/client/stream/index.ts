@@ -7,6 +7,7 @@ import type {
   ListCheckpointsResult,
   Message,
   MessagesEvent,
+  Namespace,
   RunResult,
   StateForkResult,
   StateGetResult,
@@ -153,10 +154,30 @@ function coerceStateMessages(value: unknown): unknown {
   };
 }
 
+function namespaceKey(ns: Namespace): string {
+  return ns.join("\u0000");
+}
+
+function namespaceListsEqual(
+  a: readonly Namespace[] | undefined,
+  b: readonly Namespace[] | undefined
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  if (a.length !== b.length) return false;
+  const aKeys = new Set<string>();
+  for (const ns of a) aKeys.add(namespaceKey(ns));
+  for (const ns of b) {
+    if (!aKeys.has(namespaceKey(ns))) return false;
+  }
+  return true;
+}
+
 /**
- * Channel-set equality. The shared-stream filter is always permissive
- * (no namespaces/depth), so comparing channel membership is sufficient
- * to decide whether a rotation is needed.
+ * Structural equality on filters. Two filters are equal iff they
+ * request the same channel set, the same namespace prefix set
+ * (with `undefined` meaning wildcard), and the same depth
+ * (with `undefined` meaning unbounded).
  */
 function filterEqual(
   a: SubscribeParams | null,
@@ -165,26 +186,75 @@ function filterEqual(
   if (a === b) return true;
   if (a == null || b == null) return false;
   if (a.channels.length !== b.channels.length) return false;
-  const aSet = new Set(a.channels as Channel[]);
+  const aChannels = new Set(a.channels as Channel[]);
   for (const ch of b.channels as Channel[]) {
-    if (!aSet.has(ch)) return false;
+    if (!aChannels.has(ch)) return false;
+  }
+  if (!namespaceListsEqual(a.namespaces, b.namespaces)) return false;
+  const aDepth = a.depth ?? null;
+  const bDepth = b.depth ?? null;
+  if (aDepth !== bDepth) return false;
+  return true;
+}
+
+function isPrefix(prefix: Namespace, candidate: Namespace): boolean {
+  if (prefix.length > candidate.length) return false;
+  for (let i = 0; i < prefix.length; i += 1) {
+    if (prefix[i] !== candidate[i]) return false;
   }
   return true;
 }
 
 /**
- * Whether the permissive shared-stream filter covers a narrower
- * subscription filter. Coverage means "every event the subscription
- * could want will be delivered on the stream"; per-subscription
- * namespace/depth narrowing happens client-side in
- * {@link matchesSubscription}.
+ * Whether the `coverer` filter delivers every event a subscription
+ * opened with `target` could want.
+ *
+ * Rules:
+ *  - Channels: target.channels must be a subset of coverer.channels.
+ *  - Namespaces:
+ *    - coverer wildcard (`undefined`) → coverer covers all prefixes.
+ *    - coverer explicit + target wildcard → not covered.
+ *    - both explicit → every target prefix must have some coverer
+ *      prefix that is its ancestor (coverer's prefix delivers events
+ *      for all descendants, modulo depth).
+ *  - Depth:
+ *    - coverer unbounded (`undefined`) → depth is covered.
+ *    - otherwise, for each target prefix `tp` covered by coverer
+ *      prefix `cp`, the maximum event depth target wants
+ *      (`tp.length + (target.depth ?? ∞) - cp.length`) must be
+ *      `<= coverer.depth`. For a wildcard target with bounded depth,
+ *      target's max absolute depth is `target.depth` (prefix is `[]`).
  */
 function filterCovers(
   coverer: SubscribeParams,
   target: SubscribeParams
 ): boolean {
-  const channels = new Set(coverer.channels as Channel[]);
-  return (target.channels as Channel[]).every((ch) => channels.has(ch));
+  const covererChannels = new Set(coverer.channels as Channel[]);
+  for (const ch of target.channels as Channel[]) {
+    if (!covererChannels.has(ch)) return false;
+  }
+
+  const covererDepth = coverer.depth;
+  const targetDepth = target.depth;
+
+  if (coverer.namespaces == null) {
+    if (covererDepth == null) return true;
+    if (targetDepth == null) return false;
+    return targetDepth <= covererDepth;
+  }
+
+  if (target.namespaces == null) return false;
+
+  for (const tp of target.namespaces) {
+    const covered = coverer.namespaces.some((cp) => {
+      if (!isPrefix(cp, tp)) return false;
+      if (covererDepth == null) return true;
+      if (targetDepth == null) return false;
+      return tp.length - cp.length + targetDepth <= covererDepth;
+    });
+    if (!covered) return false;
+  }
+  return true;
 }
 
 function normalizeSubscribeParams(
@@ -413,6 +483,27 @@ export class ThreadStream<
 
   #lifecycleSubId: string | null = null;
   #lifecycleStartPromise?: Promise<void>;
+
+  // ---------- v2 lifecycle watcher ----------
+  // Dedicated wildcard `{channels: ["lifecycle", "input"]}` stream
+  // opened by `submitRun` / `respondInput` (v2 entry points). The
+  // watcher never rotates and is NOT counted towards
+  // `#computeUnionFilter`, so the content-pump filter can stay narrow
+  // (e.g. `{namespaces: [[]], depth: 1}`) while still capturing every
+  // interrupt / deeply-nested discovery event.
+  //
+  // WebSocket transports (no `openEventStream`) skip the dedicated
+  // watcher entirely — lifecycle events flow over the shared command
+  // connection via the normal subscribe path.
+  #lifecycleWatcherHandle: EventStreamHandle | null = null;
+  #lifecycleWatcherStartPromise?: Promise<void>;
+
+  // ---------- v2 unified event fan-out ----------
+  // Listeners invoked once per globally-unique event across BOTH the
+  // content pump and the lifecycle watcher. Used by `StreamController`
+  // to consume discovery and interrupt events without opening extra
+  // server subscriptions.
+  readonly #onEventListeners = new Set<(event: Event) => void>();
 
   #messagesIterable?: AsyncIterable<StreamingMessage>;
   #valuesProjection?: AsyncIterable<unknown> & PromiseLike<unknown>;
@@ -985,6 +1076,184 @@ export class ThreadStream<
     }
   }
 
+  // ---------- v2 entry points ----------
+
+  /**
+   * Start a run without the v1 eager lazy-getter shims.
+   *
+   * `run.input` (the v1 entry point) eagerly opens a wildcard `values`
+   * projection so `thread.output` / `thread.values` resolve regardless
+   * of access order, and calls `#ensureLifecycleTracking` which opens
+   * another wildcard `["lifecycle", "input"]` subscription. Both
+   * subscriptions widen `#computeUnionFilter` to wildcard, defeating
+   * the progressive-expansion rotation strategy.
+   *
+   * `submitRun` skips those shims — callers that manage their own
+   * content subscriptions (such as `StreamController`) get the narrow
+   * union filter they asked for. Lifecycle / interrupt tracking is
+   * instead served by the dedicated `#startLifecycleWatcher` stream
+   * (SSE only; on WebSocket the wildcard lifecycle flow is the
+   * transport's default behaviour).
+   */
+  async submitRun(params: {
+    input?: unknown;
+    config?: unknown;
+    metadata?: Record<string, unknown>;
+  }): Promise<RunResult> {
+    this.#prepareForNextRun();
+    this.#startLifecycleWatcher();
+    return await this.#send("run.input", {
+      ...(params as Record<string, unknown>),
+      assistant_id: this.assistantId,
+    });
+  }
+
+  /**
+   * Respond to an interrupt without the v1 eager lazy-getter shims.
+   * See {@link submitRun} for why this exists alongside
+   * {@link input.respond}.
+   */
+  async respondInput(params: {
+    namespace: readonly string[];
+    interrupt_id: string;
+    response: unknown;
+  }): Promise<void> {
+    this.#prepareForNextRun();
+    this.#startLifecycleWatcher();
+    await this.#send(
+      "input.respond",
+      params as unknown as CommandParamsMap["input.respond"]
+    );
+  }
+
+  /**
+   * Register a listener for every globally-unique event on the thread.
+   *
+   * Fires exactly once per `event_id` across both the content pump
+   * (user `subscribe()` calls) and the lifecycle watcher. Events
+   * without an `event_id` always fire through (dedup is best-effort).
+   *
+   * Returns an unsubscribe function. Primary consumer is
+   * `StreamController`, which uses the listener to feed discovery
+   * runners and pick up deeply-nested interrupts that the narrow
+   * content pump wouldn't deliver.
+   */
+  onEvent(listener: (event: Event) => void): () => void {
+    this.#onEventListeners.add(listener);
+    return () => {
+      this.#onEventListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Lazily open the wildcard `["lifecycle", "input"]` watcher stream.
+   * Idempotent. SSE only — on WebSocket the shared command connection
+   * already delivers every event type, so a separate watcher buys
+   * nothing.
+   */
+  #startLifecycleWatcher(): void {
+    if (this.#lifecycleWatcherStartPromise != null) return;
+    if (this.#transportAdapter.openEventStream == null) return;
+
+    this.#lifecycleWatcherStartPromise = (async () => {
+      const filter: SubscribeParams = {
+        channels: ["lifecycle", "input"],
+      };
+      let handle: EventStreamHandle;
+      try {
+        handle = this.#transportAdapter.openEventStream!(filter);
+      } catch {
+        return;
+      }
+      try {
+        await handle.ready;
+      } catch {
+        try {
+          handle.close();
+        } catch {
+          // best-effort
+        }
+        return;
+      }
+      if (this.#closed) {
+        try {
+          handle.close();
+        } catch {
+          // best-effort
+        }
+        return;
+      }
+      this.#lifecycleWatcherHandle = handle;
+      try {
+        for await (const message of handle.events) {
+          if (this.#closed) break;
+          this.#handleLifecycleWatcherMessage(message);
+        }
+      } catch {
+        // Best-effort; the content pump handles surface-level errors.
+      }
+    })();
+  }
+
+  /**
+   * Process an event from the dedicated lifecycle watcher stream.
+   *
+   * Unlike `#handleIncoming`, this does NOT fan out to user
+   * subscriptions — user subs with namespace wildcards already widen
+   * `#computeUnionFilter` and therefore receive the event on the
+   * content pump. Delivering via both streams would only add per-sub
+   * dedup churn without expanding what the user can observe.
+   *
+   * We still run global-dedup thread-level side effects (interrupt
+   * capture, `onEvent` fan-out) so deeply-nested interrupts outside
+   * the content pump's narrow scope are recorded.
+   */
+  #handleLifecycleWatcherMessage(message: Message): void {
+    if (message.type !== "event") return;
+    if (typeof message.seq === "number") {
+      this.ordering.lastSeenSeq = message.seq;
+    }
+    if (message.event_id) {
+      this.ordering.lastEventId = message.event_id;
+    }
+    const eventId = message.event_id ?? undefined;
+    const globallyProcessed =
+      eventId != null && this.#seenEventIds.has(eventId);
+    if (eventId != null) this.#seenEventIds.add(eventId);
+    if (globallyProcessed) return;
+    this.#applyThreadLevelEffects(message);
+    this.#fireOnEvent(message);
+  }
+
+  #applyThreadLevelEffects(event: Event): void {
+    if (event.method === "lifecycle") {
+      const lifecycle = event as LifecycleEvent;
+      if (lifecycle.params.data.event === "interrupted") {
+        this.interrupted = true;
+      }
+    }
+    if (event.method === "input.requested") {
+      const data = event.params.data;
+      this.interrupts.push({
+        interruptId:
+          data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
+        payload: data.payload,
+        namespace: [...event.params.namespace],
+      });
+    }
+  }
+
+  #fireOnEvent(event: Event): void {
+    if (this.#onEventListeners.size === 0) return;
+    for (const listener of this.#onEventListeners) {
+      try {
+        listener(event);
+      } catch {
+        // Best-effort — a bad listener should not wedge event delivery.
+      }
+    }
+  }
+
   async close(): Promise<void> {
     if (this.#closed) {
       return;
@@ -1006,6 +1275,15 @@ export class ThreadStream<
       this.#sharedStream = null;
       this.#sharedStreamFilter = null;
     }
+    if (this.#lifecycleWatcherHandle != null) {
+      try {
+        this.#lifecycleWatcherHandle.close();
+      } catch {
+        // best-effort
+      }
+      this.#lifecycleWatcherHandle = null;
+    }
+    this.#onEventListeners.clear();
     for (const subscription of this.#subscriptions.values()) {
       subscription.close();
     }
@@ -1137,20 +1415,62 @@ export class ThreadStream<
   }
 
   /**
-   * Permissive channel-union of every currently-registered subscription.
-   * Namespaces and depth are intentionally dropped: the server-side
-   * filter widens to "all events on these channels", and client-side
-   * `matchesSubscription` performs per-subscription narrowing.
+   * Progressive-expansion union of every currently-registered
+   * subscription's filter. The server receives the narrowest filter
+   * that still covers every active sub so deeply-namespaced or
+   * selectively-opened projections don't pull down the entire thread's
+   * event firehose.
+   *
+   * Unioning rules (matching the server's matching semantics in
+   * `matchesSinkFilter`):
+   *  - Channels: set union.
+   *  - Namespaces: if any subscription requests a wildcard
+   *    (`namespaces === undefined`) the union is wildcard; otherwise
+   *    the union is the deduplicated list of every explicit prefix.
+   *  - Depth: if any subscription is unbounded (`depth === undefined`)
+   *    the union is unbounded; otherwise the union is the maximum
+   *    depth across all subscriptions (matching the per-sub "max
+   *    reach below the prefix" semantics).
    *
    * Returns `null` when there are no subscriptions.
    */
   #computeUnionFilter(): SubscribeParams | null {
+    if (this.#subscriptions.size === 0) return null;
+
     const channels = new Set<Channel>();
+    let wildcardNamespaces = false;
+    const namespaceMap = new Map<string, Namespace>();
+    let unboundedDepth = false;
+    let maxDepth = 0;
+
     for (const sub of this.#subscriptions.values()) {
       for (const ch of sub.filter.channels) channels.add(ch);
+
+      if (sub.filter.namespaces == null) {
+        wildcardNamespaces = true;
+      } else if (!wildcardNamespaces) {
+        for (const ns of sub.filter.namespaces) {
+          namespaceMap.set(namespaceKey(ns), ns);
+        }
+      }
+
+      if (sub.filter.depth == null) {
+        unboundedDepth = true;
+      } else if (!unboundedDepth && sub.filter.depth > maxDepth) {
+        maxDepth = sub.filter.depth;
+      }
     }
-    if (channels.size === 0) return null;
-    return { channels: [...channels] as Channel[] };
+
+    const result: SubscribeParams = {
+      channels: [...channels] as Channel[],
+    };
+    if (!wildcardNamespaces) {
+      result.namespaces = [...namespaceMap.values()];
+    }
+    if (!unboundedDepth) {
+      result.depth = maxDepth;
+    }
+    return result;
   }
 
   /**
@@ -1445,22 +1765,8 @@ export class ThreadStream<
       ]);
 
       if (!globallyProcessed) {
-        if (message.method === "lifecycle") {
-          const lifecycle = message as LifecycleEvent;
-          if (lifecycle.params.data.event === "interrupted") {
-            this.interrupted = true;
-          }
-        }
-
-        if (message.method === "input.requested") {
-          const data = message.params.data;
-          this.interrupts.push({
-            interruptId:
-              data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
-            payload: data.payload,
-            namespace: [...message.params.namespace],
-          });
-        }
+        this.#applyThreadLevelEffects(message);
+        this.#fireOnEvent(message);
       }
 
       // Unified fan-out: both SSE (shared stream) and WebSocket paths

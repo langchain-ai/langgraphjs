@@ -121,6 +121,7 @@ export class ProtocolService {
         eventSinks: new Map(),
         queuedEvents: [],
         activeSubscriptions: [],
+        pendingSubscribes: [],
       };
       this.threads.set(options.threadId, record);
     } else if (options.sendEvent != null) {
@@ -187,6 +188,19 @@ export class ProtocolService {
   async closeThread(threadId: string) {
     const record = this.threads.get(threadId);
     if (record == null) return;
+    // Resolve any still-parked WebSocket subscribes with `no_such_run` so
+    // the transport's `onMessage` await unblocks and doesn't leak. The
+    // thread is going away before a session was ever bound, so the client
+    // will never receive a valid subscription_id anyway.
+    const pending = record.pendingSubscribes.splice(0);
+    for (const { command, resolve } of pending) {
+      resolve({
+        type: "error",
+        id: command.id,
+        error: "no_such_run",
+        message: "Thread closed before a run was bound.",
+      });
+    }
     await record.session?.close();
     this.threads.delete(threadId);
   }
@@ -399,8 +413,24 @@ export class ProtocolService {
     await this.ensureRunSession(record, run);
     record.currentRunId = run.run_id;
 
-    // For WebSocket transports, replay any sticky subscriptions onto the
-    // newly-bound run session so cross-run subscribers keep receiving events.
+    // For WebSocket transports, register subscriptions on the session
+    // BEFORE starting it so the success responses for parked and sticky
+    // subscribes reach the client ahead of the session's first events.
+    // `ensureRunSession` intentionally leaves the session unstarted; we
+    // kick `session.start()` off after the drain below.
+    //
+    //   1. Replay sticky subscriptions from previous runs (empty on the
+    //      first run). These must land first so that parked subs from
+    //      the current run are appended at the end of
+    //      `activeSubscriptions` and aren't double-applied here.
+    //   2. Drain subscribes that arrived while `record.session` was
+    //      still null. Their deferred `handleCommand` responses resolve
+    //      here — the awaiting WebSocket `onMessage` handlers will flush
+    //      `ws.send(success)` on the next microtask tick, which runs
+    //      before `session.start()`'s first `pushEvent` completes its
+    //      `await` chain. The client therefore has every subscription
+    //      handle registered in `#subscriptions` by the time the run's
+    //      initial lifecycle/values events arrive.
     if (record.transport === "websocket") {
       for (const cmd of record.activeSubscriptions) {
         await record.session?.handleProtocolCommand(cmd, {
@@ -408,7 +438,10 @@ export class ProtocolService {
           applied_through_seq: record.seq,
         });
       }
+      await this.drainPendingSubscribes(record);
     }
+
+    await record.session?.start();
 
     return run;
   }
@@ -491,6 +524,20 @@ export class ProtocolService {
   ): Promise<ProtocolSuccess | ProtocolError> {
     const runSession = record.session;
     if (runSession == null) {
+      // WebSocket subscribes can arrive before the concurrent `run.input`
+      // has bound a session (the SDK's root pump + legacy lifecycle/values
+      // subs are opened eagerly so no events are missed on fast runs).
+      // Park the response promise here and resolve it once the first
+      // session is bound — see `drainPendingSubscribes`. Mirrors the
+      // existing cross-run `activeSubscriptions` replay path.
+      if (
+        command.method === "subscription.subscribe" &&
+        record.transport === "websocket"
+      ) {
+        return await new Promise<ProtocolSuccess | ProtocolError>((resolve) => {
+          record.pendingSubscribes.push({ command, resolve });
+        });
+      }
       return this.error(
         command.id,
         "no_such_run",
@@ -507,6 +554,30 @@ export class ProtocolService {
       thread_id: record.threadId,
       applied_through_seq: record.seq,
     });
+  }
+
+  /**
+   * Drain any WebSocket subscribes that arrived before the first run
+   * session was bound. Called from `createOrResumeRun` right after
+   * {@link ensureRunSession} sets up `record.session`.
+   *
+   * Each parked command is forwarded to the freshly-bound session,
+   * added to `activeSubscriptions` so it persists across subsequent
+   * runs, and its deferred `handleCommand` promise is resolved so the
+   * WebSocket handler can finally send the response.
+   */
+  private async drainPendingSubscribes(record: ThreadRecord): Promise<void> {
+    if (record.session == null) return;
+    if (record.pendingSubscribes.length === 0) return;
+    const pending = record.pendingSubscribes.splice(0);
+    for (const { command, resolve } of pending) {
+      record.activeSubscriptions.push(command);
+      const response = await record.session.handleProtocolCommand(command, {
+        thread_id: record.threadId,
+        applied_through_seq: record.seq,
+      });
+      resolve(response);
+    }
   }
 
   /**
@@ -571,7 +642,14 @@ export class ProtocolService {
     });
 
     record.session = session;
-    await session.start();
+    // NOTE: `session.start()` is intentionally deferred to the caller
+    // (see {@link createOrResumeRun}). On WebSocket we need to drain any
+    // parked `subscription.subscribe` commands onto the fresh session —
+    // and let the client observe their success responses — BEFORE the
+    // session begins emitting events. Otherwise the initial run events
+    // are serialised ahead of the subscribe responses on the wire and
+    // the client drops them because it hasn't registered the matching
+    // subscription handles in `#subscriptions` yet.
   }
 
   private requireThread(threadId: string) {

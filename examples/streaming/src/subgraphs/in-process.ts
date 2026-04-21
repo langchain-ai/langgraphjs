@@ -13,7 +13,7 @@
 import { graph } from "../agents/research-pipeline.js";
 
 async function main() {
-  const run = await graph.stream_experimental({
+  const run = await graph.stream_v2({
     messages: [
       {
         role: "user" as const,

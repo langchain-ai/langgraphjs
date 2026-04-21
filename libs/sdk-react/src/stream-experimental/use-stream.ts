@@ -72,7 +72,38 @@ export interface UseStreamExperimentalReturn<
   ConfigurableType extends object = Record<string, unknown>,
 > {
   // ----- always-on root projections -----
+  /**
+   * The most recent `values`-channel snapshot emitted at the root
+   * namespace — i.e. the thread-level state as the server sees it
+   * after each superstep. Updated on every root `values` event, not
+   * on token-level deltas: if you render `values.messages` directly
+   * you'll see full turns appear at once instead of streaming
+   * token-by-token. Use {@link messages} (or `useMessages`) for the
+   * token-streamed view.
+   *
+   * Equivalent to calling `useValues(stream)`.
+   */
   readonly values: StateType;
+  /**
+   * The root message projection. Assembled from two sources and
+   * merged in real time:
+   *
+   *  1. `messages`-channel deltas — token-level streaming events
+   *     (`message-start`, `content-block-delta`, `message-finish`)
+   *     emitted by the runtime. These drive live, token-by-token
+   *     updates.
+   *  2. `values.messages` snapshots — the authoritative ordering
+   *     and any messages the agent produces without token streaming
+   *     (human turns, tool results, echoes from subagents).
+   *
+   * If the backend only emits `values` events (no `messages`
+   * channel), every message will appear fully-formed on each
+   * values update rather than streaming. This is a backend/runtime
+   * concern — the React layer faithfully renders whatever the
+   * server sends.
+   *
+   * Equivalent to calling `useMessages(stream)` with no target.
+   */
   readonly messages: BaseMessage[];
   readonly toolCalls: AssembledToolCall[];
   readonly interrupts: Interrupt<InterruptType>[];

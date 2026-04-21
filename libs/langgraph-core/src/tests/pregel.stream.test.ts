@@ -60,11 +60,11 @@ function buildTwoStepGraph() {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("stream_experimental", () => {
+describe("stream_v2", () => {
   describe("values mode", () => {
     it("emits values events matching state snapshots", async () => {
       const graph = buildTwoStepGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const valuesEvents = byMethod(events, "values");
@@ -78,7 +78,7 @@ describe("stream_experimental", () => {
 
     it("resolves run.output with the final state", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 5 });
+      const run = await graph.stream_v2({ count: 5 });
 
       const output = await run.output;
       expect(output).toEqual({ count: 6 });
@@ -86,7 +86,7 @@ describe("stream_experimental", () => {
 
     it("run.values resolves as a Promise to the final state", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
 
       const values = await run.values;
       expect(values).toEqual({ count: 1 });
@@ -94,7 +94,7 @@ describe("stream_experimental", () => {
 
     it("run.values can be iterated for intermediate snapshots", async () => {
       const graph = buildTwoStepGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
 
       const snapshots: unknown[] = [];
       for await (const snapshot of run.values) {
@@ -111,7 +111,7 @@ describe("stream_experimental", () => {
   describe("updates mode", () => {
     it("emits updates events for each node execution", async () => {
       const graph = buildTwoStepGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const updatesEvents = byMethod(events, "updates");
@@ -133,7 +133,7 @@ describe("stream_experimental", () => {
 
     it("updates events carry the node delta values", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const updatesEvents = byMethod(events, "updates");
@@ -170,7 +170,7 @@ describe("stream_experimental", () => {
         .addEdge("writer_node", END)
         .compile();
 
-      const run = await graph.stream_experimental({ value: "" });
+      const run = await graph.stream_v2({ value: "" });
       const events = await collectEvents(run);
 
       const customEvents = byMethod(events, "custom");
@@ -184,7 +184,7 @@ describe("stream_experimental", () => {
   });
 
   describe("checkpoint envelope on values events", () => {
-    // `stream_experimental` intentionally does not include the `debug` or
+    // `stream_v2` intentionally does not include the `debug` or
     // `checkpoints` stream modes — the full-state `checkpoints` stream
     // roughly doubles serialisation cost, and `debug` was a thin re-wrap
     // of `checkpoints` + `tasks`. Branching and time-travel use cases are
@@ -197,7 +197,7 @@ describe("stream_experimental", () => {
         .addEdge("add_one", END)
         .compile({ checkpointer: new MemorySaver() });
 
-      const run = await graph.stream_experimental(
+      const run = await graph.stream_v2(
         { count: 0 },
         { configurable: { thread_id: "no-debug" } }
       );
@@ -214,7 +214,7 @@ describe("stream_experimental", () => {
         .addEdge("add_one", END)
         .compile({ checkpointer: new MemorySaver() });
 
-      const run = await graph.stream_experimental(
+      const run = await graph.stream_v2(
         { count: 0 },
         { configurable: { thread_id: "ckpt-values" } }
       );
@@ -243,7 +243,7 @@ describe("stream_experimental", () => {
 
     it("omits the checkpoint envelope when no checkpointer is configured", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const valuesEvents = byMethod(events, "values");
@@ -265,7 +265,7 @@ describe("stream_experimental", () => {
   describe("tasks mode", () => {
     it("emits tasks events during execution", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const tasksEvents = byMethod(events, "tasks");
@@ -295,7 +295,7 @@ describe("stream_experimental", () => {
   describe("all modes together", () => {
     it("emits events for multiple stream modes in a single run", async () => {
       const graph = buildTwoStepGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       expect(events.length).toBeGreaterThan(0);
@@ -308,7 +308,7 @@ describe("stream_experimental", () => {
 
     it("events have monotonically increasing seq numbers", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       for (let i = 1; i < events.length; i++) {
@@ -318,7 +318,7 @@ describe("stream_experimental", () => {
 
     it("all events have type 'event'", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       for (const event of events) {
@@ -328,7 +328,7 @@ describe("stream_experimental", () => {
 
     it("all events carry a timestamp", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       for (const event of events) {
@@ -354,7 +354,7 @@ describe("stream_experimental", () => {
         .addEdge("subgraph", END)
         .compile();
 
-      const run = await outer.stream_experimental({ count: 0 });
+      const run = await outer.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const subgraphEvents = events.filter(
@@ -379,7 +379,7 @@ describe("stream_experimental", () => {
         .addEdge("sub", END)
         .compile();
 
-      const run = await outer.stream_experimental({ count: 0 });
+      const run = await outer.stream_v2({ count: 0 });
 
       const subgraphs: any[] = [];
       const allSubEvents: ProtocolEvent[][] = [];
@@ -456,7 +456,7 @@ describe("stream_experimental", () => {
         .addEdge("ask", END)
         .compile({ checkpointer: new MemorySaver() });
 
-      const run = await graph.stream_experimental(
+      const run = await graph.stream_v2(
         { value: "start" },
         { configurable: { thread_id: "int-1" } }
       );
@@ -481,11 +481,11 @@ describe("stream_experimental", () => {
 
       const config = { configurable: { thread_id: "int-resume-1" } };
 
-      const run1 = await graph.stream_experimental({ value: "start" }, config);
+      const run1 = await graph.stream_v2({ value: "start" }, config);
       await collectEvents(run1);
       expect(run1.interrupted).toBe(true);
 
-      const run2 = await graph.stream_experimental(
+      const run2 = await graph.stream_v2(
         new Command({ resume: "yes" }),
         config
       );
@@ -498,7 +498,7 @@ describe("stream_experimental", () => {
   describe("abort", () => {
     it("exposes abort() and signal on the run stream", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
 
       expect(typeof run.abort).toBe("function");
       expect(run.signal).toBeInstanceOf(AbortSignal);
@@ -531,7 +531,7 @@ describe("stream_experimental", () => {
         };
       };
 
-      const run = await graph.stream_experimental(
+      const run = await graph.stream_v2(
         { count: 0 },
         { transformers: [eventCounter] }
       );
@@ -551,7 +551,7 @@ describe("stream_experimental", () => {
         process: (event) => event.method !== "debug",
       });
 
-      const run = await graph.stream_experimental(
+      const run = await graph.stream_v2(
         { count: 0 },
         { transformers: [noDebug] }
       );
@@ -587,7 +587,7 @@ describe("stream_experimental", () => {
         };
       };
 
-      const run = await graph.stream_experimental(
+      const run = await graph.stream_v2(
         { count: 0 },
         { transformers: [createStepLogger] }
       );
@@ -618,7 +618,7 @@ describe("stream_experimental", () => {
   describe("protocol event structure", () => {
     it("values events carry state data in params.data", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 5 });
+      const run = await graph.stream_v2({ count: 5 });
       const events = await collectEvents(run);
 
       const valuesEvents = byMethod(events, "values");
@@ -634,7 +634,7 @@ describe("stream_experimental", () => {
 
     it("updates events carry node and values in params.data", async () => {
       const graph = buildCounterGraph();
-      const run = await graph.stream_experimental({ count: 0 });
+      const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
 
       const updatesEvents = byMethod(events, "updates");
@@ -667,7 +667,7 @@ describe("stream_experimental", () => {
         .addEdge("node", END)
         .compile();
 
-      const run = await graph.stream_experimental({ val: "" });
+      const run = await graph.stream_v2({ val: "" });
       const events = await collectEvents(run);
 
       const customEvents = byMethod(events, "custom");

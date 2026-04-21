@@ -100,7 +100,13 @@ type AnyStream = UseStreamExperimentalReturn<any, any, any>;
  *
  * Contract:
  *  - At the root (no target) this returns `stream.messages` directly
- *    — no extra subscription is opened.
+ *    — no extra subscription is opened. `stream.messages` is the
+ *    live merge of `messages`-channel token deltas and
+ *    `values.messages` snapshots (see
+ *    {@link UseStreamExperimentalReturn.messages}), so token-by-token
+ *    streaming here depends on the backend emitting `messages`
+ *    channel events. Backends that only emit `values` updates will
+ *    render full turns at once rather than streaming.
  *  - For any other namespace, the mount triggers a ref-counted
  *    `messages` subscription scoped to that namespace. Unmounting
  *    the last component that watches this namespace closes the

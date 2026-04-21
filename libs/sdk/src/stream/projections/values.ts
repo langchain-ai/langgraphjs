@@ -31,22 +31,45 @@ export function valuesProjection<T = unknown>(
     key,
     namespace: ns,
     initial: undefined,
-    open({ thread, store }): ProjectionRuntime {
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+    open({ thread, store, rootBus }): ProjectionRuntime {
+      const applyValuesEvent = (event: ValuesEvent): void => {
+        const coerced = coerceMessagesInState(event.params.data, messagesKey);
+        store.setValue(coerced as T);
+      };
+
+      // See `messagesProjection` — root-scoped projections attach to
+      // the controller's root bus instead of opening a duplicate
+      // server subscription.
+      const rootShortCircuit =
+        ns.length === 0 && rootBus.channels.includes("values");
+
+      if (rootShortCircuit) {
+        const unsubscribe = rootBus.subscribe((event) => {
+          if (event.method !== "values") return;
+          if (event.params.namespace.length !== 0) return;
+          applyValuesEvent(event as ValuesEvent);
+        });
+        return {
+          dispose() {
+            unsubscribe();
+          },
+        };
+      }
+
+      let handle: SubscriptionHandle<Event> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
           handle = await thread.subscribe({
             channels: ["values"],
-            namespaces: ns.length > 0 ? [ns] : undefined,
+            namespaces: ns.length > 0 ? [ns] : [[]],
+            depth: 1,
           });
           for await (const event of handle) {
             if (disposed) break;
             if (event.method !== "values") continue;
-            const raw = (event as ValuesEvent).params.data;
-            const coerced = coerceMessagesInState(raw, messagesKey);
-            store.setValue(coerced as T);
+            applyValuesEvent(event as ValuesEvent);
           }
         } catch {
           // closed / errored

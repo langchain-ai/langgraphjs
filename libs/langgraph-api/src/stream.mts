@@ -399,7 +399,7 @@ export async function* streamState(
 }
 
 /**
- * Executes a graph run using `graph.stream_experimental()` and maps the resulting
+ * Executes a graph run using `graph.stream_v2()` and maps the resulting
  * `ProtocolEvent` objects into the `{ event, data }` shape consumed by
  * both the legacy SSE path and the protocol v2 session.
  *
@@ -463,7 +463,7 @@ export async function* streamStateV2(
       })
     : undefined;
 
-  const graphRun = await graph.stream_experimental(
+  const graphRun = await graph.stream_v2(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
       : (kwargs.input ?? null),

@@ -24,14 +24,15 @@ export function extensionProjection<T = unknown>(
     namespace: ns,
     initial: undefined,
     open({ thread, store }): ProjectionRuntime {
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+      let handle: SubscriptionHandle<Event> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
           handle = await thread.subscribe({
             channels: [channel],
-            namespaces: ns.length > 0 ? [ns] : undefined,
+            namespaces: ns.length > 0 ? [ns] : [[]],
+            depth: 1,
           });
           for await (const payload of handle) {
             if (disposed) break;

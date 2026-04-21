@@ -522,8 +522,8 @@ export class Pregel<
 
   /**
    * Stream reducer factories registered at compile time.  These run
-   * automatically for every `stream_experimental()` call, before any call-site
-   * transformers passed via `stream_experimental(input, { transformers })`.
+   * automatically for every `stream_v2()` call, before any call-site
+   * transformers passed via `stream_v2(input, { transformers })`.
    */
   streamTransformers: TStreamTransformers;
 
@@ -1917,13 +1917,9 @@ export class Pregel<
   /**
    * Ergonomic v2 stream API for a single graph run.
    *
-   * `stream_experimental()` is the recommended way to consume graph execution when you
+   * `stream_v2()` is the recommended way to consume graph execution when you
    * need typed, recursive access to subgraph events, tool lifecycle, and
    * message content-block streaming.
-   *
-   * Returns a `Promise<GraphRunStream>` that resolves immediately (no async
-   * setup needed), kept async for a uniform call pattern across graph, agent,
-   * and deep agent levels (§ 15.8).
    *
    * The returned `GraphRunStream` is an `AsyncIterable<ProtocolEvent>`.
    *
@@ -1940,7 +1936,7 @@ export class Pregel<
    *
    * Example:
    * ```typescript
-   * const run = await graph.stream_experimental(input, { configurable: { thread_id: "t1" } });
+   * const run = await graph.stream_v2(input, { configurable: { thread_id: "t1" } });
    *
    * for await (const event of run) {
    *   console.log(event.method, event.params.data);
@@ -1959,7 +1955,7 @@ export class Pregel<
    *
    * The v1 `stream()` API remains unchanged.
    */
-  async stream_experimental<
+  async stream_v2<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
       [],
@@ -2171,10 +2167,23 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const messageStreamer =
-        config.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true
-          ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
-          : new StreamMessagesHandler((chunk) => stream.push(chunk));
+      const useProtocolMessagesStream =
+        config.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
+      // Mirror the flag into `metadata` so that `StreamProtocolMessagesHandler`'s
+      // callback-path guard (`isProtocolMessagesStreamEnabled`) actually sees it.
+      // `configurable` entries prefixed with `__` are intentionally stripped
+      // from tracing metadata inheritance in `@langchain/core`, so the handler
+      // — which is chosen based on `configurable` here — would otherwise treat
+      // every token as disabled.
+      if (useProtocolMessagesStream) {
+        config.metadata = {
+          ...config.metadata,
+          [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
+        };
+      }
+      const messageStreamer = useProtocolMessagesStream
+        ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
+        : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];
@@ -2330,7 +2339,7 @@ export class Pregel<
           }
           if (streamSubgraphs && !streamModeSingle) {
             // Preserve chunk meta (e.g. the checkpoint envelope on `values`
-            // events) so `stream_experimental` / `pump()` can surface it on
+            // events) so `stream_v2` / `pump()` can surface it on
             // the protocol stream.
             yield meta !== undefined
               ? [namespace, mode, payload, meta]

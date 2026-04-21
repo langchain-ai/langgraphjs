@@ -398,7 +398,7 @@ describe("thread.extensions projection", () => {
   });
 
   it("accepts the in-process projection shape and unwraps it", async () => {
-    // Typed with the in-process shape that `graph.stream_experimental` /
+    // Typed with the in-process shape that `graph.stream_v2` /
     // `run.extensions` returns — `Promise<number>` for a final-value
     // transformer, `AsyncIterable<{ step: number }>` for a streaming
     // transformer. `ThreadStream` should unwrap these to their payload

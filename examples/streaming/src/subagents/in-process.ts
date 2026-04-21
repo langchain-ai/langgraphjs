@@ -23,7 +23,7 @@
 
 import { agent } from "../agents/deep-agent.js";
 
-const run = await agent.stream_experimental(
+const run = await agent.stream_v2(
   {
     messages: [{ role: "user", content: "Write me a haiku about the sea" }],
   },

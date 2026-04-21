@@ -100,8 +100,9 @@ export class StreamController<
 
   #thread: ThreadStream | undefined;
   #currentThreadId: string | null;
-  #rootSubscription: SubscriptionHandle<Event, unknown> | undefined;
+  #rootSubscription: SubscriptionHandle<Event> | undefined;
   #rootPump: Promise<void> | undefined;
+  #threadEventUnsubscribe: (() => void) | undefined;
   #runAbort: AbortController | undefined;
   #disposed = false;
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -267,14 +268,14 @@ export class StreamController<
             "submit({ command: { resume } }) called but no pending protocol interrupt is available."
           );
         }
-        await thread.input.respond({
+        await thread.respondInput({
           namespace: target.namespace,
           interrupt_id: target.interruptId,
           response: resumeCommand,
         });
         this.#resolvedInterrupts.add(target.interruptId);
       } else {
-        const result = await thread.run.input({
+        const result = await thread.submitRun({
           input: input ?? null,
           config: boundConfig,
           metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
@@ -319,7 +320,7 @@ export class StreamController<
     if (resolved == null) {
       throw new Error("No pending interrupt to respond to.");
     }
-    await this.#thread.input.respond({
+    await this.#thread.respondInput({
       namespace: resolved.namespace,
       interrupt_id: resolved.interruptId,
       response,
@@ -430,6 +431,8 @@ export class StreamController<
     const thread = this.#thread;
     this.#thread = undefined;
     this.registry.bind(undefined);
+    this.#threadEventUnsubscribe?.();
+    this.#threadEventUnsubscribe = undefined;
     try {
       await this.#rootSubscription?.unsubscribe();
     } catch {
@@ -462,15 +465,31 @@ export class StreamController<
 
   #startRootPump(thread: ThreadStream): void {
     if (this.#rootPump != null) return;
+
+    // Wildcard discovery + interrupt tracking is delivered via the
+    // thread's dedicated lifecycle watcher (see `ThreadStream.onEvent`).
+    // This callback fires once per globally-unique event across both
+    // the content pump AND the watcher, so we can drive discovery
+    // runners and nested HITL capture without widening the content
+    // pump's narrow filter.
+    this.#threadEventUnsubscribe = thread.onEvent((event) =>
+      this.#onWildcardEvent(event)
+    );
+
     this.#rootPump = (async () => {
       try {
-        const subscription = await thread.subscribe([
-          "values",
-          "lifecycle",
-          "input",
-          "messages",
-          "tools",
-        ]);
+        // Narrow the content pump to the root namespace, depth 1:
+        // this is enough to observe root LLM deltas and first-level
+        // discovery hints (tool-started for task:* / subgraph
+        // boundaries) without downloading content from every nested
+        // subagent / subgraph. Deeper content is pulled in lazily by
+        // per-namespace selector projections (e.g. `useMessages(sub)`),
+        // which expand `#computeUnionFilter` progressively.
+        const subscription = await thread.subscribe({
+          channels: [...ROOT_PUMP_CHANNELS] as Channel[],
+          namespaces: [[] as string[]],
+          depth: 1,
+        });
         this.#rootSubscription = subscription;
         // The SSE transport pauses the underlying subscription when
         // a terminal root lifecycle event arrives (so `for await`
@@ -495,17 +514,41 @@ export class StreamController<
     })();
   }
 
-  #onRootEvent(event: Event): void {
-    // Discovery runners always see the raw event. Content projections
-    // only process root-namespace events to keep `root.messages`
-    // etc. scoped to the top level.
+  /**
+   * Handle an event delivered via {@link ThreadStream.onEvent}.
+   *
+   * `onEvent` fires once per globally-unique event across the content
+   * pump and the wildcard lifecycle watcher, so this is the single
+   * entry point for wildcard discovery / interrupt tracking. It does
+   * NOT fan events out to the root bus (that's driven by the content
+   * pump iterator so root-bus short-circuits stay depth-1 scoped) and
+   * it does NOT process root content — messages/tools/values at root
+   * are handled by `#onRootEvent` off the content pump.
+   */
+  #onWildcardEvent(event: Event): void {
     this.#subagents.push(event);
     this.#subgraphs.push(event);
 
-    // Fan events out to every root-bus listener (selector projections
-    // that opted into the shared stream, `#awaitTerminal`, etc.). We
-    // do this for every event regardless of namespace so the bus
-    // mirrors the raw multiplex of the root subscription.
+    // Nested `input.requested` events (HITL inside a subagent /
+    // subgraph) are not observable via the narrow content pump. The
+    // `ThreadStream` itself already records them into
+    // `thread.interrupts`, which `#latestUnresolvedInterrupt()`
+    // consults — so HITL respond() works for any depth. Root-level
+    // interrupts stay in `rootStore.interrupts` via `#onRootEvent`.
+    void event;
+  }
+
+  #onRootEvent(event: Event): void {
+    // Discovery runners are fed by the wildcard lifecycle watcher via
+    // `thread.onEvent` so deeply-nested subagents/subgraphs are
+    // discovered even when the content pump stays narrow. See
+    // `#onWildcardEvent`.
+
+    // Fan root-pump events out to every root-bus listener (selector
+    // projections that opted into the shared stream,
+    // `#awaitTerminal`, etc.). The root bus mirrors the content
+    // pump's narrow scope (depth 1 at root) so projections that
+    // short-circuit via the bus stay bounded.
     if (this.#rootEventListeners.size > 0) {
       for (const listener of this.#rootEventListeners) {
         try {

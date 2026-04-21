@@ -2,7 +2,7 @@
  * Research pipeline: researcher subgraph → analyst subgraph.
  *
  * Two subgraphs with separate tool sets, wired sequentially.
- * Demonstrates how stream_experimental() exposes subgraph events hierarchically.
+ * Demonstrates how stream_v2() exposes subgraph events hierarchically.
  */
 
 import { AIMessage, SystemMessage } from "@langchain/core/messages";

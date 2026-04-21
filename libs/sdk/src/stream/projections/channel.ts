@@ -56,25 +56,23 @@ export function channelProjection(
         };
       }
 
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+      let handle: SubscriptionHandle<Event> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
           handle = await thread.subscribe({
             channels: chs as Channel[],
-            namespaces: ns.length > 0 ? [ns] : undefined,
+            namespaces: ns.length > 0 ? [ns] : [[]],
+            depth: 1,
           });
           for await (const event of handle) {
             if (disposed) break;
             const current = store.getSnapshot();
             const next =
               current.length >= bufferSize
-                ? [
-                    ...current.slice(current.length - bufferSize + 1),
-                    event as Event,
-                  ]
-                : [...current, event as Event];
+                ? [...current.slice(current.length - bufferSize + 1), event]
+                : [...current, event];
             store.setValue(next);
           }
         } catch {

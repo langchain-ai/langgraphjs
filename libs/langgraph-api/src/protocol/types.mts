@@ -43,7 +43,7 @@ import type { RunProtocolSession } from "./session/index.mjs";
  * they are normalized into protocol-framed events.
  *
  * When {@link normalized} is `true` the payload has already been converted to
- * its protocol shape by the in-process streaming layer (`stream_experimental`)
+ * its protocol shape by the in-process streaming layer (`stream_v2`)
  * and should be passed through without re-normalization.
  */
 export type SourceStreamEvent = {
@@ -176,4 +176,19 @@ export type ThreadRecord = {
   queuedEvents: ProtocolEvent[];
   /** WebSocket-only: subscription commands replayed on new run sessions. */
   activeSubscriptions: ProtocolCommand[];
+  /**
+   * WebSocket-only: subscribes that arrived before a run session was bound.
+   *
+   * The SDK opens its root-pump subscription (and legacy lifecycle/values
+   * subs) eagerly on thread creation so that no events are missed on fast
+   * runs. On WebSocket those subscribes can race ahead of the concurrent
+   * `run.input` and hit the service before `ensureRunSession` has bound a
+   * session. Rather than rejecting them with `no_such_run`, we park each
+   * command's response promise here and resolve it once the first session
+   * is bound — mirroring the cross-run `activeSubscriptions` replay path.
+   */
+  pendingSubscribes: Array<{
+    command: ProtocolCommand;
+    resolve: (response: ProtocolSuccess | ProtocolError) => void;
+  }>;
 };

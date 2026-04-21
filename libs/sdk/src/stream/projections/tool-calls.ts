@@ -24,23 +24,48 @@ export function toolCallsProjection(
     key,
     namespace: ns,
     initial: [],
-    open({ thread, store }): ProjectionRuntime {
+    open({ thread, store, rootBus }): ProjectionRuntime {
       const assembler = new ToolCallAssembler();
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+
+      const applyToolsEvent = (event: ToolsEvent): void => {
+        const tc = assembler.consume(event);
+        if (tc == null) return;
+        store.setValue([...store.getSnapshot(), tc]);
+      };
+
+      // See `messagesProjection` — root-scoped projections short-
+      // circuit onto the root bus when the requested channels are
+      // covered by the controller's root pump.
+      const rootShortCircuit =
+        ns.length === 0 && rootBus.channels.includes("tools");
+
+      if (rootShortCircuit) {
+        const unsubscribe = rootBus.subscribe((event) => {
+          if (event.method !== "tools") return;
+          if (event.params.namespace.length !== 0) return;
+          applyToolsEvent(event as ToolsEvent);
+        });
+        return {
+          dispose() {
+            unsubscribe();
+          },
+        };
+      }
+
+      let handle: SubscriptionHandle<Event> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
           handle = await thread.subscribe({
             channels: ["tools"],
-            namespaces: ns.length > 0 ? [ns] : undefined,
+            namespaces: ns.length > 0 ? [ns] : [[]],
+            depth: 1,
           });
           for await (const event of handle) {
             if (disposed) break;
             if (event.method !== "tools") continue;
-            const tc = assembler.consume(event as ToolsEvent);
-            if (tc == null) continue;
-            store.setValue([...store.getSnapshot(), tc]);
+            applyToolsEvent(event as ToolsEvent);
           }
         } catch {
           // closed / errored

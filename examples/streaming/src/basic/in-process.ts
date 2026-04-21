@@ -1,5 +1,5 @@
 /**
- * Basic stream_experimental() usage — iterate protocol events and await final output.
+ * Basic stream_v2() usage — iterate protocol events and await final output.
  *
  * Run:
  *   ANTHROPIC_API_KEY=sk-... npx tsx src/basic/in-process.ts
@@ -7,7 +7,7 @@
 
 import { graph } from "../agents/simple-tool-graph.js";
 
-const run = await graph.stream_experimental({
+const run = await graph.stream_v2({
   messages: [{ role: "user", content: "What is 42 * 17?" }],
 });
 

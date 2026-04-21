@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 
 /**
- * The set of stream modes requested by `stream_experimental()` — every mode
+ * The set of stream modes requested by `stream_v2()` — every mode
  * the protocol maps to a channel.
  *
  * The full-state `"checkpoints"` and verbose `"debug"` modes are intentionally
