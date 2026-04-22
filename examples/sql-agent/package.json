@@ -7,7 +7,7 @@
   },
   "devDependencies": {
     "@langchain/classic": "^1.0.27",
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.4.1",
     "better-sqlite3": "^11.0.0",

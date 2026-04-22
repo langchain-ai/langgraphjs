@@ -28,6 +28,25 @@ function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
   return isBaseMessage((x as ChatGenerationChunk)?.message);
 }
 
+function normalizeStreamMetadata(
+  metadata?: Record<string, unknown>,
+  tags?: string[],
+  name?: string
+): Meta | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  const streamNamespace = metadata.langgraph_checkpoint_ns as
+    | string
+    | undefined;
+  const checkpointNs = metadata.checkpoint_ns as string | undefined;
+  const namespace = streamNamespace ?? checkpointNs;
+  if (!namespace) {
+    return undefined;
+  }
+  return [namespace.split("|"), { tags, name, ...metadata }];
+}
+
 /**
  * A callback handler that implements stream_mode=messages.
  * Collects messages from (1) chat model stream events and (2) node outputs.
@@ -115,10 +134,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       // Include legacy LangGraph SDK tag
       (!tags || (!tags.includes(TAG_NOSTREAM) && !tags.includes("nostream")))
     ) {
-      this.metadatas[runId] = [
-        (metadata.langgraph_checkpoint_ns as string).split("|"),
-        { tags, name, ...metadata },
-      ];
+      this.metadatas[runId] = normalizeStreamMetadata(metadata, tags, name);
     }
   }
 
@@ -181,10 +197,7 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       name === metadata.langgraph_node &&
       (tags === undefined || !tags.includes(TAG_HIDDEN))
     ) {
-      this.metadatas[runId] = [
-        (metadata.langgraph_checkpoint_ns as string).split("|"),
-        { tags, name, ...metadata },
-      ];
+      this.metadatas[runId] = normalizeStreamMetadata(metadata, tags, name);
 
       if (typeof inputs === "object") {
         for (const value of Object.values(inputs)) {

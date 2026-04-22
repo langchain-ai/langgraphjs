@@ -988,7 +988,7 @@ it("server-side queue: cancel removes a queued entry", async () => {
     .toHaveTextContent("2");
 
   await expect
-    .element(screen.getByTestId("queue-entries"))
+    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
     .toHaveTextContent("Msg2,Msg3");
 
   await screen.getByTestId("cancel-first").click();

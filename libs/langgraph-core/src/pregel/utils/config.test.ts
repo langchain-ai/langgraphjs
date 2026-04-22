@@ -70,7 +70,7 @@ describe("ensureLangGraphConfig", () => {
     // The implementation completely replaces objects rather than merging them
     expect(result).toEqual({
       tags: ["tag2"],
-      metadata: { key2: "value2", option2: "value2" },
+      metadata: { key2: "value2" },
       callbacks: undefined,
       recursionLimit: 25,
       configurable: { option2: "value2" },
@@ -95,7 +95,6 @@ describe("ensureLangGraphConfig", () => {
     expect(result.tags).toEqual(["storage-tag"]);
     expect(result.metadata || {}).toEqual({
       storage: "value",
-      storageOption: "value",
     });
     expect(result.configurable).toEqual({ storageOption: "value" });
     expect(result.callbacks).toEqual({ type: "copied-callback" });
@@ -118,16 +117,21 @@ describe("ensureLangGraphConfig", () => {
     expect(result.metadata).toEqual({});
   });
 
-  it("should copy scalar values to metadata from configurable", () => {
+  it("should only copy allowlisted configurable values to metadata", () => {
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue(undefined);
 
     const config = {
       configurable: {
+        thread_id: "thread-1",
+        checkpoint_id: "checkpoint-1",
+        checkpoint_ns: "checkpoint-ns",
+        task_id: "task-1",
+        run_id: "run-1",
+        assistant_id: "assistant-1",
+        graph_id: "graph-1",
         stringValue: "string",
-        numberValue: 42,
-        booleanValue: true,
         objectValue: { should: "not be copied" },
         __privateValue: "should not be copied",
       },
@@ -136,10 +140,13 @@ describe("ensureLangGraphConfig", () => {
     const result = ensureLangGraphConfig(config);
 
     expect(result.metadata).toEqual({
-      stringValue: "string",
-      numberValue: 42,
-      booleanValue: true,
-      // objectValue and __privateValue should not be copied
+      thread_id: "thread-1",
+      checkpoint_id: "checkpoint-1",
+      checkpoint_ns: "checkpoint-ns",
+      task_id: "task-1",
+      run_id: "run-1",
+      assistant_id: "assistant-1",
+      graph_id: "graph-1",
     });
   });
 
@@ -158,6 +165,26 @@ describe("ensureLangGraphConfig", () => {
     const result = ensureLangGraphConfig(config);
 
     expect(result.metadata?.key).toEqual("original value");
+  });
+
+  it("should propagate empty checkpoint_ns to metadata", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const config = {
+      configurable: {
+        thread_id: "thread-1",
+        checkpoint_ns: "",
+      },
+    };
+
+    const result = ensureLangGraphConfig(config);
+
+    expect(result.metadata).toEqual({
+      thread_id: "thread-1",
+      checkpoint_ns: "",
+    });
   });
 });
 

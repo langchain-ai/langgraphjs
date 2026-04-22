@@ -1,5 +1,14 @@
 # @langchain/langgraph-sdk
 
+## 1.8.9
+
+### Patch Changes
+
+- [#2302](https://github.com/langchain-ai/langgraphjs/pull/2302) [`458d66b`](https://github.com/langchain-ai/langgraphjs/commit/458d66bf665468854abb8133594d4d4f966054ed) Thanks [@AdrianSajjan](https://github.com/AdrianSajjan)! - fix(sdk): preserve messages on interrupt values events
+
+  Add a regression test for interrupt-only `values` payloads to ensure
+  previously streamed messages are not overwritten when `__interrupt__` is emitted.
+
 ## 1.8.8
 
 ### Patch Changes

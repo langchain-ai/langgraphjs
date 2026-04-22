@@ -1,6 +1,6 @@
 {
   "name": "@example/ai-elements",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.4.1",
     "@langchain/react": "workspace:*",
@@ -56,6 +56,6 @@
     "@vitejs/plugin-react": "^6.0.0",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
-    "vite": "^8.0.0"
+    "vite": "^8.0.5"
   }
 }

@@ -4,7 +4,7 @@
   "private": true,
   "devDependencies": {
     "@langchain/anthropic": "^1.3.26",
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "workspace:*",
     "@langchain/tavily": "^1.0.0",
     "dotenv": "^16.4.5",

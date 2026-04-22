@@ -233,7 +233,7 @@ describe("RemoteGraph", () => {
     });
     const config = { configurable: { thread_id: "thread1" } };
     const stateHistorySnapshots = await gatherIterator(
-      remotePregel.getStateHistory(config)
+      remotePregel.getStateHistory(config),
     );
 
     expect(stateHistorySnapshots.length).toEqual(1);
@@ -300,7 +300,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     const remotePregel = new RemoteGraph({
@@ -315,7 +315,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, streamMode: "values" }
+        { ...config, streamMode: "values" },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -341,7 +341,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     // default stream_mode is updates
@@ -350,7 +350,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config }
+        { ...config },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -368,7 +368,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, streamMode: ["updates"] }
+        { ...config, streamMode: ["updates"] },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -389,7 +389,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, streamMode: ["updates"], subgraphs: true }
+        { ...config, streamMode: ["updates"], subgraphs: true },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -410,7 +410,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, subgraphs: true }
+        { ...config, subgraphs: true },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -435,7 +435,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     // subgraphs + list modes
@@ -444,7 +444,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, subgraphs: true, streamMode: ["updates"] }
+        { ...config, subgraphs: true, streamMode: ["updates"] },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -465,7 +465,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, subgraphs: true }
+        { ...config, subgraphs: true },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -495,7 +495,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     const remotePregel = new RemoteGraph({
@@ -506,7 +506,7 @@ describe("RemoteGraph", () => {
     const config = { configurable: { thread_id: "thread_1" } };
     const result = await remotePregel.invoke(
       { messages: [{ type: "human", content: "hello" }] },
-      config
+      config,
     );
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
   });
@@ -528,7 +528,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     const remotePregel = new RemoteGraph({
@@ -543,7 +543,7 @@ describe("RemoteGraph", () => {
         resume: "bar",
         update: { foo: "bar" },
       }),
-      config
+      config,
     );
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
     expect(streamArgs).toEqual([
@@ -669,7 +669,7 @@ describe("RemoteGraph", () => {
             },
           ],
         }),
-      })
+      }),
     );
   });
 });
