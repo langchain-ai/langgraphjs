@@ -1204,8 +1204,7 @@ export class ThreadStream<
       return;
     }
 
-    this.#lifecycleWatcherStartPromise =
-      this.#startLifecycleWatcherWebSocket();
+    this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherWebSocket();
   }
 
   async #startLifecycleWatcherSse(): Promise<void> {
@@ -1322,8 +1321,7 @@ export class ThreadStream<
     if (event.method === "input.requested") {
       const data = event.params.data;
       this.interrupts.push({
-        interruptId:
-          data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
+        interruptId: data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
         payload: data.payload,
         namespace: [...event.params.namespace],
       });

@@ -62,9 +62,8 @@ export class StreamChannel<T> implements AsyncIterable<T> {
       typeof value === "object" &&
       value !== null &&
       STREAM_CHANNEL_BRAND in value &&
-      (value as { [STREAM_CHANNEL_BRAND]: unknown })[
-        STREAM_CHANNEL_BRAND
-      ] === true
+      (value as { [STREAM_CHANNEL_BRAND]: unknown })[STREAM_CHANNEL_BRAND] ===
+        true
     );
   }
 
