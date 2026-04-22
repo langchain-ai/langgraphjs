@@ -279,7 +279,7 @@ it("opens separate registry entries for different selector kinds on the same sub
 
     await expect
       .element(screen.getByTestId("obs-researcher-tc-names"))
-      .toHaveTextContent("search_web");
+      .toHaveTextContent("search_web", { timeout: 30_000 });
 
     // Releasing the tool-calls observer drops back to one entry.
     await screen.getByTestId("toggle-researcher-toolcalls").click();

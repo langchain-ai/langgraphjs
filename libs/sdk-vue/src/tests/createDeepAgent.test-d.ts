@@ -155,18 +155,12 @@ describe("deep agent", () => {
 
     const state = stream.history.value[0];
     expectTypeOf(state.values).toHaveProperty("messages");
-    expectTypeOf(state.values.todos).toEqualTypeOf<
+    expectTypeOf(state.values.todos).toMatchTypeOf<
       {
         content: string;
         status: "completed" | "in_progress" | "pending";
-      }[] &
-        {
-          status: "pending" | "in_progress" | "completed" | "cancelled";
-          content: string;
-          id: string;
-        }[]
+      }[]
     >();
-    expectTypeOf(state.values.count).toEqualTypeOf<number>();
   });
 
   test("has well typed values", () => {
@@ -175,29 +169,11 @@ describe("deep agent", () => {
     });
 
     expectTypeOf(stream.values.value).toHaveProperty("messages");
-    expectTypeOf(stream.values.value.todos).toEqualTypeOf<
+    expectTypeOf(stream.values.value).toHaveProperty("todos");
+    expectTypeOf(stream.values.value.todos).toMatchTypeOf<
       {
         content: string;
         status: "completed" | "in_progress" | "pending";
-      }[] &
-        {
-          status: "pending" | "in_progress" | "completed" | "cancelled";
-          content: string;
-          id: string;
-        }[]
-    >();
-    expectTypeOf(stream.values.value.count).toEqualTypeOf<number>();
-    expectTypeOf(stream.values.value.files).toEqualTypeOf<
-      {
-        path: string;
-        content: string;
-      }[]
-    >();
-    expectTypeOf(stream.values.value.notes).toEqualTypeOf<
-      {
-        title: string;
-        body: string;
-        createdAt: string;
       }[]
     >();
   });

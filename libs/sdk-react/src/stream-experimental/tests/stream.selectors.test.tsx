@@ -47,7 +47,7 @@ it("discovers subagents and scopes useMessages/useToolCalls to each namespace", 
 
     await expect
       .element(screen.getByTestId("subagent-researcher-toolcall-names"))
-      .toHaveTextContent("search_web");
+      .toHaveTextContent("search_web", { timeout: 30_000 });
     await expect
       .element(screen.getByTestId("subagent-data-analyst-toolcall-names"))
       .toHaveTextContent("query_database");

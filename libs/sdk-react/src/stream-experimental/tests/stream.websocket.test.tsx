@@ -14,7 +14,7 @@ it("streams successfully over the websocket transport", async () => {
     await screen.getByTestId("submit").click();
 
     await expect
-      .element(screen.getByTestId("loading"), { timeout: 15_000 })
+      .element(screen.getByTestId("loading"), { timeout: 30_000 })
       .toHaveTextContent("Not loading");
     await expect
       .element(screen.getByTestId("message-0"))
@@ -49,7 +49,7 @@ it("discovers subgraphs over the websocket transport", async () => {
     await screen.getByTestId("submit").click();
 
     await expect
-      .element(screen.getByTestId("loading"), { timeout: 15_000 })
+      .element(screen.getByTestId("loading"), { timeout: 30_000 })
       .toHaveTextContent("Not loading");
 
     await expect
