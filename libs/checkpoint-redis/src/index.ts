@@ -189,29 +189,7 @@ export class RedisSaver extends BaseCheckpointSaver {
     const checkpointId = checkpoint.id || uuid6(0);
     const key = `checkpoint:${threadId}:${checkpointNs}:${checkpointId}`;
 
-    // Copy checkpoint and filter channel_values to only include changed channels
     const storedCheckpoint = copyCheckpoint(checkpoint);
-
-    // If newVersions is provided and has keys, only store those channels that changed
-    // If newVersions is empty {}, store no channel values
-    // If newVersions is not provided (undefined), keep all channel_values as-is
-    if (storedCheckpoint.channel_values && newVersions !== undefined) {
-      if (Object.keys(newVersions).length === 0) {
-        // Empty newVersions means no channels changed - store empty channel_values
-        storedCheckpoint.channel_values = {};
-      } else {
-        // Only store the channels that are in newVersions
-        const filteredChannelValues: Record<string, any> = {};
-        for (const channel of Object.keys(newVersions)) {
-          if (channel in storedCheckpoint.channel_values) {
-            filteredChannelValues[channel] =
-              storedCheckpoint.channel_values[channel];
-          }
-        }
-        storedCheckpoint.channel_values = filteredChannelValues;
-      }
-    }
-    // If newVersions is undefined, keep all channel_values as-is (for backward compatibility)
 
     // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
     const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;

@@ -1098,6 +1098,82 @@ describe("test_sync_redis_checkpointer", () => {
       resumable: true,
     });
   });
+
+  it("should preserve all channel_values when newVersions contains a subset of channels", async () => {
+    const saver = await RedisSaver.fromUrl(redisUrl);
+
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "multi-channel-thread",
+        checkpoint_ns: "",
+      },
+    };
+
+    // Simulate node A writing messages channel
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [
+          { type: "human", content: "Hi there" },
+          { type: "ai", content: "Hello!" },
+        ],
+        status: "idle",
+        category: "",
+      },
+      channel_versions: { messages: "1", status: "1", category: "1" },
+      versions_seen: {},
+    };
+
+    await saver.put(
+      config,
+      checkpoint1,
+      { source: "loop", step: 1, parents: {} },
+      { messages: "1", status: "1", category: "1" }
+    );
+
+    // Simulate node B (post-process) writing only status and category.
+    // The Pregel loop passes ALL channel_values in the checkpoint object,
+    // but newVersions only contains the channels written by the current node.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [
+          { type: "human", content: "Hi there" },
+          { type: "ai", content: "Hello!" },
+        ],
+        status: "completed",
+        category: "greeting",
+      },
+      channel_versions: { messages: "1", status: "2", category: "2" },
+      versions_seen: {},
+    };
+
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2", category: "2" }
+    );
+
+    // Retrieve the latest checkpoint — messages must still be present
+    const latest = await saver.getTuple(config);
+    expect(latest).toBeDefined();
+    expect(latest?.checkpoint.channel_values.messages).toEqual([
+      { type: "human", content: "Hi there" },
+      { type: "ai", content: "Hello!" },
+    ]);
+    expect(latest?.checkpoint.channel_values.status).toBe("completed");
+    expect(latest?.checkpoint.channel_values.category).toBe("greeting");
+
+    await saver.end();
+  });
 });
 
 // ============================================================================
