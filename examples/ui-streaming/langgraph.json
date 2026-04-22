@@ -1,0 +1,12 @@
+{
+  "node_version": "22",
+  "graphs": {
+    "nested-stategraph": "./src/agents/nested-stategraph.ts:agent",
+    "react-agent": "./src/agents/react-agent.ts:agent",
+    "deep-agent": "./src/agents/deep-agent.ts:agent",
+    "human-in-the-loop": "./src/agents/human-in-the-loop.ts:agent",
+    "fan-out": "./src/agents/fan-out.ts:agent",
+    "research-timeline": "./src/agents/research-timeline.ts:agent"
+  },
+  "env": ".env"
+}
