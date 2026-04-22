@@ -233,6 +233,30 @@ export class RedisSaver extends BaseCheckpointSaver {
     // Store metadata fields at top-level for searching
     this.addSearchableMetadataFields(jsonDoc, metadata);
 
+    // The newVersions filter above strips unchanged channels from the checkpoint document.
+    // Persist each changed channel as a separate blob so loadCheckpointWithWrites()
+    // can reconstruct the full channel_values from blobs written by earlier nodes.
+    if (newVersions !== undefined && checkpoint.channel_values) {
+      for (const [channel, version] of Object.entries(newVersions)) {
+        if (channel in checkpoint.channel_values) {
+          const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
+          const blobDoc = {
+            thread_id: threadId,
+            checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
+            checkpoint_id: checkpointId,
+            channel,
+            version: version.toString(),
+            type: "json",
+            value: checkpoint.channel_values[channel],
+          };
+          await this.client.json.set(blobKey, "$", blobDoc as any);
+          if (this.ttlConfig?.defaultTTL) {
+            await this.applyTTL(blobKey);
+          }
+        }
+      }
+    }
+
     // Use Redis JSON commands
     await this.client.json.set(key, "$", jsonDoc as any);
 
@@ -759,6 +783,31 @@ export class RedisSaver extends BaseCheckpointSaver {
       "json",
       JSON.stringify(jsonDoc.checkpoint)
     );
+
+    // The checkpoint document only contains channels written by the last node
+    // (filtered by newVersions in put()). Reconstruct the rest from blob storage
+    // so callers see the complete state across all channels.
+    if (checkpoint.channel_versions) {
+      const actualNs =
+        jsonDoc.checkpoint_ns === "__empty__" ? "" : jsonDoc.checkpoint_ns;
+      for (const [channel, version] of Object.entries(
+        checkpoint.channel_versions
+      )) {
+        if (!(channel in (checkpoint.channel_values ?? {}))) {
+          const blobKey = `checkpoint_blob:${jsonDoc.thread_id}:${actualNs}:${channel}:${version}`;
+          const blobDoc = (await this.client.json.get(blobKey)) as any;
+          if (blobDoc?.value !== undefined) {
+            if (!checkpoint.channel_values) {
+              checkpoint.channel_values = {};
+            }
+            checkpoint.channel_values[channel] = await this.serde.loadsTyped(
+              "json",
+              JSON.stringify(blobDoc.value)
+            );
+          }
+        }
+      }
+    }
 
     // Migrate pending sends ONLY for OLD checkpoint versions (v < 4) with parents
     // Modern checkpoints (v >= 4) should NEVER have pending sends migrated
