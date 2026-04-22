@@ -1414,30 +1414,46 @@ export class ThreadStream<
   async subscribe(
     paramsOrChannels: SubscribeParams | Channel | readonly Channel[],
     options: SubscribeOptions = {}
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Promise<any> {
+  ): Promise<unknown> {
+    // The string / string-array overloads are typed to unwrap
+    // `custom:<name>` payloads for ergonomic single-extension
+    // subscriptions (`thread.subscribe("custom:a2a")` yields the
+    // raw payload). The `SubscribeParams` object overload, however,
+    // is typed as `SubscriptionHandle<Event>` — it must deliver the
+    // full event envelope so callers like `channelProjection` (which
+    // backs `useChannel`) can see the `method`, `namespace`, and
+    // `data.name` fields needed for filtering and rendering.
+    const isParamsObject =
+      typeof paramsOrChannels === "object" &&
+      !Array.isArray(paramsOrChannels) &&
+      "channels" in paramsOrChannels;
     const params = normalizeSubscribeParams(
       paramsOrChannels as SubscribeParams | Channel | readonly Channel[],
       options
     );
-    return await this.#subscribeRaw(params);
+    return await this.#subscribeRaw(params, {
+      unwrapNamedCustom: !isParamsObject,
+    });
   }
 
   async #subscribeRaw(
-    params: SubscribeParams
+    params: SubscribeParams,
+    options: { unwrapNamedCustom?: boolean } = {}
   ): Promise<SubscriptionHandle<Event>> {
     await this.#ensureOpen();
+    const { unwrapNamedCustom = true } = options;
     const hasOnlyNamedCustom =
       params.channels.length > 0 &&
       params.channels.every((ch) => ch.startsWith("custom:"));
-    const transform = hasOnlyNamedCustom
-      ? (event: Event) =>
-          (
-            (event.params as Record<string, unknown>).data as {
-              payload?: unknown;
-            }
-          )?.payload ?? event
-      : undefined;
+    const transform =
+      unwrapNamedCustom && hasOnlyNamedCustom
+        ? (event: Event) =>
+            (
+              (event.params as Record<string, unknown>).data as {
+                payload?: unknown;
+              }
+            )?.payload ?? event
+        : undefined;
 
     if (this.#transportAdapter.openEventStream != null) {
       return this.#subscribeViaSharedStream(params, transform);
