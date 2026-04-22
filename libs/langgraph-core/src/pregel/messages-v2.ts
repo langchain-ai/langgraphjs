@@ -666,10 +666,21 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
           : message.type === "tool"
             ? ("tool" as const)
             : "ai";
+    // Tool messages carry a `tool_call_id` that pairs them with the
+    // AI turn that issued the call. Surface it on `message-start` so
+    // namespace-scoped message projections (which don't have access
+    // to the full `values.messages` snapshot) can reconstruct the
+    // ToolMessage with its id intact and UI layers can pair tool
+    // results to the originating tool card.
+    const toolCallId =
+      role === "tool" && ToolMessage.isInstance(message)
+        ? message.tool_call_id
+        : undefined;
     this.emitProtocolEvent(meta, {
       event: "message-start",
       role,
       ...(messageId != null ? { message_id: messageId } : {}),
+      ...(typeof toolCallId === "string" ? { tool_call_id: toolCallId } : {}),
     });
 
     const inlineContent = Array.isArray(message.content)

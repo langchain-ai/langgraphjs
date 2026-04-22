@@ -207,11 +207,17 @@ export class ProtocolService {
 
   /**
    * Route a protocol command on a thread.
+   *
+   * `subscription.subscribe` can resolve to `null` on ordered
+   * transports (WebSocket) — see
+   * `ProtocolSession.handleSubscribeForResponse` for the rationale.
+   * Callers must treat `null` as "response already sent on the wire"
+   * and skip any additional send.
    */
   async handleCommand(
     threadId: string,
     command: ProtocolCommand
-  ): Promise<ProtocolSuccess | ProtocolError> {
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
     const record = this.requireThread(threadId);
 
     switch (command.method) {
@@ -433,10 +439,14 @@ export class ProtocolService {
     //      initial lifecycle/values events arrive.
     if (record.transport === "websocket") {
       for (const cmd of record.activeSubscriptions) {
-        await record.session?.handleProtocolCommand(cmd, {
-          thread_id: record.threadId,
-          applied_through_seq: record.seq,
-        });
+        await record.session?.handleProtocolCommand(
+          cmd,
+          {
+            thread_id: record.threadId,
+            applied_through_seq: record.seq,
+          },
+          { deliverResponseInline: true }
+        );
       }
       await this.drainPendingSubscribes(record);
     }
@@ -521,7 +531,7 @@ export class ProtocolService {
   private async forwardToRunSession(
     record: ThreadRecord,
     command: ProtocolCommand
-  ): Promise<ProtocolSuccess | ProtocolError> {
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
     const runSession = record.session;
     if (runSession == null) {
       // WebSocket subscribes can arrive before the concurrent `run.input`
@@ -534,9 +544,11 @@ export class ProtocolService {
         command.method === "subscription.subscribe" &&
         record.transport === "websocket"
       ) {
-        return await new Promise<ProtocolSuccess | ProtocolError>((resolve) => {
-          record.pendingSubscribes.push({ command, resolve });
-        });
+        return await new Promise<ProtocolSuccess | ProtocolError | null>(
+          (resolve) => {
+            record.pendingSubscribes.push({ command, resolve });
+          }
+        );
       }
       return this.error(
         command.id,
@@ -550,10 +562,23 @@ export class ProtocolService {
     ) {
       record.activeSubscriptions.push(command);
     }
-    return await runSession.handleProtocolCommand(command, {
-      thread_id: record.threadId,
-      applied_through_seq: record.seq,
-    });
+    return await runSession.handleProtocolCommand(
+      command,
+      {
+        thread_id: record.threadId,
+        applied_through_seq: record.seq,
+      },
+      // WebSocket is an ordered single-channel transport: events and
+      // the subscribe response share one wire. Emit the response
+      // first via the session's send queue so the client registers
+      // the subscription handle before the replay events arrive
+      // (otherwise the per-sub fan-out drops them). HTTP `/commands`
+      // keeps the default return-the-response behaviour so the
+      // response lands in the HTTP body.
+      record.transport === "websocket"
+        ? { deliverResponseInline: true }
+        : undefined
+    );
   }
 
   /**
@@ -572,10 +597,17 @@ export class ProtocolService {
     const pending = record.pendingSubscribes.splice(0);
     for (const { command, resolve } of pending) {
       record.activeSubscriptions.push(command);
-      const response = await record.session.handleProtocolCommand(command, {
-        thread_id: record.threadId,
-        applied_through_seq: record.seq,
-      });
+      const response = await record.session.handleProtocolCommand(
+        command,
+        {
+          thread_id: record.threadId,
+          applied_through_seq: record.seq,
+        },
+        // Parked subscribes are always WebSocket-origin (see
+        // `forwardToRunSession`), so the response must land on the
+        // wire before the soon-to-start session's first events.
+        { deliverResponseInline: true }
+      );
       resolve(response);
     }
   }

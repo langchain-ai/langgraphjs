@@ -70,12 +70,53 @@ it("populates subgraphs and subgraphsByNode maps and scoped useMessages", async 
       .element(screen.getByTestId("loading"), { timeout: 15_000 })
       .toHaveTextContent("Not loading");
 
+    // `subgraph_graph` fixture has exactly one host namespace (the
+    // `child` node, a compiled subgraph containing an `inner` node).
+    // The inner node itself is a leaf and MUST NOT be counted as a
+    // subgraph — only namespaces observed as a strict prefix of a
+    // deeper one are promoted.
     await expect
       .element(screen.getByTestId("subgraph-count"))
-      .not.toHaveTextContent("0");
+      .toHaveTextContent("1");
     await expect
       .element(screen.getByTestId("subgraph-nodes"))
-      .toHaveTextContent(/child:\d+/);
+      .toHaveTextContent(/^child:1$/);
+  } finally {
+    cleanupRender(screen);
+  }
+});
+
+it("ignores leaf function nodes and only promotes subgraph hosts", async () => {
+  // The `embedded_subgraph_graph` fixture mirrors the
+  // `nested-stategraph.ts` demo: a plain async function node
+  // (`research`) invokes a compiled subgraph via `.invoke()` and
+  // declares it with `{ subgraphs: [...] }`. A sibling `summarize`
+  // node is a plain function with no subgraph invocation.
+  //
+  // Expected discovery result:
+  //   - `research:<uuid>`        → subgraph (hosts `inner:<uuid>`)
+  //   - `summarize:<uuid>`       → NOT a subgraph (leaf function node)
+  //   - `research:<uuid>/inner:<uuid>` → NOT a subgraph (leaf inside host)
+  const screen = await render(
+    <SubgraphDiscoveryStream
+      apiUrl={apiUrl}
+      assistantId="embedded_subgraph_graph"
+    />,
+  );
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 15_000 })
+      .toHaveTextContent("Not loading");
+
+    await expect
+      .element(screen.getByTestId("subgraph-count"))
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("subgraph-nodes"))
+      .toHaveTextContent(/^research:1$/);
   } finally {
     cleanupRender(screen);
   }

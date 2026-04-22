@@ -13,6 +13,7 @@ import { formatMessage } from "./format.js";
 interface Props {
   apiUrl: string;
   assistantId?: string;
+  transport?: "sse" | "websocket";
 }
 
 /**
@@ -25,10 +26,12 @@ interface Props {
 export function SubgraphDiscoveryStream({
   apiUrl,
   assistantId = "subgraph_graph",
+  transport,
 }: Props) {
   const thread = useStreamExperimental<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
+    transport,
   });
 
   const subgraphs = [...thread.subgraphs.values()];

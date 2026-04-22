@@ -30,6 +30,8 @@ export {
   type VideoPlayerHandle,
   STREAM_CONTROLLER,
   MediaAssemblyError,
+  type AnyStream,
+  type StateOf,
   type UseStreamExperimentalOptions,
   type UseStreamExperimentalReturn,
   type SelectorTarget,

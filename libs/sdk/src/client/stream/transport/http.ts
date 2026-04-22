@@ -24,6 +24,24 @@ import { BytesLineDecoder, SSEDecoder } from "./decoder.js";
 import { IterableReadableStream } from "./stream.js";
 
 /**
+ * Gated diagnostic logger for the HTTP/SSE transport. Silent by default;
+ * opt in from the browser DevTools console with
+ * `globalThis.__LG_STREAM_DEBUG__ = true` to trace raw SSE line
+ * delivery, per-stream event counts, and connection life-cycle
+ * transitions. Mirrors the hooks in `client/stream/index.ts` and
+ * `stream/controller.ts` so one flag lights up the full event path.
+ */
+function lgDebug(tag: string, ...args: unknown[]): void {
+  if (
+    (globalThis as { __LG_STREAM_DEBUG__?: boolean }).__LG_STREAM_DEBUG__ !==
+    true
+  ) {
+    return;
+  }
+  console.log(`[lg:${tag}]`, ...args);
+}
+
+/**
  * Transport adapter that speaks the thread-centric protocol over HTTP
  * commands plus SSE event streams. Bound to a specific `threadId`
  * at construction. Each {@link openEventStream} call opens an independent
@@ -136,6 +154,14 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       rejectReady = reject;
     });
 
+    const streamId = Math.random().toString(36).slice(2, 8);
+    lgDebug("http.open", {
+      streamId,
+      channels: params.channels,
+      namespaces: params.namespaces,
+      depth: params.depth,
+    });
+
     const startStream = async () => {
       try {
         const response = await this.request(eventsUrl, {
@@ -153,6 +179,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         });
 
         resolveReady();
+        lgDebug("http.ready", { streamId, status: response.status });
 
         const readable =
           response.body ??
@@ -167,14 +194,37 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           .pipeThrough(SSEDecoder());
         const iterable = IterableReadableStream.fromReadableStream(stream);
 
+        let count = 0;
         for await (const event of iterable) {
-          if (ac.signal.aborted || this.closed) break;
+          if (ac.signal.aborted || this.closed) {
+            lgDebug("http.break", {
+              streamId,
+              count,
+              aborted: ac.signal.aborted,
+              closed: this.closed,
+            });
+            break;
+          }
           if (isRecord(event.data)) {
-            streamQueue.push(event.data as Message);
+            count += 1;
+            const msg = event.data as Message & {
+              seq?: number;
+              method?: string;
+            };
+            lgDebug("http.event", {
+              streamId,
+              count,
+              seq: msg.seq,
+              method: msg.method,
+              eventId: (msg as { event_id?: string }).event_id,
+            });
+            streamQueue.push(msg);
           }
         }
+        lgDebug("http.loop-end", { streamId, count });
         streamQueue.close();
       } catch (error) {
+        lgDebug("http.error", { streamId, error: String(error) });
         rejectReady(error);
         if (ac.signal.aborted || this.closed) {
           streamQueue.close();

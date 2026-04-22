@@ -114,7 +114,13 @@ export default function createProtocolApi(
             record.threadId,
             payload as ProtocolCommand
           );
-          ws.send(serialiseAsDict(response));
+          // `null` means the session already wrote the response through
+          // the shared transport queue (see
+          // `ProtocolSession.handleSubscribeForResponse`). Sending again
+          // here would double-deliver the success and break ordering.
+          if (response != null) {
+            ws.send(serialiseAsDict(response));
+          }
         },
         onClose() {
           void protocolService.closeThread(record.threadId);

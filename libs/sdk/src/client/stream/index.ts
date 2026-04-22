@@ -54,6 +54,25 @@ import type {
 import type { EventStreamHandle, TransportAdapter } from "./transport.js";
 import { ProtocolError } from "./error.js";
 
+/**
+ * Gated diagnostic logger for `ThreadStream` internals. Silent by
+ * default; opt in from the browser DevTools console with
+ * `globalThis.__LG_STREAM_DEBUG__ = true` to observe subscription
+ * fan-out, pump transitions, and resume handshakes. Kept alongside the
+ * matching hooks in `stream/controller.ts` and
+ * `client/stream/transport/http.ts` so a single opt-in surfaces the
+ * whole event path for debugging stuck-UI regressions.
+ */
+function lgDebug(tag: string, ...args: unknown[]): void {
+  if (
+    (globalThis as { __LG_STREAM_DEBUG__?: boolean }).__LG_STREAM_DEBUG__ !==
+    true
+  ) {
+    return;
+  }
+  console.log(`[lg:${tag}]`, ...args);
+}
+
 type PendingCommand = {
   resolve: (response: CommandResponse) => void;
   reject: (error: Error) => void;
@@ -486,15 +505,20 @@ export class ThreadStream<
 
   // ---------- v2 lifecycle watcher ----------
   // Dedicated wildcard `{channels: ["lifecycle", "input"]}` stream
-  // opened by `submitRun` / `respondInput` (v2 entry points). The
-  // watcher never rotates and is NOT counted towards
-  // `#computeUnionFilter`, so the content-pump filter can stay narrow
-  // (e.g. `{namespaces: [[]], depth: 1}`) while still capturing every
-  // interrupt / deeply-nested discovery event.
+  // opened by `submitRun` / `respondInput` (v2 entry points). Carries
+  // every interrupt and lifecycle event at any depth so consumers of
+  // `onEvent` (discovery runners, nested HITL capture) don't depend
+  // on the content pump's narrow filter.
   //
-  // WebSocket transports (no `openEventStream`) skip the dedicated
-  // watcher entirely — lifecycle events flow over the shared command
-  // connection via the normal subscribe path.
+  //  - SSE: opened via `openEventStream` as an independent stream
+  //    that sits outside `#computeUnionFilter`, so the shared SSE
+  //    content pump stays narrow. Tracked in `#lifecycleWatcherHandle`
+  //    so `close()` can tear it down.
+  //  - WebSocket: opened via `#subscribeRaw` on the shared command
+  //    connection. The resulting `SubscriptionHandle` is managed by
+  //    the normal `#subscriptions` lifecycle, so no separate handle
+  //    reference is needed — `close()` fans `SubscriptionHandle.close`
+  //    across all registered subs.
   #lifecycleWatcherHandle: EventStreamHandle | null = null;
   #lifecycleWatcherStartPromise?: Promise<void>;
 
@@ -1091,9 +1115,9 @@ export class ThreadStream<
    * `submitRun` skips those shims — callers that manage their own
    * content subscriptions (such as `StreamController`) get the narrow
    * union filter they asked for. Lifecycle / interrupt tracking is
-   * instead served by the dedicated `#startLifecycleWatcher` stream
-   * (SSE only; on WebSocket the wildcard lifecycle flow is the
-   * transport's default behaviour).
+   * instead served by the dedicated `#startLifecycleWatcher`, which
+   * opens a wildcard `["lifecycle", "input"]` stream alongside the
+   * narrow content pump on both SSE and WebSocket transports.
    */
   async submitRun(params: {
     input?: unknown;
@@ -1147,52 +1171,115 @@ export class ThreadStream<
 
   /**
    * Lazily open the wildcard `["lifecycle", "input"]` watcher stream.
-   * Idempotent. SSE only — on WebSocket the shared command connection
-   * already delivers every event type, so a separate watcher buys
-   * nothing.
+   *
+   * Idempotent. Used by both transports, but through different
+   * mechanisms:
+   *
+   *  - **SSE**: opens a dedicated event stream via
+   *    {@link TransportAdapter.openEventStream}. The stream runs
+   *    outside `#computeUnionFilter`, so the shared SSE stream's
+   *    content pump can stay narrow (e.g. `depth: 1`) while we still
+   *    capture every lifecycle/input event at any depth.
+   *  - **WebSocket**: opens a wildcard `["lifecycle", "input"]`
+   *    subscription via the normal command path. The WS server
+   *    delivers matching events on the shared command connection and
+   *    `#handleIncoming` dispatches them through `#fireOnEvent` and
+   *    the thread-level effects — same downstream semantics as the
+   *    SSE watcher, just reusing the transport that's already open.
+   *
+   * Why this matters: consumers of {@link onEvent} (notably
+   * `StreamController`'s subgraph/subagent discovery runners and
+   * nested interrupt capture) depend on observing namespaced
+   * lifecycle events at any depth. Without this watcher, WS clients
+   * would only ever receive events matching the content pump's
+   * narrow filter (depth 1 from the root), breaking inference rules
+   * that require deeper descendants (e.g. the "has-descendants"
+   * signal used to promote a subgraph host).
    */
   #startLifecycleWatcher(): void {
     if (this.#lifecycleWatcherStartPromise != null) return;
-    if (this.#transportAdapter.openEventStream == null) return;
 
-    this.#lifecycleWatcherStartPromise = (async () => {
-      const filter: SubscribeParams = {
+    if (this.#transportAdapter.openEventStream != null) {
+      this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherSse();
+      return;
+    }
+
+    this.#lifecycleWatcherStartPromise =
+      this.#startLifecycleWatcherWebSocket();
+  }
+
+  async #startLifecycleWatcherSse(): Promise<void> {
+    const filter: SubscribeParams = {
+      channels: ["lifecycle", "input"],
+    };
+    let handle: EventStreamHandle;
+    try {
+      handle = this.#transportAdapter.openEventStream!(filter);
+    } catch {
+      return;
+    }
+    try {
+      await handle.ready;
+    } catch {
+      try {
+        handle.close();
+      } catch {
+        // best-effort
+      }
+      return;
+    }
+    if (this.#closed) {
+      try {
+        handle.close();
+      } catch {
+        // best-effort
+      }
+      return;
+    }
+    this.#lifecycleWatcherHandle = handle;
+    try {
+      for await (const message of handle.events) {
+        if (this.#closed) break;
+        this.#handleLifecycleWatcherMessage(message);
+      }
+    } catch {
+      // Best-effort; the content pump handles surface-level errors.
+    }
+  }
+
+  async #startLifecycleWatcherWebSocket(): Promise<void> {
+    // `#subscribeRaw` on WS registers the subscription with the
+    // server and buffers incoming events on a `SubscriptionHandle`.
+    // All the side effects we care about (global dedup,
+    // `#fireOnEvent` fan-out to `onEvent` listeners, interrupt
+    // capture) already run in `#handleIncoming` regardless of which
+    // subscription matched, so we don't need to process events on
+    // the handle itself — we just drain it so its buffer doesn't
+    // accumulate.
+    let handle: SubscriptionHandle<Event>;
+    try {
+      handle = await this.#subscribeRaw({
         channels: ["lifecycle", "input"],
-      };
-      let handle: EventStreamHandle;
+      });
+    } catch {
+      return;
+    }
+    if (this.#closed) {
       try {
-        handle = this.#transportAdapter.openEventStream!(filter);
+        handle.close();
       } catch {
-        return;
+        // best-effort
       }
-      try {
-        await handle.ready;
-      } catch {
-        try {
-          handle.close();
-        } catch {
-          // best-effort
-        }
-        return;
+      return;
+    }
+    try {
+      for await (const _event of handle) {
+        if (this.#closed) break;
       }
-      if (this.#closed) {
-        try {
-          handle.close();
-        } catch {
-          // best-effort
-        }
-        return;
-      }
-      this.#lifecycleWatcherHandle = handle;
-      try {
-        for await (const message of handle.events) {
-          if (this.#closed) break;
-          this.#handleLifecycleWatcherMessage(message);
-        }
-      } catch {
-        // Best-effort; the content pump handles surface-level errors.
-      }
-    })();
+    } catch {
+      // Best-effort; surface-level errors are reported by the
+      // content pump.
+    }
   }
 
   /**
@@ -1590,12 +1677,26 @@ export class ThreadStream<
    * pumps may be active briefly, with `#seenEventIds` deduping.
    */
   async #pumpStream(handle: EventStreamHandle): Promise<void> {
+    let count = 0;
     try {
       for await (const message of handle.events) {
-        if (this.#closed) break;
+        if (this.#closed) {
+          lgDebug("pump.closed-break", { count });
+          break;
+        }
+        count += 1;
         this.#handleIncoming(message);
       }
+      lgDebug("pump.loop-end", {
+        count,
+        isShared: handle === this.#sharedStream,
+      });
     } catch (err) {
+      lgDebug("pump.error", {
+        count,
+        error: String(err),
+        isShared: handle === this.#sharedStream,
+      });
       if (handle === this.#sharedStream && !this.#closed) {
         this.#failThreadWithError(err);
       }
@@ -1731,6 +1832,22 @@ export class ThreadStream<
 
   #handleIncoming(message: Message): void {
     if (message.type === "event") {
+      const msgEvent = message as unknown as {
+        seq?: number;
+        method?: string;
+        event_id?: string;
+        params?: {
+          namespace?: string[];
+          data?: { event?: string };
+        };
+      };
+      lgDebug("incoming", {
+        seq: msgEvent.seq,
+        method: msgEvent.method,
+        ns: msgEvent.params?.namespace,
+        event: msgEvent.params?.data?.event,
+        subs: this.#subscriptions.size,
+      });
       if (typeof message.seq === "number") {
         this.ordering.lastSeenSeq = message.seq;
       }
@@ -1774,15 +1891,30 @@ export class ThreadStream<
       // dispatches to matching subscriptions based on each sub's
       // advertised filter, with per-sub dedup.
       let fannedToAny = false;
+      let matchCount = 0;
+      let dedupSkip = 0;
       for (const subscription of this.#subscriptions.values()) {
         if (!matchesSubscription(message, subscription.filter)) continue;
+        matchCount += 1;
         if (eventId != null) {
-          if (subscription.seenEventIds.has(eventId)) continue;
+          if (subscription.seenEventIds.has(eventId)) {
+            dedupSkip += 1;
+            continue;
+          }
           subscription.seenEventIds.add(eventId);
         }
         subscription.push(message);
         fannedToAny = true;
       }
+      lgDebug("fanout", {
+        seq: msgEvent.seq,
+        method: msgEvent.method,
+        ns: msgEvent.params?.namespace,
+        matchCount,
+        dedupSkip,
+        fanned: fannedToAny,
+        globallyProcessed,
+      });
 
       if (
         fannedToAny &&
@@ -1790,6 +1922,11 @@ export class ThreadStream<
         message.params.namespace.length === 0 &&
         TERMINAL_LIFECYCLE_EVENTS.has(message.params.data.event)
       ) {
+        lgDebug("terminal-pause", {
+          seq: msgEvent.seq,
+          event: message.params.data.event,
+          subCount: this.#subscriptions.size,
+        });
         // A single shared stream delivers every subscription's events,
         // so a terminal event applies to all currently active
         // non-lifecycle subscriptions. Only fire when we actually

@@ -19,6 +19,7 @@ import { graph as deepAgentGraph } from "./fixtures/deep-agent.js";
 import { graph as interruptGraph } from "./fixtures/interrupt-graph.js";
 import { graph as errorGraph } from "./fixtures/error-graph.js";
 import { graph as subgraphGraph } from "./fixtures/subgraph-graph.js";
+import { graph as embeddedSubgraphGraph } from "./fixtures/embedded-subgraph-graph.js";
 import { graph as customChannelGraph } from "./fixtures/custom-channel-graph.js";
 
 declare module "vitest" {
@@ -68,6 +69,7 @@ const graphs: Record<string, AnyPregel> = {
   interrupt_graph: interruptGraph as unknown as AnyPregel,
   error_graph: errorGraph as unknown as AnyPregel,
   subgraph_graph: subgraphGraph as unknown as AnyPregel,
+  embedded_subgraph_graph: embeddedSubgraphGraph as unknown as AnyPregel,
   custom_channel_graph: customChannelGraph as unknown as AnyPregel,
 };
 

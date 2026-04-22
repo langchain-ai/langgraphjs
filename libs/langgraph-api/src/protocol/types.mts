@@ -189,6 +189,6 @@ export type ThreadRecord = {
    */
   pendingSubscribes: Array<{
     command: ProtocolCommand;
-    resolve: (response: ProtocolSuccess | ProtocolError) => void;
+    resolve: (response: ProtocolSuccess | ProtocolError | null) => void;
   }>;
 };

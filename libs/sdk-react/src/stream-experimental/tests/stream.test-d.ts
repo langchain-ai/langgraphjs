@@ -44,6 +44,7 @@ import {
   useMediaURL,
   useAudioPlayer,
   useVideoPlayer,
+  type AnyStream,
   type AudioPlayerHandle,
   type PlayerStatus,
   type SelectorTarget,
@@ -124,6 +125,23 @@ describe("useStreamExperimental — return type", () => {
     const s = useStreamExperimental<BedtimeState>({ assistantId: "agent" });
     expectTypeOf(s.messages).toEqualTypeOf<BaseMessage[]>();
   });
+
+  test("compiled graph type unwraps to its state shape", async () => {
+    // A real compiled graph — `typeof agent` carries the `"~RunOutput"`
+    // brand inherited from `CompiledGraph`, which `StateOf<T>` mines
+    // to recover the state type.
+    const { MessagesAnnotation, StateGraph } = await import(
+      "@langchain/langgraph"
+    );
+    const agent = new StateGraph(MessagesAnnotation).compile();
+
+    const s = useStreamExperimental<typeof agent>({ assistantId: "agent" });
+
+    // `values` is the graph's state, *not* the `CompiledStateGraph` class.
+    expectTypeOf(s.values).toEqualTypeOf<{ messages: BaseMessage[] }>();
+    expectTypeOf(s.values).not.toEqualTypeOf<typeof agent>();
+  });
+
 
   test("discovery maps have the right shapes", () => {
     expectTypeOf(stream.subagents).toEqualTypeOf<
@@ -503,5 +521,19 @@ describe("back-compat — explicit generics on selectors", () => {
     expectTypeOf<typeof stream>().toEqualTypeOf<
       UseStreamExperimentalReturn<BedtimeState, ApprovalRequest, TenantConfig>
     >();
+  });
+
+  test("AnyStream accepts any fully-typed stream handle", () => {
+    // The whole point of `AnyStream`: a wrapper component that only
+    // forwards the handle to selector hooks doesn't want to repeat the
+    // caller's state/interrupt/configurable types. Any concrete
+    // `UseStreamExperimentalReturn<S, I, C>` should be assignable.
+    expectTypeOf<typeof stream>().toExtend<AnyStream>();
+    expectTypeOf<
+      UseStreamExperimentalReturn<BedtimeState>
+    >().toExtend<AnyStream>();
+    expectTypeOf<
+      UseStreamExperimentalReturn<Record<string, unknown>>
+    >().toExtend<AnyStream>();
   });
 });

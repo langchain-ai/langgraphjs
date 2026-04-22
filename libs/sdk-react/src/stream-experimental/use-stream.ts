@@ -24,6 +24,28 @@ import {
 } from "@langchain/langgraph-sdk/stream";
 
 /**
+ * Unwraps a compiled graph type (anything carrying the
+ * `~RunOutput` brand from `CompiledGraph`) into its state shape.
+ * Any other `object` type is treated as the state itself, so
+ * existing `useStreamExperimental<MyState>()` call sites keep
+ * resolving to `MyState` without change.
+ *
+ * @example
+ * ```ts
+ * const agent = new StateGraph({ messages: MessagesValue }).compile();
+ * type State = StateOf<typeof agent>; // { messages: BaseMessage[] }
+ * type Plain = StateOf<{ foo: string }>; // { foo: string }
+ * ```
+ */
+export type StateOf<T> = T extends { "~RunOutput": infer S }
+  ? S extends object
+    ? S
+    : Record<string, unknown>
+  : T extends object
+    ? T
+    : Record<string, unknown>;
+
+/**
  * Options accepted by {@link useStreamExperimental}. Framework-
  * agnostic options are re-exported from
  * `@langchain/langgraph-sdk/stream`; React-specific
@@ -115,6 +137,17 @@ export interface UseStreamExperimentalReturn<
 
   // ----- always-on discovery -----
   readonly subagents: ReadonlyMap<string, SubagentDiscoverySnapshot>;
+  /**
+   * Subgraphs discovered on the root run.
+   *
+   * A namespace is classified as a subgraph iff at least one
+   * strictly-deeper namespace has been observed with it as a prefix.
+   * This is inferred from the lifecycle event stream — plain function
+   * nodes (`orchestrator`, `writer` in the nested-stategraph example)
+   * never appear here even though the server emits namespaced
+   * lifecycle events for them. Promotion is monotonic and retroactive;
+   * an entry appears as soon as the first descendant event lands.
+   */
   readonly subgraphs: ReadonlyMap<string, SubgraphDiscoverySnapshot>;
   /**
    * Subgraphs indexed by the graph node that produced them
@@ -163,6 +196,30 @@ export interface UseStreamExperimentalReturn<
 }
 
 /**
+ * Erased stream handle useful as a parameter type for helpers and
+ * wrapper components that pass a `stream` through to selector hooks
+ * (`useMessages`, `useChannel`, …) without reading `values` directly.
+ * Any fully-typed `UseStreamExperimentalReturn<S, I, C>` is
+ * assignable to `AnyStream` because the generic slots are `any`
+ * (bivariant), which avoids the `CompiledStateGraph` → `Record<string,
+ * unknown>` assignment friction you hit when using the bare
+ * `UseStreamExperimentalReturn` default.
+ *
+ * @example
+ * ```tsx
+ * function SubgraphCard({ stream, subgraph }: {
+ *   stream: AnyStream;
+ *   subgraph: SubgraphDiscoverySnapshot;
+ * }) {
+ *   const messages = useMessages(stream, subgraph);
+ *   return <Feed messages={messages} />;
+ * }
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyStream = UseStreamExperimentalReturn<any, any, any>;
+
+/**
  * React binding for the experimental v2-native stream runtime.
  *
  * `useStreamExperimental` exposes three always-on projections
@@ -185,16 +242,24 @@ export interface UseStreamExperimentalReturn<
  * }
  * ```
  *
+ * The first generic accepts either a plain state type
+ * (`useStreamExperimental<MyState>()`) *or* a compiled graph type
+ * (`useStreamExperimental<typeof agent>()`); in the latter case the
+ * state shape is unwrapped from the graph via {@link StateOf}, so
+ * `stream.values` is always typed as the state, never as the graph
+ * class itself.
+ *
  * @experimental API is unstable and may change until the v2 protocol
  * is GA on LangGraph Platform.
  */
 export function useStreamExperimental<
-  StateType extends object = Record<string, unknown>,
+  T extends object = Record<string, unknown>,
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 >(
-  options: UseStreamExperimentalOptions<StateType>
-): UseStreamExperimentalReturn<StateType, InterruptType, ConfigurableType> {
+  options: UseStreamExperimentalOptions<StateOf<T>>
+): UseStreamExperimentalReturn<StateOf<T>, InterruptType, ConfigurableType> {
+  type StateType = StateOf<T>;
   const client = useMemo<Client>(
     () =>
       options.client ??

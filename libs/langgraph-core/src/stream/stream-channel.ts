@@ -15,6 +15,21 @@
 import { EventLog } from "./event-log.js";
 
 /**
+ * Branded symbol placed on every {@link StreamChannel} instance.
+ *
+ * Uses `Symbol.for` so the same symbol is shared across multiple
+ * copies of this package that may coexist in a dependency graph
+ * (e.g. when a user app imports `@langchain/langgraph` directly and a
+ * wrapping library like `langchain` bundles its own copy). Using a
+ * symbol brand instead of `instanceof` lets channels created against
+ * one copy of the class be recognised by a mux from another.
+ * @internal
+ */
+export const STREAM_CHANNEL_BRAND: unique symbol = Symbol.for(
+  "langgraph.stream_channel"
+) as typeof STREAM_CHANNEL_BRAND;
+
+/**
  * A named, auto-forwarding projection channel for {@link StreamTransformer}s.
  *
  * Implements `AsyncIterable<T>` so it can be iterated directly by
@@ -23,6 +38,9 @@ import { EventLog } from "./event-log.js";
  * @typeParam T - The type of items pushed into the channel.
  */
 export class StreamChannel<T> implements AsyncIterable<T> {
+  /** @internal Brand used by {@link StreamChannel.isInstance}. */
+  readonly [STREAM_CHANNEL_BRAND] = true as const;
+
   /** Protocol channel name used for auto-forwarded events. */
   readonly channelName: string;
 
@@ -31,6 +49,23 @@ export class StreamChannel<T> implements AsyncIterable<T> {
 
   constructor(name: string) {
     this.channelName = name;
+  }
+
+  /**
+   * Brand-based type guard that recognises any {@link StreamChannel}
+   * instance, even ones originating from a different copy of this
+   * package. Prefer this over `instanceof StreamChannel` when code
+   * may observe channels that were constructed elsewhere.
+   */
+  static isInstance(value: unknown): value is StreamChannel<unknown> {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      STREAM_CHANNEL_BRAND in value &&
+      (value as { [STREAM_CHANNEL_BRAND]: unknown })[
+        STREAM_CHANNEL_BRAND
+      ] === true
+    );
   }
 
   /**
@@ -64,10 +99,13 @@ export class StreamChannel<T> implements AsyncIterable<T> {
 
 /**
  * Type guard that tests whether a value is a {@link StreamChannel}.
+ *
+ * Uses a symbol brand rather than `instanceof` so channels built
+ * against a different copy of this package (e.g. one bundled by the
+ * `langchain` umbrella package) are still recognised.
  */
 export function isStreamChannel(
   value: unknown
 ): value is StreamChannel<unknown> {
-  // oxlint-disable-next-line no-instanceof/no-instanceof
-  return value instanceof StreamChannel;
+  return StreamChannel.isInstance(value);
 }

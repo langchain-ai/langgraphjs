@@ -65,6 +65,25 @@ import type {
 const ROOT_NAMESPACE: readonly string[] = [];
 
 /**
+ * Gated diagnostic logger for the root event pump. Silent by default so
+ * high-frequency streaming runs don't pay for `console.log` formatting
+ * on every delta. Opt in from the browser DevTools console by setting
+ * `globalThis.__LG_STREAM_DEBUG__ = true` before submitting a run; the
+ * logs then show the event ordering / pump transitions needed to
+ * diagnose stuck-UI regressions like the fan-out render loop that
+ * motivated the resilience try/catch in `#startRootPump`.
+ */
+function lgDebug(tag: string, ...args: unknown[]): void {
+  if (
+    (globalThis as { __LG_STREAM_DEBUG__?: boolean }).__LG_STREAM_DEBUG__ !==
+    true
+  ) {
+    return;
+  }
+  console.log(`[lg:${tag}]`, ...args);
+}
+
+/**
  * Channel set covered by the always-on root subscription. Exported so
  * projections (and transports) can reason about what the root pump
  * already delivers before opening additional server subscriptions.
@@ -490,6 +509,10 @@ export class StreamController<
           namespaces: [[] as string[]],
           depth: 1,
         });
+        lgDebug("root-pump.subscribed", {
+          channels: [...ROOT_PUMP_CHANNELS],
+          subId: subscription.subscriptionId,
+        });
         this.#rootSubscription = subscription;
         // The SSE transport pauses the underlying subscription when
         // a terminal root lifecycle event arrives (so `for await`
@@ -499,16 +522,83 @@ export class StreamController<
         // survive that hand-off: we re-enter the inner `for await`
         // for every resumed iteration until the subscription is
         // permanently closed or the controller is disposed.
+        let iterationCount = 0;
         while (!this.#disposed) {
+          iterationCount += 1;
+          let perIterCount = 0;
+          lgDebug("root-pump.iter-start", { iterationCount });
           for await (const event of subscription) {
-            if (this.#disposed) break;
-            this.#onRootEvent(event);
+            if (this.#disposed) {
+              lgDebug("root-pump.disposed-break", {
+                iterationCount,
+                perIterCount,
+              });
+              break;
+            }
+            perIterCount += 1;
+            // Resilience: isolate per-event dispatch from the pump loop.
+            //
+            // `#onRootEvent` runs synchronously and, transitively,
+            // invokes every root-bus listener (selector projections that
+            // opted into the shared stream) plus every `rootStore`
+            // subscriber. Some of those subscribers live in a React
+            // render tree — `useStreamExperimental` drives
+            // `useSyncExternalStore`, so a misbehaving component can
+            // surface a render-phase error ("Maximum update depth
+            // exceeded", "The result of getSnapshot should be cached",
+            // etc.) that propagates out here.
+            //
+            // Without this guard, a single throw bubbles through the
+            // `for await` loop and terminates the root pump permanently.
+            // That is catastrophic: no more root events get processed —
+            // the terminal `lifecycle: completed` never lands, so
+            // `#awaitNextTerminal` never resolves, `isLoading` stays
+            // `true`, composers stay disabled, and the final assistant
+            // turn never commits to `stream.messages`. The UI looks
+            // hung even though the server is still emitting events
+            // (and `ThreadStream.onEvent` keeps firing).
+            //
+            // We therefore swallow the error and keep pumping. The
+            // underlying component bug is still reported via `lgDebug`
+            // (opt in with `globalThis.__LG_STREAM_DEBUG__ = true` in
+            // DevTools to surface the full stack for diagnosis) — but
+            // the pump's correctness guarantees do not depend on any
+            // consumer behaving well.
+            try {
+              this.#onRootEvent(event);
+            } catch (err) {
+              const errObj = err as Error;
+              const evSeq = (event as unknown as { seq?: number }).seq;
+              const evEventKind = (
+                event.params.data as { event?: string } | undefined
+              )?.event;
+              lgDebug("root-event.THREW", {
+                seq: evSeq,
+                method: event.method,
+                ns: event.params.namespace,
+                event: evEventKind,
+                error: errObj?.message,
+                stack: errObj?.stack,
+              });
+            }
           }
+          lgDebug("root-pump.iter-end", {
+            iterationCount,
+            perIterCount,
+            disposed: this.#disposed,
+            isPaused: subscription.isPaused,
+          });
           if (this.#disposed) break;
-          if (!subscription.isPaused) break;
+          if (!subscription.isPaused) {
+            lgDebug("root-pump.exit-not-paused", { iterationCount });
+            break;
+          }
           await subscription.waitForResume();
+          lgDebug("root-pump.resumed", { iterationCount });
         }
-      } catch {
+        lgDebug("root-pump.loop-exit", { iterationCount });
+      } catch (err) {
+        lgDebug("root-pump.error", { error: String(err) });
         /* thread closed or errored */
       }
     })();
@@ -539,6 +629,15 @@ export class StreamController<
   }
 
   #onRootEvent(event: Event): void {
+    const evSeq = (event as unknown as { seq?: number }).seq;
+    const evEventKind = (event.params.data as { event?: string } | undefined)
+      ?.event;
+    lgDebug("root-event", {
+      seq: evSeq,
+      method: event.method,
+      ns: event.params.namespace,
+      event: evEventKind,
+    });
     // Discovery runners are fed by the wildcard lifecycle watcher via
     // `thread.onEvent` so deeply-nested subagents/subgraphs are
     // discovered even when the content pump stays narrow. See

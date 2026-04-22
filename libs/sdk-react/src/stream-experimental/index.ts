@@ -22,6 +22,8 @@
 export {
   useStreamExperimental,
   STREAM_CONTROLLER,
+  type AnyStream,
+  type StateOf,
   type UseStreamExperimentalOptions,
   type UseStreamExperimentalReturn,
 } from "./use-stream.js";

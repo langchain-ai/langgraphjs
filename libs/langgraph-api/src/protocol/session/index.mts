@@ -273,18 +273,29 @@ export class RunProtocolSession {
   /**
    * Handles a structured protocol command and returns a typed response.
    *
+   * When `options.deliverResponseInline` is `true`, a
+   * `subscription.subscribe` resolves to `null` — the success response
+   * has already been written through the shared transport queue ahead
+   * of the replay events (see `handleSubscribeForResponse` for
+   * rationale). Callers that forward the response onto a separate wire
+   * (the WS `onMessage` handler) must treat `null` as
+   * "nothing more to send".
+   *
    * @param command - Parsed protocol command.
    * @param meta - Optional response metadata from the outer transport.
-   * @returns A typed success or error response.
+   * @param options - Server-internal delivery flags.
+   * @returns A typed success/error response, or `null` when the
+   *     response was already sent inline.
    */
   async handleProtocolCommand(
     command: ProtocolCommand,
-    meta?: ProtocolResponseMeta
-  ): Promise<ProtocolSuccess | ProtocolError> {
+    meta?: ProtocolResponseMeta,
+    options?: { deliverResponseInline?: boolean }
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
     try {
       switch (command.method) {
         case "subscription.subscribe":
-          return await this.handleSubscribeForResponse(command, meta);
+          return await this.handleSubscribeForResponse(command, meta, options);
         case "subscription.unsubscribe":
           return await this.handleUnsubscribeForResponse(command, meta);
         case "agent.getTree":
@@ -1083,16 +1094,40 @@ export class RunProtocolSession {
   }
 
   /**
-   * Handles a subscribe command and returns a typed response.
+   * Handles a subscribe command and (optionally) writes the
+   * success/error response inline through the shared transport
+   * queue, signalling to callers (via a `null` return) that no
+   * further send is required.
+   *
+   * When `options.deliverResponseInline` is `true`, the success
+   * response is emitted via `sendJson` BEFORE the replay events and
+   * the method returns `null`. This ordering is critical on
+   * single-channel transports like WebSocket where the command
+   * response and event frames share one ordered wire: if events
+   * preceded the response, the client would receive events whose
+   * `subscription_id` it hasn't yet registered (the awaiter in
+   * `#subscribeViaCommand` only adds the subscription to its local
+   * map after the response resolves) and drop them in the per-sub
+   * fan-out.
+   *
+   * When `deliverResponseInline` is absent/`false` (the default, used
+   * by HTTP `/commands`), the response is returned so the caller can
+   * place it in the HTTP response body, matching the prior behaviour.
+   * Input-validation errors always return normally regardless of the
+   * flag so they surface consistently in both modes.
    *
    * @param command - Subscribe command to process.
    * @param meta - Optional response metadata from the outer transport.
-   * @returns A typed success or error response.
+   * @param options - Server-internal delivery flags.
+   * @returns `null` when the response was sent inline; a typed
+   *     success/error response otherwise.
    */
   private async handleSubscribeForResponse(
     command: ProtocolCommandByMethod<"subscription.subscribe">,
-    meta?: ProtocolResponseMeta
-  ): Promise<ProtocolSuccess | ProtocolError> {
+    meta?: ProtocolResponseMeta,
+    options?: { deliverResponseInline?: boolean }
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
+    const deliverResponseInline = options?.deliverResponseInline === true;
     const params = isRecord(command.params)
       ? (command.params as Partial<SubscribeParams>)
       : undefined;
@@ -1156,6 +1191,22 @@ export class RunProtocolSession {
         this.matchesSubscription(subscription, event)
     );
 
+    const responsePayload: ProtocolSuccess = {
+      type: "success",
+      id: command.id,
+      result: {
+        subscription_id: subscription.id,
+        replayed_events: snapshot.length,
+      } satisfies SubscribeResult,
+      ...(meta != null ? { meta } : {}),
+    };
+
+    if (deliverResponseInline) {
+      // Response first, replay events second — see method-level
+      // comment on why the ordering matters for ordered transports.
+      await this.sendJson(responsePayload);
+    }
+
     for (const event of snapshot) {
       await this.sendJson(event);
     }
@@ -1175,14 +1226,7 @@ export class RunProtocolSession {
     }
 
     subscription.active = true;
-    return this.success(
-      command.id,
-      {
-        subscription_id: subscription.id,
-        replayed_events: snapshot.length,
-      } satisfies SubscribeResult,
-      meta
-    );
+    return deliverResponseInline ? null : responsePayload;
   }
 
   /**
