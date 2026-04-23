@@ -479,9 +479,16 @@ export class ThreadStream<
   // are both pumping briefly, and the server replays buffered events on
   // new streams, so the same `event_id` can arrive twice.
   //
-  // TODO(perf): this set grows at the rate of unique events per thread.
-  // For long-lived threads we could replace with a seq high-watermark
-  // plus `event_id` fallback for events missing a `seq` field.
+  // The set grows at the rate of unique events per thread, but its
+  // lifetime is bounded by `ThreadStream` (it's GC'd when the run
+  // completes and the stream is disposed), and each entry is a short
+  // numeric string. A bounded sliding-window alternative was considered
+  // and rejected: any cap smaller than the server's replay buffer
+  // (`maxBufferSize` in `protocol/session`) would risk evicting still-
+  // live ids and re-processing real events, which trades a hypothetical
+  // memory win for a real correctness failure mode and cross-repo
+  // coupling. Revisit only if a concrete long-run memory profile
+  // justifies the added complexity.
   readonly #seenEventIds = new Set<string>();
   #closed = false;
   #opened = false;

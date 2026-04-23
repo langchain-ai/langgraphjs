@@ -328,6 +328,12 @@ export class StreamController<
         ...this.#createInitialSnapshot(),
         threadId: this.#currentThreadId,
       }));
+      // Drop queued submissions — they were targeted at the previous
+      // thread so dispatching them against the new thread would be
+      // surprising. Mirrors the legacy `StreamOrchestrator` behaviour.
+      this.queueStore.setState(
+        () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
+      );
     }
 
     if (this.#currentThreadId == null) {
@@ -353,7 +359,24 @@ export class StreamController<
         this.#currentThreadId
       );
       if (state?.checkpoint != null && state.values != null) {
-        this.#applyValues(state.values as unknown);
+        // `threads.getState()` returns the legacy `ThreadState` shape
+        // where `parent_checkpoint` is an object (`{ thread_id,
+        // checkpoint_id, checkpoint_ns }`). Synthesize the v2
+        // `ValuesCheckpoint` envelope so hydrated messages also get
+        // their `parentCheckpointId` populated for fork / edit flows.
+        const checkpointId = state.checkpoint.checkpoint_id;
+        const parentCheckpointId =
+          state.parent_checkpoint?.checkpoint_id ?? undefined;
+        const syntheticCheckpoint =
+          typeof checkpointId === "string"
+            ? {
+                id: checkpointId,
+                ...(parentCheckpointId != null
+                  ? { parent_id: parentCheckpointId }
+                  : {}),
+              }
+            : undefined;
+        this.#applyValues(state.values as unknown, syntheticCheckpoint);
       }
     } catch (error) {
       // A 404 on hydrate means the thread does not exist server-side
@@ -514,7 +537,40 @@ export class StreamController<
     } finally {
       this.rootStore.setState((s) => ({ ...s, isLoading: false }));
       if (this.#runAbort === abort) this.#runAbort = undefined;
+      // Drain the client-side submission queue. Entries enqueued via
+      // `multitaskStrategy: "enqueue"` while this run was in flight
+      // are dispatched sequentially now that the transport is idle.
+      // Matches the legacy `StreamOrchestrator.#drainQueue` behaviour.
+      // Defer to a macrotask so the outer submit's promise fully
+      // settles (and framework bindings observe `isLoading: false`)
+      // before the next run starts.
+      setTimeout(() => this.#drainQueue(), 0);
     }
+  }
+
+  #drainQueue(): void {
+    if (this.#disposed) return;
+    if (this.#runAbort != null && !this.#runAbort.signal.aborted) return;
+    const current = this.queueStore.getSnapshot();
+    if (current.length === 0) return;
+    const [next, ...rest] = current;
+    this.queueStore.setState(() => rest);
+    // Strip the original `multitaskStrategy` so the dequeued run
+    // dispatches immediately instead of being re-enqueued on top of
+    // itself. Any other options the caller supplied (config, metadata,
+    // onError, …) are preserved verbatim.
+    const nextOptions: StreamSubmitOptions<StateType, ConfigurableType> = {
+      ...((next.options ?? {}) as StreamSubmitOptions<
+        StateType,
+        ConfigurableType
+      >),
+      multitaskStrategy: undefined,
+    };
+    void this.submit(next.values, nextOptions).catch(() => {
+      /* submit() already routes errors through the per-submit onError
+       * hook and the root store; swallow here so a failing drain does
+       * not surface as an unhandled rejection. */
+    });
   }
 
   async stop(): Promise<void> {
@@ -1038,8 +1094,8 @@ export class StreamController<
     if (!isRoot) return;
 
     if (event.method === "values") {
-      const raw = (event as ValuesEvent).params.data;
-      this.#applyValues(raw);
+      const valuesEvent = event as ValuesEvent;
+      this.#applyValues(valuesEvent.params.data, valuesEvent.params.checkpoint);
       return;
     }
 
@@ -1139,20 +1195,21 @@ export class StreamController<
     });
   }
 
-  #applyValues(raw: unknown): void {
+  #applyValues(
+    raw: unknown,
+    checkpoint?: { id: string; parent_id?: string }
+  ): void {
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
       return;
     }
     const state = raw as Record<string, unknown>;
-    // Surface parent_checkpoint per-message when the values payload
-    // carries it. The server-side work to include this is tracked as
-    // plan.md P2 / roadmap A0.2; until it lands, the map simply
-    // stays empty and `useMessageMetadata` returns `undefined` —
-    // this is expected fallback behaviour.
-    const parentCheckpointId =
-      typeof state.parent_checkpoint === "string"
-        ? state.parent_checkpoint
-        : undefined;
+    // Surface parent_checkpoint per-message when the values event
+    // carries the lightweight checkpoint envelope (populated by
+    // `@langchain/langgraph-core`'s `_emitValuesWithCheckpointMeta` and
+    // forwarded through `convertToProtocolEvent`). Consumers surface
+    // this as `useMessageMetadata(stream, msg.id).parentCheckpointId`
+    // for fork / edit flows.
+    const parentCheckpointId = checkpoint?.parent_id;
     if (parentCheckpointId != null && Array.isArray(state[this.#messagesKey])) {
       this.#recordMessageMetadata(
         state[this.#messagesKey] as Array<{ id?: string }>,

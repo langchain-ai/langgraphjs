@@ -51,6 +51,15 @@ export type SourceStreamEvent = {
   event: string;
   data: unknown;
   normalized?: boolean;
+  /**
+   * Lightweight checkpoint envelope forwarded on `values` events.
+   *
+   * Populated by {@link streamStateV2} from the `ValuesEvent.params.checkpoint`
+   * produced by `@langchain/langgraph-core`'s loop, and reflected back onto
+   * the protocol `values` event's `params.checkpoint`. Clients surface this
+   * as `useMessageMetadata(msg.id).parentCheckpointId` for fork / edit flows.
+   */
+  checkpoint?: ValuesCheckpoint;
 };
 
 /**

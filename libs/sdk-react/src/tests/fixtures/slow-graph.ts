@@ -19,7 +19,7 @@ const graph = new StateGraph(MessagesAnnotation)
   .addNode("agent", async (_state, _config: LangGraphRunnableConfig) => {
     await new Promise((resolve) => setTimeout(resolve, SLOW_GRAPH_DELAY_MS));
     return {
-      messages: [new AIMessage({ id: "slow-final", content: "Done." })],
+      messages: [new AIMessage({ content: "Done." })],
     };
   })
   .addEdge(START, "agent")
