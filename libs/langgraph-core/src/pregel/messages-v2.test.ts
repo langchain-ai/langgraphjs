@@ -106,7 +106,6 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-finish",
-          reason: "stop",
           metadata: { stop_reason: "end_turn" },
         },
       ],
@@ -184,7 +183,6 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-finish",
-          reason: "tool_use",
           metadata: { stop_reason: "tool_use" },
         },
       ],
@@ -274,7 +272,6 @@ describe("StreamProtocolMessagesHandler", () => {
       },
       {
         event: "message-finish",
-        reason: "stop",
         metadata: { stop_reason: "stop" },
       },
     ]);

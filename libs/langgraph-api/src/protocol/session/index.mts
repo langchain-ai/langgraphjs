@@ -21,7 +21,6 @@ import type {
   SubscribeResult,
   SupportedChannel,
   UnsubscribeParams,
-  ValuesCheckpoint,
 } from "../types.mjs";
 import {
   normalizeInputRequestedData,
@@ -470,18 +469,21 @@ export class RunProtocolSession {
           return;
         }
         await this.pushEvent(
-          this.createEvent(
-            "values",
-            namespace,
-            normalizedValues.values,
-            event.checkpoint != null
-              ? { checkpoint: event.checkpoint }
-              : undefined
-          )
+          this.createEvent("values", namespace, normalizedValues.values)
         );
         await this.messageProcessor.emitSyntheticSubagentEvents(
           namespace,
           normalizedValues.values
+        );
+        return;
+      }
+      case "checkpoints": {
+        await this.pushEvent(
+          this.createEvent(
+            "checkpoints",
+            namespace,
+            event.data as ProtocolEventDataMap["checkpoints"]
+          )
         );
         return;
       }
@@ -768,8 +770,7 @@ export class RunProtocolSession {
   private createEvent(
     method: "values",
     namespace: Namespace,
-    data: ProtocolEventDataMap["values"],
-    options?: { checkpoint?: ValuesCheckpoint }
+    data: ProtocolEventDataMap["values"]
   ): ProtocolEventByMethod<"values">;
   private createEvent(
     method: "updates",
@@ -777,6 +778,11 @@ export class RunProtocolSession {
     data: ProtocolEventDataMap["updates"],
     node?: string
   ): ProtocolEventByMethod<"updates">;
+  private createEvent(
+    method: "checkpoints",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["checkpoints"]
+  ): ProtocolEventByMethod<"checkpoints">;
   private createEvent(
     method: "input",
     namespace: Namespace,
@@ -823,7 +829,7 @@ export class RunProtocolSession {
     method: SupportedChannel,
     namespace: Namespace,
     data: ProtocolEventDataMap[SupportedChannel],
-    nodeOrOptions?: string | { checkpoint?: ValuesCheckpoint }
+    node?: string
   ): ProtocolEvent {
     this.nextSeq += 1;
     const eventMethod = method === "input" ? "input.requested" : method;
@@ -831,14 +837,6 @@ export class RunProtocolSession {
       method === "values" || method === "updates"
         ? normalizeProtocolStatePayload(data)
         : data;
-    const node =
-      typeof nodeOrOptions === "string" ? nodeOrOptions : undefined;
-    const checkpoint =
-      method === "values" &&
-      nodeOrOptions != null &&
-      typeof nodeOrOptions === "object"
-        ? nodeOrOptions.checkpoint
-        : undefined;
     return {
       type: "event",
       event_id: String(this.nextSeq),
@@ -848,7 +846,6 @@ export class RunProtocolSession {
         namespace,
         timestamp: Date.now(),
         ...(node != null ? { node } : {}),
-        ...(checkpoint != null ? { checkpoint } : {}),
         data: normalizedData,
       },
     } as ProtocolEvent;

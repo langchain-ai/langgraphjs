@@ -735,10 +735,20 @@ describe("subgraphs", () => {
     expect(continueMessages.length).toBe(2);
     expect(continueMessages[0].content).toBe("SF");
     expect(continueMessages[1].content).toBe("It's sunny in San Francisco!");
+    const checkpointEnvelope = {
+      id: expect.any(String),
+      parent_id: expect.any(String),
+      step: expect.any(Number),
+      source: expect.any(String),
+    };
     expect(chunksSubgraph).toEqual([
       {
         event: "metadata",
         data: { run_id: expect.any(String), attempt: 1 },
+      },
+      {
+        event: "checkpoints",
+        data: checkpointEnvelope,
       },
       {
         event: "values",
@@ -754,6 +764,10 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
+      },
+      {
+        event: expect.stringMatching(/^checkpoints\|weather_graph:/),
+        data: checkpointEnvelope,
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -787,6 +801,10 @@ describe("subgraphs", () => {
             ],
           },
         },
+      },
+      {
+        event: expect.stringMatching(/^checkpoints\|weather_graph:/),
+        data: checkpointEnvelope,
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -836,6 +854,10 @@ describe("subgraphs", () => {
             ],
           },
         },
+      },
+      {
+        event: "checkpoints",
+        data: checkpointEnvelope,
       },
       {
         event: "values",

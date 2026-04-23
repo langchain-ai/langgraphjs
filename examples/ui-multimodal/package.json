@@ -15,7 +15,6 @@
     "@langchain/core": "^1.1.40",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.4.4",
-    "@langchain/protocol": "^0.0.10",
     "@langchain/react": "workspace:*",
     "deepagents": "https://pkg.pr.new/deepagents@cd6d654",
     "langchain": "1.4.0-dev-1776832091014",

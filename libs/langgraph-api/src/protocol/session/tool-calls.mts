@@ -1,4 +1,3 @@
-import type { MessageFinishData } from "../types.mjs";
 import type { MessageBlockState } from "./internal-types.mjs";
 import { isRecord } from "./internal-types.mjs";
 
@@ -110,15 +109,15 @@ export const finalizeTupleToolCall = (
 ):
   | {
       type: "tool_call";
-      id: string;
+      id: string | null;
       name: string;
-      args: unknown;
+      args: Record<string, unknown>;
     }
   | {
       type: "invalid_tool_call";
-      id?: string;
-      name?: string;
-      args?: string;
+      id: string | null;
+      name: string | null;
+      args: string | null;
       error: string;
     } => {
   const toolCalls = Array.isArray(rawToolCalls) ? rawToolCalls : [];
@@ -134,9 +133,9 @@ export const finalizeTupleToolCall = (
     const identity = getTupleToolCallIdentity(rawInvalid);
     return {
       type: "invalid_tool_call",
-      ...(identity.id != null ? { id: identity.id } : {}),
-      ...(identity.name != null ? { name: identity.name } : {}),
-      ...(typeof rawInvalid.args === "string" ? { args: rawInvalid.args } : {}),
+      id: identity.id ?? null,
+      name: identity.name ?? null,
+      args: typeof rawInvalid.args === "string" ? rawInvalid.args : null,
       error:
         typeof rawInvalid.error === "string"
           ? rawInvalid.error
@@ -156,8 +155,8 @@ export const finalizeTupleToolCall = (
     if (identity.id == null || identity.name == null) {
       return {
         type: "invalid_tool_call",
-        ...(identity.id != null ? { id: identity.id } : {}),
-        ...(identity.name != null ? { name: identity.name } : {}),
+        id: identity.id ?? null,
+        name: identity.name ?? null,
         args: block.value,
         error: "Incomplete tool call.",
       };
@@ -179,15 +178,15 @@ export const finalizeTupleToolCall = (
       type: "tool_call",
       id: identity.id,
       name: identity.name,
-      args: normalizedArgs.args,
+      args: isRecord(normalizedArgs.args) ? normalizedArgs.args : {},
     };
   }
 
   if (block.id == null || block.name == null) {
     return {
       type: "invalid_tool_call",
-      ...(block.id != null ? { id: block.id } : {}),
-      ...(block.name != null ? { name: block.name } : {}),
+      id: block.id ?? null,
+      name: block.name ?? null,
       args: block.value,
       error: "Incomplete tool call.",
     };
@@ -203,16 +202,17 @@ export const finalizeTupleToolCall = (
   }
 
   try {
+    const parsed: unknown = JSON.parse(block.value);
     return {
       type: "tool_call",
       id: block.id,
       name: block.name,
-      args: JSON.parse(block.value) as unknown,
+      args: isRecord(parsed) ? parsed : {},
     };
   } catch {
     return {
       type: "invalid_tool_call",
-      ...(block.id != null ? { id: block.id } : {}),
+      id: block.id ?? null,
       name: block.name,
       args: block.value,
       error: "Malformed args.",
@@ -220,23 +220,3 @@ export const finalizeTupleToolCall = (
   }
 };
 
-/**
- * Normalizes finish reasons into the protocol enum.
- *
- * @param value - Raw finish reason reported by the model provider.
- * @returns The protocol-compatible finish reason.
- */
-export const normalizeMessageFinishReason = (
-  value: unknown
-): MessageFinishData["reason"] => {
-  switch (value) {
-    case "length":
-    case "content_filter":
-      return value;
-    case "tool_use":
-    case "tool_calls":
-      return "tool_use";
-    default:
-      return "stop";
-  }
-};

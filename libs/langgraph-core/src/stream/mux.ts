@@ -508,9 +508,9 @@ export async function pump(
         );
       }
 
-      const event = convertToProtocolEvent(ns, mode, payload, seq, meta);
-      seq += 1;
-      if (event !== null) {
+      const events = convertToProtocolEvent(ns, mode, payload, seq, meta);
+      seq += events.length;
+      for (const event of events) {
         mux.push(ns, event);
       }
     }

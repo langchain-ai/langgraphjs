@@ -10,7 +10,6 @@ import {
   getTupleToolCallArgs,
   getTupleToolCallIdentity,
   normalizeFinalToolCallArgs,
-  normalizeMessageFinishReason,
 } from "./tool-calls.mjs";
 
 const PROTOCOL_STATE_MESSAGE_TYPES = new Set([
@@ -390,10 +389,7 @@ export const toProtocolUsageInfo = (value: unknown) => {
  */
 export const getTupleFinishData = (
   serialized: Record<string, unknown>
-):
-  | (Pick<MessageFinishData, "reason"> &
-      Partial<Pick<MessageFinishData, "usage" | "metadata">>)
-  | undefined => {
+): Partial<Pick<MessageFinishData, "usage" | "metadata">> | undefined => {
   const additionalKwargs = isRecord(serialized.additional_kwargs)
     ? serialized.additional_kwargs
     : undefined;
@@ -403,19 +399,14 @@ export const getTupleFinishData = (
   const usage =
     toProtocolUsageInfo(serialized.usage_metadata) ??
     toProtocolUsageInfo(responseMetadata?.usage);
-  const finishReason =
-    typeof additionalKwargs?.stop_reason === "string"
-      ? additionalKwargs.stop_reason
-      : typeof responseMetadata?.stop_reason === "string"
-        ? responseMetadata.stop_reason
-        : typeof responseMetadata?.finish_reason === "string"
-          ? responseMetadata.finish_reason
-          : undefined;
+  const hasFinishReason =
+    typeof additionalKwargs?.stop_reason === "string" ||
+    typeof responseMetadata?.stop_reason === "string" ||
+    typeof responseMetadata?.finish_reason === "string";
 
-  if (finishReason == null && usage == null) return undefined;
+  if (!hasFinishReason && usage == null) return undefined;
 
   return {
-    reason: normalizeMessageFinishReason(finishReason),
     ...(usage != null ? { usage } : {}),
     ...(responseMetadata != null && Object.keys(responseMetadata).length > 0
       ? { metadata: responseMetadata }

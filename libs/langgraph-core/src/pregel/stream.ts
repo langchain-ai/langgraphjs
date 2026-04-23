@@ -2,26 +2,30 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { Serialized } from "@langchain/core/load/serializable";
-import type { ValuesCheckpoint } from "@langchain/protocol";
+import type { Checkpoint } from "../stream/types.js";
 import type { StreamMode, StreamOutputMap } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
 
 /**
  * Optional chunk-level metadata carried alongside the payload. Used by the
- * v2 protocol stream (`stream_v2`) to enrich certain events —
- * e.g. attaching a lightweight checkpoint envelope to `values` events so
- * clients can build branching / time-travel UIs without subscribing to a
- * full `checkpoints` stream.
+ * v2 protocol stream (`stream_v2`) to emit a companion `checkpoints`
+ * protocol event adjacent to the `values` event for the same superstep,
+ * so clients can build branching / time-travel UIs without subscribing to
+ * a full-state `checkpoints` stream.
  *
  * v1 consumers that destructure `StreamChunk` as `[ns, mode, payload]`
  * ignore the 4th element and are unaffected.
  */
 export interface StreamChunkMeta {
   /**
-   * Lightweight checkpoint envelope attached to `values` events. Shape is
-   * the canonical {@link ValuesCheckpoint} generated from `protocol.cddl`.
+   * Lightweight checkpoint envelope for the superstep that produced this
+   * `values` chunk. Shape matches the canonical {@link Checkpoint}
+   * generated from `protocol.cddl`. When present, `convertToProtocolEvent`
+   * emits a companion `checkpoints` event immediately after the `values`
+   * event so clients can correlate by `(namespace, step)` or adjacent
+   * `seq` numbers.
    */
-  checkpoint?: ValuesCheckpoint;
+  checkpoint?: Checkpoint;
 }
 
 // [namespace, streamMode, payload, meta?]

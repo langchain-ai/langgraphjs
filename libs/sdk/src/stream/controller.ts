@@ -92,6 +92,7 @@ function lgDebug(tag: string, ...args: unknown[]): void {
  */
 export const ROOT_PUMP_CHANNELS: readonly Channel[] = [
   "values",
+  "checkpoints",
   "lifecycle",
   "input",
   "messages",
@@ -222,6 +223,18 @@ export class StreamController<
   // itself — the correlation lives on the `tools` channel — so we
   // stash it here and look it up when the tool message begins.
   readonly #toolCallIdByNamespace = new Map<string, string>();
+
+  // Buffers the most recent `Checkpoint` envelope per namespace.
+  // Populated by `checkpoints` channel events and consumed by the
+  // companion `values` event on the same superstep — the server
+  // emits `checkpoints` immediately before its paired `values` so
+  // this map is always fresh when `#applyValues` reads it. Clients
+  // use the resulting `parentCheckpointId` to target fork / edit
+  // flows (`submit(input, { forkFrom: { checkpointId } })`).
+  readonly #pendingCheckpointByNamespace = new Map<
+    string,
+    { id: string; parent_id?: string }
+  >();
 
   readonly #threadListeners = new Set<
     (thread: ThreadStream | undefined) => void
@@ -362,8 +375,9 @@ export class StreamController<
         // `threads.getState()` returns the legacy `ThreadState` shape
         // where `parent_checkpoint` is an object (`{ thread_id,
         // checkpoint_id, checkpoint_ns }`). Synthesize the v2
-        // `ValuesCheckpoint` envelope so hydrated messages also get
-        // their `parentCheckpointId` populated for fork / edit flows.
+        // `Checkpoint` envelope (matching the `checkpoints` channel
+        // payload) so hydrated messages also get their
+        // `parentCheckpointId` populated for fork / edit flows.
         const checkpointId = state.checkpoint.checkpoint_id;
         const parentCheckpointId =
           state.parent_checkpoint?.checkpoint_id ?? undefined;
@@ -1089,13 +1103,46 @@ export class StreamController<
       return;
     }
 
+    // The `checkpoints` channel carries the lightweight envelope
+    // (`id`, `parent_id`, `step`, `source`) emitted immediately
+    // before its companion `values` event on the same superstep.
+    // Buffer the envelope per-namespace so the ensuing `values`
+    // event at the same namespace can pair with it in
+    // `#applyValues` (see `#pendingCheckpointByNamespace`). The
+    // buffer is read-and-cleared on consumption so a subsequent
+    // `values` event without a new checkpoint doesn't reuse stale
+    // metadata.
+    if (event.method === "checkpoints") {
+      const data = event.params.data as {
+        id?: unknown;
+        parent_id?: unknown;
+      } | null;
+      if (data != null && typeof data.id === "string") {
+        const envelope: { id: string; parent_id?: string } = { id: data.id };
+        if (typeof data.parent_id === "string") {
+          envelope.parent_id = data.parent_id;
+        }
+        this.#pendingCheckpointByNamespace.set(
+          namespaceKey(event.params.namespace),
+          envelope
+        );
+      }
+      return;
+    }
+
     // Channels below are only meaningful at the root namespace.
     const isRoot = event.params.namespace.length === 0;
     if (!isRoot) return;
 
     if (event.method === "values") {
       const valuesEvent = event as ValuesEvent;
-      this.#applyValues(valuesEvent.params.data, valuesEvent.params.checkpoint);
+      const rootKey = namespaceKey(event.params.namespace);
+      const bufferedCheckpoint =
+        this.#pendingCheckpointByNamespace.get(rootKey);
+      if (bufferedCheckpoint != null) {
+        this.#pendingCheckpointByNamespace.delete(rootKey);
+      }
+      this.#applyValues(valuesEvent.params.data, bufferedCheckpoint);
       return;
     }
 

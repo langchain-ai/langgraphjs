@@ -772,8 +772,8 @@ export class SessionMessageProcessor {
           index,
           content_block: {
             type: "tool_call_chunk",
-            ...(options?.id != null ? { id: options.id } : {}),
-            ...(options?.name != null ? { name: options.name } : {}),
+            id: options?.id ?? null,
+            name: options?.name ?? null,
             args: "",
           },
         } satisfies ContentBlockStartData)
@@ -800,8 +800,8 @@ export class SessionMessageProcessor {
         index,
         content_block: {
           type: "tool_call_chunk",
-          ...(options?.id != null ? { id: options.id } : {}),
-          ...(options?.name != null ? { name: options.name } : {}),
+          id: options?.id ?? null,
+          name: options?.name ?? null,
           args: value,
         },
       } satisfies ContentBlockDeltaData)
@@ -820,8 +820,7 @@ export class SessionMessageProcessor {
     namespace: Namespace,
     serialized: Record<string, unknown>,
     state: MessageState,
-    finishData: Pick<MessageFinishData, "reason"> &
-      Partial<Pick<MessageFinishData, "usage" | "metadata">>
+    finishData: Partial<Pick<MessageFinishData, "usage" | "metadata">>
   ) {
     const blocks = [...state.blocks.entries()].sort(
       ([left], [right]) => left - right
@@ -859,7 +858,6 @@ export class SessionMessageProcessor {
     await this.callbacks.pushEvent(
       this.callbacks.createMessagesEvent(namespace, {
         event: "message-finish",
-        reason: finishData.reason,
         ...(finishData.usage != null ? { usage: finishData.usage } : {}),
         ...(finishData.metadata != null
           ? { metadata: finishData.metadata }

@@ -49,7 +49,7 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-cli": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/protocol": "^0.0.10",
+    "@langchain/protocol": "^0.0.12",
     "deepagents": "https://pkg.pr.new/deepagents@cd6d654",
     "langchain": "1.4.0-dev-1776832091014",
     "tsx": "^4.21.0",

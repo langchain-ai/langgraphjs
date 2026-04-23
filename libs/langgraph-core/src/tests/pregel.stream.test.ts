@@ -184,13 +184,13 @@ describe("stream_v2", () => {
   });
 
   describe("checkpoint envelope on values events", () => {
-    // `stream_v2` intentionally does not include the `debug` or
-    // `checkpoints` stream modes — the full-state `checkpoints` stream
-    // roughly doubles serialisation cost, and `debug` was a thin re-wrap
-    // of `checkpoints` + `tasks`. Branching and time-travel use cases are
-    // served by the lightweight checkpoint envelope attached to `values`
-    // events plus on-demand state.get / state.listCheckpoints / state.fork.
-    it("does not emit 'debug' or 'checkpoints' events", async () => {
+    // `stream_v2` intentionally does not include the `debug` stream mode —
+    // it was a thin re-wrap of `checkpoints` + `tasks`. Branching and
+    // time-travel use cases are served by a dedicated `checkpoints`
+    // channel, emitted as a companion event immediately before each
+    // `values` event so clients can correlate the pair by adjacent `seq`
+    // or by `(namespace, step)`.
+    it("does not emit 'debug' events", async () => {
       const graph = new StateGraph(CounterState)
         .addNode("add_one", () => ({ count: 1 }))
         .addEdge(START, "add_one")
@@ -204,10 +204,9 @@ describe("stream_v2", () => {
       const events = await collectEvents(run);
 
       expect(byMethod(events, "debug" as never)).toHaveLength(0);
-      expect(byMethod(events, "checkpoints" as never)).toHaveLength(0);
     });
 
-    it("attaches a checkpoint envelope to values events when a checkpointer is configured", async () => {
+    it("emits a companion 'checkpoints' event before each 'values' event when a checkpointer is configured", async () => {
       const graph = new StateGraph(CounterState)
         .addNode("add_one", () => ({ count: 1 }))
         .addEdge(START, "add_one")
@@ -220,28 +219,43 @@ describe("stream_v2", () => {
       );
       const events = await collectEvents(run);
 
+      const checkpointsEvents = byMethod(events, "checkpoints");
       const valuesEvents = byMethod(events, "values");
       expect(valuesEvents.length).toBeGreaterThan(0);
+      expect(checkpointsEvents.length).toBe(valuesEvents.length);
 
+      // `values` events no longer carry an inline `checkpoint` field.
       for (const ev of valuesEvents) {
-        const ckpt = (ev.params as any).checkpoint;
-        expect(ckpt).toBeDefined();
+        expect((ev.params as any).checkpoint).toBeUndefined();
+      }
+
+      for (const ev of checkpointsEvents) {
+        const ckpt = ev.params.data as any;
         expect(typeof ckpt.id).toBe("string");
         expect(typeof ckpt.step).toBe("number");
         expect(["input", "loop", "update", "fork"]).toContain(ckpt.source);
       }
 
-      // Parent/child linkage: subsequent values events should reference the
-      // previous event's checkpoint id as their parent_id.
-      const ckpts = valuesEvents.map((e) => (e.params as any).checkpoint);
+      // Parent/child linkage: subsequent `checkpoints` events should
+      // reference the previous event's checkpoint id as their parent_id.
+      const ckpts = checkpointsEvents.map((e) => e.params.data as any);
       for (let i = 1; i < ckpts.length; i += 1) {
         if (ckpts[i].parent_id != null) {
           expect(ckpts[i].parent_id).toBe(ckpts[i - 1].id);
         }
       }
+
+      // Ordering: each `checkpoints` event should immediately precede its
+      // companion `values` event on the same namespace.
+      const indexFor = (e: (typeof events)[number]) => events.indexOf(e);
+      for (let i = 0; i < valuesEvents.length; i += 1) {
+        expect(indexFor(checkpointsEvents[i])).toBeLessThan(
+          indexFor(valuesEvents[i])
+        );
+      }
     });
 
-    it("omits the checkpoint envelope when no checkpointer is configured", async () => {
+    it("does not inline checkpoint metadata on values events", async () => {
       const graph = buildCounterGraph();
       const run = await graph.stream_v2({ count: 0 });
       const events = await collectEvents(run);
@@ -249,15 +263,17 @@ describe("stream_v2", () => {
       const valuesEvents = byMethod(events, "values");
       expect(valuesEvents.length).toBeGreaterThan(0);
 
-      // Without a checkpointer, emitted values events still carry a
-      // checkpoint id (the in-memory working checkpoint) but no persistent
-      // fork target is meaningful; the envelope is present but its id is
-      // opaque. This test just confirms the field never throws.
+      // Without a persistent checkpointer the in-memory working
+      // checkpoint still produces a companion `checkpoints` event, but
+      // `values` events never carry an inline `checkpoint` field — the
+      // envelope is only ever delivered on its own channel.
       for (const ev of valuesEvents) {
-        const ckpt = (ev.params as any).checkpoint;
-        if (ckpt !== undefined) {
-          expect(typeof ckpt.id).toBe("string");
-        }
+        expect((ev.params as any).checkpoint).toBeUndefined();
+      }
+
+      for (const ev of byMethod(events, "checkpoints")) {
+        const ckpt = ev.params.data as any;
+        expect(typeof ckpt.id).toBe("string");
       }
     });
   });
@@ -393,18 +409,22 @@ describe("stream_v2", () => {
       expect(subgraphs[0].index).toBe(0);
 
       const events = allSubEvents[0];
-      expect(events).toHaveLength(5);
+      expect(events).toHaveLength(7);
 
       for (const event of events) {
         expect(event.params.namespace[0]).toMatch(/^sub:/);
       }
 
       const eventSequence = events.map((e) => e.method);
+      // Each `values` event is preceded by its companion `checkpoints`
+      // envelope event on the same namespace.
       expect(eventSequence).toEqual([
+        "checkpoints",
         "values",
         "tasks",
         "updates",
         "tasks",
+        "checkpoints",
         "values",
       ]);
 

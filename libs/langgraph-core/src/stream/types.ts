@@ -2,10 +2,11 @@
  * Core type definitions for the v2 streaming interface.
  *
  * Channel event data types (`MessagesEventData`, `ToolsEventData`,
- * `UpdatesEventData`, `UsageInfo`, `FinishReason`) are re-exported from
- * `@langchain/protocol` — the generated TypeScript bindings for the
- * canonical CDDL schema.  Stream-specific types (`StreamTransformer`,
- * `ChatModelStream`, `ToolCallStream`, `InterruptPayload`) are defined here.
+ * `UpdatesEventData`, `UsageInfo`, `Checkpoint`, `CheckpointSource`) are
+ * re-exported from `@langchain/protocol` — the generated TypeScript
+ * bindings for the canonical CDDL schema.  Stream-specific types
+ * (`StreamTransformer`, `ChatModelStream`, `ToolCallStream`,
+ * `InterruptPayload`) are defined here.
  */
 
 import type { StreamMode } from "../pregel/types.js";
@@ -22,7 +23,6 @@ export type {
   ToolsData as ToolsEventData,
   UpdatesData as UpdatesEventData,
   UsageInfo,
-  FinishReason,
   MessageStartData,
   ContentBlockStartData,
   ContentBlockDeltaData,
@@ -33,11 +33,9 @@ export type {
   ToolOutputDeltaData,
   ToolFinishedData,
   ToolErrorData,
-  ValuesCheckpoint,
+  Checkpoint,
   CheckpointSource,
 } from "@langchain/protocol";
-
-import type { ValuesCheckpoint } from "@langchain/protocol";
 
 /**
  * Hierarchical path identifying a position in the agent tree.
@@ -79,18 +77,6 @@ export interface ProtocolEvent {
 
     /** Opaque channel payload; shape depends on `method`. */
     readonly data: unknown;
-
-    /**
-     * Lightweight checkpoint envelope, present only on `values` events that
-     * correspond to a newly persisted checkpoint. Clients use this to build
-     * branching / time-travel UIs (`id` as the `state.fork` target,
-     * `parent_id` for tree linkage, `step` and `source` as timeline labels)
-     * without a dedicated full-state `checkpoints` stream.
-     *
-     * Shape matches the canonical {@link ValuesCheckpoint} from
-     * `@langchain/protocol`.
-     */
-    readonly checkpoint?: ValuesCheckpoint;
   };
 }
 
@@ -106,12 +92,12 @@ export type InferExtensions<
 > = T extends readonly []
   ? Record<string, never>
   : T extends readonly [
-        () => StreamTransformer<infer P>,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
-      ]
-    ? P & InferExtensions<Rest>
-    : Record<string, unknown>;
+    () => StreamTransformer<infer P>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
+  ]
+  ? P & InferExtensions<Rest>
+  : Record<string, unknown>;
 
 /**
  * Observes {@link ProtocolEvent}s during a graph run and builds typed derived

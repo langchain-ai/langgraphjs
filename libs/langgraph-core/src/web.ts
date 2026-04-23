@@ -54,7 +54,6 @@ export {
 export type {
   ProtocolEvent,
   Namespace,
-  FinishReason,
   UsageInfo,
   MessagesEventData,
   ToolsEventData,

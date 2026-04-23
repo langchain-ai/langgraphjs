@@ -1230,9 +1230,13 @@ export class PregelLoop {
 
   /**
    * Build a {@link StreamChunkMeta} describing the currently active checkpoint.
-   * Used to enrich `values` events with a lightweight fork pointer that
-   * backs branching / time-travel UIs without a dedicated `checkpoints`
-   * stream. Returns `undefined` if no checkpoint metadata is available yet.
+   * Used to enrich `values` tuples with a lightweight fork pointer that
+   * the v2 protocol stream (`stream_v2`) promotes to a companion
+   * `checkpoints` event (emitted immediately before its paired `values`).
+   * This envelope backs branching / time-travel UIs
+   * (`useMessageMetadata(msg.id).parentCheckpointId`). Returns `undefined`
+   * if no checkpoint metadata is available yet (no checkpointer
+   * configured, or first superstep before the input checkpoint lands).
    */
   protected _currentCheckpointMeta(): StreamChunkMeta | undefined {
     if (!this.checkpointMetadata || !this.checkpoint?.id) return undefined;

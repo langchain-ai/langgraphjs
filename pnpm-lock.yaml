@@ -1011,8 +1011,8 @@ importers:
         specifier: workspace:*
         version: link:../../libs/sdk
       '@langchain/protocol':
-        specifier: ^0.0.10
-        version: 0.0.10
+        specifier: ^0.0.12
+        version: 0.0.12
       deepagents:
         specifier: https://pkg.pr.new/deepagents@cd6d654
         version: https://pkg.pr.new/deepagents@cd6d654(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
@@ -1098,9 +1098,6 @@ importers:
       '@langchain/openai':
         specifier: ^1.4.4
         version: 1.4.4(@langchain/core@1.1.40(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(ws@8.20.0)
-      '@langchain/protocol':
-        specifier: ^0.0.10
-        version: 0.0.10
       '@langchain/react':
         specifier: workspace:*
         version: link:../../libs/sdk-react
@@ -1885,8 +1882,8 @@ importers:
         specifier: workspace:*
         version: link:../langgraph-ui
       '@langchain/protocol':
-        specifier: ^0.0.10
-        version: 0.0.10
+        specifier: ^0.0.12
+        version: 0.0.12
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2076,8 +2073,8 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       '@langchain/protocol':
-        specifier: ^0.0.10
-        version: 0.0.10
+        specifier: ^0.0.12
+        version: 0.0.12
       '@standard-schema/spec':
         specifier: 1.1.0
         version: 1.1.0
@@ -2336,8 +2333,8 @@ importers:
         specifier: '>=1.1.38'
         version: 1.1.40(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
       '@langchain/protocol':
-        specifier: ^0.0.10
-        version: 0.0.10
+        specifier: ^0.0.12
+        version: 0.0.12
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2506,9 +2503,6 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
-      '@langchain/protocol':
-        specifier: ^0.0.10
-        version: 0.0.10
       '@types/node':
         specifier: ^25.4.0
         version: 25.6.0
@@ -4122,6 +4116,9 @@ packages:
 
   '@langchain/protocol@0.0.10':
     resolution: {integrity: sha512-dldIgqqxOBkZSTXWPbGejF7FB516EZOdIFWimBXPoy+E1UkcajjNrsjB/plk4hWs0vaBZBZp13UXnFMmufC61A==}
+
+  '@langchain/protocol@0.0.12':
+    resolution: {integrity: sha512-BvWqm74n6cyY8cqRxeaV4WGe4aizA5Nmr3K5ACEvTd1MjkX5PyhCuMZouyR328xnT0mH0cnXlIUEc1cLioGjKA==}
 
   '@langchain/protocol@0.0.7':
     resolution: {integrity: sha512-IHByVwH3sYiCWUDPj+/JWeZ4Pzl5tHRDNUchkddJb/4L5Z2ZI9sCdSJM6vkeMVF+Owj/75Id7AP0Fk6e/S6XMw==}
@@ -13488,6 +13485,8 @@ snapshots:
       - ws
 
   '@langchain/protocol@0.0.10': {}
+
+  '@langchain/protocol@0.0.12': {}
 
   '@langchain/protocol@0.0.7': {}
 

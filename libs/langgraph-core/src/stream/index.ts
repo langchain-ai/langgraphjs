@@ -38,7 +38,6 @@ export { isNativeTransformer } from "./types.js";
 export type {
   Namespace,
   ProtocolEvent,
-  FinishReason,
   UsageInfo,
   MessagesEventData,
   ToolsEventData,

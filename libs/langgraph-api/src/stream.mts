@@ -9,10 +9,12 @@ import type {
 } from "@langchain/langgraph";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
-import type { ValuesEvent } from "@langchain/protocol";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_MESSAGES_STREAM_CONFIG_KEY } from "./protocol/constants.mjs";
-import type { SourceStreamEvent } from "./protocol/types.mjs";
+import type {
+  Checkpoint as ProtocolCheckpoint,
+  SourceStreamEvent,
+} from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -268,17 +270,17 @@ export async function* streamState(
     ) {
       // Pregel's stream tuple is `[ns, mode, payload, meta?]` (4th element
       // is the optional `StreamChunkMeta`, preserved when streaming with
-      // `subgraphs: true`). The meta is the source of the `values` event's
-      // checkpoint envelope attached by `_emitValuesWithCheckpointMeta`.
+      // `subgraphs: true`). The meta carries the lightweight checkpoint
+      // envelope attached by `_emitValuesWithCheckpointMeta`, which we
+      // forward as a companion `checkpoints` source event below.
       const rawTuple = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
       ) as [string[] | null, LangGraphStreamMode, unknown, unknown?];
       const [ns, mode, chunk] = rawTuple;
       const chunkMeta = rawTuple[3] as
-        | { checkpoint?: ValuesEvent["params"]["checkpoint"] }
+        | { checkpoint?: ProtocolCheckpoint }
         | undefined;
 
-      // Listen for debug events and capture checkpoint
       let data: unknown = chunk;
       if (mode === "debug") {
         const debugChunk = chunk as LangGraphDebugChunk;
@@ -306,16 +308,21 @@ export async function* streamState(
         data = debugTask;
       }
 
-      // Forward the lightweight checkpoint envelope on `values` events.
-      // Core's loop attaches it via `_emitValuesWithCheckpointMeta`, and
-      // stream() propagates it as the 4th tuple element when subgraphs
-      // are streamed. Clients surface this as
-      // `useMessageMetadata(msg.id).parentCheckpointId` for fork / edit
-      // flows.
-      const valuesCheckpoint =
-        mode === "values" && chunkMeta?.checkpoint != null
-          ? chunkMeta.checkpoint
-          : undefined;
+      // Emit the lightweight checkpoint envelope as a dedicated
+      // `checkpoints` source event immediately BEFORE the companion
+      // `values` event so clients subscribed to both channels have the
+      // envelope buffered by the time the values payload arrives
+      // (`useMessageMetadata(msg.id).parentCheckpointId` for fork /
+      // edit flows). Clients that only want fork / time-travel metadata
+      // subscribe to `checkpoints` alone and avoid the full-state
+      // payload.
+      if (mode === "values" && chunkMeta?.checkpoint != null) {
+        const sseEvent =
+          kwargs.subgraphs && ns?.length
+            ? `checkpoints|${ns.join("|")}`
+            : "checkpoints";
+        yield { event: sseEvent, data: chunkMeta.checkpoint };
+      }
 
       if (mode === "messages") {
         if (
@@ -331,11 +338,7 @@ export async function* streamState(
       } else if (userStreamMode.includes(mode)) {
         const sseEvent =
           kwargs.subgraphs && ns?.length ? `${mode}|${ns.join("|")}` : mode;
-        yield {
-          event: sseEvent,
-          data,
-          ...(valuesCheckpoint != null ? { checkpoint: valuesCheckpoint } : {}),
-        };
+        yield { event: sseEvent, data };
       }
     } else if (userStreamMode.includes("events")) {
       yield { event: "events", data: event };
@@ -534,14 +537,6 @@ export async function* streamStateV2(
         };
         continue;
       }
-    } else if (mode === "checkpoints") {
-      const debugCheckpoint = preprocessDebugCheckpoint(
-        data as DebugCheckpoint
-      );
-      options?.onCheckpoint?.(debugCheckpoint);
-      const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
-      yield { event: sseEvent, data: debugCheckpoint };
-      continue;
     } else if (mode === "tasks") {
       const debugTask = preprocessDebugCheckpointTask(data as DebugTask);
       if ("result" in debugTask || "error" in debugTask) {
@@ -557,31 +552,21 @@ export async function* streamStateV2(
     /**
      * These modes have already been converted to their protocol shape by
      * core's `convertToProtocolEvent`, so the session can skip
-     * re-normalization.  Other modes (values, debug, checkpoints, tasks)
-     * still require API-specific processing (interrupt stripping, state
-     * message normalization, checkpoint preprocessing).
+     * re-normalization.  Other modes (values, debug, tasks) still
+     * require API-specific processing (interrupt stripping, state
+     * message normalization, checkpoint preprocessing). `checkpoints`
+     * is emitted by core as a standalone protocol event whose `data` is
+     * already the lightweight envelope; the session frames it on the
+     * dedicated `checkpoints` channel.
      */
     const normalized =
       mode === "tools" ||
       mode === "updates" ||
       mode === "custom" ||
-      mode === "messages";
+      mode === "messages" ||
+      mode === "checkpoints";
 
-    // Forward the lightweight checkpoint envelope on `values` events.
-    // Core's loop attaches it (see `_emitValuesWithCheckpointMeta` +
-    // `convertToProtocolEvent`) so clients can surface
-    // `useMessageMetadata(msg.id).parentCheckpointId` without subscribing
-    // to a full `checkpoints` stream.
-    const checkpoint =
-      mode === "values"
-        ? (event as ValuesEvent).params.checkpoint
-        : undefined;
-    yield {
-      event: sseEvent,
-      data,
-      normalized,
-      ...(checkpoint != null ? { checkpoint } : {}),
-    };
+    yield { event: sseEvent, data, normalized };
   }
 
   if (kwargs.feedback_keys) {

@@ -3,6 +3,8 @@ import type {
   AgentStatus,
   AgentTreeNode,
   Channel,
+  Checkpoint,
+  CheckpointSource,
   Command,
   CommandResponse,
   ContentBlockDeltaData,
@@ -12,8 +14,6 @@ import type {
   ErrorCode,
   ErrorResponse,
   Event,
-  FlowCapacityParams,
-  FlowStrategy,
   MessageErrorData,
   MessageFinishData,
   MessageMetadata,
@@ -33,17 +33,45 @@ import type {
   ToolsData,
   UnsubscribeParams,
   UpdatesEvent,
-  ValuesCheckpoint,
 } from "@langchain/protocol";
 import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session/index.mjs";
 
 /**
- * Raw events emitted by the existing LangGraph run stream implementation before
- * they are normalized into protocol-framed events.
+ * Strategy for handling buffered events when the session's event buffer is
+ * at capacity.
  *
- * When {@link normalized} is `true` the payload has already been converted to
- * its protocol shape by the in-process streaming layer (`stream_v2`)
+ * Previously sourced from `@langchain/protocol`'s flow-control module,
+ * which was removed upstream. Retained locally so the session's buffered
+ * backpressure implementation continues to compile and operate as before.
+ */
+export type FlowStrategy = "drop-oldest" | "pause-producer" | "sample";
+
+/**
+ * Parameters for tuning the session-level event buffer under backpressure.
+ *
+ * Retained locally after the upstream `flow.setCapacity` command was
+ * removed from `@langchain/protocol`.
+ */
+export interface FlowCapacityParams {
+  max_buffer_size: number;
+  strategy: FlowStrategy;
+}
+
+/**
+ * Raw events emitted by the existing LangGraph run stream implementation
+ * before they are normalized into protocol-framed events.
+ *
+ * The session emits two independent events per persisted checkpoint:
+ * - `event: "values"` carries the full state snapshot on the `values`
+ *   protocol channel.
+ * - `event: "checkpoints"` carries the lightweight {@link Checkpoint}
+ *   envelope on the dedicated `checkpoints` channel, paired with the
+ *   adjacent `values` event by `(namespace, step)` so fork/time-travel
+ *   UIs can subscribe without also paying for full-state payloads.
+ *
+ * When {@link normalized} is `true` the payload has already been converted
+ * to its protocol shape by the in-process streaming layer (`stream_v2`)
  * and should be passed through without re-normalization.
  */
 export type SourceStreamEvent = {
@@ -51,15 +79,6 @@ export type SourceStreamEvent = {
   event: string;
   data: unknown;
   normalized?: boolean;
-  /**
-   * Lightweight checkpoint envelope forwarded on `values` events.
-   *
-   * Populated by {@link streamStateV2} from the `ValuesEvent.params.checkpoint`
-   * produced by `@langchain/langgraph-core`'s loop, and reflected back onto
-   * the protocol `values` event's `params.checkpoint`. Clients surface this
-   * as `useMessageMetadata(msg.id).parentCheckpointId` for fork / edit flows.
-   */
-  checkpoint?: ValuesCheckpoint;
 };
 
 /**
@@ -71,6 +90,7 @@ export type SupportedChannel = Extract<
   Channel,
   | "values"
   | "updates"
+  | "checkpoints"
   | "messages"
   | "tools"
   | "custom"
@@ -82,6 +102,7 @@ export type SupportedChannel = Extract<
 export type EventMethodByChannel = {
   values: "values";
   updates: "updates";
+  checkpoints: "checkpoints";
   messages: "messages";
   tools: "tools";
   custom: "custom";
@@ -107,13 +128,13 @@ export type {
   AgentResult,
   AgentStatus,
   AgentTreeNode,
+  Checkpoint,
+  CheckpointSource,
   ContentBlockDeltaData,
   ContentBlockFinishData,
   ContentBlockStartData,
   CustomData,
   ErrorCode,
-  FlowCapacityParams,
-  FlowStrategy,
   MessageErrorData,
   MessageFinishData,
   MessageMetadata,
@@ -132,7 +153,6 @@ export type {
   ToolsData,
   UnsubscribeParams,
   UpdatesEvent,
-  ValuesCheckpoint,
 };
 
 /**

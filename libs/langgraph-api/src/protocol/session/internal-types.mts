@@ -91,6 +91,7 @@ export type ProtocolEventDataMap = {
   updates:
     | ProtocolEventByMethod<"updates">["params"]["data"]
     | UpdatesEvent["params"]["data"]["values"];
+  checkpoints: ProtocolEventByMethod<"checkpoints">["params"]["data"];
   messages: ProtocolEventByMethod<"messages">["params"]["data"];
   tools: ProtocolEventByMethod<"tools">["params"]["data"];
   custom: ProtocolEventByMethod<"custom">["params"]["data"];
@@ -126,6 +127,7 @@ export type MessageProcessorCallbacks = {
 export const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
   "values",
   "updates",
+  "checkpoints",
   "messages",
   "tools",
   "custom",

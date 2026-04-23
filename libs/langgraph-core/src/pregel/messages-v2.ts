@@ -62,25 +62,6 @@ const isUsageMetadataLike = (value: unknown): value is UsageMetadataLike =>
   "total_tokens" in value;
 
 /**
- * Normalizes provider-specific stop reasons into the protocol-compatible enum.
- *
- * @param value - Raw stop reason from provider metadata.
- * @returns Normalized protocol finish reason.
- */
-const normalizeMessageFinishReason = (value: unknown) => {
-  switch (value) {
-    case "length":
-    case "content_filter":
-      return value;
-    case "tool_use":
-    case "tool_calls":
-      return "tool_use";
-    default:
-      return "stop";
-  }
-};
-
-/**
  * Merges an incoming content block snapshot into the accumulated block state
  * for the same index.
  *
@@ -762,9 +743,6 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       message.response_metadata != null
         ? (message.response_metadata as Record<string, unknown>)
         : undefined;
-    const finishReason = normalizeMessageFinishReason(
-      responseMetadata?.stop_reason
-    );
     const usage =
       "usage_metadata" in message && isUsageMetadataLike(message.usage_metadata)
         ? message.usage_metadata
@@ -773,7 +751,6 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
 
     this.emitProtocolEvent(meta, {
       event: "message-finish",
-      reason: finishReason,
       ...(protocolUsage != null ? { usage: protocolUsage } : {}),
       ...(responseMetadata != null ? { metadata: responseMetadata } : {}),
     });
@@ -1124,7 +1101,6 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       const protocolUsage = toProtocolUsage(finishUsage);
       this.emitProtocolEvent(meta!, {
         event: "message-finish",
-        reason: normalizeMessageFinishReason(responseMetadata?.stop_reason),
         ...(protocolUsage != null ? { usage: protocolUsage } : {}),
         ...(responseMetadata != null ? { metadata: responseMetadata } : {}),
       });

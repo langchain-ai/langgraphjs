@@ -2,7 +2,6 @@ import type {
   ContentBlock,
   FinalizedContentBlock,
   MessageMetadata,
-  MessageFinishData,
   MessagesEvent,
   UsageInfo,
 } from "@langchain/protocol";
@@ -18,7 +17,6 @@ export interface AssembledMessage {
   metadata?: MessageMetadata;
   blocks: ContentBlock[];
   usage?: UsageInfo;
-  finishReason?: MessageFinishData["reason"];
   finishMetadata?: Record<string, any>;
   error?: {
     message: string;
@@ -402,7 +400,6 @@ export class MessageAssembler {
         };
       }
       case "message-finish": {
-        message.finishReason = data.reason;
         message.usage = data.usage;
         message.finishMetadata = data.metadata;
         this.activeMessages.delete(activeKey);
