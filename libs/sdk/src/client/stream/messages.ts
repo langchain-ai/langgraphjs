@@ -265,12 +265,30 @@ function applyContentDelta(
         reasoning: `${"reasoning" in target ? target.reasoning : ""}${delta.reasoning}`,
       };
     case "tool_call_chunk":
-    case "server_tool_call_chunk":
-      return {
-        ...target,
-        ...delta,
-        args: `${("args" in target ? target.args : "") ?? ""}${delta.args ?? ""}`,
-      };
+    case "server_tool_call_chunk": {
+      // Spread target first, then delta — but preserve target's
+      // ``id``/``name`` when the delta explicitly sets them to
+      // null/undefined.  Some providers (notably Anthropic via the
+      // langchain-core compat bridge) only attach the tool-call
+      // identifiers to the first ``content-block-start`` chunk; every
+      // subsequent ``input_json_delta`` chunk carries ``id=null,
+      // name=null``.  A naive ``{...target, ...delta}`` spread
+      // overwrites the captured identifiers with null, which in turn
+      // makes downstream consumers (e.g. ``extractToolCallChunks`` in
+      // ``assembled-to-message.ts``) drop the chunk on the floor until
+      // the final ``content-block-finish`` event promotes it to a
+      // finalized ``tool_call`` — causing tool-call cards to appear
+      // all-at-once at the end of the turn instead of incrementally.
+      const merged = { ...target, ...delta } as Record<string, unknown>;
+      if (delta.id == null && "id" in target && target.id != null) {
+        merged.id = target.id;
+      }
+      if (delta.name == null && "name" in target && target.name != null) {
+        merged.name = target.name;
+      }
+      merged.args = `${("args" in target ? target.args : "") ?? ""}${delta.args ?? ""}`;
+      return merged as unknown as ContentBlock;
+    }
     default:
       return {
         ...target,

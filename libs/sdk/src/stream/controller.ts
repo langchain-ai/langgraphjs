@@ -64,6 +64,8 @@ import type {
 
 const ROOT_NAMESPACE: readonly string[] = [];
 
+const EMPTY_METADATA_MAP: MessageMetadataMap = new Map();
+
 /**
  * Gated diagnostic logger for the root event pump. Silent by default so
  * high-frequency streaming runs don't pay for `console.log` formatting
@@ -101,6 +103,56 @@ interface ResolvedInterrupt {
   namespace: string[];
 }
 
+/**
+ * Metadata tracked per message id. Surfaced to applications via
+ * `useMessageMetadata(stream, messageId)`. The map is populated as
+ * the controller processes `values` / `messages` events; entries
+ * whose metadata is not known yet are simply absent (the selector
+ * hook then returns `undefined`).
+ */
+export interface MessageMetadata {
+  /**
+   * Checkpoint id the message was first observed at. Used by fork /
+   * edit flows (`submit(input, { forkFrom: { checkpointId } })`).
+   */
+  readonly parentCheckpointId: string | undefined;
+}
+
+export type MessageMetadataMap = ReadonlyMap<string, MessageMetadata>;
+
+/**
+ * Queued submission entry mirrored from the server-side run queue.
+ *
+ * Populated when `submit()` is called with `multitaskStrategy:
+ * "enqueue"` while a run is in flight. The array is snapshot-shaped
+ * (readonly) so `useSubmissionQueue()` consumers can compare by
+ * identity across React re-renders.
+ *
+ * Today the controller maintains the queue optimistically on the
+ * client and reconciles it with server lifecycle events. Once the
+ * server starts emitting a dedicated queue channel (roadmap A0.3)
+ * the controller will switch to a pure mirror; the public shape
+ * here will not change.
+ */
+export interface SubmissionQueueEntry<
+  StateType extends object = Record<string, unknown>,
+> {
+  /** Server-side run id when known; client-minted id until the run hits the server. */
+  readonly id: string;
+  /** The `submit(values, ...)` payload. `null` when the caller passed `null`. */
+  readonly values: Partial<StateType> | null | undefined;
+  /** Snapshot of the `StreamSubmitOptions` used when enqueueing. */
+  readonly options?: StreamSubmitOptions<StateType>;
+  /** Wall-clock time the entry was created on the client. */
+  readonly createdAt: Date;
+}
+
+export type SubmissionQueueSnapshot<
+  StateType extends object = Record<string, unknown>,
+> = ReadonlyArray<SubmissionQueueEntry<StateType>>;
+
+const EMPTY_QUEUE: SubmissionQueueSnapshot<never> = Object.freeze([]);
+
 export class StreamController<
   StateType extends object = Record<string, unknown>,
   InterruptType = unknown,
@@ -110,6 +162,8 @@ export class StreamController<
   readonly subagentStore: StreamStore<SubagentMap>;
   readonly subgraphStore: StreamStore<SubgraphMap>;
   readonly subgraphByNodeStore: StreamStore<SubgraphByNodeMap>;
+  readonly messageMetadataStore: StreamStore<MessageMetadataMap>;
+  readonly queueStore: StreamStore<SubmissionQueueSnapshot<StateType>>;
   readonly registry: ChannelRegistry;
 
   readonly #options: StreamControllerOptions<StateType>;
@@ -136,6 +190,15 @@ export class StreamController<
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
 
+  // Single-shot hydration promise. Exposed via `hydrationPromise`
+  // so Suspense wrappers can throw it until the first hydrate
+  // completes (resolve) or fails (reject). Reset whenever a new
+  // hydrate cycle begins so `<Suspense>` boundaries re-suspend on
+  // thread switch.
+  #hydrationPromise: Promise<void>;
+  #resolveHydration!: () => void;
+  #rejectHydration!: (error: unknown) => void;
+
   // Assemblers that live for the lifetime of a thread; reset on
   // rebind so a fresh thread starts with a clean slate.
   #rootMessageAssembler = new MessageAssembler();
@@ -144,6 +207,13 @@ export class StreamController<
     { role: ExtendedMessageRole; toolCallId?: string }
   >();
   readonly #rootMessageIndex = new Map<string, number>();
+  // Message ids observed in the most recent `values.messages`
+  // snapshot for the root thread. Used by `#applyValues` to drop
+  // stream-assembled messages the server has explicitly removed
+  // (e.g. via `RemoveMessage` reducer deltas) while still preserving
+  // stream-only messages whose enclosing superstep hasn't emitted a
+  // `values` snapshot yet (mid-superstep token streaming).
+  #rootValuesMessageIds = new Set<string>();
   #rootToolAssembler = new ToolCallAssembler();
   // Maps the namespace a tool result is streamed on (`["tools:<uuid>"]`)
   // to the `tool_call_id` reported by that namespace's most recent
@@ -177,6 +247,57 @@ export class StreamController<
     this.rootStore = new StreamStore<RootSnapshot<StateType, InterruptType>>(
       this.#createInitialSnapshot()
     );
+    this.messageMetadataStore = new StreamStore<MessageMetadataMap>(
+      EMPTY_METADATA_MAP
+    );
+    this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
+      EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
+    );
+    this.#hydrationPromise = this.#createHydrationPromise();
+    // Attach a default no-op catch so orphaned hydrationPromise
+    // rejections (e.g. controllers spawned during Suspense retries
+    // whose promise never gets subscribed to because the suspense
+    // cache already holds an earlier one) don't surface as unhandled
+    // rejections. Callers that attach their own handlers via .then()
+    // still receive the rejection on their derived promise.
+    this.#hydrationPromise.catch(() => undefined);
+    // Kick off the initial hydrate eagerly when a caller-supplied
+    // thread id is present. Suspense consumers throw
+    // `hydrationPromise` on the very first render, which unmounts the
+    // subtree before any `useEffect` can run — so if we waited for an
+    // effect to drive the hydrate we'd deadlock. Firing here makes
+    // the promise settle independently of the component lifecycle.
+    if (this.#currentThreadId != null) {
+      void this.hydrate(this.#currentThreadId);
+    } else {
+      this.#resolveHydration();
+    }
+  }
+
+  /**
+   * Promise that settles the first time {@link hydrate} finishes on
+   * the current thread. Resolves on a clean hydration, rejects when
+   * the thread-state fetch errors. A fresh promise is installed on
+   * every thread swap so `<Suspense>` wrappers re-suspend on
+   * `switchThread`.
+   */
+  get hydrationPromise(): Promise<void> {
+    return this.#hydrationPromise;
+  }
+
+  #createHydrationPromise(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this.#resolveHydration = resolve;
+      this.#rejectHydration = reject;
+    });
+  }
+
+  #resetHydrationPromise(): void {
+    // Swallow rejection on the orphaned promise so Node doesn't
+    // flag it as unhandled; Suspense callers that still hold a
+    // reference see the rejection they subscribed to.
+    this.#hydrationPromise.catch(() => undefined);
+    this.#hydrationPromise = this.#createHydrationPromise();
   }
 
   // ---------- public imperatives ----------
@@ -195,6 +316,9 @@ export class StreamController<
     this.rootStore.setState((s) => ({ ...s, threadId: this.#currentThreadId }));
 
     if (changed) {
+      // Swap to a new thread: re-arm the hydration promise so any
+      // Suspense boundary remounted against the new id suspends again.
+      this.#resetHydrationPromise();
       await this.#teardownThread();
       // Reset UI-facing snapshot so stale messages/values/tool-calls
       // from the previous thread don't bleed into the new one. The
@@ -208,6 +332,7 @@ export class StreamController<
 
     if (this.#currentThreadId == null) {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
+      this.#resolveHydration();
       return;
     }
 
@@ -217,10 +342,12 @@ export class StreamController<
     // spurious error to the UI.
     if (this.#selfCreatedThreadIds.has(this.#currentThreadId)) {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
+      this.#resolveHydration();
       return;
     }
 
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
+    let hydrationError: unknown;
     try {
       const state = await this.#options.client.threads.getState<StateType>(
         this.#currentThreadId
@@ -229,10 +356,33 @@ export class StreamController<
         this.#applyValues(state.values as unknown);
       }
     } catch (error) {
-      this.rootStore.setState((s) => ({ ...s, error }));
+      // A 404 on hydrate means the thread does not exist server-side
+      // yet (most commonly because the caller supplied a brand-new,
+      // externally-minted thread id and is about to create it via the
+      // first `submit()`). Treat it as "empty state" rather than a
+      // fatal hydration error so Suspense boundaries resolve cleanly
+      // and no spurious error renders in the UI.
+      const status = (error as { status?: number } | null)?.status;
+      if (status !== 404) {
+        hydrationError = error;
+        this.rootStore.setState((s) => ({ ...s, error }));
+      }
     } finally {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
+      if (hydrationError != null) {
+        this.#rejectHydration(hydrationError);
+      } else {
+        this.#resolveHydration();
+      }
     }
+
+    // P0 fix: open the shared subscription on mount so in-flight
+    // server-side runs are observed even when no local `submit()` is
+    // active. The transport replays the run from `seq=0` on a rotating
+    // subscribe, so late-joining is free once the subscription exists.
+    // `isLoading` transitions are driven by the persistent root
+    // lifecycle listener registered in `#startRootPump`.
+    this.#ensureThread(this.#currentThreadId);
   }
 
   async submit(
@@ -240,6 +390,19 @@ export class StreamController<
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void> {
     if (this.#disposed) return;
+
+    // Honour per-submit `threadId` overrides: rebind to the supplied
+    // thread id before dispatching. Mirrors the legacy behaviour of
+    // `submit({}, { threadId })` — subsequent submits stay on the new
+    // thread unless the hook's own `threadId` prop flips again.
+    const overrideThreadId = options?.threadId;
+    if (
+      overrideThreadId !== undefined &&
+      overrideThreadId !== this.#currentThreadId
+    ) {
+      await this.hydrate(overrideThreadId);
+    }
+
     if (this.#currentThreadId == null) {
       this.#currentThreadId = uuidv7();
       this.#selfCreatedThreadIds.add(this.#currentThreadId);
@@ -250,6 +413,23 @@ export class StreamController<
       }));
     }
     const thread = this.#ensureThread(this.#currentThreadId);
+
+    // Honour `multitaskStrategy` when a run is already in flight. Only
+    // `rollback` (the default) and `enqueue` / `reject` are resolved
+    // client-side today; `interrupt` is forwarded as a server hint
+    // (roadmap A0.3) and currently falls back to `rollback`.
+    const strategy = options?.multitaskStrategy ?? "rollback";
+    const hasActiveRun =
+      this.#runAbort != null && !this.#runAbort.signal.aborted;
+    if (hasActiveRun && strategy === "reject") {
+      throw new Error(
+        "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
+      );
+    }
+    if (hasActiveRun && strategy === "enqueue") {
+      this.#enqueueSubmission(input, options);
+      return;
+    }
 
     this.#runAbort?.abort();
     const abort = new AbortController();
@@ -298,6 +478,11 @@ export class StreamController<
           input: input ?? null,
           config: boundConfig,
           metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
+          forkFrom: options?.forkFrom,
+          multitaskStrategy:
+            options?.multitaskStrategy === "enqueue"
+              ? "enqueue"
+              : options?.multitaskStrategy,
         });
         this.#options.onCreated?.({
           run_id: result.run_id as string,
@@ -305,10 +490,26 @@ export class StreamController<
         });
       }
 
-      await terminalPromise;
+      const terminal = await terminalPromise;
+      if (terminal.event === "failed" && !abort.signal.aborted) {
+        const runError = new Error(
+          terminal.error ?? "Run failed with no error message"
+        );
+        this.rootStore.setState((s) => ({ ...s, error: runError }));
+        try {
+          options?.onError?.(runError);
+        } catch {
+          /* caller-supplied callback errors must not crash the submit */
+        }
+      }
     } catch (error) {
       if (!abort.signal.aborted) {
         this.rootStore.setState((s) => ({ ...s, error }));
+        try {
+          options?.onError?.(error);
+        } catch {
+          /* caller-supplied callback errors must not crash the submit */
+        }
       }
     } finally {
       this.rootStore.setState((s) => ({ ...s, isLoading: false }));
@@ -320,6 +521,43 @@ export class StreamController<
     this.#runAbort?.abort();
     this.#runAbort = undefined;
     this.rootStore.setState((s) => ({ ...s, isLoading: false }));
+  }
+
+  /**
+   * Cancel a queued submission by id. Returns `true` when the entry
+   * was found and removed, `false` otherwise.
+   *
+   * Today this only removes the entry from the client-side mirror —
+   * once the server exposes queue cancel (roadmap A0.3) the
+   * controller will additionally issue a cancel call against the
+   * active transport.
+   */
+  async cancelQueued(id: string): Promise<boolean> {
+    const current = this.queueStore.getSnapshot();
+    const next = current.filter((entry) => entry.id !== id);
+    if (next.length === current.length) return false;
+    this.queueStore.setState(() => next);
+    return true;
+  }
+
+  /** Drop every queued submission. Server-side cancel arrives with A0.3. */
+  async clearQueue(): Promise<void> {
+    this.queueStore.setState(
+      () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
+    );
+  }
+
+  #enqueueSubmission(
+    input: unknown,
+    options?: StreamSubmitOptions<StateType, ConfigurableType>
+  ): void {
+    const entry: SubmissionQueueEntry<StateType> = {
+      id: uuidv7(),
+      values: (input ?? undefined) as Partial<StateType> | null | undefined,
+      options: options as StreamSubmitOptions<StateType> | undefined,
+      createdAt: new Date(),
+    };
+    this.queueStore.setState((current) => [...current, entry]);
   }
 
   async respond(
@@ -418,7 +656,19 @@ export class StreamController<
   #createInitialSnapshot(): RootSnapshot<StateType, InterruptType> {
     const values = (this.#options.initialValues ??
       ({} as StateType)) as StateType;
-    const messages = extractAndCoerceMessages(values, this.#messagesKey);
+    const messages = extractAndCoerceMessages(
+      values as unknown as Record<string, unknown>,
+      this.#messagesKey
+    );
+    // Seed `isThreadLoading: true` synchronously when a caller-supplied
+    // threadId is on the controller at construction/swap time. Without
+    // this Suspense wrappers would render their fallback for a tick
+    // because `isThreadLoading` flips false → true → false once the
+    // deferred `hydrate()` starts, and the synchronous render observes
+    // the initial `false`.
+    const willHydrate =
+      this.#currentThreadId != null &&
+      !this.#selfCreatedThreadIds.has(this.#currentThreadId);
     return {
       values,
       messages,
@@ -426,7 +676,7 @@ export class StreamController<
       interrupts: [],
       interrupt: undefined,
       isLoading: false,
-      isThreadLoading: false,
+      isThreadLoading: willHydrate,
       error: undefined,
       threadId: this.#currentThreadId,
     };
@@ -452,6 +702,10 @@ export class StreamController<
     this.registry.bind(undefined);
     this.#threadEventUnsubscribe?.();
     this.#threadEventUnsubscribe = undefined;
+    // Persistent lifecycle driver is scoped to the current thread
+    // stream. Remove it so a swap to a new thread starts with a clean
+    // listener set (a new one is installed in `#startRootPump`).
+    this.#rootEventListeners.delete(this.#persistentLifecycleListener);
     try {
       await this.#rootSubscription?.unsubscribe();
     } catch {
@@ -469,8 +723,13 @@ export class StreamController<
     this.#rootMessageAssembler = new MessageAssembler();
     this.#rootMessageRoles.clear();
     this.#rootMessageIndex.clear();
+    this.#rootValuesMessageIds = new Set();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#toolCallIdByNamespace.clear();
+    this.messageMetadataStore.setState(() => EMPTY_METADATA_MAP);
+    this.queueStore.setState(
+      () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
+    );
 
     if (thread != null) {
       try {
@@ -494,6 +753,14 @@ export class StreamController<
     this.#threadEventUnsubscribe = thread.onEvent((event) =>
       this.#onWildcardEvent(event)
     );
+
+    // Persistent isLoading driver. Drives `isLoading` from
+    // root-namespace lifecycle events so that in-flight runs observed
+    // via `hydrate()` (not initiated by a local `submit()`) still flip
+    // the UI to loading. `running` → true; terminals → false. The
+    // optimistic `isLoading = true` inside `submit()` stays because
+    // that fires before any subscription event arrives.
+    this.#rootEventListeners.add(this.#persistentLifecycleListener);
 
     this.#rootPump = (async () => {
       try {
@@ -627,6 +894,38 @@ export class StreamController<
     // interrupts stay in `rootStore.interrupts` via `#onRootEvent`.
     void event;
   }
+
+  /**
+   * Bound root-lifecycle listener that keeps `isLoading` in sync with
+   * the actual server-side run state. Installed when the root pump is
+   * started so it lives for the entire thread-stream lifetime.
+   *
+   * Not wired through `#awaitNextTerminal` — that helper is one-shot
+   * and scoped to the current `submit()` call. For re-attach on
+   * mount we need an always-on listener so hydrated-into-in-flight
+   * runs also flip `isLoading` correctly.
+   */
+  readonly #persistentLifecycleListener = (event: Event): void => {
+    if (event.method !== "lifecycle") return;
+    if (event.params.namespace.length !== 0) return;
+    const lifecycle = (event as LifecycleEvent).params.data as {
+      event?: string;
+    };
+    if (lifecycle?.event === "running") {
+      this.rootStore.setState((s) => (s.isLoading ? s : { ...s, isLoading: true }));
+      return;
+    }
+    if (
+      lifecycle?.event === "completed" ||
+      lifecycle?.event === "failed" ||
+      lifecycle?.event === "interrupted" ||
+      lifecycle?.event === "cancelled"
+    ) {
+      this.rootStore.setState((s) =>
+        s.isLoading ? { ...s, isLoading: false } : s
+      );
+    }
+  };
 
   #onRootEvent(event: Event): void {
     const evSeq = (event as unknown as { seq?: number }).seq;
@@ -845,6 +1144,21 @@ export class StreamController<
       return;
     }
     const state = raw as Record<string, unknown>;
+    // Surface parent_checkpoint per-message when the values payload
+    // carries it. The server-side work to include this is tracked as
+    // plan.md P2 / roadmap A0.2; until it lands, the map simply
+    // stays empty and `useMessageMetadata` returns `undefined` —
+    // this is expected fallback behaviour.
+    const parentCheckpointId =
+      typeof state.parent_checkpoint === "string"
+        ? state.parent_checkpoint
+        : undefined;
+    if (parentCheckpointId != null && Array.isArray(state[this.#messagesKey])) {
+      this.#recordMessageMetadata(
+        state[this.#messagesKey] as Array<{ id?: string }>,
+        { parentCheckpointId }
+      );
+    }
     const maybeMessages = state[this.#messagesKey];
     let nextValues: StateType;
     let nextMessages: BaseMessage[];
@@ -898,12 +1212,27 @@ export class StreamController<
       // while we receive a values event describing the previous
       // superstep. Without this, the merge would truncate them and
       // the UI would flash between renders.
+      //
+      // Stream-only messages that WERE in a prior values snapshot but
+      // disappeared from this one are treated as explicit removals
+      // (server-side `RemoveMessage` reducer deltas) and dropped.
+      // Without this exclusion, RemoveMessage would be silently
+      // ignored on the client and the removed turn would linger in
+      // the projection forever.
       for (const existing of s.messages) {
         const id = existing.id;
         if (id == null) continue;
         if (valueIds.has(id)) continue;
+        if (this.#rootValuesMessageIds.has(id)) continue;
         merged.push(existing);
       }
+      // Record the authoritative ids from THIS values snapshot.
+      // Stream-only messages (preserved via `merged.push` above)
+      // stay absent here so a subsequent frame that still hasn't
+      // echoed them isn't treated as a remove — only messages that
+      // actually appeared in a values payload then disappeared
+      // count as a RemoveMessage.
+      this.#rootValuesMessageIds = valueIds;
       // Keep `rootMessageIndex` aligned with the new positions so
       // subsequent channel deltas still resolve the right slot.
       this.#rootMessageIndex.clear();
@@ -932,37 +1261,75 @@ export class StreamController<
    * — the root pump fans events out synchronously on arrival, so a
    * late registration would miss the terminal for fast runs.
    */
-  #awaitNextTerminal(signal: AbortSignal): Promise<void> {
-    return new Promise<void>((resolve) => {
+  #awaitNextTerminal(signal: AbortSignal): Promise<{
+    event: "completed" | "failed" | "interrupted" | "aborted";
+    error?: string;
+  }> {
+    return new Promise((resolve) => {
       let settled = false;
-      const finish = () => {
+      const finish = (
+        result: {
+          event: "completed" | "failed" | "interrupted" | "aborted";
+          error?: string;
+        }
+      ) => {
         if (settled) return;
         settled = true;
         unsubscribe();
-        signal.removeEventListener("abort", finish);
-        resolve();
+        signal.removeEventListener("abort", finishAborted);
+        resolve(result);
       };
+      const finishAborted = () => finish({ event: "aborted" });
       const unsubscribe = this.#rootBus.subscribe((event) => {
         if (settled) return;
         if (event.method !== "lifecycle") return;
         if (event.params.namespace.length !== 0) return;
         const lifecycle = (event as LifecycleEvent).params.data as {
           event?: string;
+          error?: string;
         };
-        if (
-          lifecycle?.event === "completed" ||
-          lifecycle?.event === "failed" ||
-          lifecycle?.event === "interrupted"
-        ) {
-          finish();
+        if (lifecycle?.event === "completed") {
+          finish({ event: "completed" });
+        } else if (lifecycle?.event === "failed") {
+          finish({ event: "failed", error: lifecycle.error });
+        } else if (lifecycle?.event === "interrupted") {
+          finish({ event: "interrupted" });
         }
       });
       if (signal.aborted) {
-        finish();
+        finishAborted();
       } else {
-        signal.addEventListener("abort", finish, { once: true });
+        signal.addEventListener("abort", finishAborted, { once: true });
       }
     });
+  }
+
+  /**
+   * Merge `metadata` into every entry keyed by a message id. Only
+   * writes when at least one entry actually changes so subscribers
+   * don't see unnecessary re-renders.
+   */
+  #recordMessageMetadata(
+    messages: Array<{ id?: string }>,
+    metadata: MessageMetadata
+  ): void {
+    const current = this.messageMetadataStore.getSnapshot();
+    let changed = false;
+    const next = new Map(current);
+    for (const msg of messages) {
+      const id = msg?.id;
+      if (typeof id !== "string" || id.length === 0) continue;
+      const prev = next.get(id);
+      if (
+        prev != null &&
+        prev.parentCheckpointId === metadata.parentCheckpointId
+      ) {
+        continue;
+      }
+      next.set(id, { ...prev, ...metadata });
+      changed = true;
+    }
+    if (changed) this.messageMetadataStore.setState(() => next);
   }
 
   #latestUnresolvedInterrupt(): ResolvedInterrupt | null {

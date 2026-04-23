@@ -16,6 +16,7 @@ import type {
 } from "@langchain/protocol";
 
 import type { AssembledMessage } from "./messages.js";
+import type { AgentServerAdapter } from "./transport.js";
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;
 
@@ -55,14 +56,26 @@ export type YieldForChannels<TChannels extends readonly Channel[]> =
   YieldForChannel<TChannels[number]>;
 
 /**
- * Wire transport used by {@link ThreadStream}.
+ * Built-in wire transport used by {@link ThreadStream}.
  *
- * - `"sse"` (default): HTTP commands + one SSE event stream per
- *   subscription. Works in browsers without extra setup.
+ * - `"sse"`: HTTP commands + one SSE event stream per subscription.
+ *   Works in browsers without extra setup.
  * - `"websocket"`: single bidirectional WebSocket. Lower overhead for
  *   long-lived, multi-subscription sessions.
  */
-export type ThreadStreamTransport = "sse" | "websocket";
+export type ThreadStreamTransportKind = "sse" | "websocket";
+
+/**
+ * Accepted values for `ThreadStreamOptions["transport"]`.
+ *
+ * - A {@link ThreadStreamTransportKind} string picks one of the
+ *   built-in factories; `fetch` / `webSocketFactory` tune that path.
+ * - An {@link AgentServerAdapter} bypasses the built-in factories
+ *   entirely; the adapter is used for every command and subscription.
+ */
+export type ThreadStreamTransport =
+  | ThreadStreamTransportKind
+  | AgentServerAdapter;
 
 /**
  * Options for {@link ThreadStream} construction.
@@ -75,9 +88,17 @@ export interface ThreadStreamOptions {
    */
   assistantId: string;
   /**
-   * Wire transport to use. Defaults to the client-level
-   * `streamProtocol` (`"v2-websocket"` → `"websocket"`, otherwise
-   * `"sse"`).
+   * How this thread talks to the agent server. Accepts either a
+   * built-in transport string or a custom {@link AgentServerAdapter}:
+   *
+   * - `"sse"`: HTTP commands + one SSE event stream per subscription.
+   * - `"websocket"`: single bidirectional WebSocket.
+   * - an {@link AgentServerAdapter}: custom transport that replaces
+   *   the built-in factories entirely. `fetch` / `webSocketFactory`
+   *   are ignored in this mode.
+   *
+   * Defaults to the client-level `streamProtocol`
+   * (`"v2-websocket"` → `"websocket"`, otherwise `"sse"`).
    */
   transport?: ThreadStreamTransport;
   /**
@@ -86,17 +107,18 @@ export interface ThreadStreamOptions {
    */
   startingCommandId?: number;
   /**
-   * Optional `fetch` implementation for the SSE transport. Useful for
-   * test environments, custom auth/proxy layers, or non-global fetch
-   * (e.g. Node without a global fetch, or injected mocks). Ignored for
-   * the WebSocket transport.
+   * Optional `fetch` implementation for the built-in SSE transport.
+   * Useful for test environments, custom auth/proxy layers, or
+   * non-global fetch (e.g. Node without a global fetch, or injected
+   * mocks). Ignored for the WebSocket transport and for custom
+   * {@link AgentServerAdapter}s.
    */
   fetch?: typeof fetch;
   /**
-   * Optional WebSocket factory for the WebSocket transport. Useful for
-   * test environments that don't ship a global `WebSocket`, or to wrap
-   * the socket with custom headers/subprotocols. Ignored for the SSE
-   * transport.
+   * Optional WebSocket factory for the built-in WebSocket transport.
+   * Useful for test environments that don't ship a global `WebSocket`,
+   * or to wrap the socket with custom headers/subprotocols. Ignored
+   * for the SSE transport and for custom {@link AgentServerAdapter}s.
    */
   webSocketFactory?: (url: string) => WebSocket;
 }

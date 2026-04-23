@@ -14,7 +14,10 @@ import type {
   ThreadStreamOptions,
 } from "../client/stream/index.js";
 import type { AssembledToolCall } from "../client/stream/handles/tools.js";
-import type { TransportAdapter } from "../client/stream/transport.js";
+import type {
+  AgentServerAdapter,
+  TransportAdapter,
+} from "../client/stream/transport.js";
 import type { Channel, Event } from "@langchain/protocol";
 import type { StreamStore } from "./store.js";
 
@@ -71,17 +74,17 @@ export interface StreamControllerOptions<
   client: Client<StateType>;
   /** Initial thread id; if `null`, one is generated on first submit. */
   threadId?: string | null;
-  /** Transport forwarded to `client.threads.stream({ transport })`. */
-  transport?: ThreadStreamOptions["transport"];
   /**
-   * Escape hatch: supply a custom {@link TransportAdapter} instead of
-   * using the built-in `sse`/`websocket` transports. Subsumes the v1
-   * `useStreamCustom` entry point for v2 callers.
+   * How the controller talks to the agent server. Accepts either a
+   * built-in transport string (`"sse"` / `"websocket"`) or a custom
+   * {@link import("../client/stream/transport.js").AgentServerAdapter}
+   * that bypasses the built-in factories entirely. Forwarded to
+   * `client.threads.stream({ transport })`.
    */
-  transportAdapter?: TransportAdapter;
-  /** Optional `fetch` override forwarded to the SSE transport. */
+  transport?: ThreadStreamOptions["transport"];
+  /** Optional `fetch` override forwarded to the built-in SSE transport. */
   fetch?: typeof fetch;
-  /** Optional `WebSocket` factory forwarded to the WS transport. */
+  /** Optional `WebSocket` factory forwarded to the built-in WS transport. */
   webSocketFactory?: (url: string) => WebSocket;
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
@@ -105,12 +108,71 @@ export interface StreamSubmitOptions<
   };
   metadata?: Record<string, unknown>;
   /**
-   * v1-compat command shape. Only `command.resume` is honoured — it
-   * dispatches to `thread.input.respond` targeting the most recent
-   * root-namespace interrupt.
+   * Command shape widened to the v1 surface + protocol-v2 additions.
+   *
+   * - `resume` — dispatches to `thread.input.respond` targeting the most
+   *   recent root-namespace interrupt (honoured today).
+   * - `goto` — routes execution to a specific node (planned, forwarded
+   *   via `/run.input` metadata).
+   * - `update` — merges a partial state update into the thread's
+   *   values before resuming (planned, forwarded via `/run.input`).
+   *
+   * Only `resume` is currently executed by the controller; `goto` /
+   * `update` are accepted by the type surface so callers can migrate
+   * without breakage once the server work lands (plan-roadmap.md §5.3
+   * R2.4).
    */
-  command?: { resume?: unknown };
+  command?: {
+    resume?: unknown;
+    goto?: string | { node: string; input?: unknown };
+    update?: Partial<StateType>;
+  };
+  /**
+   * Fork the run from an explicit checkpoint instead of the thread's
+   * latest. Emits a `forkFrom` field on the `/run.input` request that
+   * the API layer forwards to `graph.stream_v2({ forkFrom })`.
+   *
+   * See plan-roadmap.md §5.3 R2.4.
+   */
+  forkFrom?: { checkpointId: string };
+  /**
+   * Behaviour when a run is already in-flight on the thread.
+   *
+   * - `"rollback"` (default) — abort the active run client-side and
+   *   start the new one immediately.
+   * - `"interrupt"` — server-side cancel of the in-flight run, then
+   *   start the new one (requires API support, roadmap A0.3).
+   * - `"enqueue"` — do NOT abort the active run; the new submission
+   *   lands in {@link StreamController.queueStore} and is forwarded
+   *   once the current run terminates.
+   * - `"reject"` — error out client-side when a run is already in
+   *   flight.
+   *
+   * Only `"rollback"` is honoured client-side today; the other three
+   * are accepted on the type surface so callers can start migrating
+   * ahead of the matching server work (plan-roadmap.md §5.3 R2.3 and
+   * A0.3).
+   */
+  multitaskStrategy?: "rollback" | "interrupt" | "enqueue" | "reject";
   signal?: AbortSignal;
+  /**
+   * Per-submit thread-id override. When provided, the controller
+   * rebinds to this thread before dispatching the run; subsequent
+   * submits stick with the new id unless the hook's `threadId` prop
+   * changes. Useful when you want to start a new thread without
+   * unmounting the component (e.g. "New Chat" buttons).
+   */
+  threadId?: string | null;
+  /**
+   * Per-submit error callback. Invoked when the run errors out —
+   * either before the first event lands (network/dispatch failure)
+   * or mid-stream. Does NOT suppress the error from being written
+   * to {@link RootSnapshot.error}; the callback is a local hook for
+   * showing toasts or routing the submission error to a component
+   * state slot, letting the rest of the UI keep using
+   * `stream.error` for render-level error display.
+   */
+  onError?: (error: unknown) => void;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _stateType?: StateType;
 }
@@ -227,4 +289,10 @@ export interface AcquiredProjection<T> {
   release(): void;
 }
 
-export type { BaseMessage, ThreadStream, Event };
+export type {
+  AgentServerAdapter,
+  TransportAdapter,
+  BaseMessage,
+  ThreadStream,
+  Event,
+};

@@ -19,7 +19,7 @@ import { BaseClient } from "../base.js";
 import { ThreadStream } from "../stream/index.js";
 import type {
   ThreadStreamOptions,
-  ThreadStreamTransport,
+  ThreadStreamTransportKind,
 } from "../stream/types.js";
 import { ProtocolSseTransportAdapter } from "../stream/transport/http.js";
 import { ProtocolWebSocketTransportAdapter } from "../stream/transport/websocket.js";
@@ -440,26 +440,35 @@ export class ThreadsClient<
           }
         : { threadId: uuidv7(), options: threadIdOrOptions };
 
-    const transportKind: ThreadStreamTransport =
-      options.transport ??
-      (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
-
-    const transport: TransportAdapter =
-      transportKind === "websocket"
-        ? new ProtocolWebSocketTransportAdapter({
-            apiUrl: this.apiUrl,
-            threadId,
-            defaultHeaders: this.defaultHeaders,
-            onRequest: this.onRequest,
-            webSocketFactory: options.webSocketFactory,
-          })
-        : new ProtocolSseTransportAdapter({
-            apiUrl: this.apiUrl,
-            threadId,
-            defaultHeaders: this.defaultHeaders,
-            onRequest: this.onRequest,
-            fetch: options.fetch,
-          });
+    // `transport` accepts either a preset string (`"sse"` / `"websocket"`)
+    // or a custom {@link AgentServerAdapter}. A custom adapter replaces
+    // the built-in factories entirely — this is the seam that lets users
+    // point `useStream` at any agent server (including the thin wrappers
+    // produced by `HttpAgentServerAdapter`).
+    let transport: TransportAdapter;
+    if (options.transport != null && typeof options.transport !== "string") {
+      transport = options.transport;
+    } else {
+      const transportKind: ThreadStreamTransportKind =
+        options.transport ??
+        (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
+      transport =
+        transportKind === "websocket"
+          ? new ProtocolWebSocketTransportAdapter({
+              apiUrl: this.apiUrl,
+              threadId,
+              defaultHeaders: this.defaultHeaders,
+              onRequest: this.onRequest,
+              webSocketFactory: options.webSocketFactory,
+            })
+          : new ProtocolSseTransportAdapter({
+              apiUrl: this.apiUrl,
+              threadId,
+              defaultHeaders: this.defaultHeaders,
+              onRequest: this.onRequest,
+              fetch: options.fetch,
+            });
+    }
 
     return new ThreadStream<TExtensions>(transport, options);
   }

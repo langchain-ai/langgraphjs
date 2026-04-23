@@ -19,11 +19,11 @@ const ROOT_CHANNELS: readonly Channel[] = ["values", "tools", "lifecycle"];
  * channel + namespace pair shares one server subscription.
  */
 export function useEventTrace(
-  stream: AnyStream,
+  stream: unknown,
   options: { channels?: readonly Channel[]; bufferSize?: number } = {}
 ): TraceEntry[] {
   const channels = options.channels ?? ROOT_CHANNELS;
-  const events = useChannel(stream, channels, undefined, {
+  const events = useChannel(stream as AnyStream, channels, undefined, {
     bufferSize: options.bufferSize ?? 120,
   });
   return useMemo(() => toTraceEntries(events), [events]);

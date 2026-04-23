@@ -9,10 +9,7 @@ export default defineConfig({
     globals: true,
     testTimeout: 30_000,
     retry: 2,
-    globalSetup: [
-      "./src/tests/fixtures/mock-server.ts",
-      "./src/stream-experimental/tests/mock-server.ts",
-    ],
+    globalSetup: ["./src/tests/mock-server.ts"],
     browser: {
       enabled: true,
       connectTimeout: 120_000,

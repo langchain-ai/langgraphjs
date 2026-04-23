@@ -83,7 +83,12 @@ export function FanOutView({ transport }: { transport: Transport }) {
 
   const selectedSubagent =
     modalSubagentId != null
-      ? (stream.subagents.get(modalSubagentId) ?? null)
+      ? ((
+          stream.subagents as ReadonlyMap<
+            string,
+            ReturnType<typeof stream.subagents.get>
+          >
+        ).get(modalSubagentId) ?? null)
       : null;
 
   const modalTitleId = "fanout-subagent-modal-title";

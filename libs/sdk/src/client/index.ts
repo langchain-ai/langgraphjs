@@ -113,6 +113,7 @@ export {
 
 export type {
   TransportAdapter,
+  AgentServerAdapter,
   AssembledMessage,
   MessageAssemblyUpdate,
   AssembledToolCall,
@@ -125,6 +126,7 @@ export type {
   EventForChannels,
   ThreadStreamOptions,
   ThreadStreamTransport,
+  ThreadStreamTransportKind,
   SessionOrderingState,
   EventSubscription,
   MessageSubscription,
@@ -149,7 +151,10 @@ export type {
 export {
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
+  HttpAgentServerAdapter,
 } from "./stream/transport/index.js";
+
+export type { HttpAgentServerAdapterOptions } from "./stream/transport/index.js";
 
 export type {
   ProtocolRequestHook,

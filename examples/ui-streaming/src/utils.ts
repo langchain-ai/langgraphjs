@@ -7,6 +7,36 @@ import { ensureMessageInstances } from "@langchain/langgraph-sdk/ui";
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+const snakeToCamel = (key: string) =>
+  key.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
+
+/**
+ * Recursively convert `snake_case` object keys into `camelCase`.
+ *
+ * Useful for normalizing payloads produced by Python agents (e.g. HITL
+ * interrupt values) so they match the camelCase shapes declared by the
+ * LangChain JS types such as `HITLRequest`.
+ *
+ * Arrays are mapped element-wise; non-plain values (Date, Map, class
+ * instances, ...) are returned unchanged.
+ */
+export const toCamelCaseKeys = <T = unknown>(value: unknown): T => {
+  if (Array.isArray(value)) {
+    return value.map((item) => toCamelCaseKeys(item)) as unknown as T;
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return value as T;
+  }
+  const entries = Object.entries(value as Record<string, unknown>).map(
+    ([key, val]) => [snakeToCamel(key), toCamelCaseKeys(val)] as const
+  );
+  return Object.fromEntries(entries) as T;
+};
+
 /**
  * Format arbitrary data for display in debug-oriented panels.
  */
@@ -48,9 +78,8 @@ export const getToolCallSummary = (message: BaseMessage) => {
     return "";
   }
   if (message.tool_calls.length === 0) return "";
-  return `Requested ${message.tool_calls.length} tool call${
-    message.tool_calls.length === 1 ? "" : "s"
-  }.`;
+  return `Requested ${message.tool_calls.length} tool call${message.tool_calls.length === 1 ? "" : "s"
+    }.`;
 };
 
 /**

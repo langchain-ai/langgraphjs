@@ -61,3 +61,46 @@ export interface TransportAdapter {
    */
   close(): Promise<void>;
 }
+
+/**
+ * Public v1 name for {@link TransportAdapter} plus optional high-level
+ * capabilities. Renamed to reflect that this interface now denotes the
+ * full agent-server protocol contract (not merely wire transport):
+ * any object that satisfies it can back a `useStream` call. See
+ * `plan-custom-transport.md` §4 for the rollout.
+ *
+ * The extra optional methods let adapters surface thread state and
+ * history without the framework needing to issue a parallel HTTP
+ * request — `useStream.hydrate()` calls `getState?()` when present
+ * and falls back to `client.threads.getState` otherwise. Adapters
+ * that don't know how to produce these values can simply omit them.
+ *
+ * The legacy `TransportAdapter` export is retained for back-compat and
+ * resolves to the same structural type; new code should prefer
+ * `AgentServerAdapter`.
+ */
+export interface AgentServerAdapter extends TransportAdapter {
+  /**
+   * Fetch the latest checkpointed state for the bound thread. When
+   * the adapter doesn't expose state (e.g. a purely event-replay
+   * backend), leave this undefined — the framework will skip
+   * hydration.
+   */
+  getState?<StateType = unknown>(): Promise<{
+    values: StateType;
+    checkpoint?: { checkpoint_id?: string } | null;
+  } | null>;
+  /**
+   * Fetch a slice of checkpoint history for the bound thread. Used
+   * by branching and time-travel UIs. Optional — omitting it turns
+   * those UIs into no-ops rather than surfacing an error.
+   */
+  getHistory?<StateType = unknown>(options?: {
+    limit?: number;
+  }): Promise<
+    Array<{
+      values: StateType;
+      checkpoint?: { checkpoint_id?: string } | null;
+    }>
+  >;
+}

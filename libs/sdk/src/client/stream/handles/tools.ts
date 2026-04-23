@@ -95,6 +95,10 @@ export class ToolCallAssembler {
       resolveOutput = resolve;
       rejectOutput = reject;
     });
+    // Attach a default no-op catch so if no consumer awaits
+    // `output` the eventual rejection on `tool-error` / `failAll`
+    // doesn't surface as an unhandled Promise rejection.
+    output.catch(() => undefined);
     const status = new Promise<ToolCallStatus>((resolve) => {
       resolveStatus = resolve;
     });

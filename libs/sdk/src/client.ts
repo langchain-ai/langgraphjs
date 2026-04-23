@@ -18,13 +18,17 @@ export {
   matchesSubscription,
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
+  HttpAgentServerAdapter,
 } from "./client/index.js";
+
+export type { HttpAgentServerAdapterOptions } from "./client/index.js";
 
 export type {
   ClientConfig,
   RequestHook,
   HeaderValue,
   TransportAdapter,
+  AgentServerAdapter,
   AssembledMessage,
   MessageAssemblyUpdate,
   SubscribeOptions,
@@ -33,6 +37,7 @@ export type {
   EventForChannels,
   ThreadStreamOptions,
   ThreadStreamTransport,
+  ThreadStreamTransportKind,
   SessionOrderingState,
   EventSubscription,
   MessageSubscription,

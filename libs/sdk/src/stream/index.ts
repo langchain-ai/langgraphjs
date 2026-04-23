@@ -17,12 +17,46 @@
  * See `libs/sdk-react/useStreamExperimental.md` for the React binding
  * design and the intended migration path from `useStream`.
  */
+export type {
+  AgentTypeConfigLike,
+  CompiledSubAgentLike,
+  DefaultSubagentStates,
+  DefaultToolCall,
+  DeepAgentTypeConfigLike,
+  ExtractAgentConfig,
+  ExtractDeepAgentConfig,
+  ExtractSubAgentMiddleware,
+  InferAgentToolCalls,
+  InferBag,
+  InferDeepAgentSubagents,
+  InferNodeNames,
+  InferStateType,
+  InferSubagentByName,
+  InferSubagentNames,
+  InferSubagentState,
+  InferSubagentStates,
+  InferToolCalls,
+  IsAgentLike,
+  IsDeepAgentLike,
+  SubAgentLike,
+  SubagentStateMap,
+  SubagentToolCall,
+  ToolCallFromTool,
+  WidenUpdateMessages,
+} from "./types-inference.js";
+
 export { StreamStore } from "./store.js";
 export type { StoreListener } from "./store.js";
 
 export { ChannelRegistry } from "./channel-registry.js";
 
 export { StreamController, ROOT_PUMP_CHANNELS } from "./controller.js";
+export type {
+  MessageMetadata,
+  MessageMetadataMap,
+  SubmissionQueueEntry,
+  SubmissionQueueSnapshot,
+} from "./controller.js";
 
 export { SubagentDiscovery, SubgraphDiscovery } from "./discovery/index.js";
 export type {
@@ -65,6 +99,14 @@ export type {
   SubgraphDiscoverySnapshot,
   Target,
 } from "./types.js";
+
+// `AgentServerAdapter` / `TransportAdapter` live in the client-side
+// transport module and flow into `ThreadStreamOptions["transport"]`;
+// bindings that wire custom adapters reach for them from here.
+export type {
+  AgentServerAdapter,
+  TransportAdapter,
+} from "../client/stream/transport.js";
 
 // Types framework bindings (React, Vue, Svelte, Angular) typically
 // need when wrapping the projection factories. Re-exported here so

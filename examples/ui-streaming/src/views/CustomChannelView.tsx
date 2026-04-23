@@ -1,12 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { useChannel, useStreamExperimental } from "@langchain/react";
+import { useChannel, useStreamExperimental, type UseStreamExperimentalReturn } from "@langchain/react";
 
 import type { agent as researchTimelineAgentType } from "../agents/research-timeline";
 import type { TimelineEvent } from "../agents/timeline-transformer";
 import { API_URL, type Transport } from "../api";
 import { Composer } from "../components/Composer";
 import { ViewShell } from "../components/ViewShell";
+
+import { ChannelSummary, deriveSummary } from "../components/ChannelSummary";
+import { TimelineRow } from "../components/TimelineRow";
 
 const ASSISTANT_ID = "research-timeline";
 
@@ -17,9 +20,7 @@ const SUGGESTIONS = [
   "Compare HTTP+SSE and WebSocket transports for streaming, then compute 3600/15.",
 ];
 
-type TimelineStream = ReturnType<
-  typeof useStreamExperimental<typeof researchTimelineAgentType>
->;
+type TimelineStream = UseStreamExperimentalReturn<typeof researchTimelineAgentType>;
 type StreamState = TimelineStream["values"];
 
 /**
@@ -30,29 +31,6 @@ type StreamState = TimelineStream["values"];
 type CustomChannelEvent = {
   params: { data: { payload?: unknown } };
 };
-
-const PHASE_DOT: Record<string, string> = {
-  search: "#60a5fa",
-  summarize: "#a5b4fc",
-  score: "#fbbf24",
-  compute: "#f472b6",
-  research: "#34d399",
-  other: "#94a3b8",
-};
-
-const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`;
-  const s = ms / 1000;
-  if (s < 10) return `${s.toFixed(2)}s`;
-  return `${s.toFixed(1)}s`;
-};
-
-const formatClock = (at: number): string =>
-  new Date(at).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 
 export function CustomChannelView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -180,226 +158,6 @@ export function CustomChannelView({ transport }: { transport: Transport }) {
       </section>
     </ViewShell>
   );
-}
-
-function ChannelSummary({
-  summary,
-}: {
-  summary: ReturnType<typeof deriveSummary>;
-}) {
-  return (
-    <dl className="channel-summary">
-      <div>
-        <dt>Events on channel</dt>
-        <dd>{summary.eventCount}</dd>
-      </div>
-      <div>
-        <dt>Tool calls</dt>
-        <dd>{summary.toolCount}</dd>
-      </div>
-      <div>
-        <dt>Thoughts</dt>
-        <dd>{summary.thoughtCount}</dd>
-      </div>
-      <div>
-        <dt>Total tokens</dt>
-        <dd>{summary.totalTokens.toLocaleString()}</dd>
-      </div>
-      <div>
-        <dt>Elapsed</dt>
-        <dd>{summary.elapsedLabel}</dd>
-      </div>
-      <div>
-        <dt>Status</dt>
-        <dd>
-          <span className={`status-pill status-${summary.statusTone}`}>
-            {summary.statusLabel}
-          </span>
-        </dd>
-      </div>
-    </dl>
-  );
-}
-
-function TimelineRow({
-  event,
-  active,
-}: {
-  event: TimelineEvent;
-  active: boolean;
-}) {
-  const meta = rowMeta(event);
-  return (
-    <li className={`channel-row channel-row-${meta.tone}`}>
-      <span
-        className={`channel-dot ${active ? "channel-dot-active" : ""}`}
-        style={{ background: meta.color }}
-        aria-hidden
-      />
-      <div className="channel-row-body">
-        <div className="channel-row-header">
-          <div className="channel-row-title">
-            <strong>{meta.title}</strong>
-            {meta.subtitle ? (
-              <span className="channel-row-subtitle">{meta.subtitle}</span>
-            ) : null}
-          </div>
-          <div className="channel-row-meta">
-            <span className="channel-row-time">{formatClock(event.at)}</span>
-            {meta.duration ? (
-              <span className="channel-row-duration">{meta.duration}</span>
-            ) : null}
-          </div>
-        </div>
-        {meta.body ? <p className="channel-row-detail">{meta.body}</p> : null}
-        {meta.badges.length > 0 ? (
-          <div className="channel-row-badges">
-            {meta.badges.map((badge) => (
-              <span key={badge} className="channel-row-badge">
-                {badge}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </li>
-  );
-}
-
-type RowMeta = {
-  tone: string;
-  color: string;
-  title: string;
-  subtitle?: string;
-  body?: string;
-  duration?: string;
-  badges: string[];
-};
-
-function rowMeta(event: TimelineEvent): RowMeta {
-  switch (event.kind) {
-    case "run-started":
-      return {
-        tone: "run",
-        color: "#818cf8",
-        title: "Run started",
-        subtitle: "transformer initialised",
-        badges: [],
-      };
-
-    case "tool-started":
-      return {
-        tone: "tool",
-        color: PHASE_DOT[event.phase] ?? PHASE_DOT.other,
-        title: event.label,
-        subtitle: event.tool,
-        body: event.argsPreview || undefined,
-        badges: ["started"],
-      };
-
-    case "tool-finished":
-      return {
-        tone: event.status === "error" ? "error" : "tool-done",
-        color:
-          event.status === "error"
-            ? "#f87171"
-            : PHASE_DOT[event.phase] ?? PHASE_DOT.other,
-        title: event.label,
-        subtitle: event.tool,
-        body: event.outputPreview || undefined,
-        duration: formatDuration(event.durationMs),
-        badges: [event.status === "error" ? "failed" : "finished"],
-      };
-
-    case "thought":
-      return {
-        tone: "thought",
-        color: "#c4b5fd",
-        title: "Agent thought",
-        subtitle: `${event.inputTokens + event.outputTokens} tok`,
-        body: event.text,
-        badges:
-          event.outputTokens > 0 ? [`${event.outputTokens} out`] : [],
-      };
-
-    case "run-finished":
-      return {
-        tone: event.status === "error" ? "error" : "run-done",
-        color: event.status === "error" ? "#f87171" : "#34d399",
-        title: event.status === "error" ? "Run failed" : "Run finished",
-        subtitle: `${event.totalTools} tool call${
-          event.totalTools === 1 ? "" : "s"
-        } · ${event.totalTokens} tok`,
-        body: event.errorMessage,
-        duration: formatDuration(event.durationMs),
-        badges: [],
-      };
-
-    default: {
-      const exhaustive: never = event;
-      return {
-        tone: "run",
-        color: "#94a3b8",
-        title: "Unknown timeline event",
-        body: JSON.stringify(exhaustive),
-        badges: [],
-      };
-    }
-  }
-}
-
-function deriveSummary(timeline: TimelineEvent[]): {
-  eventCount: number;
-  toolCount: number;
-  thoughtCount: number;
-  totalTokens: number;
-  elapsedLabel: string;
-  statusLabel: string;
-  statusTone: string;
-} {
-  let toolCount = 0;
-  let thoughtCount = 0;
-  let totalTokens = 0;
-  let startedAt: number | null = null;
-  let finishedAt: number | null = null;
-  let statusLabel = "idle";
-  let statusTone = "pending";
-
-  for (const event of timeline) {
-    if (event.kind === "tool-started") toolCount += 1;
-    if (event.kind === "thought") {
-      thoughtCount += 1;
-      totalTokens += event.inputTokens + event.outputTokens;
-    }
-    if (event.kind === "run-started") {
-      startedAt = event.at;
-      statusLabel = "running";
-      statusTone = "running";
-    }
-    if (event.kind === "run-finished") {
-      finishedAt = event.at;
-      totalTokens = event.totalTokens || totalTokens;
-      statusLabel = event.status === "error" ? "failed" : "complete";
-      statusTone = event.status === "error" ? "error" : "complete";
-    }
-  }
-
-  const elapsedLabel =
-    startedAt != null && finishedAt != null
-      ? formatDuration(finishedAt - startedAt)
-      : startedAt != null
-        ? "in flight"
-        : "—";
-
-  return {
-    eventCount: timeline.length,
-    toolCount,
-    thoughtCount,
-    totalTokens,
-    elapsedLabel,
-    statusLabel,
-    statusTone,
-  };
 }
 
 function isTimelineEvent(value: unknown): value is TimelineEvent {

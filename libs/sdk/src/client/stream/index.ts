@@ -1123,6 +1123,20 @@ export class ThreadStream<
     input?: unknown;
     config?: unknown;
     metadata?: Record<string, unknown>;
+    /**
+     * Fork the new run from an explicit checkpoint instead of the
+     * thread's latest. Forwarded verbatim on the `/run.input` protocol
+     * message; the API layer picks it up and routes it to
+     * `graph.stream_v2({ forkFrom })` (see plan-roadmap.md R2.4 / A0.1).
+     */
+    forkFrom?: { checkpointId: string };
+    /**
+     * Controls how concurrent submissions on the same thread are
+     * handled by the server (`reject` | `rollback` | `interrupt` |
+     * `enqueue`). Forwarded to the server; the SDK does not interpret
+     * it locally (see plan-roadmap.md S1.3 / A0.3).
+     */
+    multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
     this.#prepareForNextRun();
     this.#startLifecycleWatcher();
@@ -2024,7 +2038,7 @@ export type {
   Subscribable,
 } from "./handles/index.js";
 export { inferChannel, matchesSubscription } from "./subscription.js";
-export type { TransportAdapter } from "./transport.js";
+export type { TransportAdapter, AgentServerAdapter } from "./transport.js";
 export type * from "./types.js";
 export { ProtocolError } from "./error.js";
 export { MediaAssembler, MediaAssemblyError } from "./media.js";

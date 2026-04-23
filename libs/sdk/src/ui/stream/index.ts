@@ -75,14 +75,14 @@ type IsReactAgent<T> = T extends { "~agentTypes": AgentTypeConfigLike }
 export type InferStateType<T> = T extends { "~agentTypes": unknown }
   ? InferAgentState<T>
   : T extends { "~RunOutput": infer S }
-    ? S extends Record<string, unknown>
+    ? S extends object
       ? S
       : Record<string, unknown>
     : T extends { "~OutputType": infer O }
-      ? O extends Record<string, unknown>
+      ? O extends object
         ? O
         : Record<string, unknown>
-      : T extends Record<string, unknown>
+      : [T] extends [object]
         ? T
         : Record<string, unknown>;
 

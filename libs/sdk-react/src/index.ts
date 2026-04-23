@@ -7,10 +7,26 @@ import type {
   DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 
-export { useStream, type ClassSubagentStreamInterface } from "./stream.js";
+// v1 public API. `useStream` is the v2-native hook. The
+// `useStreamExperimental` alias is kept for one minor release so
+// existing call sites can migrate without a hard breaking change.
 export {
+  useStream,
   useStreamExperimental,
-  useProjection,
+  STREAM_CONTROLLER,
+  type AnyStream,
+  type StateOf,
+  type UseStreamResult,
+  type UseStreamReturn,
+  type UseStreamExperimentalOptions,
+  type UseStreamExperimentalReturn,
+  type AgentServerOptions,
+  type CustomAdapterOptions,
+} from "./use-stream.js";
+
+export { useProjection } from "./use-projection.js";
+
+export {
   useMessages,
   useToolCalls,
   useValues,
@@ -20,108 +36,71 @@ export {
   useImages,
   useVideo,
   useFiles,
-  useMediaURL,
+  useMessageMetadata,
+  useSubmissionQueue,
+} from "./selectors.js";
+export type {
+  SelectorTarget,
+  UseSubmissionQueueReturn,
+  SubmissionQueueEntry,
+  SubmissionQueueSnapshot,
+} from "./selectors.js";
+
+export { useMediaURL } from "./use-media-url.js";
+export {
   useAudioPlayer,
-  useVideoPlayer,
   type AudioPlayerHandle,
   type PlayerStatus,
   type UseAudioPlayerOptions,
+} from "./use-audio-player.js";
+export {
+  useVideoPlayer,
   type UseVideoPlayerOptions,
   type VideoPlayerHandle,
-  STREAM_CONTROLLER,
-  MediaAssemblyError,
-  type AnyStream,
-  type StateOf,
-  type UseStreamExperimentalOptions,
-  type UseStreamExperimentalReturn,
-  type SelectorTarget,
-  type SubagentDiscoverySnapshot,
-  type SubgraphDiscoverySnapshot,
-  type StreamSubmitOptions,
-  type AssembledToolCall,
-  type ToolCallStatus,
-  type Channel,
-  type Event,
-  type AnyMediaHandle,
-  type AudioMedia,
-  type FileMedia,
-  type ImageMedia,
-  type MediaAssemblyErrorKind,
-  type MediaBase,
-  type MediaBlockType,
-  type VideoMedia,
-} from "./stream-experimental/index.js";
-export {
-  useSuspenseStream,
-  createSuspenseCache,
-  invalidateSuspenseCache,
-} from "./suspense-stream.js";
-export type { SuspenseCache } from "./suspense-stream.js";
-export { FetchStreamTransport } from "./stream.custom.js";
+} from "./use-video-player.js";
+
+// Framework-agnostic types users reach for on the React side.
+export type {
+  AnyMediaHandle,
+  AssembledToolCall,
+  AudioMedia,
+  Channel,
+  Event,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  SubagentDiscoverySnapshot,
+  SubgraphDiscoverySnapshot,
+  StreamSubmitOptions,
+  ToolCallStatus,
+  VideoMedia,
+  MessageMetadata,
+  MessageMetadataMap,
+} from "@langchain/langgraph-sdk/stream";
+export { MediaAssemblyError } from "@langchain/langgraph-sdk/stream";
+
+// v1 type-inference helpers from the framework-agnostic stream module.
+// `InferStateType` / `InferToolCalls` / `InferSubagentStates` /
+// `WidenUpdateMessages` are the canonical names users reach for when
+// prop-drilling a stream handle across components (plan-types.md §4, §8).
+export type {
+  InferStateType,
+  InferToolCalls,
+  InferSubagentStates,
+  WidenUpdateMessages,
+  AgentServerAdapter,
+} from "@langchain/langgraph-sdk/stream";
+export { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
+export type { HttpAgentServerAdapterOptions } from "@langchain/langgraph-sdk";
+export { useSuspenseStream } from "./suspense-stream.js";
+export type { UseSuspenseStreamReturn } from "./suspense-stream.js";
 export { StreamProvider, useStreamContext } from "./context.js";
 export type {
   StreamProviderProps,
   StreamProviderCustomProps,
 } from "./context.js";
-// Legacy exports - kept for backward compatibility
-export type {
-  UseStream,
-  UseSuspenseStream,
-  UseStreamCustom,
-  SubagentStream,
-  SubagentStreamInterface,
-} from "./types.js";
-// New stream interface types
-export type {
-  // Base stream types
-  BaseStream,
-  // Agent stream types (for createAgent)
-  UseAgentStream,
-  UseAgentStreamOptions,
-  // DeepAgent stream types (for createDeepAgent)
-  UseDeepAgentStream,
-  UseDeepAgentStreamOptions,
-  // Type resolvers
-  ResolveStreamInterface,
-  ResolveStreamOptions,
-  InferStateType,
-  InferToolCalls,
-  InferSubagentStates,
-  InferNodeNames,
-  InferBag,
-} from "@langchain/langgraph-sdk/ui";
-export type {
-  MessageMetadata,
-  UseStreamOptions,
-  UseStreamCustomOptions,
-  UseStreamTransport,
-  UseStreamThread,
-  GetToolCallsType,
-  // Agent type extraction helpers
-  AgentTypeConfigLike,
-  IsAgentLike,
-  ExtractAgentConfig,
-  InferAgentToolCalls,
-  // Subagent types
-  SubagentToolCall,
-  SubagentStatus,
-  // DeepAgent type helpers for subagent inference
-  SubAgentLike,
-  CompiledSubAgentLike,
-  DeepAgentTypeConfigLike,
-  IsDeepAgentLike,
-  ExtractDeepAgentConfig,
-  ExtractSubAgentMiddleware,
-  InferDeepAgentSubagents,
-  InferSubagentByName,
-  InferSubagentState,
-  InferSubagentNames,
-  SubagentStateMap,
-  DefaultSubagentStates,
-  BaseSubagentState,
-  QueueEntry,
-  QueueInterface,
-} from "@langchain/langgraph-sdk/ui";
 
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
   _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
@@ -139,13 +118,6 @@ export type {
   OnToolCallback,
   FlushPendingHeadlessToolInterruptsOptions,
 } from "@langchain/langgraph-sdk";
-export {
-  SubagentManager,
-  extractToolCallIdFromNamespace,
-  calculateDepthFromNamespace,
-  extractParentIdFromNamespace,
-  isSubagentNamespace,
-} from "@langchain/langgraph-sdk/ui";
 export {
   isHeadlessToolInterrupt,
   parseHeadlessToolInterruptPayload,

@@ -10,10 +10,13 @@ export {
   MediaAssemblyError,
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
+  HttpAgentServerAdapter,
 } from "./client.js";
+export type { HttpAgentServerAdapterOptions } from "./client.js";
 
 export type {
   TransportAdapter,
+  AgentServerAdapter,
   AssembledMessage,
   ThreadStreamOptions,
   SessionOrderingState,

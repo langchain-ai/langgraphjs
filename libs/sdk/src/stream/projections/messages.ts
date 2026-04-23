@@ -51,6 +51,19 @@ export function messagesProjection(
         { role: ExtendedMessageRole; toolCallId?: string }
       >();
       const indexById = new Map<string, number>();
+      // Ids this projection has observed via the `messages` channel
+      // (token-level deltas). Used by `applyValuesEvent` to prefer the
+      // stream-assembled version over the values-coerced shape while a
+      // turn is streaming, matching the root controller's policy.
+      const streamMessageIds = new Set<string>();
+      // Ids observed in the most recent `values.messages` snapshot.
+      // Messages that were present in a prior snapshot but are absent
+      // from this one are treated as explicit removals (server-side
+      // `RemoveMessage` reducer deltas). Stream-only messages (seen on
+      // the messages channel but never echoed in a values snapshot)
+      // are preserved — their enclosing superstep may simply not have
+      // committed yet.
+      let valuesMessageIds = new Set<string>();
 
       // Root-scoped projections whose channels are already covered by
       // the controller's root pump attach to the shared fan-out
@@ -158,47 +171,54 @@ export function messagesProjection(
         }
       };
 
-      // Backfill the store from `values.messages` snapshots.
+      // Rebuild the store from `values.messages` snapshots.
       //
       // `values` events carry the full, committed state of the
       // thread's `messages` channel at a checkpoint — they fire
       // on node completion, AFTER every `messages`-channel delta
-      // for that turn has been emitted. In practice they are the
-      // authoritative source of truth for the final shape of
-      // every message in the snapshot.
+      // for that turn has been emitted. They are the authoritative
+      // source of truth for ORDER and for non-streamed messages
+      // (human turns, serialised tool results, subagent echoes, …).
       //
-      // We treat them as such: for any message whose id we have
-      // already seen via the live `messages` channel, we REPLACE
-      // the store entry with the values-coerced instance. This
-      // self-heals two classes of glitch that surface in
-      // `getToolCallsWithResults`-style pairing logic:
+      // Why rebuild rather than merge-by-id?
       //
-      //  1. Tool messages arriving without `tool_call_id` on the
-      //     messages channel (e.g. the `message-start` predates
-      //     the server-side fix, or the client briefly saw an
-      //     empty shell before the `content-block-*` deltas).
-      //     The values snapshot always carries `tool_call_id` and
-      //     the final content.
+      // In practice the server may emit the same logical message
+      // with DIFFERENT ids across successive `values` snapshots at
+      // the same namespace — e.g. a subagent first surfaces its
+      // seed prompt with a synthetic id like
+      // `subagent:<tool_call_id>:human`, then a later superstep
+      // echoes the same prompt back with a real UUID (or vice
+      // versa). A naive "match-or-append by id" strategy treats
+      // each fresh id as a new entry and the list grows
+      // monotonically, showing the same content twice (or more)
+      // in the UI.
       //
-      //  2. AI messages whose finalized `tool_calls` didn't fully
-      //     land via the messages channel (e.g. a late-mounted
-      //     subscription missed some `content-block-finish`
-      //     events), leaving the store holding an
-      //     `AIMessageChunk` with only partial
-      //     `tool_call_chunks` and no resolved `tool_calls`. The
-      //     values snapshot's AI message has `tool_calls`
-      //     populated, so pairing downstream works.
+      // Policy (mirrors the root controller's `#applyValues`):
       //
-      // Overwriting is safe because values only fires on state
-      // commits (never mid-stream) and the values-coerced shape
-      // is the canonical one the rest of the app consumes. It's
-      // also idempotent: a subsequent messages-channel
-      // `content-block-*` or `message-finish` for the same id
-      // will correct any regressions via `applyEvent`'s replace
-      // path.
+      //  1. Walk `values.messages` in order. For each id, prefer
+      //     the stream-assembled entry if we have one for that id
+      //     (keeps in-progress token streaming visible); otherwise
+      //     take the values-coerced instance. This self-heals the
+      //     two classes of glitch the old merge-by-id handler
+      //     targeted:
+      //       - tool messages arriving without `tool_call_id` on
+      //         the messages channel — the values snapshot always
+      //         carries it;
+      //       - AI messages whose finalized `tool_calls` didn't
+      //         fully land via the messages channel — the values
+      //         snapshot's AI message has them populated.
       //
-      // Unkeyed messages (no stable id) are skipped because we
-      // can't dedupe them safely across repeated snapshots.
+      //  2. Append any stream-only ids (seen on the messages
+      //     channel but never echoed in ANY values snapshot yet)
+      //     — their enclosing superstep hasn't committed yet, so
+      //     dropping them would flash the UI.
+      //
+      //  3. Ids that WERE in a prior values snapshot but are gone
+      //     from this one are treated as explicit removals
+      //     (`RemoveMessage` reducer deltas) and dropped.
+      //
+      // Unkeyed messages (no stable id) are passed through in
+      // their values order because we can't dedupe them safely.
       const applyValuesEvent = (event: ValuesEvent): void => {
         const data = event.params.data;
         if (data == null || typeof data !== "object" || Array.isArray(data)) {
@@ -212,20 +232,46 @@ export function messagesProjection(
           rawMessages as (Message | BaseMessage)[]
         );
 
-        let changed = false;
+        const nextValueIds = new Set<string>();
+        const merged: BaseMessage[] = [];
         for (const message of coerced) {
           const id = (message as BaseMessage).id;
-          if (typeof id !== "string" || id.length === 0) continue;
-          const existingIdx = indexById.get(id);
-          if (existingIdx != null) {
-            pendingMessages[existingIdx] = message as BaseMessage;
-          } else {
-            indexById.set(id, pendingMessages.length);
-            pendingMessages.push(message as BaseMessage);
+          if (typeof id === "string" && id.length > 0) {
+            nextValueIds.add(id);
+            if (streamMessageIds.has(id)) {
+              const streamIdx = indexById.get(id);
+              const streamed =
+                streamIdx != null ? pendingMessages[streamIdx] : undefined;
+              merged.push((streamed ?? message) as BaseMessage);
+              continue;
+            }
           }
-          changed = true;
+          merged.push(message as BaseMessage);
         }
-        if (changed) scheduleFlush();
+
+        for (const existing of pendingMessages) {
+          const id = existing.id;
+          if (typeof id !== "string" || id.length === 0) continue;
+          if (nextValueIds.has(id)) continue;
+          // Drop if the server explicitly removed this id in a
+          // later snapshot; keep if it's still only ever been seen
+          // mid-stream.
+          if (valuesMessageIds.has(id)) continue;
+          if (!streamMessageIds.has(id)) continue;
+          merged.push(existing);
+        }
+
+        valuesMessageIds = nextValueIds;
+
+        pendingMessages.length = 0;
+        for (const message of merged) pendingMessages.push(message);
+        indexById.clear();
+        merged.forEach((message, idx) => {
+          if (typeof message.id === "string" && message.id.length > 0) {
+            indexById.set(message.id, idx);
+          }
+        });
+        scheduleFlush();
       };
 
       const applyEvent = (event: MessagesEvent): void => {
@@ -258,6 +304,7 @@ export function messagesProjection(
           toolCallId: captured.toolCallId,
         });
 
+        streamMessageIds.add(id);
         const existingIdx = indexById.get(id);
         if (existingIdx == null) {
           indexById.set(id, pendingMessages.length);
