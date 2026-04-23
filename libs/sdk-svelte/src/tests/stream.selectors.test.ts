@@ -1,0 +1,91 @@
+import { it, expect, inject } from "vitest";
+import { render } from "vitest-browser-svelte";
+
+import RootSelectorsStream from "./components/RootSelectorsStream.svelte";
+import DeepAgentStream from "./components/DeepAgentStream.svelte";
+
+const serverUrl = inject("serverUrl");
+
+it("root useMessages / useToolCalls / useValues delegate to stream root projections", async () => {
+  const screen = render(RootSelectorsStream, { apiUrl: serverUrl });
+
+  await expect
+    .element(screen.getByTestId("messages-count"))
+    .toHaveTextContent("0");
+
+  await screen.getByTestId("submit").click();
+
+  // Human message + AI reply.
+  await expect
+    .element(screen.getByTestId("messages-count"))
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("messages-first"))
+    .toHaveTextContent("Hi");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  // values surface should hold the same messages array length.
+  await expect
+    .element(screen.getByTestId("values-messages-count"))
+    .toHaveTextContent("2");
+});
+
+it("useChannel buffers raw custom events", async () => {
+  const screen = render(RootSelectorsStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+
+  const customCount = Number(
+    screen.getByTestId("custom-event-count").element().textContent,
+  );
+  expect(customCount).toBeGreaterThan(0);
+});
+
+it("discovers subagents and scopes useMessages/useToolCalls to each namespace", async () => {
+  const screen = render(DeepAgentStream, { apiUrl: serverUrl });
+
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("subagent-count"), { timeout: 30_000 })
+    .toHaveTextContent("2");
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 30_000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("subagent-names"))
+    .toHaveTextContent(/data-analyst/);
+  await expect
+    .element(screen.getByTestId("subagent-names"))
+    .toHaveTextContent(/researcher/);
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-status"))
+    .toHaveTextContent("complete");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-status"))
+    .toHaveTextContent("complete");
+
+  await expect
+    .element(screen.getByTestId("subagent-researcher-messages-count"))
+    .not.toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("subagent-data-analyst-messages-count"))
+    .not.toHaveTextContent("0");
+
+  await expect
+    .element(screen.getByTestId("root-toolcall-names"))
+    .toHaveTextContent(/task/);
+});
