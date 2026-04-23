@@ -40,7 +40,6 @@ export async function runStream(
   const model = new ChatAnthropic({
     model: modelName,
     temperature: 0,
-    maxTokens: 4096,
     streaming: true,
   });
 
