@@ -34,7 +34,7 @@ export async function runStream(
     message = DEFAULT_PROMPT,
     model: modelName = DEFAULT_MODEL,
     streamMode = ["messages", "updates", "values"],
-    subgraphs = false,
+    subgraphs = true,
   } = opts;
 
   const model = new ChatAnthropic({

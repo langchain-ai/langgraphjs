@@ -10,7 +10,7 @@
  */
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { snap, startPeriodicSampler, T0_MS } from "./telemetry.js";
+import { snap, startPeriodicSampler, instrumentSSEStream, T0_MS } from "./telemetry.js";
 import { runStream } from "./runner.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -54,10 +54,16 @@ app.post("/run", async (c) => {
       subgraphs: body?.subgraphs,
     });
 
-    // Pipe the SSE ReadableStream directly to the HTTP response.
-    // This is the realistic path — chunks flow over the wire as
-    // they're produced by the Pregel engine.
-    return new Response(sseStream, {
+    // Wrap the SSE stream with telemetry so we capture pre/post/peak
+    // memory snapshots around the *full stream lifecycle* — not just
+    // around the stream creation (which returns immediately).
+    const label = body?.label ?? "run";
+    const instrumented = instrumentSSEStream(label, sseStream);
+
+    // Pipe the instrumented SSE ReadableStream directly to the HTTP
+    // response. Chunks flow over the wire as they're produced by the
+    // Pregel engine, and telemetry fires when the stream closes.
+    return new Response(instrumented, {
       headers: {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",

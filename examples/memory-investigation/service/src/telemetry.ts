@@ -64,15 +64,32 @@ function emit(record: Record<string, unknown>) {
 // ─── Periodic sampler ────────────────────────────────────────────────
 // 10_000 samples = ~1000s at 100 ms, plenty for long-running requests.
 const RING_CAPACITY = 10_000;
-const samples: MemSnap[] = [];
+
+// Circular buffer — O(1) insert, no Array.shift() copying.
+// `ringBuffer` is pre-allocated to RING_CAPACITY slots. `ringLength`
+// tracks how many are actually filled (grows until RING_CAPACITY, then
+// stays fixed). `ringHead` points to the oldest entry (the next slot
+// to be overwritten once full).
+const ringBuffer: MemSnap[] = new Array<MemSnap>(RING_CAPACITY);
+let ringHead = 0; // index of oldest entry
+let ringLength = 0; // number of entries currently stored
 let samplerTimer: ReturnType<typeof setInterval> | null = null;
+
+function ringPush(s: MemSnap) {
+  if (ringLength < RING_CAPACITY) {
+    ringBuffer[ringLength] = s;
+    ringLength++;
+  } else {
+    ringBuffer[ringHead] = s;
+    ringHead = (ringHead + 1) % RING_CAPACITY;
+  }
+}
 
 export function startPeriodicSampler(intervalMs = 100) {
   if (samplerTimer) return;
   samplerTimer = setInterval(() => {
     const s = snap();
-    samples.push(s);
-    if (samples.length > RING_CAPACITY) samples.shift();
+    ringPush(s);
     emit({ ev: "sample", ...s });
   }, intervalMs);
   // Unref so the sampler doesn't keep the process alive.
@@ -83,8 +100,15 @@ export function startPeriodicSampler(intervalMs = 100) {
 }
 
 export function getRecentSamples(sinceMs?: number): MemSnap[] {
-  if (sinceMs === undefined) return [...samples];
-  return samples.filter((s) => s.t_ms >= sinceMs);
+  const result: MemSnap[] = [];
+  for (let i = 0; i < ringLength; i++) {
+    const idx = (ringHead + i) % RING_CAPACITY;
+    const s = ringBuffer[idx];
+    if (sinceMs === undefined || s.t_ms >= sinceMs) {
+      result.push(s);
+    }
+  }
+  return result;
 }
 
 // ─── Per-request instrumentation ─────────────────────────────────────
@@ -98,6 +122,37 @@ export interface RequestStats {
   peak_heap: number;
   peak_rss: number;
   peak_external: number;
+}
+
+/**
+ * Compute peak values from a window of samples using reduce() instead
+ * of Math.max(...spread) to avoid call stack limits on large windows.
+ */
+function computePeaks(
+  pre: MemSnap,
+  post: MemSnap,
+  startMs: number,
+  endMs: number,
+): { peak_heap: number; peak_rss: number; peak_external: number } {
+  let peak_heap = Math.max(pre.heap_used, post.heap_used);
+  let peak_rss = Math.max(pre.rss, post.rss);
+  let peak_external = Math.max(pre.external, post.external);
+
+  // Walk the ring buffer without allocating a filtered copy.
+  if (ringLength > 0) {
+    let idx = ringHead;
+    for (let i = 0; i < ringLength; i++) {
+      const s = ringBuffer[idx];
+      if (s.t_ms >= startMs && s.t_ms <= endMs) {
+        if (s.heap_used > peak_heap) peak_heap = s.heap_used;
+        if (s.rss > peak_rss) peak_rss = s.rss;
+        if (s.external > peak_external) peak_external = s.external;
+      }
+      idx = (idx + 1) % RING_CAPACITY;
+    }
+  }
+
+  return { peak_heap, peak_rss, peak_external };
 }
 
 /**
@@ -134,26 +189,7 @@ export async function instrumentRequest<T>(
     throw err;
   }
   const post = snap();
-  // Peak across the request's time window — filter by t_ms rather than
-  // index so this is robust even if the ring buffer wrapped.
-  const windowSamples = samples.filter(
-    (s) => s.t_ms >= pre.t_ms && s.t_ms <= post.t_ms,
-  );
-  const peak_heap = Math.max(
-    post.heap_used,
-    pre.heap_used,
-    ...windowSamples.map((s) => s.heap_used),
-  );
-  const peak_rss = Math.max(
-    post.rss,
-    pre.rss,
-    ...windowSamples.map((s) => s.rss),
-  );
-  const peak_external = Math.max(
-    post.external,
-    pre.external,
-    ...windowSamples.map((s) => s.external),
-  );
+  const peaks = computePeaks(pre, post, pre.t_ms, post.t_ms);
 
   const stats: RequestStats = {
     request_id: requestId,
@@ -162,12 +198,93 @@ export async function instrumentRequest<T>(
     duration_ms: post.t_ms - pre.t_ms,
     pre,
     post,
-    peak_heap,
-    peak_rss,
-    peak_external,
+    ...peaks,
   };
   emit({ ev: "request", label, ...stats });
   return { result, stats };
+}
+
+/**
+ * Wrap an SSE ReadableStream<Uint8Array> so that when the stream fully
+ * drains (or errors), we capture a post-execution memory snapshot. This
+ * solves the problem that `runStream()` returns the ReadableStream
+ * immediately — the real memory pressure happens during iteration.
+ *
+ * Returns a new ReadableStream that passes through all bytes unchanged
+ * but emits telemetry events at start, end, and on error.
+ */
+export function instrumentSSEStream(
+  label: string,
+  stream: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  const requestId = randomUUID();
+  const pre = snap();
+  let bytesSent = 0;
+
+  emit({
+    ev: "stream_start",
+    request_id: requestId,
+    label,
+    t_ms: pre.t_ms,
+    pre,
+  });
+
+  const reader = stream.getReader();
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          const post = snap();
+          const peaks = computePeaks(pre, post, pre.t_ms, post.t_ms);
+          const stats: RequestStats = {
+            request_id: requestId,
+            t_start_ms: pre.t_ms,
+            t_end_ms: post.t_ms,
+            duration_ms: post.t_ms - pre.t_ms,
+            pre,
+            post,
+            ...peaks,
+          };
+          emit({
+            ev: "stream_end",
+            label,
+            bytes_sent: bytesSent,
+            ...stats,
+          });
+          return;
+        }
+        bytesSent += value.byteLength;
+        controller.enqueue(value);
+      } catch (err) {
+        const post = snap();
+        emit({
+          ev: "stream_error",
+          request_id: requestId,
+          label,
+          t_ms: post.t_ms,
+          post,
+          bytes_sent: bytesSent,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        controller.error(err);
+      }
+    },
+    cancel() {
+      reader.cancel();
+      const post = snap();
+      emit({
+        ev: "stream_cancel",
+        request_id: requestId,
+        label,
+        t_ms: post.t_ms,
+        post,
+        bytes_sent: bytesSent,
+      });
+    },
+  });
 }
 
 export function T0_MS(): number {

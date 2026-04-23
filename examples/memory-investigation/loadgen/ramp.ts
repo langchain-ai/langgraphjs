@@ -27,7 +27,7 @@ import {
   existsSync,
 } from "node:fs";
 import { dirname } from "node:path";
-import { execSync } from "node:child_process";
+import { request as httpRequest } from "node:http";
 
 // ── CLI arg parsing ─────────────────────────────────────────────────
 
@@ -110,56 +110,84 @@ function appendEv(ev: Record<string, unknown>) {
 }
 
 // ── Docker stats poller ─────────────────────────────────────────────
+// Uses the Docker Engine API via unix socket for:
+//   - Async, non-blocking polling (no execSync blocking the event loop)
+//   - Access to memory_stats.max_usage (high-water mark)
+//   - True ~200ms resolution instead of ~2s from `docker stats --no-stream`
 
-function pollDockerStats(): boolean {
+const DOCKER_SOCKET = process.env.DOCKER_HOST ?? "/var/run/docker.sock";
+
+interface DockerMemoryStats {
+  usage: number;
+  max_usage: number;
+  limit: number;
+  stats?: { rss?: number };
+}
+
+interface DockerCpuUsage {
+  total_usage: number;
+  system_cpu_usage?: number;
+}
+
+interface DockerStatsResponse {
+  memory_stats: DockerMemoryStats;
+  cpu_stats: { cpu_usage: DockerCpuUsage; system_cpu_usage?: number; online_cpus?: number };
+  precpu_stats: { cpu_usage: DockerCpuUsage; system_cpu_usage?: number };
+}
+
+let prevCpuTotal = 0;
+let prevSystemCpu = 0;
+
+function dockerApiGet(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const opts = {
+      socketPath: DOCKER_SOCKET,
+      path,
+      method: "GET",
+      timeout: 3000,
+    };
+    const req = httpRequest(opts, (res) => {
+      let data = "";
+      res.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+      res.on("end", () => resolve(data));
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
+    req.end();
+  });
+}
+
+async function pollDockerStats(): Promise<boolean> {
   try {
-    const raw = execSync(
-      `docker stats ${CONTAINER} --no-stream --format "{{json .}}"`,
-      { encoding: "utf-8", timeout: 3000 },
-    ).trim();
+    const raw = await dockerApiGet(
+      `/containers/${CONTAINER}/stats?stream=false`,
+    );
     if (!raw) return false;
-    const stats = JSON.parse(raw);
+    const stats: DockerStatsResponse = JSON.parse(raw);
 
-    // Parse memory usage — format is like "520MiB / 1GiB"
-    const parseMemMB = (s: string): number => {
-      if (!s) return 0;
-      const parts = s.split("/")[0].trim();
-      const match = parts.match(/([\d.]+)\s*(GiB|MiB|KiB|B)/i);
-      if (!match) return 0;
-      const val = parseFloat(match[1]);
-      const unit = match[2].toLowerCase();
-      if (unit === "gib") return val * 1024;
-      if (unit === "mib") return val;
-      if (unit === "kib") return val / 1024;
-      return val / (1024 * 1024);
-    };
+    const mem = stats.memory_stats;
+    const toMB = (b: number) => +(b / 1024 / 1024).toFixed(1);
 
-    const parseLimitMB = (s: string): number => {
-      if (!s) return 0;
-      const parts = s.split("/");
-      if (parts.length < 2) return 0;
-      return parseMemMB(parts[1]);
-    };
-
-    const parseCpuPct = (s: string): number => {
-      if (!s) return 0;
-      return parseFloat(s.replace("%", "")) || 0;
-    };
-
-    const memUsageMB = parseMemMB(stats.MemUsage);
-    const memLimitMB = parseLimitMB(stats.MemUsage);
-    const memPct = parseFloat(stats.MemPerc?.replace("%", "") || "0");
-    const cpuPct = parseCpuPct(stats.CPUPerc);
+    // CPU % calculation (same formula as `docker stats`)
+    const cpuDelta =
+      stats.cpu_stats.cpu_usage.total_usage - prevCpuTotal;
+    const sysDelta =
+      (stats.cpu_stats.system_cpu_usage ?? 0) - prevSystemCpu;
+    const onlineCpus = stats.cpu_stats.online_cpus ?? 1;
+    const cpuPct =
+      sysDelta > 0 ? +((cpuDelta / sysDelta) * onlineCpus * 100).toFixed(1) : 0;
+    prevCpuTotal = stats.cpu_stats.cpu_usage.total_usage;
+    prevSystemCpu = stats.cpu_stats.system_cpu_usage ?? 0;
 
     appendEv({
       ev: "docker_stats",
       t: Date.now(),
-      container_mem_usage_mb: +memUsageMB.toFixed(1),
-      container_mem_limit_mb: +memLimitMB.toFixed(1),
-      container_mem_pct: +memPct.toFixed(1),
-      container_cpu_pct: +cpuPct.toFixed(1),
-      raw_mem: stats.MemUsage,
-      raw_cpu: stats.CPUPerc,
+      container_mem_usage_mb: toMB(mem.usage),
+      container_mem_limit_mb: toMB(mem.limit),
+      container_mem_pct: +((mem.usage / mem.limit) * 100).toFixed(1),
+      container_rss_mb: toMB(mem.stats?.rss ?? 0),
+      container_mem_max_usage_mb: toMB(mem.max_usage),
+      container_cpu_pct: cpuPct,
     });
     return true;
   } catch {
@@ -421,8 +449,9 @@ async function main() {
   console.log(`Service healthy. Starting ramp.\n`);
 
   // Start background pollers
-  const dockerTimer = setInterval(pollDockerStats, DOCKER_INTERVAL);
-  const metricsTimer = setInterval(pollAppMetrics, METRICS_INTERVAL);
+  // pollDockerStats is async — wrap to avoid unhandled rejections
+  const dockerTimer = setInterval(() => void pollDockerStats(), DOCKER_INTERVAL);
+  const metricsTimer = setInterval(() => void pollAppMetrics(), METRICS_INTERVAL);
   // Unref so they don't keep the process alive
   if (typeof dockerTimer.unref === "function") dockerTimer.unref();
   if (typeof metricsTimer.unref === "function") metricsTimer.unref();
@@ -539,7 +568,7 @@ async function main() {
 
   // Final metrics
   await new Promise((r) => setTimeout(r, 500));
-  pollDockerStats();
+  await pollDockerStats();
   await pollAppMetrics();
 
   const totalDuration = Date.now() - t0;
