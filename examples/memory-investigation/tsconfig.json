@@ -1,0 +1,16 @@
+{
+  "extends": "@tsconfig/recommended",
+  "compilerOptions": {
+    "outDir": "dist",
+    "lib": ["ES2021", "ES2022.Object", "ES2022.Error", "DOM"],
+    "target": "ES2021",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowSyntheticDefaultImports": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedParameters": false,
+    "useDefineForClassFields": true,
+    "strictPropertyInitialization": false
+  }
+}

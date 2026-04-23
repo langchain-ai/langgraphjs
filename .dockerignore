@@ -1,0 +1,26 @@
+# Big & regenerable — skip these to keep build context small.
+**/node_modules
+**/.turbo
+**/dist
+**/dist-cjs
+**/.next
+**/.cache
+**/coverage
+
+# Our investigation artifacts that shouldn't go in the container
+examples/memory-investigation/snapshots
+examples/memory-investigation/results
+examples/memory-investigation/experiments/04-monday-trace-repro
+examples/memory-investigation/experiments/diagnostic
+
+# Git / editor metadata
+.git
+.vscode
+.idea
+.DS_Store
+
+# Test fixtures in libs that aren't needed at runtime
+**/tests
+**/__tests__
+**/*.test.ts
+**/*.test.js

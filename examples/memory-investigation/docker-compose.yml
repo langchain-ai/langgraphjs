@@ -1,0 +1,22 @@
+services:
+  mre-service:
+    build:
+      context: ../..
+      dockerfile: examples/memory-investigation/service/Dockerfile
+    container_name: mre-service
+    ports:
+      - "3000:3000"
+    mem_limit: 1g
+    memswap_limit: 1g
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MODEL_NAME: ${MODEL_NAME:-claude-haiku-4-5}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-}
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      PORT: "3000"
+      SAMPLE_INTERVAL_MS: "100"
+      NODE_OPTIONS: "--expose-gc --max-old-space-size=768"
+    volumes:
+      - ./results:/results
+    restart: "no"
