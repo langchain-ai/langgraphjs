@@ -110,7 +110,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "message-start",
             role: rawMessage.type as MessageRole,
-            message_id: messageId,
+            id: messageId,
             ...(state.metadata != null ? { metadata: state.metadata } : {}),
           } satisfies MessageStartData)
         );
@@ -118,7 +118,7 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "content-block-start",
             index: 0,
-            content_block: { type: "text", text: "" },
+            content: { type: "text", text: "" },
           } satisfies ContentBlockStartData)
         );
         state.started = true;
@@ -132,7 +132,7 @@ export class SessionMessageProcessor {
             this.callbacks.createMessagesEvent(messageNamespace, {
               event: "content-block-delta",
               index: 0,
-              content_block: { type: "text", text: delta },
+              content: { type: "text", text: delta },
             } satisfies ContentBlockDeltaData)
           );
         }
@@ -165,13 +165,12 @@ export class SessionMessageProcessor {
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "content-block-finish",
             index: 0,
-            content_block: { type: "text", text: state.lastText },
+            content: { type: "text", text: state.lastText },
           } satisfies ContentBlockFinishData)
         );
         await this.callbacks.pushEvent(
           this.callbacks.createMessagesEvent(messageNamespace, {
             event: "message-finish",
-            reason: "stop",
           } satisfies MessageFinishData)
         );
         state.finished = true;
@@ -200,7 +199,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "message-start",
         role: type,
-        message_id: id,
+        id: id,
         ...(state.metadata != null ? { metadata: state.metadata } : {}),
       } satisfies MessageStartData)
     );
@@ -231,7 +230,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-start",
           index,
-          content_block:
+          content:
             type === "text"
               ? { type: "text", text: "" }
               : { type: "reasoning", reasoning: "" },
@@ -251,7 +250,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-delta",
         index,
-        content_block:
+        content:
           type === "text"
             ? { type: "text", text: value }
             : { type: "reasoning", reasoning: value },
@@ -271,7 +270,7 @@ export class SessionMessageProcessor {
     namespace: Namespace,
     state: MessageState,
     index: number,
-    contentBlock: ContentBlockFinishData["content_block"]
+    contentBlock: ContentBlockFinishData["content"]
   ) {
     const existing = state.blocks.get(index);
     if (existing != null) return;
@@ -280,14 +279,14 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-start",
         index,
-        content_block: contentBlock,
+        content: contentBlock,
       } satisfies ContentBlockStartData)
     );
     await this.callbacks.pushEvent(
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-finish",
         index,
-        content_block: contentBlock,
+        content: contentBlock,
       } satisfies ContentBlockFinishData)
     );
     state.blocks.set(index, {
@@ -320,7 +319,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-start",
           index,
-          content_block: {
+          content: {
             type: "tool_call_chunk",
             id: options?.id ?? null,
             name: options?.name ?? null,
@@ -348,7 +347,7 @@ export class SessionMessageProcessor {
       this.callbacks.createMessagesEvent(namespace, {
         event: "content-block-delta",
         index,
-        content_block: {
+        content: {
           type: "tool_call_chunk",
           id: options?.id ?? null,
           name: options?.name ?? null,
@@ -379,7 +378,7 @@ export class SessionMessageProcessor {
     for (const [index, block] of blocks) {
       if (block.finished) continue;
 
-      let contentBlock: ContentBlockFinishData["content_block"];
+      let contentBlock: ContentBlockFinishData["content"];
       if (block.type === "text") {
         contentBlock = { type: "text", text: block.value };
       } else if (block.type === "reasoning") {
@@ -399,7 +398,7 @@ export class SessionMessageProcessor {
         this.callbacks.createMessagesEvent(namespace, {
           event: "content-block-finish",
           index,
-          content_block: contentBlock,
+          content: contentBlock,
         } satisfies ContentBlockFinishData)
       );
       block.finished = true;

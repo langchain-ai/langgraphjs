@@ -51,7 +51,7 @@ export type MessageBlockState = {
   finished: boolean;
   id?: string;
   name?: string;
-  contentBlock?: ContentBlockFinishData["content_block"];
+  contentBlock?: ContentBlockFinishData["content"];
 };
 
 /**

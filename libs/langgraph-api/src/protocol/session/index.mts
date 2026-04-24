@@ -24,7 +24,6 @@ import type {
 import {
   normalizeInputRequestedData,
   normalizeToolData,
-  normalizeUpdatesData,
   stripInterruptsFromValues,
   toLifecycleStatus,
 } from "./event-normalizers.mjs";
@@ -410,6 +409,13 @@ export class RunProtocolSession {
     const { method, namespace: rawNamespace } = parseEventName(event.event);
     const namespace = normalizeNamespace(rawNamespace);
 
+    if (
+      event.normalized &&
+      (await this.forwardNormalizedSourceEvent(method, namespace, event.data))
+    ) {
+      return;
+    }
+
     // Authoritative `lifecycle` events come from core's
     // `LifecycleTransformer`.  The session is an *observer*: it
     // updates its in-memory namespace tracking for agent-tree queries
@@ -473,7 +479,7 @@ export class RunProtocolSession {
           return;
         }
         if (isMessageTuplePayload(event.data)) {
-          this.#logOnce(`model uses legacy stream mode`);
+          this.#logOnce(`model uses tuple messages stream`);
           await this.messageProcessor.normalizeTupleMessageEvent(
             namespace,
             event.data[0],
@@ -481,69 +487,7 @@ export class RunProtocolSession {
           );
         }
         return;
-      case "updates": {
-        // Child-namespace `lifecycle.completed` events are synthesized
-        // upstream by core's `LifecycleTransformer` based on the same
-        // `updates` node attribution, so the session only forwards
-        // updates here — no cascade bookkeeping needed.
-        if (event.normalized) {
-          const data = event.data as { node?: string; values: unknown };
-          if (data.node === "__interrupt__") {
-            await this.emitInputRequestedEvents(
-              namespace,
-              normalizeInputRequestedData(data.values)
-            );
-            return;
-          }
-          await this.pushEvent(
-            this.createEvent(
-              "updates",
-              namespace,
-              data.values as ProtocolEventDataMap["updates"],
-              data.node
-            )
-          );
-          return;
-        }
-
-        const normalized = normalizeUpdatesData(event.data);
-        if (normalized.node === "__interrupt__") {
-          await this.emitInputRequestedEvents(
-            namespace,
-            normalizeInputRequestedData(event.data)
-          );
-          return;
-        }
-
-        const strippedUpdates = stripInterruptsFromValues(normalized.values);
-        await this.emitInputRequestedEvents(
-          namespace,
-          strippedUpdates.inputRequests
-        );
-        if (!this.hasStatePayload(strippedUpdates.values)) {
-          return;
-        }
-        await this.pushEvent(
-          this.createEvent(
-            "updates",
-            namespace,
-            strippedUpdates.values as ProtocolEventDataMap["updates"],
-            normalized.node
-          )
-        );
-        return;
-      }
       case "custom":
-        if (event.normalized) {
-          await this.pushEvent(
-            this.createEvent(
-              "custom",
-              namespace,
-              event.data as ProtocolEventDataMap["custom"]
-            )
-          );
-          return;
-        }
         await this.pushEvent(
           this.createEvent("custom", namespace, {
             payload: event.data,
@@ -554,16 +498,6 @@ export class RunProtocolSession {
         await this.pushEvent(this.createEvent("tasks", namespace, event.data));
         return;
       case "tools":
-        if (event.normalized) {
-          await this.pushEvent(
-            this.createEvent(
-              "tools",
-              namespace,
-              event.data as ProtocolEventDataMap["tools"]
-            )
-          );
-          return;
-        }
         await this.pushEvent(
           this.createEvent(
             "tools",
@@ -592,6 +526,103 @@ export class RunProtocolSession {
           } satisfies CustomData)
         );
         return;
+    }
+  }
+
+  /**
+   * Forwards events already converted by core's stream_v2 pipeline.
+   *
+   * Legacy source events continue through the normalizers in
+   * {@link handleSourceEvent}; this path is only for events marked by
+   * `streamStateV2` after `convertToProtocolEvent` and the built-in stream
+   * transformers have run.
+   */
+  private async forwardNormalizedSourceEvent(
+    method: string,
+    namespace: Namespace,
+    data: unknown
+  ): Promise<boolean> {
+    switch (method) {
+      case "lifecycle": {
+        if (namespace.length === 0) return true;
+        const lifecycleData = data as ProtocolEventDataMap["lifecycle"];
+        this.setNamespaceInfo(namespace, lifecycleData.event, {
+          graphName: lifecycleData.graph_name,
+        });
+        await this.pushEvent(
+          this.createEvent("lifecycle", namespace, lifecycleData)
+        );
+        return true;
+      }
+      case "messages": {
+        if (namespace.length > 0) {
+          await this.ensureNamespaces(namespace);
+        }
+        this.#logOnce(`model supports v2 stream mode`);
+        await this.pushEvent(
+          this.createEvent(
+            "messages",
+            namespace,
+            data as ProtocolEventDataMap["messages"]
+          )
+        );
+        return true;
+      }
+      case "updates": {
+        await this.ensureNamespaces(namespace);
+        const updatesData = data as { node?: string; values: unknown };
+        if (updatesData.node === "__interrupt__") {
+          await this.emitInputRequestedEvents(
+            namespace,
+            normalizeInputRequestedData(updatesData.values)
+          );
+          return true;
+        }
+        await this.pushEvent(
+          this.createEvent(
+            "updates",
+            namespace,
+            updatesData.values as ProtocolEventDataMap["updates"],
+            updatesData.node
+          )
+        );
+        return true;
+      }
+      case "tools": {
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent(
+            "tools",
+            namespace,
+            data as ProtocolEventDataMap["tools"]
+          )
+        );
+        return true;
+      }
+      case "custom": {
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent(
+            "custom",
+            namespace,
+            data as ProtocolEventDataMap["custom"]
+          )
+        );
+        return true;
+      }
+      case "checkpoints": {
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent(
+            "checkpoints",
+            namespace,
+            data as ProtocolEventDataMap["checkpoints"]
+          )
+        );
+        return true;
+      }
+      default:
+        return false;
     }
   }
 

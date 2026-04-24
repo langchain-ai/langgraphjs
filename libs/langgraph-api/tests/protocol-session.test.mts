@@ -55,8 +55,10 @@ describe("RunProtocolSession", () => {
     await session.ingestSourceEvent({
       id: "1",
       event: "updates",
+      normalized: true,
       data: {
-        __interrupt__: [
+        node: "__interrupt__",
+        values: [
           {
             id: "interrupt_1",
             value: {
@@ -124,7 +126,8 @@ describe("RunProtocolSession", () => {
     await session.ingestSourceEvent({
       id: "1",
       event: "updates|gp_two|p_two",
-      data: { c_one: { messages: ["Entered c_one node"] } },
+      normalized: true,
+      data: { node: "c_one", values: { messages: ["Entered c_one node"] } },
     });
 
     await session.handleCommand(
@@ -196,7 +199,13 @@ describe("RunProtocolSession", () => {
     await session.ingestSourceEvent({
       id: "4",
       event: "tools|gp_two",
-      data: { event: "on_tool_start", name: "weather", input: {} },
+      normalized: true,
+      data: {
+        event: "tool-started",
+        tool_call_id: "tool_call_1",
+        tool_name: "weather",
+        input: {},
+      },
     });
 
     const streamedEvents = sent.filter(
@@ -266,7 +275,7 @@ describe("RunProtocolSession", () => {
     });
   });
 
-  it("derives legacy message namespaces from checkpoint metadata", async () => {
+  it("forwards normalized message protocol events", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);
     await session.start();
@@ -283,19 +292,13 @@ describe("RunProtocolSession", () => {
 
     await session.ingestSourceEvent({
       id: "1",
-      event: "messages/metadata",
+      event: "messages|tools:call_123|model:worker_456",
+      normalized: true,
       data: {
-        message_1: {
-          metadata: {
-            langgraph_checkpoint_ns: "tools:call_123|model:worker_456",
-          },
-        },
+        event: "message-start",
+        message_id: "message_1",
+        role: "ai",
       },
-    });
-    await session.ingestSourceEvent({
-      id: "2",
-      event: "messages/partial",
-      data: [{ id: "message_1", type: "ai", content: "Hello" }],
     });
 
     const events = sent.filter(
@@ -313,24 +316,13 @@ describe("RunProtocolSession", () => {
         data: {
           event: "message-start",
           message_id: "message_1",
-        },
-      },
-    });
-
-    expect(events[1]).toMatchObject({
-      type: "event",
-      method: "messages",
-      params: {
-        namespace: ["tools:call_123", "model:worker_456"],
-        data: {
-          event: "content-block-start",
-          index: 0,
+          role: "ai",
         },
       },
     });
   });
 
-  it("normalizes namespaced tuple message events into protocol lifecycle events", async () => {
+  it("normalizes tuple message events that still arrive from the stream source", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);
     await session.start();
@@ -373,7 +365,7 @@ describe("RunProtocolSession", () => {
         timestamp: expect.any(Number),
         data: {
           event: "message-start",
-          message_id: "message_1",
+          id: "message_1",
           role: "ai",
         },
       },
@@ -383,7 +375,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
       },
       {
@@ -392,275 +384,7 @@ describe("RunProtocolSession", () => {
         data: {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Hel" },
-        },
-      },
-    ]);
-  });
-
-  it("normalizes tuple tool-call chunks and strips non-protocol metadata", async () => {
-    const sent: unknown[] = [];
-    const session = createSession(sent);
-    await session.start();
-    sent.length = 0;
-
-    await session.handleCommand(
-      JSON.stringify({
-        id: 1,
-        method: "subscription.subscribe",
-        params: { channels: ["messages"] },
-      })
-    );
-    sent.length = 0;
-
-    await session.ingestSourceEvent({
-      id: "1",
-      event: "messages|model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87",
-      data: [
-        {
-          id: "chatcmpl-1",
-          type: "ai",
-          content: "",
-          tool_call_chunks: [
-            {
-              args: "scrip",
-              index: 0,
-              type: "tool_call_chunk",
-            },
-          ],
-          additional_kwargs: {
-            tool_calls: [
-              {
-                index: 0,
-                function: {
-                  arguments: "scrip",
-                },
-              },
-            ],
-          },
-          response_metadata: {
-            model_provider: "openai",
-            usage: {},
-          },
-          tool_calls: [],
-          invalid_tool_calls: [
-            {
-              name: "",
-              args: "scrip",
-              error: "Malformed args.",
-              type: "invalid_tool_call",
-            },
-          ],
-        },
-        {
-          tags: [],
-          ls_integration: "deepagents",
-          created_by: "system",
-          run_attempt: 1,
-          langgraph_version: "1.2.6",
-          langgraph_plan: "developer",
-          langgraph_host: "self-hosted",
-          langgraph_api_url: "http://localhost:2024",
-          thread_id: "thread_123",
-          run_id: "run_123",
-          graph_id: "deep-agent",
-          assistant_id: "assistant_123",
-          langgraph_step: 3,
-          langgraph_node: "model_request",
-          langgraph_triggers: ["branch:to:model_request"],
-          langgraph_path: ["__pregel_pull", "model_request"],
-          langgraph_checkpoint_ns:
-            "model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87",
-          __pregel_task_id: "task_123",
-          checkpoint_ns:
-            "model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87",
-          ls_provider: "openai",
-          ls_model_name: "gpt-4o-mini",
-          ls_model_type: "chat",
-          versions: {
-            "@langchain/core": "1.1.31",
-            "@langchain/openai": "1.2.13",
-          },
-        },
-      ],
-    });
-
-    const events = sent.filter(
-      (message): message is Record<string, unknown> =>
-        typeof message === "object" &&
-        message != null &&
-        (message as { type?: string }).type === "event"
-    );
-
-    expect(events.map((event) => event.params)).toEqual([
-      {
-        namespace: ["model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "message-start",
-          message_id: "chatcmpl-1",
-          role: "ai",
-          metadata: {
-            provider: "openai",
-            model: "gpt-4o-mini",
-            modelType: "chat",
-            runId: "run_123",
-            threadId: "thread_123",
-          },
-        },
-      },
-      {
-        namespace: ["model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-start",
-          index: 0,
-          content_block: { type: "tool_call_chunk", args: "" },
-        },
-      },
-      {
-        namespace: ["model_request:d445c9e4-e3b6-5530-a22d-8c85ebdd2c87"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-delta",
-          index: 0,
-          content_block: { type: "tool_call_chunk", args: "scrip" },
-        },
-      },
-    ]);
-  });
-
-  it("parses finalized OpenAI tool-call arguments before emitting protocol events", async () => {
-    const sent: unknown[] = [];
-    const session = createSession(sent);
-    await session.start();
-    sent.length = 0;
-
-    await session.handleCommand(
-      JSON.stringify({
-        id: 1,
-        method: "subscription.subscribe",
-        params: { channels: ["messages"] },
-      })
-    );
-    sent.length = 0;
-
-    await session.ingestSourceEvent({
-      id: "1",
-      event: "messages|model_request:test",
-      data: [
-        {
-          id: "chatcmpl-final",
-          type: "ai",
-          content: "",
-          tool_call_chunks: [
-            {
-              name: "task",
-              args: "{\"description\":\"hi\"}",
-              id: "call_123",
-              index: 0,
-              type: "tool_call_chunk",
-            },
-          ],
-          additional_kwargs: {
-            stop_reason: "tool_calls",
-          },
-          response_metadata: {
-            finish_reason: "tool_calls",
-          },
-          tool_calls: [
-            {
-              index: 0,
-              id: "call_123",
-              type: "function",
-              function: {
-                name: "task",
-                arguments: "{\"description\":\"hi\"}",
-              },
-            },
-          ],
-          invalid_tool_calls: [],
-        },
-        {
-          langgraph_checkpoint_ns: "model_request:test",
-          ls_provider: "openai",
-        },
-      ],
-    });
-
-    const events = sent.filter(
-      (message): message is Record<string, unknown> =>
-        typeof message === "object" &&
-        message != null &&
-        (message as { type?: string }).type === "event"
-    );
-
-    expect(events.map((event) => event.params)).toEqual([
-      {
-        namespace: ["model_request:test"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "message-start",
-          message_id: "chatcmpl-final",
-          role: "ai",
-          metadata: {
-            provider: "openai",
-          },
-        },
-      },
-      {
-        namespace: ["model_request:test"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-start",
-          index: 0,
-          content_block: {
-            type: "tool_call_chunk",
-            id: "call_123",
-            name: "task",
-            args: "",
-          },
-        },
-      },
-      {
-        namespace: ["model_request:test"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-delta",
-          index: 0,
-          content_block: {
-            type: "tool_call_chunk",
-            id: "call_123",
-            name: "task",
-            args: "{\"description\":\"hi\"}",
-          },
-        },
-      },
-      {
-        namespace: ["model_request:test"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-finish",
-          index: 0,
-          content_block: {
-            type: "tool_call",
-            id: "call_123",
-            name: "task",
-            args: {
-              description: "hi",
-            },
-          },
-        },
-      },
-      {
-        namespace: ["model_request:test"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "message-finish",
-          reason: "tool_use",
-          metadata: {
-            finish_reason: "tool_calls",
-          },
+          content: { type: "text", text: "Hel" },
         },
       },
     ]);

@@ -88,7 +88,7 @@ const normalizeAudioBlockFromAdditionalKwargs = (
     ...(typeof audio.transcript === "string"
       ? { transcript: audio.transcript }
       : {}),
-  } satisfies ContentBlockStartData["content_block"];
+  } satisfies ContentBlockStartData["content"];
 };
 
 const MEDIA_BLOCK_TYPES: ReadonlySet<string> = new Set([
@@ -118,11 +118,11 @@ const MIME_TYPE_BY_IMAGE_FORMAT: Record<string, string> = {
  */
 const normalizeImageBlocksFromAdditionalKwargs = (
   additionalKwargs: Record<string, unknown> | undefined
-): ContentBlockStartData["content_block"][] => {
+): ContentBlockStartData["content"][] => {
   const toolOutputs = additionalKwargs?.tool_outputs;
   if (!Array.isArray(toolOutputs)) return [];
 
-  const blocks: ContentBlockStartData["content_block"][] = [];
+  const blocks: ContentBlockStartData["content"][] = [];
   for (const entry of toolOutputs) {
     if (!isRecord(entry) || entry.type !== "image_generation_call") continue;
     const data = typeof entry.result === "string" ? entry.result : undefined;
@@ -144,7 +144,7 @@ const normalizeImageBlocksFromAdditionalKwargs = (
       ...(url != null ? { url } : {}),
       ...(data != null ? { data } : {}),
       mime_type: mimeType,
-    } satisfies ContentBlockStartData["content_block"]);
+    } satisfies ContentBlockStartData["content"]);
   }
   return blocks;
 };
@@ -172,13 +172,13 @@ const normalizeMediaBlockCasing = (
 
 export const normalizeProtocolContentBlock = (
   value: unknown
-): ContentBlockStartData["content_block"] | undefined => {
+): ContentBlockStartData["content"] | undefined => {
   if (!isRecord(value) || typeof value.type !== "string") return undefined;
 
   if (PROTOCOL_CONTENT_BLOCK_TYPES.has(value.type)) {
     return normalizeMediaBlockCasing(
       value
-    ) as ContentBlockStartData["content_block"];
+    ) as ContentBlockStartData["content"];
   }
 
   if (value.type === "image_url") {
@@ -217,7 +217,7 @@ export const normalizeProtocolContentBlock = (
 
 export const normalizeProtocolFinalizedContentBlock = (
   value: unknown
-): ContentBlockFinishData["content_block"] | undefined => {
+): ContentBlockFinishData["content"] | undefined => {
   const block = normalizeProtocolContentBlock(value);
   if (block == null) return undefined;
   if (
@@ -226,7 +226,7 @@ export const normalizeProtocolFinalizedContentBlock = (
   ) {
     return undefined;
   }
-  return block as ContentBlockFinishData["content_block"];
+  return block as ContentBlockFinishData["content"];
 };
 
 export const normalizeProtocolMessageContent = (
@@ -246,7 +246,7 @@ export const normalizeProtocolMessageContent = (
     const { audioBlock, imageBlocks } = extractExtras();
     if (audioBlock == null && imageBlocks.length === 0) return content;
 
-    const blocks: ContentBlockStartData["content_block"][] = [];
+    const blocks: ContentBlockStartData["content"][] = [];
     if (content.length > 0) {
       blocks.push({ type: "text", text: content });
     }
@@ -258,12 +258,12 @@ export const normalizeProtocolMessageContent = (
   if (!Array.isArray(content)) {
     const { audioBlock, imageBlocks } = extractExtras();
     if (audioBlock == null && imageBlocks.length === 0) return content;
-    const blocks: ContentBlockStartData["content_block"][] = [...imageBlocks];
+    const blocks: ContentBlockStartData["content"][] = [...imageBlocks];
     if (audioBlock != null) blocks.push(audioBlock);
     return blocks;
   }
 
-  const blocks: ContentBlockStartData["content_block"][] = [];
+  const blocks: ContentBlockStartData["content"][] = [];
   for (const entry of content) {
     if (typeof entry === "string") {
       blocks.push({ type: "text", text: entry });
@@ -334,9 +334,6 @@ export const pickNumericField = (
 export const toProtocolUsageInfo = (value: unknown) => {
   if (!isRecord(value)) return undefined;
 
-  const inputTokenDetails = isRecord(value.input_token_details)
-    ? value.input_token_details
-    : undefined;
   const usage = {
     ...(pickNumericField(value, ["inputTokens", "input_tokens"]) != null
       ? {
@@ -360,20 +357,6 @@ export const toProtocolUsageInfo = (value: unknown) => {
             "totalTokens",
             "total_tokens",
           ]),
-        }
-      : {}),
-    ...(pickNumericField(value, ["cachedTokens", "cached_tokens"]) != null
-      ? {
-          cached_tokens: pickNumericField(value, [
-            "cachedTokens",
-            "cached_tokens",
-          ]),
-        }
-      : {}),
-    ...(inputTokenDetails != null &&
-    pickNumericField(inputTokenDetails, ["cache_read"]) != null
-      ? {
-          cached_tokens: pickNumericField(inputTokenDetails, ["cache_read"]),
         }
       : {}),
   };

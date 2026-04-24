@@ -196,9 +196,6 @@ export async function* streamState(
   }
 
   const userStreamMode = kwargs.stream_mode ?? [];
-  const useProtocolMessagesStream =
-    userStreamMode.includes("messages") &&
-    kwargs.config?.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
@@ -341,10 +338,7 @@ export async function* streamState(
       }
 
       if (mode === "messages") {
-        if (
-          userStreamMode.includes("messages-tuple") ||
-          useProtocolMessagesStream
-        ) {
+        if (userStreamMode.includes("messages-tuple")) {
           if (kwargs.subgraphs && ns?.length) {
             yield { event: `messages|${ns.join("|")}`, data };
           } else {
@@ -367,7 +361,7 @@ export async function* streamState(
     // - handleLLMEnd receives the final message as BaseMessageChunk rather than BaseMessage, which from the outside will become indistinguishable.
     // - handleLLMEnd should not dedupe the message
     // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
-    if (userStreamMode.includes("messages") && !useProtocolMessagesStream) {
+    if (userStreamMode.includes("messages")) {
       if (
         event.event === "on_chain_stream" &&
         (kwargs.subgraphs || event.run_id === run.run_id)
