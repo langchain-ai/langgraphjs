@@ -8,7 +8,7 @@ import type { MessagesEventData, UsageInfo } from "./types.js";
 const textDelta = (text: string, index = 0): MessagesEventData => ({
   event: "content-block-delta",
   index,
-  content_block: { type: "text", text },
+  content: { type: "text", text },
 });
 
 const reasoningDelta = (
@@ -17,7 +17,7 @@ const reasoningDelta = (
 ): MessagesEventData => ({
   event: "content-block-delta",
   index,
-  content_block: { type: "reasoning", reasoning },
+  content: { type: "reasoning", reasoning },
 });
 
 const messageStart = (): MessagesEventData => ({
@@ -36,7 +36,7 @@ const messageFinish = (
 const imageDelta = (index = 0): MessagesEventData => ({
   event: "content-block-delta",
   index,
-  content_block: { type: "image", url: "https://example.com/img.png" },
+  content: { type: "image", url: "https://example.com/img.png" },
 });
 
 describe("ChatModelStreamImpl", () => {

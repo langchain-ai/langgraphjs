@@ -159,7 +159,7 @@ describe("GraphRunStream", () => {
         namespace: ["agent:0"],
         timestamp: ts,
         node: "agent",
-        data: { event: "content-block-delta", content_block: { type: "text", text: "hello" } },
+        data: { event: "content-block-delta", content: { type: "text", text: "hello" } },
       },
     });
     mux.push(["agent:0"], {

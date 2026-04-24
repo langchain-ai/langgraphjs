@@ -90,7 +90,6 @@ export function createMessagesTransformer(
       if (active) {
         active.finish({
           event: "message-finish",
-          reason: "stop",
         });
         active = undefined;
       }

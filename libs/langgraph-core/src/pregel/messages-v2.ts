@@ -569,7 +569,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.emitProtocolEvent(meta, {
       event: "message-start",
       role: "ai",
-      ...(messageId != null ? { message_id: messageId } : {}),
+      ...(messageId != null ? { id: messageId } : {}),
     });
   }
 
@@ -595,7 +595,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index,
-        content_block: previous,
+        content: previous,
       });
     }
 
@@ -608,7 +608,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.emitProtocolEvent(meta, {
       event: "content-block-delta",
       index,
-      content_block: protocolDelta,
+      content: protocolDelta,
     });
   }
 
@@ -660,7 +660,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.emitProtocolEvent(meta, {
       event: "message-start",
       role,
-      ...(messageId != null ? { message_id: messageId } : {}),
+      ...(messageId != null ? { id: messageId } : {}),
       ...(typeof toolCallId === "string" ? { tool_call_id: toolCallId } : {}),
     });
 
@@ -713,7 +713,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index,
-        content_block: startBlock,
+        content: startBlock,
       });
 
       const deltaBlock = toProtocolDeltaBlock(startBlock, rawBlock);
@@ -721,14 +721,14 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         this.emitProtocolEvent(meta, {
           event: "content-block-delta",
           index,
-          content_block: deltaBlock,
+          content: deltaBlock,
         });
       }
 
       this.emitProtocolEvent(meta, {
         event: "content-block-finish",
         index,
-        content_block:
+        content:
           rawBlock.type === "tool_call"
             ? rawBlock
             : rawBlock.type === "tool_call_chunk"
@@ -846,7 +846,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
               this.emitProtocolEvent(meta!, {
                 event: "content-block-start",
                 index,
-                content_block: rawBlock,
+                content: rawBlock,
               });
             }
             break;
@@ -957,7 +957,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index: nextIndex,
-        content_block: startBlock,
+        content: startBlock,
       });
     }
 
@@ -982,7 +982,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-delta",
         index: stream.index,
-        content_block: deltaBlock,
+        content: deltaBlock,
       });
     }
   }
@@ -1050,7 +1050,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         this.emitProtocolEvent(meta!, {
           event: "content-block-finish",
           index,
-          content_block: finalBlock,
+          content: finalBlock,
         });
       }
 
@@ -1087,12 +1087,12 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
             this.emitProtocolEvent(meta!, {
               event: "content-block-start",
               index: syntheticIndex,
-              content_block: block,
+              content: block,
             });
             this.emitProtocolEvent(meta!, {
               event: "content-block-finish",
               index: syntheticIndex,
-              content_block: block,
+              content: block,
             });
           }
         }

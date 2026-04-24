@@ -70,7 +70,7 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-start",
-          message_id: "msg-123",
+          id: "msg-123",
           role: "ai",
         },
       ],
@@ -80,7 +80,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
       ],
       [
@@ -89,7 +89,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Hello" },
+          content: { type: "text", text: "Hello" },
         },
       ],
       [
@@ -98,7 +98,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: { type: "text", text: "Hello" },
+          content: { type: "text", text: "Hello" },
         },
       ],
       [
@@ -147,7 +147,7 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-start",
-          message_id: "msg-456",
+          id: "msg-456",
           role: "ai",
         },
       ],
@@ -157,7 +157,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
       ],
       [
@@ -166,7 +166,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Done" },
+          content: { type: "text", text: "Done" },
         },
       ],
       [
@@ -175,7 +175,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: { type: "text", text: "Done", index: 0 },
+          content: { type: "text", text: "Done", index: 0 },
         },
       ],
       [
@@ -236,11 +236,11 @@ describe("StreamProtocolMessagesHandler", () => {
 
     const events = streamFn.mock.calls.map((call) => call[0][2]);
     expect(events).toEqual([
-      { event: "message-start", message_id: "msg-audio", role: "ai" },
+      { event: "message-start", id: "msg-audio", role: "ai" },
       {
         event: "content-block-start",
         index: 0,
-        content_block: {
+        content: {
           type: "audio",
           id: "audio_abc",
           data: "AAAA",
@@ -251,7 +251,7 @@ describe("StreamProtocolMessagesHandler", () => {
       {
         event: "content-block-delta",
         index: 0,
-        content_block: {
+        content: {
           type: "audio",
           id: "audio_abc",
           data: "AAAA",
@@ -262,7 +262,7 @@ describe("StreamProtocolMessagesHandler", () => {
       {
         event: "content-block-finish",
         index: 0,
-        content_block: {
+        content: {
           type: "audio",
           id: "audio_abc",
           data: "AAAA",

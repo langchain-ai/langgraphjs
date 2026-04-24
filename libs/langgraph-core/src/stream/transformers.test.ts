@@ -54,7 +54,7 @@ describe("createMessagesTransformer", () => {
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
-        content_block: { type: "text", text: "hello" },
+        content: { type: "text", text: "hello" },
       }, agentNs)
     );
     transformer.process(
@@ -279,7 +279,7 @@ describe("createMessagesTransformer", () => {
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
-        content_block: { type: "text", text: "first" },
+        content: { type: "text", text: "first" },
       }, agentNs)
     );
     transformer.process(
@@ -293,7 +293,7 @@ describe("createMessagesTransformer", () => {
       makeEvent("messages", {
         event: "content-block-delta",
         index: 0,
-        content_block: { type: "text", text: "second" },
+        content: { type: "text", text: "second" },
       }, agentNs)
     );
     transformer.process(
