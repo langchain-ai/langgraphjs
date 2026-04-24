@@ -135,6 +135,25 @@ export interface StreamTransformer<TProjection = unknown> {
   init(): TProjection;
 
   /**
+   * Optional hook invoked by {@link StreamMux.addTransformer} immediately
+   * after the transformer is attached to the mux. Receives a limited
+   * handle that exposes only {@link StreamEmitter.push} — enough for
+   * the transformer to emit synthesized {@link ProtocolEvent}s on any
+   * namespace it chooses (e.g. a deepagents `SubagentTransformer`
+   * fabricating `lifecycle`/`messages`/`values` events under a
+   * `["tools:<tool_call_id>"]` namespace when a `task` tool starts).
+   *
+   * Transformers that do not synthesize events can omit this hook.
+   *
+   * The {@link StreamEmitter} handle is only safe to call *from within*
+   * {@link StreamTransformer.process}. Emitting from an unrelated async
+   * context (e.g. after `process` has returned, from a `setTimeout`,
+   * etc.) races with the mux's close/fail cycle and may land events in
+   * an already-closed log.
+   */
+  onRegister?(emitter: StreamEmitter): void;
+
+  /**
    * Called for each {@link ProtocolEvent} before it is appended to the main log.
    *
    * @param event - Next protocol envelope for this run.
@@ -157,6 +176,28 @@ export interface StreamTransformer<TProjection = unknown> {
    * @param err - Failure reason from the engine or user code.
    */
   fail?(err: unknown): void;
+}
+
+/**
+ * Narrow capability handle passed to
+ * {@link StreamTransformer.onRegister}. Exposes only the minimal mux
+ * surface required for synthetic event emission — intentionally does
+ * not expose close/fail/register/etc. to keep the transformer contract
+ * small and tamper-resistant.
+ */
+export interface StreamEmitter {
+  /**
+   * Injects a new {@link ProtocolEvent} into the mux pipeline. The
+   * event is routed through every registered transformer (including
+   * the emitting transformer — implementers must guard against
+   * re-entrant self-processing) and, if not suppressed, appended to
+   * the main event log.
+   *
+   * @param ns - Target namespace for the synthetic event.
+   * @param event - The event envelope to inject. ``event.seq`` is
+   *   overwritten by the mux; callers can pass any placeholder.
+   */
+  push(ns: Namespace, event: ProtocolEvent): void;
 }
 
 import type { MessagesData as MessagesEventDataImport } from "@langchain/protocol";

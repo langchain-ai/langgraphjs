@@ -67,15 +67,6 @@ export type MessageState = {
 };
 
 /**
- * Synthetic state created for task tool calls that represent subagents.
- */
-export type SyntheticSubagentState = {
-  namespace: Namespace;
-  messages: Array<Record<string, unknown>>;
-  completed: boolean;
-};
-
-/**
  * Normalized representation of an updates payload emitted by the run stream.
  */
 export type NormalizedUpdatesData = {

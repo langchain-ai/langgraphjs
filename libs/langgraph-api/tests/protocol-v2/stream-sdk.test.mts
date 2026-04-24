@@ -15,7 +15,10 @@ import {
 } from "vitest";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { MemorySaver } from "@langchain/langgraph-checkpoint";
+import {
+  MemorySaver,
+  type CheckpointTuple,
+} from "@langchain/langgraph-checkpoint";
 import {
   ProtocolSseTransportAdapter,
   ThreadStream,
@@ -295,4 +298,78 @@ describe("SDK streaming projections against embed server", () => {
     });
   });
 
+  describe("run.input forkFrom", () => {
+    it("branches checkpoint history from the provided checkpoint id", async () => {
+      // Uses `agent_with_tools` because it is compiled synchronously
+      // (the `agent` graph is exported as a Promise, which bypasses
+      // the embed server's `targetGraph.checkpointer = ...` injection
+      // and leaves MemorySaver empty for runs against it). The
+      // deterministic tool-calling agent here produces a reliable
+      // multi-checkpoint history without relying on a fake model's
+      // mutable response counter.
+      const thread = createThread("agent_with_tools");
+      const { threadId } = thread;
+
+      await runAndCollect(thread, thread.values, {
+        messages: [{ role: "user", content: "What is the weather in SF?" }],
+      });
+
+      const listTuples = async (): Promise<CheckpointTuple[]> => {
+        const out: CheckpointTuple[] = [];
+        for await (const tuple of checkpointer.list({
+          configurable: { thread_id: threadId },
+        })) {
+          out.push(tuple);
+        }
+        return out;
+      };
+
+      const baseline = await listTuples();
+      // Expect at least the root input checkpoint and one loop
+      // checkpoint after the agent node. MemorySaver.list is sorted
+      // newest-first, so the root (no parent) is the last entry.
+      expect(baseline.length).toBeGreaterThanOrEqual(2);
+      const root = baseline[baseline.length - 1];
+      expect(root.parentConfig).toBeUndefined();
+      const rootCheckpointId = root.checkpoint.id;
+
+      // Fork a new run from the root checkpoint on the same thread.
+      // A fresh `ThreadStream` is required because `runAndCollect`
+      // closed the previous one.
+      const forked = new ThreadStream(
+        new ProtocolSseTransportAdapter({ apiUrl: serverUrl, threadId }),
+        { assistantId: "agent_with_tools" }
+      );
+
+      // `forkFrom` is not part of the protocol's stock `RunInputParams`
+      // type yet (it's an SDK-side convenience consumed by the service
+      // layer), so we cast to reach the wider shape the server accepts.
+      await (
+        forked.run.input as (params: unknown) => Promise<unknown>
+      )({
+        input: { messages: [{ role: "user", content: "What is the weather in SF?" }] },
+        forkFrom: { checkpointId: rootCheckpointId },
+      });
+      await collectWithTimeout(forked.values, 15000);
+      await forked.close();
+
+      const afterFork = await listTuples();
+
+      // Before the fix, `forkFrom` was silently dropped, so the second
+      // run would chain off the latest checkpoint instead of the root
+      // and only the original loop checkpoint would claim the root as
+      // its parent. Honoring `forkFrom` means a *second* checkpoint
+      // (the forked run's input checkpoint) also descends directly
+      // from the root, giving us at least two root children.
+      const childrenOfRoot = afterFork.filter(
+        (t) => t.parentConfig?.configurable?.checkpoint_id === rootCheckpointId
+      );
+      // With `forkFrom` honored, the fork-run's input checkpoint
+      // descends directly from the root, alongside the original
+      // loop checkpoint. If the server silently dropped `forkFrom`
+      // (the pre-fix behavior), only the original entry would
+      // claim the root as its parent and this assertion would fail.
+      expect(childrenOfRoot.length).toBeGreaterThanOrEqual(2);
+    });
+  });
 });

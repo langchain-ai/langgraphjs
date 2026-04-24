@@ -1,6 +1,7 @@
 import type {
   Channel,
   Event,
+  LifecycleCause,
   LifecycleEvent,
   MessagesEvent,
   SubscribeParams,
@@ -69,7 +70,17 @@ export class SubgraphHandle {
   readonly name: string;
   readonly index: number;
   readonly namespace: string[];
-  readonly triggerCallId?: string;
+  /**
+   * Non-empty when upstream attached a `cause` to this subgraph's
+   * `lifecycle.started` event. Population is product-specific and
+   * performed by stream transformers on the runtime side (e.g.
+   * deepagents' `SubagentTransformer` emits
+   * `{ type: "toolCall", tool_call_id }`). Generic clients should
+   * treat `cause.type` as an open enum — the protocol allows future
+   * variants (`send`, `edge`, ...) to be forwarded verbatim without
+   * a SDK bump.
+   */
+  readonly cause?: LifecycleCause;
   readonly graphName?: string;
   readonly #session: Subscribable;
 
@@ -91,12 +102,12 @@ export class SubgraphHandle {
     index: number,
     namespace: string[],
     session: Subscribable,
-    options?: { triggerCallId?: string; graphName?: string }
+    options?: { cause?: LifecycleCause; graphName?: string }
   ) {
     this.name = name;
     this.index = index;
     this.namespace = namespace;
-    this.triggerCallId = options?.triggerCallId;
+    this.cause = options?.cause;
     this.graphName = options?.graphName;
     this.#session = session;
   }
@@ -387,8 +398,12 @@ export class SubgraphDiscoveryHandle implements AsyncIterable<SubgraphHandle> {
     }
 
     const data = lifecycle.params.data as unknown as Record<string, unknown>;
+    const cause =
+      data.cause && typeof data.cause === "object"
+        ? (data.cause as LifecycleCause)
+        : undefined;
     return new SubgraphHandle(name, index, [...ns], this.#session, {
-      triggerCallId: data.trigger_call_id as string | undefined,
+      cause,
       graphName: data.graph_name as string | undefined,
     });
   }

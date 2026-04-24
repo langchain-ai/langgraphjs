@@ -51,7 +51,32 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const normalizeRunInput = (value: unknown): RunInputParams => {
+/**
+ * `run.input` params as accepted by the service. Wider than the
+ * stock `RunInputParams` from `@langchain/protocol` to carry the
+ * SDK-side `forkFrom: { checkpointId }` convenience field, which
+ * `createOrResumeRun` promotes to `config.configurable.checkpoint_id`
+ * so the engine replays from the requested fork target. Callers that
+ * prefer to set `config.configurable.checkpoint_id` directly remain
+ * fully supported — `forkFrom` is merged after the caller's config so
+ * it takes precedence when both are provided.
+ */
+type ExtendedRunInputParams = RunInputParams & {
+  forkFrom?: { checkpointId: string };
+};
+
+const normalizeForkFrom = (
+  value: unknown
+): { checkpointId: string } | undefined => {
+  if (!isRecord(value)) return undefined;
+  const checkpointId = value.checkpointId;
+  if (typeof checkpointId !== "string" || checkpointId.length === 0) {
+    return undefined;
+  }
+  return { checkpointId };
+};
+
+const normalizeRunInput = (value: unknown): ExtendedRunInputParams => {
   if (isRecord(value)) {
     return {
       assistant_id:
@@ -59,6 +84,7 @@ const normalizeRunInput = (value: unknown): RunInputParams => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
+      forkFrom: normalizeForkFrom(value.forkFrom),
     };
   }
   return {
@@ -341,7 +367,7 @@ export class ProtocolService {
 
   private async createOrResumeRun(
     record: ThreadRecord,
-    params: RunInputParams
+    params: ExtendedRunInputParams
   ) {
     const assistantId = getAssistantId(params.assistant_id);
     const currentRun =
@@ -365,6 +391,14 @@ export class ProtocolService {
     /**
      * We need to set the PROTOCOL_MESSAGES_STREAM_CONFIG_KEY to true to ensure
      * that the message stream uses the new protocol messages stream.
+     *
+     * When `forkFrom: { checkpointId }` is present, promote it to
+     * `configurable.checkpoint_id` so the engine replays from the
+     * requested fork target. `forkFrom` is merged last so it wins over
+     * any `checkpoint_id` the caller may have pre-baked into
+     * `config.configurable`; in resume flows we intentionally skip the
+     * promotion because a resume must follow the thread's active
+     * checkpoint, not a historical fork.
      */
     const runConfig = {
       ...params.config,
@@ -372,6 +406,9 @@ export class ProtocolService {
         ...params.config?.configurable,
         thread_id: record.threadId,
         [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
+        ...(!isResume && params.forkFrom?.checkpointId != null
+          ? { checkpoint_id: params.forkFrom.checkpointId }
+          : {}),
       },
     };
 

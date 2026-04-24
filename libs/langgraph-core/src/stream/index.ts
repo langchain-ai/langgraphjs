@@ -53,6 +53,7 @@ export type {
   ToolFinishedData,
   ToolErrorData,
   StreamTransformer,
+  StreamEmitter,
   NativeStreamTransformer,
   InferExtensions,
   ChatModelStream,

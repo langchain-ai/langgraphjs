@@ -24,6 +24,7 @@ import type {
   InterruptPayload,
   Namespace,
   ProtocolEvent,
+  StreamEmitter,
   StreamTransformer,
 } from "./types.js";
 
@@ -178,6 +179,18 @@ export class StreamMux {
     const snapshot = this._events.size;
     this.#transformers.push(transformer);
 
+    // Hand the transformer a narrow emitter handle *before* replay so
+    // synthetic-emission transformers (e.g. deepagents
+    // `SubagentTransformer`) can inject events into the mux during
+    // their own `process()` calls — including the initial replay
+    // triggered just below.
+    if (transformer.onRegister) {
+      const emitter: StreamEmitter = {
+        push: (ns, event) => this.push(ns, event),
+      };
+      transformer.onRegister(emitter);
+    }
+
     for (let i = 0; i < snapshot; i += 1) {
       transformer.process(this._events.get(i));
     }
@@ -283,8 +296,12 @@ export class StreamMux {
     // get subsequent sequence numbers.
     this.#nextEmitSeq = Math.max(this.#nextEmitSeq, event.seq + 1);
 
-    // Set current namespace so StreamChannel auto-forward callbacks
-    // can attach it to emitted protocol events.
+    // Save the outer namespace so re-entrant `push()` calls (e.g. from
+    // `StreamTransformer.onRegister` emitters synthesizing events
+    // inside a transformer's `process()`) can set their own namespace
+    // without clobbering the outer scope's `StreamChannel` routing
+    // when control returns to the outer transformer loop.
+    const outerNamespace = this.#currentNamespace;
     this.#currentNamespace = ns;
 
     let keep = true;
@@ -294,7 +311,7 @@ export class StreamMux {
       }
     }
 
-    this.#currentNamespace = [];
+    this.#currentNamespace = outerNamespace;
 
     if (keep) {
       this._events.push(event);

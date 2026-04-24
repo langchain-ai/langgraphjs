@@ -25,6 +25,8 @@ import {
   SubgraphHandle,
   SubagentDiscoveryHandle,
   SubagentHandle,
+  TriggeredSubgraphDiscoveryHandle,
+  TriggeredSubgraphHandle,
 } from "./handles/index.js";
 import { StreamingMessageAssembler } from "./messages.js";
 import type { StreamingMessage } from "./messages.js";
@@ -541,6 +543,7 @@ export class ThreadStream<
   #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
   #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
   #subagentsIterable?: AsyncIterable<SubagentHandle>;
+  #triggeredSubgraphsIterable?: AsyncIterable<TriggeredSubgraphHandle>;
   #outputPromise?: Promise<unknown>;
   #extensionsProxy?: ThreadExtensions<TExtensions>;
   readonly #extensionsCache = new Map<string, ThreadExtension<unknown>>();
@@ -832,7 +835,12 @@ export class ThreadStream<
   }
 
   /**
-   * Discovered subagents. Mirrors the in-process deep-agent pattern.
+   * Discovered subagents.
+   *
+   * @deprecated Use {@link ThreadStream.triggeredSubgraphs} and key on
+   * `handle.cause` + `handle.toolStartedEvent` instead. `subagents` is
+   * deepagents-specific (watches the `tools` channel for
+   * `tool_name === "task"`); it will be removed in a future SDK major.
    */
   get subagents(): AsyncIterable<SubagentHandle> {
     if (this.#subagentsIterable) return this.#subagentsIterable;
@@ -843,6 +851,35 @@ export class ThreadStream<
         channels: ["tools", "lifecycle", ...this.#lifecycleChannels()],
       });
       const discovery = new SubagentDiscoveryHandle(rawHandle, this);
+      for await (const sub of discovery) {
+        buffer.push(sub);
+      }
+      buffer.close();
+    })();
+    return buffer;
+  }
+
+  /**
+   * Discovered *triggered subgraphs* — subgraphs whose `lifecycle.started`
+   * event carries a non-empty `cause` (see protocol {@link LifecycleCause}).
+   *
+   * Product-agnostic: this iterator yields every subgraph with a cause,
+   * regardless of which variant (`toolCall` / `send` / `edge` / ...)
+   * triggered it. Product wrappers (e.g. deepagents' `createSubagentDiscovery`)
+   * layer their own filtering on top — a deepagents "subagent" is a
+   * triggered subgraph where `cause.type === "toolCall"` AND the
+   * correlated `tool-started` event has `tool_name === "task"`.
+   */
+  get triggeredSubgraphs(): AsyncIterable<TriggeredSubgraphHandle> {
+    if (this.#triggeredSubgraphsIterable)
+      return this.#triggeredSubgraphsIterable;
+    const buffer = new MultiCursorBuffer<TriggeredSubgraphHandle>();
+    this.#triggeredSubgraphsIterable = buffer;
+    void (async () => {
+      const rawHandle = await this.#subscribeRaw({
+        channels: ["tools", "lifecycle", ...this.#lifecycleChannels()],
+      });
+      const discovery = new TriggeredSubgraphDiscoveryHandle(rawHandle, this);
       for await (const sub of discovery) {
         buffer.push(sub);
       }
@@ -2038,6 +2075,8 @@ export {
   SubgraphHandle,
   SubagentHandle,
   SubagentDiscoveryHandle,
+  TriggeredSubgraphDiscoveryHandle,
+  TriggeredSubgraphHandle,
 } from "./handles/index.js";
 export type {
   AssembledToolCall,

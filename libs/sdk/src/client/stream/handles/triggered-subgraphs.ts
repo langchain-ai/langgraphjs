@@ -16,15 +16,12 @@
  */
 import type {
   Event,
+  LifecycleCause,
   LifecycleEvent,
   ToolsEvent,
 } from "@langchain/protocol";
 import type { SubscriptionHandle } from "../index.js";
-import {
-  SubgraphHandle,
-  type LifecycleCause,
-  type Subscribable,
-} from "./subgraphs.js";
+import { SubgraphHandle, type Subscribable } from "./subgraphs.js";
 
 /**
  * A subgraph discovered via a non-empty `lifecycle.started.cause`.

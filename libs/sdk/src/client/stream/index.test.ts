@@ -710,7 +710,7 @@ describe("thread.subgraphs projection", () => {
         {
           event: "started",
           graph_name: "researcher",
-          trigger_call_id: "call_abc",
+          cause: { type: "toolCall", tool_call_id: "call_abc" },
         },
         { namespace: ["researcher:0"], seq: 1 }
       )
@@ -727,7 +727,7 @@ describe("thread.subgraphs projection", () => {
     expect(first.name).toBe("researcher");
     expect(first.index).toBe(0);
     expect(first.namespace).toEqual(["researcher:0"]);
-    expect(first.triggerCallId).toBe("call_abc");
+    expect(first.cause).toEqual({ type: "toolCall", tool_call_id: "call_abc" });
     expect(first.graphName).toBe("researcher");
 
     const second = (await iter.next()).value as SubgraphHandle;

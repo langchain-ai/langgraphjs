@@ -14,6 +14,7 @@ import type {
   ErrorCode,
   ErrorResponse,
   Event,
+  LifecycleCause,
   MessageErrorData,
   MessageFinishData,
   MessageMetadata,
@@ -34,6 +35,8 @@ import type {
   UnsubscribeParams,
   UpdatesEvent,
 } from "@langchain/protocol";
+
+export type { LifecycleCause };
 import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session/index.mjs";
 

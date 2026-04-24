@@ -107,6 +107,8 @@ export {
   SubgraphHandle,
   SubagentHandle,
   SubagentDiscoveryHandle,
+  TriggeredSubgraphDiscoveryHandle,
+  TriggeredSubgraphHandle,
   inferChannel,
   matchesSubscription,
 } from "./stream/index.js";

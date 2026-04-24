@@ -184,6 +184,17 @@ export function registerProtocolRoutes(
       });
     }
 
+    // Promote SDK-side `forkFrom: { checkpointId }` into
+    // `configurable.checkpoint_id` so the engine replays from the
+    // requested fork target. This mirrors the promotion performed by
+    // `ProtocolService.createOrResumeRun` in the non-embed path and
+    // closes the "client sends forkFrom, server drops it" gap.
+    const forkCheckpointId = (() => {
+      if (!isRecord(params.forkFrom)) return undefined;
+      const id = params.forkFrom.checkpointId;
+      return typeof id === "string" && id.length > 0 ? id : undefined;
+    })();
+
     const run = createStubRun(thread.threadId, {
       assistant_id: assistantId,
       on_disconnect: "cancel",
@@ -196,6 +207,14 @@ export function registerProtocolRoutes(
           [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
         },
       },
+      // `createStubRun` promotes the top-level `checkpoint_id` into
+      // `config.configurable.checkpoint_id` after merging (and, in
+      // fact, *replaces* any inline configurable the caller passed),
+      // so this is the only reliable way to reach the engine with a
+      // fork target.
+      ...(forkCheckpointId != null
+        ? { checkpoint_id: forkCheckpointId }
+        : {}),
       metadata: isRecord(params.metadata)
         ? (params.metadata as Record<string, unknown>)
         : undefined,

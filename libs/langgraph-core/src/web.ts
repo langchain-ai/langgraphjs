@@ -59,6 +59,7 @@ export type {
   ToolsEventData,
   UpdatesEventData,
   StreamTransformer,
+  StreamEmitter,
   NativeStreamTransformer,
   ChatModelStream,
   ToolCallStatus,

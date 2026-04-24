@@ -8,6 +8,7 @@ import type {
   AgentTreeNode,
   CustomData,
   FlowStrategy,
+  LifecycleCause,
   Namespace,
   ProtocolCommand,
   ProtocolCommandByMethod,
@@ -78,6 +79,17 @@ export class RunProtocolSession {
   private readonly subscriptions = new Map<string, Subscription>();
 
   private readonly namespaces = new Map<string, NamespaceInfo>();
+
+  /**
+   * Per-namespace `cause` learned from upstream `lifecycle.started` events
+   * — populated by product-specific stream transformers (e.g. deepagents'
+   * `SubagentTransformer`). Read when synthesizing the wire
+   * `lifecycle.started` in {@link RunProtocolSession.ensureNamespaces}.
+   *
+   * The session itself is product-agnostic and never fabricates a
+   * `cause`; it only forwards what upstream supplied.
+   */
+  private readonly namespaceCause = new Map<string, LifecycleCause>();
 
   private readonly messageProcessor: SessionMessageProcessor;
 
@@ -427,32 +439,19 @@ export class RunProtocolSession {
     }
 
     const { method, namespace: rawNamespace } = parseEventName(event.event);
-    const sourceNamespace = normalizeNamespace(rawNamespace);
+    const namespace = normalizeNamespace(rawNamespace);
 
-    // Seed task-tool namespace aliases from values payloads BEFORE remapping
-    // so we bind the internal `tools:<uuid>` subagent namespace to the public
-    // `tools:call_*` namespace as early as possible. Subsequent events on
-    // that namespace (v2 messages, lifecycle, tools, custom) will then be
-    // remapped onto the client-visible namespace.
-    // Seed task-tool namespace aliases from values payloads BEFORE remapping
-    // so we bind the internal `tools:<uuid>` subagent namespace to the public
-    // `tools:call_*` namespace as early as possible. Subsequent events on
-    // that namespace (v2 messages, lifecycle, tools, custom) will then be
-    // remapped onto the client-visible namespace.
-    if (method === "values") {
-      this.messageProcessor.seedNamespaceAliasFromValues(
-        sourceNamespace,
-        event.data
-      );
+    // Upstream `lifecycle` events: stash any `cause` that a product-
+    // specific stream transformer (e.g. deepagents' `SubagentTransformer`)
+    // attached upstream, then defer to {@link RunProtocolSession.ensureNamespaces}
+    // to emit the session's authoritative wire `lifecycle.started`. The
+    // session is product-agnostic and never fabricates a `cause`; it
+    // only forwards what upstream supplied.
+    if (method === "lifecycle") {
+      this.recordUpstreamCause(namespace, event.data);
+      await this.ensureNamespaces(namespace);
+      return;
     }
-    if (method === "tools") {
-      this.messageProcessor.seedNamespaceAliasFromToolsEvent(
-        sourceNamespace,
-        event.data
-      );
-    }
-    const namespace =
-      this.messageProcessor.remapNamespaceForClient(sourceNamespace);
 
     if (method !== "messages") {
       await this.ensureNamespaces(namespace);
@@ -470,10 +469,6 @@ export class RunProtocolSession {
         }
         await this.pushEvent(
           this.createEvent("values", namespace, normalizedValues.values)
-        );
-        await this.messageProcessor.emitSyntheticSubagentEvents(
-          namespace,
-          normalizedValues.values
         );
         return;
       }
@@ -563,10 +558,6 @@ export class RunProtocolSession {
             normalized.node
           )
         );
-        await this.messageProcessor.emitSyntheticSubagentEvents(
-          namespace,
-          strippedUpdates.values
-        );
         if (normalized.node != null) {
           await this.emitChildNodeCompleted(namespace, normalized.node);
         }
@@ -647,13 +638,47 @@ export class RunProtocolSession {
 
       const graphName = guessGraphName(partial);
       this.setNamespaceInfo(partial, "started", { graphName });
+      // Optional CDDL `cause` — correlates this subgraph's
+      // `lifecycle.started` with whatever caused it to spawn on the parent
+      // namespace. Populated by product-specific stream transformers
+      // upstream and stashed on first sight by {@link RunProtocolSession.recordUpstreamCause}.
+      // The session is product-agnostic and only forwards what upstream
+      // supplied.
+      const cause = this.namespaceCause.get(key);
       await this.pushEvent(
         this.createEvent("lifecycle", partial, {
           event: "started",
           graph_name: graphName,
+          ...(cause != null ? { cause } : {}),
         })
       );
     }
+  }
+
+  /**
+   * Stash the upstream `cause` for a `lifecycle.started` event.
+   *
+   * Product-specific stream transformers (e.g. deepagents'
+   * `SubagentTransformer`) populate `data.cause` before the event reaches
+   * the session. We squirrel the value away per namespace so
+   * {@link RunProtocolSession.ensureNamespaces} can emit the wire
+   * `lifecycle.started` with the correlation in place. Only `started`
+   * events contribute — terminal transitions don't carry a fresh cause.
+   *
+   * Shape validation is intentionally loose: any object with a string
+   * `type` is accepted, so future variants added to the protocol flow
+   * through pinned servers unchanged.
+   */
+  private recordUpstreamCause(namespace: Namespace, data: unknown) {
+    if (!isRecord(data)) return;
+    if (data.event !== "started") return;
+    const cause = (data as { cause?: unknown }).cause;
+    if (cause == null || typeof cause !== "object") return;
+    if (typeof (cause as { type?: unknown }).type !== "string") return;
+    this.namespaceCause.set(
+      toNamespaceKey(namespace),
+      cause as LifecycleCause
+    );
   }
 
   /**
