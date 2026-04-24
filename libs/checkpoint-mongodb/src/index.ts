@@ -175,7 +175,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
             `Invalid filter value for key "${key}": filter values must be primitives (string, number, boolean, or null)`
           );
         }
-        query[`metadata.${key}`] = value;
+        query[`metadata_search.${key}`] = value;
       });
     }
 
@@ -201,6 +201,26 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         doc.type,
         doc.metadata.value("utf8")
       )) as CheckpointMetadata;
+      const serializedWrites = await this.db
+        .collection(this.checkpointWritesCollectionName)
+        .find({
+          thread_id: doc.thread_id,
+          checkpoint_ns: doc.checkpoint_ns,
+          checkpoint_id: doc.checkpoint_id,
+        })
+        .toArray();
+      const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+        serializedWrites.map(async (serializedWrite) => {
+          return [
+            serializedWrite.task_id,
+            serializedWrite.channel,
+            await this.serde.loadsTyped(
+              serializedWrite.type,
+              serializedWrite.value.value("utf8")
+            ),
+          ] as CheckpointPendingWrite;
+        })
+      );
 
       yield {
         config: {
@@ -211,6 +231,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           },
         },
         checkpoint,
+        pendingWrites,
         metadata,
         parentConfig: doc.parent_checkpoint_id
           ? {
@@ -258,6 +279,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
+      metadata_search: metadata,
     };
     const upsertQuery = {
       thread_id,
