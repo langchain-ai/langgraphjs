@@ -7,8 +7,6 @@ import type {
   AgentResult,
   AgentTreeNode,
   CustomData,
-  FlowStrategy,
-  LifecycleCause,
   Namespace,
   ProtocolCommand,
   ProtocolCommandByMethod,
@@ -68,8 +66,8 @@ export class RunProtocolSession {
 
   private readonly getThreadState?:
     | (() => Promise<{
-        tasks?: Array<{ interrupts?: unknown[] }>;
-      } | null>)
+      tasks?: Array<{ interrupts?: unknown[] }>;
+    } | null>)
     | undefined;
 
   private readonly send: (payload: string) => Promise<void> | void;
@@ -79,17 +77,6 @@ export class RunProtocolSession {
   private readonly subscriptions = new Map<string, Subscription>();
 
   private readonly namespaces = new Map<string, NamespaceInfo>();
-
-  /**
-   * Per-namespace `cause` learned from upstream `lifecycle.started` events
-   * — populated by product-specific stream transformers (e.g. deepagents'
-   * `SubagentTransformer`). Read when synthesizing the wire
-   * `lifecycle.started` in {@link RunProtocolSession.ensureNamespaces}.
-   *
-   * The session itself is product-agnostic and never fabricates a
-   * `cause`; it only forwards what upstream supplied.
-   */
-  private readonly namespaceCause = new Map<string, LifecycleCause>();
 
   private readonly messageProcessor: SessionMessageProcessor;
 
@@ -102,16 +89,6 @@ export class RunProtocolSession {
   private sourceTask?: Promise<void>;
 
   private nextSeq = 0;
-
-  private maxBufferSize = 1000;
-
-  private flowStrategy: FlowStrategy = "drop-oldest";
-
-  private sampleCounter = 0;
-
-  private pauseGate: Promise<void> | undefined;
-
-  private resumePause: (() => void) | undefined;
 
   private rootGraphName = "root";
 
@@ -159,8 +136,6 @@ export class RunProtocolSession {
     this.messageProcessor = new SessionMessageProcessor({
       ensureNamespaces: async (namespace) => this.ensureNamespaces(namespace),
       pushEvent: async (event) => this.pushEvent(event),
-      emitLifecycleEvent: async (namespace, status, options) =>
-        this.emitNamespaceLifecycle(namespace, status, options),
       createMessagesEvent: (namespace, data) =>
         this.createEvent("messages", namespace, data),
       createValuesEvent: (namespace, data) =>
@@ -203,9 +178,6 @@ export class RunProtocolSession {
    */
   async close() {
     this.abortController.abort();
-    this.resumePause?.();
-    this.pauseGate = undefined;
-    this.resumePause = undefined;
     await this.sourceTask?.catch(() => undefined);
     await this.sendQueue.catch(() => undefined);
   }
@@ -371,7 +343,11 @@ export class RunProtocolSession {
   }
 
   /**
-   * Emits a terminal lifecycle event once the underlying run finishes.
+   * Emits the terminal root lifecycle event once the underlying run
+   * finishes.  Child namespaces are cascaded upstream by core's
+   * `LifecycleTransformer` — the session only owns the root because
+   * terminal status depends on API-only signals (persisted run
+   * status, thread-level pending interrupts).
    */
   private async emitTerminalLifecycle() {
     if (this.terminalLifecycleEmitted) return;
@@ -398,20 +374,13 @@ export class RunProtocolSession {
     if (status === "running") return;
 
     this.terminalLifecycleEmitted = true;
-
-    // Cascade terminal status to child namespaces still in "started" state.
-    const childStatus = status === "interrupted" ? "interrupted" : status;
-    for (const info of this.namespaces.values()) {
-      if (info.namespace.length > 0 && info.status === "started") {
-        await this.emitNamespaceLifecycle(info.namespace, childStatus, {
-          graphName: info.graphName,
-        });
-      }
-    }
-
-    await this.emitNamespaceLifecycle([], status, {
-      graphName: this.rootGraphName,
-    });
+    this.setNamespaceInfo([], status, { graphName: this.rootGraphName });
+    await this.pushEvent(
+      this.createEvent("lifecycle", [], {
+        event: status,
+        graph_name: this.rootGraphName,
+      })
+    );
   }
 
   /**
@@ -423,33 +392,39 @@ export class RunProtocolSession {
     if (event.event === "metadata") return;
 
     if (event.event === "error") {
+      // Core's `LifecycleTransformer.fail()` has already cascaded
+      // `lifecycle.failed` to every sub-namespace.  The session owns
+      // the root lifecycle, so emit only the root here.
       this.terminalLifecycleEmitted = true;
-      for (const info of this.namespaces.values()) {
-        if (info.namespace.length > 0 && info.status === "started") {
-          await this.emitNamespaceLifecycle(info.namespace, "failed", {
-            graphName: info.graphName,
-          });
-        }
-      }
-      await this.emitNamespaceLifecycle([], "failed", {
-        graphName: this.rootGraphName,
-        error: serializeError(event.data).message,
-      });
+      this.setNamespaceInfo([], "failed", { graphName: this.rootGraphName });
+      await this.pushEvent(
+        this.createEvent("lifecycle", [], {
+          event: "failed",
+          graph_name: this.rootGraphName,
+          error: serializeError(event.data).message,
+        })
+      );
       return;
     }
 
     const { method, namespace: rawNamespace } = parseEventName(event.event);
     const namespace = normalizeNamespace(rawNamespace);
 
-    // Upstream `lifecycle` events: stash any `cause` that a product-
-    // specific stream transformer (e.g. deepagents' `SubagentTransformer`)
-    // attached upstream, then defer to {@link RunProtocolSession.ensureNamespaces}
-    // to emit the session's authoritative wire `lifecycle.started`. The
-    // session is product-agnostic and never fabricates a `cause`; it
-    // only forwards what upstream supplied.
+    // Authoritative `lifecycle` events come from core's
+    // `LifecycleTransformer`.  The session is an *observer*: it
+    // updates its in-memory namespace tracking for agent-tree queries
+    // and forwards the event to subscribers.  Root lifecycle events
+    // are owned by the session (see `start()` and
+    // `emitTerminalLifecycle()`) — core is configured with
+    // `emitRootOnRegister: false` so root events never leak through
+    // this path, but we defensively drop them if they do.
     if (method === "lifecycle") {
-      this.recordUpstreamCause(namespace, event.data);
-      await this.ensureNamespaces(namespace);
+      if (namespace.length === 0) return;
+      const data = event.data as ProtocolEventDataMap["lifecycle"];
+      this.setNamespaceInfo(namespace, data.event, {
+        graphName: data.graph_name,
+      });
+      await this.pushEvent(this.createEvent("lifecycle", namespace, data));
       return;
     }
 
@@ -507,6 +482,10 @@ export class RunProtocolSession {
         }
         return;
       case "updates": {
+        // Child-namespace `lifecycle.completed` events are synthesized
+        // upstream by core's `LifecycleTransformer` based on the same
+        // `updates` node attribution, so the session only forwards
+        // updates here — no cascade bookkeeping needed.
         if (event.normalized) {
           const data = event.data as { node?: string; values: unknown };
           if (data.node === "__interrupt__") {
@@ -524,9 +503,6 @@ export class RunProtocolSession {
               data.node
             )
           );
-          if (data.node != null) {
-            await this.emitChildNodeCompleted(namespace, data.node);
-          }
           return;
         }
 
@@ -545,9 +521,6 @@ export class RunProtocolSession {
           strippedUpdates.inputRequests
         );
         if (!this.hasStatePayload(strippedUpdates.values)) {
-          if (normalized.node != null) {
-            await this.emitChildNodeCompleted(namespace, normalized.node);
-          }
           return;
         }
         await this.pushEvent(
@@ -558,9 +531,6 @@ export class RunProtocolSession {
             normalized.node
           )
         );
-        if (normalized.node != null) {
-          await this.emitChildNodeCompleted(namespace, normalized.node);
-        }
         return;
       }
       case "custom":
@@ -626,102 +596,27 @@ export class RunProtocolSession {
   }
 
   /**
-   * Ensures lifecycle state exists for each namespace prefix.
+   * Ensures the session is tracking each prefix of `namespace` so
+   * agent-tree queries and message routing can resolve it.
    *
-   * @param namespace - Namespace whose prefixes should be materialized.
+   * Does **not** emit any wire events: authoritative
+   * `lifecycle.started` events are produced upstream by core's
+   * `LifecycleTransformer` and observed by the session's lifecycle
+   * handler in {@link RunProtocolSession.handleSourceEvent}.  This
+   * method is a defensive fallback for code paths (legacy tuple
+   * messages) that reference a namespace before the corresponding
+   * `lifecycle` event has been ingested.
+   *
+   * @param namespace - Namespace whose prefixes should be tracked.
    */
   private async ensureNamespaces(namespace: Namespace) {
     for (let length = 1; length <= namespace.length; length += 1) {
       const partial = namespace.slice(0, length);
       const key = toNamespaceKey(partial);
       if (this.namespaces.has(key)) continue;
-
-      const graphName = guessGraphName(partial);
-      this.setNamespaceInfo(partial, "started", { graphName });
-      // Optional CDDL `cause` — correlates this subgraph's
-      // `lifecycle.started` with whatever caused it to spawn on the parent
-      // namespace. Populated by product-specific stream transformers
-      // upstream and stashed on first sight by {@link RunProtocolSession.recordUpstreamCause}.
-      // The session is product-agnostic and only forwards what upstream
-      // supplied.
-      const cause = this.namespaceCause.get(key);
-      await this.pushEvent(
-        this.createEvent("lifecycle", partial, {
-          event: "started",
-          graph_name: graphName,
-          ...(cause != null ? { cause } : {}),
-        })
-      );
-    }
-  }
-
-  /**
-   * Stash the upstream `cause` for a `lifecycle.started` event.
-   *
-   * Product-specific stream transformers (e.g. deepagents'
-   * `SubagentTransformer`) populate `data.cause` before the event reaches
-   * the session. We squirrel the value away per namespace so
-   * {@link RunProtocolSession.ensureNamespaces} can emit the wire
-   * `lifecycle.started` with the correlation in place. Only `started`
-   * events contribute — terminal transitions don't carry a fresh cause.
-   *
-   * Shape validation is intentionally loose: any object with a string
-   * `type` is accepted, so future variants added to the protocol flow
-   * through pinned servers unchanged.
-   */
-  private recordUpstreamCause(namespace: Namespace, data: unknown) {
-    if (!isRecord(data)) return;
-    if (data.event !== "started") return;
-    const cause = (data as { cause?: unknown }).cause;
-    if (cause == null || typeof cause !== "object") return;
-    if (typeof (cause as { type?: unknown }).type !== "string") return;
-    this.namespaceCause.set(
-      toNamespaceKey(namespace),
-      cause as LifecycleCause
-    );
-  }
-
-  /**
-   * Emits a `completed` lifecycle for the child namespace corresponding
-   * to a node that just finished executing. LangGraph emits an `updates`
-   * event on the PARENT namespace with `node: <name>` after a node's
-   * task completes, which is our cue that `[...parent, "<name>:<uuid>"]`
-   * is done — otherwise child namespaces stay in `"started"` until the
-   * run terminates and the whole tree is cascade-completed at once.
-   *
-   * For parallel fan-outs of the same node name, we mark the oldest
-   * still-started matching child first; LangGraph emits one `updates`
-   * per completed task, so repeated calls drain the bucket in order.
-   *
-   * @param parentNamespace - Namespace carrying the `updates` event.
-   * @param nodeName - Name of the node that just finished.
-   */
-  private async emitChildNodeCompleted(
-    parentNamespace: Namespace,
-    nodeName: string
-  ) {
-    if (nodeName.startsWith("__")) return; // skip __start__, __end__, etc.
-    const prefix = `${nodeName}:`;
-    // `this.namespaces` is a Map, iterated in insertion order. The first
-    // still-started match is therefore the oldest pending invocation.
-    for (const info of this.namespaces.values()) {
-      const ns = info.namespace;
-      if (ns.length !== parentNamespace.length + 1) continue;
-      if (info.status !== "started") continue;
-      let parentMatches = true;
-      for (let i = 0; i < parentNamespace.length; i += 1) {
-        if (ns[i] !== parentNamespace[i]) {
-          parentMatches = false;
-          break;
-        }
-      }
-      if (!parentMatches) continue;
-      const last = ns[ns.length - 1];
-      if (last !== nodeName && !last.startsWith(prefix)) continue;
-      await this.emitNamespaceLifecycle(ns, "completed", {
-        graphName: info.graphName,
+      this.setNamespaceInfo(partial, "started", {
+        graphName: guessGraphName(partial),
       });
-      return;
     }
   }
 
@@ -749,47 +644,6 @@ export class RunProtocolSession {
           ? this.rootGraphName
           : guessGraphName(namespace)),
     });
-  }
-
-  /**
-   * Updates cached lifecycle state for a namespace and emits the matching event.
-   *
-   * @param namespace - Namespace to update.
-   * @param status - Lifecycle status to emit.
-   * @param options - Optional graph name override and error payload.
-   */
-  private async emitNamespaceLifecycle(
-    namespace: Namespace,
-    status: NamespaceInfo["status"],
-    options?: { graphName?: string; error?: string }
-  ) {
-    const key = toNamespaceKey(namespace);
-    if (namespace.length > 0 && !this.namespaces.has(key)) {
-      await this.ensureNamespaces(namespace);
-    }
-
-    const current = this.namespaces.get(key);
-    const graphName =
-      options?.graphName ??
-      current?.graphName ??
-      (namespace.length === 0 ? this.rootGraphName : guessGraphName(namespace));
-
-    if (
-      current?.status === status &&
-      current.graphName === graphName &&
-      options?.error == null
-    ) {
-      return;
-    }
-
-    this.setNamespaceInfo(namespace, status, { graphName });
-    await this.pushEvent(
-      this.createEvent("lifecycle", namespace, {
-        event: status,
-        graph_name: graphName,
-        ...(options?.error != null ? { error: options.error } : {}),
-      })
-    );
   }
 
   private createEvent(
@@ -883,36 +737,6 @@ export class RunProtocolSession {
    * @param event - Protocol event to buffer and fan out.
    */
   private async pushEvent(event: ProtocolEvent) {
-    if (this.pauseGate != null) {
-      await this.pauseGate;
-    }
-
-    const atCapacity = this.buffer.length >= this.maxBufferSize;
-
-    if (atCapacity) {
-      switch (this.flowStrategy) {
-        case "pause-producer": {
-          this.pauseGate = new Promise<void>((resolve) => {
-            this.resumePause = resolve;
-          });
-          break;
-        }
-        case "sample": {
-          this.sampleCounter += 1;
-          const isLifecycle = event.method === "lifecycle";
-          if (!isLifecycle && this.sampleCounter % 2 !== 0) {
-            return;
-          }
-          this.buffer.splice(0, 1);
-          break;
-        }
-        case "drop-oldest":
-        default:
-          this.buffer.splice(0, this.buffer.length - this.maxBufferSize + 1);
-          break;
-      }
-    }
-
     this.buffer.push(event);
 
     if (this.passthrough) {
@@ -1075,18 +899,18 @@ export class RunProtocolSession {
 
     const namespaces =
       Array.isArray(params?.namespaces) &&
-      params.namespaces.every(
-        (value) =>
-          Array.isArray(value) &&
-          value.every((segment) => typeof segment === "string")
-      )
+        params.namespaces.every(
+          (value) =>
+            Array.isArray(value) &&
+            value.every((segment) => typeof segment === "string")
+        )
         ? (params.namespaces as Namespace[])
         : undefined;
 
     const depth =
       typeof params?.depth === "number" &&
-      Number.isInteger(params.depth) &&
-      params.depth >= 0
+        Number.isInteger(params.depth) &&
+        params.depth >= 0
         ? params.depth
         : undefined;
 
@@ -1199,18 +1023,18 @@ export class RunProtocolSession {
 
     const namespaces =
       Array.isArray(params?.namespaces) &&
-      params.namespaces.every(
-        (value) =>
-          Array.isArray(value) &&
-          value.every((segment) => typeof segment === "string")
-      )
+        params.namespaces.every(
+          (value) =>
+            Array.isArray(value) &&
+            value.every((segment) => typeof segment === "string")
+        )
         ? (params.namespaces as Namespace[])
         : undefined;
 
     const depth =
       typeof params?.depth === "number" &&
-      Number.isInteger(params.depth) &&
-      params.depth >= 0
+        Number.isInteger(params.depth) &&
+        params.depth >= 0
         ? params.depth
         : undefined;
 

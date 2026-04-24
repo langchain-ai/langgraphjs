@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EventLog } from "./event-log.js";
-
-async function collect<T>(iter: AsyncIterator<T>): Promise<T[]> {
-  const out: T[] = [];
-  for (;;) {
-    const r = await iter.next();
-    if (r.done) break;
-    out.push(r.value);
-  }
-  return out;
-}
+import { collectIterator as collect } from "./test-utils.js";
 
 describe("EventLog", () => {
   it("pushes items and iterates them in order", async () => {

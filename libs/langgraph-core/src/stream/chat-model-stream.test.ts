@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ChatModelStreamImpl } from "./chat-model-stream.js";
+import { collectAsyncIterable as collectAsync } from "./test-utils.js";
 import type { MessagesEventData, UsageInfo } from "./types.js";
 
 /** Test helpers */
@@ -37,14 +38,6 @@ const imageDelta = (index = 0): MessagesEventData => ({
   index,
   content_block: { type: "image", url: "https://example.com/img.png" },
 });
-
-async function collectAsync<T>(iter: AsyncIterable<T>): Promise<T[]> {
-  const results: T[] = [];
-  for await (const item of iter) {
-    results.push(item);
-  }
-  return results;
-}
 
 describe("ChatModelStreamImpl", () => {
   it("text deltas accumulate and resolve on finish", async () => {

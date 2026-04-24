@@ -35,6 +35,9 @@ export type {
   ToolErrorData,
   Checkpoint,
   CheckpointSource,
+  AgentStatus,
+  LifecycleData,
+  LifecycleCause,
 } from "@langchain/protocol";
 
 /**
@@ -44,6 +47,15 @@ export type {
  * subgraph or multi-agent scopes).
  */
 export type Namespace = string[];
+
+/**
+ * Channels that can appear on a protocol event.  Beyond the raw
+ * {@link StreamMode} channels emitted by the Pregel stream, the v2
+ * protocol layer synthesizes additional channels (e.g. `lifecycle`,
+ * `input`) via built-in {@link StreamTransformer}s and exposes
+ * user-defined channels created with {@link StreamChannel}.
+ */
+export type ProtocolMethod = StreamMode | "lifecycle" | "input" | (string & {});
 
 /**
  * Single envelope for a streaming protocol emission: sequence, channel
@@ -57,9 +69,12 @@ export interface ProtocolEvent {
   readonly seq: number;
 
   /**
-   * Logical stream channel; matches {@link StreamMode} (e.g. messages, updates).
+   * Logical stream channel.  Built-in channels match {@link StreamMode}
+   * (e.g. `messages`, `updates`); transformer-synthesized channels
+   * include `lifecycle` and `input`; user-defined channels carry their
+   * {@link StreamChannel.channelName}.
    */
-  readonly method: StreamMode;
+  readonly method: ProtocolMethod;
 
   /** Channel-specific payload and routing metadata. */
   readonly params: {
@@ -166,8 +181,13 @@ export interface StreamTransformer<TProjection = unknown> {
   /**
    * Called once when the underlying Pregel run completes without throwing.
    * Optional — only needed for non-channel teardown (e.g. resolving promises).
+   *
+   * May return a `PromiseLike<void>` to defer the main event log close
+   * until the async work (e.g. emitting terminal lifecycle events) has
+   * completed.  The mux awaits all returned promises before closing its
+   * event log.
    */
-  finalize?(): void;
+  finalize?(): void | PromiseLike<void>;
 
   /**
    * Called once when the run fails; `err` is the rejection or error value.

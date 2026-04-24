@@ -93,15 +93,15 @@ export type ProtocolEventDataMap = {
 
 /**
  * Callback surface used by the message processor to emit normalized events.
+ *
+ * `ensureNamespaces` updates the session's in-memory namespace tracking
+ * for agent-tree queries; the authoritative `lifecycle.started` wire
+ * emission is produced upstream by `LifecycleTransformer` in
+ * `langgraph-core`.
  */
 export type MessageProcessorCallbacks = {
   ensureNamespaces: (namespace: Namespace) => Promise<void>;
   pushEvent: (event: ProtocolEvent) => Promise<void>;
-  emitLifecycleEvent: (
-    namespace: Namespace,
-    status: AgentStatus,
-    options?: { graphName?: string; error?: string }
-  ) => Promise<void>;
   createMessagesEvent: (
     namespace: Namespace,
     data: ProtocolEventDataMap["messages"]

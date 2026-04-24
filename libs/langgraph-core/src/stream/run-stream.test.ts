@@ -7,16 +7,25 @@ import {
 } from "./run-stream.js";
 import { RESOLVE_VALUES, REJECT_VALUES } from "./mux.js";
 import { StreamMux } from "./mux.js";
-import type { SubgraphStreamFactory } from "./mux.js";
+import {
+  collectIterator as collect,
+  makeProtocolEvent,
+} from "./test-utils.js";
 import type {
   NativeStreamTransformer,
   ProtocolEvent,
   StreamTransformer,
 } from "./types.js";
 import { StreamChannel } from "./stream-channel.js";
+import { createSubgraphDiscoveryTransformer } from "./transformers/index.js";
 
-const subgraphFactory: SubgraphStreamFactory = (path, mux, discoveryStart, eventStart) =>
-  new SubgraphRunStream(path, mux, discoveryStart, eventStart);
+function installSubgraphDiscovery(mux: StreamMux): void {
+  const transformer = createSubgraphDiscoveryTransformer(mux, {
+    createStream: (path, discoveryStart, eventStart) =>
+      new SubgraphRunStream(path, mux, discoveryStart, eventStart),
+  });
+  mux.addTransformer(transformer);
+}
 
 function makeEvent(
   method: string,
@@ -24,23 +33,7 @@ function makeEvent(
   data: unknown = {},
   seq = 0
 ): ProtocolEvent {
-  return {
-    type: "event",
-    seq,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    method: method as any,
-    params: { namespace: ns, timestamp: Date.now(), data },
-  };
-}
-
-async function collect<T>(iter: AsyncIterator<T>): Promise<T[]> {
-  const out: T[] = [];
-  for (;;) {
-    const r = await iter.next();
-    if (r.done) break;
-    out.push(r.value);
-  }
-  return out;
+  return makeProtocolEvent(method, { namespace: ns, data, seq });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,7 +63,8 @@ describe("GraphRunStream", () => {
   });
 
   it("subgraphs getter yields SubgraphRunStream on discovery", async () => {
-    const mux = new StreamMux(subgraphFactory);
+    const mux = new StreamMux();
+    installSubgraphDiscovery(mux);
     const root = new GraphRunStream([], mux);
     mux.register([], root);
 

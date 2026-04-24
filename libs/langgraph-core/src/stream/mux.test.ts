@@ -7,8 +7,11 @@ import {
   RESOLVE_VALUES,
   REJECT_VALUES,
 } from "./mux.js";
-import type { SubgraphStreamFactory } from "./mux.js";
 import { StreamChannel } from "./stream-channel.js";
+import {
+  collectIterator as collect,
+  makeProtocolEvent,
+} from "./test-utils.js";
 import type { ProtocolEvent, StreamTransformer } from "./types.js";
 
 class MockSubgraphStream {
@@ -22,31 +25,12 @@ class MockSubgraphStream {
   [REJECT_VALUES](_e: unknown) {}
 }
 
-const mockFactory: SubgraphStreamFactory = (path, mux, discoveryStart, eventStart) =>
-  new MockSubgraphStream(path, mux, discoveryStart, eventStart);
-
 function makeEvent(
   method: string,
   ns: string[] = [],
   seq = 0
 ): ProtocolEvent {
-  return {
-    type: "event",
-    seq,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    method: method as any,
-    params: { namespace: ns, timestamp: Date.now(), data: {} },
-  };
-}
-
-async function collect<T>(iter: AsyncIterator<T>): Promise<T[]> {
-  const out: T[] = [];
-  for (;;) {
-    const r = await iter.next();
-    if (r.done) break;
-    out.push(r.value);
-  }
-  return out;
+  return makeProtocolEvent(method, { namespace: ns, seq });
 }
 
 describe("nsKey", () => {
@@ -90,56 +74,6 @@ describe("hasPrefix", () => {
 });
 
 describe("StreamMux", () => {
-  it("push creates subgraph discoveries for new namespaces", () => {
-    const mux = new StreamMux(mockFactory);
-    mux.push(["agent"], makeEvent("messages", ["agent"]));
-
-    const discoveries: unknown[] = [];
-    const iter = mux._discoveries.iterate();
-
-    mux._discoveries.close();
-
-    (async () => {
-      const items = await collect(iter);
-      discoveries.push(...items);
-    })();
-
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        expect(discoveries).toHaveLength(1);
-        const d = discoveries[0] as { ns: string[]; stream: MockSubgraphStream };
-        expect(d.ns).toEqual(["agent"]);
-        expect(d.stream).toBeInstanceOf(MockSubgraphStream);
-        resolve();
-      }, 10);
-    });
-  });
-
-  it("push creates discoveries only for top-level namespace segments", () => {
-    const mux = new StreamMux(mockFactory);
-    mux.push(
-      ["parent", "child"],
-      makeEvent("messages", ["parent", "child"])
-    );
-    mux._discoveries.close();
-
-    return collect(mux._discoveries.iterate()).then((items) => {
-      expect(items).toHaveLength(1);
-      expect(items[0].ns).toEqual(["parent"]);
-    });
-  });
-
-  it("push does not create duplicate discoveries", () => {
-    const mux = new StreamMux(mockFactory);
-    mux.push(["agent"], makeEvent("messages", ["agent"], 0));
-    mux.push(["agent"], makeEvent("messages", ["agent"], 1));
-    mux._discoveries.close();
-
-    return collect(mux._discoveries.iterate()).then((items) => {
-      expect(items).toHaveLength(1);
-    });
-  });
-
   it("push runs transformer pipeline — events suppressed when transformer returns false", () => {
     const mux = new StreamMux();
     const transformer: StreamTransformer = {
@@ -193,7 +127,7 @@ describe("StreamMux", () => {
   });
 
   it("StreamChannel auto-forwarded events inherit the triggering namespace", async () => {
-    const mux = new StreamMux(mockFactory);
+    const mux = new StreamMux();
     const channel = new StreamChannel<{ event: string }>("tools");
     const transformer: StreamTransformer = {
       init: () => ({ tools: channel }),
@@ -231,11 +165,17 @@ describe("StreamMux", () => {
     mux._events.close();
 
     const events = await collect(mux._events.iterate());
-    // Channel events (seq 6, 7) appear before the original (seq 5)
-    // because pushes happen during process().
-    expect(events[0].seq).toBe(6);
-    expect(events[1].seq).toBe(7);
-    expect(events[2].seq).toBe(5);
+    // Channel events appear before the original event because pushes
+    // happen during process().  The mux re-stamps every event with
+    // its monotonic counter so the log is always strictly increasing.
+    expect(events.map((e) => e.method)).toEqual([
+      "tools",
+      "custom",
+      "messages",
+    ]);
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].seq).toBeGreaterThan(events[i - 1].seq);
+    }
   });
 
   it("mux auto-closes StreamChannels on close", async () => {
@@ -508,7 +448,7 @@ describe("StreamMux", () => {
   });
 
   it("subscribeEvents filters by namespace prefix", async () => {
-    const mux = new StreamMux(mockFactory);
+    const mux = new StreamMux();
 
     mux.push([], makeEvent("messages", [], 0));
     mux.push(["agent"], makeEvent("messages", ["agent"], 1));
@@ -520,25 +460,6 @@ describe("StreamMux", () => {
     expect(filtered).toHaveLength(2);
     expect(filtered[0].params.namespace).toEqual(["agent"]);
     expect(filtered[1].params.namespace).toEqual(["agent", "sub"]);
-  });
-
-  it("subscribeSubgraphs yields only top-level discovered subgraphs", async () => {
-    const mux = new StreamMux(mockFactory);
-
-    // Deep namespace — only top-level ["parent"] is announced as a discovery
-    mux.push(
-      ["parent", "child", "grandchild"],
-      makeEvent("messages", ["parent", "child", "grandchild"])
-    );
-    // Second top-level subgraph
-    mux.push(["sibling"], makeEvent("messages", ["sibling"]));
-    mux._discoveries.close();
-
-    // Root-level subscription sees both top-level subgraphs
-    const rootChildren = await collect(mux.subscribeSubgraphs([]));
-    expect(rootChildren).toHaveLength(2);
-    expect((rootChildren[0] as MockSubgraphStream).path).toEqual(["parent"]);
-    expect((rootChildren[1] as MockSubgraphStream).path).toEqual(["sibling"]);
   });
 
   it("addTransformer replays buffered events to the new transformer", () => {
@@ -641,8 +562,10 @@ describe("StreamMux", () => {
     mux.addTransformer(lateTransformer);
 
     // Late transformer sees all events that made it into the log
-    // (messages seq=0, values seq=1, updates seq=3 — debug was suppressed)
-    expect(replayedSeqs).toEqual([0, 1, 3]);
+    // (messages, values, updates — debug was suppressed).  The mux
+    // re-stamps seq at append time, so the replayed sequence is the
+    // monotonic log order.
+    expect(replayedSeqs).toEqual([0, 1, 2]);
   });
 
   it("markInterrupted sets interrupted flag and stores payloads", () => {

@@ -28,11 +28,24 @@ export {
   createGraphRunStream,
   SET_VALUES_LOG,
   SET_MESSAGES_ITERABLE,
+  SET_LIFECYCLE_ITERABLE,
 } from "./run-stream.js";
+export type { CreateGraphRunStreamOptions } from "./run-stream.js";
 export {
+  createLifecycleTransformer,
   createMessagesTransformer,
+  createSubgraphDiscoveryTransformer,
   createValuesTransformer,
-} from "./transformers.js";
+  filterLifecycleEntries,
+  filterSubgraphHandles,
+} from "./transformers/index.js";
+export type {
+  LifecycleEntry,
+  LifecycleProjection,
+  LifecycleTransformerOptions,
+  SubgraphDiscoveryProjection,
+  SubgraphDiscoveryTransformerOptions,
+} from "./transformers/index.js";
 export { convertToProtocolEvent } from "./convert.js";
 export { isNativeTransformer } from "./types.js";
 export type {
@@ -60,4 +73,7 @@ export type {
   ToolCallStatus,
   ToolCallStream,
   InterruptPayload,
+  AgentStatus,
+  LifecycleData,
+  LifecycleCause,
 } from "./types.js";

@@ -50,6 +50,10 @@ export {
   createGraphRunStream,
   createMessagesTransformer,
   createValuesTransformer,
+  createLifecycleTransformer,
+  createSubgraphDiscoveryTransformer,
+  filterLifecycleEntries,
+  filterSubgraphHandles,
 } from "./stream/index.js";
 export type {
   ProtocolEvent,
@@ -66,6 +70,15 @@ export type {
   ToolCallStream,
   InterruptPayload,
   InferExtensions,
+  AgentStatus,
+  LifecycleData,
+  LifecycleCause,
+  LifecycleEntry,
+  LifecycleProjection,
+  LifecycleTransformerOptions,
+  SubgraphDiscoveryProjection,
+  SubgraphDiscoveryTransformerOptions,
+  CreateGraphRunStreamOptions,
 } from "./stream/index.js";
 export * from "./errors.js";
 export {

@@ -41,9 +41,19 @@ describe("convertToProtocolEvent", () => {
     expect(result[0]).toMatchObject({
       method: "updates",
       params: {
+        // The completed node is surfaced at the top level of `params`
+        // so transformers (e.g. `LifecycleTransformer`) can attribute
+        // the emission to the child namespace without re-parsing `data`.
+        node: "myNode",
         data: { node: "myNode", values: { foo: "bar" } },
       },
     });
+  });
+
+  it("converts 'updates' mode — omits params.node when payload has no named node", () => {
+    const result = convertToProtocolEvent(ns, "updates", {}, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].params).not.toHaveProperty("node");
   });
 
   it("converts 'tools' mode — on_tool_start → tool-started", () => {

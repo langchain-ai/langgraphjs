@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createMessagesTransformer,
   createValuesTransformer,
-} from "./transformers.js";
+} from "./transformers/index.js";
+import {
+  collectAsyncIterable as collect,
+  makeProtocolEvent,
+} from "./test-utils.js";
 import type { ProtocolEvent } from "./types.js";
 
 function makeEvent(
@@ -12,25 +16,7 @@ function makeEvent(
   node?: string,
   seq = 0
 ): ProtocolEvent {
-  return {
-    type: "event",
-    seq,
-    method: method as ProtocolEvent["method"],
-    params: {
-      namespace,
-      timestamp: Date.now(),
-      data,
-      ...(node != null ? { node } : {}),
-    },
-  };
-}
-
-async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iter) {
-    items.push(item);
-  }
-  return items;
+  return makeProtocolEvent(method, { namespace, data, node, seq });
 }
 
 /**

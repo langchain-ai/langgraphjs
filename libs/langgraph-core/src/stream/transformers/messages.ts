@@ -1,41 +1,22 @@
-/**
- * Built-in graph-level stream transformers.
- *
- * These transformers are registered automatically for every graph run:
- *
- *   ValuesTransformer   — captures values events and resolves run.output.
- *   MessagesTransformer — groups messages events into ChatModelStream lifecycles.
- *
- * They run in a fixed order: ValuesTransformer first, then MessagesTransformer.
- */
-
-import { EventLog } from "./event-log.js";
-import { ChatModelStreamImpl } from "./chat-model-stream.js";
+import { ChatModelStreamImpl } from "../chat-model-stream.js";
+import { EventLog } from "../event-log.js";
+import { hasPrefix } from "../mux.js";
 import type {
   ChatModelStream,
   MessagesEventData,
   Namespace,
   ProtocolEvent,
   StreamTransformer,
-} from "./types.js";
-import { hasPrefix } from "./mux.js";
-
-/**
- * The projection shape merged into a run stream by the messages transformer.
- * Exposes a `messages` async iterable that yields one {@link ChatModelStream}
- * per AI message lifecycle observed during the run.
- */
-export interface MessagesTransformerProjection {
-  messages: AsyncIterable<ChatModelStream>;
-}
+} from "../types.js";
+import type { MessagesTransformerProjection } from "./types.js";
 
 /**
  * Creates a {@link StreamTransformer} that groups `messages` channel events into
  * per-message {@link ChatModelStream} instances.
  *
  * A new `ChatModelStream` is created on `message-start` and closed on
- * `message-finish`.  Content-block events in between are forwarded to the
- * active stream.  Only events whose namespace exactly matches {@link path}
+ * `message-finish`. Content-block events in between are forwarded to the
+ * active stream. Only events whose namespace exactly matches {@link path}
  * are processed; child namespaces are ignored.
  *
  * @param path - Namespace prefix to match against incoming events.
@@ -120,54 +101,6 @@ export function createMessagesTransformer(
       active?.fail(err);
       active = undefined;
       log.fail(err);
-    },
-  };
-}
-
-/**
- * The projection shape merged into a run stream by the values transformer.
- * Exposes the underlying {@link EventLog} so that `StreamMux` can resolve
- * the final output value on close.
- */
-export interface ValuesTransformerProjection {
-  _valuesLog: EventLog<Record<string, unknown>>;
-}
-
-/**
- * Creates a {@link StreamTransformer} that captures `values` channel events
- * into an {@link EventLog}.  Only events whose namespace exactly matches
- * {@link path} are recorded; events from child or sibling namespaces are
- * ignored.
- *
- * The final snapshot is resolved by {@link StreamMux.close} directly;
- * this transformer only accumulates intermediate values.
- *
- * @param path - Namespace prefix to match against incoming events.
- * @returns A `StreamTransformer` whose projection contains the internal
- *   `_valuesLog` event log.
- */
-export function createValuesTransformer(
-  path: Namespace
-): StreamTransformer<ValuesTransformerProjection> {
-  const valuesLog = new EventLog<Record<string, unknown>>();
-
-  return {
-    init: () => ({ _valuesLog: valuesLog }),
-
-    process(event: ProtocolEvent): boolean {
-      if (event.method !== "values") return true;
-      if (event.params.namespace.length !== path.length) return true;
-      if (!hasPrefix(event.params.namespace, path)) return true;
-      valuesLog.push(event.params.data as Record<string, unknown>);
-      return true;
-    },
-
-    finalize(): void {
-      valuesLog.close();
-    },
-
-    fail(err: unknown): void {
-      valuesLog.fail(err);
     },
   };
 }

@@ -123,7 +123,8 @@ export function convertToProtocolEvent(
       return events;
     }
 
-    case "updates":
+    case "updates": {
+      const data = convertUpdatesPayload(payload);
       return [
         {
           ...base,
@@ -132,10 +133,17 @@ export function convertToProtocolEvent(
           params: {
             namespace: ns,
             timestamp,
-            data: convertUpdatesPayload(payload),
+            // Surface the completed node at the top level of `params` so
+            // transformers (notably `LifecycleTransformer`) can attribute
+            // a finished task to its child namespace without re-parsing
+            // the payload.  The same value is retained inside `data` for
+            // downstream consumers that inspect the event body.
+            ...(typeof data.node === "string" ? { node: data.node } : {}),
+            data,
           },
         },
       ];
+    }
 
     case "custom":
       return [

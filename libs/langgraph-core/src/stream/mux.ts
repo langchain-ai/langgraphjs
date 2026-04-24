@@ -68,8 +68,14 @@ export interface StreamHandle {
 
 /**
  * Factory function that creates a subgraph stream handle for a newly
- * discovered namespace. Injected into {@link StreamMux} at construction
- * time, keeping mux decoupled from the concrete stream classes.
+ * discovered namespace.
+ *
+ * Historically consumed by {@link StreamMux} at construction time;
+ * today factories are consumed by
+ * `createSubgraphDiscoveryTransformer` (via its `createStream`
+ * option).  This shape is retained for consumers that still thread a
+ * mux reference through the factory — the narrower transformer
+ * option omits `mux` because it captures the mux in a closure.
  */
 export type SubgraphStreamFactory = (
   path: Namespace,
@@ -123,10 +129,8 @@ export class StreamMux {
   readonly #transformers: StreamTransformer<unknown>[] = [];
   readonly #channels: StreamChannel<unknown>[] = [];
   readonly #streamMap = new Map<string, StreamHandle>();
-  readonly #seenNs = new Set<string>();
   readonly #latestValues = new Map<string, Record<string, unknown>>();
   readonly #interrupts: InterruptPayload[] = [];
-  readonly #createSubgraphStream: SubgraphStreamFactory | undefined;
 
   /**
    * Final-value projection keys tracked for remote surfacing. Populated
@@ -137,16 +141,6 @@ export class StreamMux {
    */
   readonly #finalValues: Array<{ name: string; promise: Promise<unknown> }> =
     [];
-
-  /**
-   * @param createSubgraphStream - Optional factory for creating subgraph
-   *   stream handles when new namespaces are discovered. When omitted,
-   *   subgraph discovery is disabled (useful for unit-testing the mux
-   *   in isolation).
-   */
-  constructor(createSubgraphStream?: SubgraphStreamFactory) {
-    this.#createSubgraphStream = createSubgraphStream;
-  }
 
   /**
    * Associates a pre-existing stream handle with a namespace so that
@@ -186,6 +180,10 @@ export class StreamMux {
     // triggered just below.
     if (transformer.onRegister) {
       const emitter: StreamEmitter = {
+        // Transformer-originated events use a placeholder `seq` of
+        // `0`.  `push()` is the single authority for sequence numbers
+        // and will re-stamp this event with the next monotonically
+        // increasing value.
         push: (ns, event) => this.push(ns, event),
       };
       transformer.onRegister(emitter);
@@ -256,45 +254,22 @@ export class StreamMux {
 
   /**
    * Distributes an event through the transformer pipeline, then appends it to
-   * the main event log.  Creates {@link SubgraphDiscovery} entries for any
-   * namespace segments not yet seen.
+   * the main event log.
+   *
+   * Subgraph discovery (materializing a {@link StreamHandle} for each
+   * newly observed top-level namespace) is handled by the
+   * {@link createSubgraphDiscoveryTransformer} when installed, not here.
    *
    * @param ns - The namespace path that produced the event.
    * @param event - The protocol event to process and store.
    */
   push(ns: Namespace, event: ProtocolEvent): void {
-    // Only announce first-level namespace segments as discoverable
-    // subgraphs.  Deeper segments (e.g. ["researcher:uuid", "tools:uuid"])
-    // are internal Pregel checkpoint namespace entries for nodes within a
-    // subgraph and should not appear as user-facing SubgraphRunStream
-    // instances.  We still track them in #seenNs / #streamMap so that
-    // values resolution and event filtering work correctly.
-    if (ns.length > 0 && this.#createSubgraphStream) {
-      const topNs = ns.slice(0, 1);
-      const topKey = nsKey(topNs);
-      if (!this.#seenNs.has(topKey)) {
-        this.#seenNs.add(topKey);
-        const subStream = this.#createSubgraphStream(
-          topNs,
-          this,
-          this._discoveries.size,
-          this._events.size
-        );
-        this.#streamMap.set(topKey, subStream);
-        this._discoveries.push({ ns: topNs, stream: subStream });
-      }
-    }
-
     if (event.method === "values") {
       this.#latestValues.set(
         nsKey(ns),
         event.params.data as Record<string, unknown>
       );
     }
-
-    // Track seq from the incoming event so channel-forwarded events
-    // get subsequent sequence numbers.
-    this.#nextEmitSeq = Math.max(this.#nextEmitSeq, event.seq + 1);
 
     // Save the outer namespace so re-entrant `push()` calls (e.g. from
     // `StreamTransformer.onRegister` emitters synthesizing events
@@ -314,7 +289,15 @@ export class StreamMux {
     this.#currentNamespace = outerNamespace;
 
     if (keep) {
-      this._events.push(event);
+      // The mux is the single authority for sequence numbers.  Callers
+      // (the `pump`, transformer emitters, channel forwarders) pass a
+      // placeholder `seq`; we re-stamp every event here so the log is
+      // strictly monotonic across all origination paths.  Stamping
+      // happens *after* `process()` so that any channel-forwarded
+      // events pushed during processing get earlier sequence numbers
+      // than the triggering event, matching their in-order appearance
+      // in `_events`.
+      this._events.push({ ...event, seq: this.#nextEmitSeq++ });
     }
   }
 
@@ -339,8 +322,15 @@ export class StreamMux {
       stream?.[RESOLVE_VALUES](values);
     }
 
+    const finalizePromises: PromiseLike<void>[] = [];
     for (const transformer of this.#transformers) {
-      transformer.finalize?.();
+      const result = transformer.finalize?.();
+      if (
+        result != null &&
+        typeof (result as PromiseLike<void>).then === "function"
+      ) {
+        finalizePromises.push(result as PromiseLike<void>);
+      }
     }
 
     for (const channel of this.#channels) {
@@ -348,12 +338,13 @@ export class StreamMux {
     }
 
     const finalValues = this.#finalValues;
-    if (finalValues.length === 0) {
+    if (finalValues.length === 0 && finalizePromises.length === 0) {
       this._events.close();
       this._discoveries.close();
     } else {
-      void Promise.allSettled(
-        finalValues.map(async ({ name, promise }) => {
+      void Promise.allSettled([
+        ...finalizePromises,
+        ...finalValues.map(async ({ name, promise }) => {
           try {
             const resolved = await promise;
             if (!this._events.done) {
@@ -375,8 +366,8 @@ export class StreamMux {
             // surfaces the rejection to its direct awaiters via the
             // transformer's own `fail()` hook.
           }
-        })
-      ).then(() => {
+        }),
+      ]).then(() => {
         this._events.close();
         this._discoveries.close();
       });
@@ -462,37 +453,6 @@ export class StreamMux {
     };
   }
 
-  /**
-   * Returns an async iterator that yields subgraph stream handles for
-   * direct children of {@link path} (i.e. namespaces exactly one level
-   * deeper).
-   *
-   * @param path - Parent namespace to watch for children.
-   * @param startAt - Zero-based index into the discovery log to begin from.
-   * @returns An async iterator over subgraph stream handles.
-   */
-  subscribeSubgraphs(
-    path: Namespace,
-    startAt = 0
-  ): AsyncIterator<StreamHandle> {
-    const base = this._discoveries.iterate(startAt);
-    const targetDepth = path.length + 1;
-    return {
-      async next(): Promise<IteratorResult<StreamHandle>> {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const result = await base.next();
-          if (result.done) {
-            return { value: undefined as unknown as StreamHandle, done: true };
-          }
-          const { ns, stream } = result.value;
-          if (ns.length === targetDepth && hasPrefix(ns, path)) {
-            return { value: stream, done: false };
-          }
-        }
-      },
-    };
-  }
 }
 
 /**

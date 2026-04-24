@@ -172,9 +172,25 @@ export async function* streamState(
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
-  // Delegate to streamStateV2 when the graph has compile-time transformers,
-  // so custom stream projections flow to clients automatically.
-  if (graph.streamTransformers?.length > 0) {
+  // Delegate to streamStateV2 when either:
+  //   1. the graph has compile-time transformers, so custom stream
+  //      projections flow to clients automatically; or
+  //   2. the run was created by a v2 protocol endpoint — detected by
+  //      the `PROTOCOL_MESSAGES_STREAM_CONFIG_KEY` flag which is set
+  //      exclusively by those entrypoints (`protocol/service.mts`,
+  //      `experimental/embed/protocol.mts`).  Legacy callers never
+  //      set this flag, so they stay on the v1 streaming path below.
+  //
+  // Routing v2-protocol runs through `streamStateV2` is what lets
+  // core's `LifecycleTransformer` + `SubgraphDiscoveryTransformer`
+  // emit authoritative lifecycle events for every subgraph/subagent
+  // namespace.  Without this, the legacy `streamEvents` loop below
+  // only surfaces root lifecycle events (from `RunProtocolSession`)
+  // and clients cannot discover children via the `lifecycle.started`
+  // signal the SDK subscribes to.
+  const isProtocolV2Run =
+    kwargs.config?.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
+  if (graph.streamTransformers?.length > 0 || isProtocolV2Run) {
     yield* streamStateV2(run, { ...options, graph });
     return;
   }
@@ -488,6 +504,11 @@ export async function* streamStateV2(
       })
     : undefined;
 
+  const rootGraphName =
+    typeof kwargs.config?.configurable?.graph_id === "string"
+      ? kwargs.config.configurable.graph_id
+      : run.assistant_id;
+
   const graphRun = await graph.stream_v2(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
@@ -508,6 +529,14 @@ export async function* streamStateV2(
       runId: run.run_id,
       signal: options?.signal,
       ...(tracer && { callbacks: [tracer] }),
+
+      // The root `lifecycle.started` and terminal root event are owned
+      // by `RunProtocolSession` so that API-specific semantics (initial
+      // run status, thread-level pending interrupts, replay) remain
+      // authoritative.  Core's `LifecycleTransformer` still tracks the
+      // root namespace internally for child cascade purposes and emits
+      // authoritative events for every sub-namespace.
+      lifecycle: { emitRootOnRegister: false, rootGraphName },
     }
   );
 
@@ -557,14 +586,17 @@ export async function* streamStateV2(
      * message normalization, checkpoint preprocessing). `checkpoints`
      * is emitted by core as a standalone protocol event whose `data` is
      * already the lightweight envelope; the session frames it on the
-     * dedicated `checkpoints` channel.
+     * dedicated `checkpoints` channel.  `lifecycle` events are
+     * synthesized by core's `LifecycleTransformer` and forwarded
+     * verbatim by the session.
      */
     const normalized =
       mode === "tools" ||
       mode === "updates" ||
       mode === "custom" ||
       mode === "messages" ||
-      mode === "checkpoints";
+      mode === "checkpoints" ||
+      mode === "lifecycle";
 
     yield { event: sseEvent, data, normalized };
   }

@@ -409,7 +409,7 @@ describe("stream_v2", () => {
       expect(subgraphs[0].index).toBe(0);
 
       const events = allSubEvents[0];
-      expect(events).toHaveLength(7);
+      expect(events).toHaveLength(9);
 
       for (const event of events) {
         expect(event.params.namespace[0]).toMatch(/^sub:/);
@@ -417,8 +417,11 @@ describe("stream_v2", () => {
 
       const eventSequence = events.map((e) => e.method);
       // Each `values` event is preceded by its companion `checkpoints`
-      // envelope event on the same namespace.
+      // envelope event on the same namespace.  The subgraph is bracketed
+      // by the `LifecycleTransformer`'s synthesized started/completed
+      // events.
       expect(eventSequence).toEqual([
+        "lifecycle",
         "checkpoints",
         "values",
         "tasks",
@@ -426,6 +429,7 @@ describe("stream_v2", () => {
         "tasks",
         "checkpoints",
         "values",
+        "lifecycle",
       ]);
 
       const subValues = byMethod(events, "values").map(

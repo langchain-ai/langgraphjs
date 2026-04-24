@@ -179,7 +179,7 @@ describe("streamState", () => {
     ]);
   });
 
-  it("uses native messages events for protocol-gated runs", async () => {
+  it("routes protocol-gated runs through streamStateV2", async () => {
     const run = createRun({
       kwargs: {
         config: {
@@ -194,35 +194,35 @@ describe("streamState", () => {
       },
     });
 
+    // v2-protocol runs must skip the v1 `streamEvents` path and flow
+    // through `graph.stream_v2`, which is what lets core's
+    // `LifecycleTransformer` emit authoritative subgraph lifecycle
+    // events.  A graph that only exposes `streamEvents` would throw
+    // on the v1 path — by mocking `stream_v2` here we assert the
+    // run is actually routed to the v2 pipeline.
+    let streamV2Invoked = false;
     const chunks: Array<{ event: string; data: unknown }> = [];
     for await (const chunk of streamState(run, {
       attempt: 1,
       getGraph: async () =>
         ({
-          async *streamEvents() {
-            yield {
-              event: "on_chain_stream",
-              run_id: run.run_id,
-              data: {
-                chunk: [
-                  "messages",
-                  {
-                    event: "message-start",
-                    messageId: "msg_1",
+          async stream_v2() {
+            streamV2Invoked = true;
+            return {
+              async *[Symbol.asyncIterator]() {
+                yield {
+                  type: "event" as const,
+                  seq: 0,
+                  method: "messages" as const,
+                  params: {
+                    namespace: [],
+                    timestamp: 1,
+                    data: {
+                      event: "message-start",
+                      messageId: "msg_1",
+                    },
                   },
-                ],
-              },
-            };
-            yield {
-              event: "on_chat_model_stream",
-              run_id: "00000000-0000-7000-8000-000000000099",
-              metadata: { langgraph_checkpoint_ns: "" },
-              data: {
-                chunk: {
-                  id: "msg_1",
-                  type: "AIMessageChunk",
-                  content: "Hello",
-                },
+                };
               },
             };
           },
@@ -231,6 +231,7 @@ describe("streamState", () => {
       chunks.push(chunk);
     }
 
+    expect(streamV2Invoked).toBe(true);
     expect(chunks).toEqual([
       {
         event: "metadata",
@@ -242,6 +243,7 @@ describe("streamState", () => {
           event: "message-start",
           messageId: "msg_1",
         },
+        normalized: true,
       },
     ]);
   });

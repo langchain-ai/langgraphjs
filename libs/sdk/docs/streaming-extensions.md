@@ -1,7 +1,7 @@
 # Custom transformers (extensions)
 
 Graphs compiled with
-[`StreamTransformer`s](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph/src/stream/transformers.ts)
+[`StreamTransformer`s](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/stream/types.ts)
 attach named projections that run server-side. Each projection is
 forwarded to clients on a protocol `custom:<name>` channel, and the
 SDK surfaces them as **extensions** on `ThreadStream`:

@@ -41,27 +41,6 @@ import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session/index.mjs";
 
 /**
- * Strategy for handling buffered events when the session's event buffer is
- * at capacity.
- *
- * Previously sourced from `@langchain/protocol`'s flow-control module,
- * which was removed upstream. Retained locally so the session's buffered
- * backpressure implementation continues to compile and operate as before.
- */
-export type FlowStrategy = "drop-oldest" | "pause-producer" | "sample";
-
-/**
- * Parameters for tuning the session-level event buffer under backpressure.
- *
- * Retained locally after the upstream `flow.setCapacity` command was
- * removed from `@langchain/protocol`.
- */
-export interface FlowCapacityParams {
-  max_buffer_size: number;
-  strategy: FlowStrategy;
-}
-
-/**
  * Raw events emitted by the existing LangGraph run stream implementation
  * before they are normalized into protocol-framed events.
  *

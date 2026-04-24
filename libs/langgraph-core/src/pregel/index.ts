@@ -98,7 +98,11 @@ import {
   GraphRunStream,
   STREAM_V2_MODES,
 } from "../stream/index.js";
-import type { InferExtensions, StreamTransformer } from "../stream/index.js";
+import type {
+  InferExtensions,
+  LifecycleTransformerOptions,
+  StreamTransformer,
+} from "../stream/index.js";
 import type {
   Durability,
   GetStateOptions,
@@ -1969,6 +1973,12 @@ export class Pregel<
     > & {
       /** User-supplied transformer factories for custom projections. */
       transformers?: TTransformers;
+      /**
+       * Configuration forwarded to the built-in lifecycle transformer
+       * that powers `run.lifecycle` and the `lifecycle` channel events
+       * in the protocol stream.
+       */
+      lifecycle?: LifecycleTransformerOptions;
     }
   ): Promise<
     GraphRunStream<
@@ -1976,7 +1986,11 @@ export class Pregel<
       InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
     >
   > {
-    const { transformers: userTransformers, ...restOptions } = options ?? {};
+    const {
+      transformers: userTransformers,
+      lifecycle: lifecycleOptions,
+      ...restOptions
+    } = options ?? {};
 
     const streamOptions = {
       recursionLimit: this.config?.recursionLimit,
@@ -2013,7 +2027,8 @@ export class Pregel<
 
     return createGraphRunStream<OutputType, TMerged>(
       source,
-      mergedTransformers
+      mergedTransformers,
+      { lifecycle: lifecycleOptions }
     );
   }
 
