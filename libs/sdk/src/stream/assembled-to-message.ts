@@ -30,7 +30,7 @@ import type { AssembledMessage } from "../client/stream/messages.js";
 export type ExtendedMessageRole = MessageRole | "tool";
 
 export interface AssembledToMessageInput {
-  /** Stable message id (from `MessageStartData.message_id`). */
+  /** Stable message id (from `MessageStartData.id`). */
   id?: string;
   /** Author role captured from the `message-start` event. */
   role: ExtendedMessageRole;

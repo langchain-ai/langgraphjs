@@ -78,7 +78,7 @@ async function main() {
     if (!match) ok = false;
 
     console.log(
-      `  AUDIO   message_id=${audio.messageId}` +
+      `  AUDIO   id=${audio.messageId}` +
         ` size=${bytes.length}B mime=${audio.mimeType ?? "?"}` +
         ` monotonic=${audio.monotonic ? "✓" : "✗"}`
     );
@@ -99,7 +99,7 @@ async function main() {
     if (!match) ok = false;
 
     console.log(
-      `  IMAGE   message_id=${image.messageId}` +
+      `  IMAGE   id=${image.messageId}` +
         ` size=${bytes.length}B mime=${image.mimeType ?? "?"}` +
         (image.width != null ? ` ${image.width}x${image.height}` : "") +
         ` monotonic=${image.monotonic ? "✓" : "✗"}`

@@ -1,3 +1,8 @@
+import {
+  AIMessage,
+  type ContentBlock as CoreContentBlock,
+  type UsageMetadata,
+} from "@langchain/core/messages";
 import type {
   ContentBlock,
   FinalizedContentBlock,
@@ -6,17 +11,105 @@ import type {
   UsageInfo,
 } from "@langchain/protocol";
 
+import { MultiCursorBuffer } from "./multi-cursor-buffer.js";
+
+type FinishReason = "stop" | "length" | "tool_use" | "content_filter";
+
+type ChatModelStreamEvent =
+  | { type: "message-start"; id?: string; usage?: UsageMetadata }
+  | {
+    type: "content-block-start";
+    index: number;
+    content: CoreContentBlock;
+  }
+  | {
+    type: "content-block-delta";
+    index: number;
+    content: CoreContentBlock;
+  }
+  | {
+    type: "content-block-finish";
+    index: number;
+    content: CoreContentBlock;
+  }
+  | {
+    type: "message-finish";
+    reason?: FinishReason;
+    usage?: UsageMetadata;
+    responseMetadata?: Record<string, unknown>;
+  }
+  | { type: "error"; message: string; code?: string };
+
+type TextContentStream = AsyncIterable<string> &
+  PromiseLike<string> & { full: AsyncIterable<string> };
+
+type UsageMetadataStream = AsyncIterable<UsageMetadata> &
+  PromiseLike<UsageMetadata | undefined>;
+
+type ToolCallsStream = AsyncIterable<CoreContentBlock.Tools.ToolCall> &
+  PromiseLike<Array<CoreContentBlock.Tools.ToolCall>> & {
+    full: AsyncIterable<Array<CoreContentBlock.Tools.ToolCall>>;
+  };
+
+function applyCoreContentDelta(
+  target: CoreContentBlock,
+  delta: CoreContentBlock
+): CoreContentBlock {
+  if (target.type !== delta.type) {
+    return structuredClone(delta);
+  }
+
+  switch (delta.type) {
+    case "text":
+      return {
+        ...target,
+        ...delta,
+        text: `${"text" in target ? target.text : ""}${delta.text}`,
+      } as CoreContentBlock;
+    case "reasoning":
+      return {
+        ...target,
+        ...delta,
+        reasoning: `${"reasoning" in target ? target.reasoning : ""}${delta.reasoning}`,
+      } as CoreContentBlock;
+    case "tool_call_chunk":
+    case "server_tool_call_chunk": {
+      const merged = { ...target, ...delta } as Record<string, unknown>;
+      if (delta.id == null && "id" in target && target.id != null) {
+        merged.id = target.id;
+      }
+      if (delta.name == null && "name" in target && target.name != null) {
+        merged.name = target.name;
+      }
+      merged.args = `${("args" in target ? target.args : "") ?? ""}${delta.args ?? ""}`;
+      return merged as unknown as CoreContentBlock;
+    }
+    default:
+      return { ...target, ...delta } as CoreContentBlock;
+  }
+}
+
+function toCoreUsage(usage: UsageInfo | undefined): UsageMetadata | undefined {
+  if (!usage) return undefined;
+  return {
+    ...usage,
+    input_tokens: usage.input_tokens ?? 0,
+    output_tokens: usage.output_tokens ?? 0,
+    total_tokens: usage.total_tokens ?? 0,
+  };
+}
+
 /**
  * Mutable view of a streamed message as message and content-block events are
  * assembled into a single structure.
  */
 export interface AssembledMessage {
+  id: string;
   namespace: string[];
-  node?: string;
-  messageId?: string;
-  metadata?: MessageMetadata;
   blocks: ContentBlock[];
+  node?: string;
   usage?: UsageInfo;
+  metadata?: MessageMetadata;
   finishMetadata?: Record<string, any>;
   error?: {
     message: string;
@@ -31,6 +124,8 @@ export interface AssembledMessage {
  */
 const PUSH_TEXT: unique symbol = Symbol("pushText");
 const PUSH_REASONING: unique symbol = Symbol("pushReasoning");
+const PUSH_EVENT: unique symbol = Symbol("pushEvent");
+const UPDATE_CONTEXT: unique symbol = Symbol("updateContext");
 const FINISH: unique symbol = Symbol("finish");
 const ERROR: unique symbol = Symbol("error");
 
@@ -46,12 +141,14 @@ const ERROR: unique symbol = Symbol("error");
  * Created by {@link StreamingMessageAssembler} and yielded by
  * the `session.messages` lazy getter.
  */
-export class StreamingMessage {
+export class StreamingMessage
+  implements AsyncIterable<ChatModelStreamEvent>, PromiseLike<AIMessage> {
+  readonly id: string;
   readonly namespace: string[];
-  readonly node: string | undefined;
-  readonly messageId: string | undefined;
+  node: string | undefined;
   readonly metadata: MessageMetadata | undefined;
   readonly assembled: AssembledMessage;
+  readonly #events = new MultiCursorBuffer<ChatModelStreamEvent>();
 
   #textChunks: string[] = [];
   #reasoningChunks: string[] = [];
@@ -62,16 +159,14 @@ export class StreamingMessage {
 
   #resolveText!: (v: string) => void;
   #resolveReasoning!: (v: string) => void;
-  #resolveUsage!: (v: UsageInfo | undefined) => void;
   readonly #textPromise: Promise<string>;
   readonly #reasoningPromise: Promise<string>;
-  readonly #usagePromise: Promise<UsageInfo | undefined>;
 
   constructor(assembled: AssembledMessage) {
+    this.id = assembled.id;
     this.assembled = assembled;
     this.namespace = assembled.namespace;
     this.node = assembled.node;
-    this.messageId = assembled.messageId;
     this.metadata = assembled.metadata;
     this.#textPromise = new Promise<string>((r) => {
       this.#resolveText = r;
@@ -79,16 +174,12 @@ export class StreamingMessage {
     this.#reasoningPromise = new Promise<string>((r) => {
       this.#resolveReasoning = r;
     });
-    this.#usagePromise = new Promise<UsageInfo | undefined>((r) => {
-      this.#resolveUsage = r;
-    });
   }
 
-  get text(): AsyncIterable<string> & PromiseLike<string> {
+  get text(): TextContentStream {
     const chunks = this.#textChunks;
     const waiters = this.#textWaiters;
-    // oxlint-disable-next-line typescript/no-this-alias
-    const self = this;
+    const getDone = () => this.#textDone;
     let cursor = 0;
     return {
       [Symbol.asyncIterator]() {
@@ -98,7 +189,7 @@ export class StreamingMessage {
               if (cursor < chunks.length) {
                 return { done: false, value: chunks[cursor++] };
               }
-              if (self.#textDone) {
+              if (getDone()) {
                 return { done: true, value: undefined };
               }
               await new Promise<void>((resolve) => {
@@ -108,15 +199,40 @@ export class StreamingMessage {
           },
         };
       },
-      then: self.#textPromise.then.bind(self.#textPromise),
+      then: this.#textPromise.then.bind(this.#textPromise),
+      full: {
+        async *[Symbol.asyncIterator]() {
+          let accumulated = "";
+          for await (const chunk of {
+            [Symbol.asyncIterator]: () =>
+              ({
+                next: async (): Promise<IteratorResult<string>> => {
+                  while (true) {
+                    if (cursor < chunks.length) {
+                      return { done: false, value: chunks[cursor++] };
+                    }
+                    if (getDone()) {
+                      return { done: true, value: undefined };
+                    }
+                    await new Promise<void>((resolve) => {
+                      waiters.push(resolve);
+                    });
+                  }
+                },
+              }) satisfies AsyncIterator<string>,
+          }) {
+            accumulated += chunk;
+            yield accumulated;
+          }
+        },
+      },
     };
   }
 
-  get reasoning(): AsyncIterable<string> & PromiseLike<string> {
+  get reasoning(): TextContentStream {
     const chunks = this.#reasoningChunks;
     const waiters = this.#reasoningWaiters;
-    // oxlint-disable-next-line typescript/no-this-alias
-    const self = this;
+    const getDone = () => this.#reasoningDone;
     let cursor = 0;
     return {
       [Symbol.asyncIterator]() {
@@ -126,7 +242,7 @@ export class StreamingMessage {
               if (cursor < chunks.length) {
                 return { done: false, value: chunks[cursor++] };
               }
-              if (self.#reasoningDone) {
+              if (getDone()) {
                 return { done: true, value: undefined };
               }
               await new Promise<void>((resolve) => {
@@ -136,16 +252,178 @@ export class StreamingMessage {
           },
         };
       },
-      then: self.#reasoningPromise.then.bind(self.#reasoningPromise),
+      then: this.#reasoningPromise.then.bind(this.#reasoningPromise),
+      full: {
+        async *[Symbol.asyncIterator]() {
+          let accumulated = "";
+          for await (const chunk of {
+            [Symbol.asyncIterator]: () =>
+              ({
+                next: async (): Promise<IteratorResult<string>> => {
+                  while (true) {
+                    if (cursor < chunks.length) {
+                      return { done: false, value: chunks[cursor++] };
+                    }
+                    if (getDone()) {
+                      return { done: true, value: undefined };
+                    }
+                    await new Promise<void>((resolve) => {
+                      waiters.push(resolve);
+                    });
+                  }
+                },
+              }) satisfies AsyncIterator<string>,
+          }) {
+            accumulated += chunk;
+            yield accumulated;
+          }
+        },
+      },
     };
   }
 
-  get usage(): PromiseLike<UsageInfo | undefined> {
-    return this.#usagePromise;
+  get usage(): UsageMetadataStream {
+    const promise = (async () => {
+      let usage: UsageMetadata | undefined;
+      for await (const snapshot of this.#usageIterator()) {
+        usage = snapshot;
+      }
+      return usage;
+    })();
+    return {
+      [Symbol.asyncIterator]: () => this.#usageIterator(),
+      then: promise.then.bind(promise),
+    };
+  }
+
+  get toolCalls(): ToolCallsStream {
+    const events = this.#events;
+    const iterator = async function* () {
+      for await (const event of events) {
+        if (
+          event.type === "content-block-finish" &&
+          event.content.type === "tool_call"
+        ) {
+          yield event.content as CoreContentBlock.Tools.ToolCall;
+        }
+      }
+    };
+    return {
+      [Symbol.asyncIterator]: iterator,
+      then: async (onfulfilled, onrejected) => {
+        try {
+          const calls: CoreContentBlock.Tools.ToolCall[] = [];
+          for await (const call of iterator()) calls.push(call);
+          return onfulfilled ? onfulfilled(calls) : (calls as never);
+        } catch (err) {
+          if (onrejected) return onrejected(err);
+          throw err;
+        }
+      },
+      full: {
+        async *[Symbol.asyncIterator]() {
+          const calls: CoreContentBlock.Tools.ToolCall[] = [];
+          for await (const call of iterator()) {
+            calls.push(call);
+            yield [...calls];
+          }
+        },
+      },
+    };
+  }
+
+  get output(): PromiseLike<AIMessage> {
+    return { then: (onf, onr) => this.#assembleMessage().then(onf, onr) };
   }
 
   get blocks(): ContentBlock[] {
     return this.assembled.blocks;
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<ChatModelStreamEvent> {
+    return this.#events[Symbol.asyncIterator]();
+  }
+
+  then<TResult1 = AIMessage, TResult2 = never>(
+    onfulfilled?:
+      | ((value: AIMessage) => TResult1 | PromiseLike<TResult1>)
+      | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): PromiseLike<TResult1 | TResult2> {
+    return this.#assembleMessage().then(onfulfilled, onrejected);
+  }
+
+  async *#usageIterator(): AsyncGenerator<UsageMetadata> {
+    for await (const event of this.#events) {
+      if (event.type === "message-start" && event.usage) {
+        yield event.usage;
+      } else if (event.type === "message-finish" && event.usage) {
+        yield event.usage;
+      }
+    }
+  }
+
+  async #assembleMessage(): Promise<AIMessage> {
+    const contentBlocks: Array<CoreContentBlock | undefined> = [];
+    let id: string | undefined;
+    let usage: UsageMetadata | undefined;
+    let responseMetadata: Record<string, unknown> = {};
+    let finishReason: string | undefined;
+
+    for await (const event of this.#events) {
+      switch (event.type) {
+        case "message-start":
+          id = event.id ?? id;
+          if (event.usage) usage = event.usage;
+          break;
+        case "content-block-start":
+          contentBlocks[event.index] = event.content;
+          break;
+        case "content-block-delta": {
+          const current = contentBlocks[event.index];
+          contentBlocks[event.index] = current
+            ? applyCoreContentDelta(current, event.content)
+            : event.content;
+          break;
+        }
+        case "content-block-finish":
+          contentBlocks[event.index] = event.content;
+          break;
+        case "message-finish":
+          finishReason = event.reason;
+          if (event.usage) usage = event.usage;
+          if (event.responseMetadata) {
+            responseMetadata = {
+              ...responseMetadata,
+              ...event.responseMetadata,
+            };
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    return new AIMessage({
+      id,
+      content: contentBlocks.filter(
+        (block): block is CoreContentBlock => block != null
+      ),
+      usage_metadata: usage,
+      response_metadata: {
+        ...responseMetadata,
+        ...(finishReason ? { finish_reason: finishReason } : {}),
+        output_version: "v1" as const,
+      },
+    });
+  }
+
+  [PUSH_EVENT](event: ChatModelStreamEvent): void {
+    this.#events.push(event);
+  }
+
+  [UPDATE_CONTEXT](event: MessagesEvent): void {
+    this.node = event.params.node ?? this.node;
   }
 
   [PUSH_TEXT](delta: string): void {
@@ -166,12 +444,11 @@ export class StreamingMessage {
     for (const waiter of pending) waiter();
   }
 
-  [FINISH](usage: UsageInfo | undefined): void {
+  [FINISH](): void {
     this.#textDone = true;
     this.#reasoningDone = true;
     this.#resolveText(this.#textChunks.join(""));
     this.#resolveReasoning(this.#reasoningChunks.join(""));
-    this.#resolveUsage(usage);
     const textPending = this.#textWaiters.splice(0, this.#textWaiters.length);
     for (const waiter of textPending) waiter();
     const reasoningPending = this.#reasoningWaiters.splice(
@@ -179,12 +456,23 @@ export class StreamingMessage {
       this.#reasoningWaiters.length
     );
     for (const waiter of reasoningPending) waiter();
+    this.#events.close();
   }
 
   [ERROR](): void {
-    this[FINISH](undefined);
+    this[FINISH]();
   }
 }
+
+/**
+ * Public view yielded by message projections.
+ *
+ * `StreamingMessage` is PromiseLike so callers can still `await` a message
+ * object directly, but TypeScript applies `Awaited<T>` to values produced by
+ * `for await`. Exposing a non-thenable view keeps loop variables typed as the
+ * streaming handle instead of as the finalized `AIMessage`.
+ */
+export type StreamingMessageHandle = Omit<StreamingMessage, "then">;
 
 /**
  * Emitted by `MessageAssembler.consume()` to describe how a message changed in
@@ -192,39 +480,39 @@ export class StreamingMessage {
  */
 export type MessageAssemblyUpdate =
   | {
-      kind: "message-start";
-      key: string;
-      message: AssembledMessage;
-      event: MessagesEvent;
-    }
+    kind: "message-start";
+    key: string;
+    message: AssembledMessage;
+    event: MessagesEvent;
+  }
   | {
-      kind: "content-block-start" | "content-block-delta";
-      key: string;
-      message: AssembledMessage;
-      index: number;
-      block: ContentBlock;
-      event: MessagesEvent;
-    }
+    kind: "content-block-start" | "content-block-delta";
+    key: string;
+    message: AssembledMessage;
+    index: number;
+    block: ContentBlock;
+    event: MessagesEvent;
+  }
   | {
-      kind: "content-block-finish";
-      key: string;
-      message: AssembledMessage;
-      index: number;
-      block: FinalizedContentBlock;
-      event: MessagesEvent;
-    }
+    kind: "content-block-finish";
+    key: string;
+    message: AssembledMessage;
+    index: number;
+    block: FinalizedContentBlock;
+    event: MessagesEvent;
+  }
   | {
-      kind: "message-finish";
-      key: string;
-      message: AssembledMessage;
-      event: MessagesEvent;
-    }
+    kind: "message-finish";
+    key: string;
+    message: AssembledMessage;
+    event: MessagesEvent;
+  }
   | {
-      kind: "message-error";
-      key: string;
-      message: AssembledMessage;
-      event: MessagesEvent;
-    };
+    kind: "message-error";
+    key: string;
+    message: AssembledMessage;
+    event: MessagesEvent;
+  };
 
 function cloneBlock<T extends ContentBlock>(block: T): T {
   return structuredClone(block);
@@ -255,13 +543,13 @@ function applyContentDelta(
         ...target,
         ...delta,
         text: `${"text" in target ? target.text : ""}${delta.text}`,
-      };
+      } as ContentBlock;
     case "reasoning":
       return {
         ...target,
         ...delta,
         reasoning: `${"reasoning" in target ? target.reasoning : ""}${delta.reasoning}`,
-      };
+      } as ContentBlock;
     case "tool_call_chunk":
     case "server_tool_call_chunk": {
       // Spread target first, then delta — but preserve target's
@@ -291,16 +579,57 @@ function applyContentDelta(
       return {
         ...target,
         ...delta,
-      };
+      } as ContentBlock;
   }
 }
 
 function messageKeyFor(event: MessagesEvent): string {
   const { namespace, node, data } = event.params;
   const namespaceKey = namespace.join("/");
-  const messageId =
-    data.event === "message-start" ? (data.message_id ?? "") : "";
+  const messageId = data.event === "message-start" ? (data.id ?? "") : "";
   return `${namespaceKey}::${node ?? ""}::${messageId}`;
+}
+
+function toChatModelStreamEvent(event: MessagesEvent): ChatModelStreamEvent {
+  const data = event.params.data;
+  switch (data.event) {
+    case "message-start":
+      return {
+        type: "message-start",
+        id: data.id,
+      };
+    case "content-block-start":
+      return {
+        type: "content-block-start",
+        index: data.index,
+        content: data.content as unknown as CoreContentBlock,
+      };
+    case "content-block-delta":
+      return {
+        type: "content-block-delta",
+        index: data.index,
+        content: data.content as unknown as CoreContentBlock,
+      };
+    case "content-block-finish":
+      return {
+        type: "content-block-finish",
+        index: data.index,
+        content: data.content as unknown as CoreContentBlock,
+      };
+    case "message-finish":
+      return {
+        type: "message-finish",
+        reason: data.reason as FinishReason | undefined,
+        usage: toCoreUsage(data.usage),
+        responseMetadata: data.metadata,
+      };
+    case "error":
+      return {
+        type: "error",
+        message: data.message,
+        code: data.code,
+      };
+  }
 }
 
 /**
@@ -323,9 +652,9 @@ export class MessageAssembler {
       const key = messageKeyFor(event);
       this.activeByNamespaceNode.set(namespaceNodeKey, key);
       const message: AssembledMessage = {
+        id: data.id,
         namespace: [...event.params.namespace],
         node: event.params.node,
-        messageId: data.message_id,
         metadata: data.metadata,
         blocks: [],
       };
@@ -344,6 +673,7 @@ export class MessageAssembler {
       const syntheticKey = `${namespaceNodeKey}::`;
       this.activeByNamespaceNode.set(namespaceNodeKey, syntheticKey);
       const synthetic: AssembledMessage = {
+        id: data.id,
         namespace: [...event.params.namespace],
         node: event.params.node,
         blocks: [],
@@ -359,13 +689,13 @@ export class MessageAssembler {
 
     switch (data.event) {
       case "content-block-start": {
-        message.blocks[data.index] = cloneBlock(data.content_block);
+        message.blocks[data.index] = cloneBlock(data.content);
         return {
           kind: "content-block-start",
           key: activeKey,
           message,
           index: data.index,
-          block: data.content_block,
+          block: data.content,
           event,
         };
       }
@@ -373,29 +703,26 @@ export class MessageAssembler {
         const current = ensureBlockIndex(
           message.blocks,
           data.index,
-          data.content_block
+          data.content
         );
-        message.blocks[data.index] = applyContentDelta(
-          current,
-          data.content_block
-        );
+        message.blocks[data.index] = applyContentDelta(current, data.content);
         return {
           kind: "content-block-delta",
           key: activeKey,
           message,
           index: data.index,
-          block: data.content_block,
+          block: data.content,
           event,
         };
       }
       case "content-block-finish": {
-        message.blocks[data.index] = cloneBlock(data.content_block);
+        message.blocks[data.index] = cloneBlock(data.content);
         return {
           kind: "content-block-finish",
           key: activeKey,
           message,
           index: data.index,
-          block: data.content_block,
+          block: data.content,
           event,
         };
       }
@@ -446,11 +773,17 @@ export class StreamingMessageAssembler {
     switch (update.kind) {
       case "message-start": {
         const streaming = new StreamingMessage(update.message);
+        streaming[UPDATE_CONTEXT](update.event);
+        streaming[PUSH_EVENT](toChatModelStreamEvent(update.event));
         this.#activeStreaming.set(update.key, streaming);
         return streaming;
       }
       case "content-block-start": {
         const streaming = this.#activeStreaming.get(update.key);
+        if (streaming) {
+          streaming[UPDATE_CONTEXT](update.event);
+          streaming[PUSH_EVENT](toChatModelStreamEvent(update.event));
+        }
         if (
           streaming &&
           update.block.type === "text" &&
@@ -472,6 +805,8 @@ export class StreamingMessageAssembler {
       case "content-block-delta": {
         const streaming = this.#activeStreaming.get(update.key);
         if (!streaming) return undefined;
+        streaming[UPDATE_CONTEXT](update.event);
+        streaming[PUSH_EVENT](toChatModelStreamEvent(update.event));
         if (update.block.type === "text" && "text" in update.block) {
           streaming[PUSH_TEXT](update.block.text);
         }
@@ -480,12 +815,20 @@ export class StreamingMessageAssembler {
         }
         return undefined;
       }
-      case "content-block-finish":
+      case "content-block-finish": {
+        const streaming = this.#activeStreaming.get(update.key);
+        if (streaming) {
+          streaming[UPDATE_CONTEXT](update.event);
+          streaming[PUSH_EVENT](toChatModelStreamEvent(update.event));
+        }
         return undefined;
+      }
       case "message-finish": {
         const streaming = this.#activeStreaming.get(update.key);
         if (streaming) {
-          streaming[FINISH](update.message.usage);
+          streaming[UPDATE_CONTEXT](update.event);
+          streaming[PUSH_EVENT](toChatModelStreamEvent(update.event));
+          streaming[FINISH]();
           this.#activeStreaming.delete(update.key);
         }
         return undefined;
@@ -493,6 +836,8 @@ export class StreamingMessageAssembler {
       case "message-error": {
         const streaming = this.#activeStreaming.get(update.key);
         if (streaming) {
+          streaming[UPDATE_CONTEXT](update.event);
+          streaming[PUSH_EVENT](toChatModelStreamEvent(update.event));
           streaming[ERROR]();
           this.#activeStreaming.delete(update.key);
         }

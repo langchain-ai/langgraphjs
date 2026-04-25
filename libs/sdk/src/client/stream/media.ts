@@ -1,10 +1,10 @@
 import type {
-  AudioBlock,
+  AudioContentBlock,
   ContentBlock,
-  FileBlock,
-  ImageBlock,
+  FileContentBlock,
+  ImageContentBlock,
   MessagesEvent,
-  VideoBlock,
+  VideoContentBlock,
 } from "@langchain/protocol";
 
 /**
@@ -307,10 +307,10 @@ class MediaHandleImpl {
     // `Extensible` widens `block.type` from a literal to `string` in
     // the union, defeating TS's discriminated-union narrowing. Cast
     // after the runtime tag check.
-    if (block.type === "audio") this.#absorbAudio(block as AudioBlock);
-    else if (block.type === "image") this.#absorbImage(block as ImageBlock);
-    else if (block.type === "video") this.#absorbVideo(block as VideoBlock);
-    else if (block.type === "file") this.#absorbFile(block as FileBlock);
+    if (block.type === "audio") this.#absorbAudio(block as AudioContentBlock);
+    else if (block.type === "image") this.#absorbImage(block as ImageContentBlock);
+    else if (block.type === "video") this.#absorbVideo(block as VideoContentBlock);
+    else if (block.type === "file") this.#absorbFile(block as FileContentBlock);
   }
 
   /** Record that the originating block arrived with `url` not `data`. */
@@ -461,7 +461,7 @@ class MediaHandleImpl {
 
   // ---------- Internals ----------
 
-  #absorbAudio(block: AudioBlock): void {
+  #absorbAudio(block: AudioContentBlock): void {
     if (this.mimeType == null && block.mime_type != null)
       this.mimeType = block.mime_type;
     if (block.transcript != null && block.transcript.length > 0) {
@@ -469,19 +469,19 @@ class MediaHandleImpl {
     }
   }
 
-  #absorbImage(block: ImageBlock): void {
+  #absorbImage(block: ImageContentBlock): void {
     if (this.mimeType == null && block.mime_type != null)
       this.mimeType = block.mime_type;
     if (this.width == null && block.width != null) this.width = block.width;
     if (this.height == null && block.height != null) this.height = block.height;
   }
 
-  #absorbVideo(block: VideoBlock): void {
+  #absorbVideo(block: VideoContentBlock): void {
     if (this.mimeType == null && block.mime_type != null)
       this.mimeType = block.mime_type;
   }
 
-  #absorbFile(block: FileBlock): void {
+  #absorbFile(block: FileContentBlock): void {
     if (this.mimeType == null && block.mime_type != null)
       this.mimeType = block.mime_type;
     if (this.filename == null && block.filename != null)
@@ -639,14 +639,14 @@ export interface MediaAssemblerOptions extends MediaAssemblerCallbacks {
  * Per-`(namespace, node)` bookkeeping for the active message the
  * assembler is currently folding.
  *
- * Protocol v2 only carries `message_id` on `message-start`; all
+ * Protocol v2 only carries `id` on `message-start`; all
  * subsequent `content-block-*` / `message-finish` / `error` events
  * address the active message by position (same namespace + node). The
  * assembler therefore pins a message entry when `message-start`
  * arrives and resolves follow-ups by looking up `(namespace, node)`.
  */
 interface ActiveMessage {
-  /** `message_id` from `message-start`, or empty string when synthesized. */
+  /** `id` from `message-start`, or empty string when synthesized. */
   messageId: string;
   /** `${messageId}::${mediaType}` keys currently active under this message. */
   keys: Set<string>;
@@ -700,7 +700,7 @@ export class MediaAssembler {
       // any in-flight handles under that slot before rebinding.
       this.#flushSlot(nsNodeKey, "finish");
       this.#activeByNamespaceNode.set(nsNodeKey, {
-        messageId: data.message_id ?? "",
+        messageId: data.id ?? "",
         keys: new Set(),
       });
       return;
@@ -730,8 +730,8 @@ export class MediaAssembler {
       return;
     }
 
-    const block = (data as { content_block?: ContentBlock; index?: number })
-      .content_block;
+    const block = (data as { content?: ContentBlock; index?: number })
+      .content;
     const blockIndex = (data as { index?: number }).index ?? 0;
     if (block == null) return;
     const blockType = block.type;
@@ -757,10 +757,10 @@ export class MediaAssembler {
     if (handle == null) {
       if (!isStart) return;
       const mediaBlock = block as
-        | AudioBlock
-        | ImageBlock
-        | VideoBlock
-        | FileBlock;
+        | AudioContentBlock
+        | ImageContentBlock
+        | VideoContentBlock
+        | FileContentBlock;
       handle = new MediaHandleImpl({
         type: mediaType,
         messageId: active.messageId,
@@ -802,10 +802,10 @@ export class MediaAssembler {
     if (data.event === "content-block-finish") return;
 
     const mediaBlock = block as
-      | AudioBlock
-      | ImageBlock
-      | VideoBlock
-      | FileBlock;
+      | AudioContentBlock
+      | ImageContentBlock
+      | VideoContentBlock
+      | FileContentBlock;
     handle.observeIndex(blockIndex);
     handle.absorbBlock(block);
     if (!handle.error && mediaBlock.data != null) {

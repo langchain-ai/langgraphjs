@@ -1,7 +1,7 @@
 import type { Event } from "@langchain/protocol";
 import { describe, expect, it } from "vitest";
 
-import { MessageAssembler } from "./messages.js";
+import { MessageAssembler, StreamingMessageAssembler } from "./messages.js";
 import { eventOf } from "./test/utils.js";
 
 describe("MessageAssembler", () => {
@@ -9,7 +9,7 @@ describe("MessageAssembler", () => {
     const assembler = new MessageAssembler();
 
     assembler.consume(
-      eventOf("messages", { event: "message-start", message_id: "msg_x" }, {
+      eventOf("messages", { event: "message-start", id: "msg_x" }, {
         namespace: ["agent_1"],
         node: "writer",
       }) as Extract<Event, { method: "messages" }>
@@ -20,7 +20,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "tool_call_chunk", name: "search", args: "" },
+          content: { type: "tool_call_chunk", name: "search", args: "" },
         },
         { namespace: ["agent_1"], node: "writer" }
       ) as Extract<Event, { method: "messages" }>
@@ -31,7 +31,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "tool_call_chunk", args: '{"q":' },
+          content: { type: "tool_call_chunk", args: '{"q":' },
         },
         { namespace: ["agent_1"], node: "writer" }
       ) as Extract<Event, { method: "messages" }>
@@ -42,7 +42,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "tool_call_chunk", args: '"test"}' },
+          content: { type: "tool_call_chunk", args: '"test"}' },
         },
         { namespace: ["agent_1"], node: "writer" }
       ) as Extract<Event, { method: "messages" }>
@@ -53,7 +53,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: {
+          content: {
             type: "tool_call",
             id: "tool_1",
             name: "search",
@@ -95,7 +95,7 @@ describe("MessageAssembler", () => {
     const assembler = new MessageAssembler();
 
     assembler.consume(
-      eventOf("messages", { event: "message-start", message_id: "msg_n" }, {
+      eventOf("messages", { event: "message-start", id: "msg_n" }, {
         namespace: ["agent_1"],
         node: "writer",
       }) as Extract<Event, { method: "messages" }>
@@ -106,7 +106,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: {
+          content: {
             type: "tool_call_chunk",
             id: "tool_null_test",
             name: "search",
@@ -122,7 +122,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: {
+          content: {
             type: "tool_call_chunk",
             id: null as unknown as string,
             name: null as unknown as string,
@@ -138,7 +138,7 @@ describe("MessageAssembler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: {
+          content: {
             type: "tool_call_chunk",
             id: null as unknown as string,
             name: null as unknown as string,
@@ -164,7 +164,7 @@ describe("MessageAssembler", () => {
     const assembler = new MessageAssembler();
 
     assembler.consume(
-      eventOf("messages", { event: "message-start", message_id: "msg_t" }, {
+      eventOf("messages", { event: "message-start", id: "msg_t" }, {
         namespace: [],
         node: "bot",
       }) as Extract<Event, { method: "messages" }>
@@ -172,21 +172,21 @@ describe("MessageAssembler", () => {
     assembler.consume(
       eventOf(
         "messages",
-        { event: "content-block-start", index: 0, content_block: { type: "text", text: "" } },
+        { event: "content-block-start", index: 0, content: { type: "text", text: "" } },
         { namespace: [], node: "bot" }
       ) as Extract<Event, { method: "messages" }>
     );
     assembler.consume(
       eventOf(
         "messages",
-        { event: "content-block-delta", index: 0, content_block: { type: "text", text: "Hel" } },
+        { event: "content-block-delta", index: 0, content: { type: "text", text: "Hel" } },
         { namespace: [], node: "bot" }
       ) as Extract<Event, { method: "messages" }>
     );
     assembler.consume(
       eventOf(
         "messages",
-        { event: "content-block-delta", index: 0, content_block: { type: "text", text: "lo" } },
+        { event: "content-block-delta", index: 0, content: { type: "text", text: "lo" } },
         { namespace: [], node: "bot" }
       ) as Extract<Event, { method: "messages" }>
     );
@@ -205,7 +205,7 @@ describe("MessageAssembler", () => {
     const assembler = new MessageAssembler();
 
     assembler.consume(
-      eventOf("messages", { event: "message-start", message_id: "msg_e" }, {
+      eventOf("messages", { event: "message-start", id: "msg_e" }, {
         namespace: [],
         node: "bot",
       }) as Extract<Event, { method: "messages" }>
@@ -221,5 +221,63 @@ describe("MessageAssembler", () => {
     expect(errUpdate?.kind).toBe("message-error");
     expect(errUpdate?.message.error?.message).toBe("Something went wrong");
     expect(errUpdate?.message.error?.code).toBe("ERR");
+  });
+});
+
+describe("StreamingMessageAssembler", () => {
+  it("exposes the core ChatModelStream interface for remote messages", async () => {
+    const assembler = new StreamingMessageAssembler();
+
+    const stream = assembler.consume(
+      eventOf("messages", { event: "message-start", id: "msg_s" }, {
+        namespace: [],
+        node: "bot",
+      }) as Extract<Event, { method: "messages" }>
+    );
+    expect(stream).toBeDefined();
+
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "content-block-start", index: 0, content: { type: "text", text: "" } },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "content-block-delta", index: 0, content: { type: "text", text: "Hel" } },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "content-block-delta", index: 0, content: { type: "text", text: "lo" } },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "content-block-finish", index: 0, content: { type: "text", text: "Hello" } },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "message-finish",
+          reason: "stop",
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    expect(await stream!.text).toBe("Hello");
+    expect((await stream!.usage)?.total_tokens).toBe(2);
+    expect((await stream!).content).toEqual([{ type: "text", text: "Hello" }]);
   });
 });

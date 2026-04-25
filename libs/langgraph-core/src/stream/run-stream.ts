@@ -33,7 +33,7 @@ import {
 import { StreamMux, pump, RESOLVE_VALUES, REJECT_VALUES } from "./mux.js";
 import {
   isNativeTransformer,
-  type ChatModelStream,
+  type ChatModelStreamHandle,
   type InferExtensions,
   type InterruptPayload,
   type Namespace,
@@ -133,7 +133,7 @@ export class GraphRunStream<
   readonly #valuesDone: Promise<TValues>;
 
   #valuesLog?: EventLog<Record<string, unknown>>;
-  #messagesIterable?: AsyncIterable<ChatModelStream>;
+  #messagesIterable?: AsyncIterable<ChatModelStreamHandle>;
   #lifecycleIterable?: AsyncIterable<LifecycleEntry>;
   #subgraphsIterable?: AsyncIterable<SubgraphRunStream>;
 
@@ -217,33 +217,33 @@ export class GraphRunStream<
     const iterable: AsyncIterable<TValues> = log
       ? (log.toAsyncIterable() as AsyncIterable<TValues>)
       : {
-        [Symbol.asyncIterator]: () => {
-          const base = mux.subscribeEvents(path, eventStart);
-          return {
-            async next(): Promise<IteratorResult<TValues>> {
-              // eslint-disable-next-line no-constant-condition
-              while (true) {
-                const result = await base.next();
-                if (result.done) {
-                  return {
-                    value: undefined as unknown as TValues,
-                    done: true,
-                  };
+          [Symbol.asyncIterator]: () => {
+            const base = mux.subscribeEvents(path, eventStart);
+            return {
+              async next(): Promise<IteratorResult<TValues>> {
+                // eslint-disable-next-line no-constant-condition
+                while (true) {
+                  const result = await base.next();
+                  if (result.done) {
+                    return {
+                      value: undefined as unknown as TValues,
+                      done: true,
+                    };
+                  }
+                  if (
+                    result.value.method === "values" &&
+                    result.value.params.namespace.length === path.length
+                  ) {
+                    return {
+                      value: result.value.params.data as TValues,
+                      done: false,
+                    };
+                  }
                 }
-                if (
-                  result.value.method === "values" &&
-                  result.value.params.namespace.length === path.length
-                ) {
-                  return {
-                    value: result.value.params.data as TValues,
-                    done: false,
-                  };
-                }
-              }
-            },
-          };
-        },
-      };
+              },
+            };
+          },
+        };
 
     return {
       [Symbol.asyncIterator]: () => iterable[Symbol.asyncIterator](),
@@ -259,7 +259,7 @@ export class GraphRunStream<
    *
    * @returns An async iterable of chat model streams.
    */
-  get messages(): AsyncIterable<ChatModelStream> {
+  get messages(): AsyncIterable<ChatModelStreamHandle> {
     if (this.#messagesIterable) return this.#messagesIterable;
     // Lazily create a messages transformer scoped to this stream's path.
     // This handles SubgraphRunStream instances that are created
@@ -299,7 +299,7 @@ export class GraphRunStream<
    * @param node - The graph node name to filter messages by.
    * @returns An async iterable of chat model streams from the given node.
    */
-  messagesFrom(node: string): AsyncIterable<ChatModelStream> {
+  messagesFrom(node: string): AsyncIterable<ChatModelStreamHandle> {
     const transformer = createMessagesTransformer(this.path, node);
     const projection = transformer.init();
     this._mux.addTransformer(transformer);
@@ -395,7 +395,9 @@ export class GraphRunStream<
    * @param iterable - The async iterable from the messages transformer projection.
    * @internal
    */
-  [SET_MESSAGES_ITERABLE](iterable: AsyncIterable<ChatModelStream>): void {
+  [SET_MESSAGES_ITERABLE](
+    iterable: AsyncIterable<ChatModelStreamHandle>
+  ): void {
     this.#messagesIterable = iterable;
   }
 
@@ -549,38 +551,37 @@ export function createGraphRunStream<
   const lifecycleProjection = lifecycleTransformer.init();
   const lifecycleLog = lifecycleProjection._lifecycleLog;
 
-  const subgraphDiscoveryTransformer = createSubgraphDiscoveryTransformer<
-    SubgraphRunStream
-  >(mux, {
-    createStream: (path, discoveryStart, eventStart) => {
-      const sub = new SubgraphRunStream(
-        path,
-        mux,
-        discoveryStart,
-        eventStart
-      );
-      // Wire the child's `.subgraphs` to the shared discoveries log,
-      // scoped to the child's path and its construction-time offset.
-      sub[SET_SUBGRAPHS_ITERABLE](
-        filterSubgraphHandles<SubgraphRunStream>(
-          mux._discoveries,
+  const subgraphDiscoveryTransformer =
+    createSubgraphDiscoveryTransformer<SubgraphRunStream>(mux, {
+      createStream: (path, discoveryStart, eventStart) => {
+        const sub = new SubgraphRunStream(
           path,
-          discoveryStart
-        )
-      );
-      // Wire the child's `.lifecycle` to the shared lifecycle log,
-      // filtered to its subtree.  Capture the current log size so
-      // entries emitted before discovery (e.g. root's `started`)
-      // aren't replayed to the child.  Entries emitted for this
-      // discovery event itself land after the factory returns (the
-      // subgraph transformer runs before the lifecycle transformer),
-      // so the child still receives its own `started`.
-      sub[SET_LIFECYCLE_ITERABLE](
-        filterLifecycleEntries(lifecycleLog, path, lifecycleLog.size)
-      );
-      return sub;
-    },
-  });
+          mux,
+          discoveryStart,
+          eventStart
+        );
+        // Wire the child's `.subgraphs` to the shared discoveries log,
+        // scoped to the child's path and its construction-time offset.
+        sub[SET_SUBGRAPHS_ITERABLE](
+          filterSubgraphHandles<SubgraphRunStream>(
+            mux._discoveries,
+            path,
+            discoveryStart
+          )
+        );
+        // Wire the child's `.lifecycle` to the shared lifecycle log,
+        // filtered to its subtree.  Capture the current log size so
+        // entries emitted before discovery (e.g. root's `started`)
+        // aren't replayed to the child.  Entries emitted for this
+        // discovery event itself land after the factory returns (the
+        // subgraph transformer runs before the lifecycle transformer),
+        // so the child still receives its own `started`.
+        sub[SET_LIFECYCLE_ITERABLE](
+          filterLifecycleEntries(lifecycleLog, path, lifecycleLog.size)
+        );
+        return sub;
+      },
+    });
   const subgraphsProjection = subgraphDiscoveryTransformer.init();
 
   // Registration order matters: subgraph discovery runs first so that

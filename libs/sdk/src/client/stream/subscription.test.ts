@@ -75,7 +75,7 @@ describe("matchesSubscription", () => {
   it("matches events by channel", () => {
     const event = eventOf(
       "messages",
-      { event: "message-start", message_id: "m1" },
+      { event: "message-start", id: "m1" },
       { namespace: [] }
     );
     expect(matchesSubscription(event, { channels: ["messages"] })).toBe(true);
@@ -85,7 +85,7 @@ describe("matchesSubscription", () => {
   it("filters by namespace prefix", () => {
     const event = eventOf(
       "messages",
-      { event: "message-start", message_id: "m1" },
+      { event: "message-start", id: "m1" },
       { namespace: ["agent_1", "sub"] }
     );
     expect(
@@ -157,7 +157,7 @@ describe("matchesSubscription", () => {
   it("respects depth constraint", () => {
     const event = eventOf(
       "messages",
-      { event: "message-start", message_id: "m1" },
+      { event: "message-start", id: "m1" },
       { namespace: ["agent_1", "deep", "nested"] }
     );
     expect(

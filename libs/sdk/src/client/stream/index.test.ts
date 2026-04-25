@@ -30,7 +30,7 @@ describe("ThreadStream", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "msg_1" },
+        { event: "message-start", id: "msg_1" },
         { namespace: ["agent_1"], node: "planner", seq: 1, eventId: "evt_1" }
       )
     );
@@ -53,7 +53,7 @@ describe("ThreadStream", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "msg_final" },
+        { event: "message-start", id: "msg_final" },
         { namespace: [], node: "agent", seq: 3, eventId: "evt_3" }
       )
     );
@@ -63,7 +63,7 @@ describe("ThreadStream", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
         { namespace: [], node: "agent", seq: 4, eventId: "evt_4" }
       )
@@ -74,7 +74,7 @@ describe("ThreadStream", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Hello " },
+          content: { type: "text", text: "Hello " },
         },
         { namespace: [], node: "agent", seq: 5, eventId: "evt_5" }
       )
@@ -85,7 +85,7 @@ describe("ThreadStream", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "world" },
+          content: { type: "text", text: "world" },
         },
         { namespace: [], node: "agent", seq: 6, eventId: "evt_6" }
       )
@@ -96,7 +96,7 @@ describe("ThreadStream", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: { type: "text", text: "Hello world" },
+          content: { type: "text", text: "Hello world" },
         },
         { namespace: [], node: "agent", seq: 7, eventId: "evt_7" }
       )
@@ -201,7 +201,7 @@ describe("SubscriptionHandle", () => {
     handle.push(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "m1" },
+        { event: "message-start", id: "m1" },
         { namespace: [], eventId: "e1" }
       )
     );
@@ -232,7 +232,7 @@ describe("SubscriptionHandle", () => {
     handle.push(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "m" },
+        { event: "message-start", id: "m" },
         { namespace: [] }
       )
     );
@@ -807,7 +807,7 @@ describe("thread.messages projection", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "m1" },
+        { event: "message-start", id: "m1" },
         { namespace: [], node: "agent", seq: 1 }
       )
     );
@@ -817,7 +817,7 @@ describe("thread.messages projection", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
         { namespace: [], node: "agent", seq: 2 }
       )
@@ -828,7 +828,7 @@ describe("thread.messages projection", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Hello" },
+          content: { type: "text", text: "Hello" },
         },
         { namespace: [], node: "agent", seq: 3 }
       )
@@ -839,7 +839,7 @@ describe("thread.messages projection", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: { type: "text", text: "Hello" },
+          content: { type: "text", text: "Hello" },
         },
         { namespace: [], node: "agent", seq: 4 }
       )

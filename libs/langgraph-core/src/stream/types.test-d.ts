@@ -10,7 +10,7 @@ import { END, START } from "../constants.js";
 import type {
   ProtocolEvent,
   StreamTransformer,
-  ChatModelStream,
+  ChatModelStreamHandle,
   InferExtensions,
   ToolCallStream,
   ToolCallStatus,
@@ -68,21 +68,22 @@ describe("stream_v2 on a simple StateGraph", () => {
     }
   });
 
-  it("messages yields ChatModelStream", async () => {
+  it("messages yields ChatModelStreamHandle", async () => {
     const run = await graph.stream_v2({ count: 0 });
     for await (const msg of run.messages) {
-      expectTypeOf(msg).toExtend<ChatModelStream>();
+      expectTypeOf(msg).toExtend<ChatModelStreamHandle>();
       expectTypeOf(msg.text).toExtend<AsyncIterable<string>>();
       expectTypeOf(msg.text).toExtend<PromiseLike<string>>();
       expectTypeOf(msg.reasoning).toExtend<AsyncIterable<string>>();
       expectTypeOf(msg.reasoning).toExtend<PromiseLike<string>>();
+      expectTypeOf(msg.output).toExtend<PromiseLike<unknown>>();
     }
   });
 
-  it("messagesFrom returns AsyncIterable<ChatModelStream>", async () => {
+  it("messagesFrom returns AsyncIterable<ChatModelStreamHandle>", async () => {
     const run = await graph.stream_v2({ count: 0 });
     expectTypeOf(run.messagesFrom("increment")).toExtend<
-      AsyncIterable<ChatModelStream>
+      AsyncIterable<ChatModelStreamHandle>
     >();
   });
 
@@ -286,7 +287,7 @@ describe("stream_v2 with subgraph nodes", () => {
       expectTypeOf(sub.index).toBeNumber();
 
       for await (const msg of sub.messages) {
-        expectTypeOf(msg).toExtend<ChatModelStream>();
+        expectTypeOf(msg).toExtend<ChatModelStreamHandle>();
       }
 
       const subOutput = await sub.output;

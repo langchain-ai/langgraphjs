@@ -130,7 +130,7 @@ describe("ThreadStream (SSE shared stream)", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "msg_1" } as never,
+        { event: "message-start", id: "msg_1" } as never,
         { namespace: [], seq: 1, eventId: "evt_1" }
       )
     );
@@ -235,7 +235,7 @@ describe("ThreadStream (SSE shared stream)", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "msg_1" } as never,
+        { event: "message-start", id: "msg_1" } as never,
         { namespace: [], seq: 1, eventId: "evt_a" }
       )
     );
@@ -255,7 +255,7 @@ describe("ThreadStream (SSE shared stream)", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "msg_2" } as never,
+        { event: "message-start", id: "msg_2" } as never,
         { namespace: [], seq: 2, eventId: "evt_b" }
       )
     );
@@ -315,7 +315,7 @@ describe("ThreadStream (SSE shared stream)", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "m_outside" } as never,
+        { event: "message-start", id: "m_outside" } as never,
         { namespace: ["other"], seq: 1, eventId: "evt_outside" }
       )
     );
@@ -324,7 +324,7 @@ describe("ThreadStream (SSE shared stream)", () => {
     transport.pushEvent(
       eventOf(
         "messages",
-        { event: "message-start", message_id: "m_inside" } as never,
+        { event: "message-start", id: "m_inside" } as never,
         { namespace: ["agent_1"], seq: 2, eventId: "evt_inside" }
       )
     );

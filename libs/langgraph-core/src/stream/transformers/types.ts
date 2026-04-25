@@ -1,15 +1,15 @@
 import type { AgentStatus, LifecycleData } from "@langchain/protocol";
 
 import type { EventLog } from "../event-log.js";
-import type { ChatModelStream, Namespace } from "../types.js";
+import type { ChatModelStreamHandle, Namespace } from "../types.js";
 
 /**
  * The projection shape merged into a run stream by the messages transformer.
- * Exposes a `messages` async iterable that yields one {@link ChatModelStream}
+ * Exposes a `messages` async iterable that yields one message stream handle
  * per AI message lifecycle observed during the run.
  */
 export interface MessagesTransformerProjection {
-  messages: AsyncIterable<ChatModelStream>;
+  messages: AsyncIterable<ChatModelStreamHandle>;
 }
 
 /**

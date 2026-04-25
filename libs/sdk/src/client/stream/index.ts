@@ -29,7 +29,7 @@ import {
   TriggeredSubgraphHandle,
 } from "./handles/index.js";
 import { StreamingMessageAssembler } from "./messages.js";
-import type { StreamingMessage } from "./messages.js";
+import type { StreamingMessage, StreamingMessageHandle } from "./messages.js";
 import type { AssembledToolCall } from "./handles/tools.js";
 import { MediaAssembler } from "./media.js";
 import type {
@@ -734,7 +734,7 @@ export class ThreadStream<
    * over the shared buffer; late consumers see all previously emitted
    * messages.  Mirrors the in-process `run.messages`.
    */
-  get messages(): AsyncIterable<StreamingMessage> {
+  get messages(): AsyncIterable<StreamingMessageHandle> {
     if (this.#messagesIterable) return this.#messagesIterable;
     const buffer = new MultiCursorBuffer<StreamingMessage>();
     this.#messagesIterable = buffer;

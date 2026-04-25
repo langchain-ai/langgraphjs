@@ -10,6 +10,7 @@
  */
 
 import type { StreamMode } from "../pregel/types.js";
+import type { AIMessage } from "@langchain/core/messages";
 
 /**
  * Re-exports from `@langchain/protocol`.
@@ -107,12 +108,12 @@ export type InferExtensions<
 > = T extends readonly []
   ? Record<string, never>
   : T extends readonly [
-    () => StreamTransformer<infer P>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
-  ]
-  ? P & InferExtensions<Rest>
-  : Record<string, unknown>;
+        () => StreamTransformer<infer P>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...infer Rest extends ReadonlyArray<() => StreamTransformer<any>>,
+      ]
+    ? P & InferExtensions<Rest>
+    : Record<string, unknown>;
 
 /**
  * Observes {@link ProtocolEvent}s during a graph run and builds typed derived
@@ -230,7 +231,8 @@ import type { UsageInfo as UsageInfoImport } from "@langchain/protocol";
  * Provides raw event iteration plus ergonomic accessors for text,
  * reasoning, and usage.
  */
-export interface ChatModelStream extends AsyncIterable<MessagesEventDataImport> {
+export interface ChatModelStream
+  extends AsyncIterable<MessagesEventDataImport>, PromiseLike<AIMessage> {
   /**
    * Text content for this message.
    *
@@ -258,6 +260,16 @@ export interface ChatModelStream extends AsyncIterable<MessagesEventDataImport> 
    */
   get usage(): PromiseLike<UsageInfoImport | undefined>;
 
+  /**
+   * Final assembled AI message.
+   *
+   * @remarks
+   * Mirrors `@langchain/core` model streaming: resolves once the message
+   * lifecycle finishes and exposes finalized content blocks on
+   * `AIMessage.content`.
+   */
+  get output(): PromiseLike<AIMessage>;
+
   /** Namespace of the graph node that produced this stream. */
   readonly namespace: Namespace;
 
@@ -271,6 +283,15 @@ export interface ChatModelStream extends AsyncIterable<MessagesEventDataImport> 
    */
   [Symbol.asyncIterator](): AsyncIterator<MessagesEventDataImport>;
 }
+
+/**
+ * Public view yielded by `run.messages`.
+ *
+ * `ChatModelStream` is PromiseLike to mirror Core, but TypeScript applies
+ * `Awaited<T>` to values produced by `for await`. Exposing a non-thenable view
+ * keeps loop variables typed as the streaming handle instead of `AIMessage`.
+ */
+export type ChatModelStreamHandle = Omit<ChatModelStream, "then">;
 
 /**
  * High-level outcome of a single tool call for UI or aggregators.

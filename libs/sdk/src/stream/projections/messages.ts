@@ -287,8 +287,8 @@ export function messagesProjection(
             (startData as { role?: ExtendedMessageRole }).role ?? role;
           const maybeToolCallId = (startData as { tool_call_id?: string })
             .tool_call_id;
-          if (startData.message_id != null) {
-            roleByKey.set(startData.message_id, {
+          if (startData.id != null) {
+            roleByKey.set(startData.id, {
               role: extendedRole,
               toolCallId: maybeToolCallId,
             });

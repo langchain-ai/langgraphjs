@@ -8,7 +8,7 @@ import type {
 import type { SubscriptionHandle } from "../index.js";
 import { MultiCursorBuffer } from "../multi-cursor-buffer.js";
 import { StreamingMessageAssembler } from "../messages.js";
-import type { StreamingMessage } from "../messages.js";
+import type { StreamingMessage, StreamingMessageHandle } from "../messages.js";
 import { ToolCallAssembler } from "./tools.js";
 import type { AssembledToolCall } from "./tools.js";
 import { MediaAssembler } from "../media.js";
@@ -76,7 +76,7 @@ export class SubagentHandle {
     this.#session = session;
   }
 
-  get messages(): AsyncIterable<StreamingMessage> {
+  get messages(): AsyncIterable<StreamingMessageHandle> {
     if (this.#messagesIterable) return this.#messagesIterable;
     const buffer = new MultiCursorBuffer<StreamingMessage>();
     this.#messagesIterable = buffer;

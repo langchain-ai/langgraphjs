@@ -12,7 +12,7 @@ export const modelName = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5";
 
 export const model = new ChatAnthropic({
   model: modelName,
-  temperature: 0,
+  thinking: { type: "enabled", budget_tokens: 1024 },
 });
 
 export const searchWeb = tool(

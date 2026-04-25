@@ -20,9 +20,22 @@ const reasoningDelta = (
   content: { type: "reasoning", reasoning },
 });
 
-const messageStart = (): MessagesEventData => ({
+const messageStart = (id = "msg_1"): MessagesEventData => ({
   event: "message-start",
+  id,
   role: "ai",
+});
+
+const textStart = (index = 0): MessagesEventData => ({
+  event: "content-block-start",
+  index,
+  content: { type: "text", text: "" },
+});
+
+const textFinish = (text: string, index = 0): MessagesEventData => ({
+  event: "content-block-finish",
+  index,
+  content: { type: "text", text },
 });
 
 const messageFinish = (
@@ -79,6 +92,43 @@ describe("ChatModelStreamImpl", () => {
 
     const result = await stream.usage;
     expect(result).toEqual(usage);
+  });
+
+  it("output resolves to a compiled AIMessage with content blocks", async () => {
+    const stream = new ChatModelStreamImpl(["agent"], "chatModel");
+    const usage: UsageInfo = {
+      input_tokens: 3,
+      output_tokens: 2,
+      total_tokens: 5,
+    };
+
+    stream.pushEvent(messageStart("msg_output"));
+    stream.pushEvent(textStart());
+    stream.pushEvent(textDelta("Hello"));
+    stream.pushEvent(textDelta(" world"));
+    stream.pushEvent(textFinish("Hello world"));
+    stream.finish(messageFinish(usage));
+
+    const message = await stream.output;
+    expect(message.id).toBe("msg_output");
+    expect(message._getType()).toBe("ai");
+    expect(message.content).toEqual([{ type: "text", text: "Hello world" }]);
+    expect(message.usage_metadata?.total_tokens).toBe(5);
+    expect(message.response_metadata.finish_reason).toBe("stop");
+  });
+
+  it("awaiting the stream resolves to the compiled AIMessage", async () => {
+    const stream = new ChatModelStreamImpl(["agent"], "chatModel");
+
+    stream.pushEvent(messageStart("msg_await"));
+    stream.pushEvent(textStart());
+    stream.pushEvent(textDelta("hi"));
+    stream.pushEvent(textFinish("hi"));
+    stream.finish(messageFinish());
+
+    const message = await stream;
+    expect(message.id).toBe("msg_await");
+    expect(message.content).toEqual([{ type: "text", text: "hi" }]);
   });
 
   it("iterating raw events with [Symbol.asyncIterator]", async () => {

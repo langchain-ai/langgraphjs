@@ -1203,7 +1203,7 @@ export class StreamController<
       // AI's `tool_calls[].id` and the tool result renders in
       // its own bubble with a perpetually-"pending" status pill.
       if (extendedRole === "tool" && toolCallId == null) {
-        const messageId = startData.message_id;
+        const messageId = startData.id;
         if (messageId != null) {
           const match = /-tool-(.+)$/.exec(messageId);
           if (match != null) toolCallId = match[1];
@@ -1214,8 +1214,8 @@ export class StreamController<
           );
         }
       }
-      if (startData.message_id != null) {
-        this.#rootMessageRoles.set(startData.message_id, {
+      if (startData.id != null) {
+        this.#rootMessageRoles.set(startData.id, {
           role: extendedRole,
           toolCallId,
         });

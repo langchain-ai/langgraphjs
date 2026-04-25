@@ -21,9 +21,7 @@ async function main() {
 
   try {
     const client = new Client({ apiUrl: url });
-
     const thread = client.threads.stream({ assistantId: "simple-tool-graph" });
-
     await thread.run.input({
       input: {
         messages: [
@@ -36,22 +34,27 @@ async function main() {
       },
     });
 
-    console.log("--- Streaming messages (remote) ---\n");
-
-    let messageIndex = 0;
+    console.log("--- Streaming messages (remote) ---");
     for await (const message of thread.messages) {
-      messageIndex += 1;
-      const node = message.node ?? "unknown";
-      process.stdout.write(`[Message #${messageIndex} from "${node}"] `);
+      process.stdout.write("\n  reasoning: ");
+      for await (const reasoning of message.reasoning) {
+        process.stdout.write(reasoning);
+      }
 
+      process.stdout.write("\n  text: ");
       for await (const token of message.text) {
         process.stdout.write(token);
       }
 
+      const output = await message.output;
+      process.stdout.write(
+        `\n  content blocks: ${output.content.length}`
+      );
+
       const usage = await message.usage;
       if (usage) {
         process.stdout.write(
-          `\n  (tokens: ${usage.input_tokens ?? 0} in, ${usage.output_tokens ?? 0} out)`
+          `\n  tokens: ${usage.input_tokens ?? 0} in, ${usage.output_tokens ?? 0} out`
         );
       }
 
@@ -63,9 +66,7 @@ async function main() {
       | { messages?: { content: unknown }[] }
       | undefined;
     const last = state?.messages?.at(-1);
-    console.log(
-      typeof last?.content === "string" ? last.content : "(complex content)"
-    );
+    console.log(last);
 
     await thread.close();
   } finally {

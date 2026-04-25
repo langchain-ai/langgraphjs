@@ -106,7 +106,7 @@ export const createA2ATransformer = (): StreamTransformer<{
         }
 
         if (data.event === "content-block-start") {
-          const cb = data.content_block as Record<string, unknown>;
+          const cb = data.content as Record<string, unknown>;
           if (
             cb?.type === "tool_call_chunk" ||
             cb?.type === "tool_call" ||
@@ -121,7 +121,7 @@ export const createA2ATransformer = (): StreamTransformer<{
           !isToolCall &&
           data.event === "content-block-delta"
         ) {
-          const cb = data.content_block as Record<string, unknown>;
+          const cb = data.content as Record<string, unknown>;
           if (cb?.type === "text" && typeof cb.text === "string") {
             accumulatedText += cb.text;
             a2a.push(makeArtifactEvent(cb.text, false));
