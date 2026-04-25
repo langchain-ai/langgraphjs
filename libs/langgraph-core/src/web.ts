@@ -44,7 +44,6 @@ export {
   StreamChannel,
   GraphRunStream,
   SubgraphRunStream,
-  ChatModelStreamImpl,
   STREAM_V2_MODES,
   isNativeTransformer,
   createGraphRunStream,

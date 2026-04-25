@@ -7,7 +7,6 @@
 
 export { EventLog } from "./event-log.js";
 export { StreamChannel, isStreamChannel } from "./stream-channel.js";
-export { ChatModelStreamImpl } from "./chat-model-stream.js";
 export {
   StreamMux,
   pump,

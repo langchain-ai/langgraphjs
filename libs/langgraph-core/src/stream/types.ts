@@ -9,8 +9,9 @@
  * `InterruptPayload`) are defined here.
  */
 
+import type { ChatModelStream as CoreChatModelStream } from "@langchain/core/language_models/stream";
+import type { ChatModelStreamEvent as CoreChatModelStreamEvent } from "@langchain/core/language_models/event";
 import type { StreamMode } from "../pregel/types.js";
-import type { AIMessage } from "@langchain/core/messages";
 
 /**
  * Re-exports from `@langchain/protocol`.
@@ -221,55 +222,10 @@ export interface StreamEmitter {
   push(ns: Namespace, event: ProtocolEvent): void;
 }
 
-import type { MessagesData as MessagesEventDataImport } from "@langchain/protocol";
-import type { UsageInfo as UsageInfoImport } from "@langchain/protocol";
-
-/**
- * Async view of one assistant message lifecycle
- * (`message-start` → content blocks → `message-finish`).
- *
- * Provides raw event iteration plus ergonomic accessors for text,
- * reasoning, and usage.
- */
-export interface ChatModelStream
-  extends AsyncIterable<MessagesEventDataImport>, PromiseLike<AIMessage> {
-  /**
-   * Text content for this message.
-   *
-   * @remarks
-   * Use as an `AsyncIterable<string>` to consume streaming deltas; `await` the
-   * same value (or use `.then`) to obtain the full concatenated string after
-   * the message completes.
-   */
-  get text(): AsyncIterable<string> & PromiseLike<string>;
-
-  /**
-   * Reasoning / thinking trace for this message, when the model exposes it.
-   *
-   * @remarks
-   * Same dual pattern as {@link ChatModelStream.text}: iterate for deltas,
-   * await for the full reasoning string.
-   */
-  get reasoning(): AsyncIterable<string> & PromiseLike<string>;
-
-  /**
-   * Token usage after `message-finish`, when present.
-   *
-   * @remarks
-   * Promise-like only; resolves when usage is known or `undefined` if omitted.
-   */
-  get usage(): PromiseLike<UsageInfoImport | undefined>;
-
-  /**
-   * Final assembled AI message.
-   *
-   * @remarks
-   * Mirrors `@langchain/core` model streaming: resolves once the message
-   * lifecycle finishes and exposes finalized content blocks on
-   * `AIMessage.content`.
-   */
-  get output(): PromiseLike<AIMessage>;
-
+export type ChatModelStream = Omit<
+  CoreChatModelStream,
+  typeof Symbol.asyncIterator
+> & {
   /** Namespace of the graph node that produced this stream. */
   readonly namespace: Namespace;
 
@@ -279,10 +235,10 @@ export interface ChatModelStream
   /**
    * Low-level async iteration over message lifecycle events.
    *
-   * @returns Iterator yielding events in order.
+   * @returns Iterator yielding Core-compatible chat model stream events.
    */
-  [Symbol.asyncIterator](): AsyncIterator<MessagesEventDataImport>;
-}
+  [Symbol.asyncIterator](): AsyncIterator<CoreChatModelStreamEvent>;
+};
 
 /**
  * Public view yielded by `run.messages`.

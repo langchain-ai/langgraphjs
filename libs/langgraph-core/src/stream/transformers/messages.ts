@@ -1,4 +1,5 @@
-import { ChatModelStreamImpl } from "../chat-model-stream.js";
+import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
+import { ChatModelStream as CoreChatModelStream } from "@langchain/core/language_models/stream";
 import { EventLog } from "../event-log.js";
 import { hasPrefix } from "../mux.js";
 import type {
@@ -9,6 +10,20 @@ import type {
   StreamTransformer,
 } from "../types.js";
 import type { MessagesTransformerProjection } from "./types.js";
+
+type ActiveMessageStream = {
+  source: EventLog<ChatModelStreamEvent>;
+  stream: ChatModelStream;
+};
+
+// Keep this adapter until the protocol package and Core share a single
+// ChatModelStreamEvent type. The runtime shape is intentionally aligned; the
+// generated protocol types still differ from Core's content block definitions
+// and narrower finish-reason union. Core now accepts protocol-compatible
+// partial usage directly, so no value normalization is needed here.
+function toCoreEvent(data: MessagesEventData): ChatModelStreamEvent {
+  return data as unknown as ChatModelStreamEvent;
+}
 
 /**
  * Creates a {@link StreamTransformer} that groups `messages` channel events into
@@ -30,7 +45,7 @@ export function createMessagesTransformer(
   nodeFilter?: string
 ): StreamTransformer<MessagesTransformerProjection> {
   const log = new EventLog<ChatModelStream>();
-  let active: ChatModelStreamImpl | undefined;
+  let active: ActiveMessageStream | undefined;
 
   return {
     init: () => ({
@@ -57,29 +72,37 @@ export function createMessagesTransformer(
       const data = event.params.data as MessagesEventData;
 
       switch (data.event) {
-        case "message-start":
-          active = new ChatModelStreamImpl(
-            event.params.namespace,
-            event.params.node
-          );
-          log.push(active);
+        case "message-start": {
+          const source = new EventLog<ChatModelStreamEvent>();
+          const stream = Object.assign(
+            new CoreChatModelStream(source.toAsyncIterable()),
+            {
+              namespace: event.params.namespace,
+              node: event.params.node,
+            }
+          ) as ChatModelStream;
+          active = { source, stream };
+          source.push(toCoreEvent(data));
+          log.push(stream);
           break;
+        }
 
         case "content-block-start":
         case "content-block-delta":
         case "content-block-finish":
-          active?.pushEvent(data);
+          active?.source.push(toCoreEvent(data));
           break;
 
         case "message-finish":
           if (active) {
-            active.finish(data);
+            active.source.push(toCoreEvent(data));
+            active.source.close();
             active = undefined;
           }
           break;
 
         case "error":
-          active?.pushEvent(data);
+          active?.source.push(toCoreEvent(data));
           break;
       }
 
@@ -88,16 +111,15 @@ export function createMessagesTransformer(
 
     finalize(): void {
       if (active) {
-        active.finish({
-          event: "message-finish",
-        });
+        active.source.push({ event: "message-finish" });
+        active.source.close();
         active = undefined;
       }
       log.close();
     },
 
     fail(err: unknown): void {
-      active?.fail(err);
+      active?.source.fail(err);
       active = undefined;
       log.fail(err);
     },

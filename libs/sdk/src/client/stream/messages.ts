@@ -3,6 +3,7 @@ import {
   type ContentBlock as CoreContentBlock,
   type UsageMetadata,
 } from "@langchain/core/messages";
+import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
 import type {
   ContentBlock,
   FinalizedContentBlock,
@@ -12,33 +13,6 @@ import type {
 } from "@langchain/protocol";
 
 import { MultiCursorBuffer } from "./multi-cursor-buffer.js";
-
-type FinishReason = "stop" | "length" | "tool_use" | "content_filter";
-
-type ChatModelStreamEvent =
-  | { type: "message-start"; id?: string; usage?: UsageMetadata }
-  | {
-    type: "content-block-start";
-    index: number;
-    content: CoreContentBlock;
-  }
-  | {
-    type: "content-block-delta";
-    index: number;
-    content: CoreContentBlock;
-  }
-  | {
-    type: "content-block-finish";
-    index: number;
-    content: CoreContentBlock;
-  }
-  | {
-    type: "message-finish";
-    reason?: FinishReason;
-    usage?: UsageMetadata;
-    responseMetadata?: Record<string, unknown>;
-  }
-  | { type: "error"; message: string; code?: string };
 
 type TextContentStream = AsyncIterable<string> &
   PromiseLike<string> & { full: AsyncIterable<string> };
@@ -89,7 +63,9 @@ function applyCoreContentDelta(
   }
 }
 
-function toCoreUsage(usage: UsageInfo | undefined): UsageMetadata | undefined {
+function normalizeUsage(
+  usage: UsageInfo | Partial<UsageMetadata> | undefined
+): UsageMetadata | undefined {
   if (!usage) return undefined;
   return {
     ...usage,
@@ -301,7 +277,7 @@ export class StreamingMessage
     const iterator = async function* () {
       for await (const event of events) {
         if (
-          event.type === "content-block-finish" &&
+          event.event === "content-block-finish" &&
           event.content.type === "tool_call"
         ) {
           yield event.content as CoreContentBlock.Tools.ToolCall;
@@ -355,10 +331,10 @@ export class StreamingMessage
 
   async *#usageIterator(): AsyncGenerator<UsageMetadata> {
     for await (const event of this.#events) {
-      if (event.type === "message-start" && event.usage) {
-        yield event.usage;
-      } else if (event.type === "message-finish" && event.usage) {
-        yield event.usage;
+      if (event.event === "message-start" && event.usage) {
+        yield normalizeUsage(event.usage)!;
+      } else if (event.event === "message-finish" && event.usage) {
+        yield normalizeUsage(event.usage)!;
       }
     }
   }
@@ -367,14 +343,14 @@ export class StreamingMessage
     const contentBlocks: Array<CoreContentBlock | undefined> = [];
     let id: string | undefined;
     let usage: UsageMetadata | undefined;
-    let responseMetadata: Record<string, unknown> = {};
+    let metadata: Record<string, unknown> = {};
     let finishReason: string | undefined;
 
     for await (const event of this.#events) {
-      switch (event.type) {
+      switch (event.event) {
         case "message-start":
           id = event.id ?? id;
-          if (event.usage) usage = event.usage;
+          if (event.usage) usage = normalizeUsage(event.usage);
           break;
         case "content-block-start":
           contentBlocks[event.index] = event.content;
@@ -391,11 +367,11 @@ export class StreamingMessage
           break;
         case "message-finish":
           finishReason = event.reason;
-          if (event.usage) usage = event.usage;
-          if (event.responseMetadata) {
-            responseMetadata = {
-              ...responseMetadata,
-              ...event.responseMetadata,
+          if (event.usage) usage = normalizeUsage(event.usage);
+          if (event.metadata) {
+            metadata = {
+              ...metadata,
+              ...event.metadata,
             };
           }
           break;
@@ -411,7 +387,7 @@ export class StreamingMessage
       ),
       usage_metadata: usage,
       response_metadata: {
-        ...responseMetadata,
+        ...metadata,
         ...(finishReason ? { finish_reason: finishReason } : {}),
         output_version: "v1" as const,
       },
@@ -591,45 +567,7 @@ function messageKeyFor(event: MessagesEvent): string {
 }
 
 function toChatModelStreamEvent(event: MessagesEvent): ChatModelStreamEvent {
-  const data = event.params.data;
-  switch (data.event) {
-    case "message-start":
-      return {
-        type: "message-start",
-        id: data.id,
-      };
-    case "content-block-start":
-      return {
-        type: "content-block-start",
-        index: data.index,
-        content: data.content as unknown as CoreContentBlock,
-      };
-    case "content-block-delta":
-      return {
-        type: "content-block-delta",
-        index: data.index,
-        content: data.content as unknown as CoreContentBlock,
-      };
-    case "content-block-finish":
-      return {
-        type: "content-block-finish",
-        index: data.index,
-        content: data.content as unknown as CoreContentBlock,
-      };
-    case "message-finish":
-      return {
-        type: "message-finish",
-        reason: data.reason as FinishReason | undefined,
-        usage: toCoreUsage(data.usage),
-        responseMetadata: data.metadata,
-      };
-    case "error":
-      return {
-        type: "error",
-        message: data.message,
-        code: data.code,
-      };
-  }
+  return event.params.data as unknown as ChatModelStreamEvent;
 }
 
 /**
