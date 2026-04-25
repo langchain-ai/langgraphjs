@@ -38,7 +38,6 @@ import {
   isRecord,
   isSupportedChannel,
 } from "./internal-types.mjs";
-import { SessionMessageProcessor } from "./message-processor.mjs";
 import {
   guessGraphName,
   isPrefixMatch,
@@ -47,7 +46,6 @@ import {
   toNamespaceKey,
 } from "./namespace.mjs";
 import { normalizeProtocolStatePayload } from "./state-normalizers.mjs";
-import { isMessageTuplePayload } from "./tool-calls.mjs";
 
 /**
  * Normalizes one LangGraph run into protocol events and manages per-run
@@ -77,8 +75,6 @@ export class RunProtocolSession {
 
   private readonly namespaces = new Map<string, NamespaceInfo>();
 
-  private readonly messageProcessor: SessionMessageProcessor;
-
   private readonly abortController = new AbortController();
 
   private readonly buffer: ProtocolEvent[] = [];
@@ -92,8 +88,6 @@ export class RunProtocolSession {
   private rootGraphName = "root";
 
   private terminalLifecycleEmitted = false;
-
-  #loggedEvents = new Set<string>();
 
   private readonly pendingInterruptIds = new Set<string>();
 
@@ -132,20 +126,6 @@ export class RunProtocolSession {
     if (options.startSeq != null) {
       this.nextSeq = options.startSeq;
     }
-    this.messageProcessor = new SessionMessageProcessor({
-      ensureNamespaces: async (namespace) => this.ensureNamespaces(namespace),
-      pushEvent: async (event) => this.pushEvent(event),
-      createMessagesEvent: (namespace, data) =>
-        this.createEvent("messages", namespace, data),
-      createValuesEvent: (namespace, data) =>
-        this.createEvent("values", namespace, data),
-    });
-  }
-
-  #logOnce(message: string) {
-    if (this.#loggedEvents.has(message)) return;
-    this.#loggedEvents.add(message);
-    console.log(`[RunProtocolSession] ${message}`);
   }
 
   /**
@@ -464,28 +444,6 @@ export class RunProtocolSession {
         return;
       }
       case "messages":
-        if (namespace.length > 0) {
-          await this.ensureNamespaces(namespace);
-        }
-        if (isRecord(event.data) && typeof event.data.event === "string") {
-          this.#logOnce(`model supports v2 stream mode`);
-          await this.pushEvent(
-            this.createEvent(
-              "messages",
-              namespace,
-              event.data as ProtocolEventDataMap["messages"]
-            )
-          );
-          return;
-        }
-        if (isMessageTuplePayload(event.data)) {
-          this.#logOnce(`model uses tuple messages stream`);
-          await this.messageProcessor.normalizeTupleMessageEvent(
-            namespace,
-            event.data[0],
-            event.data[1]
-          );
-        }
         return;
       case "custom":
         await this.pushEvent(
@@ -506,15 +464,6 @@ export class RunProtocolSession {
           )
         );
         return;
-      case "messages/metadata":
-      case "messages/partial":
-      case "messages/complete":
-        await this.messageProcessor.normalizeLegacyMessageEvent(
-          method,
-          namespace,
-          event.data
-        );
-        return;
       default:
         // Route unknown methods as named custom events. This allows
         // reducers to emit("a2a", data) and have it appear on the
@@ -532,10 +481,8 @@ export class RunProtocolSession {
   /**
    * Forwards events already converted by core's stream_v2 pipeline.
    *
-   * Legacy source events continue through the normalizers in
-   * {@link handleSourceEvent}; this path is only for events marked by
-   * `streamStateV2` after `convertToProtocolEvent` and the built-in stream
-   * transformers have run.
+   * Only events marked by `streamStateV2` after `convertToProtocolEvent` and
+   * the built-in stream transformers have run take this path.
    */
   private async forwardNormalizedSourceEvent(
     method: string,
@@ -558,7 +505,6 @@ export class RunProtocolSession {
         if (namespace.length > 0) {
           await this.ensureNamespaces(namespace);
         }
-        this.#logOnce(`model supports v2 stream mode`);
         await this.pushEvent(
           this.createEvent(
             "messages",
@@ -634,9 +580,8 @@ export class RunProtocolSession {
    * `lifecycle.started` events are produced upstream by core's
    * `LifecycleTransformer` and observed by the session's lifecycle
    * handler in {@link RunProtocolSession.handleSourceEvent}.  This
-   * method is a defensive fallback for code paths (legacy tuple
-   * messages) that reference a namespace before the corresponding
-   * `lifecycle` event has been ingested.
+   * method is a defensive fallback for event paths that reference a namespace
+   * before the corresponding `lifecycle` event has been ingested.
    *
    * @param namespace - Namespace whose prefixes should be tracked.
    */

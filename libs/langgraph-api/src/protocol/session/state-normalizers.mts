@@ -1,10 +1,7 @@
 import type {
   ContentBlockStartData,
-  ContentBlockFinishData,
-  MessageFinishData,
   UpdatesEvent,
 } from "../types.mjs";
-import type { MessageState } from "./internal-types.mjs";
 import { isRecord } from "./internal-types.mjs";
 import {
   getTupleToolCallArgs,
@@ -215,20 +212,6 @@ export const normalizeProtocolContentBlock = (
   };
 };
 
-export const normalizeProtocolFinalizedContentBlock = (
-  value: unknown
-): ContentBlockFinishData["content"] | undefined => {
-  const block = normalizeProtocolContentBlock(value);
-  if (block == null) return undefined;
-  if (
-    block.type === "tool_call_chunk" ||
-    block.type === "server_tool_call_chunk"
-  ) {
-    return undefined;
-  }
-  return block as ContentBlockFinishData["content"];
-};
-
 export const normalizeProtocolMessageContent = (
   content: unknown,
   options?: { additionalKwargs?: Record<string, unknown> }
@@ -291,110 +274,6 @@ export const normalizeProtocolMessageContent = (
   }
 
   return blocks.length > 0 ? blocks : content;
-};
-
-/**
- * Creates the initial accumulator for a streamed message.
- *
- * @returns A fresh empty message state.
- */
-export const createEmptyMessageState = (): MessageState => ({
-  started: false,
-  lastText: "",
-  finished: false,
-  blocks: new Map(),
-});
-
-/**
- * Reads the first numeric field present from a list of candidate keys.
- *
- * @param value - Object containing numeric usage metadata.
- * @param keys - Candidate keys to check in order.
- * @returns The first numeric value found.
- */
-export const pickNumericField = (
-  value: Record<string, unknown>,
-  keys: string[]
-): number | undefined => {
-  for (const key of keys) {
-    if (typeof value[key] === "number") {
-      return value[key] as number;
-    }
-  }
-
-  return undefined;
-};
-
-/**
- * Normalizes model usage metadata into the protocol usage shape.
- *
- * @param value - Raw usage metadata payload.
- * @returns Normalized usage information when any supported counters exist.
- */
-export const toProtocolUsageInfo = (value: unknown) => {
-  if (!isRecord(value)) return undefined;
-
-  const usage = {
-    ...(pickNumericField(value, ["inputTokens", "input_tokens"]) != null
-      ? {
-          input_tokens: pickNumericField(value, [
-            "inputTokens",
-            "input_tokens",
-          ]),
-        }
-      : {}),
-    ...(pickNumericField(value, ["outputTokens", "output_tokens"]) != null
-      ? {
-          output_tokens: pickNumericField(value, [
-            "outputTokens",
-            "output_tokens",
-          ]),
-        }
-      : {}),
-    ...(pickNumericField(value, ["totalTokens", "total_tokens"]) != null
-      ? {
-          total_tokens: pickNumericField(value, [
-            "totalTokens",
-            "total_tokens",
-          ]),
-        }
-      : {}),
-  };
-
-  return Object.keys(usage).length > 0 ? usage : undefined;
-};
-
-/**
- * Extracts tuple message finish data from serialized message metadata.
- *
- * @param serialized - Serialized message payload from the source stream.
- * @returns Message finish data when a terminal condition is present.
- */
-export const getTupleFinishData = (
-  serialized: Record<string, unknown>
-): Partial<Pick<MessageFinishData, "usage" | "metadata">> | undefined => {
-  const additionalKwargs = isRecord(serialized.additional_kwargs)
-    ? serialized.additional_kwargs
-    : undefined;
-  const responseMetadata = isRecord(serialized.response_metadata)
-    ? serialized.response_metadata
-    : undefined;
-  const usage =
-    toProtocolUsageInfo(serialized.usage_metadata) ??
-    toProtocolUsageInfo(responseMetadata?.usage);
-  const hasFinishReason =
-    typeof additionalKwargs?.stop_reason === "string" ||
-    typeof responseMetadata?.stop_reason === "string" ||
-    typeof responseMetadata?.finish_reason === "string";
-
-  if (!hasFinishReason && usage == null) return undefined;
-
-  return {
-    ...(usage != null ? { usage } : {}),
-    ...(responseMetadata != null && Object.keys(responseMetadata).length > 0
-      ? { metadata: responseMetadata }
-      : {}),
-  };
 };
 
 /**

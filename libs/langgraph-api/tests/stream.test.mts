@@ -179,6 +179,83 @@ describe("streamState", () => {
     ]);
   });
 
+  it("does not route legacy runs through streamStateV2 for graph transformers", async () => {
+    const run = createRun({
+      kwargs: {
+        config: {
+          configurable: {
+            graph_id: "deep-agent",
+          },
+        },
+        stream_mode: ["updates"],
+        subgraphs: true,
+        resumable: true,
+      },
+    });
+
+    let streamV2Invoked = false;
+    const chunks: Array<{ event: string; data: unknown }> = [];
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          streamTransformers: [() => ({})],
+          async stream_v2() {
+            streamV2Invoked = true;
+            return {
+              async *[Symbol.asyncIterator]() {
+                yield {
+                  type: "event" as const,
+                  seq: 0,
+                  method: "updates" as const,
+                  params: {
+                    namespace: [],
+                    timestamp: 1,
+                    data: { ignored: true },
+                  },
+                };
+              },
+            };
+          },
+          async *streamEvents() {
+            yield {
+              event: "on_chain_stream",
+              run_id: run.run_id,
+              data: {
+                chunk: [
+                  ["worker"],
+                  "updates",
+                  {
+                    worker: {
+                      status: "legacy",
+                    },
+                  },
+                ],
+              },
+            };
+          },
+        }) as never,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(streamV2Invoked).toBe(false);
+    expect(chunks).toEqual([
+      {
+        event: "metadata",
+        data: { run_id: run.run_id, attempt: 1 },
+      },
+      {
+        event: "updates|worker",
+        data: {
+          worker: {
+            status: "legacy",
+          },
+        },
+      },
+    ]);
+  });
+
   it("routes protocol-gated runs through streamStateV2", async () => {
     const run = createRun({
       kwargs: {

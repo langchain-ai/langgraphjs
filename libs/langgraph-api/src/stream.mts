@@ -172,25 +172,13 @@ export async function* streamState(
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
-  // Delegate to streamStateV2 when either:
-  //   1. the graph has compile-time transformers, so custom stream
-  //      projections flow to clients automatically; or
-  //   2. the run was created by a v2 protocol endpoint — detected by
-  //      the `PROTOCOL_MESSAGES_STREAM_CONFIG_KEY` flag which is set
-  //      exclusively by those entrypoints (`protocol/service.mts`,
-  //      `experimental/embed/protocol.mts`).  Legacy callers never
-  //      set this flag, so they stay on the v1 streaming path below.
-  //
-  // Routing v2-protocol runs through `streamStateV2` is what lets
-  // core's `LifecycleTransformer` + `SubgraphDiscoveryTransformer`
-  // emit authoritative lifecycle events for every subgraph/subagent
-  // namespace.  Without this, the legacy `streamEvents` loop below
-  // only surfaces root lifecycle events (from `RunProtocolSession`)
-  // and clients cannot discover children via the `lifecycle.started`
-  // signal the SDK subscribes to.
+  // Only v2 protocol entrypoints opt into `streamStateV2`.
+  // Legacy run/stream endpoints stay on the existing `streamEvents`
+  // path even if a graph defines stream transformers, so they do not
+  // emit protocol-framed events on non-protocol transports.
   const isProtocolV2Run =
     kwargs.config?.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
-  if (graph.streamTransformers?.length > 0 || isProtocolV2Run) {
+  if (isProtocolV2Run) {
     yield* streamStateV2(run, { ...options, graph });
     return;
   }

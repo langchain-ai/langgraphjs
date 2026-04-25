@@ -39,33 +39,6 @@ export const extractErrorMessage = (value: unknown) => {
 };
 
 /**
- * Extracts text content from a legacy streamed message payload.
- *
- * @param value - Message content in string or block-array form.
- * @returns Concatenated text content when available.
- */
-export const extractTextContent = (value: unknown): string | undefined => {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    const parts = value
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (
-          isRecord(item) &&
-          item.type === "text" &&
-          typeof item.text === "string"
-        ) {
-          return item.text;
-        }
-        return undefined;
-      })
-      .filter((part): part is string => part != null);
-    if (parts.length > 0) return parts.join("");
-  }
-  return undefined;
-};
-
-/**
  * Converts a persisted run status into a protocol lifecycle status.
  *
  * @param status - Run status from storage.

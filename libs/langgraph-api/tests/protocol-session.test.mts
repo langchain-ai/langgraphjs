@@ -322,7 +322,7 @@ describe("RunProtocolSession", () => {
     });
   });
 
-  it("normalizes tuple message events that still arrive from the stream source", async () => {
+  it("ignores legacy tuple message events in the v2 protocol session", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);
     await session.start();
@@ -359,35 +359,7 @@ describe("RunProtocolSession", () => {
         (message as { type?: string }).type === "event"
     );
 
-    expect(events.map((event) => event.params)).toEqual([
-      {
-        namespace: ["tools:call_123", "model:worker_456"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "message-start",
-          id: "message_1",
-          role: "ai",
-        },
-      },
-      {
-        namespace: ["tools:call_123", "model:worker_456"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-start",
-          index: 0,
-          content: { type: "text", text: "" },
-        },
-      },
-      {
-        namespace: ["tools:call_123", "model:worker_456"],
-        timestamp: expect.any(Number),
-        data: {
-          event: "content-block-delta",
-          index: 0,
-          content: { type: "text", text: "Hel" },
-        },
-      },
-    ]);
+    expect(events).toEqual([]);
   });
 
   it("normalizes message payloads inside values snapshots", async () => {

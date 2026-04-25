@@ -1,9 +1,7 @@
 import type {
   AgentStatus,
-  ContentBlockFinishData,
   MessageMetadata,
   Namespace,
-  ProtocolEvent,
   ProtocolEventByMethod,
   SupportedChannel,
   UpdatesEvent,
@@ -43,30 +41,6 @@ export type NamespaceInfo = {
 };
 
 /**
- * Incremental state for a single streamed content block.
- */
-export type MessageBlockState = {
-  type: "text" | "reasoning" | "tool_call_chunk" | "finalized";
-  value: string;
-  finished: boolean;
-  id?: string;
-  name?: string;
-  contentBlock?: ContentBlockFinishData["content"];
-};
-
-/**
- * Incremental state for a single streamed message.
- */
-export type MessageState = {
-  metadata?: ProtocolCompatibleMessageMetadata;
-  namespace?: Namespace;
-  started: boolean;
-  lastText: string;
-  finished: boolean;
-  blocks: Map<number, MessageBlockState>;
-};
-
-/**
  * Normalized representation of an updates payload emitted by the run stream.
  */
 export type NormalizedUpdatesData = {
@@ -89,27 +63,6 @@ export type ProtocolEventDataMap = {
   lifecycle: ProtocolEventByMethod<"lifecycle">["params"]["data"];
   input: ProtocolEventByMethod<"input">["params"]["data"];
   tasks: ProtocolEventByMethod<"tasks">["params"]["data"];
-};
-
-/**
- * Callback surface used by the message processor to emit normalized events.
- *
- * `ensureNamespaces` updates the session's in-memory namespace tracking
- * for agent-tree queries; the authoritative `lifecycle.started` wire
- * emission is produced upstream by `LifecycleTransformer` in
- * `langgraph-core`.
- */
-export type MessageProcessorCallbacks = {
-  ensureNamespaces: (namespace: Namespace) => Promise<void>;
-  pushEvent: (event: ProtocolEvent) => Promise<void>;
-  createMessagesEvent: (
-    namespace: Namespace,
-    data: ProtocolEventDataMap["messages"]
-  ) => ProtocolEventByMethod<"messages">;
-  createValuesEvent: (
-    namespace: Namespace,
-    data: ProtocolEventDataMap["values"]
-  ) => ProtocolEventByMethod<"values">;
 };
 
 /**
