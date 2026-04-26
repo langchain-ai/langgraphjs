@@ -70,7 +70,7 @@
     "dotenv": "^16.4.7",
     "exit-hook": "^4.0.0",
     "hono": "^4.12.14",
-    "langsmith": ">=0.3.33 <1.0.0",
+    "langsmith": ">=0.5.19 <1.0.0",
     "open": "^10.1.0",
     "semver": "^7.7.1",
     "stacktrace-parser": "^0.1.10",
