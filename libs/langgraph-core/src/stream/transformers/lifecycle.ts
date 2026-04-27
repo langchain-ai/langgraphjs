@@ -119,11 +119,38 @@ function extractCause(data: unknown): LifecycleCause | undefined {
   return cause as unknown as LifecycleCause;
 }
 
+function extractTaskResultCompletion(
+  data: unknown
+): TaskResultCompletion | undefined {
+  if (!isRecord(data)) return undefined;
+  if (!("result" in data)) return undefined;
+  if (typeof data.name !== "string") return undefined;
+  if (typeof data.id !== "string") return undefined;
+  if (data.name.startsWith("__")) return undefined;
+  return { name: data.name, id: data.id };
+}
+
 interface NamespaceRecord {
   readonly namespace: Namespace;
   readonly graphName: string;
   /** Last emitted status; `undefined` until `emit` fires for this namespace. */
   status: AgentStatus | undefined;
+}
+
+interface TaskResultCompletion {
+  readonly name: string;
+  readonly id: string;
+}
+
+interface PendingCompletion {
+  readonly namespace: Namespace;
+  readonly source:
+    | { readonly type: "task" }
+    | {
+        readonly type: "node";
+        readonly parent: Namespace;
+        readonly node: string;
+      };
 }
 
 /**
@@ -154,7 +181,7 @@ export function createLifecycleTransformer(
    * `updates` lands on the wire before its child is marked complete -
    * matching the previous session behavior.
    */
-  const pendingCompletions: Namespace[] = [];
+  const pendingCompletions: PendingCompletion[] = [];
 
   let emitter: StreamEmitter | undefined;
   let inSelfEmit = 0;
@@ -240,11 +267,36 @@ export function createLifecycleTransformer(
   const flushPendingCompletions = (): void => {
     if (pendingCompletions.length === 0) return;
     const toFlush = pendingCompletions.splice(0, pendingCompletions.length);
-    for (const namespace of toFlush) {
-      const key = nsKey(namespace);
+    for (const completion of toFlush) {
+      const key = nsKey(completion.namespace);
       const rec = namespaces.get(key);
       if (rec == null || rec.status !== "started") continue;
-      emit(namespace, "completed");
+      emit(completion.namespace, "completed");
+    }
+  };
+
+  const enqueueCompletion = (completion: PendingCompletion): void => {
+    const key = nsKey(completion.namespace);
+    const rec = namespaces.get(key);
+    if (rec == null || rec.status !== "started") return;
+    if (
+      pendingCompletions.some((pending) => nsKey(pending.namespace) === key)
+    ) {
+      return;
+    }
+    pendingCompletions.push(completion);
+  };
+
+  const removePendingNodeCompletions = (
+    parent: Namespace,
+    node: string
+  ): void => {
+    for (let index = pendingCompletions.length - 1; index >= 0; index -= 1) {
+      const pending = pendingCompletions[index];
+      if (pending.source.type !== "node") continue;
+      if (pending.source.node !== node) continue;
+      if (nsKey(pending.source.parent) !== nsKey(parent)) continue;
+      pendingCompletions.splice(index, 1);
     }
   };
 
@@ -299,6 +351,15 @@ export function createLifecycleTransformer(
     return undefined;
   };
 
+  const findStartedChildForTask = (
+    parentNamespace: Namespace,
+    task: TaskResultCompletion
+  ): Namespace | undefined => {
+    const namespace = [...parentNamespace, `${task.name}:${task.id}`];
+    const rec = namespaces.get(nsKey(namespace));
+    return rec?.status === "started" ? namespace : undefined;
+  };
+
   const transformer: NativeStreamTransformer<LifecycleProjection> = {
     __native: true,
 
@@ -326,6 +387,16 @@ export function createLifecycleTransformer(
       // is being routed back through this transformer by the mux.
       // Allow it through the wire unchanged.
       if (inSelfEmit > 0) return true;
+
+      const taskCompletion =
+        event.method === "tasks"
+          ? extractTaskResultCompletion(event.params.data)
+          : undefined;
+      if (taskCompletion != null) {
+        // Prefer exact task-result attribution over any ambiguous
+        // `updates.node` completion deferred from the previous event.
+        removePendingNodeCompletions(ns, taskCompletion.name);
+      }
 
       // Flush any completions deferred by the previous event so the
       // wire order is [triggering event] -> [deferred completed].
@@ -360,6 +431,16 @@ export function createLifecycleTransformer(
         }
       }
 
+      if (taskCompletion != null) {
+        const childNamespace = findStartedChildForTask(ns, taskCompletion);
+        if (childNamespace != null) {
+          enqueueCompletion({
+            namespace: childNamespace,
+            source: { type: "task" },
+          });
+        }
+      }
+
       // Defer child-node completion: the `updates` event carries the
       // node attribution; the corresponding child namespace is
       // `[...ns, "<node>:<uuid>"]`. We pick the oldest still-started
@@ -369,7 +450,12 @@ export function createLifecycleTransformer(
         const node = event.params.node;
         if (typeof node === "string" && !node.startsWith("__")) {
           const childNamespace = findStartedChildForNode(ns, node);
-          if (childNamespace != null) pendingCompletions.push(childNamespace);
+          if (childNamespace != null) {
+            enqueueCompletion({
+              namespace: childNamespace,
+              source: { type: "node", parent: ns, node },
+            });
+          }
         }
       }
 

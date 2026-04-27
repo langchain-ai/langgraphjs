@@ -1327,7 +1327,10 @@ export class StreamController<
         const streamIdx = this.#rootMessageIndex.get(id);
         if (streamIdx == null) return msg;
         const streamed = s.messages[streamIdx];
-        return streamed ?? msg;
+        if (streamed == null) return msg;
+        return shouldPreferValuesMessageForToolCalls(msg, streamed)
+          ? msg
+          : streamed;
       });
       // Preserve any stream-assembled messages that haven't yet been
       // echoed into `values.messages`. This happens when a node emits
@@ -1519,6 +1522,37 @@ function appendToolCall(
   const out = current.slice();
   out[idx] = next;
   return out;
+}
+
+function shouldPreferValuesMessageForToolCalls(
+  valuesMessage: BaseMessage,
+  streamedMessage: BaseMessage
+): boolean {
+  const valuesToolCalls = getMessageToolCalls(valuesMessage);
+  if (valuesToolCalls.length === 0) return false;
+
+  const streamedToolCalls = getMessageToolCalls(streamedMessage);
+  if (streamedToolCalls.length < valuesToolCalls.length) return true;
+
+  const streamedIds = new Set(
+    streamedToolCalls
+      .map((toolCall) => toolCall.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  );
+  return valuesToolCalls.some((toolCall) => {
+    return typeof toolCall.id === "string" && !streamedIds.has(toolCall.id);
+  });
+}
+
+function getMessageToolCalls(
+  message: BaseMessage
+): Array<{ id?: string; name?: string }> {
+  const raw = (message as unknown as { tool_calls?: unknown }).tool_calls;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (toolCall): toolCall is { id?: string; name?: string } =>
+      toolCall != null && typeof toolCall === "object"
+  );
 }
 
 /**

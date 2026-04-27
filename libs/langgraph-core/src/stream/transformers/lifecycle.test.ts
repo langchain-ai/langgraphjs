@@ -144,6 +144,93 @@ describe("createLifecycleTransformer", () => {
     expect(childCompletedGlobalIdx).toBeGreaterThan(updatesIdx);
   });
 
+  it("prefers exact tasks result ids over pending updates.node completions", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    mux.push(["researcher:a"], makeEvent("values", ["researcher:a"], {}));
+    mux.push(["researcher:b"], makeEvent("values", ["researcher:b"], {}));
+    // This ambiguous update would previously complete the oldest researcher child.
+    mux.push([], makeEvent("updates", [], { result: "b" }, { node: "researcher" }));
+    mux.push(
+      [],
+      makeEvent("tasks", [], {
+        id: "b",
+        name: "researcher",
+        result: { result: "b" },
+        interrupts: [],
+      })
+    );
+    // Next event flushes the exact completion from the task result.
+    mux.push([], makeEvent("values", [], { final: true }));
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const taskResultIdx = events.findIndex(
+      (e) => e.method === "tasks" && (e.params.data as { id?: string }).id === "b"
+    );
+    const finalValuesIdx = events.findIndex(
+      (e) =>
+        e.method === "values" &&
+        e.params.namespace.length === 0 &&
+        (e.params.data as { final?: boolean }).final === true
+    );
+    const completedIdx = events.findIndex(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "researcher:b" &&
+        lifecyclePayload(e).event === "completed"
+    );
+    const otherChildCompletedIdx = events.findIndex(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "researcher:a" &&
+        lifecyclePayload(e).event === "completed"
+    );
+
+    expect(completedIdx).toBeGreaterThan(taskResultIdx);
+    expect(completedIdx).toBeLessThan(finalValuesIdx);
+    // The ambiguous update should not complete the oldest sibling before
+    // the exact task result has a chance to identify the real child.
+    expect(otherChildCompletedIdx).toBeGreaterThan(finalValuesIdx);
+  });
+
+  it("emits a single completion when tasks result and updates.node both signal the same child", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    mux.push(["researcher:abc"], makeEvent("values", ["researcher:abc"], {}));
+    mux.push(
+      [],
+      makeEvent("tasks", [], {
+        id: "abc",
+        name: "researcher",
+        result: { ok: true },
+        interrupts: [],
+      })
+    );
+    // Flushes the task-result completion, then should not enqueue another one.
+    mux.push([], makeEvent("updates", [], { ok: true }, { node: "researcher" }));
+    mux.push([], makeEvent("values", [], { final: true }));
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const completedForChild = events.filter(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "researcher:abc" &&
+        lifecyclePayload(e).event === "completed"
+    );
+
+    expect(completedForChild).toHaveLength(1);
+  });
+
   it("cascades failed status to all still-started namespaces on fail()", async () => {
     const mux = new StreamMux();
     const transformer = createLifecycleTransformer();
