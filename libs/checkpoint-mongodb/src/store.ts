@@ -1,4 +1,4 @@
-import { type MongoClient, type Db as MongoDatabase } from "mongodb";
+import { MongoClient, type Db as MongoDatabase } from "mongodb";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import {
   BaseStore,
@@ -153,6 +153,7 @@ export class MongoDBStore extends BaseStore {
   protected ttl?: TTLConfig;
   protected embeddings?: EmbeddingsInterface;
   protected indexConfig?: IndexConfig;
+  protected ownsClient = false;
 
   private get timestampOp() {
     return this.enableTimestamps
@@ -193,10 +194,10 @@ export class MongoDBStore extends BaseStore {
     connString: string,
     params?: Omit<MongoDBStoreParams, "client">
   ): Promise<MongoDBStore> {
-    const { MongoClient: MC } = await import("mongodb");
-    const client = new MC(connString);
+    const client = new MongoClient(connString);
     await client.connect();
     const store = new MongoDBStore({ ...params, client });
+    store.ownsClient = true;
     await store.start();
     return store;
   }
@@ -763,6 +764,13 @@ export class MongoDBStore extends BaseStore {
         fields.push({ type: "filter", path: filterField });
       }
 
+      // The vector search index is built asynchronously by Atlas. createSearchIndex
+      // returns as soon as the build is scheduled — it does NOT wait for the index
+      // to become queryable. Writes (put/delete) work immediately, but vector
+      // search queries (search with `query`) will fail until the index reaches
+      // READY status, which can take seconds to minutes. If you need to gate
+      // application traffic on index readiness, poll `collection.listSearchIndexes`
+      // for `status === "READY"` before issuing vector searches.
       try {
         await collection.createSearchIndex({
           name: this.indexConfig.name,
@@ -774,26 +782,17 @@ export class MongoDBStore extends BaseStore {
           throw err;
         }
       }
-
-      // Wait for the index to become queryable. createSearchIndex returns
-      // immediately but the index builds asynchronously.
-      const indexName = this.indexConfig.name;
-      const deadline = Date.now() + 120_000;
-      while (Date.now() < deadline) {
-        const indexes = await collection.listSearchIndexes(indexName).toArray();
-        const ready = indexes.some(
-          (idx: any) => idx.name === indexName && idx.status === "READY"
-        );
-        if (ready) break;
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
-      }
     }
   }
 
   /**
-   * Clean up the store (no-op for now).
+   * Clean up the store. Closes the underlying MongoClient only if the store
+   * created it (i.e. via {@link fromConnString}). When the client was supplied
+   * to the constructor by the caller, the caller owns its lifecycle.
    */
   async stop(): Promise<void> {
-    // No-op
+    if (this.ownsClient) {
+      await this.client.close();
+    }
   }
 }
