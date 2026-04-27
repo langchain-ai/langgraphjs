@@ -17,7 +17,6 @@
  */
 import type {
   Event,
-  LifecycleEvent,
   ToolsEvent,
   ValuesEvent,
 } from "@langchain/protocol";

@@ -133,7 +133,7 @@ export function FanOutView({ transport }: { transport: Transport }) {
                 {stream.isLoading ? "Spawning workers..." : "Idle"}
               </span>
             </div>
-            <MessageFeed messages={stream.messages} />
+            <MessageFeed isStreaming={stream.isLoading} messages={stream.messages} />
             <Composer
               disabled={stream.isLoading}
               onSubmit={handleSubmit}
@@ -338,7 +338,10 @@ function FanOutSubagentContent({
             Waiting for streamed output from this worker...
           </div>
         ) : (
-          <MessageFeed messages={messages} />
+          <MessageFeed
+            isStreaming={subagent.status === "running"}
+            messages={messages}
+          />
         )}
       </section>
 

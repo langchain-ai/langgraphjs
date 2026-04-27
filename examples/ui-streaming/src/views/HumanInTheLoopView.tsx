@@ -112,7 +112,7 @@ export function HumanInTheLoopView({ transport }: { transport: Transport }) {
             <h3>Conversation</h3>
             <span className="conversation-status">{statusLabel}</span>
           </div>
-          <MessageFeed messages={stream.messages} />
+          <MessageFeed isStreaming={stream.isLoading} messages={stream.messages} />
           {hasPendingReview ? (
             <HumanReviewPanel
               hitlRequest={hitlRequest}

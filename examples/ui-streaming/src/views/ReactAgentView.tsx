@@ -159,7 +159,7 @@ function InnerView({
               {stream.isLoading ? "Streaming..." : "Idle"}
             </span>
           </div>
-          <MessageFeed messages={messages} />
+          <MessageFeed isStreaming={stream.isLoading} messages={messages} />
           <Composer
             disabled={stream.isLoading}
             onSubmit={handleSubmit}

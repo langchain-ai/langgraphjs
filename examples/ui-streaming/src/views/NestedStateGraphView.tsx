@@ -93,7 +93,7 @@ export function NestedStateGraphView({ transport }: { transport: Transport }) {
               {stream.isLoading ? "Streaming..." : "Idle"}
             </span>
           </div>
-          <MessageFeed messages={stream.messages} />
+          <MessageFeed isStreaming={stream.isLoading} messages={stream.messages} />
           <Composer
             disabled={stream.isLoading}
             onSubmit={handleSubmit}

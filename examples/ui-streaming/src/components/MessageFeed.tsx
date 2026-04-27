@@ -1,5 +1,6 @@
 import type { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
-import { useState } from "react";
+import { memo, useState } from "react";
+import { Streamdown } from "streamdown";
 
 import {
   getMessageLabel,
@@ -23,6 +24,7 @@ type ToolCallWithResult = {
 interface MessageFeedProps {
   messages: BaseMessage[];
   getMessageMetadata?: (message: BaseMessage) => unknown;
+  isStreaming?: boolean;
 }
 const isToolMessage = (message: BaseMessage): message is ToolMessage =>
   message.type === "tool" && "tool_call_id" in message;
@@ -181,13 +183,13 @@ const getTokenLimitedPreview = (
   if (isTokenTruncated && isCharTruncated) {
     return tokenPreview.length <= charPreview.length
       ? {
-          preview: `${tokenPreview}...`,
-          isTruncated: true,
-        }
+        preview: `${tokenPreview}...`,
+        isTruncated: true,
+      }
       : {
-          preview: charPreview,
-          isTruncated: true,
-        };
+        preview: charPreview,
+        isTruncated: true,
+      };
   }
 
   if (isTokenTruncated) {
@@ -205,7 +207,26 @@ const getTokenLimitedPreview = (
 
 interface ExpandableMessageContentProps {
   content: string;
+  isAnimating?: boolean;
   preview: string;
+}
+
+function MessageContent({
+  content,
+  isAnimating = false,
+}: {
+  content: string;
+  isAnimating?: boolean;
+}) {
+  return (
+    <Streamdown
+      animated={{ animation: "blurIn", duration: 180, stagger: 25 }}
+      className="message-content"
+      isAnimating={isAnimating}
+    >
+      {content}
+    </Streamdown>
+  );
 }
 
 // Toggle between a truncated preview and the full message body. Keeping
@@ -213,20 +234,18 @@ interface ExpandableMessageContentProps {
 // twice (preview + full) when the user expands it.
 function ExpandableMessageContent({
   content,
+  isAnimating = false,
   preview,
 }: ExpandableMessageContentProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="message-content-stack">
-      <div
-        className={
-          isExpanded
-            ? "message-content message-content-expanded"
-            : "message-content"
-        }
-      >
-        {isExpanded ? content : preview}
+      <div className={isExpanded ? "message-content-expanded" : undefined}>
+        <MessageContent
+          content={isExpanded ? content : preview}
+          isAnimating={!isExpanded && isAnimating}
+        />
       </div>
       <button
         type="button"
@@ -511,9 +530,10 @@ function ToolCallCard({
   );
 }
 
-export function MessageFeed({
+export const MessageFeed = memo(function MessageFeed({
   messages,
   getMessageMetadata,
+  isStreaming = false,
 }: MessageFeedProps) {
   const allToolCalls = getToolCallsWithResults(messages);
   const pairedToolResultIds = new Set(
@@ -559,6 +579,8 @@ export function MessageFeed({
         const metadata = getMessageMetadata?.(message);
         const badge = getMetadataBadge(metadata);
         const toolCalls = toolCallsByMessage.get(message) ?? [];
+        const isLatestStreamingMessage =
+          isStreaming && index === messages.length - 1;
         // Prefer real text/reasoning; only fall back to a JSON dump of
         // `message.content` when there are no tool calls to render AND
         // the content is a non-empty non-string payload worth showing.
@@ -570,6 +592,8 @@ export function MessageFeed({
             : "";
         const content = text || reasoning || fallbackContent;
         const contentPreview = getTokenLimitedPreview(content);
+        const shouldRenderPreview =
+          contentPreview.isTruncated && !isLatestStreamingMessage;
 
         // Suppress cards that have no renderable payload at all. AI turns
         // that finish with empty content AND no tool calls (e.g. a
@@ -600,13 +624,16 @@ export function MessageFeed({
               </div>
             ) : null}
             {content.trim().length > 0 ? (
-              contentPreview.isTruncated ? (
+              shouldRenderPreview ? (
                 <ExpandableMessageContent
                   content={content}
                   preview={contentPreview.preview}
                 />
               ) : (
-                <div className="message-content">{content}</div>
+                <MessageContent
+                  content={content}
+                  isAnimating={isLatestStreamingMessage}
+                />
               )
             ) : null}
             {toolCalls.length > 0 ? (
@@ -620,5 +647,16 @@ export function MessageFeed({
         );
       })}
     </div>
+  );
+}, areMessageFeedPropsEqual);
+
+function areMessageFeedPropsEqual(
+  previous: MessageFeedProps,
+  next: MessageFeedProps
+) {
+  return (
+    previous.messages === next.messages &&
+    previous.getMessageMetadata === next.getMessageMetadata &&
+    previous.isStreaming === next.isStreaming
   );
 }

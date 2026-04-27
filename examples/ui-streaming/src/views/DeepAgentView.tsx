@@ -99,7 +99,7 @@ export function DeepAgentView({ transport }: { transport: Transport }) {
               {stream.isLoading ? "Streaming..." : "Idle"}
             </span>
           </div>
-          <MessageFeed messages={stream.messages} />
+          <MessageFeed isStreaming={stream.isLoading} messages={stream.messages} />
           <Composer
             disabled={stream.isLoading}
             onSubmit={handleSubmit}
@@ -216,7 +216,10 @@ function SubagentLiveStream({
           Waiting for the subagent to produce output...
         </div>
       ) : (
-        <MessageFeed messages={messages} />
+        <MessageFeed
+          isStreaming={subagent.status === "running"}
+          messages={messages}
+        />
       )}
     </div>
   );
