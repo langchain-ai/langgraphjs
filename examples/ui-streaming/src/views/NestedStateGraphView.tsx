@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import {
   useMessages,
-  useStreamExperimental,
+  useStream,
   type AnyStream,
   type SubgraphDiscoverySnapshot,
 } from "@langchain/react";
@@ -28,7 +28,7 @@ const SUGGESTIONS = [
 export function NestedStateGraphView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
 
-  const stream = useStreamExperimental<typeof nestedStateGraphType>({
+  const stream = useStream<typeof nestedStateGraphType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

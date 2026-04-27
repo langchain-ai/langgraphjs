@@ -3,7 +3,7 @@ import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import type { SubagentDiscoverySnapshot } from "@langchain/langgraph-sdk/stream";
 
 import {
-  useStreamExperimental,
+  useStream,
   useMessages,
   useToolCalls,
 } from "../../index.js";
@@ -24,7 +24,7 @@ export function DeepAgentStream({
   apiUrl,
   assistantId = "deep_agent",
 }: Props) {
-  const thread = useStreamExperimental<{ messages: BaseMessage[] }>({
+  const thread = useStream<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
   });
@@ -81,7 +81,7 @@ export function DeepAgentStream({
 
 interface SubagentCardProps {
   stream: ReturnType<
-    typeof useStreamExperimental<{ messages: BaseMessage[] }>
+    typeof useStream<{ messages: BaseMessage[] }>
   >;
   subagent: SubagentDiscoverySnapshot;
 }

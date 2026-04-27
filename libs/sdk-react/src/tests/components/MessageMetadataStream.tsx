@@ -1,7 +1,7 @@
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
 import { useStream, useMessageMetadata } from "../../index.js";
-import type { UseStreamExperimentalReturn } from "../../index.js";
+import type { UseStreamReturn } from "../../index.js";
 
 type StreamState = { messages: BaseMessage[] };
 
@@ -10,7 +10,7 @@ function MessageRow({
   index,
   message,
 }: {
-  stream: UseStreamExperimentalReturn<StreamState>;
+  stream: UseStreamReturn<StreamState>;
   index: number;
   message: BaseMessage;
 }) {

@@ -4,14 +4,14 @@ import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import type { SubagentDiscoverySnapshot } from "@langchain/langgraph-sdk/stream";
 
 import {
-  useStreamExperimental,
+  useStream,
   useMessages,
   useToolCalls,
   STREAM_CONTROLLER,
 } from "../../index.js";
 
 type Thread = ReturnType<
-  typeof useStreamExperimental<{ messages: BaseMessage[] }>
+  typeof useStream<{ messages: BaseMessage[] }>
 >;
 
 interface InitialMounts {
@@ -59,7 +59,7 @@ export function DeepAgentSubscriptionStream({
   assistantId = "deep_agent",
   initialMounts = {},
 }: Props) {
-  const thread = useStreamExperimental<{ messages: BaseMessage[] }>({
+  const thread = useStream<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
   });

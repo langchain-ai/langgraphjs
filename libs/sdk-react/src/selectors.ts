@@ -34,7 +34,7 @@ import {
 import {
   getRegistry,
   STREAM_CONTROLLER,
-  type UseStreamExperimentalReturn,
+  type UseStreamReturn,
 } from "./use-stream.js";
 
 /**
@@ -42,12 +42,12 @@ import {
  * `ConfigurableType` — they only ever read state. Accepting a
  * `StateType`-parameterised stream (with the other two generics
  * widened to `any`) lets callers keep their full
- * `useStreamExperimental<State, Interrupt, Configurable>()` handle
+ * `useStream<State, Interrupt, Configurable>()` handle
  * without re-declaring the interrupt / configurable shapes at every
  * selector call site.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type StreamHandle<StateType extends object> = UseStreamExperimentalReturn<
+type StreamHandle<StateType extends object> = UseStreamReturn<
   StateType,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
@@ -92,10 +92,10 @@ function namespaceKey(namespace: readonly string[]): string {
 // The stream type we accept for selectors — purposely loose so
 // selector hooks remain callable from components that don't carry
 // the exact State/Interrupt/Configurable generics. We use `any` for
-// all three generics because `UseStreamExperimentalReturn` is
+// all three generics because `UseStreamReturn` is
 // invariant in `State` and `Configurable` (they flow through both
 // reader and writer positions), so a concrete
-// `useStreamExperimental<typeof agent>()` handle wouldn't flow into
+// `useStream<typeof agent>()` handle wouldn't flow into
 // a `<object, unknown, object>` slot otherwise.
 //
 // Typed selectors (`useValues<S>` etc.) use {@link StreamHandle}
@@ -103,7 +103,7 @@ function namespaceKey(namespace: readonly string[]): string {
 // that don't depend on state (`useMessages`, `useAudio`, …) stay on
 // `AnyStream` for maximum flexibility.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyStream = UseStreamExperimentalReturn<any, any, any>;
+type AnyStream = UseStreamReturn<any, any, any>;
 
 /**
  * Subscribe to a scoped `messages` stream. Pass `stream` and
@@ -114,7 +114,7 @@ type AnyStream = UseStreamExperimentalReturn<any, any, any>;
  *    — no extra subscription is opened. `stream.messages` is the
  *    live merge of `messages`-channel token deltas and
  *    `values.messages` snapshots (see
- *    {@link UseStreamExperimentalReturn.messages}), so token-by-token
+ *    {@link UseStreamReturn.messages}), so token-by-token
  *    streaming here depends on the backend emitting `messages`
  *    channel events. Backends that only emit `values` updates will
  *    render full turns at once rather than streaming.
@@ -196,7 +196,7 @@ const EMPTY_TOOLCALLS: AssembledToolCall[] = [];
  *
  * Typing:
  *  - **Root** (`useValues(stream)`): returns the `StateType` declared
- *    on the parent `useStreamExperimental<State>()` — no explicit
+ *    on the parent `useStream<State>()` — no explicit
  *    generic required. Non-nullable because the root snapshot always
  *    carries `values` (falling back to `initialValues ?? {}`).
  *  - **Scoped** (`useValues(stream, target)`): the scoped payload can

@@ -14,7 +14,7 @@
  *   - `*Projection` factories   — per-kind {@link ProjectionSpec}s
  *   - `assembledToBaseMessage`  — `AssembledMessage` → `BaseMessage`
  *
- * See `libs/sdk-react/useStreamExperimental.md` for the React binding
+ * See `libs/sdk-react/useStream.md` for the React binding
  * design and the intended migration path from `useStream`.
  */
 export type {

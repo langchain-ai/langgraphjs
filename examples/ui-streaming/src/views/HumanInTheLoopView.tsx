@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { useStreamExperimental, type UseStreamExperimentalReturn } from "@langchain/react";
+import { useStream, type UseStreamReturn } from "@langchain/react";
 import type { HITLRequest, HITLResponse } from "langchain";
 
 import type { agent as hitlAgentType } from "../agents/human-in-the-loop";
@@ -22,14 +22,14 @@ const SUGGESTIONS = [
   "Notify qa@example.com that the HITL demo is ready for protocol testing.",
 ];
 
-type HITLStream = UseStreamExperimentalReturn<typeof hitlAgentType, HITLRequest>;
+type HITLStream = UseStreamReturn<typeof hitlAgentType, HITLRequest>;
 type StreamState = HITLStream["values"];
 
 export function HumanInTheLoopView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const stream = useStreamExperimental<typeof hitlAgentType, HITLRequest>({
+  const stream = useStream<typeof hitlAgentType, HITLRequest>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

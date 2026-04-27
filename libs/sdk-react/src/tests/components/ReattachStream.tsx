@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
-import { useStreamExperimental } from "../../index.js";
+import { useStream } from "../../index.js";
 
 interface StreamState {
   messages: BaseMessage[];
@@ -29,7 +29,7 @@ export function ReattachStream({
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [secondaryMounted, setSecondaryMounted] = useState(false);
 
-  const primary = useStreamExperimental<StreamState>({
+  const primary = useStream<StreamState>({
     assistantId,
     apiUrl,
     threadId,
@@ -80,7 +80,7 @@ interface SecondaryProps {
 }
 
 function SecondaryStream({ apiUrl, assistantId, threadId }: SecondaryProps) {
-  const secondary = useStreamExperimental<StreamState>({
+  const secondary = useStream<StreamState>({
     assistantId,
     apiUrl,
     threadId,

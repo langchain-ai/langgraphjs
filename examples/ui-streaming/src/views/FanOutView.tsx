@@ -2,10 +2,10 @@ import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import {
   useMessages,
-  useStreamExperimental,
+  useStream,
   useToolCalls,
   type SubagentDiscoverySnapshot,
-  type UseStreamExperimentalReturn,
+  type UseStreamReturn,
 } from "@langchain/react";
 
 import type { agent as fanOutAgentType } from "../agents/fan-out";
@@ -27,12 +27,12 @@ const SUGGESTIONS = [
 ];
 
 type FanOutStream = ReturnType<
-  typeof useStreamExperimental<Awaited<ReturnType<typeof fanOutAgentType>>>
+  typeof useStream<Awaited<ReturnType<typeof fanOutAgentType>>>
 >;
 type StreamState = FanOutStream["values"];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GenericStream = UseStreamExperimentalReturn<any, any, any>;
+type GenericStream = UseStreamReturn<any, any, any>;
 
 type StatusFilter = "all" | "running" | "complete" | "error";
 
@@ -41,7 +41,7 @@ export function FanOutView({ transport }: { transport: Transport }) {
   const [modalSubagentId, setModalSubagentId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  const stream = useStreamExperimental<
+  const stream = useStream<
     Awaited<ReturnType<typeof fanOutAgentType>>
   >({
     assistantId: ASSISTANT_ID,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMessageMetadata, useMessages, useStreamExperimental } from "@langchain/react";
+import { useMessageMetadata, useMessages, useStream } from "@langchain/react";
 import type { BaseMessage } from "@langchain/core/messages";
 import { getBranchContext } from "@langchain/langgraph-sdk/ui";
 
@@ -39,7 +39,7 @@ export function BranchingChatView({ transport }: { transport: Transport }) {
   const [branch, setBranch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const stream = useStreamExperimental<typeof branchingAgentType>({
+  const stream = useStream<typeof branchingAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,
@@ -239,7 +239,7 @@ function BranchingMessage({
   onRegenerate: (checkpointId: string | undefined) => void;
   onSelectBranch: (branch: string) => void;
   setEditingId: (id: string | null) => void;
-  stream: ReturnType<typeof useStreamExperimental<typeof branchingAgentType>>;
+  stream: ReturnType<typeof useStream<typeof branchingAgentType>>;
 }) {
   const liveMetadata = useMessageMetadata(stream, message.id);
   const metadata = {

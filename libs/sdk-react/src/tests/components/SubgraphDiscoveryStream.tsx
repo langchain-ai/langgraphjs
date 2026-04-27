@@ -5,7 +5,7 @@ import type {
 } from "@langchain/langgraph-sdk/stream";
 
 import {
-  useStreamExperimental,
+  useStream,
   useMessages,
 } from "../../index.js";
 import { formatMessage } from "./format.js";
@@ -28,7 +28,7 @@ export function SubgraphDiscoveryStream({
   assistantId = "subgraph_graph",
   transport,
 }: Props) {
-  const thread = useStreamExperimental<{ messages: BaseMessage[] }>({
+  const thread = useStream<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
     transport,
@@ -72,7 +72,7 @@ export function SubgraphDiscoveryStream({
 
 interface SubgraphPanelProps {
   stream: ReturnType<
-    typeof useStreamExperimental<{ messages: BaseMessage[] }>
+    typeof useStream<{ messages: BaseMessage[] }>
   >;
   subgraph: SubgraphDiscoverySnapshot;
 }

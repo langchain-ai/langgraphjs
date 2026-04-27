@@ -237,10 +237,10 @@ Registered as `bedtime-story` in `langgraph.json`.
 ### In `App.tsx` (high level)
 
 ```tsx
-import { useStreamExperimental, useAudio, useImages } from
+import { useStream, useAudio, useImages } from
   "@langchain/langgraph-sdk/react/experimental";
 
-const thread = useStreamExperimental({
+const thread = useStream({
   apiUrl: "http://localhost:2024",
   assistantId: "bedtime-story",
 });
@@ -385,7 +385,7 @@ Dev deps: `@langchain/langgraph-cli`.
 6. **`StorybookHeader`** — title + chain-play toggle + retry.
 7. **`PageCard`** — image / typewriter text / audio controls + skeleton states.
 8. **`useNthSubagent`, `paragraphs.ts`, `useChainPlay.ts`** helpers.
-9. **Wire everything in `App.tsx`** via `useStreamExperimental`.
+9. **Wire everything in `App.tsx`** via `useStream`.
 10. **`PlaceholderImage` + error degradation.**
 11. **Manual QA pass** — happy path, single-subagent failure, full failure,
     chain-play, "Tell me another".

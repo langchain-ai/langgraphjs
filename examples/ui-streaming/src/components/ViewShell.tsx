@@ -27,7 +27,7 @@ export function ViewShell({
     <section className="playground-shell">
       <header className="hero-card">
         <div>
-          <div className="eyebrow">useStreamExperimental · live</div>
+          <div className="eyebrow">useStream · live</div>
           <h2>{title}</h2>
           <p>{description}</p>
         </div>

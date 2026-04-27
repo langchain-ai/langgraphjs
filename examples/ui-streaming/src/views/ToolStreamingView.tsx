@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   useChannel,
   useMessages,
-  useStreamExperimental,
+  useStream,
   useToolCalls,
   type Event,
 } from "@langchain/react";
@@ -33,7 +33,7 @@ interface ProgressPayload {
 
 export function ToolStreamingView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
-  const stream = useStreamExperimental<typeof toolStreamingAgentType>({
+  const stream = useStream<typeof toolStreamingAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

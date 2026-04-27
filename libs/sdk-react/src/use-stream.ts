@@ -56,7 +56,7 @@ export type StateOf<T> = InferStateType<T> extends Record<string, unknown>
 
 /**
  * Options common to both the default LangGraph-Platform code path and
- * the custom-adapter code path. See {@link UseStreamExperimentalOptions}
+ * the custom-adapter code path. See {@link UseStreamOptions}
  * for the discriminated union the hook actually accepts.
  */
 interface UseStreamCommonOptions<StateType extends object> {
@@ -134,7 +134,7 @@ export interface CustomAdapterOptions<StateType extends object>
 }
 
 /**
- * Options accepted by {@link useStreamExperimental}. Discriminated on
+ * Options accepted by {@link useStream}. Discriminated on
  * the shape of `transport`:
  *
  * - omitted or a string (`"sse"` / `"websocket"`) → LGP branch
@@ -142,7 +142,7 @@ export interface CustomAdapterOptions<StateType extends object>
  * - an {@link AgentServerAdapter} instance → custom-adapter branch
  *   ({@link CustomAdapterOptions}); bring your own transport.
  */
-export type UseStreamExperimentalOptions<
+export type UseStreamOptions<
   StateType extends object = Record<string, unknown>,
 > = AgentServerOptions<StateType> | CustomAdapterOptions<StateType>;
 
@@ -160,7 +160,7 @@ export const STREAM_CONTROLLER: unique symbol = Symbol.for(
   "@langchain/react/controller"
 );
 
-export interface UseStreamExperimentalReturn<
+export interface UseStreamReturn<
   T = Record<string, unknown>,
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
@@ -296,35 +296,14 @@ export interface UseStreamExperimentalReturn<
 }
 
 /**
- * Convenience alias — the fully-resolved return type of
- * {@link useStreamExperimental} for a given source type `T`.
- *
- * Useful as a prop/context annotation so components that receive a
- * stream handle can pick up precise `values` / `subagents` / selector
- * typings without threading `T` through their call site:
- *
- * ```tsx
- * function Shell({ stream }: { stream: UseStreamReturn<typeof agent> }) {
- *   const values = useValues(stream);
- *   return <pre>{JSON.stringify(values)}</pre>;
- * }
- * ```
- */
-export type UseStreamReturn<
-  T = Record<string, unknown>,
-  InterruptType = unknown,
-  ConfigurableType extends object = Record<string, unknown>,
-> = UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>;
-
-/**
  * Erased stream handle useful as a parameter type for helpers and
  * wrapper components that pass a `stream` through to selector hooks
  * (`useMessages`, `useChannel`, …) without reading `values` directly.
- * Any fully-typed `UseStreamExperimentalReturn<S, I, C>` is
+ * Any fully-typed `UseStreamReturn<S, I, C>` is
  * assignable to `AnyStream` because the generic slots are `any`
  * (bivariant), which avoids the `CompiledStateGraph` → `Record<string,
  * unknown>` assignment friction you hit when using the bare
- * `UseStreamExperimentalReturn` default.
+ * `UseStreamReturn` default.
  *
  * @example
  * ```tsx
@@ -338,19 +317,19 @@ export type UseStreamReturn<
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyStream = UseStreamExperimentalReturn<any, any, any>;
+export type AnyStream = UseStreamReturn<any, any, any>;
 
 /**
- * React binding for the experimental v2-native stream runtime.
+ * React binding for the v2-native stream runtime.
  *
- * `useStreamExperimental` exposes three always-on projections
+ * `useStream` exposes three always-on projections
  * (`values` / `messages` / `toolCalls`) at the thread root plus
  * cheap discovery maps for subagents / subgraphs. Scoped views of
  * subagents, subgraphs, or any namespaced projection are surfaced via
  * the companion selector hooks:
  *
  * ```tsx
- * const stream = useStreamExperimental({ assistantId: "deep-agent" });
+ * const stream = useStream({ assistantId: "deep-agent" });
  *
  * // Root messages — always on, already class instances.
  * stream.messages.map((m) => <Bubble key={m.id} msg={m} />);
@@ -364,22 +343,19 @@ export type AnyStream = UseStreamExperimentalReturn<any, any, any>;
  * ```
  *
  * The first generic accepts either a plain state type
- * (`useStreamExperimental<MyState>()`) *or* a compiled graph type
- * (`useStreamExperimental<typeof agent>()`); in the latter case the
+ * (`useStream<MyState>()`) *or* a compiled graph type
+ * (`useStream<typeof agent>()`); in the latter case the
  * state shape is unwrapped from the graph via {@link StateOf}, so
  * `stream.values` is always typed as the state, never as the graph
  * class itself.
- *
- * @experimental API is unstable and may change until the v2 protocol
- * is GA on LangGraph Platform.
  */
-export function useStreamExperimental<
+export function useStream<
   T = Record<string, unknown>,
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 >(
-  options: UseStreamExperimentalOptions<InferStateType<T>>
-): UseStreamExperimentalReturn<T, InterruptType, ConfigurableType> {
+  options: UseStreamOptions<InferStateType<T>>
+): UseStreamReturn<T, InterruptType, ConfigurableType> {
   type StateType = InferStateType<T>;
   // Branch-stable narrowings for each code path. The custom-adapter
   // branch can skip LGP client construction entirely, which keeps
@@ -583,7 +559,7 @@ export function useStreamExperimental<
   );
 
   return useMemo<
-    UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>
+    UseStreamReturn<T, InterruptType, ConfigurableType>
   >(
     () => {
       const userFacingInterrupts = filterOutHeadlessToolInterrupts(
@@ -600,7 +576,7 @@ export function useStreamExperimental<
         hydrationPromise: controller.hydrationPromise,
         error: root.error,
         threadId: root.threadId,
-        subagents: subagents as UseStreamExperimentalReturn<
+        subagents: subagents as UseStreamReturn<
           T,
           InterruptType,
           ConfigurableType
@@ -615,7 +591,7 @@ export function useStreamExperimental<
         client,
         assistantId,
         [STREAM_CONTROLLER]: controller,
-      }) as UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>;
+      }) as UseStreamReturn<T, InterruptType, ConfigurableType>;
     },
     [
       root,
@@ -630,31 +606,13 @@ export function useStreamExperimental<
 }
 
 /**
- * v1 public name for {@link useStreamExperimental}.
- *
- * The v2-native binding graduates out of the `Experimental` suffix at
- * v1. Both names resolve to the same implementation; new code should
- * import `useStream`, and the `useStreamExperimental` alias stays for
- * one minor while call sites migrate.
- */
-export const useStream = useStreamExperimental;
-
-/**
- * v1 public name for {@link UseStreamExperimentalReturn}. Prefer this
- * over the `…Experimental` alias in new code; the `Experimental`
- * typename stays through one minor so prop-drilled call sites keep
- * resolving.
- *
- * (Intentionally not named `UseStreamOptions` — the legacy module
- * already exports a type with that name from `@langchain/langgraph-sdk/ui`
- * and we want to avoid a hard conflict until the legacy `useStream`
- * surface is removed in U4.3.)
+ * Convenience alias for the fully-resolved stream handle type.
  */
 export type UseStreamResult<
   T = Record<string, unknown>,
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
-> = UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>;
+> = UseStreamReturn<T, InterruptType, ConfigurableType>;
 
 /**
  * Helper used by the selector hooks to reach the underlying
@@ -666,7 +624,7 @@ export type UseStreamResult<
  */
 export function getRegistry(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamExperimentalReturn<any, any, any>
+  stream: UseStreamReturn<any, any, any>
 ): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }

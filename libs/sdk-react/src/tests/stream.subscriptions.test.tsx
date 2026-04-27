@@ -31,7 +31,7 @@ import { render } from "vitest-browser-react";
 import { DeepAgentSubscriptionStream } from "./components/DeepAgentSubscriptionStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
-it("does not open any scoped subscriptions for a bare useStreamExperimental mount", async () => {
+it("does not open any scoped subscriptions for a bare useStream mount", async () => {
   const screen = await render(<DeepAgentSubscriptionStream apiUrl={apiUrl} />);
 
   try {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
-import { useStreamExperimental, useSubmissionQueue } from "../../index.js";
+import { useStream, useSubmissionQueue } from "../../index.js";
 import { formatMessage } from "./format.js";
 
 interface StreamState {
@@ -32,7 +32,7 @@ export function QueueStream({
 }: Props) {
   const [threadId, setThreadId] = useState<string | null>(null);
 
-  const stream = useStreamExperimental<StreamState>({
+  const stream = useStream<StreamState>({
     assistantId,
     apiUrl,
     threadId,

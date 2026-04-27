@@ -2,7 +2,7 @@ import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import type { StreamSubmitOptions } from "@langchain/langgraph-sdk/stream";
 import type { Client } from "@langchain/langgraph-sdk";
 
-import { useStreamExperimental } from "../../index.js";
+import { useStream } from "../../index.js";
 import { formatMessage } from "./format.js";
 
 interface StreamState {
@@ -33,7 +33,7 @@ export function BasicStream({
   onThreadId,
   onCreated,
 }: Props) {
-  const thread = useStreamExperimental<StreamState>({
+  const thread = useStream<StreamState>({
     assistantId,
     apiUrl,
     client,

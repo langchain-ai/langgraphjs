@@ -1,4 +1,4 @@
-import { useStreamExperimental } from "../../index.js";
+import { useStream } from "../../index.js";
 
 interface InterruptState {
   request: string;
@@ -18,7 +18,7 @@ export function InterruptStream({
   assistantId = "interrupt_graph",
   useRespondMethod = false,
 }: Props) {
-  const thread = useStreamExperimental<InterruptState>({
+  const thread = useStream<InterruptState>({
     assistantId,
     apiUrl,
   });

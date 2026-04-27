@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { type InferStateType, useMessages, useStreamExperimental } from "@langchain/react";
+import { type InferStateType, useMessages, useStream } from "@langchain/react";
 
 import type { agent as reactAgentType } from "../agents/react-agent";
 import { API_URL, type Transport } from "../api";
@@ -84,7 +84,7 @@ function InnerView({
   onReloadPage: () => void;
   onClearThread: () => void;
 }) {
-  const stream = useStreamExperimental<typeof reactAgentType>({
+  const stream = useStream<typeof reactAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,
@@ -127,7 +127,7 @@ function InnerView({
       description={
         <>
           A <code>createAgent</code> runtime wired through{" "}
-          <code>useStreamExperimental</code>. Tool calls stream as
+          <code>useStream</code>. Tool calls stream as
           <code> AIMessageChunk</code>s with partial JSON args, then promote to
           a finalized <code>AIMessage</code> once the block closes. This view
           also doubles as a re-attach harness: trigger the slow

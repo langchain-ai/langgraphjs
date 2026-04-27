@@ -1036,7 +1036,7 @@ export class StreamController<
              * invokes every root-bus listener (selector projections that
              * opted into the shared stream) plus every `rootStore`
              * subscriber. Some of those subscribers live in a React
-             * render tree — `useStreamExperimental` drives
+             * render tree — `useStream` drives
              * `useSyncExternalStore`, so a misbehaving component can
              * surface a render-phase error ("Maximum update depth
              * exceeded", "The result of getSnapshot should be cached",

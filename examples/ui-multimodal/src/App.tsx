@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AIMessage } from "@langchain/core/messages";
 import {
-  useStreamExperimental,
+  useStream,
   useMessages,
-  type UseStreamExperimentalReturn,
+  type UseStreamReturn,
 } from "@langchain/react";
 import "./App.css";
 import { PromptForm } from "./components/PromptForm";
@@ -36,7 +36,7 @@ interface StreamRootProps {
 }
 
 function StreamRoot({ onReset }: StreamRootProps) {
-  const stream = useStreamExperimental({
+  const stream = useStream({
     apiUrl: API_URL,
     assistantId: ASSISTANT_ID,
     transport: "sse",
@@ -58,7 +58,7 @@ function StreamRoot({ onReset }: StreamRootProps) {
 }
 
 interface StoryBodyProps {
-  stream: UseStreamExperimentalReturn;
+  stream: UseStreamReturn;
   onReset: () => void;
 }
 

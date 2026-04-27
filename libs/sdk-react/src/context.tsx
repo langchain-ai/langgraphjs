@@ -5,8 +5,8 @@
 import { createContext, useContext, type ReactNode } from "react";
 import {
   useStream,
-  type UseStreamExperimentalOptions,
-  type UseStreamExperimentalReturn,
+  type UseStreamOptions,
+  type UseStreamReturn,
   type AgentServerOptions,
   type CustomAdapterOptions,
 } from "./use-stream.js";
@@ -86,7 +86,7 @@ export function StreamProvider<T = Record<string, unknown>>(
 ): ReactNode {
   const { children, ...options } = props;
   const stream = useStream<T>(
-    options as UseStreamExperimentalOptions<InferStateType<T>>
+    options as UseStreamOptions<InferStateType<T>>
   );
 
   return (
@@ -117,7 +117,7 @@ export function StreamProvider<T = Record<string, unknown>>(
  */
 export function useStreamContext<
   T = Record<string, unknown>,
->(): UseStreamExperimentalReturn<T> {
+>(): UseStreamReturn<T> {
   const context = useContext(StreamContext);
   if (context === null) {
     throw new Error(
@@ -125,5 +125,5 @@ export function useStreamContext<
         "Wrap your component tree with <StreamProvider> or use useStream() directly."
     );
   }
-  return context as UseStreamExperimentalReturn<T>;
+  return context as UseStreamReturn<T>;
 }

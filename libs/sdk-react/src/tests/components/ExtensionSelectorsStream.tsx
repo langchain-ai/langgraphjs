@@ -1,7 +1,7 @@
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
 import {
-  useStreamExperimental,
+  useStream,
   useExtension,
   useChannel,
   useValues,
@@ -30,7 +30,7 @@ export function ExtensionSelectorsStream({
   assistantId = "custom_channel_graph",
   extensionName = "status",
 }: Props) {
-  const thread = useStreamExperimental<StreamState>({
+  const thread = useStream<StreamState>({
     assistantId,
     apiUrl,
   });

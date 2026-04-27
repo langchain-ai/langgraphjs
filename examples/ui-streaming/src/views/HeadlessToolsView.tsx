@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useStreamExperimental } from "@langchain/react";
+import { useStream } from "@langchain/react";
 import type { ToolEvent } from "@langchain/langgraph-sdk";
 
 import type { agent as headlessAgentType } from "../agents/headless-tools";
@@ -33,7 +33,7 @@ export function HeadlessToolsView({ transport }: { transport: Transport }) {
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
 
-  const stream = useStreamExperimental<typeof headlessAgentType>({
+  const stream = useStream<typeof headlessAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { useMessages, useStreamExperimental } from "@langchain/react";
+import { useMessages, useStream } from "@langchain/react";
 
 import type { agent as reasoningAgentType } from "../agents/reasoning-agent";
 import { API_URL, type Transport } from "../api";
@@ -21,7 +21,7 @@ const SUGGESTIONS = [
 
 export function ReasoningAgentView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
-  const stream = useStreamExperimental<typeof reasoningAgentType>({
+  const stream = useStream<typeof reasoningAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

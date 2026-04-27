@@ -1,7 +1,7 @@
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import type { Client } from "@langchain/langgraph-sdk";
 
-import { useStreamExperimental } from "../../index.js";
+import { useStream } from "../../index.js";
 import { formatMessage } from "./format.js";
 
 interface Props {
@@ -17,7 +17,7 @@ export function OnRequestStream({
   assistantId = "stategraph_text",
   threadId,
 }: Props) {
-  const thread = useStreamExperimental<{ messages: BaseMessage[] }>({
+  const thread = useStream<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
     client,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { UseStreamExperimentalReturn } from "@langchain/react";
+import type { UseStreamReturn } from "@langchain/react";
 
 import type { agent as reactAgentType } from "../agents/react-agent";
 
@@ -38,7 +38,7 @@ export interface ReattachStatus {
  *   - Otherwise → "observing" until the verdict settles.
  */
 export function useReattachStatus(
-  stream: UseStreamExperimentalReturn<typeof reactAgentType>,
+  stream: UseStreamReturn<typeof reactAgentType>,
   {
     threadIdAtMount,
     submittedThisSession,

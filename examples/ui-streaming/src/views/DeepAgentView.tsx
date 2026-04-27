@@ -2,10 +2,10 @@ import { useCallback, useMemo, useState } from "react";
 
 import {
   useMessages,
-  useStreamExperimental,
+  useStream,
   useToolCalls,
   type SubagentDiscoverySnapshot,
-  type UseStreamExperimentalReturn,
+  type UseStreamReturn,
 } from "@langchain/react";
 
 import type { agent as deepAgentType } from "../agents/deep-agent";
@@ -25,11 +25,11 @@ const SUGGESTIONS = [
   "Create a haiku, limerick, quatrain, and fifty-line poem about debugging late at night.",
 ];
 
-type DeepStream = ReturnType<typeof useStreamExperimental<typeof deepAgentType>>;
+type DeepStream = ReturnType<typeof useStream<typeof deepAgentType>>;
 type StreamState = DeepStream["values"];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GenericStream = UseStreamExperimentalReturn<any, any, any>;
+type GenericStream = UseStreamReturn<any, any, any>;
 
 export function DeepAgentView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export function DeepAgentView({ transport }: { transport: Transport }) {
     null
   );
 
-  const stream = useStreamExperimental<typeof deepAgentType>({
+  const stream = useStream<typeof deepAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

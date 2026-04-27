@@ -7,19 +7,14 @@ import type {
   DefaultToolCall,
 } from "@langchain/langgraph-sdk";
 
-// v1 public API. `useStream` is the v2-native hook. The
-// `useStreamExperimental` alias is kept for one minor release so
-// existing call sites can migrate without a hard breaking change.
 export {
   useStream,
-  useStreamExperimental,
   STREAM_CONTROLLER,
   type AnyStream,
   type StateOf,
   type UseStreamResult,
   type UseStreamReturn,
-  type UseStreamExperimentalOptions,
-  type UseStreamExperimentalReturn,
+  type UseStreamOptions,
   type AgentServerOptions,
   type CustomAdapterOptions,
 } from "./use-stream.js";

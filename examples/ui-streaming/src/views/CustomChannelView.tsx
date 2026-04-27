@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { useChannel, useStreamExperimental, type UseStreamExperimentalReturn } from "@langchain/react";
+import { useChannel, useStream, type UseStreamReturn } from "@langchain/react";
 
 import type { agent as researchTimelineAgentType } from "../agents/research-timeline";
 import type { TimelineEvent } from "../agents/timeline-transformer";
@@ -20,7 +20,7 @@ const SUGGESTIONS = [
   "Compare HTTP+SSE and WebSocket transports for streaming, then compute 3600/15.",
 ];
 
-type TimelineStream = UseStreamExperimentalReturn<typeof researchTimelineAgentType>;
+type TimelineStream = UseStreamReturn<typeof researchTimelineAgentType>;
 type StreamState = TimelineStream["values"];
 
 /**
@@ -35,7 +35,7 @@ type CustomChannelEvent = {
 export function CustomChannelView({ transport }: { transport: Transport }) {
   const [threadId, setThreadId] = useState<string | null>(null);
 
-  const stream = useStreamExperimental<typeof researchTimelineAgentType>({
+  const stream = useStream<typeof researchTimelineAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,

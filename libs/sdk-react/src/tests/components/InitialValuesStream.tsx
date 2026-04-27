@@ -4,7 +4,7 @@ import {
   type BaseMessage,
 } from "@langchain/core/messages";
 
-import { useStreamExperimental } from "../../index.js";
+import { useStream } from "../../index.js";
 import { formatMessage } from "./format.js";
 
 interface StreamState {
@@ -23,7 +23,7 @@ export function InitialValuesStream({
   assistantId = "stategraph_text",
   initialValues,
 }: Props) {
-  const thread = useStreamExperimental<StreamState>({
+  const thread = useStream<StreamState>({
     assistantId,
     apiUrl,
     initialValues,

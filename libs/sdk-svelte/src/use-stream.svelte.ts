@@ -484,14 +484,6 @@ export function useStream<
 }
 
 /**
- * Soft alias for one minor release. New code should import
- * `useStream` directly. Kept so call sites that still read
- * `useStreamExperimental` from the v0 package continue to resolve
- * while migrating.
- */
-export const useStreamExperimental = useStream;
-
-/**
  * Helper used by the selector composables to reach the underlying
  * {@link ChannelRegistry} from a stream handle. Kept internal —
  * application code should call `useMessages`, `useToolCalls`, etc.

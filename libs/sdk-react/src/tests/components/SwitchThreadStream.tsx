@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
-import { useStreamExperimental } from "../../index.js";
+import { useStream } from "../../index.js";
 import { formatMessage } from "./format.js";
 
 interface StreamState {
@@ -14,7 +14,7 @@ interface Props {
 }
 
 /**
- * Mounts `useStreamExperimental` with a controlled `threadId` and
+ * Mounts `useStream` with a controlled `threadId` and
  * exposes buttons to change that id (or reset to `null`). Used to
  * verify that `hydrate()` rebinds the underlying thread and clears
  * the rendered snapshot.
@@ -25,7 +25,7 @@ export function SwitchThreadStream({
 }: Props) {
   const [threadId, setThreadId] = useState<string | null>(null);
 
-  const thread = useStreamExperimental<StreamState>({
+  const thread = useStream<StreamState>({
     assistantId,
     apiUrl,
     threadId,

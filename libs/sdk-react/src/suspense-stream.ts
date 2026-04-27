@@ -38,13 +38,13 @@ import type {
 } from "@langchain/langgraph-sdk/stream";
 import {
   useStream,
-  type UseStreamExperimentalOptions,
-  type UseStreamExperimentalReturn,
+  type UseStreamOptions,
+  type UseStreamReturn,
 } from "./use-stream.js";
 
 /**
  * Return shape of {@link useSuspenseStream}. Identical to the
- * {@link UseStreamExperimentalReturn} surface except:
+ * {@link UseStreamReturn} surface except:
  *
  * - `isLoading` / `isThreadLoading` / `hydrationPromise` are removed
  *   (Suspense and Error Boundaries handle those phases).
@@ -56,7 +56,7 @@ export type UseSuspenseStreamReturn<
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 > = Omit<
-  UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>,
+  UseStreamReturn<T, InterruptType, ConfigurableType>,
   "isLoading" | "isThreadLoading" | "hydrationPromise"
 > & {
   /**
@@ -125,7 +125,7 @@ function suspenseKey(options: {
 }
 
 export function useSuspenseStream<T = Record<string, unknown>>(
-  options: UseStreamExperimentalOptions<InferStateType<T>>
+  options: UseStreamOptions<InferStateType<T>>
 ): UseSuspenseStreamReturn<T> {
   const asBag = options as {
     apiUrl?: string;

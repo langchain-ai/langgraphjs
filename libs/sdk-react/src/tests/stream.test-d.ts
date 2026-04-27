@@ -1,9 +1,9 @@
 /**
- * Type tests for the experimental v2-native stream hooks.
+ * Type tests for the v2-native stream hooks.
  *
  * These exercises the public type surface of
  * `libs/sdk-react/src/*` — the root hook
- * (`useStreamExperimental`), the selector hooks (`useMessages`,
+ * (`useStream`), the selector hooks (`useMessages`,
  * `useToolCalls`, `useValues`, `useExtension`, `useChannel`,
  * `useAudio`, `useImages`, `useVideo`, `useFiles`), and the media
  * player hooks (`useAudioPlayer`, `useVideoPlayer`,
@@ -37,7 +37,6 @@ import type {
 } from "@langchain/langgraph-sdk/stream";
 
 import {
-  useStreamExperimental,
   useStream,
   useMessageMetadata,
   useMessages,
@@ -59,8 +58,8 @@ import {
   type CustomAdapterOptions,
   type PlayerStatus,
   type SelectorTarget,
-  type UseStreamExperimentalOptions,
-  type UseStreamExperimentalReturn,
+  type UseStreamOptions,
+  type UseStreamReturn,
   type UseSubmissionQueueReturn,
   type VideoPlayerHandle,
 } from "../index.js";
@@ -93,7 +92,7 @@ interface SubagentValues {
 // Shared handles used across tests. Kept at module scope so we don't
 // re-instantiate the hook (which Vitest's typecheck compiler flags as
 // a side effect).
-declare const stream: UseStreamExperimentalReturn<
+declare const stream: UseStreamReturn<
   BedtimeState,
   ApprovalRequest,
   TenantConfig
@@ -103,12 +102,12 @@ declare const subagent: SubagentDiscoverySnapshot;
 declare const subgraph: SubgraphDiscoverySnapshot;
 
 // ============================================================================
-// Root hook — `useStreamExperimental` generic propagation
+// Root hook — `useStream` generic propagation
 // ============================================================================
 
-describe("useStreamExperimental — return type", () => {
+describe("useStream — return type", () => {
   test("defaults: values is Record<string, unknown>, interrupt is unknown", () => {
-    const s = useStreamExperimental({ assistantId: "agent" });
+    const s = useStream({ assistantId: "agent" });
 
     expectTypeOf(s.values).toEqualTypeOf<Record<string, unknown>>();
     expectTypeOf(s.interrupt).toEqualTypeOf<Interrupt<unknown> | undefined>();
@@ -116,7 +115,7 @@ describe("useStreamExperimental — return type", () => {
   });
 
   test("explicit StateType flows into `values` (non-nullable at the root)", () => {
-    const s = useStreamExperimental<BedtimeState>({ assistantId: "agent" });
+    const s = useStream<BedtimeState>({ assistantId: "agent" });
 
     expectTypeOf(s.values).toEqualTypeOf<BedtimeState>();
     // The root snapshot always carries values — never `undefined`.
@@ -124,7 +123,7 @@ describe("useStreamExperimental — return type", () => {
   });
 
   test("explicit InterruptType flows into `interrupt` / `interrupts`", () => {
-    const s = useStreamExperimental<BedtimeState, ApprovalRequest>({
+    const s = useStream<BedtimeState, ApprovalRequest>({
       assistantId: "agent",
     });
 
@@ -135,7 +134,7 @@ describe("useStreamExperimental — return type", () => {
   });
 
   test("messages is always BaseMessage[] regardless of StateType", () => {
-    const s = useStreamExperimental<BedtimeState>({ assistantId: "agent" });
+    const s = useStream<BedtimeState>({ assistantId: "agent" });
     expectTypeOf(s.messages).toEqualTypeOf<BaseMessage[]>();
   });
 
@@ -148,7 +147,7 @@ describe("useStreamExperimental — return type", () => {
     );
     const agent = new StateGraph(MessagesAnnotation).compile();
 
-    const s = useStreamExperimental<typeof agent>({ assistantId: "agent" });
+    const s = useStream<typeof agent>({ assistantId: "agent" });
 
     // `values` is the graph's state, *not* the `CompiledStateGraph` class.
     expectTypeOf(s.values).toEqualTypeOf<{ messages: BaseMessage[] }>();
@@ -180,7 +179,7 @@ describe("useStreamExperimental — return type", () => {
 // `submit` — `input` is typed against `StateType`
 // ============================================================================
 
-describe("useStreamExperimental — submit() input typing", () => {
+describe("useStream — submit() input typing", () => {
   test("accepts Partial<StateType>", () => {
     // Every field optional — the whole point of Partial.
     expectTypeOf(stream.submit).toBeCallableWith({
@@ -294,7 +293,7 @@ describe("useValues — root form infers StateType from the stream", () => {
   });
 
   test("root form with a default-generic stream falls back to Record<string, unknown>", () => {
-    const s = useStreamExperimental({ assistantId: "agent" });
+    const s = useStream({ assistantId: "agent" });
     expectTypeOf(useValues(s)).toEqualTypeOf<Record<string, unknown>>();
   });
 });
@@ -532,7 +531,7 @@ describe("back-compat — explicit generics on selectors", () => {
 
   test("stream handle is assignable with the three-generic form intact", () => {
     expectTypeOf<typeof stream>().toEqualTypeOf<
-      UseStreamExperimentalReturn<BedtimeState, ApprovalRequest, TenantConfig>
+      UseStreamReturn<BedtimeState, ApprovalRequest, TenantConfig>
     >();
   });
 
@@ -540,24 +539,14 @@ describe("back-compat — explicit generics on selectors", () => {
     // The whole point of `AnyStream`: a wrapper component that only
     // forwards the handle to selector hooks doesn't want to repeat the
     // caller's state/interrupt/configurable types. Any concrete
-    // `UseStreamExperimentalReturn<S, I, C>` should be assignable.
+    // `UseStreamReturn<S, I, C>` should be assignable.
     expectTypeOf<typeof stream>().toExtend<AnyStream>();
     expectTypeOf<
-      UseStreamExperimentalReturn<BedtimeState>
+      UseStreamReturn<BedtimeState>
     >().toExtend<AnyStream>();
     expectTypeOf<
-      UseStreamExperimentalReturn<Record<string, unknown>>
+      UseStreamReturn<Record<string, unknown>>
     >().toExtend<AnyStream>();
-  });
-});
-
-// ============================================================================
-// `useStream` — v1 public alias identical to `useStreamExperimental`
-// ============================================================================
-
-describe("useStream — v1 alias", () => {
-  test("useStream is the v2-native hook implementation", () => {
-    expectTypeOf(useStream).toEqualTypeOf(useStreamExperimental);
   });
 });
 
@@ -709,7 +698,7 @@ describe("submit() options — v1 widening", () => {
 // Discriminated-union options — AgentServerOptions XOR CustomAdapterOptions
 // ============================================================================
 
-describe("UseStreamExperimentalOptions — discriminated union", () => {
+describe("UseStreamOptions — discriminated union", () => {
   test("assistantId alone compiles (LGP branch)", () => {
     expectTypeOf<{
       assistantId: string;
@@ -723,7 +712,7 @@ describe("UseStreamExperimentalOptions — discriminated union", () => {
 
   test("options union is the sum of the two branches", () => {
     expectTypeOf<
-      UseStreamExperimentalOptions<BedtimeState>
+      UseStreamOptions<BedtimeState>
     >().toEqualTypeOf<
       | AgentServerOptions<BedtimeState>
       | CustomAdapterOptions<BedtimeState>

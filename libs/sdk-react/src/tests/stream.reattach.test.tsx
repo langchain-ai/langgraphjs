@@ -6,7 +6,7 @@ import { apiUrl, cleanupRender } from "./test-utils.js";
 
 /**
  * R2.7 re-attach harness automation. Boots a slow graph (see
- * `fixtures/slow-graph.ts`) and mounts a second `useStreamExperimental`
+ * `fixtures/slow-graph.ts`) and mounts a second `useStream`
  * hook on the same `threadId` mid-run, asserting that the second hook
  * observes the in-flight run via `isLoading: true` and ends up with
  * the same terminal state as the primary hook.

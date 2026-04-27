@@ -10,7 +10,7 @@ import { AIMessage } from "@langchain/core/messages";
  * Graph used by the re-attach harness automation (`R2.7`). The single
  * node sleeps for `SLOW_GRAPH_DELAY_MS` before emitting the final
  * message, giving the test enough runway to remount a second
- * `useStreamExperimental` hook on the same `threadId` while the run
+ * `useStream` hook on the same `threadId` while the run
  * is still in flight on the server.
  */
 export const SLOW_GRAPH_DELAY_MS = 400;

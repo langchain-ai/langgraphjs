@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { type InferStateType, useMessages, useStreamExperimental } from "@langchain/react";
+import { type InferStateType, useMessages, useStream } from "@langchain/react";
 
 import type { agent as summarizationAgentType } from "../agents/summarization-agent";
 import { API_URL, type Transport } from "../api";
@@ -29,7 +29,7 @@ export function SummarizationAgentView({
 }) {
   const [threadId, setThreadId] = useState<string | null>(null);
 
-  const stream = useStreamExperimental<typeof summarizationAgentType>({
+  const stream = useStream<typeof summarizationAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
     transport,
