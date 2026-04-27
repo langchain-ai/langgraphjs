@@ -1,10 +1,15 @@
 {
   "node_version": "22",
   "graphs": {
+    "branching-chat": "./src/agents/branching-chat.ts:agent",
     "nested-stategraph": "./src/agents/nested-stategraph.ts:agent",
     "react-agent": "./src/agents/react-agent.ts:agent",
     "deep-agent": "./src/agents/deep-agent.ts:agent",
     "human-in-the-loop": "./src/agents/human-in-the-loop.ts:agent",
+    "headless-tools": "./src/agents/headless-tools.ts:agent",
+    "summarization-agent": "./src/agents/summarization-agent.ts:agent",
+    "reasoning-agent": "./src/agents/reasoning-agent.ts:agent",
+    "tool-streaming": "./src/agents/tool-streaming.ts:agent",
     "fan-out": "./src/agents/fan-out.ts:agent",
     "research-timeline": "./src/agents/research-timeline.ts:agent"
   },

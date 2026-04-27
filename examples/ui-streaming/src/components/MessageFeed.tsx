@@ -1,49 +1,27 @@
-import type { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "langchain";
+import type { ToolCallWithResult } from "@langchain/react";
 import { memo, useState } from "react";
 import { Streamdown } from "streamdown";
 
 import {
+  getToolCallId,
+  getToolCallsWithResults,
+  isToolMessage,
+  type MessageFeedToolCall,
+  ToolCallCard,
+} from "./cards";
+import {
   getMessageLabel,
   getMetadataBadge,
   getReasoningContent,
-  isRecord,
   safeStringify,
 } from "../utils";
-
-type ToolCallWithResult = {
-  id: string;
-  state: "pending" | "completed" | "error";
-  call: {
-    name: string;
-    args: unknown;
-  };
-  aiMessage: BaseMessage;
-  result?: ToolMessage;
-};
 
 interface MessageFeedProps {
   messages: BaseMessage[];
   getMessageMetadata?: (message: BaseMessage) => unknown;
   isStreaming?: boolean;
 }
-const isToolMessage = (message: BaseMessage): message is ToolMessage =>
-  message.type === "tool" && "tool_call_id" in message;
-
-const isAiMessageWithToolCalls = (
-  message: BaseMessage,
-): message is AIMessage & {
-  tool_calls?: Array<{
-    id?: string;
-    name: string;
-    args: unknown;
-  }>;
-  tool_call_chunks?: Array<{
-    id?: string;
-    name?: string;
-    args?: string;
-    index?: number;
-  }>;
-} => message.type === "ai" && "tool_calls" in message;
 
 // Whether `message.content` is effectively empty and NOT worth rendering
 // as a JSON dump. Empty strings and empty arrays both collapse to an
@@ -56,100 +34,8 @@ const isRenderableEmpty = (value: unknown): boolean => {
   return false;
 };
 
-// Parse a (possibly partial) JSON string from streaming tool_call_chunks.
-// During streaming Anthropic-style models emit `args` as an incomplete
-// JSON fragment that accumulates across deltas; we best-effort parse so
-// the UI can render a live preview rather than showing an empty bubble.
-const tryParsePartialJson = (value: string | undefined): unknown => {
-  if (typeof value !== "string" || value.length === 0) return undefined;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-};
-
-const getToolCallsWithResults = (messages: BaseMessage[]): ToolCallWithResult[] => {
-  const toolResultsById = new Map<string, ToolMessage>();
-  for (const message of messages) {
-    if (isToolMessage(message) && typeof message.tool_call_id === "string") {
-      toolResultsById.set(message.tool_call_id, message);
-    }
-  }
-
-  const toolCalls: ToolCallWithResult[] = [];
-  for (const message of messages) {
-    if (!isAiMessageWithToolCalls(message)) {
-      continue;
-    }
-
-    // `AIMessageChunk` auto-derives `tool_calls` from
-    // `tool_call_chunks` with `args: {}` when the partial JSON can't
-    // be parsed yet, which would make the UI look "empty" mid-stream.
-    // While chunks are present we render from them (best-effort
-    // parsing the partial JSON) so the tool card shows live args.
-    // Once `content-block-finish` lands, chunks are gone and
-    // `tool_calls` carries the finalized args.
-    const hasChunks =
-      Array.isArray(message.tool_call_chunks) &&
-      message.tool_call_chunks.length > 0;
-
-    const finalized =
-      !hasChunks && Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    const chunkSource = hasChunks ? (message.tool_call_chunks ?? []) : [];
-
-    for (const call of finalized) {
-      if (call == null || typeof call.name !== "string") {
-        continue;
-      }
-
-      const result =
-        typeof call.id === "string" ? toolResultsById.get(call.id) : undefined;
-      const status = result?.status === "error" ? "error" : result ? "completed" : "pending";
-
-      toolCalls.push({
-        id: call.id ?? `${message.id ?? "message"}:${call.name}:${toolCalls.length}`,
-        state: status,
-        call: {
-          name: call.name,
-          args: call.args,
-        },
-        aiMessage: message,
-        result,
-      });
-    }
-
-    for (const chunk of chunkSource) {
-      if (chunk == null || typeof chunk.name !== "string") continue;
-      toolCalls.push({
-        id:
-          chunk.id ??
-          `${message.id ?? "message"}:${chunk.name}:${toolCalls.length}`,
-        state: "pending",
-        call: {
-          name: chunk.name,
-          args: tryParsePartialJson(chunk.args),
-        },
-        aiMessage: message,
-        result: undefined,
-      });
-    }
-  }
-
-  return toolCalls;
-};
-
-
-const TOOL_PREVIEW_LIMIT = 220;
-const TOOL_CODE_PREVIEW_LINES = 8;
 const MESSAGE_CONTENT_TOKEN_LIMIT = 120;
 const MESSAGE_CONTENT_CHAR_LIMIT = 800;
-
-const truncateText = (value: string, maxLength = TOOL_PREVIEW_LIMIT) => {
-  const normalized = value.trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
-};
 
 const getTokenLimitedPreview = (
   value: string,
@@ -258,278 +144,6 @@ function ExpandableMessageContent({
   );
 }
 
-const formatToolName = (name: string) =>
-  name
-    .split(/[_-]/)
-    .filter(Boolean)
-    .map((segment) => segment[0]?.toUpperCase() + segment.slice(1))
-    .join(" ");
-
-const parseToolPayload = (value: unknown) => {
-  if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return value;
-  }
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-};
-
-const pickFirstString = (
-  record: Record<string, unknown>,
-  keys: string[]
-): string | undefined => {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-
-  return undefined;
-};
-
-const getCustomerLabel = (value: unknown) => {
-  if (!isRecord(value)) return undefined;
-  if (typeof value.customerName === "string" && value.customerName.trim().length > 0) {
-    return value.customerName.trim();
-  }
-
-  const firstName =
-    typeof value.firstName === "string" ? value.firstName.trim() : "";
-  const lastName =
-    typeof value.lastName === "string" ? value.lastName.trim() : "";
-  const fullName = [firstName, lastName].filter(Boolean).join(" ");
-  return fullName.length > 0 ? fullName : undefined;
-};
-
-const getToolTheme = (name: string) => {
-  if (name === "task") return "theme-task";
-  if (name === "js_eval") return "theme-code";
-  if (name.startsWith("validate_poem_")) return "theme-validator";
-  return "theme-generic";
-};
-
-const getToolTitle = (name: string) => {
-  if (name === "task") return "Subagent Task";
-  if (name === "js_eval") return "QuickJS Eval";
-  if (name.startsWith("validate_poem_")) {
-    return `${formatToolName(name.replace("validate_", ""))} Validator`;
-  }
-
-  return formatToolName(name);
-};
-
-const getToolTagValues = (name: string, args: unknown, result: unknown) => {
-  const tags: string[] = [];
-  const parsedArgs = parseToolPayload(args);
-  const parsedResult = parseToolPayload(result);
-  const customerLabel = getCustomerLabel(parsedArgs) ?? getCustomerLabel(parsedResult);
-
-  if (name === "task" && isRecord(parsedArgs)) {
-    const subagentType = pickFirstString(parsedArgs, [
-      "subagent_type",
-      "subagentType",
-      "agent",
-      "worker",
-    ]);
-    if (subagentType != null) tags.push(subagentType);
-  }
-
-  if (customerLabel != null) {
-    tags.push(customerLabel);
-  }
-
-  if (name === "js_eval" && isRecord(parsedArgs)) {
-    const code = pickFirstString(parsedArgs, ["code", "javascript", "script"]);
-    if (code != null) {
-      tags.push(`${code.split("\n").length} line${code.includes("\n") ? "s" : ""}`);
-    }
-  }
-
-  const validatorAttempt =
-    isRecord(parsedArgs) && typeof parsedArgs.attempt === "number"
-      ? parsedArgs.attempt
-      : isRecord(parsedResult) && typeof parsedResult.attempt === "number"
-        ? parsedResult.attempt
-        : undefined;
-  if (validatorAttempt != null) {
-    tags.push(`Attempt ${validatorAttempt + 1}`);
-  }
-
-  return tags.slice(0, 3);
-};
-
-const getToolInputPreview = (name: string, args: unknown) => {
-  const parsedArgs = parseToolPayload(args);
-  if (!isRecord(parsedArgs)) {
-    return typeof parsedArgs === "string"
-      ? { label: "Input", value: truncateText(parsedArgs), isCode: false }
-      : undefined;
-  }
-
-  if (name === "js_eval") {
-    const code = pickFirstString(parsedArgs, ["code", "javascript", "script"]);
-    if (code != null) {
-      return {
-        label: "Code",
-        value: code.split("\n").slice(0, TOOL_CODE_PREVIEW_LINES).join("\n"),
-        isCode: true,
-      };
-    }
-  }
-
-  if (name === "task") {
-    const prompt = pickFirstString(parsedArgs, [
-      "description",
-      "prompt",
-      "task",
-      "instructions",
-      "input",
-    ]);
-    if (prompt != null) {
-      return { label: "Task", value: truncateText(prompt), isCode: false };
-    }
-  }
-
-  if (name.startsWith("validate_poem_")) {
-    const poem = pickFirstString(parsedArgs, ["poem"]);
-    if (poem != null) {
-      return { label: "Draft", value: truncateText(poem), isCode: false };
-    }
-  }
-
-  const summary = pickFirstString(parsedArgs, [
-    "description",
-    "prompt",
-    "input",
-    "query",
-    "title",
-    "location",
-    "topic",
-    "expression",
-  ]);
-  if (summary != null) {
-    return { label: "Input", value: truncateText(summary), isCode: false };
-  }
-
-  return {
-    label: "Input",
-    value: truncateText(safeStringify(parsedArgs)),
-    isCode: false,
-  };
-};
-
-const getToolResultPreview = (name: string, result: ToolCallWithResult["result"]) => {
-  if (result == null) return undefined;
-
-  const parsedContent = parseToolPayload(result.content);
-  if (name.startsWith("validate_poem_") && isRecord(parsedContent)) {
-    const feedback =
-      typeof parsedContent.feedback === "string"
-        ? parsedContent.feedback
-        : undefined;
-    const passed =
-      typeof parsedContent.passed === "boolean" ? parsedContent.passed : undefined;
-    if (feedback != null) {
-      return {
-        label: passed ? "Passed" : result.status === "error" ? "Error" : "Feedback",
-        value: truncateText(feedback),
-      };
-    }
-  }
-
-  if (isRecord(parsedContent)) {
-    const preview = pickFirstString(parsedContent, [
-      "summary",
-      "message",
-      "result",
-      "output",
-      "content",
-      "feedback",
-      "answer",
-    ]);
-    if (preview != null) {
-      return {
-        label: result.status === "error" ? "Error" : "Result",
-        value: truncateText(preview),
-      };
-    }
-  }
-
-  if (typeof parsedContent === "string" && parsedContent.trim().length > 0) {
-    return {
-      label: result.status === "error" ? "Error" : "Result",
-      value: truncateText(parsedContent),
-    };
-  }
-
-  return {
-    label: result.status === "error" ? "Error" : "Result",
-    value: truncateText(safeStringify(parsedContent)),
-  };
-};
-
-function ToolCallCard({
-  toolCall,
-}: {
-  toolCall: ToolCallWithResult;
-}) {
-  const inputPreview = getToolInputPreview(toolCall.call.name, toolCall.call.args);
-  const resultPreview = getToolResultPreview(toolCall.call.name, toolCall.result);
-  const tags = getToolTagValues(
-    toolCall.call.name,
-    toolCall.call.args,
-    toolCall.result?.content
-  );
-
-  return (
-    <section className={`tool-card tool-card-${getToolTheme(toolCall.call.name)}`}>
-      <div className="tool-card-header">
-        <div>
-          <div className="tool-card-title">{getToolTitle(toolCall.call.name)}</div>
-          <div className="tool-card-name">{toolCall.call.name}</div>
-        </div>
-        <span className={`status-pill status-${toolCall.state}`}>
-          {toolCall.state}
-        </span>
-      </div>
-
-      {tags.length > 0 ? (
-        <div className="tool-card-tags">
-          {tags.map((tag) => (
-            <span key={tag} className="tool-card-tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {inputPreview != null ? (
-        <div className="tool-card-section">
-          <div className="tool-card-section-label">{inputPreview.label}</div>
-          {inputPreview.isCode ? (
-            <pre className="tool-card-code">{inputPreview.value}</pre>
-          ) : (
-            <div className="tool-card-copy">{inputPreview.value}</div>
-          )}
-        </div>
-      ) : null}
-
-      {resultPreview != null ? (
-        <div className="tool-card-section">
-          <div className="tool-card-section-label">{resultPreview.label}</div>
-          <div className="tool-card-copy">{resultPreview.value}</div>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 export const MessageFeed = memo(function MessageFeed({
   messages,
   getMessageMetadata,
@@ -538,12 +152,14 @@ export const MessageFeed = memo(function MessageFeed({
   const allToolCalls = getToolCallsWithResults(messages);
   const pairedToolResultIds = new Set(
     allToolCalls
-      .map((toolCall) => toolCall.result?.tool_call_id)
+      .map((toolCall) =>
+        toolCall.result != null ? getToolCallId(toolCall.result) : undefined
+      )
       .filter((toolCallId): toolCallId is string => typeof toolCallId === "string"),
   );
   const toolCallsByMessage = new Map<
     BaseMessage,
-    ToolCallWithResult[]
+    ToolCallWithResult<MessageFeedToolCall>[]
   >();
 
   for (const toolCall of allToolCalls) {
@@ -552,7 +168,7 @@ export const MessageFeed = memo(function MessageFeed({
     existing.push(toolCall);
     toolCallsByMessage.set(
       toolCall.aiMessage as BaseMessage,
-      existing as ToolCallWithResult[]
+      existing as ToolCallWithResult<MessageFeedToolCall>[]
     );
   }
 
@@ -570,7 +186,12 @@ export const MessageFeed = memo(function MessageFeed({
   return (
     <div className="message-feed">
       {messages.map((message, index) => {
-        if (isToolMessage(message) && pairedToolResultIds.has(message.tool_call_id)) {
+        const toolCallId = getToolCallId(message);
+        if (
+          isToolMessage(message) &&
+          toolCallId != null &&
+          pairedToolResultIds.has(toolCallId)
+        ) {
           return null;
         }
 

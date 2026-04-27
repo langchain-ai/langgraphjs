@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
   type AnyHeadlessToolImplementation,
   type OnToolCallback,
@@ -584,13 +585,16 @@ export function useStreamExperimental<
   return useMemo<
     UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>
   >(
-    () =>
-      ({
+    () => {
+      const userFacingInterrupts = filterOutHeadlessToolInterrupts(
+        root.interrupts
+      );
+      return ({
         values: root.values,
         messages: root.messages,
         toolCalls: root.toolCalls,
-        interrupts: root.interrupts,
-        interrupt: root.interrupt,
+        interrupts: userFacingInterrupts,
+        interrupt: userFacingInterrupts[0],
         isLoading: root.isLoading,
         isThreadLoading: root.isThreadLoading,
         hydrationPromise: controller.hydrationPromise,
@@ -611,7 +615,8 @@ export function useStreamExperimental<
         client,
         assistantId,
         [STREAM_CONTROLLER]: controller,
-      }) as UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>,
+      }) as UseStreamExperimentalReturn<T, InterruptType, ConfigurableType>;
+    },
     [
       root,
       subagents,

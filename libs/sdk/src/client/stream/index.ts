@@ -55,6 +55,7 @@ import type {
 } from "./types.js";
 import type { EventStreamHandle, TransportAdapter } from "./transport.js";
 import { ProtocolError } from "./error.js";
+import { isHeadlessToolInterrupt } from "../../headless-tools.js";
 
 /**
  * Gated diagnostic logger for `ThreadStream` internals. Silent by
@@ -492,6 +493,14 @@ export class ThreadStream<
   // coupling. Revisit only if a concrete long-run memory profile
   // justifies the added complexity.
   readonly #seenEventIds = new Set<string>();
+  /**
+   * Headless tool interrupts can be auto-resumed by the React hook before
+   * the shared SSE content pump has processed the root `interrupted`
+   * lifecycle event. `respondInput()` clears `interrupts`, so keep a
+   * short-lived marker here until that stale terminal passes through the
+   * content pump and we can avoid pausing it.
+   */
+  readonly #headlessInterruptsAwaitingTerminal = new Set<string>();
   #closed = false;
   #opened = false;
   #openPromise?: Promise<void>;
@@ -1378,11 +1387,15 @@ export class ThreadStream<
     }
     if (event.method === "input.requested") {
       const data = event.params.data;
+      const interruptId = data.interrupt_id ?? `interrupt_${this.interrupts.length}`;
       this.interrupts.push({
-        interruptId: data.interrupt_id ?? `interrupt_${this.interrupts.length}`,
+        interruptId,
         payload: data.payload,
         namespace: [...event.params.namespace],
       });
+      if (isHeadlessToolInterrupt(data.payload)) {
+        this.#headlessInterruptsAwaitingTerminal.add(interruptId);
+      }
     }
   }
 
@@ -1994,6 +2007,19 @@ export class ThreadStream<
         message.params.namespace.length === 0 &&
         TERMINAL_LIFECYCLE_EVENTS.has(message.params.data.event)
       ) {
+        const shouldSkipPause =
+          message.params.data.event === "interrupted" &&
+          this.#headlessInterruptsAwaitingTerminal.size > 0;
+        if (shouldSkipPause) {
+          lgDebug("terminal-pause.skip-headless", {
+            seq: msgEvent.seq,
+            pendingHeadlessInterrupts: Array.from(
+              this.#headlessInterruptsAwaitingTerminal
+            ),
+          });
+          this.#headlessInterruptsAwaitingTerminal.clear();
+          return;
+        }
         lgDebug("terminal-pause", {
           seq: msgEvent.seq,
           event: message.params.data.event,

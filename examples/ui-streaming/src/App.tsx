@@ -2,150 +2,166 @@ import { useEffect, useState } from "react";
 
 import { API_URL, isTransport, type Transport } from "./api";
 import { TransportToggle } from "./components/TransportToggle";
-import { CustomChannelView } from "./views/CustomChannelView";
-import { DeepAgentView } from "./views/DeepAgentView";
-import { FanOutView } from "./views/FanOutView";
-import { HumanInTheLoopView } from "./views/HumanInTheLoopView";
-import { NestedStateGraphView } from "./views/NestedStateGraphView";
-import { ReactAgentView } from "./views/ReactAgentView";
+import {
+  CATEGORIES,
+  DEFAULT_EXAMPLE_ID,
+  EXAMPLES,
+  getExample,
+  getExamplesByCategory,
+} from "./examples";
+import langchainIcon from "./langchain-icon.svg";
 
-type TabId =
-  | "nested-stategraph"
-  | "react-agent"
-  | "deep-agent"
-  | "human-in-the-loop"
-  | "fan-out"
-  | "custom-channel";
-
-const TABS: Array<{ id: TabId; title: string; blurb: string }> = [
-  {
-    id: "nested-stategraph",
-    title: "Nested StateGraph",
-    blurb: "Top-level graph with two compiled subgraphs rendered live.",
-  },
-  {
-    id: "react-agent",
-    title: "ReAct Agent",
-    blurb: "createAgent runtime with streaming tool calls.",
-  },
-  {
-    id: "deep-agent",
-    title: "Deep Agent",
-    blurb: "Four poetry subagents running in parallel.",
-  },
-  {
-    id: "human-in-the-loop",
-    title: "Human in the Loop",
-    blurb: "Approve, edit, or reject a sensitive tool call.",
-  },
-  {
-    id: "fan-out",
-    title: "Fan-out (100+)",
-    blurb: "Hundred+ subagents; content streams load lazily.",
-  },
-  {
-    id: "custom-channel",
-    title: "Custom Stream Channel",
-    blurb:
-      "Server-side transformer; view reads only custom:timeline — no messages/values.",
-  },
-];
-
-const DEFAULT_TAB: TabId = "nested-stategraph";
 const DEFAULT_TRANSPORT: Transport = "sse";
 
-const isTabId = (value: string | null): value is TabId =>
-  TABS.some((tab) => tab.id === value);
-
-function getUrlSelection(): { tab: TabId; transport: Transport } {
+function getUrlSelection(): { exampleId: string; transport: Transport } {
   if (typeof window === "undefined") {
-    return { tab: DEFAULT_TAB, transport: DEFAULT_TRANSPORT };
+    return { exampleId: DEFAULT_EXAMPLE_ID, transport: DEFAULT_TRANSPORT };
   }
   const params = new URLSearchParams(window.location.search);
-  const tab = params.get("agent");
+  const exampleId = params.get("agent");
   const transport = params.get("transport");
   return {
-    tab: isTabId(tab) ? tab : DEFAULT_TAB,
+    exampleId: getExample(exampleId)?.id ?? DEFAULT_EXAMPLE_ID,
     transport: isTransport(transport) ? transport : DEFAULT_TRANSPORT,
   };
 }
 
 export function App() {
   const initial = getUrlSelection();
-  const [activeTab, setActiveTab] = useState<TabId>(initial.tab);
+  const [activeExampleId, setActiveExampleId] = useState(initial.exampleId);
   const [transport, setTransport] = useState<Transport>(initial.transport);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Remount the active view on tab or transport change — each view owns a
-  // `useStreamExperimental` call and we want a fresh thread when the user
-  // flips a switch rather than replaying the previous thread on the new
-  // transport.
-  const viewKey = `${activeTab}:${transport}`;
+  const activeExample = getExample(activeExampleId) ?? EXAMPLES[0];
+  const viewKey = `${activeExample.id}:${transport}`;
+  const ActiveView = activeExample.component;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
-    url.searchParams.set("agent", activeTab);
+    url.searchParams.set("agent", activeExample.id);
     url.searchParams.set("transport", transport);
     window.history.replaceState({}, "", url);
-  }, [activeTab, transport]);
+  }, [activeExample.id, transport]);
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <div>
-          <div className="eyebrow">useStreamExperimental showcase</div>
-          <h1>Streaming Hooks Playground</h1>
-          <p className="app-subtitle">
-            Six agent shapes driven by the new{" "}
-            <code>useStreamExperimental</code> hook and its selector
-            companions (<code>useMessages</code>, <code>useToolCalls</code>,{" "}
-            <code>useValues</code>, <code>useChannel</code>). Flip between the
-            HTTP+SSE and WebSocket transports to see that the React surface
-            does not change.
-          </p>
-        </div>
-        <div className="header-badges">
-          <span className="header-badge">API: {API_URL}</span>
-          <TransportToggle transport={transport} onChange={setTransport} />
-        </div>
-      </header>
+    <div className="app-frame">
+      <Sidebar
+        activeExampleId={activeExample.id}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onSelect={(id) => {
+          setActiveExampleId(id);
+          setSidebarOpen(false);
+        }}
+      />
+      {sidebarOpen ? (
+        <button
+          aria-label="Close navigation"
+          className="sidebar-scrim"
+          onClick={() => setSidebarOpen(false)}
+          type="button"
+        />
+      ) : null}
 
-      <nav className="tab-row" aria-label="Agent views">
-        {TABS.map((tab) => (
+      <main className="app-main">
+        <header className="app-header">
           <button
-            key={tab.id}
-            className={`tab-button ${
-              activeTab === tab.id ? "tab-button-active" : ""
-            }`}
-            onClick={() => setActiveTab(tab.id)}
+            aria-label="Open navigation"
+            className="mobile-nav-button"
+            onClick={() => setSidebarOpen(true)}
             type="button"
           >
-            <span>{tab.title}</span>
-            <small>{tab.blurb}</small>
+            Menu
           </button>
-        ))}
-      </nav>
+          <div>
+            <div className="eyebrow">LangGraph streaming testbed</div>
+            <h1>React streaming examples</h1>
+            <p className="app-subtitle">
+              Production-grade examples for the v2 React streaming surface:
+              messages, tool calls, state values, custom channels, headless
+              tools, interrupts, subgraphs, and subagents.
+            </p>
+          </div>
+          <div className="header-badges">
+            <span className="header-badge">API: {API_URL}</span>
+            <TransportToggle transport={transport} onChange={setTransport} />
+          </div>
+        </header>
 
-      {renderView(activeTab, viewKey, transport)}
-    </main>
+        <ActiveView key={viewKey} transport={transport} />
+      </main>
+    </div>
   );
 }
 
-function renderView(tab: TabId, key: string, transport: Transport) {
-  switch (tab) {
-    case "nested-stategraph":
-      return <NestedStateGraphView key={key} transport={transport} />;
-    case "react-agent":
-      return <ReactAgentView key={key} transport={transport} />;
-    case "deep-agent":
-      return <DeepAgentView key={key} transport={transport} />;
-    case "human-in-the-loop":
-      return <HumanInTheLoopView key={key} transport={transport} />;
-    case "fan-out":
-      return <FanOutView key={key} transport={transport} />;
-    case "custom-channel":
-      return <CustomChannelView key={key} transport={transport} />;
-    default:
-      return null;
-  }
+function Sidebar({
+  activeExampleId,
+  isOpen,
+  onClose,
+  onSelect,
+}: {
+  activeExampleId: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (id: string) => void;
+}) {
+  const groups = getExamplesByCategory();
+  return (
+    <aside className={`app-sidebar ${isOpen ? "app-sidebar-open" : ""}`}>
+      <div className="sidebar-brand">
+        <div className="brand-mark" aria-hidden="true">
+          <img alt="" src={langchainIcon} />
+        </div>
+        <div>
+          <div className="brand-title">langgraph</div>
+          <div className="brand-subtitle">React Streaming Testbed</div>
+        </div>
+        <button
+          aria-label="Close navigation"
+          className="sidebar-close"
+          onClick={onClose}
+          type="button"
+        >
+          Close
+        </button>
+      </div>
+
+      <nav className="sidebar-nav" aria-label="Streaming examples">
+        {(Object.keys(CATEGORIES) as Array<keyof typeof CATEGORIES>).map(
+          (category) => {
+            const examples = groups[category] ?? [];
+            if (examples.length === 0) return null;
+            return (
+              <section className="sidebar-section" key={category}>
+                <div className="sidebar-section-label">
+                  {CATEGORIES[category].title}
+                </div>
+                <div className="sidebar-section-description">
+                  {CATEGORIES[category].description}
+                </div>
+                <div className="sidebar-link-list">
+                  {examples.map((example) => {
+                    const isActive = example.id === activeExampleId;
+                    return (
+                      <button
+                        className={`sidebar-link ${isActive ? "sidebar-link-active" : ""
+                          }`}
+                        key={example.id}
+                        onClick={() => onSelect(example.id)}
+                        type="button"
+                      >
+                        <span>{example.title}</span>
+                        <small>{example.description}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          }
+        )}
+      </nav>
+    </aside>
+  );
 }

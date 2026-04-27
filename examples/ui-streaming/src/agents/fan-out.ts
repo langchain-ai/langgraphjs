@@ -58,7 +58,6 @@ export async function agent() {
     backend,
     checkpointer,
     middleware: [
-      // @ts-expect-error
       createQuickJSMiddleware({
         backend,
         ptc: ["task"],
