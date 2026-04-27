@@ -14,6 +14,44 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
 }
 
 /**
+ * Default LangChain `id` namespace prefixes whose classes are pure data
+ * containers (no I/O, no network, no env access in their constructors) and
+ * are therefore safe to instantiate when reviving a checkpoint.
+ *
+ * Other LangChain namespaces (tools, retrievers, vectorstores, language
+ * models, document loaders, agents, callbacks, etc.) can have construction
+ * side effects — instantiating them from a checkpoint payload that an
+ * attacker can influence is an insecure-deserialization sink. Those classes
+ * are intentionally not loaded; their envelopes pass through as plain
+ * objects unless the embedding application opts in via
+ * `JsonPlusSerializerOptions.loadableLangChainPrefixes`.
+ */
+const DEFAULT_LOADABLE_LC_PREFIXES: readonly (readonly string[])[] = [
+  ["langchain_core", "messages"],
+  ["langchain_core", "documents"],
+  ["langchain_core", "prompt_values"],
+  ["langchain_core", "outputs"],
+];
+
+function idMatchesPrefix(
+  id: readonly unknown[],
+  prefix: readonly string[]
+): boolean {
+  if (id.length < prefix.length) return false;
+  for (let i = 0; i < prefix.length; i += 1) {
+    if (id[i] !== prefix[i]) return false;
+  }
+  return true;
+}
+
+function isLoadableLangChainId(
+  id: readonly unknown[],
+  allowedPrefixes: readonly (readonly string[])[]
+): boolean {
+  return allowedPrefixes.some((prefix) => idMatchesPrefix(id, prefix));
+}
+
+/**
  * The replacer in stringify does not allow delegation to built-in LangChain
  * serialization methods, and instead immediately calls `.toJSON()` and
  * continues to stringify subfields.
@@ -21,17 +59,20 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
  * We therefore must start from the most nested elements in the input and
  * deserialize upwards rather than top-down.
  */
-async function _reviver(value: any): Promise<any> {
+async function _reviver(
+  value: any,
+  loadableLangChainPrefixes: readonly (readonly string[])[]
+): Promise<any> {
   if (value && typeof value === "object") {
     if (Array.isArray(value)) {
       const revivedArray = await Promise.all(
-        value.map((item) => _reviver(item))
+        value.map((item) => _reviver(item, loadableLangChainPrefixes))
       );
       return revivedArray;
     } else {
       const revivedObj: any = {};
       for (const [k, v] of Object.entries(value)) {
-        revivedObj[k] = await _reviver(v);
+        revivedObj[k] = await _reviver(v, loadableLangChainPrefixes);
       }
 
       if (revivedObj.lc === 2 && revivedObj.type === "undefined") {
@@ -75,6 +116,14 @@ async function _reviver(value: any): Promise<any> {
           return revivedObj;
         }
       } else if (isLangChainSerializedObject(revivedObj)) {
+        if (
+          !isLoadableLangChainId(
+            revivedObj.id as unknown[],
+            loadableLangChainPrefixes
+          )
+        ) {
+          return revivedObj;
+        }
         return load(JSON.stringify(revivedObj));
       }
 
@@ -128,7 +177,33 @@ function _default(obj: any): any {
   }
 }
 
+export interface JsonPlusSerializerOptions {
+  /**
+   * Additional LangChain `id` namespace prefixes that may be passed to
+   * `@langchain/core/load` during deserialization, on top of the built-in
+   * defaults (messages, documents, prompt_values, outputs).
+   *
+   * Each prefix is an array of namespace path segments; an envelope is
+   * considered loadable if its `id` starts with any allowed prefix.
+   *
+   * **Security:** only add namespaces whose classes have side-effect-free
+   * constructors. Adding tool, retriever, loader, vector store, or language
+   * model namespaces widens the deserialization attack surface — never
+   * derive these values from user input.
+   */
+  loadableLangChainPrefixes?: readonly (readonly string[])[];
+}
+
 export class JsonPlusSerializer implements SerializerProtocol {
+  private readonly loadableLangChainPrefixes: readonly (readonly string[])[];
+
+  constructor(options?: JsonPlusSerializerOptions) {
+    this.loadableLangChainPrefixes = [
+      ...DEFAULT_LOADABLE_LC_PREFIXES,
+      ...(options?.loadableLangChainPrefixes ?? []),
+    ];
+  }
+
   protected _dumps(obj: any): Uint8Array {
     const encoder = new TextEncoder();
     return encoder.encode(
@@ -148,7 +223,7 @@ export class JsonPlusSerializer implements SerializerProtocol {
 
   protected async _loads(data: string): Promise<any> {
     const parsed = JSON.parse(data);
-    return _reviver(parsed);
+    return _reviver(parsed, this.loadableLangChainPrefixes);
   }
 
   async loadsTyped(type: string, data: Uint8Array | string): Promise<any> {

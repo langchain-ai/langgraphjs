@@ -151,3 +151,64 @@ it("Should replace circular JSON inputs", async () => {
     `{"a":{"b":{"a":"[Circular]"}},"b":{"a":"[Circular]"}}`
   );
 });
+
+it("does not call load() for non-allowlisted LangChain ids", async () => {
+  // A LangChain serialization envelope outside the default allowlist must not
+  // be passed to `@langchain/core/load`, even if it would otherwise resolve
+  // to a registered class. The envelope is preserved as a plain object so
+  // legitimate data is not lost, but no constructor is invoked.
+  const maliciousEnvelope = {
+    lc: 1,
+    type: "constructor",
+    id: ["langchain_core", "tools", "AttackerTool"],
+    kwargs: { url: "http://attacker.example/exfil" },
+  };
+  const wrapper = { state: { tool: maliciousEnvelope } };
+
+  const serde = new JsonPlusSerializer();
+  const [type, serialized] = await serde.dumpsTyped(wrapper);
+  const deserialized = await serde.loadsTyped(type, serialized);
+
+  expect(deserialized).toEqual(wrapper);
+  // It is still a plain object, not an instance.
+  expect(Object.getPrototypeOf(deserialized.state.tool)).toBe(
+    Object.prototype
+  );
+});
+
+it("does not call load() for invalid namespaces that load() would reject", async () => {
+  // Even an envelope that load() itself would reject must not reach load(),
+  // since reaching it implies an exception being thrown during checkpoint
+  // restore. The reviver should pass it through as plain data instead.
+  const envelope = {
+    lc: 1,
+    type: "constructor",
+    id: ["totally", "unknown", "Class"],
+    kwargs: {},
+  };
+
+  const serde = new JsonPlusSerializer();
+  const [type, serialized] = await serde.dumpsTyped({ envelope });
+  const deserialized = await serde.loadsTyped(type, serialized);
+
+  expect(deserialized).toEqual({ envelope });
+});
+
+it("can opt in to additional loadable LangChain prefixes", async () => {
+  // Embedding apps that explicitly trust their checkpoint store can extend
+  // the allowlist. Once a prefix is allowed, matching envelopes flow through
+  // load() (and surface load()'s own validation errors).
+  const envelope = {
+    lc: 1,
+    type: "constructor",
+    id: ["langchain_core", "tools", "FakeClassThatDoesNotExist"],
+    kwargs: {},
+  };
+
+  const serde = new JsonPlusSerializer({
+    loadableLangChainPrefixes: [["langchain_core", "tools"]],
+  });
+  const [type, serialized] = await serde.dumpsTyped({ envelope });
+
+  await expect(serde.loadsTyped(type, serialized)).rejects.toThrow();
+});
