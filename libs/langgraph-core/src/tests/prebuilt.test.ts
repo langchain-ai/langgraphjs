@@ -2040,6 +2040,45 @@ describe.each([["v1" as const], ["v2" as const]])(
           "The weather is nice"
         );
       });
+
+      it("Throws when structured output parser returns null", async () => {
+        const cartResponseSchema = z.object({
+          items: z.array(z.string()),
+          cartStatus: z.string(),
+        });
+
+        const llm = new FakeToolCallingChatModel({
+          responses: [new AIMessage('{"items": ["apple", "banana"]}')],
+          structuredResponse: { items: ["apple", "banana"] },
+        });
+
+        vi.spyOn(llm, "withStructuredOutput").mockReturnValue(
+          RunnableLambda.from(async () => null) as unknown as ReturnType<
+            typeof llm.withStructuredOutput
+          >
+        );
+
+        const agent = createReactAgent({
+          llm,
+          tools: [],
+          version,
+          responseFormat: cartResponseSchema,
+        });
+
+        const error = await agent
+          .invoke({
+            messages: [new HumanMessage("What's in my cart?")],
+          })
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(
+          /Failed to parse structured response/
+        );
+        expect((error as Error).message).toMatch(
+          /returned null\/undefined/
+        );
+      });
     });
 
     describe("Dynamic Model", () => {
