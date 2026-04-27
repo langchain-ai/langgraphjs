@@ -297,7 +297,7 @@ export function messagesProjection(
 
         const update = assembler.consume(event);
         const msg = update.message;
-        const id = msg.messageId;
+        const id = msg.id;
         if (id == null) return;
         const captured = roleByKey.get(id) ?? { role: "ai" as const };
         const base = assembledMessageToBaseMessage(msg, captured.role, {

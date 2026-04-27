@@ -119,7 +119,7 @@ export function assembledMessageToBaseMessage(
   extras: { toolCallId?: string } = {}
 ): BaseMessage {
   return assembledToBaseMessage({
-    id: assembled.messageId,
+    id: assembled.id,
     role,
     blocks: assembled.blocks,
     toolCallId: extras.toolCallId,

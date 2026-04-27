@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { MessageAssembler, StreamingMessageAssembler } from "./messages.js";
 import { eventOf } from "./test/utils.js";
+import { assembledMessageToBaseMessage } from "../../stream/assembled-to-message.js";
 
 describe("MessageAssembler", () => {
   it("merges text and tool chunk deltas into final message state", () => {
@@ -198,7 +199,22 @@ describe("MessageAssembler", () => {
       ) as Extract<Event, { method: "messages" }>
     );
 
+    expect(finished?.message.id).toBe("msg_t");
     expect(finished?.message.blocks[0]).toEqual({ type: "text", text: "Hello" });
+  });
+
+  it("preserves message id when converting assembled messages to BaseMessage", () => {
+    const message = assembledMessageToBaseMessage(
+      {
+        id: "msg_base",
+        namespace: [],
+        blocks: [{ type: "text", text: "Hello" }],
+      },
+      "ai"
+    );
+
+    expect(message.id).toBe("msg_base");
+    expect(message.text).toBe("Hello");
   });
 
   it("handles message-error events", () => {

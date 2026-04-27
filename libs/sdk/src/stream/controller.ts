@@ -176,6 +176,7 @@ export class StreamController<
   #currentThreadId: string | null;
   #rootSubscription: SubscriptionHandle<Event> | undefined;
   #rootPump: Promise<void> | undefined;
+  #rootPumpReady: Promise<void> | undefined;
   #threadEventUnsubscribe: (() => void) | undefined;
   #runAbort: AbortController | undefined;
   #disposed = false;
@@ -450,6 +451,9 @@ export class StreamController<
       }));
     }
     const thread = this.#ensureThread(this.#currentThreadId);
+    if (this.#usesEventStreamTransport()) {
+      await this.#rootPumpReady;
+    }
 
     // Honour `multitaskStrategy` when a run is already in flight. Only
     // `rollback` (the default) and `enqueue` / `reject` are resolved
@@ -782,6 +786,7 @@ export class StreamController<
       /* already closed */
     }
     this.#rootSubscription = undefined;
+    this.#rootPumpReady = undefined;
     try {
       await this.#rootPump;
     } catch {
@@ -811,8 +816,19 @@ export class StreamController<
     }
   }
 
+  #usesEventStreamTransport(): boolean {
+    const transport = this.#options.transport;
+    if (transport === "websocket") return false;
+    if (transport == null || transport === "sse") return true;
+    return typeof transport.openEventStream === "function";
+  }
+
   #startRootPump(thread: ThreadStream): void {
     if (this.#rootPump != null) return;
+    let resolveReady: (() => void) | undefined;
+    this.#rootPumpReady = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
 
     // Wildcard discovery + interrupt tracking is delivered via the
     // thread's dedicated lifecycle watcher (see `ThreadStream.onEvent`).
@@ -851,6 +867,8 @@ export class StreamController<
           subId: subscription.subscriptionId,
         });
         this.#rootSubscription = subscription;
+        resolveReady?.();
+        resolveReady = undefined;
         // The SSE transport pauses the underlying subscription when
         // a terminal root lifecycle event arrives (so `for await`
         // loops observing a single run exit cleanly) and re-opens
@@ -935,6 +953,8 @@ export class StreamController<
         }
         lgDebug("root-pump.loop-exit", { iterationCount });
       } catch (err) {
+        resolveReady?.();
+        resolveReady = undefined;
         lgDebug("root-pump.error", { error: String(err) });
         /* thread closed or errored */
       }
@@ -1223,7 +1243,7 @@ export class StreamController<
     }
 
     const update = this.#rootMessageAssembler.consume(event);
-    const id = update.message.messageId;
+    const id = update.message.id;
     if (id == null) return;
     const captured = this.#rootMessageRoles.get(id) ?? { role: "ai" as const };
     const base = assembledMessageToBaseMessage(update.message, captured.role, {
