@@ -1083,6 +1083,9 @@ importers:
       '@angular/compiler-cli':
         specifier: ^21.2.7
         version: 21.2.9(@angular/compiler@21.2.9)(typescript@5.9.3)
+      '@langchain/langgraph-cli':
+        specifier: workspace:*
+        version: link:../../libs/langgraph-cli
       typescript:
         specifier: ~5.9.2
         version: 5.9.3

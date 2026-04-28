@@ -3,7 +3,7 @@
   "version": "0.0.21",
   "scripts": {
     "dev": "turbo dev:client dev:server",
-    "dev:client": "ng serve",
+    "dev:client": "NG_CLI_ANALYTICS=false ng serve",
     "dev:server": "langgraphjs dev --no-browser",
     "ng": "ng",
     "start": "ng serve",
@@ -32,6 +32,7 @@
     "@angular/build": "^21.2.6",
     "@angular/cli": "^21.2.6",
     "@angular/compiler-cli": "^21.2.7",
+    "@langchain/langgraph-cli": "workspace:*",
     "typescript": "~5.9.2"
   }
 }
