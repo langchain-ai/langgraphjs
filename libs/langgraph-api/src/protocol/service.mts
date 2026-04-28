@@ -756,6 +756,8 @@ export function matchesSinkFilter(
   filter: EventSinkFilter,
   event: ProtocolEvent
 ): boolean {
+  if (filter.since != null && (event.seq ?? 0) <= filter.since) return false;
+
   const channel: string | undefined =
     event.method === "input.requested"
       ? "input"

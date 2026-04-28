@@ -1,7 +1,7 @@
 import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
 import { ChatModelStream as CoreChatModelStream } from "@langchain/core/language_models/stream";
-import { EventLog } from "../event-log.js";
 import { hasPrefix } from "../mux.js";
+import { StreamChannel } from "../stream-channel.js";
 import type {
   ChatModelStream,
   MessagesEventData,
@@ -12,7 +12,7 @@ import type {
 import type { MessagesTransformerProjection } from "./types.js";
 
 type ActiveMessageStream = {
-  source: EventLog<ChatModelStreamEvent>;
+  source: StreamChannel<ChatModelStreamEvent>;
   stream: ChatModelStream;
 };
 
@@ -44,7 +44,7 @@ export function createMessagesTransformer(
   path: Namespace,
   nodeFilter?: string
 ): StreamTransformer<MessagesTransformerProjection> {
-  const log = new EventLog<ChatModelStream>();
+  const log = StreamChannel.local<ChatModelStream>();
   let active: ActiveMessageStream | undefined;
 
   return {
@@ -73,7 +73,7 @@ export function createMessagesTransformer(
 
       switch (data.event) {
         case "message-start": {
-          const source = new EventLog<ChatModelStreamEvent>();
+          const source = StreamChannel.local<ChatModelStreamEvent>();
           const stream = Object.assign(
             new CoreChatModelStream(source.toAsyncIterable()),
             {

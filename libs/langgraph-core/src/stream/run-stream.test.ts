@@ -357,7 +357,7 @@ describe("createGraphRunStream", () => {
   });
 
   it("wires StreamChannel projections from extension transformers to the protocol stream", async () => {
-    const channel = new StreamChannel<{ msg: string }>("custom-ext");
+    const channel = StreamChannel.remote<{ msg: string }>("custom-ext");
 
     const extensionFactory = (): StreamTransformer<{
       myChannel: StreamChannel<{ msg: string }>;
@@ -388,8 +388,38 @@ describe("createGraphRunStream", () => {
     expect(stream.extensions).toHaveProperty("myChannel");
   });
 
+  it("keeps local StreamChannel projections in-process only", async () => {
+    const channel = StreamChannel.local<{ msg: string }>();
+
+    const extensionFactory = (): StreamTransformer<{
+      myChannel: StreamChannel<{ msg: string }>;
+    }> => ({
+      init: () => ({ myChannel: channel }),
+      process(event: ProtocolEvent): boolean {
+        if (event.method === "values") {
+          channel.push({ msg: "local" });
+        }
+        return true;
+      },
+    });
+
+    const source = makeSource([[[], "values", { x: 1 }]]);
+    const stream = createGraphRunStream(source, [extensionFactory]);
+
+    const events: ProtocolEvent[] = [];
+    for await (const e of stream) {
+      events.push(e);
+    }
+
+    expect(events.map((e) => e.method)).not.toContain(undefined);
+    expect(events.filter((e) => e.params.data === channel)).toHaveLength(0);
+    await expect(collect(channel[Symbol.asyncIterator]())).resolves.toEqual([
+      { msg: "local" },
+    ]);
+  });
+
   it("does NOT wire StreamChannel projections from native transformers", async () => {
-    const channel = new StreamChannel<{ obj: Promise<number> }>("native-ch");
+    const channel = StreamChannel.remote<{ obj: Promise<number> }>("native-ch");
 
     const nativeFactory = (): NativeStreamTransformer<{
       nativeProp: StreamChannel<{ obj: Promise<number> }>;
@@ -442,8 +472,8 @@ describe("createGraphRunStream", () => {
   });
 
   it("mixed native and extension transformers: only extension channels are wired", async () => {
-    const extChannel = new StreamChannel<string>("ext-data");
-    const nativeChannel = new StreamChannel<string>("native-data");
+    const extChannel = StreamChannel.remote<string>("ext-data");
+    const nativeChannel = StreamChannel.remote<string>("native-data");
 
     const extensionFactory = (): StreamTransformer<{
       extData: StreamChannel<string>;

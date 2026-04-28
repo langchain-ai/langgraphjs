@@ -80,7 +80,7 @@ export function CustomChannelView({ transport }: { transport: Transport }) {
         <>
           A server-side <code>StreamTransformer</code> watches every raw
           protocol event and republishes a curated, typed{" "}
-          <code>TimelineEvent</code> union on a single{" "}
+          <code>TimelineEvent</code> union on a single remote{" "}
           <code>StreamChannel</code> named <code>timeline</code>. This view
           subscribes <strong>only</strong> via{" "}
           <code>useChannel(stream, ["custom:timeline"])</code>. No{" "}

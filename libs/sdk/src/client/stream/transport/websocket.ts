@@ -18,7 +18,7 @@ import type { TransportAdapter } from "../transport.js";
 /**
  * Transport adapter that speaks the thread-centric protocol over a
  * bidirectional WebSocket. Bound to a specific `threadId` — the socket
- * connects to `ws://.../v2/threads/:thread_id`.
+ * connects to `ws://.../threads/:thread_id/stream`.
  */
 export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
   readonly threadId: string;
@@ -55,7 +55,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     this.assertBrowserSafeTransportConfig();
 
     const wsUrl = toWebSocketUrl(
-      `${this.apiUrl.replace(/\/$/, "")}/v2/threads/${this.threadId}`
+      `${this.apiUrl.replace(/\/$/, "")}/threads/${this.threadId}/stream`
     );
     const socket = this.webSocketFactory(wsUrl);
     this.socket = socket;

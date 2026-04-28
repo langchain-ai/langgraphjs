@@ -4,9 +4,9 @@ import { useMessages, useStream } from "@langchain/react";
 import type { agent as reasoningAgentType } from "../agents/reasoning-agent";
 import { API_URL, type Transport } from "../api";
 import { Composer } from "../components/Composer";
-import { EventLog } from "../components/EventLog";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
+import { RecentEvents } from "../components/RecentEvents";
 import { ViewShell } from "../components/ViewShell";
 import { getReasoningContent } from "../utils";
 import { useEventTrace } from "./shared";
@@ -30,7 +30,7 @@ export function ReasoningAgentView({ transport }: { transport: Transport }) {
   });
 
   const messages = useMessages(stream);
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
   const reasoningMessages = useMemo(
     () =>
       messages
@@ -100,7 +100,7 @@ export function ReasoningAgentView({ transport }: { transport: Transport }) {
             }}
           />
           <JsonPanel title="Current State" value={stream.values} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>

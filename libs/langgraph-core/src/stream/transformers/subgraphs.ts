@@ -1,7 +1,7 @@
 /**
  * SubgraphDiscoveryTransformer - materializes a {@link StreamHandle} for
  * each newly observed top-level subgraph namespace and announces it on
- * the mux's shared {@link StreamMux._discoveries} log.
+ * the mux's shared {@link StreamMux._discoveries} channel.
  *
  * Previously this work was inlined in {@link StreamMux.push}.  Extracting
  * it into a transformer aligns discovery with the rest of the stream
@@ -12,7 +12,7 @@
  * The transformer also owns the read-side of discovery: it exposes an
  * `AsyncIterable<TStream>` projection (`subgraphs`) scoped to the root
  * namespace, and a {@link filterSubgraphHandles} helper that callers
- * can use to scope the same log to any descendant namespace.  This
+ * can use to scope the same channel to any descendant namespace.  This
  * lets `GraphRunStream` drop its bespoke `subscribeSubgraphs`
  * delegation and surface child streams via the standard native
  * projection pattern.
@@ -32,7 +32,7 @@ import type {
   NativeStreamTransformer,
   ProtocolEvent,
 } from "../types.js";
-import type { EventLog } from "../event-log.js";
+import type { StreamChannel } from "../stream-channel.js";
 
 /**
  * Projection returned by {@link createSubgraphDiscoveryTransformer}.
@@ -44,12 +44,12 @@ export interface SubgraphDiscoveryProjection<
   TStream extends StreamHandle = StreamHandle,
 > {
   /**
-   * Shared discovery log on the mux.  The transformer writes to it so
-   * the log's lifetime stays tied to the mux (closed on `mux.close()`
+   * Shared discovery channel on the mux.  The transformer writes to it so
+   * the channel's lifetime stays tied to the mux (closed on `mux.close()`
    * / failed on `mux.fail()`).  The underscore prefix signals internal
    * wiring: consumers should iterate {@link subgraphs} instead.
    */
-  _discoveries: EventLog<SubgraphDiscovery>;
+  _discoveries: StreamChannel<SubgraphDiscovery>;
 
   /**
    * Async iterable of direct child stream handles of the root
@@ -69,7 +69,7 @@ export interface SubgraphDiscoveryTransformerOptions<
   /**
    * Factory invoked once per newly observed top-level namespace.
    *
-   * Receives the discovery-log and event-log offsets so the resulting
+   * Receives the discovery-channel and event-channel offsets so the resulting
    * stream can iterate only events arriving after the namespace was
    * first seen (no retroactive replay).
    *
@@ -87,7 +87,7 @@ export interface SubgraphDiscoveryTransformerOptions<
 }
 
 /**
- * Filter a {@link SubgraphDiscovery} log to only the direct children
+ * Filter a {@link SubgraphDiscovery} channel to only the direct children
  * of a given namespace.
  *
  * Returns an `AsyncIterable` whose iterator yields stream handles for
@@ -99,7 +99,7 @@ export interface SubgraphDiscoveryTransformerOptions<
  *
  * @typeParam TStream - Concrete stream type recorded in the log.
  *   Callers may cast if the log was populated by a specific factory.
- * @param log - The shared discovery log (`mux._discoveries`).
+ * @param log - The shared discovery channel (`mux._discoveries`).
  * @param path - Parent namespace whose direct children should be
  *   yielded.
  * @param startAt - Zero-based index into the discovery log to begin
@@ -109,7 +109,7 @@ export interface SubgraphDiscoveryTransformerOptions<
 export function filterSubgraphHandles<
   TStream extends StreamHandle = StreamHandle,
 >(
-  log: EventLog<SubgraphDiscovery>,
+  log: StreamChannel<SubgraphDiscovery>,
   path: Namespace,
   startAt = 0
 ): AsyncIterable<TStream> {

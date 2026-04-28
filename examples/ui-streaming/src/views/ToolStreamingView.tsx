@@ -10,9 +10,9 @@ import {
 import type { agent as toolStreamingAgentType } from "../agents/tool-streaming";
 import { API_URL, type Transport } from "../api";
 import { Composer } from "../components/Composer";
-import { EventLog } from "../components/EventLog";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
+import { RecentEvents } from "../components/RecentEvents";
 import { ViewShell } from "../components/ViewShell";
 import { isRecord } from "../utils";
 import { useEventTrace } from "./shared";
@@ -46,7 +46,7 @@ export function ToolStreamingView({ transport }: { transport: Transport }) {
   const toolEvents = useChannel(stream, ["tools"], undefined, {
     bufferSize: 80,
   });
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
   const progressItems = useMemo(
     () => toolEvents.flatMap(extractProgressPayload),
     [toolEvents]
@@ -122,7 +122,7 @@ export function ToolStreamingView({ transport }: { transport: Transport }) {
             </div>
           </section>
           <JsonPanel title="Tool Calls" value={toolCalls} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>

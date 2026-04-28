@@ -5,9 +5,9 @@ import { type InferStateType, useMessages, useStream } from "@langchain/react";
 import type { agent as reactAgentType } from "../agents/react-agent";
 import { API_URL, type Transport } from "../api";
 import { Composer } from "../components/Composer";
-import { EventLog } from "../components/EventLog";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
+import { RecentEvents } from "../components/RecentEvents";
 import { ViewShell } from "../components/ViewShell";
 import { useEventTrace } from "./shared";
 import { useReattachStatus } from "../hooks/useReattachStatus";
@@ -99,7 +99,7 @@ function InnerView({
   // merged `messages`-channel + `values.messages` projection.
   const messages = useMessages(stream);
 
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
 
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
   const reattachStatus = useReattachStatus(stream, {
@@ -185,7 +185,7 @@ function InnerView({
             }))}
           />
           <JsonPanel title="Current State" value={stream.values} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>

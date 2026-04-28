@@ -1,25 +1,25 @@
-import { EventLog } from "../event-log.js";
 import { hasPrefix } from "../mux.js";
+import { StreamChannel } from "../stream-channel.js";
 import type { Namespace, ProtocolEvent, StreamTransformer } from "../types.js";
 import type { ValuesTransformerProjection } from "./types.js";
 
 /**
  * Creates a {@link StreamTransformer} that captures `values` channel events
- * into an {@link EventLog}. Only events whose namespace exactly matches
- * {@link path} are recorded; events from child or sibling namespaces are
- * ignored.
+ * into a local {@link StreamChannel}. Only events whose namespace exactly
+ * matches {@link path} are recorded; events from child or sibling namespaces
+ * are ignored.
  *
  * The final snapshot is resolved by {@link StreamMux.close} directly;
  * this transformer only accumulates intermediate values.
  *
  * @param path - Namespace prefix to match against incoming events.
  * @returns A `StreamTransformer` whose projection contains the internal
- *   `_valuesLog` event log.
+ *   `_valuesLog` local channel.
  */
 export function createValuesTransformer(
   path: Namespace
 ): StreamTransformer<ValuesTransformerProjection> {
-  const valuesLog = new EventLog<Record<string, unknown>>();
+  const valuesLog = StreamChannel.local<Record<string, unknown>>();
 
   return {
     init: () => ({ _valuesLog: valuesLog }),

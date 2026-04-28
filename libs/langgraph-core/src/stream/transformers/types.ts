@@ -1,6 +1,6 @@
 import type { AgentStatus, LifecycleData } from "@langchain/protocol";
 
-import type { EventLog } from "../event-log.js";
+import type { StreamChannel } from "../stream-channel.js";
 import type { ChatModelStreamHandle, Namespace } from "../types.js";
 
 /**
@@ -14,11 +14,11 @@ export interface MessagesTransformerProjection {
 
 /**
  * The projection shape merged into a run stream by the values transformer.
- * Exposes the underlying {@link EventLog} so that `StreamMux` can resolve
- * the final output value on close.
+ * Exposes the underlying local {@link StreamChannel} so that `StreamMux` can
+ * resolve the final output value on close.
  */
 export interface ValuesTransformerProjection {
-  _valuesLog: EventLog<Record<string, unknown>>;
+  _valuesLog: StreamChannel<Record<string, unknown>>;
 }
 
 /**
@@ -96,10 +96,9 @@ export interface LifecycleTransformerOptions {
 /**
  * Projection returned from the lifecycle transformer's `init()`.
  *
- * The `EventLog` is closed automatically when the transformer
- * finalizes or fails, matching the lifetime contract of
- * {@link EventLog}. `_lifecycleLog` is intentionally underscore-
- * prefixed to signal that it is consumed by the run stream wiring
+ * The local `StreamChannel` is closed automatically when the transformer
+ * finalizes or fails. `_lifecycleLog` is intentionally underscore-prefixed to
+ * signal that it is consumed by the run stream wiring
  * (see `run-stream.ts`) and not meant for direct user access -
  * consumers should read `run.lifecycle` instead.
  *
@@ -110,6 +109,6 @@ export interface LifecycleTransformerOptions {
  * own path-scoped iterable produced by `filterLifecycleEntries`.
  */
 export interface LifecycleProjection {
-  _lifecycleLog: EventLog<LifecycleEntry>;
+  _lifecycleLog: StreamChannel<LifecycleEntry>;
   lifecycle: AsyncIterable<LifecycleEntry>;
 }

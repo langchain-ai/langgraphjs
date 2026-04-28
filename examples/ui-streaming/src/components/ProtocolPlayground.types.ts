@@ -33,7 +33,7 @@ export interface ProtocolPlaygroundProps {
   error?: unknown;
   values?: unknown;
   metadata?: unknown;
-  eventLog: TraceEntry[];
+  eventTrace: TraceEntry[];
   subagents?: SubagentCardData[];
   onSubmit: (content: string) => void;
   getMessageMetadata?: (message: BaseMessage) => unknown;

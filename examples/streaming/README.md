@@ -69,7 +69,7 @@ Shows: `StreamTransformer`, `graph.stream_v2(input, { transformers: [...] })`, `
 
 ### `parallel.ts` — Concurrent projection consumption
 
-All projections on `GraphRunStream` share the same underlying `EventLog`, so
+All projections on `GraphRunStream` share local stream channels, so
 multiple `for await` loops can run concurrently without interference. This
 example streams messages, counts state snapshots, and counts raw protocol
 events in parallel via `Promise.all`.

@@ -6,9 +6,9 @@ import type { agent as headlessAgentType } from "../agents/headless-tools";
 import { API_URL, type Transport } from "../api";
 import {
   Composer,
-  EventLog,
   JsonPanel,
   MessageFeed,
+  RecentEvents,
   ViewShell,
 } from "../components";
 import {
@@ -46,7 +46,7 @@ export function HeadlessToolsView({ transport }: { transport: Transport }) {
     },
   });
 
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
 
   async function refreshMemories() {
     if (typeof indexedDB === "undefined") return;
@@ -169,7 +169,7 @@ export function HeadlessToolsView({ transport }: { transport: Transport }) {
             </div>
           </section>
           <JsonPanel title="Current State" value={stream.values} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>

@@ -11,9 +11,9 @@ import { HumanMessage } from "langchain";
 import type { agent as nestedStateGraphType } from "../agents/nested-stategraph";
 import { API_URL, type Transport } from "../api";
 import { Composer } from "../components/Composer";
-import { EventLog } from "../components/EventLog";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
+import { RecentEvents } from "../components/RecentEvents";
 import { ViewShell } from "../components/ViewShell";
 import { formatNamespace, getSubagentPreview } from "../utils";
 import { useEventTrace } from "./shared";
@@ -36,7 +36,7 @@ export function NestedStateGraphView({ transport }: { transport: Transport }) {
     onThreadId: setThreadId,
   });
 
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
 
   const handleSubmit = useCallback(
     (content: string) => {
@@ -129,7 +129,7 @@ export function NestedStateGraphView({ transport }: { transport: Transport }) {
           </section>
 
           <JsonPanel title="Current State" value={stream.values} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>

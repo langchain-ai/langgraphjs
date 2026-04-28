@@ -6,9 +6,9 @@ import { getBranchContext } from "@langchain/langgraph-sdk/ui";
 import type { agent as branchingAgentType } from "../agents/branching-chat";
 import { API_URL, type Transport } from "../api";
 import { Composer } from "../components/Composer";
-import { EventLog } from "../components/EventLog";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
+import { RecentEvents } from "../components/RecentEvents";
 import { ViewShell } from "../components/ViewShell";
 import { toBaseMessages } from "../utils";
 import { useEventTrace } from "./shared";
@@ -48,7 +48,7 @@ export function BranchingChatView({ transport }: { transport: Transport }) {
   });
 
   const liveMessages = useMessages(stream);
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
 
   const refreshHistory = useCallback(async () => {
     if (!stream.threadId) return;
@@ -211,7 +211,7 @@ export function BranchingChatView({ transport }: { transport: Transport }) {
             }}
           />
           <JsonPanel title="Current Values" value={stream.values} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>

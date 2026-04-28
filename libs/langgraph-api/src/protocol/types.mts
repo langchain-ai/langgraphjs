@@ -147,6 +147,7 @@ export type EventSinkFilter = {
   channels: Set<string>;
   namespaces?: string[][];
   depth?: number;
+  since?: number;
 };
 
 /**

@@ -64,7 +64,7 @@ describe("Client", () => {
 
     await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain("/v2/threads/my-thread");
+    expect(calls[0]).toContain("/threads/my-thread/stream");
   });
 
   it("threads.stream forwards fetch to the sse adapter", async () => {
@@ -93,6 +93,6 @@ describe("Client", () => {
 
     await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
     expect(calls).toHaveLength(1);
-    expect(calls[0].pathname).toContain("/v2/threads/my-thread/events");
+    expect(calls[0].pathname).toContain("/threads/my-thread/stream");
   });
 });

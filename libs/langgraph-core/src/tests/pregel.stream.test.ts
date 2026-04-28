@@ -596,7 +596,7 @@ describe("stream_v2", () => {
       const createStepLogger = (): StreamTransformer<{
         steps: StreamChannel<StepLog>;
       }> => {
-        const steps = new StreamChannel<StepLog>("steps");
+        const steps = StreamChannel.remote<StepLog>("steps");
         return {
           init: () => ({ steps }),
           process: (event) => {

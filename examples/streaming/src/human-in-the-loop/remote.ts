@@ -25,8 +25,6 @@ async function main() {
       assistantId: "human-in-the-loop",
     });
 
-    const values = thread.values;
-
     await thread.run.input({
       input: {
         messages: [
@@ -39,9 +37,7 @@ async function main() {
       },
     });
 
-    console.log("Streaming state snapshots...\n");
-
-    for await (const snapshot of values) {
+    for await (const snapshot of thread.values) {
       const state = snapshot as Record<string, unknown>;
       const msgCount = (state.messages as unknown[])?.length ?? 0;
       console.log(`  State snapshot: ${msgCount} message(s)`);

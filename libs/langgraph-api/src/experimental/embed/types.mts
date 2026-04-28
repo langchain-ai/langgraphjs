@@ -79,6 +79,7 @@ export interface EmbedThread {
         channels: Set<string>;
         namespaces?: string[][];
         depth?: number;
+        since?: number;
       };
       send: (message: ProtocolEvent) => Promise<void> | void;
       pendingReplay?: boolean;

@@ -14,8 +14,8 @@ export type { ThreadSaver } from "./embed/types.mjs";
 /**
  * Create a Hono server with a subset of LangGraph Platform routes.
  *
- * Pass `upgradeWebSocket` to enable the `v2-websocket` protocol transport
- * on `GET /v2/threads/:thread_id`. Create it with `@hono/node-ws`'s
+ * Pass `upgradeWebSocket` to enable the WebSocket protocol transport
+ * on `GET /threads/:thread_id/stream`. Create it with `@hono/node-ws`'s
  * `createNodeWebSocket({ app })` and make sure to call `injectWebSocket`
  * on the underlying HTTP server.
  *

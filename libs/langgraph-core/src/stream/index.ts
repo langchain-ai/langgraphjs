@@ -5,8 +5,11 @@
  * protocol.
  */
 
-export { EventLog } from "./event-log.js";
-export { StreamChannel, isStreamChannel } from "./stream-channel.js";
+export {
+  StreamChannel,
+  StreamChannel as EventLog,
+  isStreamChannel,
+} from "./stream-channel.js";
 export { ChatModelStream as ChatModelStreamImpl } from "@langchain/core/language_models/stream";
 export {
   StreamMux,

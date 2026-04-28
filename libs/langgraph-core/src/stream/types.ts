@@ -122,15 +122,16 @@ export type InferExtensions<
  *
  * Data is surfaced to consumers through **projections** returned from
  * `init()`.  Projections are merged into `GraphRunStream.extensions` for
- * in-process consumers.  Use `EventLog<T>.toAsyncIterable()` or
- * `Promise<T>` for final values.
+ * in-process consumers.  Use {@link StreamChannel.local} for local streaming
+ * values, {@link StreamChannel.remote} for values that should also be visible
+ * to remote clients, or `Promise<T>` for final values.
  *
  * To make projection data available to **remote** clients (SDK consumers
- * over WebSocket / SSE), use {@link StreamChannel} instead of a raw
- * `EventLog`.  The {@link StreamMux} detects `StreamChannel` instances in
- * the `init()` return and auto-forwards every `push()` as a
- * {@link ProtocolEvent} on the channel's named method.  Remote clients
- * subscribe via `session.subscribe("custom:<channelName>")`.
+ * over WebSocket / SSE), create a named channel with
+ * `StreamChannel.remote(name)`.  The {@link StreamMux} detects named
+ * `StreamChannel` instances in the `init()` return and auto-forwards every
+ * `push()` as a {@link ProtocolEvent} on the channel's named method.  Remote
+ * clients subscribe via `session.subscribe("custom:<name>")`.
  *
  * `finalize` and `fail` are optional.  When a transformer uses
  * `StreamChannel`, the mux auto-closes/fails the channels on run
@@ -146,8 +147,9 @@ export interface StreamTransformer<TProjection = unknown> {
    * Called once before the run starts.
    *
    * @returns Initial projection merged into `GraphRunStream.extensions`.
-   *   Any {@link StreamChannel} instances in the return value are
-   *   automatically wired to the protocol event stream by the mux.
+   *   Any named {@link StreamChannel} instances in the return value are
+   *   automatically wired to the protocol event stream by the mux. Unnamed
+   *   channels stay in-process-only.
    */
   init(): TProjection;
 

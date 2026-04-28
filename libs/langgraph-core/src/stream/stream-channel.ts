@@ -1,18 +1,17 @@
 /**
- * StreamChannel — named projection that auto-forwards to the protocol stream.
+ * StreamChannel — projection channel for local or remote streaming.
  *
- * A `StreamChannel<T>` wraps an {@link EventLog} and declares a protocol
- * channel name.  When registered with a {@link StreamMux} (via a
+ * A `StreamChannel<T>` is an append-only async stream with independent
+ * cursors. Local channels stay in-process only. Remote channels declare a
+ * protocol channel name; when registered with a {@link StreamMux} (via a
  * transformer's `init()` return value), every {@link push} is automatically
- * forwarded as a {@link ProtocolEvent} on the named channel — making the
- * data available both in-process (via `run.extensions`) and to remote
- * clients (via `session.subscribe("custom:<channelName>")`).
+ * forwarded as a {@link ProtocolEvent} on the named channel — making the data
+ * available both in-process (via `run.extensions`) and to remote clients (via
+ * `session.subscribe("custom:<channelName>")`).
  *
  * Lifecycle (`close` / `fail`) is managed by the mux automatically;
  * transformers do not need to call them.
  */
-
-import { EventLog } from "./event-log.js";
 
 /**
  * Branded symbol placed on every {@link StreamChannel} instance.
@@ -30,10 +29,12 @@ export const STREAM_CHANNEL_BRAND: unique symbol = Symbol.for(
 ) as typeof STREAM_CHANNEL_BRAND;
 
 /**
- * A named, auto-forwarding projection channel for {@link StreamTransformer}s.
+ * A projection channel for {@link StreamTransformer}s.
  *
  * Implements `AsyncIterable<T>` so it can be iterated directly by
- * in-process consumers via `run.extensions.<key>`.
+ * in-process consumers via `run.extensions.<key>`. Channels created with
+ * {@link StreamChannel.remote} or `new StreamChannel(name)` are also
+ * auto-forwarded to remote clients.
  *
  * @typeParam T - The type of items pushed into the channel.
  */
@@ -41,14 +42,33 @@ export class StreamChannel<T> implements AsyncIterable<T> {
   /** @internal Brand used by {@link StreamChannel.isInstance}. */
   readonly [STREAM_CHANNEL_BRAND] = true as const;
 
-  /** Protocol channel name used for auto-forwarded events. */
-  readonly channelName: string;
+  /** Protocol channel name used for auto-forwarded events, if remote. */
+  readonly channelName?: string;
 
-  readonly #log = new EventLog<T>();
+  #items: T[] = [];
+  #waiters: Array<() => void> = [];
+  #done = false;
+  #error: unknown;
   #onPush?: (item: T) => void;
 
-  constructor(name: string) {
+  constructor(name?: string) {
     this.channelName = name;
+  }
+
+  /**
+   * Create an in-process-only channel.  Values remain available through
+   * `run.extensions.<key>` but are not forwarded to remote clients.
+   */
+  static local<T>(): StreamChannel<T> {
+    return new StreamChannel<T>();
+  }
+
+  /**
+   * Create a channel whose pushes are forwarded to remote clients under
+   * the given protocol channel name.
+   */
+  static remote<T>(name: string): StreamChannel<T> {
+    return new StreamChannel<T>(name);
   }
 
   /**
@@ -68,12 +88,85 @@ export class StreamChannel<T> implements AsyncIterable<T> {
   }
 
   /**
-   * Append an item to the channel.  If wired to a mux, the item is also
-   * injected into the main protocol event stream under {@link channelName}.
+   * Append an item to the channel.  If this is a remote channel wired to a
+   * mux, the item is also injected into the main protocol event stream under
+   * {@link channelName}.
    */
   push(item: T): void {
-    this.#log.push(item);
+    this.#items.push(item);
+    this.#wake();
     this.#onPush?.(item);
+  }
+
+  /**
+   * Returns an async iterator starting at position {@link startAt}. Each call
+   * returns an independent cursor so multiple consumers can iterate the same
+   * channel concurrently.
+   */
+  iterate(startAt = 0): AsyncIterator<T> {
+    let cursor = startAt;
+    return {
+      next: async (): Promise<IteratorResult<T>> => {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          if (cursor < this.#items.length) {
+            return { value: this.#items[cursor++], done: false };
+          }
+          if (this.#done) {
+            if (this.#error) throw this.#error;
+            return { value: undefined as unknown as T, done: true };
+          }
+          await new Promise<void>((resolve) => this.#waiters.push(resolve));
+        }
+      },
+    };
+  }
+
+  /**
+   * Creates an {@link AsyncIterable} backed by this channel, starting from
+   * {@link startAt}.
+   */
+  toAsyncIterable(startAt = 0): AsyncIterable<T> {
+    return {
+      [Symbol.asyncIterator]: () => this.iterate(startAt),
+    };
+  }
+
+  /**
+   * Returns the item at the given zero-based index.
+   *
+   * @throws {RangeError} If the index is out of bounds.
+   */
+  get(index: number): T {
+    if (index < 0 || index >= this.#items.length) {
+      throw new RangeError(
+        `StreamChannel index ${index} out of bounds (size=${this.#items.length})`
+      );
+    }
+    return this.#items[index];
+  }
+
+  /** The number of items currently buffered in the channel. */
+  get size(): number {
+    return this.#items.length;
+  }
+
+  /** Whether the channel has been closed or failed. */
+  get done(): boolean {
+    return this.#done;
+  }
+
+  /** Mark the channel as complete after all buffered items are consumed. */
+  close(): void {
+    this.#done = true;
+    this.#wake();
+  }
+
+  /** Mark the channel as failed after all buffered items are consumed. */
+  fail(err: unknown): void {
+    this.#error = err;
+    this.#done = true;
+    this.#wake();
   }
 
   /** @internal Called by the mux to wire auto-forwarding. */
@@ -83,16 +176,21 @@ export class StreamChannel<T> implements AsyncIterable<T> {
 
   /** @internal Called by the mux on normal completion. */
   _close(): void {
-    this.#log.close();
+    this.close();
   }
 
   /** @internal Called by the mux on failure. */
   _fail(err: unknown): void {
-    this.#log.fail(err);
+    this.fail(err);
   }
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
-    return this.#log.iterate();
+    return this.iterate();
+  }
+
+  #wake(): void {
+    const waiters = this.#waiters.splice(0);
+    for (const w of waiters) w();
   }
 }
 

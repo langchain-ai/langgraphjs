@@ -4,7 +4,7 @@
  * Uses the official `@a2a-js/sdk` types to ensure emitted events satisfy
  * `TaskStatusUpdateEvent` and `TaskArtifactUpdateEvent` shapes.
  *
- * Events are surfaced via a {@link StreamChannel} named `"a2a"`:
+ * Events are surfaced via a remote {@link StreamChannel} named `"a2a"`:
  *   - In-process consumers iterate `run.extensions.a2a` directly.
  *   - Remote SDK clients subscribe via `thread.subscribe("custom:a2a")`.
  */
@@ -21,7 +21,7 @@ type A2AStreamEvent = TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 export const createA2ATransformer = (): StreamTransformer<{
   a2a: StreamChannel<A2AStreamEvent>;
 }> => {
-  const a2a = new StreamChannel<A2AStreamEvent>("a2a");
+  const a2a = StreamChannel.remote<A2AStreamEvent>("a2a");
   let started = false;
 
   let activeNode: string | undefined;

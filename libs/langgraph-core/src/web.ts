@@ -40,8 +40,8 @@ export type {
 export type { PregelNode } from "./pregel/read.js";
 export type { Pregel } from "./pregel/index.js";
 export {
-  EventLog,
   ChatModelStreamImpl,
+  EventLog,
   StreamChannel,
   GraphRunStream,
   SubgraphRunStream,

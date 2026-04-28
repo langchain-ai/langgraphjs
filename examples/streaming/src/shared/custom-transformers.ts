@@ -9,8 +9,8 @@
  *
  *   2. Streaming updates — a `StreamChannel` that yields incremental items as
  *      events arrive.  Consumers iterate them concurrently with the main
- *      event stream.  `StreamChannel` also auto-forwards items to remote
- *      clients via the protocol `custom` channel (as `custom:<name>`).
+ *      event stream.  Use `StreamChannel.remote(name)` when those items should
+ *      also be visible to remote clients as `custom:<name>`.
  */
 
 import type {
@@ -75,14 +75,15 @@ export const statsTransformer = (): StreamTransformer<{
 /**
  * Pattern 2: Streaming updates — yields tool activity as it happens.
  *
- * `StreamChannel` acts as both the async buffer for in-process consumers and
- * the auto-forwarding mechanism for remote SDK clients.  The mux auto-closes
- * the channel when the run ends — no manual finalize/fail needed.
+ * `StreamChannel.remote()` acts as both the async buffer for in-process
+ * consumers and the auto-forwarding mechanism for remote SDK clients.  Use
+ * `StreamChannel.local()` for in-process-only projections.  The mux
+ * auto-closes the channel when the run ends — no manual finalize/fail needed.
  */
 export const toolActivityTransformer = (): StreamTransformer<{
   toolActivity: StreamChannel<{ name: string; status: string }>;
 }> => {
-  const toolActivity = new StreamChannel<{ name: string; status: string }>(
+  const toolActivity = StreamChannel.remote<{ name: string; status: string }>(
     "toolActivity"
   );
 

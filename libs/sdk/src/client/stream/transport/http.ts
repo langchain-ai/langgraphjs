@@ -45,7 +45,7 @@ function lgDebug(tag: string, ...args: unknown[]): void {
  * Transport adapter that speaks the thread-centric protocol over HTTP
  * commands plus SSE event streams. Bound to a specific `threadId`
  * at construction. Each {@link openEventStream} call opens an independent
- * filtered SSE connection via `POST /v2/threads/:thread_id/events`.
+ * filtered SSE connection via `POST /threads/:thread_id/stream`.
  */
 export class ProtocolSseTransportAdapter implements TransportAdapter {
   readonly threadId: string;
@@ -64,7 +64,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly commandsUrl: string;
 
-  private readonly eventsUrl: string;
+  private readonly streamUrl: string;
 
   private readonly sessionAbortController = new AbortController();
 
@@ -79,8 +79,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.onRequest = options.onRequest;
     this.fetchFactory = options.fetchFactory;
     this.threadId = options.threadId;
-    this.commandsUrl = `/v2/threads/${this.threadId}/commands`;
-    this.eventsUrl = `/v2/threads/${this.threadId}/events`;
+    this.commandsUrl = `/threads/${this.threadId}/commands`;
+    this.streamUrl = `/threads/${this.threadId}/stream`;
   }
 
   private async resolveFetch(): Promise<typeof fetch> {
@@ -145,7 +145,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     const ac = new AbortController();
     this.eventStreams.add(ac);
     const streamQueue = new AsyncQueue<Message>();
-    const eventsUrl = this.eventsUrl;
+    const streamUrl = this.streamUrl;
 
     let resolveReady!: () => void;
     let rejectReady!: (err: unknown) => void;
@@ -161,10 +161,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       namespaces: params.namespaces,
       depth: params.depth,
     });
+    const since = (params as SubscribeParams & { since?: unknown }).since;
 
     const startStream = async () => {
       try {
-        const response = await this.request(eventsUrl, {
+        const response = await this.request(streamUrl, {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -174,6 +175,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             channels: params.channels,
             ...(params.namespaces ? { namespaces: params.namespaces } : {}),
             ...(params.depth != null ? { depth: params.depth } : {}),
+            ...(typeof since === "number" ? { since } : {}),
           }),
           signal: ac.signal,
         });

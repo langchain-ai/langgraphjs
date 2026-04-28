@@ -98,7 +98,7 @@ describe("StreamMux", () => {
 
   it("StreamChannel auto-forwards pushes into the main event log", async () => {
     const mux = new StreamMux();
-    const channel = new StreamChannel<{ event: string }>("tools");
+    const channel = StreamChannel.remote<{ event: string }>("tools");
     const transformer: StreamTransformer = {
       init: () => ({ tools: channel }),
       process: (_event) => {
@@ -126,9 +126,35 @@ describe("StreamMux", () => {
     expect(events[1].method).toBe("messages");
   });
 
+  it("local StreamChannels are tracked but not auto-forwarded", async () => {
+    const mux = new StreamMux();
+    const channel = StreamChannel.local<{ event: string }>();
+    const transformer: StreamTransformer = {
+      init: () => ({ tools: channel }),
+      process: (_event) => {
+        if (_event.method === "messages") {
+          channel.push({ event: "tool-started" });
+        }
+        return true;
+      },
+    };
+    mux.addTransformer(transformer);
+    mux.wireChannels(transformer.init() as Record<string, unknown>);
+
+    mux.push([], makeEvent("messages", [], 0));
+    mux.close();
+
+    const events = await collect(mux._events.iterate());
+    expect(events).toHaveLength(1);
+    expect(events[0].method).toBe("messages");
+    await expect(collect(channel[Symbol.asyncIterator]())).resolves.toEqual([
+      { event: "tool-started" },
+    ]);
+  });
+
   it("StreamChannel auto-forwarded events inherit the triggering namespace", async () => {
     const mux = new StreamMux();
-    const channel = new StreamChannel<{ event: string }>("tools");
+    const channel = StreamChannel.remote<{ event: string }>("tools");
     const transformer: StreamTransformer = {
       init: () => ({ tools: channel }),
       process: (_event) => {
@@ -148,8 +174,8 @@ describe("StreamMux", () => {
 
   it("StreamChannel auto-forwarded events get sequential seq numbers", async () => {
     const mux = new StreamMux();
-    const ch1 = new StreamChannel<unknown>("tools");
-    const ch2 = new StreamChannel<unknown>("custom");
+    const ch1 = StreamChannel.remote<unknown>("tools");
+    const ch2 = StreamChannel.remote<unknown>("custom");
     const transformer: StreamTransformer = {
       init: () => ({ ch1, ch2 }),
       process: (_event) => {
@@ -180,7 +206,7 @@ describe("StreamMux", () => {
 
   it("mux auto-closes StreamChannels on close", async () => {
     const mux = new StreamMux();
-    const channel = new StreamChannel<number>("stats");
+    const channel = StreamChannel.remote<number>("stats");
     const transformer: StreamTransformer = {
       init: () => ({ stats: channel }),
       process: (_event) => {
@@ -203,7 +229,7 @@ describe("StreamMux", () => {
 
   it("mux auto-fails StreamChannels on fail", async () => {
     const mux = new StreamMux();
-    const channel = new StreamChannel<number>("stats");
+    const channel = StreamChannel.remote<number>("stats");
     const transformer: StreamTransformer = {
       init: () => ({ stats: channel }),
       process: () => true,
@@ -327,7 +353,7 @@ describe("StreamMux", () => {
 
   it("StreamChannel and Promise projections coexist in one transformer", async () => {
     const mux = new StreamMux();
-    const activity = new StreamChannel<{ event: string }>("activity");
+    const activity = StreamChannel.remote<{ event: string }>("activity");
     let resolveCount!: (value: number) => void;
     const projection = {
       activity,

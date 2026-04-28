@@ -2,9 +2,10 @@
 
 Graphs compiled with
 [`StreamTransformer`s](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/stream/types.ts)
-attach named projections that run server-side. Each projection is
-forwarded to clients on a protocol `custom:<name>` channel, and the
-SDK surfaces them as **extensions** on `ThreadStream`:
+attach projections that run server-side. Streaming projections backed by
+`StreamChannel.remote(name)` are forwarded to clients on a protocol
+`custom:<name>` channel as values arrive; final-value promises are flushed on
+run end. The SDK surfaces both as **extensions** on `ThreadStream`:
 
 ```ts
 const handle = thread.extensions.toolActivity;
@@ -18,8 +19,9 @@ A `ThreadExtension<T>` is both:
   before the run terminates.
 
 That dual shape mirrors the in-process `run.extensions.<name>` API, so
-the same consumer code works for streaming (`StreamChannel`) and
-final-value transformers without changes.
+the same consumer code works for streaming (`StreamChannel.remote`) and
+final-value transformers without changes. Use `StreamChannel.local()` for
+in-process-only extension streams that should not cross the wire.
 
 ## End-to-end type safety
 

@@ -2,8 +2,8 @@
  * StreamMux — central dispatcher with transformer pipeline.
  *
  * Routes raw stream chunks through registered StreamTransformers, then appends
- * the resulting ProtocolEvents to the main EventLog.  Also tracks namespace
- * discovery for SubgraphRunStream creation.
+ * the resulting ProtocolEvents to the main local channel.  Also tracks
+ * namespace discovery for SubgraphRunStream creation.
  *
  * lifecycle:
  *   graph.stream_v2(input)
@@ -17,9 +17,8 @@
 
 import type { StreamChunk } from "../pregel/stream.js";
 import { INTERRUPT, isInterrupted, type Interrupt } from "../constants.js";
-import { EventLog } from "./event-log.js";
 import { convertToProtocolEvent, STREAM_V2_MODES } from "./convert.js";
-import { isStreamChannel, type StreamChannel } from "./stream-channel.js";
+import { StreamChannel, isStreamChannel } from "./stream-channel.js";
 import type {
   InterruptPayload,
   Namespace,
@@ -102,10 +101,10 @@ export type SubgraphDiscovery = {
  */
 export class StreamMux {
   /** @internal All protocol events in arrival order (after reducer pipeline). */
-  readonly _events = new EventLog<ProtocolEvent>();
+  readonly _events = StreamChannel.local<ProtocolEvent>();
 
   /** @internal New-namespace discovery notifications. */
-  readonly _discoveries = new EventLog<SubgraphDiscovery>();
+  readonly _discoveries = StreamChannel.local<SubgraphDiscovery>();
 
   /** Monotonic counter for auto-forwarded channel events. */
   #nextEmitSeq = 0;
@@ -203,15 +202,15 @@ export class StreamMux {
   }
 
   /**
-   * Scans a transformer projection for streaming and final-value
-   * primitives and wires each one to auto-forward to the protocol
-   * event stream.
+   * Scans a transformer projection for streaming and final-value primitives.
+   * Remote stream channels are wired to auto-forward to the protocol event
+   * stream; local stream channels are tracked for lifecycle only.
    *
    * Two projection shapes are recognised:
    *
-   *   - {@link StreamChannel} values — each `push()` is forwarded
+   *   - {@link StreamChannel} values — named channels forward each `push()`
    *     immediately as a protocol event on the channel's declared
-   *     `channelName` method (streaming transformers).
+   *     `channelName` method. Unnamed channels remain in-process-only.
    *
    *   - `PromiseLike<unknown>` values — tracked as final-value
    *     projections and flushed on {@link close} as a single
@@ -220,8 +219,8 @@ export class StreamMux {
    *     ergonomics on remote clients via
    *     `await thread.extensions.<key>`.
    *
-   * Plain values that are neither are ignored — they remain
-   * in-process-only, matching prior behaviour.
+   * Plain values that are neither are ignored — they remain in-process-only,
+   * matching prior behaviour.
    *
    * @param projection - The object returned by `transformer.init()`.
    */
@@ -229,6 +228,9 @@ export class StreamMux {
     for (const [key, value] of Object.entries(projection)) {
       if (isStreamChannel(value)) {
         this.#channels.push(value);
+        if (typeof value.channelName !== "string") {
+          continue;
+        }
         value._wire((item: unknown) => {
           this._events.push({
             type: "event",

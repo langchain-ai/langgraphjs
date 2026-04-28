@@ -5,6 +5,115 @@ import {
   StreamChannel,
   isStreamChannel,
 } from "./stream-channel.js";
+import { collectIterator as collect } from "./test-utils.js";
+
+describe("StreamChannel", () => {
+  it("creates local-only channels without a protocol name", () => {
+    const channel = StreamChannel.local<number>();
+    expect(channel.channelName).toBeUndefined();
+  });
+
+  it("creates remote channels with a protocol name", () => {
+    const channel = StreamChannel.remote<number>("timeline");
+    expect(channel.channelName).toBe("timeline");
+  });
+
+  it("preserves constructor compatibility for local and remote channels", () => {
+    expect(new StreamChannel<number>().channelName).toBeUndefined();
+    expect(new StreamChannel<number>("timeline").channelName).toBe("timeline");
+  });
+
+  it("iterates pushed values independently for each consumer", async () => {
+    const channel = StreamChannel.local<number>();
+    channel.push(1);
+    channel.push(2);
+    channel._close();
+
+    await expect(collect(channel[Symbol.asyncIterator]())).resolves.toEqual([
+      1, 2,
+    ]);
+    await expect(collect(channel[Symbol.asyncIterator]())).resolves.toEqual([
+      1, 2,
+    ]);
+  });
+
+  it("propagates failure to iterators after buffered values", async () => {
+    const channel = StreamChannel.local<number>();
+    const error = new Error("boom");
+    channel.push(1);
+    channel._fail(error);
+
+    const iter = channel[Symbol.asyncIterator]();
+    await expect(iter.next()).resolves.toEqual({ value: 1, done: false });
+    await expect(iter.next()).rejects.toThrow("boom");
+  });
+
+  it("supports cursors that start at a specific position", async () => {
+    const channel = StreamChannel.local<number>();
+    channel.push(10);
+    channel.push(20);
+    channel.push(30);
+    channel.close();
+
+    await expect(collect(channel.iterate(2))).resolves.toEqual([30]);
+    await expect(collect(channel.iterate(3))).resolves.toEqual([]);
+  });
+
+  it("toAsyncIterable returns independent iterables", async () => {
+    const channel = StreamChannel.local<string>();
+    channel.push("a");
+    channel.push("b");
+    channel.close();
+
+    const iterable = channel.toAsyncIterable();
+    const first: string[] = [];
+    const second: string[] = [];
+
+    for await (const item of iterable) first.push(item);
+    for await (const item of iterable) second.push(item);
+
+    expect(first).toEqual(["a", "b"]);
+    expect(second).toEqual(["a", "b"]);
+  });
+
+  it("delivers items pushed after iteration starts", async () => {
+    const channel = StreamChannel.local<number>();
+    const iter = channel.iterate();
+    const firstPromise = iter.next();
+
+    channel.push(42);
+    await expect(firstPromise).resolves.toEqual({ value: 42, done: false });
+
+    channel.push(43);
+    channel.close();
+    await expect(collect(iter)).resolves.toEqual([43]);
+  });
+
+  it("exposes buffered size, done state, and indexed access", () => {
+    const channel = StreamChannel.local<string>();
+    expect(channel.size).toBe(0);
+    expect(channel.done).toBe(false);
+
+    channel.push("a");
+    channel.push("b");
+
+    expect(channel.size).toBe(2);
+    expect(channel.get(0)).toBe("a");
+    expect(channel.get(1)).toBe("b");
+
+    channel.close();
+    expect(channel.done).toBe(true);
+  });
+
+  it("throws for out-of-bounds indexed access", () => {
+    const channel = StreamChannel.local<number>();
+    channel.push(1);
+
+    expect(() => channel.get(-1)).toThrow(RangeError);
+    expect(() => channel.get(1)).toThrow(RangeError);
+    expect(() => StreamChannel.local<number>().get(0)).toThrow(RangeError);
+  });
+});
 
 describe("StreamChannel.isInstance", () => {
   it("recognises real instances", () => {
@@ -28,8 +137,8 @@ describe("StreamChannel.isInstance", () => {
     // but the shared `Symbol.for` brand still identifies it.
     class DuplicateStreamChannel<T> {
       readonly [STREAM_CHANNEL_BRAND] = true as const;
-      readonly channelName: string;
-      constructor(name: string) {
+      readonly channelName?: string;
+      constructor(name?: string) {
         this.channelName = name;
       }
       push(_item: T): void {}

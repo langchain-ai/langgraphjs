@@ -10,7 +10,7 @@
  * stashes any `cause` attached upstream and re-emits its own
  * authoritative `lifecycle.started` with the correlation in place.
  *
- * Events are also pushed to a local {@link EventLog} so in-process
+ * Events are also pushed to a local {@link StreamChannel} so in-process
  * consumers can iterate `run.lifecycle` without filtering the main
  * event stream.
  */
@@ -21,8 +21,8 @@ import type {
   LifecycleData,
 } from "@langchain/protocol";
 
-import { EventLog } from "../event-log.js";
 import { hasPrefix, nsKey } from "../mux.js";
+import { StreamChannel } from "../stream-channel.js";
 import type {
   NativeStreamTransformer,
   Namespace,
@@ -36,7 +36,7 @@ import type {
 } from "./types.js";
 
 /**
- * Filter a lifecycle {@link EventLog} to only the entries whose
+ * Filter a lifecycle {@link StreamChannel} to only the entries whose
  * namespace lies within the subtree rooted at {@link path}.
  *
  * Returns an `AsyncIterable` whose iterator yields every entry whose
@@ -53,7 +53,7 @@ import type {
  * @returns An async iterable of matching lifecycle entries.
  */
 export function filterLifecycleEntries(
-  log: EventLog<LifecycleEntry>,
+  log: StreamChannel<LifecycleEntry>,
   path: Namespace,
   startAt = 0
 ): AsyncIterable<LifecycleEntry> {
@@ -171,7 +171,7 @@ export function createLifecycleTransformer(
   const serializeError = options.serializeError ?? defaultSerializeError;
   const getTerminalStatusOverride = options.getTerminalStatusOverride;
 
-  const log = new EventLog<LifecycleEntry>();
+  const log = StreamChannel.local<LifecycleEntry>();
   const namespaces = new Map<string, NamespaceRecord>();
   const namespaceCause = new Map<string, LifecycleCause>();
   const pendingInterruptIds = new Set<string>();

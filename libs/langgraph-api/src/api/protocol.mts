@@ -18,6 +18,7 @@ const EventsFilterSchema = z
     channels: z.array(z.string()),
     namespaces: z.array(z.array(z.string())).optional(),
     depth: z.number().int().nonnegative().optional(),
+    since: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -57,7 +58,7 @@ export default function createProtocolApi(
   });
 
   api.get(
-    "/v2/threads/:thread_id",
+    "/threads/:thread_id/stream",
     zValidator("param", ThreadIdSchema),
     upgradeWebSocket((c: any) => {
       const { thread_id } = c.req.valid("param");
@@ -133,7 +134,7 @@ export default function createProtocolApi(
   );
 
   api.post(
-    "/v2/threads/:thread_id/commands",
+    "/threads/:thread_id/commands",
     zValidator("param", ThreadIdSchema),
     zValidator("json", ProtocolCommandSchema),
     async (c) => {
@@ -152,7 +153,7 @@ export default function createProtocolApi(
   );
 
   api.post(
-    "/v2/threads/:thread_id/events",
+    "/threads/:thread_id/stream",
     zValidator("param", ThreadIdSchema),
     zValidator("json", EventsFilterSchema),
     async (c) => {
@@ -169,6 +170,7 @@ export default function createProtocolApi(
         channels: new Set(body.channels),
         namespaces: body.namespaces,
         depth: body.depth,
+        since: body.since,
       };
 
       return streamSSE(c, async (stream) => {

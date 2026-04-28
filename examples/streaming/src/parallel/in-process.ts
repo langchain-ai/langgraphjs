@@ -1,7 +1,7 @@
 /**
  * Parallel consumption — messages, values, and raw events concurrently.
  *
- * All projections on GraphRunStream read from the same underlying EventLog.
+ * All projections on GraphRunStream read from shared local stream channels.
  * Multiple `for await` loops can run simultaneously without interfering.
  *
  * Run:

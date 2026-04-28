@@ -4,7 +4,7 @@
  * cursor starting at position 0, so late consumers still see all
  * previously buffered items.
  *
- * Mirrors the in-process `EventLog` pattern used by `GraphRunStream`.
+ * Mirrors the in-process multi-cursor buffering used by `GraphRunStream`.
  */
 export class MultiCursorBuffer<T> implements AsyncIterable<T> {
   readonly #items: T[] = [];

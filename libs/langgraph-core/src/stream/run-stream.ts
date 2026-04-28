@@ -19,7 +19,6 @@
  */
 
 import type { StreamChunk } from "../pregel/stream.js";
-import { EventLog } from "./event-log.js";
 import {
   createLifecycleTransformer,
   createMessagesTransformer,
@@ -40,6 +39,7 @@ import {
   type ProtocolEvent,
   type StreamTransformer,
 } from "./types.js";
+import type { StreamChannel } from "./stream-channel.js";
 
 /**
  * Symbol key for attaching the values log to a stream handle.
@@ -132,7 +132,7 @@ export class GraphRunStream<
   #rejectValuesFn?: (e: unknown) => void;
   readonly #valuesDone: Promise<TValues>;
 
-  #valuesLog?: EventLog<Record<string, unknown>>;
+  #valuesLog?: StreamChannel<Record<string, unknown>>;
   #messagesIterable?: AsyncIterable<ChatModelStreamHandle>;
   #lifecycleIterable?: AsyncIterable<LifecycleEntry>;
   #subgraphsIterable?: AsyncIterable<SubgraphRunStream>;
@@ -384,7 +384,7 @@ export class GraphRunStream<
    * @param log - The event log from the values transformer projection.
    * @internal
    */
-  [SET_VALUES_LOG](log: EventLog<Record<string, unknown>>): void {
+  [SET_VALUES_LOG](log: StreamChannel<Record<string, unknown>>): void {
     this.#valuesLog = log;
   }
 

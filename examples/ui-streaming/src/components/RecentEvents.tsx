@@ -1,23 +1,23 @@
 import type { TraceEntry } from "./ProtocolPlayground.types";
 import { safeStringify } from "../utils";
 
-interface EventLogProps {
-  eventLog: TraceEntry[];
+interface RecentEventsProps {
+  events: TraceEntry[];
 }
 
-export function EventLog({ eventLog }: EventLogProps) {
+export function RecentEvents({ events }: RecentEventsProps) {
   return (
     <section className="panel-card">
       <div className="panel-card-header">
         <h3>Recent Events</h3>
       </div>
-      {eventLog.length === 0 ? (
+      {events.length === 0 ? (
         <div className="empty-panel">
           Tool and update events will appear here.
         </div>
       ) : (
         <div className="trace-list">
-          {eventLog.map((entry) => (
+          {events.map((entry) => (
             <details key={entry.id} className="trace-item">
               <summary>
                 <span className="trace-time">{entry.timestamp}</span>

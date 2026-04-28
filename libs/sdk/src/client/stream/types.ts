@@ -189,9 +189,9 @@ export interface InterruptPayload<TPayload = unknown> {
  * Remote counterpart of an in-process `run.extensions.<name>` projection.
  *
  * Each extension is the client-side view of a compile-time
- * {@link StreamTransformer} projection. The server auto-forwards
- * transformer outputs on the `custom:<name>` channel, and this handle
- * exposes them via two dual interfaces:
+ * {@link StreamTransformer} projection. The server auto-forwards named
+ * `StreamChannel.remote(name)` outputs on the `custom:<name>` channel, and
+ * this handle exposes them via two dual interfaces:
  *
  *  - `AsyncIterable<T>` — iterate every item pushed by a streaming
  *    transformer (e.g. a `StreamChannel`).

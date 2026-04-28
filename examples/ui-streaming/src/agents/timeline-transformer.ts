@@ -1,6 +1,6 @@
 /**
  * Timeline stream transformer — projects raw protocol events onto a
- * curated {@link StreamChannel} named `"timeline"`.
+ * curated remote {@link StreamChannel} named `"timeline"`.
  *
  * The point of this example is to show that a single custom stream
  * channel is enough to power a rich, typed UI. The browser never has
@@ -113,14 +113,14 @@ const preview = (value: unknown, max = MAX_PREVIEW): string => {
 };
 
 /**
- * Creates a {@link StreamTransformer} that exposes a single `timeline`
+ * Creates a {@link StreamTransformer} that exposes a single remote `timeline`
  * {@link StreamChannel}. Plug into `createAgent({ streamTransformers })`
  * or `.compile({ transformers: [...] })`.
  */
 export const createTimelineTransformer = (): StreamTransformer<{
   timeline: StreamChannel<TimelineEvent>;
 }> => {
-  const timeline = new StreamChannel<TimelineEvent>("timeline");
+  const timeline = StreamChannel.remote<TimelineEvent>("timeline");
 
   const startedAt = Date.now();
   const toolStartedAt = new Map<
@@ -141,7 +141,7 @@ export const createTimelineTransformer = (): StreamTransformer<{
     process(event: ProtocolEvent): boolean {
       // The mux wires the channel AFTER `init()` returns, so we can't
       // push from the factory body or `init()` — those pushes land in
-      // the in-process `EventLog` only and never reach remote
+      // the in-process channel only and never reach remote
       // subscribers. Emit `run-started` on the first event instead,
       // which is guaranteed to run after wiring is in place.
       if (!runStartedEmitted) {

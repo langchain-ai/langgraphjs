@@ -7,10 +7,10 @@ import type { agent as hitlAgentType } from "../agents/human-in-the-loop";
 import { API_URL, type Transport } from "../api";
 import {
   Composer,
-  EventLog,
   HumanReviewPanel,
   JsonPanel,
   MessageFeed,
+  RecentEvents,
   ViewShell,
 } from "../components";
 import { toCamelCaseKeys } from "../utils";
@@ -37,7 +37,7 @@ export function HumanInTheLoopView({ transport }: { transport: Transport }) {
     onThreadId: setThreadId,
   });
 
-  const eventLog = useEventTrace(stream);
+  const eventTrace = useEventTrace(stream);
 
   const hitlRequest =
     stream.interrupt?.value != null
@@ -134,7 +134,7 @@ export function HumanInTheLoopView({ transport }: { transport: Transport }) {
         <aside className="sidebar-stack">
           <JsonPanel title="Interrupt Payload" value={stream.interrupt} />
           <JsonPanel title="Current State" value={stream.values} />
-          <EventLog eventLog={eventLog} />
+          <RecentEvents events={eventTrace} />
         </aside>
       </div>
     </ViewShell>
