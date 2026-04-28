@@ -363,6 +363,28 @@ describe("CustomStreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("does not reuse the initial messages array for stream values", async () => {
+      const historyMessage = { id: "m1", content: "hello", type: "human" };
+      const initialMessages = [historyMessage];
+      const transport = createMockTransport([]);
+
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+          initialValues: { messages: initialMessages },
+        })
+      );
+
+      await orch.submit({ messages: [] });
+
+      expect(orch.values.messages).toEqual(initialMessages);
+      expect(orch.values.messages).not.toBe(initialMessages);
+      expect(orch.values.messages[0]).toBe(historyMessage);
+
+      orch.dispose();
+    });
   });
 
   describe("subagents", () => {

@@ -419,6 +419,15 @@ export class StreamOrchestrator<
     return { ...current, [messagesKey]: messages };
   }
 
+  #copyMessagesArray(value: StateType): StateType {
+    const messagesKey = this.#accessors.getMessagesKey();
+    const messages = (value as Record<string, unknown>)[messagesKey];
+
+    if (!Array.isArray(messages)) return value;
+
+    return { ...value, [messagesKey]: messages.slice() };
+  }
+
   /**
    * The state values from the thread head of the current branch history,
    * falling back to {@link AnyStreamOptions.initialValues | initialValues}
@@ -953,6 +962,7 @@ export class StreamOrchestrator<
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
+    const initialValues = this.#copyMessagesArray(this.historyValues);
 
     return this.stream.start(
       async (signal) => {
@@ -983,7 +993,10 @@ export class StreamOrchestrator<
         ]);
 
         this.stream.setStreamValues(() => {
-          const prev = { ...this.historyValues, ...this.stream.values };
+          const prev = this.#copyMessagesArray({
+            ...initialValues,
+            ...this.stream.values,
+          });
 
           if (submitOptions?.optimisticValues != null) {
             return {
@@ -1043,7 +1056,7 @@ export class StreamOrchestrator<
         getMessages: (value: StateType) => this.#getMessages(value),
         setMessages: (current: StateType, messages: Message[]) =>
           this.#setMessages(current, messages),
-        initialValues: this.historyValues,
+        initialValues,
         callbacks: this.#options,
 
         onSuccess: async () => {

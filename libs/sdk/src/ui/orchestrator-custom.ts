@@ -186,6 +186,15 @@ export class CustomStreamOrchestrator<
     return { ...current, [messagesKey]: messages };
   };
 
+  #copyMessagesArray = (value: StateType): StateType => {
+    const messagesKey = this.#options.messagesKey ?? "messages";
+    const messages = (value as Record<string, unknown>)[messagesKey];
+
+    if (!Array.isArray(messages)) return value;
+
+    return { ...value, [messagesKey]: messages.slice() };
+  };
+
   /**
    * The current stream state values, falling back to an empty object
    * when no stream values are available.
@@ -421,17 +430,19 @@ export class CustomStreamOrchestrator<
 
     let usableThreadId = this.#threadId ?? submitOptions?.threadId;
 
+    const initialValues = this.#copyMessagesArray(this.#historyValues);
+
     this.stream.setStreamValues(() => {
       if (submitOptions?.optimisticValues != null) {
         return {
-          ...this.#historyValues,
+          ...initialValues,
           ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(this.#historyValues)
+            ? submitOptions.optimisticValues(initialValues)
             : submitOptions.optimisticValues),
         };
       }
 
-      return { ...this.#historyValues };
+      return initialValues;
     });
 
     await this.stream.start(
