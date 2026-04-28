@@ -204,7 +204,7 @@ function tryParseWavHeader(bytes: Uint8Array): WavHeaderResult {
       bytes[offset]!,
       bytes[offset + 1]!,
       bytes[offset + 2]!,
-      bytes[offset + 3]!,
+      bytes[offset + 3]!
     );
     const size = view.getUint32(offset + 4, true);
     const payloadStart = offset + 8;
@@ -276,7 +276,7 @@ function resolveAudioContextCtor(): typeof AudioContext | undefined {
 function detectStrategy(
   mimeType: string | undefined,
   override: UseAudioPlayerOptions["strategy"],
-  pcmPrefixes: readonly string[] | undefined,
+  pcmPrefixes: readonly string[] | undefined
 ): "pcm" | "element" {
   if (override === "pcm" || override === "element") return override;
   const m = mimeType ?? "";
@@ -312,7 +312,7 @@ function unwrap<T>(input: ValueOrGetter<T>): T {
  */
 export function useAudioPlayer(
   media: ValueOrGetter<AudioMedia | undefined>,
-  options?: UseAudioPlayerOptions,
+  options?: UseAudioPlayerOptions
 ): AudioPlayerHandle {
   const sampleRate = options?.pcm?.sampleRate ?? DEFAULT_SAMPLE_RATE;
   const channels = options?.pcm?.channels ?? DEFAULT_CHANNELS;
@@ -463,12 +463,12 @@ export function useAudioPlayer(
     const buffer = context.createBuffer(
       bufChannels,
       framesPerChannel,
-      bufSampleRate,
+      bufSampleRate
     );
     const view = new DataView(
       bytes.buffer,
       bytes.byteOffset,
-      framesPerChannel * bufChannels * 2,
+      framesPerChannel * bufChannels * 2
     );
     for (let channel = 0; channel < bufChannels; channel += 1) {
       const channelData = buffer.getChannelData(channel);
@@ -686,7 +686,7 @@ export function useAudioPlayer(
       format = null;
     } else {
       error = new Error(
-        `useAudioPlayer: forced PCM strategy for unsupported mime ${JSON.stringify(mimeType)}`,
+        `useAudioPlayer: forced PCM strategy for unsupported mime ${JSON.stringify(mimeType)}`
       );
       status = "error";
       return () => {};
@@ -712,7 +712,7 @@ export function useAudioPlayer(
       if (result.status === "invalid") {
         wavHeaderFailed = true;
         error = new Error(
-          `useAudioPlayer: invalid WAV stream: ${result.reason}`,
+          `useAudioPlayer: invalid WAV stream: ${result.reason}`
         );
         status = "error";
         return;
@@ -825,7 +825,7 @@ export function useAudioPlayer(
           error = new Error("media failed to materialise");
           status = "error";
         }
-      },
+      }
     );
 
     return () => {

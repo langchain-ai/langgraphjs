@@ -87,7 +87,7 @@ function namespaceKey(namespace: readonly string[]): string {
  */
 function normalizeTarget(
   target: SelectorTarget | Signal<SelectorTarget>,
-  prefix: string,
+  prefix: string
 ): {
   namespace: Signal<readonly string[]>;
   key: Signal<string>;
@@ -95,7 +95,7 @@ function normalizeTarget(
 } {
   if (isSignal(target)) {
     const namespace = computed(() =>
-      resolveNamespace((target as Signal<SelectorTarget>)()),
+      resolveNamespace((target as Signal<SelectorTarget>)())
     );
     const key = computed(() => `${prefix}|${namespaceKey(namespace())}`);
     const isRootSignal = computed(() => isRoot(namespace()));
@@ -127,20 +127,20 @@ function normalizeTarget(
  */
 export function injectMessages(
   stream: AnyStream,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<BaseMessage[]> {
   const { namespace, key, isRootSignal } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    "messages",
+    "messages"
   );
   const registry = computed(() =>
-    isRootSignal() ? null : getRegistry(stream),
+    isRootSignal() ? null : getRegistry(stream)
   );
   const scoped = injectProjection<BaseMessage[]>(
     registry,
     () => messagesProjection(namespace()),
     key,
-    EMPTY_MESSAGES,
+    EMPTY_MESSAGES
   );
   return computed(() => (isRootSignal() ? stream.messages() : scoped()));
 }
@@ -154,20 +154,20 @@ const EMPTY_MESSAGES: BaseMessage[] = [];
  */
 export function injectToolCalls(
   stream: AnyStream,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<AssembledToolCall[]> {
   const { namespace, key, isRootSignal } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    "toolCalls",
+    "toolCalls"
   );
   const registry = computed(() =>
-    isRootSignal() ? null : getRegistry(stream),
+    isRootSignal() ? null : getRegistry(stream)
   );
   const scoped = injectProjection<AssembledToolCall[]>(
     registry,
     () => toolCallsProjection(namespace()),
     key,
-    EMPTY_TOOLCALLS,
+    EMPTY_TOOLCALLS
   );
   return computed(() => (isRootSignal() ? stream.toolCalls() : scoped()));
 }
@@ -189,32 +189,32 @@ const EMPTY_TOOLCALLS: AssembledToolCall[] = [];
  *    Defaults to `unknown` when not annotated.
  */
 export function injectValues<StateType extends object>(
-  stream: StreamHandle<StateType>,
+  stream: StreamHandle<StateType>
 ): Signal<StateType>;
 export function injectValues<T>(stream: AnyStream): Signal<InferStateType<T>>;
 export function injectValues<T = unknown>(
   stream: AnyStream,
   target: SelectorTarget | Signal<SelectorTarget>,
-  options?: { messagesKey?: string },
+  options?: { messagesKey?: string }
 ): Signal<T | undefined>;
 export function injectValues(
   stream: AnyStream,
   target?: SelectorTarget | Signal<SelectorTarget>,
-  options?: { messagesKey?: string },
+  options?: { messagesKey?: string }
 ): Signal<unknown> {
   const messagesKey = options?.messagesKey ?? "messages";
   const { namespace, key, isRootSignal } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    `values|${messagesKey}`,
+    `values|${messagesKey}`
   );
   const registry = computed(() =>
-    isRootSignal() ? null : getRegistry(stream),
+    isRootSignal() ? null : getRegistry(stream)
   );
   const scoped = injectProjection<unknown>(
     registry,
     () => valuesProjection<unknown>(namespace(), messagesKey),
     key,
-    undefined,
+    undefined
   );
   return computed(() => (isRootSignal() ? stream.values() : scoped()));
 }
@@ -226,17 +226,17 @@ export function injectValues(
 export function injectExtension<T = unknown>(
   stream: AnyStream,
   name: string,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<T | undefined> {
   const { namespace, key } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    `extension|${name}`,
+    `extension|${name}`
   );
   return injectProjection<T | undefined>(
     getRegistry(stream),
     () => extensionProjection<T>(name, namespace()),
     key,
-    undefined,
+    undefined
   );
 }
 
@@ -250,19 +250,19 @@ export function injectChannel(
   stream: AnyStream,
   channels: readonly Channel[],
   target?: SelectorTarget | Signal<SelectorTarget>,
-  options?: { bufferSize?: number },
+  options?: { bufferSize?: number }
 ): Signal<Event[]> {
   const sortedChannels = [...channels].sort().join(",");
   const prefix = `channel|${options?.bufferSize ?? "default"}|${sortedChannels}`;
   const { namespace, key } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    prefix,
+    prefix
   );
   return injectProjection<Event[]>(
     getRegistry(stream),
     () => channelProjection(channels, namespace(), options),
     key,
-    EMPTY_EVENTS,
+    EMPTY_EVENTS
   );
 }
 
@@ -279,17 +279,17 @@ const EMPTY_EVENTS: Event[] = [];
  */
 export function injectAudio(
   stream: AnyStream,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<AudioMedia[]> {
   const { namespace, key } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    "audio",
+    "audio"
   );
   return injectProjection<AudioMedia[]>(
     getRegistry(stream),
     () => audioProjection(namespace()),
     key,
-    EMPTY_AUDIO,
+    EMPTY_AUDIO
   );
 }
 
@@ -301,17 +301,17 @@ const EMPTY_AUDIO: AudioMedia[] = [];
  */
 export function injectImages(
   stream: AnyStream,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<ImageMedia[]> {
   const { namespace, key } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    "images",
+    "images"
   );
   return injectProjection<ImageMedia[]>(
     getRegistry(stream),
     () => imagesProjection(namespace()),
     key,
-    EMPTY_IMAGES,
+    EMPTY_IMAGES
   );
 }
 
@@ -323,17 +323,17 @@ const EMPTY_IMAGES: ImageMedia[] = [];
  */
 export function injectVideo(
   stream: AnyStream,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<VideoMedia[]> {
   const { namespace, key } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    "video",
+    "video"
   );
   return injectProjection<VideoMedia[]>(
     getRegistry(stream),
     () => videoProjection(namespace()),
     key,
-    EMPTY_VIDEO,
+    EMPTY_VIDEO
   );
 }
 
@@ -345,17 +345,17 @@ const EMPTY_VIDEO: VideoMedia[] = [];
  */
 export function injectFiles(
   stream: AnyStream,
-  target?: SelectorTarget | Signal<SelectorTarget>,
+  target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<FileMedia[]> {
   const { namespace, key } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
-    "files",
+    "files"
   );
   return injectProjection<FileMedia[]>(
     getRegistry(stream),
     () => filesProjection(namespace()),
     key,
-    EMPTY_FILES,
+    EMPTY_FILES
   );
 }
 

@@ -308,8 +308,10 @@ class MediaHandleImpl {
     // the union, defeating TS's discriminated-union narrowing. Cast
     // after the runtime tag check.
     if (block.type === "audio") this.#absorbAudio(block as AudioContentBlock);
-    else if (block.type === "image") this.#absorbImage(block as ImageContentBlock);
-    else if (block.type === "video") this.#absorbVideo(block as VideoContentBlock);
+    else if (block.type === "image")
+      this.#absorbImage(block as ImageContentBlock);
+    else if (block.type === "video")
+      this.#absorbVideo(block as VideoContentBlock);
     else if (block.type === "file") this.#absorbFile(block as FileContentBlock);
   }
 
@@ -730,8 +732,7 @@ export class MediaAssembler {
       return;
     }
 
-    const block = (data as { content?: ContentBlock; index?: number })
-      .content;
+    const block = (data as { content?: ContentBlock; index?: number }).content;
     const blockIndex = (data as { index?: number }).index ?? 0;
     if (block == null) return;
     const blockType = block.type;

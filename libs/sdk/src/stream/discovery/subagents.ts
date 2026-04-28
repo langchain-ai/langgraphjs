@@ -15,11 +15,7 @@
  * The runner is fed events by the {@link StreamController}'s root
  * subscription; it does not open subscriptions of its own.
  */
-import type {
-  Event,
-  ToolsEvent,
-  ValuesEvent,
-} from "@langchain/protocol";
+import type { Event, ToolsEvent, ValuesEvent } from "@langchain/protocol";
 import { StreamStore } from "../store.js";
 import type { SubagentDiscoverySnapshot } from "../types.js";
 
@@ -110,7 +106,11 @@ export class SubagentDiscovery {
     for (const message of messages) {
       for (const toolCall of getTaskToolCalls(message)) {
         const before = this.#map.get(toolCall.id);
-        this.#upsertTaskToolCall(toolCall.id, toolCall.input, event.params.namespace);
+        this.#upsertTaskToolCall(
+          toolCall.id,
+          toolCall.input,
+          event.params.namespace
+        );
         if (this.#map.get(toolCall.id) !== before) changed = true;
       }
     }
@@ -210,7 +210,11 @@ function getTaskToolCalls(message: unknown): Array<{
   id: string;
   input: { description?: string; subagent_type?: string };
 }> {
-  if (message == null || typeof message !== "object" || Array.isArray(message)) {
+  if (
+    message == null ||
+    typeof message !== "object" ||
+    Array.isArray(message)
+  ) {
     return [];
   }
   const toolCalls = (message as { tool_calls?: unknown }).tool_calls;
@@ -221,7 +225,11 @@ function getTaskToolCalls(message: unknown): Array<{
     input: { description?: string; subagent_type?: string };
   }> = [];
   for (const toolCall of toolCalls) {
-    if (toolCall == null || typeof toolCall !== "object" || Array.isArray(toolCall)) {
+    if (
+      toolCall == null ||
+      typeof toolCall !== "object" ||
+      Array.isArray(toolCall)
+    ) {
       continue;
     }
     const record = toolCall as {

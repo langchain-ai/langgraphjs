@@ -72,7 +72,7 @@ export function useProjection<T>(
   registry: ValueOrGetter<ChannelRegistry | null | undefined>,
   specFactory: () => ProjectionSpec<T>,
   key: ValueOrGetter<string>,
-  initialValue: T,
+  initialValue: T
 ): ReactiveValue<T> {
   let snapshot = $state<T>(initialValue);
 

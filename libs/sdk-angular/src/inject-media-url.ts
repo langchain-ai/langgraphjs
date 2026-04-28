@@ -34,7 +34,7 @@ import type { MediaBase } from "@langchain/langgraph-sdk/stream";
  * so callers can feed a `computed(() => stream.audio()[0])`.
  */
 export function injectMediaUrl(
-  media: MediaBase | undefined | Signal<MediaBase | undefined>,
+  media: MediaBase | undefined | Signal<MediaBase | undefined>
 ): Signal<string | undefined> {
   const url = signal<string | undefined>(undefined);
 
@@ -57,7 +57,7 @@ export function injectMediaUrl(
         () => {
           // Errors surfaced via `media.error`; keep `url` undefined
           // so consumers fall through to a no-src render.
-        },
+        }
       );
 
       onCleanup(() => {

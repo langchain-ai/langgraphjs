@@ -30,7 +30,7 @@ import type { MediaBase } from "@langchain/langgraph-sdk/stream";
  * media without a manual watcher at the call site.
  */
 export function useMediaURL(
-  media: MaybeRefOrGetter<MediaBase | undefined>,
+  media: MaybeRefOrGetter<MediaBase | undefined>
 ): Readonly<Ref<string | undefined>> {
   const url = ref<string | undefined>();
 
@@ -64,10 +64,10 @@ export function useMediaURL(
         () => {
           // Errors surfaced via `media.error`; keep `url` undefined
           // so consumers fall through to a no-src render.
-        },
+        }
       );
     },
-    { immediate: true },
+    { immediate: true }
   );
 
   onScopeDispose(detach);

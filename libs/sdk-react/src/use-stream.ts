@@ -50,9 +50,10 @@ import {
  * type Plain = StateOf<{ foo: string }>; // { foo: string }
  * ```
  */
-export type StateOf<T> = InferStateType<T> extends Record<string, unknown>
-  ? InferStateType<T>
-  : Record<string, unknown>;
+export type StateOf<T> =
+  InferStateType<T> extends Record<string, unknown>
+    ? InferStateType<T>
+    : Record<string, unknown>;
 
 /**
  * Options common to both the default LangGraph-Platform code path and
@@ -87,8 +88,9 @@ interface UseStreamCommonOptions<StateType extends object> {
  * construction. Discriminated against {@link CustomAdapterOptions}
  * by `transport` being absent or a string.
  */
-export interface AgentServerOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface AgentServerOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   assistantId: string;
   client?: Client;
   apiUrl?: string;
@@ -109,8 +111,9 @@ export interface AgentServerOptions<StateType extends object>
  * Python agent, a mock in tests). Discriminated against
  * {@link AgentServerOptions} by `transport` being an adapter instance.
  */
-export interface CustomAdapterOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface CustomAdapterOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   /**
    * Custom {@link AgentServerAdapter} used for every command and
    * subscription. Replaces the built-in `sse`/`websocket` factories
@@ -428,9 +431,7 @@ export function useStream<
         threadId: options.threadId ?? null,
         transport,
         fetch: hasCustomAdapter ? undefined : asBag.fetch,
-        webSocketFactory: hasCustomAdapter
-          ? undefined
-          : asBag.webSocketFactory,
+        webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
         onThreadId: options.onThreadId,
         onCreated: options.onCreated,
         initialValues: options.initialValues,
@@ -558,51 +559,45 @@ export function useStream<
     controller.subgraphByNodeStore.getSnapshot
   );
 
-  return useMemo<
-    UseStreamReturn<T, InterruptType, ConfigurableType>
-  >(
-    () => {
-      const userFacingInterrupts = filterOutHeadlessToolInterrupts(
-        root.interrupts
-      );
-      return ({
-        values: root.values,
-        messages: root.messages,
-        toolCalls: root.toolCalls,
-        interrupts: userFacingInterrupts,
-        interrupt: userFacingInterrupts[0],
-        isLoading: root.isLoading,
-        isThreadLoading: root.isThreadLoading,
-        hydrationPromise: controller.hydrationPromise,
-        error: root.error,
-        threadId: root.threadId,
-        subagents: subagents as UseStreamReturn<
-          T,
-          InterruptType,
-          ConfigurableType
-        >["subagents"],
-        subgraphs,
-        subgraphsByNode,
-        submit: (input, submitOptions) =>
-          controller.submit(input, submitOptions),
-        stop: () => controller.stop(),
-        respond: (response, target) => controller.respond(response, target),
-        getThread: () => controller.getThread(),
-        client,
-        assistantId,
-        [STREAM_CONTROLLER]: controller,
-      }) as UseStreamReturn<T, InterruptType, ConfigurableType>;
-    },
-    [
-      root,
-      subagents,
+  return useMemo<UseStreamReturn<T, InterruptType, ConfigurableType>>(() => {
+    const userFacingInterrupts = filterOutHeadlessToolInterrupts(
+      root.interrupts
+    );
+    return {
+      values: root.values,
+      messages: root.messages,
+      toolCalls: root.toolCalls,
+      interrupts: userFacingInterrupts,
+      interrupt: userFacingInterrupts[0],
+      isLoading: root.isLoading,
+      isThreadLoading: root.isThreadLoading,
+      hydrationPromise: controller.hydrationPromise,
+      error: root.error,
+      threadId: root.threadId,
+      subagents: subagents as UseStreamReturn<
+        T,
+        InterruptType,
+        ConfigurableType
+      >["subagents"],
       subgraphs,
       subgraphsByNode,
-      controller,
+      submit: (input, submitOptions) => controller.submit(input, submitOptions),
+      stop: () => controller.stop(),
+      respond: (response, target) => controller.respond(response, target),
+      getThread: () => controller.getThread(),
       client,
       assistantId,
-    ]
-  );
+      [STREAM_CONTROLLER]: controller,
+    } as UseStreamReturn<T, InterruptType, ConfigurableType>;
+  }, [
+    root,
+    subagents,
+    subgraphs,
+    subgraphsByNode,
+    controller,
+    client,
+    assistantId,
+  ]);
 }
 
 /**

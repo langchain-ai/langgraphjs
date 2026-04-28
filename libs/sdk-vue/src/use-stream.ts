@@ -45,9 +45,10 @@ import { LANGCHAIN_OPTIONS } from "./context.js";
  * compiled graph or agent brand into its state shape.
  * @deprecated Prefer {@link InferStateType}.
  */
-export type StateOf<T> = InferStateType<T> extends Record<string, unknown>
-  ? InferStateType<T>
-  : Record<string, unknown>;
+export type StateOf<T> =
+  InferStateType<T> extends Record<string, unknown>
+    ? InferStateType<T>
+    : Record<string, unknown>;
 
 /** Options common to both transport branches of {@link useStream}. */
 interface UseStreamCommonOptions<StateType extends object> {
@@ -68,8 +69,9 @@ interface UseStreamCommonOptions<StateType extends object> {
  * LangGraph-Platform-compatible server. Accepts reactive values so
  * consumers can feed refs/getters/computed props straight in.
  */
-export interface AgentServerOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface AgentServerOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   assistantId: string;
   client?: Client;
   apiUrl?: MaybeRefOrGetter<string | undefined>;
@@ -89,8 +91,9 @@ export interface AgentServerOptions<StateType extends object>
  * {@link AgentServerAdapter}. Discriminated from
  * {@link AgentServerOptions} by `transport` being an adapter instance.
  */
-export interface CustomAdapterOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface CustomAdapterOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   transport: AgentServerAdapter;
   /**
    * Optional assistant id passed through to the adapter. Defaults to
@@ -118,7 +121,7 @@ export type UseStreamOptions<
  * `useToolCalls`, `useValues`, …) instead of reading this directly.
  */
 export const STREAM_CONTROLLER: unique symbol = Symbol.for(
-  "@langchain/vue/controller",
+  "@langchain/vue/controller"
 );
 
 /**
@@ -179,12 +182,12 @@ export interface UseStreamReturn<
 
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
-    options?: StreamSubmitOptions<StateType, ConfigurableType>,
+    options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
   stop(): Promise<void>;
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] },
+    target?: { interruptId: string; namespace?: string[] }
   ): Promise<void>;
 
   readonly client: Client;
@@ -252,7 +255,7 @@ export function useStream<
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 >(
-  options: UseStreamOptions<InferStateType<T>>,
+  options: UseStreamOptions<InferStateType<T>>
 ): UseStreamReturn<T, InterruptType, ConfigurableType> {
   type StateType = InferStateType<T>;
 
@@ -293,11 +296,9 @@ export function useStream<
   // that flip a backend at runtime get a fresh client without a full
   // remount — the controller is swapped in lock-step below.
   const resolveApiUrl = () =>
-    toValue(asBag.apiUrl) ??
-    (pluginOptions as { apiUrl?: string }).apiUrl;
+    toValue(asBag.apiUrl) ?? (pluginOptions as { apiUrl?: string }).apiUrl;
   const resolveApiKey = () =>
-    toValue(asBag.apiKey) ??
-    (pluginOptions as { apiKey?: string }).apiKey;
+    toValue(asBag.apiKey) ?? (pluginOptions as { apiKey?: string }).apiKey;
   const explicitClient =
     asBag.client ?? (pluginOptions as { client?: Client }).client;
 
@@ -308,7 +309,7 @@ export function useStream<
         apiKey: resolveApiKey(),
         callerOptions: asBag.callerOptions,
         defaultHeaders: asBag.defaultHeaders,
-      }) as unknown as Client),
+      }) as unknown as Client)
   );
 
   // Note: we intentionally bind the controller to the *initial* client
@@ -352,7 +353,7 @@ export function useStream<
   // ─── Reactivity adapters — StreamStore → shallowRef ─────────────────
   function bindStore<S>(
     subscribe: (listener: () => void) => () => void,
-    getSnapshot: () => S,
+    getSnapshot: () => S
   ): Readonly<ShallowRef<S>> {
     const ref = shallowRef<S>(getSnapshot());
     const unsubscribe = subscribe(() => {
@@ -364,19 +365,19 @@ export function useStream<
 
   const rootRef = bindStore<RootSnapshot<StateType, InterruptType>>(
     controller.rootStore.subscribe,
-    controller.rootStore.getSnapshot,
+    controller.rootStore.getSnapshot
   );
   const subagentRef = bindStore<SubagentMap>(
     controller.subagentStore.subscribe,
-    controller.subagentStore.getSnapshot,
+    controller.subagentStore.getSnapshot
   );
   const subgraphRef = bindStore<SubgraphMap>(
     controller.subgraphStore.subscribe,
-    controller.subgraphStore.getSnapshot,
+    controller.subgraphStore.getSnapshot
   );
   const subgraphByNodeRef = bindStore<SubgraphByNodeMap>(
     controller.subgraphByNodeStore.subscribe,
-    controller.subgraphByNodeStore.getSnapshot,
+    controller.subgraphByNodeStore.getSnapshot
   );
 
   // Derived refs for individual root-snapshot fields. Using computed
@@ -418,7 +419,7 @@ export function useStream<
         return;
       }
       void controller.hydrate(next);
-    },
+    }
   );
 
   // ─── Headless-tool handling ─────────────────────────────────────────
@@ -430,7 +431,7 @@ export function useStream<
   const handledTools = new Set<string>();
   watch(
     () => toValue(asBag.threadId) ?? null,
-    () => handledTools.clear(),
+    () => handledTools.clear()
   );
   const tools = options.tools;
   const onTool = options.onTool;
@@ -460,10 +461,10 @@ export function useStream<
               controller.submit(null, {
                 command,
               } as StreamSubmitOptions<StateType, ConfigurableType>),
-          },
+          }
         );
       },
-      { immediate: true },
+      { immediate: true }
     );
   }
 
@@ -510,7 +511,7 @@ export function useStream<
  */
 export function getRegistry(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>,
+  stream: UseStreamReturn<any, any, any>
 ): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }

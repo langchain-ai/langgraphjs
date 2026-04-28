@@ -52,13 +52,13 @@ type StreamHandle<StateType extends object> = UseStreamReturn<
 >;
 
 export function injectSubmissionQueue<StateType extends object>(
-  stream: StreamHandle<StateType>,
+  stream: StreamHandle<StateType>
 ): InjectSubmissionQueueReturn<StateType>;
 export function injectSubmissionQueue(
-  stream: AnyStream,
+  stream: AnyStream
 ): InjectSubmissionQueueReturn;
 export function injectSubmissionQueue(
-  stream: AnyStream,
+  stream: AnyStream
 ): InjectSubmissionQueueReturn {
   const destroyRef = inject(DestroyRef);
   const controller = stream[STREAM_CONTROLLER];
@@ -66,7 +66,7 @@ export function injectSubmissionQueue(
 
   const entriesSignal = signal<SubmissionQueueSnapshot>(store.getSnapshot());
   const unsubscribe = store.subscribe(() =>
-    entriesSignal.set(store.getSnapshot()),
+    entriesSignal.set(store.getSnapshot())
   );
   destroyRef.onDestroy(unsubscribe);
 

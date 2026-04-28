@@ -210,7 +210,7 @@ function tryParseWavHeader(bytes: Uint8Array): WavHeaderResult {
       bytes[offset]!,
       bytes[offset + 1]!,
       bytes[offset + 2]!,
-      bytes[offset + 3]!,
+      bytes[offset + 3]!
     );
     const size = view.getUint32(offset + 4, true);
     const payloadStart = offset + 8;
@@ -282,7 +282,7 @@ function resolveAudioContextCtor(): typeof AudioContext | undefined {
 function detectStrategy(
   mimeType: string | undefined,
   override: UseAudioPlayerOptions["strategy"],
-  pcmPrefixes: readonly string[] | undefined,
+  pcmPrefixes: readonly string[] | undefined
 ): "pcm" | "element" {
   if (override === "pcm" || override === "element") return override;
   const m = mimeType ?? "";
@@ -313,7 +313,7 @@ function detectStrategy(
  */
 export function useAudioPlayer(
   media: MaybeRefOrGetter<AudioMedia | undefined>,
-  options?: UseAudioPlayerOptions,
+  options?: UseAudioPlayerOptions
 ): AudioPlayerHandle {
   const sampleRate = options?.pcm?.sampleRate ?? DEFAULT_SAMPLE_RATE;
   const channels = options?.pcm?.channels ?? DEFAULT_CHANNELS;
@@ -374,7 +374,7 @@ export function useAudioPlayer(
       } else if (s === "error") {
         rejectPending(error.value ?? new Error("playback error"));
       }
-    },
+    }
   );
 
   // ── Analyser loop ───────────────────────────────────────────────────
@@ -433,7 +433,7 @@ export function useAudioPlayer(
     const AudioCtx = resolveAudioContextCtor();
     if (AudioCtx == null) {
       error.value = new Error(
-        "Web Audio API is not available in this environment",
+        "Web Audio API is not available in this environment"
       );
       status.value = "error";
       return null;
@@ -468,12 +468,12 @@ export function useAudioPlayer(
     const buffer = context.createBuffer(
       bufChannels,
       framesPerChannel,
-      bufSampleRate,
+      bufSampleRate
     );
     const view = new DataView(
       bytes.buffer,
       bytes.byteOffset,
-      framesPerChannel * bufChannels * 2,
+      framesPerChannel * bufChannels * 2
     );
     for (let channel = 0; channel < bufChannels; channel += 1) {
       const channelData = buffer.getChannelData(channel);
@@ -691,7 +691,7 @@ export function useAudioPlayer(
       format = null;
     } else {
       error.value = new Error(
-        `useAudioPlayer: forced PCM strategy for unsupported mime ${JSON.stringify(mimeType)}`,
+        `useAudioPlayer: forced PCM strategy for unsupported mime ${JSON.stringify(mimeType)}`
       );
       status.value = "error";
       return () => {};
@@ -717,7 +717,7 @@ export function useAudioPlayer(
       if (result.status === "invalid") {
         wavHeaderFailed = true;
         error.value = new Error(
-          `useAudioPlayer: invalid WAV stream: ${result.reason}`,
+          `useAudioPlayer: invalid WAV stream: ${result.reason}`
         );
         status.value = "error";
         return;
@@ -830,7 +830,7 @@ export function useAudioPlayer(
           error.value = new Error("media failed to materialise");
           status.value = "error";
         }
-      },
+      }
     );
 
     return () => {
@@ -862,7 +862,7 @@ export function useAudioPlayer(
       strategyRef.value = detectStrategy(
         m.mimeType,
         strategyOverride,
-        pcmPrefixes,
+        pcmPrefixes
       );
 
       // Surface a media-level error immediately.
@@ -878,7 +878,7 @@ export function useAudioPlayer(
         detachElement = bindElement(m);
       }
     },
-    { immediate: true },
+    { immediate: true }
   );
 
   onScopeDispose(() => {

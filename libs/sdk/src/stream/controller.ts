@@ -1148,7 +1148,9 @@ export class StreamController<
       event?: string;
     };
     if (lifecycle?.event === "running") {
-      this.rootStore.setState((s) => (s.isLoading ? s : { ...s, isLoading: true }));
+      this.rootStore.setState((s) =>
+        s.isLoading ? s : { ...s, isLoading: true }
+      );
       return;
     }
     if (
@@ -1553,8 +1555,9 @@ export class StreamController<
        * count as a RemoveMessage.
        */
       this.#rootValuesMessageIds = valueIds;
-      const messages =
-        messagesEqualList(s.messages, merged) ? s.messages : merged;
+      const messages = messagesEqualList(s.messages, merged)
+        ? s.messages
+        : merged;
       const values = {
         ...(nextValues as Record<string, unknown>),
         [this.#messagesKey]: messages,
@@ -1600,12 +1603,10 @@ export class StreamController<
   }> {
     return new Promise((resolve) => {
       let settled = false;
-      const finish = (
-        result: {
-          event: "completed" | "failed" | "interrupted" | "aborted";
-          error?: string;
-        }
-      ) => {
+      const finish = (result: {
+        event: "completed" | "failed" | "interrupted" | "aborted";
+        error?: string;
+      }) => {
         if (settled) return;
         settled = true;
         unsubscribe();
@@ -1844,10 +1845,19 @@ function messagesEqual(
     jsonishEqual(previous.content, next.content) &&
     previousRecord.tool_call_id === nextRecord.tool_call_id &&
     previousRecord.status === nextRecord.status &&
-    jsonishEqual(previousRecord.additional_kwargs, nextRecord.additional_kwargs) &&
-    jsonishEqual(previousRecord.response_metadata, nextRecord.response_metadata) &&
+    jsonishEqual(
+      previousRecord.additional_kwargs,
+      nextRecord.additional_kwargs
+    ) &&
+    jsonishEqual(
+      previousRecord.response_metadata,
+      nextRecord.response_metadata
+    ) &&
     jsonishEqual(previousRecord.tool_calls, nextRecord.tool_calls) &&
-    jsonishEqual(previousRecord.tool_call_chunks, nextRecord.tool_call_chunks) &&
+    jsonishEqual(
+      previousRecord.tool_call_chunks,
+      nextRecord.tool_call_chunks
+    ) &&
     jsonishEqual(previousRecord.usage_metadata, nextRecord.usage_metadata)
   );
 }
@@ -1938,9 +1948,7 @@ function jsonishEqualAtDepth(
 
   for (const key of previousKeys) {
     if (!Object.prototype.hasOwnProperty.call(nextRecord, key)) return false;
-    if (
-      !jsonishEqualAtDepth(previousRecord[key], nextRecord[key], depth + 1)
-    ) {
+    if (!jsonishEqualAtDepth(previousRecord[key], nextRecord[key], depth + 1)) {
       return false;
     }
   }

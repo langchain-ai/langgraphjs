@@ -34,9 +34,10 @@ import {
  *
  * @deprecated Prefer {@link InferStateType}.
  */
-export type StateOf<T> = InferStateType<T> extends Record<string, unknown>
-  ? InferStateType<T>
-  : Record<string, unknown>;
+export type StateOf<T> =
+  InferStateType<T> extends Record<string, unknown>
+    ? InferStateType<T>
+    : Record<string, unknown>;
 
 /**
  * A value that may be either a plain `T` or a getter `() => T`. Used
@@ -46,7 +47,9 @@ export type StateOf<T> = InferStateType<T> extends Record<string, unknown>
  */
 export type ValueOrGetter<T> = T | (() => T);
 
-function readValueOrGetter<T>(input: ValueOrGetter<T> | undefined): T | undefined {
+function readValueOrGetter<T>(
+  input: ValueOrGetter<T> | undefined
+): T | undefined {
   if (typeof input === "function") return (input as () => T)();
   return input;
 }
@@ -74,8 +77,9 @@ interface UseStreamCommonOptions<StateType extends object> {
  * LGP branch — caller points the composable at an assistant on a
  * LangGraph-Platform-compatible server.
  */
-export interface AgentServerOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface AgentServerOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   assistantId: string;
   client?: Client;
   apiUrl?: string;
@@ -95,8 +99,9 @@ export interface AgentServerOptions<StateType extends object>
  * {@link AgentServerAdapter}. Discriminated from
  * {@link AgentServerOptions} by `transport` being an adapter instance.
  */
-export interface CustomAdapterOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface CustomAdapterOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   transport: AgentServerAdapter;
   /**
    * Optional assistant id passed through to the adapter. Defaults to
@@ -125,7 +130,7 @@ export type UseStreamOptions<
  * this directly.
  */
 export const STREAM_CONTROLLER: unique symbol = Symbol.for(
-  "@langchain/svelte/controller",
+  "@langchain/svelte/controller"
 );
 
 /**
@@ -176,12 +181,12 @@ export interface UseStreamReturn<
 
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
-    options?: StreamSubmitOptions<StateType, ConfigurableType>,
+    options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
   stop(): Promise<void>;
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] },
+    target?: { interruptId: string; namespace?: string[] }
   ): Promise<void>;
 
   readonly client: Client;
@@ -245,7 +250,7 @@ export function useStream<
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 >(
-  options: UseStreamOptions<InferStateType<T>>,
+  options: UseStreamOptions<InferStateType<T>>
 ): UseStreamReturn<T, InterruptType, ConfigurableType> {
   type StateType = InferStateType<T>;
 
@@ -324,7 +329,7 @@ export function useStream<
   // seeded from `getSnapshot()` and kept in sync via `store.subscribe`.
   // Subscriptions are torn down on component destroy.
   let rootSnapshot = $state<RootSnapshot<StateType, InterruptType>>(
-    controller.rootStore.getSnapshot(),
+    controller.rootStore.getSnapshot()
   );
   const unsubscribeRoot = controller.rootStore.subscribe(() => {
     rootSnapshot = controller.rootStore.getSnapshot();
@@ -332,7 +337,7 @@ export function useStream<
   onDestroy(unsubscribeRoot);
 
   let subagentSnapshot = $state<SubagentMap>(
-    controller.subagentStore.getSnapshot(),
+    controller.subagentStore.getSnapshot()
   );
   const unsubscribeSubagents = controller.subagentStore.subscribe(() => {
     subagentSnapshot = controller.subagentStore.getSnapshot();
@@ -340,7 +345,7 @@ export function useStream<
   onDestroy(unsubscribeSubagents);
 
   let subgraphSnapshot = $state<SubgraphMap>(
-    controller.subgraphStore.getSnapshot(),
+    controller.subgraphStore.getSnapshot()
   );
   const unsubscribeSubgraphs = controller.subgraphStore.subscribe(() => {
     subgraphSnapshot = controller.subgraphStore.getSnapshot();
@@ -348,12 +353,12 @@ export function useStream<
   onDestroy(unsubscribeSubgraphs);
 
   let subgraphByNodeSnapshot = $state<SubgraphByNodeMap>(
-    controller.subgraphByNodeStore.getSnapshot(),
+    controller.subgraphByNodeStore.getSnapshot()
   );
   const unsubscribeSubgraphByNode = controller.subgraphByNodeStore.subscribe(
     () => {
       subgraphByNodeSnapshot = controller.subgraphByNodeStore.getSnapshot();
-    },
+    }
   );
   onDestroy(unsubscribeSubgraphByNode);
 
@@ -418,7 +423,7 @@ export function useStream<
             controller.submit(null, {
               command,
             } as StreamSubmitOptions<StateType, ConfigurableType>),
-        },
+        }
       );
     });
   }
@@ -492,7 +497,7 @@ export function useStream<
  */
 export function getRegistry(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>,
+  stream: UseStreamReturn<any, any, any>
 ): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }

@@ -26,11 +26,7 @@
  */
 
 import { hasPrefix, nsKey } from "../mux.js";
-import type {
-  StreamHandle,
-  StreamMux,
-  SubgraphDiscovery,
-} from "../mux.js";
+import type { StreamHandle, StreamMux, SubgraphDiscovery } from "../mux.js";
 import type {
   Namespace,
   NativeStreamTransformer,
@@ -110,7 +106,9 @@ export interface SubgraphDiscoveryTransformerOptions<
  *   from.
  * @returns An async iterable of stream handles.
  */
-export function filterSubgraphHandles<TStream extends StreamHandle = StreamHandle>(
+export function filterSubgraphHandles<
+  TStream extends StreamHandle = StreamHandle,
+>(
   log: EventLog<SubgraphDiscovery>,
   path: Namespace,
   startAt = 0

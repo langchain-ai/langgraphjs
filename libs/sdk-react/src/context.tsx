@@ -20,11 +20,10 @@ const StreamContext = createContext<any | null>(null);
  * LangGraph Platform agent server. Mirrors {@link AgentServerOptions}
  * plus `children`.
  */
-export type StreamProviderProps<T = Record<string, unknown>> = AgentServerOptions<
-  InferStateType<T>
-> & {
-  children: ReactNode;
-};
+export type StreamProviderProps<T = Record<string, unknown>> =
+  AgentServerOptions<InferStateType<T>> & {
+    children: ReactNode;
+  };
 
 /**
  * Props for {@link StreamProvider} when wiring a custom
@@ -85,9 +84,7 @@ export function StreamProvider<T = Record<string, unknown>>(
   props: StreamProviderProps<T> | StreamProviderCustomProps<T>
 ): ReactNode {
   const { children, ...options } = props;
-  const stream = useStream<T>(
-    options as UseStreamOptions<InferStateType<T>>
-  );
+  const stream = useStream<T>(options as UseStreamOptions<InferStateType<T>>);
 
   return (
     <StreamContext.Provider value={stream}>{children}</StreamContext.Provider>

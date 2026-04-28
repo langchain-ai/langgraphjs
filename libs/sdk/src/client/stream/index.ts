@@ -1387,7 +1387,8 @@ export class ThreadStream<
     }
     if (event.method === "input.requested") {
       const data = event.params.data;
-      const interruptId = data.interrupt_id ?? `interrupt_${this.interrupts.length}`;
+      const interruptId =
+        data.interrupt_id ?? `interrupt_${this.interrupts.length}`;
       this.interrupts.push({
         interruptId,
         payload: data.payload,

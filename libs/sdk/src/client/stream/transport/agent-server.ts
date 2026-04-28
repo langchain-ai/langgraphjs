@@ -80,9 +80,7 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
     return this.#delegate.open();
   }
 
-  send(
-    command: Command
-  ): Promise<CommandResponse | ErrorResponse | void> {
+  send(command: Command): Promise<CommandResponse | ErrorResponse | void> {
     return this.#delegate.send(command);
   }
 

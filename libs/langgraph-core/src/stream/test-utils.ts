@@ -25,9 +25,7 @@ export function makeProtocolEvent(
   };
 }
 
-export async function collectIterator<T>(
-  iter: AsyncIterator<T>
-): Promise<T[]> {
+export async function collectIterator<T>(iter: AsyncIterator<T>): Promise<T[]> {
   const items: T[] = [];
   for (;;) {
     const result = await iter.next();

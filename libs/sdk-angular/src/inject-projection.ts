@@ -45,12 +45,12 @@ export function injectProjection<T>(
     | Signal<ChannelRegistry | null | undefined>,
   specFactory: () => ProjectionSpec<T>,
   key: string | Signal<string>,
-  initialValue: T,
+  initialValue: T
 ): Signal<T> {
   const state = signal<T>(initialValue);
 
   const registrySignal: () => ChannelRegistry | null | undefined = isSignal(
-    registry,
+    registry
   )
     ? (registry as Signal<ChannelRegistry | null | undefined>)
     : () => registry as ChannelRegistry | null | undefined;

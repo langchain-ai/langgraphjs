@@ -108,7 +108,7 @@ function namespaceKey(namespace: readonly string[]): string {
  */
 export function useMessages(
   stream: AnyStream,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<BaseMessage[]>> {
   const namespace = resolveNamespace(target);
   if (isRoot(namespace)) return stream.messages;
@@ -117,7 +117,7 @@ export function useMessages(
     getRegistry(stream),
     () => messagesProjection(namespace),
     key,
-    EMPTY_MESSAGES,
+    EMPTY_MESSAGES
   );
 }
 
@@ -130,7 +130,7 @@ const EMPTY_MESSAGES: BaseMessage[] = [];
  */
 export function useToolCalls(
   stream: AnyStream,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<AssembledToolCall[]>> {
   const namespace = resolveNamespace(target);
   if (isRoot(namespace)) return stream.toolCalls;
@@ -139,7 +139,7 @@ export function useToolCalls(
     getRegistry(stream),
     () => toolCallsProjection(namespace),
     key,
-    EMPTY_TOOLCALLS,
+    EMPTY_TOOLCALLS
   );
 }
 
@@ -159,20 +159,20 @@ const EMPTY_TOOLCALLS: AssembledToolCall[] = [];
  *    sub)`). Defaults to `unknown` when not annotated.
  */
 export function useValues<StateType extends object>(
-  stream: StreamHandle<StateType>,
+  stream: StreamHandle<StateType>
 ): Readonly<ShallowRef<StateType>>;
 export function useValues<T>(
-  stream: AnyStream,
+  stream: AnyStream
 ): Readonly<ShallowRef<InferStateType<T>>>;
 export function useValues<T = unknown>(
   stream: AnyStream,
   target: SelectorTarget,
-  options?: { messagesKey?: string },
+  options?: { messagesKey?: string }
 ): Readonly<ShallowRef<T | undefined>>;
 export function useValues(
   stream: AnyStream,
   target?: SelectorTarget,
-  options?: { messagesKey?: string },
+  options?: { messagesKey?: string }
 ): Readonly<ShallowRef<unknown>> {
   const namespace = resolveNamespace(target);
   if (isRoot(namespace)) return stream.values as Readonly<ShallowRef<unknown>>;
@@ -182,7 +182,7 @@ export function useValues(
     getRegistry(stream),
     () => valuesProjection<unknown>(namespace, messagesKey),
     key,
-    undefined,
+    undefined
   );
 }
 
@@ -193,7 +193,7 @@ export function useValues(
 export function useExtension<T = unknown>(
   stream: AnyStream,
   name: string,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<T | undefined>> {
   const namespace = resolveNamespace(target);
   const key = `extension|${name}|${namespaceKey(namespace)}`;
@@ -201,7 +201,7 @@ export function useExtension<T = unknown>(
     getRegistry(stream),
     () => extensionProjection<T>(name, namespace),
     key,
-    undefined,
+    undefined
   );
 }
 
@@ -215,7 +215,7 @@ export function useChannel(
   stream: AnyStream,
   channels: readonly Channel[],
   target?: SelectorTarget,
-  options?: { bufferSize?: number },
+  options?: { bufferSize?: number }
 ): Readonly<ShallowRef<Event[]>> {
   const namespace = resolveNamespace(target);
   const sortedChannels = [...channels].sort().join(",");
@@ -224,7 +224,7 @@ export function useChannel(
     getRegistry(stream),
     () => channelProjection(channels, namespace, options),
     key,
-    EMPTY_EVENTS,
+    EMPTY_EVENTS
   );
 }
 
@@ -239,7 +239,7 @@ const EMPTY_EVENTS: Event[] = [];
  */
 export function useAudio(
   stream: AnyStream,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<AudioMedia[]>> {
   const namespace = resolveNamespace(target);
   const key = `audio|${namespaceKey(namespace)}`;
@@ -247,7 +247,7 @@ export function useAudio(
     getRegistry(stream),
     () => audioProjection(namespace),
     key,
-    EMPTY_AUDIO,
+    EMPTY_AUDIO
   );
 }
 
@@ -259,7 +259,7 @@ const EMPTY_AUDIO: AudioMedia[] = [];
  */
 export function useImages(
   stream: AnyStream,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<ImageMedia[]>> {
   const namespace = resolveNamespace(target);
   const key = `images|${namespaceKey(namespace)}`;
@@ -267,7 +267,7 @@ export function useImages(
     getRegistry(stream),
     () => imagesProjection(namespace),
     key,
-    EMPTY_IMAGES,
+    EMPTY_IMAGES
   );
 }
 
@@ -279,7 +279,7 @@ const EMPTY_IMAGES: ImageMedia[] = [];
  */
 export function useVideo(
   stream: AnyStream,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<VideoMedia[]>> {
   const namespace = resolveNamespace(target);
   const key = `video|${namespaceKey(namespace)}`;
@@ -287,7 +287,7 @@ export function useVideo(
     getRegistry(stream),
     () => videoProjection(namespace),
     key,
-    EMPTY_VIDEO,
+    EMPTY_VIDEO
   );
 }
 
@@ -299,7 +299,7 @@ const EMPTY_VIDEO: VideoMedia[] = [];
  */
 export function useFiles(
   stream: AnyStream,
-  target?: SelectorTarget,
+  target?: SelectorTarget
 ): Readonly<ShallowRef<FileMedia[]>> {
   const namespace = resolveNamespace(target);
   const key = `files|${namespaceKey(namespace)}`;
@@ -307,7 +307,7 @@ export function useFiles(
     getRegistry(stream),
     () => filesProjection(namespace),
     key,
-    EMPTY_FILES,
+    EMPTY_FILES
   );
 }
 
@@ -328,7 +328,7 @@ const EMPTY_FILES: FileMedia[] = [];
  */
 export function useMessageMetadata(
   stream: AnyStream,
-  messageId: MaybeRefOrGetter<string | undefined>,
+  messageId: MaybeRefOrGetter<string | undefined>
 ): ComputedRef<MessageMetadata | undefined> {
   const store = stream[STREAM_CONTROLLER].messageMetadataStore;
   const mapRef = shallowRef<MessageMetadataMap>(store.getSnapshot());
@@ -361,13 +361,11 @@ export interface UseSubmissionQueueReturn<
 }
 
 export function useSubmissionQueue<StateType extends object>(
-  stream: StreamHandle<StateType>,
+  stream: StreamHandle<StateType>
 ): UseSubmissionQueueReturn<StateType>;
+export function useSubmissionQueue(stream: AnyStream): UseSubmissionQueueReturn;
 export function useSubmissionQueue(
-  stream: AnyStream,
-): UseSubmissionQueueReturn;
-export function useSubmissionQueue(
-  stream: AnyStream,
+  stream: AnyStream
 ): UseSubmissionQueueReturn {
   const controller = stream[STREAM_CONTROLLER];
   const store = controller.queueStore;
@@ -378,9 +376,7 @@ export function useSubmissionQueue(
   onScopeDispose(unsubscribe);
 
   return {
-    entries: readonly(entries) as Readonly<
-      ShallowRef<SubmissionQueueSnapshot>
-    >,
+    entries: readonly(entries) as Readonly<ShallowRef<SubmissionQueueSnapshot>>,
     size: computed(() => entries.value.length),
     cancel: (id) => controller.cancelQueued(id),
     clear: () => controller.clearQueue(),

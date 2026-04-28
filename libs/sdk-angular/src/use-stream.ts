@@ -42,9 +42,10 @@ import {
  * Unwraps a compiled graph or agent brand into its state shape.
  * @deprecated Prefer {@link InferStateType}.
  */
-export type StateOf<T> = InferStateType<T> extends Record<string, unknown>
-  ? InferStateType<T>
-  : Record<string, unknown>;
+export type StateOf<T> =
+  InferStateType<T> extends Record<string, unknown>
+    ? InferStateType<T>
+    : Record<string, unknown>;
 
 /** Options common to both transport branches of {@link useStream}. */
 interface UseStreamCommonOptions<StateType extends object> {
@@ -72,8 +73,9 @@ interface UseStreamCommonOptions<StateType extends object> {
  * {@link CustomAdapterOptions} by `transport` being absent or a
  * string.
  */
-export interface AgentServerOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface AgentServerOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   assistantId: string;
   client?: Client;
   apiUrl?: string;
@@ -94,8 +96,9 @@ export interface AgentServerOptions<StateType extends object>
  * {@link AgentServerOptions} by `transport` being an adapter
  * instance.
  */
-export interface CustomAdapterOptions<StateType extends object>
-  extends UseStreamCommonOptions<StateType> {
+export interface CustomAdapterOptions<
+  StateType extends object,
+> extends UseStreamCommonOptions<StateType> {
   /**
    * Custom {@link AgentServerAdapter} used for every command and
    * subscription. Replaces the built-in `sse`/`websocket` factories
@@ -139,7 +142,7 @@ export type UseStreamOptions<
  * `injectValues`, …) instead of reading this directly.
  */
 export const STREAM_CONTROLLER: unique symbol = Symbol.for(
-  "@langchain/angular/controller",
+  "@langchain/angular/controller"
 );
 
 /**
@@ -195,12 +198,12 @@ export interface UseStreamReturn<
 
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
-    options?: StreamSubmitOptions<StateType, ConfigurableType>,
+    options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
   stop(): Promise<void>;
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] },
+    target?: { interruptId: string; namespace?: string[] }
   ): Promise<void>;
 
   readonly client: Client;
@@ -250,7 +253,7 @@ export function useStream<
   ConfigurableType extends object = Record<string, unknown>,
 >(
   options: UseStreamOptions<InferStateType<T>>,
-  destroyRef?: DestroyRef,
+  destroyRef?: DestroyRef
 ): UseStreamReturn<T, InterruptType, ConfigurableType> {
   type StateType = InferStateType<T>;
 
@@ -297,7 +300,7 @@ export function useStream<
     const raw = asBag.threadId;
     if (isSignal(raw)) {
       return computed(
-        () => (raw as Signal<string | null | undefined>)() ?? null,
+        () => (raw as Signal<string | null | undefined>)() ?? null
       );
     }
     const initial: string | null = (raw as string | null | undefined) ?? null;
@@ -335,7 +338,7 @@ export function useStream<
   // ─── Reactivity bridge: StreamStore → Signal ────────────────────────
   function bindStore<S>(
     subscribe: (listener: () => void) => () => void,
-    getSnapshot: () => S,
+    getSnapshot: () => S
   ): Signal<S> {
     const s = signal<S>(getSnapshot());
     const unsubscribe = subscribe(() => {
@@ -347,19 +350,19 @@ export function useStream<
 
   const rootSignal = bindStore<RootSnapshot<StateType, InterruptType>>(
     controller.rootStore.subscribe,
-    controller.rootStore.getSnapshot,
+    controller.rootStore.getSnapshot
   );
   const subagentSignal = bindStore<SubagentMap>(
     controller.subagentStore.subscribe,
-    controller.subagentStore.getSnapshot,
+    controller.subagentStore.getSnapshot
   );
   const subgraphSignal = bindStore<SubgraphMap>(
     controller.subgraphStore.subscribe,
-    controller.subgraphStore.getSnapshot,
+    controller.subgraphStore.getSnapshot
   );
   const subgraphByNodeSignal = bindStore<SubgraphByNodeMap>(
     controller.subgraphByNodeStore.subscribe,
-    controller.subgraphByNodeStore.getSnapshot,
+    controller.subgraphByNodeStore.getSnapshot
   );
 
   const values = computed(() => rootSignal().values);
@@ -439,7 +442,7 @@ export function useStream<
               controller.submit(null, {
                 command,
               } as StreamSubmitOptions<StateType, ConfigurableType>),
-          },
+          }
         );
       });
     });
@@ -489,7 +492,7 @@ export function useStream<
  */
 export function getRegistry(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>,
+  stream: UseStreamReturn<any, any, any>
 ): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }

@@ -1,8 +1,5 @@
 import type { MediaBase } from "@langchain/langgraph-sdk/stream";
-import type {
-  ReactiveValue,
-  ValueOrGetter,
-} from "./use-projection.svelte.js";
+import type { ReactiveValue, ValueOrGetter } from "./use-projection.svelte.js";
 
 function unwrap<T>(input: ValueOrGetter<T>): T {
   if (typeof input === "function") return (input as () => T)();
@@ -31,7 +28,7 @@ function unwrap<T>(input: ValueOrGetter<T>): T {
  * call site.
  */
 export function useMediaURL(
-  media: ValueOrGetter<MediaBase | undefined>,
+  media: ValueOrGetter<MediaBase | undefined>
 ): ReactiveValue<string | undefined> {
   let url = $state<string | undefined>(undefined);
 
@@ -49,7 +46,7 @@ export function useMediaURL(
       () => {
         // Errors surface via `media.error`; keep `url` undefined so
         // consumers fall through to a no-src render.
-      },
+      }
     );
     return () => {
       cancelled = true;

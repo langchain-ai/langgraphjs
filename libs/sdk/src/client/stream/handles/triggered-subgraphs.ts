@@ -71,9 +71,7 @@ type PendingToolStart = {
  * channel is used purely to attach the `tool-started` event to
  * handles triggered by `cause.type === "toolCall"`.
  */
-export class TriggeredSubgraphDiscoveryHandle
-  implements AsyncIterable<TriggeredSubgraphHandle>
-{
+export class TriggeredSubgraphDiscoveryHandle implements AsyncIterable<TriggeredSubgraphHandle> {
   readonly #source: SubscriptionHandle<Event>;
   readonly #session: Subscribable;
   readonly #discovered = new Set<string>();

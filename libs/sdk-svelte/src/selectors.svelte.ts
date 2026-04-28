@@ -84,9 +84,7 @@ function namespaceKey(namespace: readonly string[]): string {
   return namespace.join("\u0000");
 }
 
-function isGetter<T>(
-  input: ValueOrGetter<T> | undefined,
-): input is () => T {
+function isGetter<T>(input: ValueOrGetter<T> | undefined): input is () => T {
   return typeof input === "function";
 }
 
@@ -99,8 +97,10 @@ function selectFromTarget<T>(
   stream: AnyStream,
   target: ValueOrGetter<SelectorTarget> | undefined,
   initialValue: T,
-  makeSpec: (namespace: readonly string[]) => import("@langchain/langgraph-sdk/stream").ProjectionSpec<T>,
-  keyPrefix: string,
+  makeSpec: (
+    namespace: readonly string[]
+  ) => import("@langchain/langgraph-sdk/stream").ProjectionSpec<T>,
+  keyPrefix: string
 ): ReactiveValue<T> {
   if (isGetter(target)) {
     const getTarget = target;
@@ -111,7 +111,7 @@ function selectFromTarget<T>(
       },
       () => makeSpec(resolveNamespace(getTarget())),
       () => `${keyPrefix}|${namespaceKey(resolveNamespace(getTarget()))}`,
-      initialValue,
+      initialValue
     );
   }
   const ns = resolveNamespace(target);
@@ -124,7 +124,7 @@ function selectFromTarget<T>(
     isRoot(ns) ? null : getRegistry(stream),
     () => makeSpec(ns),
     key,
-    initialValue,
+    initialValue
   );
 }
 
@@ -160,7 +160,7 @@ const EMPTY_FILES: FileMedia[] = [];
  */
 export function useMessages(
   stream: AnyStream,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<BaseMessage[]> {
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
@@ -177,7 +177,7 @@ export function useMessages(
     target,
     EMPTY_MESSAGES,
     (ns) => messagesProjection(ns),
-    "messages",
+    "messages"
   );
 }
 
@@ -188,7 +188,7 @@ export function useMessages(
  */
 export function useToolCalls(
   stream: AnyStream,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<AssembledToolCall[]> {
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
@@ -205,7 +205,7 @@ export function useToolCalls(
     target,
     EMPTY_TOOLCALLS,
     (ns) => toolCallsProjection(ns),
-    "toolCalls",
+    "toolCalls"
   );
 }
 
@@ -224,20 +224,20 @@ export function useToolCalls(
  *    sub)`). Defaults to `unknown` when not annotated.
  */
 export function useValues<StateType extends object>(
-  stream: StreamHandle<StateType>,
+  stream: StreamHandle<StateType>
 ): ReactiveValue<StateType>;
 export function useValues<T>(
-  stream: AnyStream,
+  stream: AnyStream
 ): ReactiveValue<InferStateType<T>>;
 export function useValues<T = unknown>(
   stream: AnyStream,
   target: ValueOrGetter<SelectorTarget>,
-  options?: { messagesKey?: string },
+  options?: { messagesKey?: string }
 ): ReactiveValue<T | undefined>;
 export function useValues(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>,
-  options?: { messagesKey?: string },
+  options?: { messagesKey?: string }
 ): ReactiveValue<unknown> {
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
@@ -255,7 +255,7 @@ export function useValues(
     target,
     undefined,
     (ns) => valuesProjection<unknown>(ns, messagesKey),
-    `values|${messagesKey}`,
+    `values|${messagesKey}`
   );
 }
 
@@ -269,7 +269,7 @@ export function useValues(
 export function useExtension<T = unknown>(
   stream: AnyStream,
   name: ValueOrGetter<string>,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<T | undefined> {
   const getName = () => (isGetter(name) ? (name as () => string)() : name);
   if (isGetter(target)) {
@@ -279,7 +279,7 @@ export function useExtension<T = unknown>(
       () => extensionProjection<T>(getName(), resolveNamespace(getTarget())),
       () =>
         `extension|${getName()}|${namespaceKey(resolveNamespace(getTarget()))}`,
-      undefined,
+      undefined
     );
   }
   const ns = resolveNamespace(target);
@@ -287,7 +287,7 @@ export function useExtension<T = unknown>(
     getRegistry(stream),
     () => extensionProjection<T>(getName(), ns),
     () => `extension|${getName()}|${namespaceKey(ns)}`,
-    undefined,
+    undefined
   );
 }
 
@@ -301,7 +301,7 @@ export function useChannel(
   stream: AnyStream,
   channels: ValueOrGetter<readonly Channel[]>,
   target?: ValueOrGetter<SelectorTarget>,
-  options?: { bufferSize?: number },
+  options?: { bufferSize?: number }
 ): ReactiveValue<Event[]> {
   const getChannels = () =>
     isGetter(channels) ? (channels as () => readonly Channel[])() : channels;
@@ -313,7 +313,7 @@ export function useChannel(
       channelProjection(
         getChannels(),
         resolveNamespace(getTarget()),
-        options,
+        options
       ) as unknown as import("@langchain/langgraph-sdk/stream").ProjectionSpec<
         Event[]
       >,
@@ -321,7 +321,7 @@ export function useChannel(
       const sortedChannels = [...getChannels()].sort().join(",");
       return `channel|${bufferSize}|${sortedChannels}|${namespaceKey(resolveNamespace(getTarget()))}`;
     },
-    EMPTY_EVENTS,
+    EMPTY_EVENTS
   );
 }
 
@@ -334,14 +334,14 @@ export function useChannel(
  */
 export function useAudio(
   stream: AnyStream,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<AudioMedia[]> {
   return selectFromTarget<AudioMedia[]>(
     stream,
     target,
     EMPTY_AUDIO,
     (ns) => audioProjection(ns),
-    "audio",
+    "audio"
   );
 }
 
@@ -351,14 +351,14 @@ export function useAudio(
  */
 export function useImages(
   stream: AnyStream,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<ImageMedia[]> {
   return selectFromTarget<ImageMedia[]>(
     stream,
     target,
     EMPTY_IMAGES,
     (ns) => imagesProjection(ns),
-    "images",
+    "images"
   );
 }
 
@@ -368,14 +368,14 @@ export function useImages(
  */
 export function useVideo(
   stream: AnyStream,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<VideoMedia[]> {
   return selectFromTarget<VideoMedia[]>(
     stream,
     target,
     EMPTY_VIDEO,
     (ns) => videoProjection(ns),
-    "video",
+    "video"
   );
 }
 
@@ -385,14 +385,14 @@ export function useVideo(
  */
 export function useFiles(
   stream: AnyStream,
-  target?: ValueOrGetter<SelectorTarget>,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<FileMedia[]> {
   return selectFromTarget<FileMedia[]>(
     stream,
     target,
     EMPTY_FILES,
     (ns) => filesProjection(ns),
-    "files",
+    "files"
   );
 }
 
@@ -413,7 +413,7 @@ export function useFiles(
  */
 export function useMessageMetadata(
   stream: AnyStream,
-  messageId: ValueOrGetter<string | undefined>,
+  messageId: ValueOrGetter<string | undefined>
 ): ReactiveValue<MessageMetadata | undefined> {
   const store = stream[STREAM_CONTROLLER].messageMetadataStore;
   let map = $state<MessageMetadataMap>(store.getSnapshot());
@@ -426,9 +426,7 @@ export function useMessageMetadata(
   });
 
   const getId = () =>
-    isGetter(messageId)
-      ? (messageId as () => string | undefined)()
-      : messageId;
+    isGetter(messageId) ? (messageId as () => string | undefined)() : messageId;
 
   return {
     get current(): MessageMetadata | undefined {
@@ -456,13 +454,11 @@ export interface UseSubmissionQueueReturn<
 }
 
 export function useSubmissionQueue<StateType extends object>(
-  stream: StreamHandle<StateType>,
+  stream: StreamHandle<StateType>
 ): UseSubmissionQueueReturn<StateType>;
+export function useSubmissionQueue(stream: AnyStream): UseSubmissionQueueReturn;
 export function useSubmissionQueue(
-  stream: AnyStream,
-): UseSubmissionQueueReturn;
-export function useSubmissionQueue(
-  stream: AnyStream,
+  stream: AnyStream
 ): UseSubmissionQueueReturn {
   const controller = stream[STREAM_CONTROLLER];
   const store = controller.queueStore;

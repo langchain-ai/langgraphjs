@@ -72,7 +72,7 @@ export interface VideoPlayerHandle {
 export function useVideoPlayer(
   videoRef: ValueOrGetter<HTMLVideoElement | null | undefined>,
   media: ValueOrGetter<VideoMedia | undefined>,
-  options?: UseVideoPlayerOptions,
+  options?: UseVideoPlayerOptions
 ): VideoPlayerHandle {
   const autoPlay = options?.autoPlay ?? false;
 
@@ -204,7 +204,7 @@ export function useVideoPlayer(
           error = new Error("media failed to materialise");
           status = "error";
         }
-      },
+      }
     );
 
     if (video == null) {

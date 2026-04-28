@@ -1,7 +1,4 @@
-import type {
-  ContentBlockStartData,
-  UpdatesEvent,
-} from "../types.mjs";
+import type { ContentBlockStartData, UpdatesEvent } from "../types.mjs";
 import { isRecord } from "./internal-types.mjs";
 import {
   getTupleToolCallArgs,
@@ -173,9 +170,7 @@ export const normalizeProtocolContentBlock = (
   if (!isRecord(value) || typeof value.type !== "string") return undefined;
 
   if (PROTOCOL_CONTENT_BLOCK_TYPES.has(value.type)) {
-    return normalizeMediaBlockCasing(
-      value
-    ) as ContentBlockStartData["content"];
+    return normalizeMediaBlockCasing(value) as ContentBlockStartData["content"];
   }
 
   if (value.type === "image_url") {

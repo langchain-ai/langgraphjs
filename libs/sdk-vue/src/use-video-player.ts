@@ -64,7 +64,7 @@ export interface VideoPlayerHandle {
 export function useVideoPlayer(
   videoRef: MaybeRefOrGetter<HTMLVideoElement | null | undefined>,
   media: MaybeRefOrGetter<VideoMedia | undefined>,
-  options?: UseVideoPlayerOptions,
+  options?: UseVideoPlayerOptions
 ): VideoPlayerHandle {
   const autoPlay = options?.autoPlay ?? false;
 
@@ -98,7 +98,7 @@ export function useVideoPlayer(
       } else if (s === "error") {
         rejectPending(error.value ?? new Error("playback error"));
       }
-    },
+    }
   );
 
   const getVideo = () => toValue(videoRef) ?? null;
@@ -199,7 +199,7 @@ export function useVideoPlayer(
           error.value = new Error("media failed to materialise");
           status.value = "error";
         }
-      },
+      }
     );
 
     if (video == null) {
@@ -287,7 +287,7 @@ export function useVideoPlayer(
 
       detach = bind(m, video ?? null);
     },
-    { immediate: true, flush: "post" },
+    { immediate: true, flush: "post" }
   );
 
   onScopeDispose(() => {

@@ -47,7 +47,7 @@ export function useProjection<T>(
   registry: MaybeRefOrGetter<ChannelRegistry | null | undefined>,
   specFactory: () => ProjectionSpec<T>,
   key: MaybeRefOrGetter<string>,
-  initialValue: T,
+  initialValue: T
 ): Readonly<ShallowRef<T>> {
   const state = shallowRef<T>(initialValue);
   let currentRelease: (() => void) | null = null;
@@ -75,7 +75,7 @@ export function useProjection<T>(
       });
       currentRelease = acquired.release;
     },
-    { immediate: true, flush: "sync" },
+    { immediate: true, flush: "sync" }
   );
 
   onScopeDispose(detach);

@@ -63,8 +63,8 @@ export class RunProtocolSession {
 
   private readonly getThreadState?:
     | (() => Promise<{
-      tasks?: Array<{ interrupts?: unknown[] }>;
-    } | null>)
+        tasks?: Array<{ interrupts?: unknown[] }>;
+      } | null>)
     | undefined;
 
   private readonly send: (payload: string) => Promise<void> | void;
@@ -875,18 +875,18 @@ export class RunProtocolSession {
 
     const namespaces =
       Array.isArray(params?.namespaces) &&
-        params.namespaces.every(
-          (value) =>
-            Array.isArray(value) &&
-            value.every((segment) => typeof segment === "string")
-        )
+      params.namespaces.every(
+        (value) =>
+          Array.isArray(value) &&
+          value.every((segment) => typeof segment === "string")
+      )
         ? (params.namespaces as Namespace[])
         : undefined;
 
     const depth =
       typeof params?.depth === "number" &&
-        Number.isInteger(params.depth) &&
-        params.depth >= 0
+      Number.isInteger(params.depth) &&
+      params.depth >= 0
         ? params.depth
         : undefined;
 
@@ -999,18 +999,18 @@ export class RunProtocolSession {
 
     const namespaces =
       Array.isArray(params?.namespaces) &&
-        params.namespaces.every(
-          (value) =>
-            Array.isArray(value) &&
-            value.every((segment) => typeof segment === "string")
-        )
+      params.namespaces.every(
+        (value) =>
+          Array.isArray(value) &&
+          value.every((segment) => typeof segment === "string")
+      )
         ? (params.namespaces as Namespace[])
         : undefined;
 
     const depth =
       typeof params?.depth === "number" &&
-        Number.isInteger(params.depth) &&
-        params.depth >= 0
+      Number.isInteger(params.depth) &&
+      params.depth >= 0
         ? params.depth
         : undefined;
 

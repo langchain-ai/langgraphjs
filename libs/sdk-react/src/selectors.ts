@@ -429,9 +429,7 @@ export interface UseSubmissionQueueReturn<
 export function useSubmissionQueue<StateType extends object>(
   stream: StreamHandle<StateType>
 ): UseSubmissionQueueReturn<StateType>;
-export function useSubmissionQueue(
-  stream: AnyStream
-): UseSubmissionQueueReturn;
+export function useSubmissionQueue(stream: AnyStream): UseSubmissionQueueReturn;
 export function useSubmissionQueue(
   stream: AnyStream
 ): UseSubmissionQueueReturn {

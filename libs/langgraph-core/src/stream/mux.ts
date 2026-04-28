@@ -452,7 +452,6 @@ export class StreamMux {
       },
     };
   }
-
 }
 
 /**

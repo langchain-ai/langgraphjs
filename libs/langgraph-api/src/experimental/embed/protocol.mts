@@ -212,9 +212,7 @@ export function registerProtocolRoutes(
       // fact, *replaces* any inline configurable the caller passed),
       // so this is the only reliable way to reach the engine with a
       // fork target.
-      ...(forkCheckpointId != null
-        ? { checkpoint_id: forkCheckpointId }
-        : {}),
+      ...(forkCheckpointId != null ? { checkpoint_id: forkCheckpointId } : {}),
       metadata: isRecord(params.metadata)
         ? (params.metadata as Record<string, unknown>)
         : undefined,

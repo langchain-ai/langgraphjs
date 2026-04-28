@@ -15,16 +15,15 @@ import {
  * microfrontend shell).
  */
 export const STREAM_CONTEXT_KEY: unique symbol = Symbol.for(
-  "@langchain/svelte/stream-context",
+  "@langchain/svelte/stream-context"
 );
 
 /**
  * Props for {@link provideStream} when talking to the default
  * LangGraph-Platform agent server.
  */
-export type ProvideStreamProps<T = Record<string, unknown>> = AgentServerOptions<
-  InferStateType<T>
->;
+export type ProvideStreamProps<T = Record<string, unknown>> =
+  AgentServerOptions<InferStateType<T>>;
 
 /**
  * Props for {@link provideStream} when wiring a custom
@@ -64,10 +63,10 @@ export function provideStream<
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 >(
-  options: ProvideStreamProps<T> | ProvideStreamCustomProps<T>,
+  options: ProvideStreamProps<T> | ProvideStreamCustomProps<T>
 ): UseStreamReturn<T, InterruptType, ConfigurableType> {
   const stream = useStream<T, InterruptType, ConfigurableType>(
-    options as UseStreamOptions<InferStateType<T>>,
+    options as UseStreamOptions<InferStateType<T>>
   );
   setContext(STREAM_CONTEXT_KEY, stream);
   return stream;
@@ -104,7 +103,7 @@ export function getStream<
   if (context == null) {
     throw new Error(
       "getStream() requires a parent component to call provideStream(). " +
-        "Add provideStream({ assistantId: '...' }) in an ancestor component.",
+        "Add provideStream({ assistantId: '...' }) in an ancestor component."
     );
   }
   return context;
@@ -117,7 +116,10 @@ export function getStream<
 
 const warnedAliases = new Set<string>();
 function warnOnce(name: string, replacement: string) {
-  if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
+  if (
+    typeof process !== "undefined" &&
+    process.env?.NODE_ENV === "production"
+  ) {
     return;
   }
   if (warnedAliases.has(name)) return;
@@ -125,7 +127,7 @@ function warnOnce(name: string, replacement: string) {
   // eslint-disable-next-line no-console
   console.warn(
     `[@langchain/svelte] ${name}() is deprecated and will be removed in a future major release. ` +
-      `Use ${replacement}() instead.`,
+      `Use ${replacement}() instead.`
   );
 }
 
@@ -133,9 +135,9 @@ function warnOnce(name: string, replacement: string) {
  * @deprecated Use {@link provideStream} instead. This alias will be
  * removed in a future major release.
  */
-export function setStreamContext<T extends UseStreamReturn<unknown, unknown, object>>(
-  stream: T,
-): T {
+export function setStreamContext<
+  T extends UseStreamReturn<unknown, unknown, object>,
+>(stream: T): T {
   warnOnce("setStreamContext", "provideStream");
   setContext(STREAM_CONTEXT_KEY, stream);
   return stream;

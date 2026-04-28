@@ -37,7 +37,7 @@ export function injectMessageMetadata(
     | string
     | undefined
     | Signal<string | undefined>
-    | (() => string | undefined),
+    | (() => string | undefined)
 ): Signal<MessageMetadata | undefined> {
   const destroyRef = inject(DestroyRef);
   const store = stream[STREAM_CONTROLLER].messageMetadataStore;

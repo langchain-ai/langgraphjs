@@ -43,10 +43,10 @@ export function injectStream<
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
 >(
-  options: UseStreamOptions<InferStateType<T>>,
+  options: UseStreamOptions<InferStateType<T>>
 ): StreamApi<T, InterruptType, ConfigurableType>;
 export function injectStream(
-  options?: UseStreamOptions<Record<string, unknown>>,
+  options?: UseStreamOptions<Record<string, unknown>>
 ): StreamApi {
   if (options == null) {
     const shared = inject(STREAM_INSTANCE, { optional: true });
@@ -54,7 +54,7 @@ export function injectStream(
       throw new Error(
         "injectStream() requires an ancestor to call provideStream(). " +
           "Add provideStream({ assistantId: '...' }) to a parent component's " +
-          "providers array, or call injectStream(options) directly.",
+          "providers array, or call injectStream(options) directly."
       );
     }
     return shared as StreamApi;
@@ -67,7 +67,7 @@ export function injectStream(
 
 function mergeDefaults<S extends object>(
   options: UseStreamOptions<S>,
-  defaults: StreamDefaults | undefined,
+  defaults: StreamDefaults | undefined
 ): UseStreamOptions<S> {
   if (defaults == null) return options;
   // Only merge into the agent-server branch — the custom-adapter

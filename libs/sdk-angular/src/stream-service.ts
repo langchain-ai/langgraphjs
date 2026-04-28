@@ -64,7 +64,7 @@ export class StreamService<
     const injector = inject(EnvironmentInjector);
     const destroyRef = inject(DestroyRef);
     this.stream = runInInjectionContext(injector, () =>
-      useStream<T, InterruptType, ConfigurableType>(options, destroyRef),
+      useStream<T, InterruptType, ConfigurableType>(options, destroyRef)
     );
   }
 
@@ -141,15 +141,12 @@ export class StreamService<
   // ─── Imperatives ──────────────────────────────────────────────────
 
   submit(
-    input:
-      | WidenUpdateMessages<Partial<InferStateType<T>>>
-      | null
-      | undefined,
-    options?: StreamSubmitOptions<InferStateType<T>, ConfigurableType>,
+    input: WidenUpdateMessages<Partial<InferStateType<T>>> | null | undefined,
+    options?: StreamSubmitOptions<InferStateType<T>, ConfigurableType>
   ): Promise<void> {
     return this.stream.submit(
       input as Parameters<this["stream"]["submit"]>[0],
-      options as Parameters<this["stream"]["submit"]>[1],
+      options as Parameters<this["stream"]["submit"]>[1]
     );
   }
 
@@ -159,7 +156,7 @@ export class StreamService<
 
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] },
+    target?: { interruptId: string; namespace?: string[] }
   ): Promise<void> {
     return this.stream.respond(response, target);
   }

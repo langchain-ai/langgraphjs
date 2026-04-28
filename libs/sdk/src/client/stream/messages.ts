@@ -118,7 +118,8 @@ const ERROR: unique symbol = Symbol("error");
  * the `session.messages` lazy getter.
  */
 export class StreamingMessage
-  implements AsyncIterable<ChatModelStreamEvent>, PromiseLike<AIMessage> {
+  implements AsyncIterable<ChatModelStreamEvent>, PromiseLike<AIMessage>
+{
   readonly id: string;
   readonly namespace: string[];
   node: string | undefined;
@@ -456,39 +457,39 @@ export type StreamingMessageHandle = Omit<StreamingMessage, "then">;
  */
 export type MessageAssemblyUpdate =
   | {
-    kind: "message-start";
-    key: string;
-    message: AssembledMessage;
-    event: MessagesEvent;
-  }
+      kind: "message-start";
+      key: string;
+      message: AssembledMessage;
+      event: MessagesEvent;
+    }
   | {
-    kind: "content-block-start" | "content-block-delta";
-    key: string;
-    message: AssembledMessage;
-    index: number;
-    block: ContentBlock;
-    event: MessagesEvent;
-  }
+      kind: "content-block-start" | "content-block-delta";
+      key: string;
+      message: AssembledMessage;
+      index: number;
+      block: ContentBlock;
+      event: MessagesEvent;
+    }
   | {
-    kind: "content-block-finish";
-    key: string;
-    message: AssembledMessage;
-    index: number;
-    block: FinalizedContentBlock;
-    event: MessagesEvent;
-  }
+      kind: "content-block-finish";
+      key: string;
+      message: AssembledMessage;
+      index: number;
+      block: FinalizedContentBlock;
+      event: MessagesEvent;
+    }
   | {
-    kind: "message-finish";
-    key: string;
-    message: AssembledMessage;
-    event: MessagesEvent;
-  }
+      kind: "message-finish";
+      key: string;
+      message: AssembledMessage;
+      event: MessagesEvent;
+    }
   | {
-    kind: "message-error";
-    key: string;
-    message: AssembledMessage;
-    event: MessagesEvent;
-  };
+      kind: "message-error";
+      key: string;
+      message: AssembledMessage;
+      event: MessagesEvent;
+    };
 
 function cloneBlock<T extends ContentBlock>(block: T): T {
   return structuredClone(block);

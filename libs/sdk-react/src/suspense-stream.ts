@@ -134,9 +134,7 @@ export function useSuspenseStream<T = Record<string, unknown>>(
   };
   const key = suspenseKey(asBag);
 
-  const stream = useStream<T>(
-    options as Parameters<typeof useStream<T>>[0]
-  );
+  const stream = useStream<T>(options as Parameters<typeof useStream<T>>[0]);
 
   // First render for this `(apiUrl, assistantId, threadId)`: install
   // an entry that tracks the current controller's hydration. The
@@ -246,7 +244,4 @@ export function useSuspenseStream<T = Record<string, unknown>>(
 
 // Re-export the transitional companion types so existing call sites
 // keep resolving without reaching into `./use-stream.js` directly.
-export type {
-  SubmissionQueueEntry,
-  SubmissionQueueSnapshot,
-};
+export type { SubmissionQueueEntry, SubmissionQueueSnapshot };
