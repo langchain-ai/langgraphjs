@@ -91,6 +91,7 @@ function defaultGuessGraphName(ns: Namespace): string {
 }
 
 function defaultSerializeError(err: unknown): string {
+  // oxlint-disable-next-line no-instanceof/no-instanceof
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
   try {

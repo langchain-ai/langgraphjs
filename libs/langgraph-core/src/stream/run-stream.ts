@@ -538,6 +538,7 @@ export function createGraphRunStream<
   optionsOrAbortController?: CreateGraphRunStreamOptions | AbortController
 ): GraphRunStream<TValues, InferExtensions<TTransformers>> {
   const options: CreateGraphRunStreamOptions =
+    // oxlint-disable-next-line no-instanceof/no-instanceof
     optionsOrAbortController instanceof AbortController
       ? { abortController: optionsOrAbortController }
       : (optionsOrAbortController ?? {});
