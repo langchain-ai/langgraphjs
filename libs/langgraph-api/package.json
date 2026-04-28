@@ -76,7 +76,7 @@
     "stacktrace-parser": "^0.1.10",
     "superjson": "^2.2.2",
     "tsx": "^4.19.3",
-    "uuid": "^10.0.0",
+    "uuid": "^14.0.0",
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
     "zod": "^3.25.76 || ^4"
