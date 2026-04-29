@@ -1247,6 +1247,9 @@ importers:
       '@langchain/openai':
         specifier: ^1.4.1
         version: 1.4.4(@langchain/core@1.1.40-dev-1777426124745(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(ws@8.20.0)
+      '@langchain/protocol':
+        specifier: ^0.0.14
+        version: 0.0.14
       '@langchain/react':
         specifier: workspace:*
         version: link:../../libs/sdk-react
@@ -4120,6 +4123,9 @@ packages:
 
   '@langchain/protocol@0.0.13':
     resolution: {integrity: sha512-DDBmP5XEJEtt9lHXUVCuaSqRo5Vqz5hQbsTIkcB5ILgK+ymrv4d9k5fxLinap/uewWnMDUbyYCeh3jid5NBRVA==}
+
+  '@langchain/protocol@0.0.14':
+    resolution: {integrity: sha512-nhOiGe0YTxgkVM/VoD76VmHaS+b9mKSTpDWdsODVgVpekhNkvyQ5q9LjUH2DzJUU2SIH1aC7w+1qSVNo+nMIHQ==}
 
   '@langchain/protocol@0.0.7':
     resolution: {integrity: sha512-IHByVwH3sYiCWUDPj+/JWeZ4Pzl5tHRDNUchkddJb/4L5Z2ZI9sCdSJM6vkeMVF+Owj/75Id7AP0Fk6e/S6XMw==}
@@ -13895,6 +13901,8 @@ snapshots:
   '@langchain/protocol@0.0.12': {}
 
   '@langchain/protocol@0.0.13': {}
+
+  '@langchain/protocol@0.0.14': {}
 
   '@langchain/protocol@0.0.7': {}
 
