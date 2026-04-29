@@ -13,8 +13,9 @@ import type {
 } from "./types.js";
 
 /**
- * The set of stream modes requested by `stream_v2()` — every mode
- * the protocol maps to a channel.
+ * The set of stream modes requested by
+ * `streamEvents(..., { version: "v3" })` — every mode the protocol maps
+ * to a channel.
  *
  * The verbose `"debug"` mode is intentionally excluded: it was a thin
  * re-wrap of `checkpoints` + `tasks` carrying no new information.
@@ -28,7 +29,7 @@ import type {
  * next to each `values` event when meta is present, so clients can build
  * branching/time-travel UIs without a full-state `checkpoints` subscription.
  */
-export const STREAM_V2_MODES: StreamMode[] = [
+export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
   "values",
   "updates",
   "messages",

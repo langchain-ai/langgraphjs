@@ -16,10 +16,10 @@ export {
   pump,
   nsKey,
   hasPrefix,
-  STREAM_V2_MODES,
   RESOLVE_VALUES,
   REJECT_VALUES,
 } from "./mux.js";
+export { STREAM_EVENTS_V3_MODES } from "./convert.js";
 export type {
   StreamHandle,
   SubgraphStreamFactory,

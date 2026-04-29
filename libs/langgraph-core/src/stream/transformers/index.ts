@@ -14,6 +14,7 @@
 export {
   createLifecycleTransformer,
   filterLifecycleEntries,
+  type LifecycleProjection,
 } from "./lifecycle.js";
 export { createMessagesTransformer } from "./messages.js";
 export {
@@ -25,7 +26,6 @@ export {
 export { createValuesTransformer } from "./values.js";
 export type {
   LifecycleEntry,
-  LifecycleProjection,
   LifecycleTransformerOptions,
   MessagesTransformerProjection,
   ValuesTransformerProjection,

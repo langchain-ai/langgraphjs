@@ -6,7 +6,7 @@
  * namespace discovery for SubgraphRunStream creation.
  *
  * lifecycle:
- *   graph.stream_v2(input)
+ *   graph.streamEvents(input, { version: "v3" })
  *     ├─ StreamMux starts pumping from graph.stream(…, { subgraphs: true })
  *     ├─ For each ProtocolEvent:
  *     │   ├─ transformer_1.process(event)
@@ -17,7 +17,7 @@
 
 import type { StreamChunk } from "../pregel/stream.js";
 import { INTERRUPT, isInterrupted, type Interrupt } from "../constants.js";
-import { convertToProtocolEvent, STREAM_V2_MODES } from "./convert.js";
+import { convertToProtocolEvent, STREAM_EVENTS_V3_MODES } from "./convert.js";
 import { StreamChannel, isStreamChannel } from "./stream-channel.js";
 import type {
   InterruptPayload,
@@ -27,7 +27,7 @@ import type {
   StreamTransformer,
 } from "./types.js";
 
-export { STREAM_V2_MODES };
+export { STREAM_EVENTS_V3_MODES };
 
 /**
  * Structural `PromiseLike<T>` predicate — true for thenables including
@@ -97,7 +97,8 @@ export type SubgraphDiscovery = {
  * subgraph streams, and exposes async iteration over filtered event
  * sequences.
  *
- * One `StreamMux` instance exists per top-level `stream_v2()` invocation.
+ * One `StreamMux` instance exists per top-level
+ * `streamEvents(..., { version: "v3" })` invocation.
  */
 export class StreamMux {
   /** @internal All protocol events in arrival order (after reducer pipeline). */

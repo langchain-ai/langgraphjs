@@ -7,11 +7,11 @@ import type { StreamMode, StreamOutputMap } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
 
 /**
- * Optional chunk-level metadata carried alongside the payload. Used by the
- * v2 protocol stream (`stream_v2`) to emit a companion `checkpoints`
- * protocol event adjacent to the `values` event for the same superstep,
- * so clients can build branching / time-travel UIs without subscribing to
- * a full-state `checkpoints` stream.
+ * Optional chunk-level metadata carried alongside the payload. Used by
+ * `streamEvents(..., { version: "v3" })` to emit a companion `checkpoints`
+ * protocol event adjacent to the `values` event for the same superstep, so
+ * clients can build branching / time-travel UIs without subscribing to a
+ * full-state `checkpoints` stream.
  *
  * v1 consumers that destructure `StreamChunk` as `[ns, mode, payload]`
  * ignore the 4th element and are unaffected.

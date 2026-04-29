@@ -1,7 +1,7 @@
 /**
  * Human-in-the-loop (in-process) — interrupt, inspect, resume.
  *
- * Demonstrates the `stream_v2()` interrupt/resume lifecycle
+ * Demonstrates the `streamEvents(..., { version: "v3" })` interrupt/resume lifecycle
  * when the graph is a `createAgent(...)` flow guarded by
  * `humanInTheLoopMiddleware`. When the model tries to call the
  * `send_release_update_email` tool, the middleware pauses the run and
@@ -24,7 +24,7 @@ const config = { configurable: { thread_id: threadId } };
 
 console.log("=== Turn 1: Run until interrupt ===\n");
 
-const run1 = await agent.stream_v2(
+const run1 = await agent.streamEvents(
   {
     messages: [
       {
@@ -33,7 +33,7 @@ const run1 = await agent.stream_v2(
       },
     ],
   },
-  config
+  { ...config, version: "v3" }
 );
 
 for await (const msg of run1.messages) {
@@ -74,9 +74,9 @@ console.log(
 
 console.log("\n=== Turn 2: Resume after approval ===\n");
 
-const run2 = await agent.stream_v2(
+const run2 = await agent.streamEvents(
   new Command({ resume: { decisions } }) as any,
-  config
+  { ...config, version: "v3" }
 );
 
 for await (const msg of run2.messages) {

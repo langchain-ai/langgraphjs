@@ -53,8 +53,9 @@ import type { RunProtocolSession } from "./session/index.mjs";
  *   UIs can subscribe without also paying for full-state payloads.
  *
  * When {@link normalized} is `true` the payload has already been converted
- * to its protocol shape by the in-process streaming layer (`stream_v2`)
- * and should be passed through without re-normalization.
+ * to its protocol shape by the in-process streaming layer
+ * (`streamEvents(..., { version: "v3" })`) and should be passed through
+ * without re-normalization.
  */
 export type SourceStreamEvent = {
   id?: string;

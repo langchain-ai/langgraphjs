@@ -13,14 +13,17 @@
 import { graph } from "../agents/research-pipeline.js";
 
 async function main() {
-  const run = await graph.stream_v2({
-    messages: [
-      {
-        role: "user" as const,
-        content: "Research TypeScript 5.8 features and identify risks.",
-      },
-    ],
-  });
+  const run = await graph.streamEvents(
+    {
+      messages: [
+        {
+          role: "user" as const,
+          content: "Research TypeScript 5.8 features and identify risks.",
+        },
+      ],
+    },
+    { version: "v3" }
+  );
 
   const workers: Promise<void>[] = [];
 

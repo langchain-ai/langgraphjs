@@ -1180,7 +1180,8 @@ export class ThreadStream<
      * Fork the new run from an explicit checkpoint instead of the
      * thread's latest. Forwarded verbatim on the `/run.input` protocol
      * message; the API layer picks it up and routes it to
-     * `graph.stream_v2({ forkFrom })` (see plan-roadmap.md R2.4 / A0.1).
+     * `graph.streamEvents(input, { version: "v3", forkFrom })`
+     * (see plan-roadmap.md R2.4 / A0.1).
      */
     forkFrom?: { checkpointId: string };
     /**

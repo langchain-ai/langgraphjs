@@ -193,53 +193,56 @@ describe("streamState", () => {
       },
     });
 
-    let streamV2Invoked = false;
+    let streamEventsV3Invoked = false;
     const chunks: Array<{ event: string; data: unknown }> = [];
     for await (const chunk of streamState(run, {
       attempt: 1,
       getGraph: async () =>
         ({
           streamTransformers: [() => ({})],
-          async stream_v2() {
-            streamV2Invoked = true;
-            return {
-              async *[Symbol.asyncIterator]() {
-                yield {
-                  type: "event" as const,
-                  seq: 0,
-                  method: "updates" as const,
-                  params: {
-                    namespace: [],
-                    timestamp: 1,
-                    data: { ignored: true },
-                  },
-                };
-              },
-            };
-          },
-          async *streamEvents() {
-            yield {
-              event: "on_chain_stream",
-              run_id: run.run_id,
-              data: {
-                chunk: [
-                  ["worker"],
-                  "updates",
-                  {
-                    worker: {
-                      status: "legacy",
+          streamEvents(_input: unknown, options: { version?: string }) {
+            if (options?.version === "v3") {
+              streamEventsV3Invoked = true;
+              return Promise.resolve({
+                async *[Symbol.asyncIterator]() {
+                  yield {
+                    type: "event" as const,
+                    seq: 0,
+                    method: "updates" as const,
+                    params: {
+                      namespace: [],
+                      timestamp: 1,
+                      data: { ignored: true },
                     },
-                  },
-                ],
-              },
-            };
+                  };
+                },
+              });
+            }
+
+            return (async function* () {
+              yield {
+                event: "on_chain_stream",
+                run_id: run.run_id,
+                data: {
+                  chunk: [
+                    ["worker"],
+                    "updates",
+                    {
+                      worker: {
+                        status: "legacy",
+                      },
+                    },
+                  ],
+                },
+              };
+            })();
           },
         }) as never,
     })) {
       chunks.push(chunk);
     }
 
-    expect(streamV2Invoked).toBe(false);
+    expect(streamEventsV3Invoked).toBe(false);
     expect(chunks).toEqual([
       {
         event: "metadata",
@@ -271,20 +274,19 @@ describe("streamState", () => {
       },
     });
 
-    // v2-protocol runs must skip the v1 `streamEvents` path and flow
-    // through `graph.stream_v2`, which is what lets core's
+    // Protocol-gated runs must skip the v1/v2 `streamEvents` path and flow
+    // through `graph.streamEvents(..., { version: "v3" })`, which is what lets core's
     // `LifecycleTransformer` emit authoritative subgraph lifecycle
-    // events.  A graph that only exposes `streamEvents` would throw
-    // on the v1 path — by mocking `stream_v2` here we assert the
-    // run is actually routed to the v2 pipeline.
-    let streamV2Invoked = false;
+    // events. By mocking the v3 overload here, we assert the run is
+    // actually routed to the protocol pipeline.
+    let streamEventsV3Invoked = false;
     const chunks: Array<{ event: string; data: unknown }> = [];
     for await (const chunk of streamState(run, {
       attempt: 1,
       getGraph: async () =>
         ({
-          async stream_v2() {
-            streamV2Invoked = true;
+          async streamEvents() {
+            streamEventsV3Invoked = true;
             return {
               async *[Symbol.asyncIterator]() {
                 yield {
@@ -308,7 +310,7 @@ describe("streamState", () => {
       chunks.push(chunk);
     }
 
-    expect(streamV2Invoked).toBe(true);
+    expect(streamEventsV3Invoked).toBe(true);
     expect(chunks).toEqual([
       {
         event: "metadata",

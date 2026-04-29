@@ -45,7 +45,7 @@ export {
   StreamChannel,
   GraphRunStream,
   SubgraphRunStream,
-  STREAM_V2_MODES,
+  STREAM_EVENTS_V3_MODES,
   isNativeTransformer,
   createGraphRunStream,
   createMessagesTransformer,

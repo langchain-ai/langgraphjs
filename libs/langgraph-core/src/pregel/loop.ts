@@ -1231,7 +1231,7 @@ export class PregelLoop {
   /**
    * Build a {@link StreamChunkMeta} describing the currently active checkpoint.
    * Used to enrich `values` tuples with a lightweight fork pointer that
-   * the v2 protocol stream (`stream_v2`) promotes to a companion
+   * `streamEvents(..., { version: "v3" })` promotes to a companion
    * `checkpoints` event (emitted immediately before its paired `values`).
    * This envelope backs branching / time-travel UIs
    * (`useMessageMetadata(msg.id).parentCheckpointId`). Returns `undefined`

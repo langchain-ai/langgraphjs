@@ -479,7 +479,8 @@ export class RunProtocolSession {
   }
 
   /**
-   * Forwards events already converted by core's stream_v2 pipeline.
+   * Forwards events already converted by core's
+   * `streamEvents(..., { version: "v3" })` pipeline.
    *
    * Only events marked by `streamStateV2` after `convertToProtocolEvent` and
    * the built-in stream transformers have run take this path.

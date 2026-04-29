@@ -18,7 +18,7 @@
 
 import { agent } from "../agents/deep-agent.js";
 
-const run = await agent.stream_v2(
+const run = await agent.streamEvents(
   {
     messages: [
       {
@@ -28,7 +28,7 @@ const run = await agent.stream_v2(
       },
     ],
   },
-  { configurable: { thread_id: `subagent-status-${Date.now()}` } }
+  { version: "v3", configurable: { thread_id: `subagent-status-${Date.now()}` } }
 );
 
 let started = 0;

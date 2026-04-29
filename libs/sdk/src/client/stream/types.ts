@@ -215,7 +215,7 @@ export interface ThreadExtension<T = unknown>
  *   - anything else → the value itself
  *
  * This lets a `ThreadStream<TExtensions>` generic accept the same shape
- * that `graph.stream_v2()` returns in-process
+ * that `graph.streamEvents(..., { version: "v3" })` returns in-process
  * (via `InferExtensions<TTransformers>` from `@langchain/langgraph`),
  * without forcing users to redeclare payload types on the remote side.
  */

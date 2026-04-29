@@ -12,15 +12,18 @@
 
 import { graph } from "../agents/simple-tool-graph.js";
 
-const run = await graph.stream_v2({
-  messages: [
-    {
-      role: "user",
-      content:
-        "Search the web for the current population of Tokyo, then calculate what 1% of that number is.",
-    },
-  ],
-});
+const run = await graph.streamEvents(
+  {
+    messages: [
+      {
+        role: "user",
+        content:
+          "Search the web for the current population of Tokyo, then calculate what 1% of that number is.",
+      },
+    ],
+  },
+  { version: "v3" }
+);
 
 console.log("--- Streaming messages (in-process) ---");
 for await (const message of run.messages) {

@@ -3,7 +3,7 @@
 `client.threads.stream(...)` is **the recommended way to stream a run**.
 It returns a `ThreadStream` — a high-level handle around a thread-centric
 v2 protocol connection — that mirrors the in-process
-`graph.stream_v2(...)` API from `@langchain/langgraph`.
+`graph.streamEvents(..., { version: "v3" })` API from `@langchain/langgraph`.
 
 > **Deprecation notice.** The legacy generators on `client.runs.*`
 > (`runs.stream`, `runs.joinStream`, `runs.wait`) and

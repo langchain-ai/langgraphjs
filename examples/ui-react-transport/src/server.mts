@@ -30,9 +30,9 @@ const app = new Hono();
 
 app.post("/api/stream", async (c) => {
   const body = await c.req.json();
-  const stream = await graph.stream(body.input, {
+  const stream = await graph.streamEvents(body.input, {
+    version: "v3",
     encoding: "text/event-stream",
-    streamMode: ["values", "messages", "updates"],
   });
 
   return new Response(stream, {

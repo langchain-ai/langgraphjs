@@ -1,5 +1,5 @@
 /**
- * Basic stream_v2() usage — iterate protocol events and await final output.
+ * Basic streamEvents(..., { version: "v3" }) usage — iterate protocol events and await final output.
  *
  * Run:
  *   ANTHROPIC_API_KEY=sk-... npx tsx src/basic/in-process.ts
@@ -7,9 +7,12 @@
 
 import { graph } from "../agents/simple-tool-graph.js";
 
-const run = await graph.stream_v2({
-  messages: [{ role: "user", content: "What is 42 * 17?" }],
-});
+const run = await graph.streamEvents(
+  {
+    messages: [{ role: "user", content: "What is 42 * 17?" }],
+  },
+  { version: "v3" }
+);
 
 console.log("--- Streaming All protocol events (in-process) ---\n");
 

@@ -130,7 +130,8 @@ export interface StreamSubmitOptions<
   /**
    * Fork the run from an explicit checkpoint instead of the thread's
    * latest. Emits a `forkFrom` field on the `/run.input` request that
-   * the API layer forwards to `graph.stream_v2({ forkFrom })`.
+   * the API layer forwards to
+   * `graph.streamEvents(input, { version: "v3", forkFrom })`.
    *
    * See plan-roadmap.md §5.3 R2.4.
    */

@@ -13,7 +13,7 @@
     "@hono/node-server": "^1.19.13",
     "@langchain/core": "^1.1.38",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/react": "workspace:*",
+    "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/openai": "^1.4.1",
     "hono": "^4.12.12",
     "react": "^19.0.0",

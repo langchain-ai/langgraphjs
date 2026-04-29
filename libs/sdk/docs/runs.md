@@ -34,7 +34,7 @@ interrupt capture, manual reconnect with `lastEventId`, and manual
 subgraph / subagent tracking.
 
 The v2 primitive does all of that for you and is the same shape as the
-in-process `graph.stream_v2(...)` API:
+in-process `graph.streamEvents(..., { version: "v3" })` API:
 
 ```ts
 const thread = client.threads.stream({ assistantId: "my-agent" });

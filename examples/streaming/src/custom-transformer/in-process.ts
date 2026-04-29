@@ -1,5 +1,5 @@
 /**
- * Custom StreamTransformer — extend stream_v2() with domain-specific projections.
+ * Custom StreamTransformer — extend streamEvents(..., { version: "v3" }) with domain-specific projections.
  *
  * This example shows two transformer patterns, both defined in
  * `shared/custom-transformers.ts`:
@@ -31,7 +31,7 @@ const CYAN = "\x1b[36m";
 const YELLOW = "\x1b[33m";
 const GREEN = "\x1b[32m";
 
-const run = await graph.stream_v2(
+const run = await graph.streamEvents(
   {
     messages: [
       {
@@ -41,7 +41,7 @@ const run = await graph.stream_v2(
       },
     ],
   },
-  { transformers: [statsTransformer, toolActivityTransformer] }
+  { version: "v3", transformers: [statsTransformer, toolActivityTransformer] }
 );
 
 console.log(`${BOLD}--- Parallel consumers ---${RESET}\n`);

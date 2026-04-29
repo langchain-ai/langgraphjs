@@ -422,9 +422,9 @@ export async function* streamState(
 }
 
 /**
- * Executes a graph run using `graph.stream_v2()` and maps the resulting
- * `ProtocolEvent` objects into the `{ event, data }` shape consumed by
- * both the legacy SSE path and the protocol v2 session.
+ * Executes a graph run using `graph.streamEvents(..., { version: "v3" })`
+ * and maps the resulting `ProtocolEvent` objects into the `{ event, data }`
+ * shape consumed by both the legacy SSE path and the protocol v2 session.
  *
  * This path activates graph-level `streamTransformers` (registered via
  * `.compile({ transformers })`) so that custom transformer output flows to
@@ -491,11 +491,12 @@ export async function* streamStateV2(
       ? kwargs.config.configurable.graph_id
       : run.assistant_id;
 
-  const graphRun = await graph.stream_v2(
+  const graphRun = await graph.streamEvents(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
       : (kwargs.input ?? null),
     {
+      version: "v3",
       interruptAfter: kwargs.interrupt_after,
       interruptBefore: kwargs.interrupt_before,
 

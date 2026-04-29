@@ -1,5 +1,5 @@
 /**
- * A2A streaming in-process using `stream_v2()`.
+ * A2A streaming in-process using `streamEvents(..., { version: "v3" })`.
  *
  * The research pipeline is compiled with `createA2ATransformer` (see
  * `agents/a2a-research.ts`) which exposes a `StreamChannel` projection
@@ -13,14 +13,17 @@
 
 import { graph } from "../agents/a2a-research.js";
 
-const run = await graph.stream_v2({
-  messages: [
-    {
-      role: "user",
-      content: "Research WebAssembly adoption and identify key risks.",
-    },
-  ],
-});
+const run = await graph.streamEvents(
+  {
+    messages: [
+      {
+        role: "user",
+        content: "Research WebAssembly adoption and identify key risks.",
+      },
+    ],
+  },
+  { version: "v3" }
+);
 
 console.log("--- Streaming A2A events (in-process) ---\n");
 

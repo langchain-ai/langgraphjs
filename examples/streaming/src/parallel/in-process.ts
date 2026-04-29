@@ -10,15 +10,18 @@
 
 import { graph } from "../agents/simple-tool-graph.js";
 
-const run = await graph.stream_v2({
-  messages: [
-    {
-      role: "user",
-      content:
-        "Search the web for the population of Paris, then calculate 5% of that number.",
-    },
-  ],
-});
+const run = await graph.streamEvents(
+  {
+    messages: [
+      {
+        role: "user",
+        content:
+          "Search the web for the population of Paris, then calculate 5% of that number.",
+      },
+    ],
+  },
+  { version: "v3" }
+);
 
 console.log("--- Parallel consumption ---\n");
 

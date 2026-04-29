@@ -31,9 +31,28 @@ import type {
 } from "../types.js";
 import type {
   LifecycleEntry,
-  LifecycleProjection,
   LifecycleTransformerOptions,
 } from "./types.js";
+
+/**
+ * Projection returned from the lifecycle transformer's `init()`.
+ *
+ * The local `StreamChannel` is closed automatically when the transformer
+ * finalizes or fails. `_lifecycleLog` is intentionally underscore-prefixed to
+ * signal that it is consumed by the run stream wiring
+ * (see `run-stream.ts`) and not meant for direct user access -
+ * consumers should read `run.lifecycle` instead.
+ *
+ * The `lifecycle` iterable is the root-scoped projection (prefix
+ * `[]`, starting at offset `0`) mirroring the pattern used by the
+ * subgraph discovery transformer.  Root stream wiring consumes it
+ * via `SET_LIFECYCLE_ITERABLE`; child streams are wired with their
+ * own path-scoped iterable produced by `filterLifecycleEntries`.
+ */
+export interface LifecycleProjection {
+  _lifecycleLog: StreamChannel<LifecycleEntry>;
+  lifecycle: AsyncIterable<LifecycleEntry>;
+}
 
 /**
  * Filter a lifecycle {@link StreamChannel} to only the entries whose
