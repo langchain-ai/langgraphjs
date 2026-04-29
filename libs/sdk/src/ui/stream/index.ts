@@ -24,7 +24,7 @@ import type {
 } from "../types.js";
 
 // Import for internal use
-import type { BaseStream } from "./base.js";
+import type { BaseStream, StateRecord } from "./base.js";
 import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
 import type {
   UseDeepAgentStream,
