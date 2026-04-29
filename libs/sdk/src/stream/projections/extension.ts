@@ -9,8 +9,7 @@
  */
 import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
-import type { SubscriptionHandle } from "../../client/stream/index.js";
-import type { Event } from "@langchain/protocol";
+import type { EventSubscription } from "../../client/stream/index.js";
 
 export function extensionProjection<T = unknown>(
   name: string,
@@ -25,7 +24,7 @@ export function extensionProjection<T = unknown>(
     namespace: ns,
     initial: undefined,
     open({ thread, store }): ProjectionRuntime {
-      let handle: SubscriptionHandle<Event, unknown> | undefined;
+      let handle: EventSubscription<unknown> | undefined;
       let disposed = false;
 
       const start = async () => {
