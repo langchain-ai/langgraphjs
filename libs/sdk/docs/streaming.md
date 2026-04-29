@@ -75,22 +75,21 @@ Instead of consuming a firehose of protocol events, a `ThreadStream`
 exposes **typed, lazy projections**. Each getter opens a scoped
 subscription on first access and is cached thereafter:
 
-| Getter                      | Type                                                      | Channel      |
-| --------------------------- | --------------------------------------------------------- | ------------ |
-| `thread.messages`           | `AsyncIterable<StreamingMessage>`                         | `messages`   |
-| `thread.values`             | `AsyncIterable<State> & PromiseLike<State>`               | `values`     |
-| `thread.output`             | `Promise<State>`                                          | `values`     |
-| `thread.toolCalls`          | `AsyncIterable<AssembledToolCall>`                        | `tools`      |
-| `thread.subgraphs`          | `AsyncIterable<SubgraphHandle>`                           | `lifecycle`  |
-| `thread.triggeredSubgraphs` | `AsyncIterable<TriggeredSubgraphHandle>`                  | `lifecycle` + `tools` |
-| `thread.subagents`          | `AsyncIterable<SubagentHandle>` *(deepagents-specific)*   | `lifecycle` + `tools` |
-| `thread.extensions.<name>`  | `AsyncIterable<T> & PromiseLike<T>`                       | `custom:<name>` |
-| `thread.audio`              | `AsyncIterable<AudioMedia>`                               | `messages` (audio blocks) |
-| `thread.images`             | `AsyncIterable<ImageMedia>`                               | `messages` (image blocks) |
-| `thread.video`              | `AsyncIterable<VideoMedia>`                               | `messages` (video blocks) |
-| `thread.files`              | `AsyncIterable<FileMedia>`                                | `messages` (file blocks) |
-| `thread.interrupts`         | `InterruptPayload[]` (synchronous)                        | `input`      |
-| `thread.interrupted`        | `boolean` (synchronous)                                   | `lifecycle`  |
+| Getter                     | Type                                                    | Channel                   |
+| -------------------------- | ------------------------------------------------------- | ------------------------- |
+| `thread.messages`          | `AsyncIterable<StreamingMessage>`                       | `messages`                |
+| `thread.values`            | `AsyncIterable<State> & PromiseLike<State>`             | `values`                  |
+| `thread.output`            | `Promise<State>`                                        | `values`                  |
+| `thread.toolCalls`         | `AsyncIterable<AssembledToolCall>`                      | `tools`                   |
+| `thread.subgraphs`         | `AsyncIterable<SubgraphHandle>`                         | `lifecycle` + `tools`     |
+| `thread.subagents`         | `AsyncIterable<SubagentHandle>` *(deepagents-specific)* | `lifecycle` + `tools`     |
+| `thread.extensions.<name>` | `AsyncIterable<T> & PromiseLike<T>`                     | `custom:<name>`           |
+| `thread.audio`             | `AsyncIterable<AudioMedia>`                             | `messages` (audio blocks) |
+| `thread.images`            | `AsyncIterable<ImageMedia>`                             | `messages` (image blocks) |
+| `thread.video`             | `AsyncIterable<VideoMedia>`                             | `messages` (video blocks) |
+| `thread.files`             | `AsyncIterable<FileMedia>`                              | `messages` (file blocks)  |
+| `thread.interrupts`        | `InterruptPayload[]` (synchronous)                      | `input`                   |
+| `thread.interrupted`       | `boolean` (synchronous)                                 | `lifecycle`               |
 
 Two concrete payoffs:
 
@@ -203,7 +202,8 @@ await thread.close();
 - **Common flows**
   - [Messages & tokens](./streaming-messages.md)
   - [Human-in-the-loop / interrupts](./streaming-interrupts.md)
-  - [Subgraphs & subagents](./streaming-subgraphs-subagents.md)
+- [Subgraphs](./streaming-subgraphs.md)
+- [Subagents](./streaming-subagents.md)
   - [Custom transformer projections](./streaming-extensions.md)
   - [Media blocks](./streaming-media.md)
 - **Advanced**

@@ -2,8 +2,13 @@ import { transformWithEsbuild } from "vite";
 import { defineConfig } from "vitest/config";
 import angular from "@analogjs/vite-plugin-angular";
 import { webdriverio } from "@vitest/browser-webdriverio";
+import { fileURLToPath } from "node:url";
 
-const nonAngularFiles = [/mock-server\.ts/, /vitest-browser-shim\.ts/];
+const nonAngularFiles = [
+  /mock-server\.ts/,
+  /vitest-browser-shim\.ts/,
+  /\.test-d\.ts$/,
+];
 
 export default defineConfig({
   plugins: [
@@ -23,9 +28,27 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: {},
+  optimizeDeps: {
+    exclude: [
+      "@analogjs/vitest-angular/setup-testbed",
+      "vitest",
+      "vitest/browser",
+      "vitest-browser-angular",
+    ],
+  },
+  resolve: {
+    alias: {
+      "vitest-browser-angular": fileURLToPath(
+        new URL(
+          "./node_modules/vitest-browser-angular/dist/pure.mjs",
+          import.meta.url
+        )
+      ),
+    },
+  },
   test: {
     globals: true,
+    fileParallelism: false,
     testTimeout: 30_000,
     retry: 2,
     globalSetup: ["./src/tests/fixtures/mock-server.ts"],

@@ -68,6 +68,8 @@ export function inferChannel(event: Event): Channel | undefined {
   switch (event.method) {
     case "values":
       return "values";
+    case "checkpoints":
+      return "checkpoints";
     case "updates":
       return "updates";
     case "messages":

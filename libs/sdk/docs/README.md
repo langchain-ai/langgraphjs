@@ -31,8 +31,10 @@ adapter.
      reasoning deltas from chat models.
    - [Interrupts & human-in-the-loop](./streaming-interrupts.md) —
      pause, inspect, and resume runs.
-   - [Subgraphs & subagents](./streaming-subgraphs-subagents.md) —
-     observe nested work in deep agents and fan-out graphs.
+   - [Subgraphs](./streaming-subgraphs.md) —
+     observe nested work in fan-out graphs.
+   - [Subagents](./streaming-subagents.md) —
+     observe deepagents-specific `task`-tool workers.
    - [Custom transformers (extensions)](./streaming-extensions.md) —
      consume `custom:<name>` projections with end-to-end typing.
    - [Media blocks](./streaming-media.md) — audio, image, video, and
@@ -57,15 +59,14 @@ always use the v2 `client.threads.stream(...)` primitive.** The legacy
 generators on `client.runs.*` are preserved for backwards compatibility
 only.
 
-| Need                                           | Use                                                                           |
-| ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| Stream a run with typed projections            | [`client.threads.stream(...)`](./streaming.md) ✅ **recommended**             |
-| Stream messages token-by-token                 | [`thread.messages`](./streaming-messages.md) ✅                               |
-| Human-in-the-loop                              | [`thread.interrupts` + `thread.input.respond(...)`](./streaming-interrupts.md) ✅ |
-| Deep-agent subagents / subgraph tree           | [`thread.subagents` / `thread.subgraphs`](./streaming-subgraphs-subagents.md) ✅ |
-| Custom server-side projections                 | [`thread.extensions.<name>`](./streaming-extensions.md) ✅                    |
-| Re-attach to an in-flight run                  | `client.threads.stream(threadId, { assistantId })` ✅                         |
-| `client.runs.stream(...)` / `runs.joinStream()` | ⚠️ Legacy — see [Runs (legacy)](./runs.md) for migration guidance             |
+- **Stream a run with typed projections:** [`client.threads.stream(...)`](./streaming.md) ✅ **recommended**
+- **Stream messages token-by-token:** [`thread.messages`](./streaming-messages.md) ✅
+- **Human-in-the-loop:** [`thread.interrupts` + `thread.input.respond(...)`](./streaming-interrupts.md) ✅
+- **Subgraph tree:** [`thread.subgraphs`](./streaming-subgraphs.md) ✅
+- **Deep-agent subagents:** [`thread.subagents`](./streaming-subagents.md) ✅
+- **Custom server-side projections:** [`thread.extensions.<name>`](./streaming-extensions.md) ✅
+- **Re-attach to an in-flight run:** `client.threads.stream(threadId, { assistantId })` ✅
+- **`client.runs.stream(...)` / `runs.joinStream()`:** ⚠️ Legacy — see [Runs (legacy)](./runs.md) for migration guidance
 
 ## Quick peek
 

@@ -82,6 +82,12 @@ export class SubgraphHandle {
    */
   readonly cause?: LifecycleCause;
   readonly graphName?: string;
+  /**
+   * Raw `tool-started` event that triggered this subgraph, when
+   * `cause.type === "toolCall"` and the matching event has been
+   * observed on the `tools` channel.
+   */
+  toolStartedEvent?: ToolsEvent;
   readonly #session: Subscribable;
 
   #messagesIterable?: AsyncIterable<StreamingMessage>;
@@ -102,13 +108,18 @@ export class SubgraphHandle {
     index: number,
     namespace: string[],
     session: Subscribable,
-    options?: { cause?: LifecycleCause; graphName?: string }
+    options?: {
+      cause?: LifecycleCause;
+      graphName?: string;
+      toolStartedEvent?: ToolsEvent;
+    }
   ) {
     this.name = name;
     this.index = index;
     this.namespace = namespace;
     this.cause = options?.cause;
     this.graphName = options?.graphName;
+    this.toolStartedEvent = options?.toolStartedEvent;
     this.#session = session;
   }
 
@@ -189,7 +200,7 @@ export class SubgraphHandle {
     this.#subgraphsIterable = buffer;
     void (async () => {
       const rawHandle = await this.#session.subscribe({
-        channels: ["lifecycle"],
+        channels: ["lifecycle", "tools"],
         namespaces: [this.namespace],
       });
       const discovery = new SubgraphDiscoveryHandle(
@@ -353,6 +364,8 @@ export class SubgraphDiscoveryHandle implements AsyncIterable<SubgraphHandle> {
   readonly #session: Subscribable;
   readonly #parentNamespace: string[];
   readonly #discovered = new Set<string>();
+  readonly #pendingToolStarts = new Map<string, ToolsEvent>();
+  readonly #pendingToolCallHandles = new Map<string, SubgraphHandle>();
   readonly #queue: SubgraphHandle[] = [];
   readonly #waiters: Array<(value: IteratorResult<SubgraphHandle>) => void> =
     [];
@@ -369,7 +382,37 @@ export class SubgraphDiscoveryHandle implements AsyncIterable<SubgraphHandle> {
     this.#parentNamespace = parentNamespace;
   }
 
+  #emit(handle: SubgraphHandle): void {
+    const waiter = this.#waiters.shift();
+    if (waiter) {
+      waiter({ done: false, value: handle });
+    } else {
+      this.#queue.push(handle);
+    }
+  }
+
+  #processToolEvent(event: Event): boolean {
+    if (event.method !== "tools") return false;
+    const tools = event as ToolsEvent;
+    const data = tools.params.data as Record<string, unknown>;
+    if (data.event !== "tool-started") return true;
+
+    const toolCallId = data.tool_call_id as string | undefined;
+    if (!toolCallId) return true;
+
+    const pendingHandle = this.#pendingToolCallHandles.get(toolCallId);
+    if (pendingHandle) {
+      pendingHandle.toolStartedEvent = tools;
+      this.#pendingToolCallHandles.delete(toolCallId);
+      return true;
+    }
+
+    this.#pendingToolStarts.set(toolCallId, tools);
+    return true;
+  }
+
   #processEvent(event: Event): SubgraphHandle | undefined {
+    if (this.#processToolEvent(event)) return undefined;
     if (event.method !== "lifecycle") return undefined;
     const lifecycle = event as LifecycleEvent;
     if (lifecycle.params.data.event !== "started") return undefined;
@@ -402,10 +445,25 @@ export class SubgraphDiscoveryHandle implements AsyncIterable<SubgraphHandle> {
       data.cause && typeof data.cause === "object"
         ? (data.cause as LifecycleCause)
         : undefined;
-    return new SubgraphHandle(name, index, [...ns], this.#session, {
+    let toolStartedEvent: ToolsEvent | undefined;
+    if (cause?.type === "toolCall") {
+      const toolCallId = (cause as { tool_call_id?: string }).tool_call_id;
+      if (toolCallId) {
+        toolStartedEvent = this.#pendingToolStarts.get(toolCallId);
+        this.#pendingToolStarts.delete(toolCallId);
+      }
+    }
+
+    const handle = new SubgraphHandle(name, index, [...ns], this.#session, {
       cause,
       graphName: data.graph_name as string | undefined,
+      toolStartedEvent,
     });
+    if (cause?.type === "toolCall" && toolStartedEvent == null) {
+      const toolCallId = (cause as { tool_call_id?: string }).tool_call_id;
+      if (toolCallId) this.#pendingToolCallHandles.set(toolCallId, handle);
+    }
+    return handle;
   }
 
   #start(): void {
@@ -414,14 +472,10 @@ export class SubgraphDiscoveryHandle implements AsyncIterable<SubgraphHandle> {
       for await (const event of this.#source) {
         const handle = this.#processEvent(event);
         if (!handle) continue;
-
-        const waiter = this.#waiters.shift();
-        if (waiter) {
-          waiter({ done: false, value: handle });
-        } else {
-          this.#queue.push(handle);
-        }
+        this.#emit(handle);
       }
+      this.#pendingToolStarts.clear();
+      this.#pendingToolCallHandles.clear();
       this.#closed = true;
       while (this.#waiters.length > 0) {
         this.#waiters.shift()?.({ done: true, value: undefined });

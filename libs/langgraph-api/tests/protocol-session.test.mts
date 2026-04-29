@@ -162,6 +162,50 @@ describe("RunProtocolSession", () => {
     ]);
   });
 
+  it("forwards lifecycle started cause metadata unchanged", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["lifecycle"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "lifecycle|worker:0",
+      normalized: true,
+      data: {
+        event: "started",
+        graph_name: "worker",
+        cause: { type: "toolCall", tool_call_id: "call_123" },
+      },
+    });
+
+    expect(sent).toEqual([
+      {
+        type: "event",
+        event_id: expect.any(String),
+        seq: expect.any(Number),
+        method: "lifecycle",
+        params: {
+          namespace: ["worker:0"],
+          timestamp: expect.any(Number),
+          data: {
+            event: "started",
+            graph_name: "worker",
+            cause: { type: "toolCall", tool_call_id: "call_123" },
+          },
+        },
+      },
+    ]);
+  });
+
   it("filters live events by channel, namespace prefix, and depth", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);

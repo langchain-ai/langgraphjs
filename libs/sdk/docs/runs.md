@@ -164,7 +164,7 @@ If you're integrating with an environment that can't use the v2
 primitive yet (for example a bridged backend that only understands
 the v1 SSE format), `client.runs.stream(...)` and
 `client.threads.joinStream(...)` continue to work unchanged. New
-features such as typed subagents, triggered subgraphs, media handles,
+features such as typed subagents, subgraph cause metadata, media handles,
 and custom-transformer extensions are **only available via
 `client.threads.stream(...)`** — there are no plans to port them back
 to the v1 generators.

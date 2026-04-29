@@ -735,6 +735,96 @@ describe("thread.subgraphs projection", () => {
     expect(second.name).toBe("coder");
     expect(second.index).toBe(1);
     expect(second.namespace).toEqual(["coder:1"]);
+    expect(second.cause).toBeUndefined();
+  });
+
+  it("attaches tool-started events observed before caused subgraphs", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const iter = thread.subgraphs[Symbol.asyncIterator]();
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "call_before",
+          tool_name: "task",
+          input: { description: "Research", subagent_type: "researcher" },
+        } as Event["params"]["data"],
+        { namespace: [], seq: 1 }
+      )
+    );
+    transport.pushEvent(
+      eventOf(
+        "lifecycle",
+        {
+          event: "started",
+          graph_name: "researcher",
+          cause: { type: "toolCall", tool_call_id: "call_before" },
+        },
+        { namespace: ["researcher:0"], seq: 2 }
+      )
+    );
+
+    const sub = (await iter.next()).value as SubgraphHandle;
+    expect(sub.name).toBe("researcher");
+    expect(sub.cause).toEqual({
+      type: "toolCall",
+      tool_call_id: "call_before",
+    });
+    expect(sub.toolStartedEvent?.params.data).toMatchObject({
+      event: "tool-started",
+      tool_call_id: "call_before",
+      tool_name: "task",
+    });
+  });
+
+  it("attaches tool-started events observed after caused subgraphs", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const iter = thread.subgraphs[Symbol.asyncIterator]();
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "lifecycle",
+        {
+          event: "started",
+          graph_name: "researcher",
+          cause: { type: "toolCall", tool_call_id: "call_after" },
+        },
+        { namespace: ["researcher:0"], seq: 1 }
+      )
+    );
+
+    const sub = (await iter.next()).value as SubgraphHandle;
+    expect(sub.cause).toEqual({
+      type: "toolCall",
+      tool_call_id: "call_after",
+    });
+    expect(sub.toolStartedEvent).toBeUndefined();
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "call_after",
+          tool_name: "task",
+          input: { description: "Research", subagent_type: "researcher" },
+        } as Event["params"]["data"],
+        { namespace: [], seq: 2 }
+      )
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(sub.toolStartedEvent?.params.data).toMatchObject({
+      event: "tool-started",
+      tool_call_id: "call_after",
+      tool_name: "task",
+    });
   });
 
   it("ignores non-started lifecycle events", async () => {
