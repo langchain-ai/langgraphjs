@@ -1,6 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { useMessages, type AnyStream } from "@langchain/react";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -33,6 +34,22 @@ interface RenderedItem {
   isStreaming?: boolean;
 }
 
+type MessageToolCall = {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+};
+
+function getReasoning(message: BaseMessage): string | undefined {
+  const block = message.contentBlocks.find((contentBlock) => {
+    if (contentBlock.type !== "reasoning") return false;
+    return (
+      typeof (contentBlock as { reasoning?: unknown }).reasoning === "string"
+    );
+  });
+  return (block as { reasoning?: string } | undefined)?.reasoning;
+}
+
 function buildRenderItems(
   messages: BaseMessage[],
   isLoading: boolean,
@@ -41,19 +58,22 @@ function buildRenderItems(
   const toolResultMap = new Map<string, { output?: unknown; error?: string }>();
 
   for (const msg of messages) {
-    const msgType = msg.type;
-    if (msgType === "tool") {
-      const toolMsg = msg as BaseMessage & { tool_call_id?: string };
-      if (toolMsg.tool_call_id) {
-        const raw = msg.text;
-        try {
-          toolResultMap.set(toolMsg.tool_call_id, { output: JSON.parse(raw) });
-        } catch {
-          toolResultMap.set(toolMsg.tool_call_id, { output: raw });
-        }
-      }
-    }
+    if (msg.type !== "tool") continue;
+
+    const toolMsg = msg as BaseMessage & {
+      tool_call_id?: string;
+      status?: string;
+    };
+    if (!toolMsg.tool_call_id) continue;
+
+    const output = parseToolOutput(msg.text);
+    toolResultMap.set(toolMsg.tool_call_id, {
+      output,
+      error: toolMsg.status === "error" ? String(output) : undefined,
+    });
   }
+
+  console.log(3, messages)
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -67,16 +87,10 @@ function buildRenderItems(
 
     if (msgType === "ai") {
       const aiMsg = msg as BaseMessage & {
-        tool_calls?: Array<{
-          id: string;
-          name: string;
-          args: Record<string, unknown>;
-        }>;
+        tool_calls?: MessageToolCall[];
       };
 
-      const reasoning = msg.contentBlocks.find(
-        (block) => block.type === "reasoning",
-      )?.reasoning;
+      const reasoning = getReasoning(msg);
       const textContent = msg.text;
 
       // Reasoning is still streaming when the last message is loading and text hasn't arrived yet.
@@ -96,7 +110,7 @@ function buildRenderItems(
 
       if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
         for (const tc of aiMsg.tool_calls) {
-          const result = toolResultMap.get(tc.id ?? "");
+          const result = tc.id ? toolResultMap.get(tc.id) : undefined;
           items.push({
             id: `tc-${tc.id ?? i}`,
             kind: "tool-call",
@@ -116,19 +130,30 @@ function buildRenderItems(
   return items;
 }
 
+function parseToolOutput(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 interface MessageListProps {
-  messages: BaseMessage[];
-  isLoading: boolean;
+  stream: AnyStream;
   onCopyLastMessage: () => void;
 }
 
 export function MessageList({
-  messages,
-  isLoading,
+  stream,
   onCopyLastMessage,
 }: MessageListProps) {
   const [copied, setCopied] = useState(false);
-  const items = buildRenderItems(messages, isLoading);
+  const messages = useMessages(stream);
+  const isLoading = stream.isLoading;
+  const items = useMemo(
+    () => buildRenderItems(messages, isLoading),
+    [messages, isLoading],
+  );
   const lastAiIndex = [...items].reverse().findIndex((it) => it.kind === "ai");
   const lastAiItemIndex =
     lastAiIndex >= 0 ? items.length - 1 - lastAiIndex : -1;

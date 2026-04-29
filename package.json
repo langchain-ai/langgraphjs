@@ -49,12 +49,12 @@
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "1.1.40-dev-1777322538999",
-      "langchain": "1.4.0-dev-1777322538999",
-      "@examples/streaming>langchain": "1.4.0-dev-1777322538999",
-      "@examples/ui-react>langchain": "1.4.0-dev-1777322538999",
-      "@examples/ui-multimodal>langchain": "1.4.0-dev-1777322538999",
-      "deepagents>langchain": "1.4.0-dev-1777322538999",
+      "@langchain/core": "1.1.40-dev-1777426124745",
+      "langchain": "1.4.0-dev-1777426124745",
+      "@examples/streaming>langchain": "1.4.0-dev-1777426124745",
+      "@examples/ui-react>langchain": "1.4.0-dev-1777426124745",
+      "@examples/ui-multimodal>langchain": "1.4.0-dev-1777426124745",
+      "deepagents>langchain": "1.4.0-dev-1777426124745",
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",

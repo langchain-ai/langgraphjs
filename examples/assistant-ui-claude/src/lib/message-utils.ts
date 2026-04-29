@@ -199,7 +199,6 @@ function toAssistantThreadContent(
 ): ThreadAssistantMessagePart[] {
   const parts: ThreadAssistantMessagePart[] = [];
   const content = message.contentBlocks;
-  console.log(content);
 
   for (const part of content) {
     if (typeof part !== "object" || part === null || !("type" in part))

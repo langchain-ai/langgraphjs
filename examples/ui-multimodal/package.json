@@ -17,7 +17,7 @@
     "@langchain/openai": "^1.4.4",
     "@langchain/react": "workspace:*",
     "deepagents": "https://pkg.pr.new/deepagents@cd6d654",
-    "langchain": "1.4.0-dev-1777322538999",
+    "langchain": "1.4.0-dev-1777426124745",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "zod": "^4.3.6"

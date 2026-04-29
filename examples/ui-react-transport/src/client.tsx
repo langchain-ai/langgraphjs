@@ -1,9 +1,14 @@
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { FetchStreamTransport, useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 import "./styles.css";
+import { LocalStreamTransport } from "./transport";
+
+type ChatState = {
+  messages: Array<{ content: string; type: "human" }>;
+};
 
 function getMessageRole(type: string) {
   return type === "human" ? "You" : "Assistant";
@@ -16,8 +21,9 @@ function formatMessageContent(content: unknown) {
 export function App() {
   const [content, setContent] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const stream = useStream({
-    transport: new FetchStreamTransport({ apiUrl: "/api/stream" }),
+  const transport = useMemo(() => new LocalStreamTransport("/api/stream"), []);
+  const stream = useStream<ChatState>({
+    transport,
   });
   const visibleMessages = useMemo(
     () => stream.messages.filter((message) => message != null),
@@ -67,8 +73,8 @@ export function App() {
           <h1>React Chat</h1>
           <p>
             A compact chat example powered by{" "}
-            <code>@langchain/langgraph-sdk/react</code> and a custom backend
-            connected through <code>FetchStreamTransport</code>.
+            <code>@langchain/react</code> and a custom backend connected
+            through a local transport adapter.
           </p>
         </div>
       </section>

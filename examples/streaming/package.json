@@ -52,7 +52,7 @@
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/protocol": "^0.0.13",
     "deepagents": "https://pkg.pr.new/deepagents@cd6d654",
-    "langchain": "1.4.0-dev-1777322538999",
+    "langchain": "1.4.0-dev-1777426124745",
     "tsx": "^4.21.0",
     "zod": "^4.3.6"
   }
