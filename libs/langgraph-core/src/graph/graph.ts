@@ -77,16 +77,16 @@ type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
   streamTransformers: infer Transformers;
 }
   ? Transformers extends ReadonlyArray<
-    () => import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-  >
-  ? Transformers
-  : Transformers extends ReadonlyArray<
-    import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-  >
-  ? { readonly [K in keyof Transformers]: () => Transformers[K] }
-  : Transformers extends import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-  ? readonly [() => Transformers]
-  : []
+      () => import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+    >
+    ? Transformers
+    : Transformers extends ReadonlyArray<
+          import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        >
+      ? { readonly [K in keyof Transformers]: () => Transformers[K] }
+      : Transformers extends import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        ? readonly [() => Transformers]
+        : []
   : [];
 
 /**
@@ -106,24 +106,14 @@ type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
  */
 export type CompiledGraphType<Spec extends object = object> = CompiledGraph<
   CompiledGraphTypeNode<Spec>,
-  Spec extends { state: infer State }
-  ? State
-  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  Spec extends { update: infer Update }
-  ? Update
-  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { state: infer State } ? State : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { update: infer Update } ? Update : any, // eslint-disable-line @typescript-eslint/no-explicit-any
   CompiledGraphTypeContext<Spec>,
-  Spec extends { input: infer Input }
-  ? Input
-  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  Spec extends { output: infer Output }
-  ? Output
-  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { input: infer Input } ? Input : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { output: infer Output } ? Output : any, // eslint-disable-line @typescript-eslint/no-explicit-any
   Spec extends { nodeReturn: infer NodeReturn } ? NodeReturn : unknown,
   Spec extends { command: infer Command } ? Command : unknown,
-  Spec extends { streamCustom: infer StreamCustom }
-  ? StreamCustom
-  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { streamCustom: infer StreamCustom } ? StreamCustom : any, // eslint-disable-line @typescript-eslint/no-explicit-any
   CompiledGraphTypeStreamTransformers<Spec>
 >;
 
@@ -152,12 +142,12 @@ export class Branch<
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce(
-        (acc, n) => {
-          acc[n] = n;
-          return acc;
-        },
-        {} as Record<string, N | typeof END>
-      )
+          (acc, n) => {
+            acc[n] = n;
+            return acc;
+          },
+          {} as Record<string, N | typeof END>
+        )
       : options.pathMap;
   }
 
@@ -181,7 +171,7 @@ export class Branch<
             if (e.name === NodeInterrupt.unminifiable_name) {
               console.warn(
                 "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
-                "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+                  "NodeInterrupt should only be thrown inside a node, not in edge conditions."
               );
             }
             throw e;
@@ -286,10 +276,10 @@ export class Graph<
     nodes:
       | Record<K, NodeAction<NodeInput, NodeOutput, C>>
       | [
-        key: K,
-        action: NodeAction<NodeInput, NodeOutput, C>,
-        options?: AddNodeOptions,
-      ][]
+          key: K,
+          action: NodeAction<NodeInput, NodeOutput, C>,
+          options?: AddNodeOptions,
+        ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
@@ -301,30 +291,30 @@ export class Graph<
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     ...args:
       | [
-        key: K,
-        action: NodeAction<NodeInput, NodeOutput, C>,
-        options?: AddNodeOptions,
-      ]
-      | [
-        nodes:
-        | Record<K, NodeAction<NodeInput, NodeOutput, C>>
-        | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
           options?: AddNodeOptions,
-        ][],
-      ]
+        ]
+      | [
+          nodes:
+            | Record<K, NodeAction<NodeInput, NodeOutput, C>>
+            | [
+                key: K,
+                action: NodeAction<NodeInput, NodeOutput, C>,
+                options?: AddNodeOptions,
+              ][],
+        ]
   ): Graph<N | K, RunInput, RunOutput> {
     function isMutlipleNodes(
       args: unknown[]
     ): args is [
       nodes:
-      | Record<K, NodeAction<NodeInput, RunOutput, C>>
-      | [
-        key: K,
-        action: NodeAction<NodeInput, RunOutput, C>,
-        options?: AddNodeOptions,
-      ][],
+        | Record<K, NodeAction<NodeInput, RunOutput, C>>
+        | [
+            key: K,
+            action: NodeAction<NodeInput, RunOutput, C>,
+            options?: AddNodeOptions,
+          ][],
       options?: AddNodeOptions,
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
@@ -692,7 +682,8 @@ export class CompiledGraph<
   }
 
   override withConfig<
-    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
   >(
     config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
       streamTransformers: TTransformers;
@@ -720,9 +711,7 @@ export class CompiledGraph<
 
   override withConfig(
     config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
-      streamTransformers?: ReadonlyArray<
-        () => StreamTransformer<any>
-      >;
+      streamTransformers?: ReadonlyArray<() => StreamTransformer<any>>;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): any {
@@ -736,9 +725,7 @@ export class CompiledGraph<
       NodeReturnType,
       CommandType,
       StreamCustomType,
-      ReadonlyArray<
-        () => StreamTransformer<any>
-      >
+      ReadonlyArray<() => StreamTransformer<any>>
     >;
   }
 
@@ -881,9 +868,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? await subgraphs[key].getGraphAsync({
-              ...config,
-              xray: newXrayValue,
-            })
+                ...config,
+                xray: newXrayValue,
+              })
             : node.getGraph(config);
 
         drawableSubgraph.trimFirstNode();
@@ -1079,9 +1066,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? subgraphs[key].getGraph({
-              ...config,
-              xray: newXrayValue,
-            })
+                ...config,
+                xray: newXrayValue,
+              })
             : node.getGraph(config);
         drawableSubgraph.trimFirstNode();
         drawableSubgraph.trimLastNode();
