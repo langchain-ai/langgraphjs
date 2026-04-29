@@ -11,7 +11,6 @@ import type {
   ResolveStreamOptions,
   ResolveStreamInterface,
   InferBag,
-  InferStateType,
   AcceptBaseMessages,
   UseStreamCustomOptions,
   SubagentStreamInterface,
@@ -33,7 +32,7 @@ import {
 import type { StreamServiceInstance } from "./stream-service-instance.js";
 import { injectStreamCustom } from "./stream.custom.js";
 import { useStreamLGP } from "./stream.lgp.js";
-import { STREAM_INSTANCE } from "./context.js";
+import { STREAM_INSTANCE, type InferRecordState } from "./context.js";
 
 export { injectStreamCustom, useStreamCustom } from "./stream.custom.js";
 export { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
@@ -334,7 +333,7 @@ function injectStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+  options: UseStreamCustomOptions<InferRecordState<T>, InferBag<T, Bag>>
 ): AngularSignalWrap<
   WithClassMessages<ResolveStreamInterface<T, InferBag<T, Bag>>>
 >;
@@ -403,7 +402,7 @@ export class StreamService<
   constructor(
     options:
       | ResolveStreamOptions<T, InferBag<T, Bag>>
-      | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+      | UseStreamCustomOptions<InferRecordState<T>, InferBag<T, Bag>>
   ) {
     this._stream = injectStream(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

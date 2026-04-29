@@ -122,10 +122,17 @@ export class SubagentDiscovery {
     input: { description?: string; subagent_type?: string },
     eventNamespace: readonly string[]
   ): void {
+    const namespace = taskWorkNamespace(toolCallId, eventNamespace);
     const existing = this.#map.get(toolCallId);
     if (existing != null) {
       existing.name = input.subagent_type ?? existing.name;
       existing.taskInput = input.description ?? existing.taskInput;
+      if (
+        isConcreteTaskNamespace(eventNamespace) ||
+        namespaceKey(existing.namespace) === `tools:${toolCallId}`
+      ) {
+        existing.namespace = namespace;
+      }
       if (existing.status !== "complete" && existing.status !== "error") {
         existing.status = "running";
       }
@@ -138,7 +145,6 @@ export class SubagentDiscovery {
     // `task` call was observed on. Record the subagent's work namespace
     // so `useMessages(stream, subagent)` / `useToolCalls(stream,
     // subagent)` open the right subscription.
-    const namespace: readonly string[] = [`tools:${toolCallId}`];
     const { parentId, depth } = lineageFromNamespace(eventNamespace);
     this.#map.set(toolCallId, {
       id: toolCallId,
@@ -154,6 +160,23 @@ export class SubagentDiscovery {
       completedAt: null,
     });
   }
+}
+
+function taskWorkNamespace(
+  toolCallId: string,
+  eventNamespace: readonly string[]
+): readonly string[] {
+  const last = eventNamespace.at(-1);
+  if (last?.startsWith("tools:")) return [...eventNamespace];
+  return [`tools:${toolCallId}`];
+}
+
+function isConcreteTaskNamespace(namespace: readonly string[]): boolean {
+  return namespace.at(-1)?.startsWith("tools:") === true;
+}
+
+function namespaceKey(namespace: readonly string[]): string {
+  return namespace.join("/");
 }
 
 function toSnapshot(entry: MutableSubagent): SubagentDiscoverySnapshot {

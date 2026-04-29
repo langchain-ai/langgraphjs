@@ -27,6 +27,7 @@ import type {
   ImageMedia,
   VideoMedia,
 } from "../../client/stream/media.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionRuntime, ProjectionSpec } from "../types.js";
 
 interface MediaProjectionOptions {
@@ -49,7 +50,7 @@ function createMediaProjection<
   options?: MediaProjectionOptions
 ): ProjectionSpec<T[]> {
   const ns = [...namespace];
-  const key = `${kind}|${ns.join("\u0000")}`;
+  const key = `${kind}|${ns.join(NAMESPACE_SEPARATOR)}`;
 
   return {
     key,

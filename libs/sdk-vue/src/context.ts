@@ -1,13 +1,6 @@
 import { provide, inject, type InjectionKey, type App, type Plugin } from "vue";
-import type { BagTemplate } from "@langchain/langgraph-sdk";
-import type {
-  ResolveStreamOptions,
-  InferBag,
-  InferStateType,
-  UseStreamCustomOptions,
-} from "@langchain/langgraph-sdk/ui";
 import { Client } from "@langchain/langgraph-sdk";
-import { useStream } from "./index.js";
+import { useStream } from "./use-stream.js";
 
 /**
  * Configuration options for the LangChain Vue plugin.
@@ -91,14 +84,18 @@ export const LangChainPlugin: Plugin<[LangChainPluginOptions?]> = {
  */
 export function provideStream<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
+  InterruptType = unknown,
+  ConfigurableType extends object = Record<string, unknown>,
 >(
-  options:
-    | ResolveStreamOptions<T, InferBag<T, Bag>>
-    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
-): ReturnType<typeof useStream<T, Bag>> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const stream = useStream<T, Bag>(options as any);
+  options: Parameters<typeof useStream>[0]
+): ReturnType<typeof useStream<T, InterruptType, ConfigurableType>> {
+  const stream = useStream<T, InterruptType, ConfigurableType>(
+    // The context helper is a thin pass-through; keep its generic surface
+    // aligned with useStream without re-deriving the overload input type.
+    options as Parameters<
+      typeof useStream<T, InterruptType, ConfigurableType>
+    >[0]
+  );
   provide(STREAM_CONTEXT_KEY, stream);
   return stream;
 }
@@ -137,8 +134,9 @@ export function provideStream<
  */
 export function useStreamContext<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
->(): ReturnType<typeof useStream<T, Bag>> {
+  InterruptType = unknown,
+  ConfigurableType extends object = Record<string, unknown>,
+>(): ReturnType<typeof useStream<T, InterruptType, ConfigurableType>> {
   const context = inject(STREAM_CONTEXT_KEY);
   if (context == null) {
     throw new Error(

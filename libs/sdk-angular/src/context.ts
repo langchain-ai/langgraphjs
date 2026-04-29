@@ -16,6 +16,11 @@ import type { StreamServiceInstance } from "./stream-service-instance.js";
 import { useStreamLGP } from "./stream.lgp.js";
 import { injectStreamCustom } from "./stream.custom.js";
 
+export type InferRecordState<T> =
+  InferStateType<T> extends object
+    ? { [K in keyof InferStateType<T>]: InferStateType<T>[K] }
+    : Record<string, unknown>;
+
 /**
  * Configuration defaults for `useStream` and `injectStream` calls.
  */
@@ -112,7 +117,7 @@ export function provideStream<
 >(
   options:
     | ResolveStreamOptions<T, InferBag<T, Bag>>
-    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+    | UseStreamCustomOptions<InferRecordState<T>, InferBag<T, Bag>>
 ) {
   return {
     provide: STREAM_INSTANCE,

@@ -18,6 +18,7 @@ import {
   tryCoerceMessageLikeToMessage,
 } from "../../ui/messages.js";
 import type { Message } from "../../types.messages.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 
 export function valuesProjection<T = unknown>(
@@ -25,7 +26,7 @@ export function valuesProjection<T = unknown>(
   messagesKey: string = "messages"
 ): ProjectionSpec<T | undefined> {
   const ns = [...namespace];
-  const key = `values|${messagesKey}|${ns.join("\u0000")}`;
+  const key = `values|${messagesKey}|${ns.join(NAMESPACE_SEPARATOR)}`;
 
   return {
     key,

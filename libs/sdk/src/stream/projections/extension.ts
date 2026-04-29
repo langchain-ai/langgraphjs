@@ -9,6 +9,7 @@
  */
 import type { Event } from "@langchain/protocol";
 import type { SubscriptionHandle } from "../../client/stream/index.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 
 export function extensionProjection<T = unknown>(
@@ -16,7 +17,7 @@ export function extensionProjection<T = unknown>(
   namespace: readonly string[]
 ): ProjectionSpec<T | undefined> {
   const ns = [...namespace];
-  const key = `extension|${name}|${ns.join("\u0000")}`;
+  const key = `extension|${name}|${ns.join(NAMESPACE_SEPARATOR)}`;
   const channel = `custom:${name}` as const;
 
   return {

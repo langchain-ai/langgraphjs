@@ -1,6 +1,7 @@
 import { computed, isSignal, type Signal } from "@angular/core";
 import type { BaseMessage } from "@langchain/core/messages";
 import {
+  NAMESPACE_SEPARATOR,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -77,7 +78,7 @@ function isRoot(namespace: readonly string[]): boolean {
 }
 
 function namespaceKey(namespace: readonly string[]): string {
-  return namespace.join("\u0000");
+  return namespace.join(NAMESPACE_SEPARATOR);
 }
 
 /**

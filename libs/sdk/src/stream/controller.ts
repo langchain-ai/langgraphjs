@@ -55,6 +55,7 @@ import {
   assembledMessageToBaseMessage,
   type ExtendedMessageRole,
 } from "./assembled-to-message.js";
+import { NAMESPACE_SEPARATOR } from "./constants.js";
 import type {
   RootEventBus,
   RootSnapshot,
@@ -65,28 +66,6 @@ import type {
 const ROOT_NAMESPACE: readonly string[] = [];
 
 const EMPTY_METADATA_MAP: MessageMetadataMap = new Map();
-
-/**
- * Gated diagnostic logger for the root event pump. Silent by default so
- * high-frequency streaming runs don't pay for `console.log` formatting
- * on every delta. Opt in from the browser DevTools console by setting
- * `globalThis.__LG_STREAM_DEBUG__ = true` before submitting a run; the
- * logs then show the event ordering / pump transitions needed to
- * diagnose stuck-UI regressions like the fan-out render loop that
- * motivated the resilience try/catch in `#startRootPump`.
- *
- * @param tag - Short category appended to the `lg:` debug prefix.
- * @param args - Values to forward to `console.log` when debug logging is enabled.
- */
-function lgDebug(tag: string, ...args: unknown[]): void {
-  if (
-    (globalThis as { __LG_STREAM_DEBUG__?: boolean }).__LG_STREAM_DEBUG__ !==
-    true
-  ) {
-    return;
-  }
-  console.log(`[lg:${tag}]`, ...args);
-}
 
 /**
  * Channel set covered by the always-on root subscription. Exported so
@@ -425,7 +404,7 @@ export class StreamController<
       const state = await this.#options.client.threads.getState<StateType>(
         this.#currentThreadId
       );
-      if (state?.checkpoint != null && state.values != null) {
+      if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape
          * where `parent_checkpoint` is an object (`{ thread_id,
@@ -434,7 +413,7 @@ export class StreamController<
          * payload) so hydrated messages also get their
          * `parentCheckpointId` populated for fork / edit flows.
          */
-        const checkpointId = state.checkpoint.checkpoint_id;
+        const checkpointId = state.checkpoint?.checkpoint_id;
         const parentCheckpointId =
           state.parent_checkpoint?.checkpoint_id ?? undefined;
         const syntheticCheckpoint =
@@ -518,9 +497,7 @@ export class StreamController<
       }));
     }
     const thread = this.#ensureThread(this.#currentThreadId);
-    if (this.#usesEventStreamTransport()) {
-      await this.#rootPumpReady;
-    }
+    await this.#rootPumpReady;
 
     /**
      * Honour `multitaskStrategy` when a run is already in flight. Only
@@ -993,18 +970,31 @@ export class StreamController<
          * per-namespace selector projections (e.g. `useMessages(sub)`),
          * which expand `#computeUnionFilter` progressively.
          */
-        const subscription = await thread.subscribe({
+        const subscriptionPromise = thread.subscribe({
           channels: [...ROOT_PUMP_CHANNELS] as Channel[],
           namespaces: [[] as string[]],
           depth: 1,
         });
-        lgDebug("root-pump.subscribed", {
-          channels: [...ROOT_PUMP_CHANNELS],
-          subId: subscription.subscriptionId,
-        });
-        this.#rootSubscription = subscription;
+        if (this.#usesEventStreamTransport()) {
+          /**
+           * SSE streams can legitimately withhold response headers until
+           * the first event is available. Waiting for `subscribe()` here
+           * would deadlock new-thread submits: the run is not dispatched
+           * until the root pump is "ready", but the pump does not become
+           * ready until the run emits. `thread.subscribe()` has already
+           * registered the local subscription and scheduled the stream
+           * rotation by this point; waiting one microtask lets the fetch
+           * get kicked off without requiring headers to arrive.
+           */
+          queueMicrotask(() => {
+            resolveReady?.();
+            resolveReady = undefined;
+          });
+        }
+        const subscription = await subscriptionPromise;
         resolveReady?.();
         resolveReady = undefined;
+        this.#rootSubscription = subscription;
         /**
          * The SSE transport pauses the underlying subscription when
          * a terminal root lifecycle event arrives (so `for await`
@@ -1019,13 +1009,8 @@ export class StreamController<
         while (!this.#disposed) {
           iterationCount += 1;
           let perIterCount = 0;
-          lgDebug("root-pump.iter-start", { iterationCount });
           for await (const event of subscription) {
             if (this.#disposed) {
-              lgDebug("root-pump.disposed-break", {
-                iterationCount,
-                perIterCount,
-              });
               break;
             }
             perIterCount += 1;
@@ -1053,49 +1038,20 @@ export class StreamController<
              * (and `ThreadStream.onEvent` keeps firing).
              *
              * We therefore swallow the error and keep pumping. The
-             * underlying component bug is still reported via `lgDebug`
-             * (opt in with `globalThis.__LG_STREAM_DEBUG__ = true` in
-             * DevTools to surface the full stack for diagnosis) — but
              * the pump's correctness guarantees do not depend on any
              * consumer behaving well.
              */
-            try {
-              this.#onRootEvent(event);
-            } catch (err) {
-              const errObj = err as Error;
-              const evSeq = (event as unknown as { seq?: number }).seq;
-              const evEventKind = (
-                event.params.data as { event?: string } | undefined
-              )?.event;
-              lgDebug("root-event.THREW", {
-                seq: evSeq,
-                method: event.method,
-                ns: event.params.namespace,
-                event: evEventKind,
-                error: errObj?.message,
-                stack: errObj?.stack,
-              });
-            }
+            this.#onRootEvent(event);
           }
-          lgDebug("root-pump.iter-end", {
-            iterationCount,
-            perIterCount,
-            disposed: this.#disposed,
-            isPaused: subscription.isPaused,
-          });
           if (this.#disposed) break;
           if (!subscription.isPaused) {
-            lgDebug("root-pump.exit-not-paused", { iterationCount });
             break;
           }
           await subscription.waitForResume();
-          lgDebug("root-pump.resumed", { iterationCount });
         }
-        lgDebug("root-pump.loop-exit", { iterationCount });
       } catch (err) {
         resolveReady?.();
         resolveReady = undefined;
-        lgDebug("root-pump.error", { error: String(err) });
         /* thread closed or errored */
       }
     })();
@@ -1159,9 +1115,12 @@ export class StreamController<
       lifecycle?.event === "interrupted" ||
       lifecycle?.event === "cancelled"
     ) {
-      this.rootStore.setState((s) =>
-        s.isLoading ? { ...s, isLoading: false } : s
-      );
+      setTimeout(() => {
+        if (this.#disposed) return;
+        this.rootStore.setState((s) =>
+          s.isLoading ? { ...s, isLoading: false } : s
+        );
+      }, 0);
     }
   };
 
@@ -1171,22 +1130,6 @@ export class StreamController<
    * @param event - Event yielded by the root subscription.
    */
   #onRootEvent(event: Event): void {
-    const evSeq = (event as unknown as { seq?: number }).seq;
-    const evEventKind = (event.params.data as { event?: string } | undefined)
-      ?.event;
-    lgDebug("root-event", {
-      seq: evSeq,
-      method: event.method,
-      ns: event.params.namespace,
-      event: evEventKind,
-    });
-    /**
-     * Discovery runners are fed by the wildcard lifecycle watcher via
-     * `thread.onEvent` so deeply-nested subagents/subgraphs are
-     * discovered even when the content pump stays narrow. See
-     * `#onWildcardEvent`.
-     */
-
     /**
      * Fan root-pump events out to every root-bus listener (selector
      * projections that opted into the shared stream,
@@ -1623,11 +1566,14 @@ export class StreamController<
           error?: string;
         };
         if (lifecycle?.event === "completed") {
-          finish({ event: "completed" });
+          setTimeout(() => finish({ event: "completed" }), 0);
         } else if (lifecycle?.event === "failed") {
-          finish({ event: "failed", error: lifecycle.error });
+          setTimeout(
+            () => finish({ event: "failed", error: lifecycle.error }),
+            0
+          );
         } else if (lifecycle?.event === "interrupted") {
-          finish({ event: "interrupted" });
+          setTimeout(() => finish({ event: "interrupted" }), 0);
         }
       });
       if (signal.aborted) {
@@ -1956,14 +1902,12 @@ function jsonishEqualAtDepth(
 }
 
 /**
- * Stable string key for a `namespace` tuple. Uses `\u0000` as the
- * segment separator so it can't collide with a legitimate namespace
- * segment (which protocol-side is always a printable identifier).
+ * Stable string key for a `namespace` tuple.
  *
  * @param namespace - Namespace path segments to join.
  */
 function namespaceKey(namespace: readonly string[]): string {
-  return namespace.join("\u0000");
+  return namespace.join(NAMESPACE_SEPARATOR);
 }
 
 // Unused import guard — `AIMessage` is only referenced by type tests.

@@ -9,6 +9,7 @@
  */
 import type { Channel, Event } from "@langchain/protocol";
 import type { SubscriptionHandle } from "../../client/stream/index.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 
 /** Max events retained per raw subscription. Older events are dropped. */
@@ -22,7 +23,9 @@ export function channelProjection(
   const chs = [...channels].sort();
   const ns = [...namespace];
   const bufferSize = options.bufferSize ?? DEFAULT_BUFFER;
-  const key = `channel|${bufferSize}|${chs.join(",")}|${ns.join("\u0000")}`;
+  const key = `channel|${bufferSize}|${chs.join(",")}|${ns.join(
+    NAMESPACE_SEPARATOR
+  )}`;
 
   return {
     key,

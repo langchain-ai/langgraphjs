@@ -1,5 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import {
+  NAMESPACE_SEPARATOR,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -81,7 +82,7 @@ function isRoot(namespace: readonly string[]): boolean {
 }
 
 function namespaceKey(namespace: readonly string[]): string {
-  return namespace.join("\u0000");
+  return namespace.join(NAMESPACE_SEPARATOR);
 }
 
 function isGetter<T>(input: ValueOrGetter<T> | undefined): input is () => T {

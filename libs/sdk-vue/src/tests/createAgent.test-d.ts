@@ -1,10 +1,18 @@
 import { z } from "zod/v4";
 import { describe, test, expectTypeOf } from "vitest";
 import { createAgent, tool, createMiddleware } from "langchain";
-import type { BaseMessage } from "@langchain/core/messages";
+import type {
+  AIMessage as CoreAIMessage,
+  BaseMessage,
+  ToolMessage as CoreToolMessage,
+} from "@langchain/core/messages";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
-import { useStream, type ToolCallState } from "../index.js";
+import {
+  useStream,
+  type ToolCallState,
+  type ToolCallWithResult,
+} from "../index.js";
 
 const getWeather = tool(
   async ({ location }: { location: string }) => {
@@ -611,16 +619,31 @@ describe("realistic usage patterns with createAgent", () => {
     );
   });
 
-  test("toolCalls[].result is @langchain/core ToolMessage class type", () => {
-    const stream = useStream<typeof multiToolAgent>({
-      assistantId: "agent",
-    });
+  test("exported ToolCallWithResult mirrors the SDK type defaults", () => {
+    type WeatherToolCall = {
+      name: "get_weather";
+      args: { location: string };
+      id?: string;
+    };
 
-    const tc = stream.toolCalls.value[0];
-    if (tc.result) {
-      expectTypeOf(tc.result.tool_call_id).toEqualTypeOf<string>();
-      expectTypeOf(tc.result.toDict()).toHaveProperty("type");
-    }
+    type DefaultResult = ToolCallWithResult<WeatherToolCall>;
+    expectTypeOf<DefaultResult["call"]["name"]>().toEqualTypeOf<"get_weather">();
+    expectTypeOf<DefaultResult["result"]>().toEqualTypeOf<
+      import("@langchain/langgraph-sdk").ToolMessage | undefined
+    >();
+    expectTypeOf<DefaultResult["aiMessage"]>().toEqualTypeOf<
+      import("@langchain/langgraph-sdk").AIMessage<WeatherToolCall>
+    >();
+
+    type ClassResult = ToolCallWithResult<
+      WeatherToolCall,
+      CoreToolMessage,
+      CoreAIMessage
+    >;
+    expectTypeOf<ClassResult["result"]>().toEqualTypeOf<
+      CoreToolMessage | undefined
+    >();
+    expectTypeOf<ClassResult["aiMessage"]>().toEqualTypeOf<CoreAIMessage>();
   });
 
   test("toolCalls[].aiMessage is @langchain/core AIMessage class type", () => {

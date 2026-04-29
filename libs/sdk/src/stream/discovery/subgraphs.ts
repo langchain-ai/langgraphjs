@@ -41,8 +41,9 @@
  * entering and its first inner node materializing — typically tens
  * of milliseconds.
  */
-import type { Event, LifecycleEvent } from "@langchain/protocol";
+import type { Event, LifecycleEvent, ValuesEvent } from "@langchain/protocol";
 import { StreamStore } from "../store.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { SubgraphDiscoverySnapshot } from "../types.js";
 
 export type SubgraphMap = ReadonlyMap<string, SubgraphDiscoverySnapshot>;
@@ -91,15 +92,19 @@ export class SubgraphDiscovery {
    */
   #promoted = new Set<string>();
 
-  /** Feed a single root event. Non-`lifecycle` events are ignored. */
+  /** Feed a single root event. Non-discovery events are ignored. */
   push(event: Event): void {
+    if (event.method === "values") {
+      this.#onValuesEvent(event as ValuesEvent);
+      return;
+    }
     if (event.method !== "lifecycle") return;
     const lifecycle = event as LifecycleEvent;
     const namespace = lifecycle.params.namespace;
     // Root lifecycle events describe the main run; subgraph discovery
     // only cares about namespaced lifecycle events.
     if (namespace.length === 0) return;
-    const id = namespace.join("\u0000");
+    const id = namespace.join(NAMESPACE_SEPARATOR);
     const data = lifecycle.params.data as { event?: string };
     const lastSegment = namespace[namespace.length - 1] ?? "";
     const nodeName = parseNodeName(lastSegment);
@@ -110,7 +115,7 @@ export class SubgraphDiscovery {
     // prefix. The ancestor may or may not yet have a shadow entry;
     // #commit() tolerates either case.
     for (let depth = 1; depth < namespace.length; depth += 1) {
-      const ancestorId = namespace.slice(0, depth).join("\u0000");
+      const ancestorId = namespace.slice(0, depth).join(NAMESPACE_SEPARATOR);
       if (!this.#promoted.has(ancestorId)) {
         this.#promoted.add(ancestorId);
         if (this.#shadow.has(ancestorId)) touched = true;
@@ -148,6 +153,57 @@ export class SubgraphDiscovery {
     }
 
     if (touched) this.#commit();
+  }
+
+  /**
+   * Promote subgraph host namespaces from namespaced `values` snapshots.
+   *
+   * Older protocol streams exposed subgraph structure primarily through
+   * nested `lifecycle` events: a host namespace such as
+   * `["research:<uuid>"]` was promoted once a deeper namespace like
+   * `["research:<uuid>", "inner:<uuid>"]` appeared. Some runtimes now
+   * emit the useful subgraph signal as `values` snapshots scoped directly
+   * to the host namespace instead, without forwarding inner lifecycle
+   * events to the client. In that shape, the namespace on the `values`
+   * event is already the selector target that `useMessages(stream,
+   * subgraph)` should subscribe to, so we create/promote the shadow
+   * subgraph entry from that namespace.
+   *
+   * Root `values` events are ignored because they represent the parent
+   * thread state, not a subgraph. Tool/subagent namespaces are also
+   * ignored because deep-agent task tools emit their own namespaced
+   * `values` snapshots under `tools:*` / `task:*`; those are discovered
+   * by `SubagentDiscovery` and must not be duplicated as subgraphs.
+   *
+   * A `values` event does not carry lifecycle terminal status, so the
+   * entry remains marked `running` until a matching lifecycle terminal
+   * event arrives. If no terminal arrives, the discovery map still
+   * contains the host namespace, which is the important invariant for
+   * scoped selectors.
+   */
+  #onValuesEvent(event: ValuesEvent): void {
+    const namespace = event.params.namespace;
+    if (namespace.length === 0) return;
+    if (
+      namespace.some(
+        (segment) => segment.startsWith("tools:") || segment.startsWith("task:")
+      )
+    ) {
+      return;
+    }
+    const data = event.params.data;
+    if (data == null || typeof data !== "object" || Array.isArray(data)) return;
+
+    const id = namespace.join(NAMESPACE_SEPARATOR);
+    const lastSegment = namespace[namespace.length - 1] ?? "";
+    const nodeName = parseNodeName(lastSegment);
+    const entry = this.#ensureShadow(id, namespace, nodeName);
+    entry.status = "running";
+
+    if (!this.#promoted.has(id)) {
+      this.#promoted.add(id);
+    }
+    this.#commit();
   }
 
   get snapshot(): SubgraphMap {

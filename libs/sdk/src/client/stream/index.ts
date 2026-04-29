@@ -58,6 +58,7 @@ import type {
 } from "./types.js";
 import type { EventStreamHandle, TransportAdapter } from "./transport.js";
 import { ProtocolError } from "./error.js";
+import { NAMESPACE_SEPARATOR } from "../../stream/constants.js";
 import { isHeadlessToolInterrupt } from "../../headless-tools.js";
 
 /**
@@ -180,7 +181,7 @@ function coerceStateMessages(value: unknown): unknown {
 }
 
 function namespaceKey(ns: Namespace): string {
-  return ns.join("\u0000");
+  return ns.join(NAMESPACE_SEPARATOR);
 }
 
 function namespaceListsEqual(

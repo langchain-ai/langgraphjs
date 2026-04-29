@@ -102,6 +102,7 @@ export type {
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "./types.stream.js";
+export { NAMESPACE_SEPARATOR } from "./stream/index.js";
 
 export type { BagTemplate } from "./types.template.js";
 export type * from "./ui/stream/index.js";

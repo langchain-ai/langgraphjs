@@ -108,6 +108,8 @@ export type {
   TransportAdapter,
 } from "../client/stream/transport.js";
 
+export { NAMESPACE_SEPARATOR } from "./constants.js";
+
 // Types framework bindings (React, Vue, Svelte, Angular) typically
 // need when wrapping the projection factories. Re-exported here so
 // bindings can reach them without a deep subpath import.

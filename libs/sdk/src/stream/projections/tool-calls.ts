@@ -12,13 +12,14 @@ import type { Event, ToolsEvent } from "@langchain/protocol";
 import type { SubscriptionHandle } from "../../client/stream/index.js";
 import { ToolCallAssembler } from "../../client/stream/handles/tools.js";
 import type { AssembledToolCall } from "../../client/stream/handles/tools.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 
 export function toolCallsProjection(
   namespace: readonly string[]
 ): ProjectionSpec<AssembledToolCall[]> {
   const ns = [...namespace];
-  const key = `toolCalls|${ns.join("\u0000")}`;
+  const key = `toolCalls|${ns.join(NAMESPACE_SEPARATOR)}`;
 
   return {
     key,

@@ -26,13 +26,14 @@ import {
 } from "../assembled-to-message.js";
 import { ensureMessageInstances } from "../../ui/messages.js";
 import type { Message } from "../../types.messages.js";
+import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 
 export function messagesProjection(
   namespace: readonly string[]
 ): ProjectionSpec<BaseMessage[]> {
   const ns = [...namespace];
-  const key = `messages|${ns.join("\u0000")}`;
+  const key = `messages|${ns.join(NAMESPACE_SEPARATOR)}`;
 
   return {
     key,

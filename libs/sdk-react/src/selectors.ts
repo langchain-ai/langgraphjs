@@ -11,6 +11,7 @@ import type {
   SubmissionQueueSnapshot,
 } from "@langchain/langgraph-sdk/stream";
 import {
+  NAMESPACE_SEPARATOR,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -86,7 +87,7 @@ function isRoot(namespace: readonly string[]): boolean {
 }
 
 function namespaceKey(namespace: readonly string[]): string {
-  return namespace.join("\u0000");
+  return namespace.join(NAMESPACE_SEPARATOR);
 }
 
 // The stream type we accept for selectors — purposely loose so
