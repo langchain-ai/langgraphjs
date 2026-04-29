@@ -7,11 +7,7 @@
  * @module
  */
 
-import type {
-  DefaultToolCall,
-  AIMessage,
-  ToolCallWithResult,
-} from "../../types.messages.js";
+import type { DefaultToolCall } from "../../types.messages.js";
 import type { BagTemplate } from "../../types.template.js";
 import type { BaseStream } from "./base.js";
 import type { UseStreamOptions } from "../types.js";
@@ -75,10 +71,7 @@ import type { UseStreamOptions } from "../types.js";
  * ```
  *
  * @remarks
- * This interface adds tool calling on top of {@link UseGraphStream}:
- * - `toolCalls` - Array of tool calls paired with their results
- * - `getToolCalls(message)` - Get tool calls for a specific AI message
- *
+ * This interface extends {@link BaseStream} with typed tool calls (inherited from BaseStream).
  * It does NOT include subagent streaming features. For those, use
  * {@link UseDeepAgentStream} with `createDeepAgent`.
  */
@@ -86,55 +79,7 @@ export interface UseAgentStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   Bag extends BagTemplate = BagTemplate,
-> extends BaseStream<StateType, ToolCall, Bag> {
-  /**
-   * Tool calls paired with their results.
-   *
-   * Each entry contains the tool call request and its corresponding result.
-   * Useful for rendering tool invocations and their outputs together.
-   *
-   * @example
-   * ```typescript
-   * stream.toolCalls.map(({ call, result }) => (
-   *   <ToolCallCard
-   *     name={call.name}
-   *     args={call.args}
-   *     result={result}
-   *   />
-   * ));
-   * ```
-   */
-  toolCalls: ToolCallWithResult<ToolCall>[];
-
-  /**
-   * Get tool calls for a specific AI message.
-   *
-   * Use this to find which tool calls were initiated by a particular
-   * assistant message, useful for rendering tool calls inline with messages.
-   *
-   * @param message - The AI message to get tool calls for
-   * @returns Array of tool calls initiated by the message
-   *
-   * @example
-   * ```typescript
-   * messages.map(message => {
-   *   if (message.type === "ai") {
-   *     const calls = stream.getToolCalls(message);
-   *     return (
-   *       <>
-   *         <MessageBubble message={message} />
-   *         {calls.map(tc => <ToolCallCard key={tc.call.id} {...tc} />)}
-   *       </>
-   *     );
-   *   }
-   *   return <MessageBubble message={message} />;
-   * });
-   * ```
-   */
-  getToolCalls: (
-    message: AIMessage<ToolCall>
-  ) => ToolCallWithResult<ToolCall>[];
-}
+> extends BaseStream<StateType, ToolCall, Bag> {}
 
 /**
  * Options for configuring an agent stream.

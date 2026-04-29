@@ -169,8 +169,7 @@ export type InferSubagentStates<T> = T extends { "~deepAgentTypes": unknown }
  *    - Excludes: subagents, getSubagentsByType
  *
  * 3. **CompiledGraph** / **Default** → {@link BaseStream}
- *    - Includes: values, messages, submit, stop
- *    - Does NOT include: toolCalls, subagents (not applicable to raw graphs)
+ *    - Includes: values, messages, toolCalls, getToolCalls, submit, stop
  *
  * @template T - The agent or graph type (use `typeof agent` or `typeof graph`)
  * @template Bag - Type configuration bag for interrupts, configurable, etc.
