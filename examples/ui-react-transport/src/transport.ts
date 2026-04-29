@@ -14,6 +14,18 @@ type ProtocolMessage = EventStreamHandle extends {
   ? Message
   : never;
 
+const PROTOCOL_METHODS = new Set([
+  "values",
+  "checkpoints",
+  "updates",
+  "messages",
+  "tools",
+  "custom",
+  "lifecycle",
+  "input.requested",
+  "tasks",
+]);
+
 class AsyncQueue<T> implements AsyncIterable<T> {
   private values: T[] = [];
 
@@ -79,12 +91,13 @@ function createProtocolMessage(
 ): ProtocolMessage | undefined {
   const [method, ...namespace] = eventName.split("|");
   if (!method) return undefined;
+  const isProtocolMethod = PROTOCOL_METHODS.has(method);
 
   return {
     type: "event",
-    method,
+    method: isProtocolMethod ? method : "custom",
     params: {
-      data,
+      data: isProtocolMethod ? data : { name: method, payload: data },
       namespace,
     },
   } as ProtocolMessage;
@@ -99,7 +112,12 @@ function matchesSubscription(
   message: ProtocolMessage,
   params: SubscribeParams,
 ) {
-  if (params.channels?.length && !params.channels.includes(message.method)) {
+  const channel = getMessageChannel(message);
+  if (
+    params.channels?.length &&
+    !params.channels.includes(channel) &&
+    !(channel.startsWith("custom:") && params.channels.includes("custom"))
+  ) {
     return false;
   }
 
@@ -117,6 +135,14 @@ function matchesSubscription(
     if (!prefixMatches) return false;
     return params.depth == null || namespace.length - prefix.length <= params.depth;
   });
+}
+
+function getMessageChannel(message: ProtocolMessage) {
+  if (message.method !== "custom") return message.method;
+  const data = message.params.data;
+  return isRecord(data) && typeof data.name === "string"
+    ? `custom:${data.name}`
+    : "custom";
 }
 
 async function* parseSseMessages(

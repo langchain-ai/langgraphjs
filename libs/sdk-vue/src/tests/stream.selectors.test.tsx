@@ -128,6 +128,9 @@ it("captures named custom events through useExtension", async () => {
       .element(screen.getByTestId("extension-label"))
       .toHaveTextContent("answering");
     await expect
+      .element(screen.getByTestId("extension-json"))
+      .toHaveTextContent('{"label":"answering"}');
+    await expect
       .element(screen.getByTestId("values-message-count"))
       .toHaveTextContent("2");
   } finally {

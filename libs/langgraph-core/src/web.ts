@@ -15,6 +15,7 @@ export {
   type StateDefinition,
   type SingleReducer,
   type CompiledGraph,
+  type CompiledGraphType,
   type GraphNode,
   type GraphNodeTypes,
   type GraphNodeReturnValue,

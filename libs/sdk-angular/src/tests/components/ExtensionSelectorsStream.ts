@@ -21,6 +21,7 @@ interface StreamState {
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="extension-label">{{ extension()?.label ?? "" }}</div>
+      <div data-testid="extension-json">{{ extensionJson() }}</div>
       <div data-testid="custom-event-count">{{ customEvents().length }}</div>
       <div data-testid="custom-event-types">{{ customEventTypes() }}</div>
       <div data-testid="values-message-count">
@@ -36,7 +37,7 @@ export class ExtensionSelectorsStreamComponent {
     apiUrl: serverUrl,
   });
 
-  readonly extension = injectExtension<{ label: string }>(
+  readonly extension = injectExtension<{ label: string; params?: unknown }>(
     this.stream,
     "status",
   );
@@ -49,6 +50,12 @@ export class ExtensionSelectorsStreamComponent {
     return this.customEvents()
       .map((event) => event.method ?? "")
       .join(",");
+  }
+
+  extensionJson(): string {
+    const extension = this.extension();
+    if (extension == null) return "";
+    return JSON.stringify(extension);
   }
 
   onSubmit(): void {

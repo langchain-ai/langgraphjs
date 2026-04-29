@@ -1120,6 +1120,10 @@ export class ThreadStream<
       for await (const event of rawHandle) {
         onEvent(event);
       }
+    } catch {
+      // Projection streams are best-effort views over the shared thread
+      // stream. Surface-level errors are reflected through the controller
+      // state; this background task only needs to settle cleanly.
     } finally {
       onDone();
     }
@@ -1636,7 +1640,9 @@ export class ThreadStream<
         return;
       }
       this.#rotationState = "idle";
-      void this.#reconcileStream();
+      void this.#reconcileStream().catch(() => {
+        this.#rotationState = "idle";
+      });
     });
   }
 

@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
+import { dispatchCustomEvent } from "@langchain/core/callbacks/dispatch";
 import {
   AIMessage,
   AIMessageChunk,
@@ -108,6 +109,16 @@ const interruptAgent = new StateGraph(MessagesAnnotation)
 const parentAgent = new StateGraph(MessagesAnnotation)
   .addNode("child", agent, { subgraphs: [agent] })
   .addEdge(START, "child")
+  .compile();
+
+const customChannelAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async (_state, runtime: Runtime) => {
+    runtime.writer?.({ stage: "thinking" });
+    await dispatchCustomEvent("status", { label: "answering" });
+    runtime.writer?.({ stage: "done" });
+    return { messages: [new AIMessage("Custom channel reply")] };
+  })
+  .addEdge(START, "agent")
   .compile();
 
 const removeMessageAgent = new StateGraph(MessagesAnnotation)
@@ -463,6 +474,7 @@ const graphs: Record<string, AnyPregel> = {
   removeMessageAgent,
   errorAgent,
   slow_graph: slowGraph,
+  customChannelAgent,
   headlessToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };

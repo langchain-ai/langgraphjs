@@ -163,6 +163,11 @@ export class GraphRunStream<
       this.#resolveValuesFn = resolve;
       this.#rejectValuesFn = reject;
     });
+    this.#valuesDone.catch(() => {
+      // Keep run failures observable to explicit `await run.output` callers
+      // without reporting unhandled rejections when consumers only iterate
+      // protocol events.
+    });
   }
 
   /**

@@ -664,12 +664,51 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  override withConfig(
-    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt">
-  ): typeof this {
-    const mergedConfig = mergeConfigs(this.config, config);
+  override withConfig<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new (this.constructor as any)({ ...this, config: mergedConfig });
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers: TTransformers;
+    }
+  ): Pregel<
+    Nodes,
+    Channels,
+    ContextType,
+    InputType,
+    OutputType,
+    StreamUpdatesType,
+    StreamValuesType,
+    NodeReturnType,
+    CommandType,
+    StreamCustom,
+    readonly [...TStreamTransformers, ...TTransformers]
+  >;
+
+  override withConfig(
+    config: PregelOptions<Nodes, Channels, ContextType>
+  ): this;
+
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      streamTransformers?: ReadonlyArray<() => StreamTransformer<any>>;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any {
+    const { streamTransformers, ...restConfig } = config;
+    const mergedConfig = mergeConfigs(this.config, restConfig);
+    const mergedStreamTransformers = [
+      ...this.streamTransformers,
+      ...(streamTransformers ?? []),
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new (this.constructor as any)({
+      ...this,
+      config: mergedConfig,
+      streamTransformers: mergedStreamTransformers,
+    });
   }
 
   /**

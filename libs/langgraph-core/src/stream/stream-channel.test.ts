@@ -76,6 +76,56 @@ describe("StreamChannel", () => {
     expect(second).toEqual(["a", "b"]);
   });
 
+  it("toEventStream emits pushed values as server-sent events", async () => {
+    const channel = StreamChannel.remote<{ msg: string }>("a2a");
+    channel.push({ msg: "hello" });
+    channel.push({ msg: "world" });
+    channel.close();
+
+    await expect(new Response(channel.toEventStream()).text()).resolves.toBe(
+      [
+        'event: a2a\ndata: {"msg":"hello"}\n\n',
+        'event: a2a\ndata: {"msg":"world"}\n\n',
+      ].join("")
+    );
+  });
+
+  it("toEventStream supports local channels with an event override", async () => {
+    const channel = StreamChannel.local<string>();
+    channel.push("hello");
+    channel.close();
+
+    await expect(
+      new Response(channel.toEventStream({ event: "custom" })).text()
+    ).resolves.toBe('event: custom\ndata: "hello"\n\n');
+  });
+
+  it("toEventStream supports starting from a custom cursor", async () => {
+    const channel = StreamChannel.remote<number>("numbers");
+    channel.push(1);
+    channel.push(2);
+    channel.push(3);
+    channel.close();
+
+    await expect(
+      new Response(channel.toEventStream({ startAt: 1 })).text()
+    ).resolves.toBe("event: numbers\ndata: 2\n\nevent: numbers\ndata: 3\n\n");
+  });
+
+  it("toEventStream supports custom serialization", async () => {
+    const channel = StreamChannel.remote<{ text: string }>("messages");
+    channel.push({ text: "hello" });
+    channel.close();
+
+    await expect(
+      new Response(
+        channel.toEventStream({
+          serialize: (item) => item.text.toUpperCase(),
+        })
+      ).text()
+    ).resolves.toBe("event: messages\ndata: HELLO\n\n");
+  });
+
   it("delivers items pushed after iteration starts", async () => {
     const channel = StreamChannel.local<number>();
     const iter = channel.iterate();

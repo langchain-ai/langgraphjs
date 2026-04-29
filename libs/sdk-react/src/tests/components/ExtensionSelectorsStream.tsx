@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
 import {
@@ -35,12 +36,18 @@ export function ExtensionSelectorsStream({
     apiUrl,
   });
 
-  const extension = useExtension<{ label: string }>(
+  const extension = useExtension<{ label: string; params?: unknown }>(
     thread,
     extensionName,
   );
   const customEvents = useChannel(thread, ["custom"]);
   const values = useValues<StreamState>(thread);
+  const [extensionCount, setExtensionCount] = useState(0);
+
+  useEffect(() => {
+    if (extension == null) return;
+    setExtensionCount((count) => count + 1);
+  }, [extension]);
 
   return (
     <div>
@@ -49,6 +56,10 @@ export function ExtensionSelectorsStream({
       </div>
 
       <div data-testid="extension-label">{extension?.label ?? ""}</div>
+      <div data-testid="extension-json">
+        {extension == null ? "" : JSON.stringify(extension)}
+      </div>
+      <div data-testid="extension-count">{extensionCount}</div>
       <div data-testid="custom-event-count">{customEvents.length}</div>
       <div data-testid="custom-event-types">
         {customEvents.map((ev) => ev.method ?? "").join(",")}

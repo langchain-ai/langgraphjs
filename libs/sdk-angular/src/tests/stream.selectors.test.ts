@@ -108,6 +108,9 @@ it("captures named custom events and exposes latest values", async () => {
     .element(screen.getByTestId("extension-label"))
     .toHaveTextContent("answering");
   await expect
+    .element(screen.getByTestId("extension-json"))
+    .toHaveTextContent('{"label":"answering"}');
+  await expect
     .element(screen.getByTestId("values-message-count"))
     .toHaveTextContent("2");
 });

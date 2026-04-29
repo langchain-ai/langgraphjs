@@ -42,6 +42,7 @@ body {
 
 .hero-card,
 .chat-card,
+.a2a-card,
 .composer {
   box-sizing: border-box;
   width: min(920px, 100%);
@@ -103,6 +104,13 @@ h1 {
   font-weight: 300;
   letter-spacing: -0.04em;
   line-height: 0.95;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
 p {
@@ -180,6 +188,120 @@ code {
   padding: 28px;
 }
 
+.a2a-card {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.a2a-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.a2a-heading p {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.a2a-heading span,
+.a2a-summary span,
+.a2a-status span,
+.a2a-artifact span,
+.a2a-artifact strong {
+  font-family:
+    "IBM Plex Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.a2a-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.a2a-summary div {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 16px;
+  background: var(--bg-card);
+}
+
+.a2a-summary span {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.a2a-summary strong {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.a2a-status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.a2a-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 999px;
+  background: var(--bg-card);
+}
+
+.a2a-status.final {
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+}
+
+.a2a-status p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.a2a-artifacts {
+  display: grid;
+  gap: 12px;
+}
+
+.a2a-artifact {
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  border-radius: 20px;
+  background: var(--bg-card);
+}
+
+.a2a-artifact div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.a2a-artifact strong {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.a2a-artifact p {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
 .empty-state {
   color: var(--text-secondary);
 }
@@ -252,6 +374,15 @@ textarea::placeholder {
 
   .hero-card,
   .composer {
+    grid-template-columns: 1fr;
+  }
+
+  .a2a-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .a2a-summary {
     grid-template-columns: 1fr;
   }
 

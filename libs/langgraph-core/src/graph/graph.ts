@@ -20,7 +20,7 @@ import type {
 } from "../pregel/runnable_types.js";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
-import type { PregelParams } from "../pregel/types.js";
+import type { PregelOptions, PregelParams } from "../pregel/types.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
@@ -45,6 +45,7 @@ import {
 } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
+import type { StreamTransformer } from "../stream/types.js";
 
 export interface BranchOptions<
   IO,
@@ -61,6 +62,70 @@ export type BranchPathReturnValue =
   | Send
   | (string | Send)[]
   | Promise<string | Send | (string | Send)[]>;
+
+type CompiledGraphTypeNode<Spec> = Spec extends { node: infer N extends string }
+  ? N
+  : any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+type CompiledGraphTypeContext<Spec> = Spec extends {
+  context: infer Context extends Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+  ? Context
+  : Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
+  streamTransformers: infer Transformers;
+}
+  ? Transformers extends ReadonlyArray<
+    () => import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+  ? Transformers
+  : Transformers extends ReadonlyArray<
+    import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+  ? { readonly [K in keyof Transformers]: () => Transformers[K] }
+  : Transformers extends import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  ? readonly [() => Transformers]
+  : []
+  : [];
+
+/**
+ * Convenience type for referencing a compiled graph by named type slots.
+ *
+ * @example
+ * ```ts
+ * type MyCompiledGraph = CompiledGraphType<{
+ *   state: State;
+ *   update: Update;
+ *   streamTransformers: [
+ *     StreamTransformer<Extensions>,
+ *     StreamTransformer<MoreExtensions>,
+ *   ];
+ * }>;
+ * ```
+ */
+export type CompiledGraphType<Spec extends object = object> = CompiledGraph<
+  CompiledGraphTypeNode<Spec>,
+  Spec extends { state: infer State }
+  ? State
+  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { update: infer Update }
+  ? Update
+  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  CompiledGraphTypeContext<Spec>,
+  Spec extends { input: infer Input }
+  ? Input
+  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { output: infer Output }
+  ? Output
+  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { nodeReturn: infer NodeReturn } ? NodeReturn : unknown,
+  Spec extends { command: infer Command } ? Command : unknown,
+  Spec extends { streamCustom: infer StreamCustom }
+  ? StreamCustom
+  : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  CompiledGraphTypeStreamTransformers<Spec>
+>;
 
 type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
   S,
@@ -87,12 +152,12 @@ export class Branch<
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce(
-          (acc, n) => {
-            acc[n] = n;
-            return acc;
-          },
-          {} as Record<string, N | typeof END>
-        )
+        (acc, n) => {
+          acc[n] = n;
+          return acc;
+        },
+        {} as Record<string, N | typeof END>
+      )
       : options.pathMap;
   }
 
@@ -116,7 +181,7 @@ export class Branch<
             if (e.name === NodeInterrupt.unminifiable_name) {
               console.warn(
                 "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
-                  "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+                "NodeInterrupt should only be thrown inside a node, not in edge conditions."
               );
             }
             throw e;
@@ -221,10 +286,10 @@ export class Graph<
     nodes:
       | Record<K, NodeAction<NodeInput, NodeOutput, C>>
       | [
-          key: K,
-          action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions,
-        ][]
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C>,
+        options?: AddNodeOptions,
+      ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
@@ -236,30 +301,30 @@ export class Graph<
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     ...args:
       | [
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C>,
+        options?: AddNodeOptions,
+      ]
+      | [
+        nodes:
+        | Record<K, NodeAction<NodeInput, NodeOutput, C>>
+        | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
           options?: AddNodeOptions,
-        ]
-      | [
-          nodes:
-            | Record<K, NodeAction<NodeInput, NodeOutput, C>>
-            | [
-                key: K,
-                action: NodeAction<NodeInput, NodeOutput, C>,
-                options?: AddNodeOptions,
-              ][],
-        ]
+        ][],
+      ]
   ): Graph<N | K, RunInput, RunOutput> {
     function isMutlipleNodes(
       args: unknown[]
     ): args is [
       nodes:
-        | Record<K, NodeAction<NodeInput, RunOutput, C>>
-        | [
-            key: K,
-            action: NodeAction<NodeInput, RunOutput, C>,
-            options?: AddNodeOptions,
-          ][],
+      | Record<K, NodeAction<NodeInput, RunOutput, C>>
+      | [
+        key: K,
+        action: NodeAction<NodeInput, RunOutput, C>,
+        options?: AddNodeOptions,
+      ][],
       options?: AddNodeOptions,
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
@@ -626,6 +691,57 @@ export class CompiledGraph<
     this.builder = builder;
   }
 
+  override withConfig<
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
+  >(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers: TTransformers;
+    }
+  ): CompiledGraph<
+    N,
+    State,
+    Update,
+    ContextType,
+    InputType,
+    OutputType,
+    NodeReturnType,
+    CommandType,
+    StreamCustomType,
+    readonly [...TStreamTransformers, ...TTransformers]
+  >;
+
+  override withConfig(
+    config: PregelOptions<
+      Record<N | typeof START, PregelNode<State, Update>>,
+      Record<N | typeof START | typeof END | string, BaseChannel>,
+      ContextType & Record<string, any>
+    >
+  ): this;
+
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers?: ReadonlyArray<
+        () => StreamTransformer<any>
+      >;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any {
+    return (super.withConfig as any)(config) as unknown as CompiledGraph<
+      N,
+      State,
+      Update,
+      ContextType,
+      InputType,
+      OutputType,
+      NodeReturnType,
+      CommandType,
+      StreamCustomType,
+      ReadonlyArray<
+        () => StreamTransformer<any>
+      >
+    >;
+  }
+
   attachNode(key: N, node: NodeSpec<State, Update>): void {
     this.channels[key] = new EphemeralValue();
     this.nodes[key] = new PregelNode({
@@ -765,9 +881,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? await subgraphs[key].getGraphAsync({
-                ...config,
-                xray: newXrayValue,
-              })
+              ...config,
+              xray: newXrayValue,
+            })
             : node.getGraph(config);
 
         drawableSubgraph.trimFirstNode();
@@ -963,9 +1079,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? subgraphs[key].getGraph({
-                ...config,
-                xray: newXrayValue,
-              })
+              ...config,
+              xray: newXrayValue,
+            })
             : node.getGraph(config);
         drawableSubgraph.trimFirstNode();
         drawableSubgraph.trimLastNode();

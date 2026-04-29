@@ -7,10 +7,10 @@
  * store retains the most-recent payload. Consumers that want the
  * entire event history should use the raw channel projection instead.
  */
-import type { Event } from "@langchain/protocol";
-import type { SubscriptionHandle } from "../../client/stream/index.js";
 import { NAMESPACE_SEPARATOR } from "../constants.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
+import type { SubscriptionHandle } from "../../client/stream/index.js";
+import type { Event } from "@langchain/protocol";
 
 export function extensionProjection<T = unknown>(
   name: string,
@@ -25,22 +25,26 @@ export function extensionProjection<T = unknown>(
     namespace: ns,
     initial: undefined,
     open({ thread, store }): ProjectionRuntime {
-      let handle: SubscriptionHandle<Event> | undefined;
+      let handle: SubscriptionHandle<Event, unknown> | undefined;
       let disposed = false;
 
       const start = async () => {
         try {
-          handle = await thread.subscribe({
-            channels: [channel],
+          const subscription = await thread.subscribe(channel, {
             namespaces: ns.length > 0 ? [ns] : [[]],
             depth: 1,
           });
-          for await (const payload of handle) {
-            if (disposed) break;
-            // The SDK transforms `custom:<name>` events to their raw
-            // `data.payload` at the subscribe boundary, so `payload`
-            // is already the user-space value.
-            store.setValue(payload as T);
+          handle = subscription;
+          while (!disposed) {
+            for await (const payload of subscription) {
+              if (disposed) break;
+              // The SDK transforms `custom:<name>` events to their raw
+              // `data.payload` at the subscribe boundary, so `payload`
+              // is already the user-space value.
+              store.setValue(payload as T);
+            }
+            if (disposed || !subscription.isPaused) break;
+            await subscription.waitForResume();
           }
         } catch {
           // closed / errored

@@ -28,6 +28,27 @@ export const STREAM_CHANNEL_BRAND: unique symbol = Symbol.for(
   "langgraph.stream_channel"
 ) as typeof STREAM_CHANNEL_BRAND;
 
+export interface StreamChannelEventStreamOptions<T> {
+  /**
+   * SSE event name. Defaults to the channel's remote protocol name, if any.
+   * Set this for local channels or when exposing the same channel under a
+   * route-specific event name.
+   */
+  event?: string;
+  /**
+   * Cursor position to start streaming from. Useful for reconnects or
+   * secondary subscribers that already consumed the first N buffered items and
+   * only need replay from a known offset.
+   */
+  startAt?: number;
+  /**
+   * Serialize each item into the SSE `data:` field. Defaults to JSON. Use this
+   * when a channel item needs a wire format other than its raw JSON shape, or
+   * when the consumer expects line-oriented text payloads.
+   */
+  serialize?: (item: T) => string;
+}
+
 /**
  * A projection channel for {@link StreamTransformer}s.
  *
@@ -130,6 +151,48 @@ export class StreamChannel<T> implements AsyncIterable<T> {
     return {
       [Symbol.asyncIterator]: () => this.iterate(startAt),
     };
+  }
+
+  /**
+   * Creates a web {@link ReadableStream} that emits channel items as
+   * Server-Sent Events. Useful for returning a channel directly from
+   * `new Response(channel.toEventStream())`.
+   */
+  toEventStream(
+    options: StreamChannelEventStreamOptions<T> = {}
+  ): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder();
+    const iterator = this.iterate(options.startAt);
+    const event = options.event ?? this.channelName;
+    const serialize =
+      options.serialize ?? ((item: T) => JSON.stringify(item) ?? "null");
+
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const next = await iterator.next();
+          if (next.done) {
+            controller.close();
+            return;
+          }
+
+          const lines: string[] = [];
+          if (event != null) {
+            lines.push(`event: ${event}`);
+          }
+          for (const line of serialize(next.value).split(/\r\n|\r|\n/)) {
+            lines.push(`data: ${line}`);
+          }
+
+          controller.enqueue(encoder.encode(`${lines.join("\n")}\n\n`));
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      async cancel() {
+        await iterator.return?.();
+      },
+    });
   }
 
   /**

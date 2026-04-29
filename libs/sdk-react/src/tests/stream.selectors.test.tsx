@@ -150,6 +150,52 @@ it("captures anonymous writer events on the raw custom channel", async () => {
   }
 });
 
+it("unwraps named custom event payloads through useExtension", async () => {
+  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("extension-label"))
+      .toHaveTextContent("answering");
+    await expect
+      .element(screen.getByTestId("extension-json"))
+      .toHaveTextContent('{"label":"answering"}');
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
+it("continues useExtension subscriptions across serial submits", async () => {
+  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("extension-count"))
+      .toHaveTextContent("1");
+
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("extension-count"))
+      .toHaveTextContent("2");
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
 it("exposes the latest thread values via useValues", async () => {
   const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
 

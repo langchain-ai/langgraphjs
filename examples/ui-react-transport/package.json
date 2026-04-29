@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "turbo dev:client dev:server",
     "dev:client": "vite",
-    "dev:server": "tsx watch --env-file=.env --clear-screen=false src/server.mts",
+    "dev:server": "tsx watch --env-file=.env --clear-screen=false src/app.ts",
     "build:internal": "tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@a2a-js/sdk": "^0.3.13",
     "@hono/node-server": "^1.19.13",
     "@langchain/core": "^1.1.38",
     "@langchain/langgraph": "workspace:*",

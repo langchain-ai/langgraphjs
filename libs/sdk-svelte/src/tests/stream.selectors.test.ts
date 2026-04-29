@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import RootSelectorsStream from "./components/RootSelectorsStream.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
 import SubgraphStream from "./components/SubgraphStream.svelte";
+import ExtensionSelectorsStream from "./components/ExtensionSelectorsStream.svelte";
 
 const serverUrl = inject("serverUrl");
 
@@ -46,6 +47,25 @@ it("useChannel buffers raw custom events", async () => {
     screen.getByTestId("custom-event-count").element().textContent,
   );
   expect(customCount).toBeGreaterThan(0);
+});
+
+it("unwraps named custom event payloads through useExtension", async () => {
+  const screen = render(ExtensionSelectorsStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("extension-label"))
+    .toHaveTextContent("answering");
+  await expect
+    .element(screen.getByTestId("extension-json"))
+    .toHaveTextContent('{"label":"answering"}');
+  await expect
+    .element(screen.getByTestId("values-message-count"))
+    .toHaveTextContent("2");
 });
 
 it("discovers subagents and scopes useMessages/useToolCalls to each namespace", async () => {

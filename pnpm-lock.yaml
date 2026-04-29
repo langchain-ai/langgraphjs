@@ -1232,6 +1232,9 @@ importers:
 
   examples/ui-react-transport:
     dependencies:
+      '@a2a-js/sdk':
+        specifier: ^0.3.13
+        version: 0.3.13(@grpc/grpc-js@1.14.3)(express@5.2.1)
       '@hono/node-server':
         specifier: ^1.19.13
         version: 1.19.14(hono@4.12.14)

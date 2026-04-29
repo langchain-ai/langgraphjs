@@ -19,7 +19,7 @@ export const ExtensionSelectorsStream = defineComponent({
       assistantId: props.assistantId,
       apiUrl: props.apiUrl,
     });
-    const extension = useExtension<{ label: string }>(
+    const extension = useExtension<{ label: string; params?: unknown }>(
       stream,
       props.extensionName,
     );
@@ -33,6 +33,9 @@ export const ExtensionSelectorsStream = defineComponent({
         </div>
 
         <div data-testid="extension-label">{extension.value?.label ?? ""}</div>
+        <div data-testid="extension-json">
+          {extension.value == null ? "" : JSON.stringify(extension.value)}
+        </div>
         <div data-testid="custom-event-count">{customEvents.value.length}</div>
         <div data-testid="custom-event-types">
           {customEvents.value.map((event) => event.method ?? "").join(",")}
