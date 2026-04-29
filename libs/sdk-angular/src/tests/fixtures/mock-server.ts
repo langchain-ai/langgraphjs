@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
+import { dispatchCustomEvent } from "@langchain/core/callbacks/dispatch";
 import {
   AIMessage,
   AIMessageChunk,
@@ -19,6 +20,7 @@ import {
 import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
 import {
   createEmbedServer,
+  type ThreadSaver,
 } from "@langchain/langgraph-api/experimental/embed";
 import {
   StateGraph,
@@ -28,6 +30,7 @@ import {
   pushMessage,
   START,
   END,
+  type LangGraphRunnableConfig,
   type Runtime,
   type Pregel,
 } from "@langchain/langgraph";
@@ -47,7 +50,7 @@ declare module "vitest" {
   }
 }
 
-type AnyPregel = Pregel<any, any, any, any, any>;
+type AnyPregel = Pregel<unknown, unknown, unknown, unknown, unknown>;
 
 const threads: ThreadSaver = (() => {
   const THREADS: Record<
@@ -107,6 +110,71 @@ const interruptAgent = new StateGraph(MessagesAnnotation)
 const parentAgent = new StateGraph(MessagesAnnotation)
   .addNode("child", agent, { subgraphs: [agent] })
   .addEdge(START, "child")
+  .compile();
+
+const slowGraph = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async (_state, _config: LangGraphRunnableConfig) => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 400);
+    });
+    return { messages: [new AIMessage("Done.")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+const customChannelAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async (_state, runtime: Runtime) => {
+    runtime.writer?.({ stage: "thinking" });
+    await dispatchCustomEvent("status", { label: "answering" });
+    runtime.writer?.({ stage: "done" });
+    return { messages: [new AIMessage("Custom channel reply")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+const embeddedSubgraphModel = new FakeStreamingChatModel({
+  responses: [new AIMessage("Subgraph reply")],
+});
+
+const embeddedResearchSubgraph = new StateGraph(MessagesAnnotation)
+  .addNode(
+    "inner",
+    async (state: { messages: BaseMessage[] }, runtime: Runtime) => {
+      runtime.writer?.({ type: "progress", label: "research-started" });
+      const response = await embeddedSubgraphModel.invoke(state.messages);
+      runtime.writer?.({ type: "progress", label: "research-finished" });
+      return { messages: [response] };
+    },
+  )
+  .addEdge(START, "inner")
+  .compile();
+
+const embeddedResearch = async (state: { messages: BaseMessage[] }) => {
+  const result = await embeddedResearchSubgraph.invoke({
+    messages: state.messages,
+  });
+  const last = result.messages.at(-1);
+
+  return {
+    messages: [
+      new AIMessage(
+        typeof last?.content === "string" ? last.content : "Research done",
+      ),
+    ],
+  };
+};
+
+const embeddedSummarize = async () => ({
+  messages: [new AIMessage("Summary line")],
+});
+
+const embeddedSubgraphAgent = new StateGraph(MessagesAnnotation)
+  .addNode("research", embeddedResearch, {
+    subgraphs: [embeddedResearchSubgraph],
+  })
+  .addNode("summarize", embeddedSummarize)
+  .addEdge(START, "research")
+  .addEdge("research", "summarize")
   .compile();
 
 const removeMessageAgent = new StateGraph(MessagesAnnotation)
@@ -451,6 +519,9 @@ const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
   parentAgent,
+  slow_graph: slowGraph,
+  customChannelAgent,
+  embeddedSubgraphAgent,
   removeMessageAgent,
   errorAgent,
   headlessToolAgent,
@@ -463,7 +534,7 @@ export async function setup({ provide }: TestProject) {
   const embedApp = createEmbedServer({ graph: graphs, checkpointer, threads });
   const app = new Hono();
   app.use("*", cors({ origin: "*", exposeHeaders: ["Content-Location"] }));
-  app.route("/", embedApp);
+  app.route("/", embedApp as unknown as Parameters<typeof app.route>[1]);
 
   await new Promise<void>((resolve) => {
     httpServer = serve({ fetch: app.fetch, port: 0 }, (info) => {

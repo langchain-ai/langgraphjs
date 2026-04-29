@@ -139,6 +139,14 @@ const errorAgent = new StateGraph(MessagesAnnotation)
   .addEdge(START, "agent")
   .compile();
 
+const slowGraph = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { messages: [new AIMessage("Done.")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
 // --- Fake Model for Tool-Calling Agents ---
 class FakeToolCallingModel extends BaseChatModel {
   responses: BaseMessage[];
@@ -454,6 +462,7 @@ const graphs: Record<string, AnyPregel> = {
   parentAgent,
   removeMessageAgent,
   errorAgent,
+  slow_graph: slowGraph,
   headlessToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };

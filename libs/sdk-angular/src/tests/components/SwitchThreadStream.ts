@@ -1,4 +1,10 @@
-import { ChangeDetectionStrategy, Component, signal } from "@angular/core";
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  signal,
+} from "@angular/core";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
 import { injectStream } from "../../inject-stream.js";
@@ -34,7 +40,16 @@ interface StreamState {
 export class SwitchThreadStreamComponent {
   readonly formatMessage = formatMessage;
 
-  private readonly threadId = signal<string | null>(null);
+  readonly initialThreadId = input<string | null | undefined>(undefined);
+
+  private readonly selectedThreadId = signal<string | null | undefined>(
+    undefined
+  );
+
+  private readonly threadId = computed(() => {
+    const selected = this.selectedThreadId();
+    return selected === undefined ? (this.initialThreadId() ?? null) : selected;
+  });
 
   readonly stream = injectStream<StreamState>({
     assistantId: "agent",
@@ -43,7 +58,7 @@ export class SwitchThreadStreamComponent {
     onThreadId: (id) => {
       // Only record a *new* id; do not clobber ids the user set
       // via `switchToNew()` (which writes the signal itself).
-      if (this.threadId() == null) this.threadId.set(id);
+      if (this.threadId() == null) this.selectedThreadId.set(id);
     },
   });
 
@@ -52,10 +67,10 @@ export class SwitchThreadStreamComponent {
   }
 
   switchToNew(): void {
-    this.threadId.set(crypto.randomUUID());
+    this.selectedThreadId.set(crypto.randomUUID());
   }
 
   clearThread(): void {
-    this.threadId.set(null);
+    this.selectedThreadId.set(null);
   }
 }

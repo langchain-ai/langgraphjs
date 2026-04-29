@@ -30,7 +30,7 @@ it("shares a single stream across siblings via StreamProvider", async () => {
       .element(screen.getByTestId("loading"))
       .toHaveTextContent("Not loading");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -48,7 +48,7 @@ it("throws a descriptive error when useStreamContext is called outside a provide
   try {
     await expect(async () => {
       const screen = await render(<Orphan />);
-      cleanupRender(screen);
+      await cleanupRender(screen);
     }).rejects.toThrow(/StreamProvider/);
   } finally {
     console.error = originalError;

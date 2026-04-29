@@ -1,8 +1,8 @@
-## Stream context (`provideStream` / `getStream`)
+# Stream context (`provideStream` / `getStream`)
 
 Share a single stream across a component tree with `provideStream` / `getStream`. Both must be called during component initialisation (top level of `<script>`), same rule as Svelte's built-in `setContext` / `getContext`.
 
-### Parent
+## Parent
 
 ```svelte
 <!-- ChatContainer.svelte -->
@@ -16,7 +16,7 @@ Share a single stream across a component tree with `provideStream` / `getStream`
 <MessageInput />
 ```
 
-### Child
+## Child
 
 ```svelte
 <!-- MessageList.svelte -->
@@ -38,7 +38,3 @@ Share a single stream across a component tree with `provideStream` / `getStream`
 import type { myAgent } from "./agent";
 const stream = getStream<typeof myAgent>();
 ```
-
-### Deprecated aliases
-
-`setStreamContext` / `getStreamContext` still resolve to the same context key for backwards compatibility, but emit a dev-mode warning on first use. Prefer `provideStream` / `getStream` — the aliases will be removed in a future major.

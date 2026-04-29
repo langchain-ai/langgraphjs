@@ -36,7 +36,7 @@ it(
         .element(screen.getByTestId("message-count"))
         .toHaveTextContent("2");
     } finally {
-      cleanupRender(screen);
+      await cleanupRender(screen);
     }
   },
 );

@@ -20,7 +20,7 @@ afterEach(getCleanupHook(true));
 })
 class TestModule {}
 
-if (!globalThis[ANGULAR_TESTBED_SETUP as keyof typeof globalThis]) {
+if (!(globalThis as Record<symbol, unknown>)[ANGULAR_TESTBED_SETUP]) {
   Object.defineProperty(globalThis, ANGULAR_TESTBED_SETUP, {
     value: true,
     configurable: true,

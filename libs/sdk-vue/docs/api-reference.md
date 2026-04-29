@@ -11,6 +11,22 @@ record of Vue refs plus imperative methods.
   enclosing Vue scope unmounts, the underlying stream controller is
   disposed automatically via `onScopeDispose`.
 
+```vue
+<script setup lang="ts">
+import { computed } from "vue";
+import { useStream } from "@langchain/vue";
+
+const stream = useStream({ assistantId: "agent", apiUrl: "/api" });
+const latest = computed(() => stream.messages.value.at(-1));
+const canStop = computed(() => stream.isLoading.value);
+</script>
+
+<template>
+  <MessageList :messages="stream.messages" />
+  <button :disabled="!stream.isLoading" @click="stream.stop()">Stop</button>
+</template>
+```
+
 ## `useStream` options
 
 The option bag is a **discriminated union**:
@@ -19,12 +35,12 @@ The option bag is a **discriminated union**:
   pre-configured `client`). The built-in SSE transport is used by
   default; pass `transport: "websocket"` for the WebSocket variant.
 - **Custom backend** — pass `transport: myAdapter` where `myAdapter`
-  implements
-  [`AgentServerAdapter`](https://github.com/langchain-ai/langgraphjs/blob/main/libs/sdk/src/client/stream/transport.ts)
-  from `@langchain/langgraph-sdk`. `HttpAgentServerAdapter` is the
-  stock HTTP/SSE implementation.
+  implements `AgentServerAdapter`, re-exported from `@langchain/vue`.
+  `HttpAgentServerAdapter` is the stock HTTP/SSE implementation.
 
-Passing both `assistantId` and an adapter is a compile-time error.
+When using a custom adapter, LGP-specific options such as `client`,
+`apiUrl`, `apiKey`, `fetch`, and `webSocketFactory` are compile-time
+errors.
 
 | Option | Type | Description |
 |---|---|---|

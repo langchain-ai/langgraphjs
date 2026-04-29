@@ -40,7 +40,7 @@ it("handles back-to-back serial submits with rollback (default)", async () => {
         ]),
       );
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -80,6 +80,6 @@ it("accepts multitaskStrategy: 'enqueue' without breaking serial submits", async
         ]),
       );
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

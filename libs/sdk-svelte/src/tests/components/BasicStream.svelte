@@ -1,39 +1,33 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import type { Message } from "@langchain/langgraph-sdk";
 
   interface Props {
     apiUrl: string;
     assistantId?: string;
+    threadId?: string;
     submitInput?: Record<string, unknown>;
     submitOptions?: Record<string, unknown>;
-    onCheckpointEvent?: (...args: any[]) => void;
-    onTaskEvent?: (...args: any[]) => void;
-    onUpdateEvent?: (...args: any[]) => void;
-    onCustomEvent?: (...args: any[]) => void;
-    fetchStateHistory?: boolean | { limit: number };
+    transport?: "sse" | "websocket";
+    onThreadId?: (threadId: string) => void;
   }
 
   const {
     apiUrl,
     assistantId = "agent",
+    threadId,
     submitInput = { messages: [{ content: "Hello", type: "human" }] },
     submitOptions,
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    fetchStateHistory,
+    transport,
+    onThreadId,
   }: Props = $props();
 
+  // svelte-ignore state_referenced_locally
   const stream = useStream({
     assistantId,
     apiUrl,
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    fetchStateHistory,
+    threadId,
+    transport,
+    onThreadId,
   });
 </script>
 
@@ -50,6 +44,7 @@
   <div data-testid="loading">
     {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
+  <div data-testid="thread-id">{stream.threadId ?? "none"}</div>
   {#if stream.error}
     <div data-testid="error">{String(stream.error)}</div>
   {/if}

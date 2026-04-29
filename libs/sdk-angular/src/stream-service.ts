@@ -34,7 +34,7 @@ import {
  * export class ChatStream extends StreamService<ChatState> {
  *   constructor() {
  *     super({
- *       adapter: new HttpAgentServerAdapter({ apiUrl: "/api/graph" }),
+ *       transport: new HttpAgentServerAdapter({ apiUrl: "/api/graph" }),
  *       assistantId: "chat",
  *     });
  *   }

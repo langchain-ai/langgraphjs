@@ -27,12 +27,17 @@ provideStream({
 ```vue
 <!-- MessageList.vue -->
 <script setup lang="ts">
+import { computed } from "vue";
 import { useStreamContext } from "@langchain/vue";
 
 const stream = useStreamContext();
+
+// In scripts, stream fields are refs:
+const count = computed(() => stream.messages.value.length);
 </script>
 
 <template>
+  <!-- In templates, Vue auto-unwraps refs. -->
   <div v-for="(msg, i) in stream.messages" :key="msg.id ?? i">
     {{ typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }}
   </div>

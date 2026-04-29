@@ -11,6 +11,7 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
   type AnyHeadlessToolImplementation,
   type OnToolCallback,
@@ -239,6 +240,17 @@ export type StreamApi<
 > = UseStreamReturn<T, InterruptType, ConfigurableType>;
 
 /**
+ * React-compatible alias for the fully-resolved stream handle type.
+ * Angular docs prefer {@link StreamApi}, but shared libraries can use
+ * this name across framework bindings.
+ */
+export type UseStreamResult<
+  T = Record<string, unknown>,
+  InterruptType = unknown,
+  ConfigurableType extends object = Record<string, unknown>,
+> = UseStreamReturn<T, InterruptType, ConfigurableType>;
+
+/**
  * Framework-free factory that constructs a {@link StreamController}
  * and wraps its stores in Angular Signals. Callers must supply the
  * {@link DestroyRef} that owns the controller's lifetime — it's
@@ -368,8 +380,10 @@ export function useStream<
   const values = computed(() => rootSignal().values);
   const messages = computed(() => rootSignal().messages);
   const toolCalls = computed(() => rootSignal().toolCalls);
-  const interrupts = computed(() => rootSignal().interrupts);
-  const interrupt = computed(() => rootSignal().interrupt);
+  const interrupts = computed(() =>
+    filterOutHeadlessToolInterrupts(rootSignal().interrupts)
+  );
+  const interrupt = computed(() => interrupts()[0]);
   const isLoading = computed(() => rootSignal().isLoading);
   const isThreadLoading = computed(() => rootSignal().isThreadLoading);
   const error = computed(() => rootSignal().error);

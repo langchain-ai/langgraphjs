@@ -12,6 +12,7 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
   type AnyHeadlessToolImplementation,
   type OnToolCallback,
@@ -213,6 +214,13 @@ export interface UseStreamReturn<
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyStream = UseStreamReturn<any, any, any>;
 
+/** Convenience alias for the fully-resolved stream handle type. */
+export type UseStreamResult<
+  T = Record<string, unknown>,
+  InterruptType = unknown,
+  ConfigurableType extends object = Record<string, unknown>,
+> = UseStreamReturn<T, InterruptType, ConfigurableType>;
+
 /**
  * Vue Composition API binding for the v2-native stream runtime.
  *
@@ -387,8 +395,10 @@ export function useStream<
   const values = computed(() => rootRef.value.values);
   const messages = computed(() => rootRef.value.messages);
   const toolCalls = computed(() => rootRef.value.toolCalls);
-  const interrupts = computed(() => rootRef.value.interrupts);
-  const interrupt = computed(() => rootRef.value.interrupt);
+  const interrupts = computed(() =>
+    filterOutHeadlessToolInterrupts(rootRef.value.interrupts)
+  );
+  const interrupt = computed(() => interrupts.value[0]);
   const isLoading = computed(() => rootRef.value.isLoading);
   const isThreadLoading = computed(() => rootRef.value.isThreadLoading);
   const error = computed(() => rootRef.value.error);

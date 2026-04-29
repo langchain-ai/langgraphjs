@@ -4,14 +4,14 @@
 shared across a subtree, configured globally, or wrapped in a
 class-based service.
 
-## `provideStream` / `injectStreamContext`
+## `provideStream` / `injectStream`
 
 When multiple components need the same stream (a header, a message
 list, an input bar), publish a single instance through Angular DI:
 
 ```typescript
 import { Component } from "@angular/core";
-import { injectStreamContext, provideStream } from "@langchain/angular";
+import { injectStream, provideStream } from "@langchain/angular";
 
 @Component({
   standalone: true,
@@ -40,7 +40,7 @@ export class ChatContainerComponent {}
   `,
 })
 export class MessageListComponent {
-  readonly stream = injectStreamContext();
+  readonly stream = injectStream();
 
   str(v: unknown) {
     return typeof v === "string" ? v : JSON.stringify(v);
@@ -48,7 +48,7 @@ export class MessageListComponent {
 }
 ```
 
-`injectStreamContext()` throws synchronously if no ancestor provider
+Zero-argument `injectStream()` throws synchronously if no ancestor provider
 exists.
 
 ## `provideStreamDefaults`
@@ -78,10 +78,10 @@ options still override the defaults.
 
 ## `StreamService`
 
-`StreamService` is a thin `@Injectable()` wrapper around the
-framework-agnostic `useStream` factory. Extend it when you want a
-`providedIn: "root"` (or component-scoped) service that forwards the
-full `StreamApi`:
+`StreamService` is a thin `@Injectable()` wrapper around the lower-level
+`useStream` factory. Extend it when you want a `providedIn: "root"` (or
+component-scoped) service that forwards the full `StreamApi`, the
+preferred Angular type name for the stream handle:
 
 ```typescript
 import { Injectable } from "@angular/core";
@@ -133,7 +133,7 @@ export class ResearchPanelComponent {}
 export class WriterPanelComponent {}
 ```
 
-Both `app-message-list` components call `injectStreamContext()` — each
+Both `app-message-list` components call zero-argument `injectStream()` — each
 resolves the nearest ancestor provider, so they stay wired to their
 respective agents.
 
@@ -141,7 +141,7 @@ respective agents.
 
 | Use case | Primitive |
 |---|---|
-| Share one stream across a handful of sibling components | `provideStream` + `injectStreamContext` |
+| Share one stream across a handful of sibling components | `provideStream` + zero-argument `injectStream()` |
 | Set app-wide `apiUrl` / `apiKey` defaults | `provideStreamDefaults` |
 | Expose stream logic through a class-based service (e.g. for unit mocking, bespoke methods) | `StreamService` |
 

@@ -18,3 +18,14 @@ it("invokes per-submit onError when the underlying graph errors", async () => {
 
   await expect.element(screen.getByTestId("error")).toBeInTheDocument();
 });
+
+it("recovers to idle when the underlying graph errors", async () => {
+  const screen = await render(SubmitOnErrorComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15_000 })
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("error")).toBeInTheDocument();
+});

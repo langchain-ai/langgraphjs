@@ -36,6 +36,7 @@ export function createStubRun(
     payload.config ?? {},
     {
       configurable: {
+        ...payload.config?.configurable,
         run_id: runId,
         thread_id: threadId,
         graph_id: payload.assistant_id,

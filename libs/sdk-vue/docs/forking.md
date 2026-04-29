@@ -32,7 +32,7 @@ function editFromHere() {
 
 <template>
   <button
-    :disabled="!metadata.value?.parentCheckpointId"
+    :disabled="!metadata?.parentCheckpointId"
     @click="editFromHere"
   >
     Edit from here

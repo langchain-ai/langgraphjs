@@ -32,7 +32,7 @@ it("renders immediately when no threadId is supplied (no hydrate)", async () => 
       .element(screen.getByTestId("streaming"), { timeout: 15_000 })
       .toHaveTextContent("Not streaming");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -56,7 +56,7 @@ it("suspends during the initial hydrate when a threadId is supplied", async () =
       .element(screen.getByTestId("streaming"), { timeout: 15_000 })
       .toBeInTheDocument();
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -135,7 +135,7 @@ it("routes non-streaming errors to the nearest Error Boundary", async () => {
         .element(screen.getByTestId("boundary"), { timeout: 15_000 })
         .toBeInTheDocument();
     } finally {
-      cleanupRender(screen);
+      await cleanupRender(screen);
     }
   } finally {
     console.error = originalError;

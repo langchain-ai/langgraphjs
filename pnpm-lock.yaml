@@ -2570,6 +2570,9 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: workspace:*
         version: link:../checkpoint
+      '@langchain/protocol':
+        specifier: ^0.0.13
+        version: 0.0.13
       '@types/node':
         specifier: ^25.4.0
         version: 25.6.0

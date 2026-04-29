@@ -1,7 +1,9 @@
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-vue";
 
+import { ExtensionSelectorsStream } from "./components/ExtensionSelectorsStream.js";
 import { SelectorsStream } from "./components/SelectorsStream.js";
+import { SubgraphDiscoveryStream } from "./components/SubgraphDiscoveryStream.js";
 import { apiUrl } from "./test-utils.js";
 
 it("useMessages projects the same data as stream.messages", async () => {
@@ -42,6 +44,92 @@ it("useToolCalls is empty for a non-tool agent", async () => {
     await expect
       .element(screen.getByTestId("toolcalls-count"))
       .toHaveTextContent("0");
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("populates subgraphs and subgraphsByNode maps and scoped useMessages", async () => {
+  const screen = await render(SubgraphDiscoveryStream, { props: { apiUrl } });
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 15_000 })
+      .toHaveTextContent("Not loading");
+
+    await expect
+      .element(screen.getByTestId("subgraph-count"))
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("subgraph-nodes"))
+      .toHaveTextContent(/^child:1$/);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("ignores leaf function nodes and only promotes subgraph hosts", async () => {
+  const screen = await render(SubgraphDiscoveryStream, {
+    props: { apiUrl, assistantId: "embeddedSubgraphAgent" },
+  });
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 15_000 })
+      .toHaveTextContent("Not loading");
+
+    await expect
+      .element(screen.getByTestId("subgraph-count"))
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("subgraph-nodes"))
+      .toHaveTextContent(/^research:1$/);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("captures anonymous writer events on the raw custom channel", async () => {
+  const screen = await render(ExtensionSelectorsStream, { props: { apiUrl } });
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+
+    await expect
+      .element(screen.getByTestId("custom-event-count"))
+      .toHaveTextContent("2");
+    await expect
+      .element(screen.getByTestId("custom-event-types"))
+      .toHaveTextContent("custom,custom");
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("captures named custom events through useExtension", async () => {
+  const screen = await render(ExtensionSelectorsStream, { props: { apiUrl } });
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+
+    await expect
+      .element(screen.getByTestId("extension-label"))
+      .toHaveTextContent("answering");
+    await expect
+      .element(screen.getByTestId("values-message-count"))
+      .toHaveTextContent("2");
   } finally {
     await screen.unmount();
   }

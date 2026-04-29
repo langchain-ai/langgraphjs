@@ -1,11 +1,20 @@
 import { Component, Injectable, inject, input } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import type {
+  StreamSubmitOptions,
+  WidenUpdateMessages,
+} from "@langchain/langgraph-sdk/stream";
 import { inject as vitestInject } from "vitest";
 import { StreamService } from "../../index.js";
 
 const serverUrl = vitestInject("serverUrl");
 
+interface StreamState {
+  messages: BaseMessage[];
+}
+
 @Injectable()
-class TestStreamService extends StreamService {
+class TestStreamService extends StreamService<StreamState> {
   constructor() {
     super({
       assistantId: "agent",
@@ -37,11 +46,11 @@ class TestStreamService extends StreamService {
   `,
 })
 export class StreamServiceBasicComponent {
-  submitInput = input<Record<string, unknown>>({
-    messages: [{ content: "Hello", type: "human" }],
+  submitInput = input<WidenUpdateMessages<Partial<StreamState>>>({
+    messages: [new HumanMessage("Hello")],
   });
 
-  submitOptions = input<Record<string, unknown> | undefined>(undefined);
+  submitOptions = input<StreamSubmitOptions<StreamState> | undefined>(undefined);
 
   svc = inject(TestStreamService);
 
@@ -50,10 +59,7 @@ export class StreamServiceBasicComponent {
   }
 
   onSubmit() {
-    void this.svc.submit(
-      this.submitInput() as any,
-      this.submitOptions() as any,
-    );
+    void this.svc.submit(this.submitInput(), this.submitOptions());
   }
 
   onStop() {

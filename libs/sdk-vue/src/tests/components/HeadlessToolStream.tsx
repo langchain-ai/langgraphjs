@@ -59,6 +59,7 @@ export const HeadlessToolStream = defineComponent({
         <div data-testid="loading">
           {stream.isLoading.value ? "loading" : "idle"}
         </div>
+        <div data-testid="interrupt-count">{stream.interrupts.value.length}</div>
 
         <div data-testid="tool-events">
           {toolEvents.value.map((event, i) => (

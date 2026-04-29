@@ -26,11 +26,11 @@ namespace and reference-counted.
 <!-- SubagentCard.vue -->
 <script setup lang="ts">
 import { type PropType } from "vue";
-import type { SubagentDiscoverySnapshot } from "@langchain/langgraph-sdk/stream";
 import {
   useMessages,
   useStreamContext,
   useToolCalls,
+  type SubagentDiscoverySnapshot,
 } from "@langchain/vue";
 
 const props = defineProps({

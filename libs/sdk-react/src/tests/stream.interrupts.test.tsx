@@ -23,7 +23,7 @@ it("surfaces the first interrupt on submit()", async () => {
       .element(screen.getByTestId("interrupt-id"))
       .not.toHaveTextContent("");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -49,7 +49,7 @@ it("resumes an interrupt via submit({ command: { resume } })", async () => {
       .element(screen.getByTestId("interrupt-count"))
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -74,6 +74,6 @@ it("resumes an interrupt via respond()", async () => {
       .element(screen.getByTestId("decision"))
       .toHaveTextContent('"approved":true');
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

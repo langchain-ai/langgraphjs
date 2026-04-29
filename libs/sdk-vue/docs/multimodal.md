@@ -51,7 +51,7 @@ const downloadUrl = useMediaURL(latest);
   <button v-if="latest" @click="player.status === 'playing' ? player.pause() : player.play()">
     {{ player.status === "playing" ? "Pause" : "Play" }}
   </button>
-  <a v-if="downloadUrl.value" :href="downloadUrl.value" download>
+  <a v-if="downloadUrl" :href="downloadUrl" download>
     Download
   </a>
 </template>

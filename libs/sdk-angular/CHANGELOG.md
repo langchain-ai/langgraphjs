@@ -82,7 +82,7 @@
 
 - [#2227](https://github.com/langchain-ai/langgraphjs/pull/2227) [`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat: extract shared orchestrator to eliminate duplicated code across SDK packages
 
-- [#2226](https://github.com/langchain-ai/langgraphjs/pull/2226) [`13d117e`](https://github.com/langchain-ai/langgraphjs/commit/13d117ec90f6cf2f5d11584d298d32bb3ff160e1) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(angular): use `injectStream`/`injectStreamCustom`
+- [#2226](https://github.com/langchain-ai/langgraphjs/pull/2226) [`13d117e`](https://github.com/langchain-ai/langgraphjs/commit/13d117ec90f6cf2f5d11584d298d32bb3ff160e1) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(angular): use `injectStream`
 
 ### Patch Changes
 

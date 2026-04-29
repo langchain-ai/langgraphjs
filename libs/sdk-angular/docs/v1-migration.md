@@ -24,7 +24,7 @@ covered in their own sections.
 7. [Subagents & subgraphs](#7-subagents--subgraphs)
 8. [Headless tools (`tools` + `onTool`)](#8-headless-tools)
 9. [Custom transports: `UseStreamTransport` → `AgentServerAdapter`](#9-custom-transports)
-10. [`provideStream` / `injectStreamContext`](#10-providestream--injectstreamcontext)
+10. [`provideStream` / zero-argument `injectStream()`](#10-providestream--zero-argument-injectstream)
 11. [`StreamService` redesign](#11-streamservice-redesign)
 12. [Type helpers](#12-type-helpers)
 13. [Known gaps](#13-known-gaps)
@@ -100,6 +100,9 @@ are flagged in the later sections.
 - [ ] **Re-run `tsc`**. The option bag and return type are now
       discriminated and strongly typed; most remaining issues will
       surface as type errors that map to one of the sections below.
+- [ ] **Rename stream-handle type annotations** to `StreamApi<T>` in
+      Angular code. Keep `UseStreamResult<T>` only for utilities shared
+      with React-style packages (see §12).
 
 ---
 
@@ -304,7 +307,7 @@ All of these are exported from `@langchain/angular`:
 export class EditButton {
   @Input({ required: true }) message!: BaseMessage;
 
-  readonly stream = injectStreamContext();
+  readonly stream = injectStream();
   readonly metadata = injectMessageMetadata(
     this.stream,
     () => this.message.id,
@@ -339,7 +342,7 @@ export class EditButton {
   `,
 })
 export class Composer {
-  readonly stream = injectStreamContext();
+  readonly stream = injectStream();
   readonly queue = injectSubmissionQueue(this.stream);
 
   queueTurn() {
@@ -391,7 +394,7 @@ Replace every `subagent.messages` / `subagent.toolCalls` /
 export class SubagentCard {
   @Input({ required: true }) subagent!: SubagentDiscoverySnapshot;
 
-  readonly stream = injectStreamContext();
+  readonly stream = injectStream();
   readonly messages = injectMessages(this.stream, () => this.subagent);
   readonly toolCalls = injectToolCalls(this.stream, () => this.subagent);
 
@@ -456,11 +459,11 @@ it when they need header injection, auth, or observability hooks.
 
 ---
 
-## 10. `provideStream` / `injectStreamContext`
+## 10. `provideStream` / zero-argument `injectStream()`
 
 The contract stays the same — both `provideStream(options)` and
-`injectStreamContext()` are v1 API. Internally they wire into the
-unified `injectStream` factory:
+zero-argument `injectStream()` are v1 API. Internally they wire into
+the same unified `injectStream` factory:
 
 ```typescript
 // Before & After — unchanged
@@ -470,10 +473,10 @@ unified `injectStream` factory:
 export class ChatPage {}
 
 // Elsewhere:
-readonly stream = injectStreamContext();
+readonly stream = injectStream();
 ```
 
-`injectStreamContext()` throws if no ancestor has called
+Zero-argument `injectStream()` throws if no ancestor has called
 `provideStream(...)`. Pair it with `provideStreamDefaults(...)` in
 `appConfig` to avoid repeating `apiUrl` / `apiKey` in every provider.
 
@@ -505,10 +508,9 @@ calls `inject(ChatService)` and reads `chat.messages()` / calls
 available as `chat.stream` for code that needs to pass it into
 selector injectors.
 
-`useStream(options, destroyRef?)` is also exported for
-framework-agnostic / library code that needs to own the controller
-outside Angular's injection context. It mirrors the framework-agnostic
-factories shipped by the React and Vue bindings.
+`useStream(options, destroyRef?)` is also exported for library code
+that needs to own the controller outside Angular's injection context.
+It returns the same `StreamApi` shape as `injectStream`.
 
 ---
 
@@ -516,18 +518,33 @@ factories shipped by the React and Vue bindings.
 
 | Legacy | v1 |
 |---|---|
-| `UseStream<T>` | `UseStreamReturn<T>` (alias for the return handle of `injectStream`). |
+| `UseStream<T>` | `StreamApi<T>` for Angular code. |
 | `UseStreamOptions<T>` | `UseStreamOptions<T>` — now a discriminated union of the LGP and custom-adapter branches. |
 | `UseStreamTransport` | `AgentServerAdapter` (re-exported from `@langchain/langgraph-sdk`). |
 | `CustomStreamTransport` | Dropped. |
 | `StreamOrchestrator` | Dropped. |
 
+`StreamApi<T>` and `UseStreamResult<T>` are aliases for the same stream
+handle. Prefer `StreamApi<T>` when writing Angular components,
+services, docs, and examples because it matches the Angular naming in
+`injectStream`, `provideStream`, and `StreamService`. Use
+`UseStreamResult<T>` only in shared utilities that intentionally accept
+stream handles from React-style APIs as well.
+
 ```typescript
-import type { StreamApi, UseStreamOptions } from "@langchain/angular";
+import type {
+  StreamApi,
+  UseStreamOptions,
+  UseStreamResult,
+} from "@langchain/angular";
 import { useStream } from "@langchain/angular";
 
 function wireChat(opts: UseStreamOptions<ChatState>): StreamApi<ChatState> {
   return useStream(opts);
+}
+
+function readSharedMessages(stream: UseStreamResult<ChatState>) {
+  return stream.messages();
 }
 ```
 

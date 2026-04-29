@@ -1,7 +1,6 @@
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-angular";
 
-import { BasicStreamComponent } from "./components/BasicStream.js";
 import { SwitchThreadStreamComponent } from "./components/SwitchThreadStream.js";
 
 it("switches to a new threadId without bleeding prior messages", async () => {
@@ -69,6 +68,30 @@ it("clears state when the threadId becomes null", async () => {
     .toHaveTextContent("none");
 });
 
+it("honours an externally-supplied thread id", async () => {
+  const predeterminedThreadId = crypto.randomUUID();
+
+  const screen = await render(SwitchThreadStreamComponent, {
+    inputs: { initialThreadId: predeterminedThreadId },
+  });
+
+  await expect
+    .element(screen.getByTestId("thread-id"))
+    .toHaveTextContent(predeterminedThreadId);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15_000 })
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-count"))
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("thread-id"))
+    .toHaveTextContent(predeterminedThreadId);
+});
+
 // The `hydrates pre-existing thread state on mount` case is split into
 // two sequential tests because Angular's TestBed cannot reconfigure
 // itself twice within a single test without tearing down the
@@ -77,7 +100,7 @@ it("clears state when the threadId becomes null", async () => {
 let hydratedThreadId: string | undefined;
 
 it("seeds a thread for the hydrate assertion", async () => {
-  const screen = await render(BasicStreamComponent);
+  const screen = await render(SwitchThreadStreamComponent);
   await screen.getByTestId("submit").click();
   await expect
     .element(screen.getByTestId("loading"))
@@ -93,7 +116,7 @@ it("seeds a thread for the hydrate assertion", async () => {
 it("hydrates pre-existing thread state on mount", async () => {
   expect(hydratedThreadId).toMatch(/.+/);
 
-  const screen = await render(BasicStreamComponent, {
+  const screen = await render(SwitchThreadStreamComponent, {
     inputs: { initialThreadId: hydratedThreadId! },
   });
 

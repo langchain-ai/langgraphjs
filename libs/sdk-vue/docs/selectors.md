@@ -43,12 +43,17 @@ directly:
 
 ```vue
 <script setup lang="ts">
+import { computed } from "vue";
 import { useStream, useMessages, useValues } from "@langchain/vue";
 
 const stream = useStream({ assistantId: "agent", apiUrl: "/api" });
 
 const rootMessages = useMessages(stream);
 const rootValues = useValues(stream);
+
+// Selector composables also return refs in script.
+const latestMessage = computed(() => rootMessages.value.at(-1));
+const hasValues = computed(() => rootValues.value != null);
 </script>
 ```
 

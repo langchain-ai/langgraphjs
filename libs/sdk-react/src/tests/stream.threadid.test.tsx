@@ -48,7 +48,7 @@ it("switches to a new threadId without bleeding prior messages", async () => {
       .textContent?.trim();
     expect(secondMessage).toBe(firstMessage);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -74,7 +74,7 @@ it("clears state when the threadId becomes null", async () => {
       .element(screen.getByTestId("thread-id"))
       .toHaveTextContent("none");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -88,7 +88,7 @@ it("hydrates pre-existing thread state on mount", async () => {
     .getByTestId("thread-id")
     .element()
     .textContent?.trim();
-  cleanupRender(seedScreen);
+  await cleanupRender(seedScreen);
 
   expect(threadId).toMatch(/.+/);
 
@@ -104,6 +104,6 @@ it("hydrates pre-existing thread state on mount", async () => {
       .element(screen.getByTestId("message-count"))
       .toHaveTextContent("2");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

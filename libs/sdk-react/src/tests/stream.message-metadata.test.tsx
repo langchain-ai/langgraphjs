@@ -34,6 +34,6 @@ it("records parentCheckpointId metadata for checkpointed messages", async () => 
       )
       .not.toBe("none");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

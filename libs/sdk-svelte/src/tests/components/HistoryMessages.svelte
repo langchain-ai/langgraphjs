@@ -4,46 +4,31 @@
   interface Props {
     apiUrl: string;
     threadId?: string | null;
-    fetchStateHistory?: boolean | { limit: number };
   }
 
   const {
     apiUrl,
     threadId,
-    fetchStateHistory = true,
   }: Props = $props();
 
   const stream = useStream({
     assistantId: "agent",
     apiUrl,
     threadId,
-    fetchStateHistory,
   });
 
-  const historyMessages = $derived(
-    stream.history.flatMap(
-      (state: any) => (state.values.messages ?? []) as Record<string, unknown>[],
-    ),
-  );
-
   const allAreBaseMessage = $derived(
-    historyMessages.length > 0 &&
-    historyMessages.every(
-      (msg: any) => typeof msg.getType === "function",
-    ),
+    stream.messages.length > 0 &&
+    stream.messages.every((msg) => typeof msg.getType === "function"),
   );
 
   const messageTypes = $derived(
-    historyMessages
-      .map((msg: any) => {
-        return typeof msg.getType === "function" ? msg.getType() : "plain";
-      })
-      .join(","),
+    stream.messages.map((msg) => msg.getType()).join(","),
   );
 </script>
 
 <div>
-  <div data-testid="history-count">{stream.history.length}</div>
+  <div data-testid="history-count">{stream.messages.length}</div>
   <div data-testid="history-all-base-message">{String(allAreBaseMessage)}</div>
   <div data-testid="history-message-types">{messageTypes}</div>
   <div data-testid="loading">

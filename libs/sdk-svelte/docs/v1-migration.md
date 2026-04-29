@@ -28,46 +28,46 @@ v1 flips that around:
 
 ## Option bag
 
-| v0 option                                                                                                                | v1 equivalent                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `assistantId`                                                                                                            | **same** — required on the LGP branch, defaults to `"_"` for custom adapters                                           |
-| `apiUrl` / `apiKey`                                                                                                      | **same**                                                                                                               |
-| `client`                                                                                                                 | **same**                                                                                                               |
-| `threadId` (static)                                                                                                      | **same**; also accepts a getter `() => string \| null` for reactive swapping                                           |
-| `initialValues`                                                                                                          | **same**                                                                                                               |
-| `messagesKey`                                                                                                            | **same** (default `"messages"`)                                                                                        |
-| `onThreadId`                                                                                                             | **same**                                                                                                               |
-| `onCreated`                                                                                                              | **new** — fires with `{ run_id, thread_id }` as soon as the server accepts a run                                       |
-| `transport`                                                                                                              | now `"sse"` \| `"websocket"` \| an `AgentServerAdapter` instance                                                       |
-| `fetch` / `webSocketFactory`                                                                                             | **same** on the LGP branch only                                                                                        |
-| `tools` + `onTool`                                                                                                       | **new** headless-tool channel (see [Headless tools](./headless-tools.md))                                              |
-| `onFinish`, `onError`, `onStop`                                                                                          | removed — observe `stream.isLoading` / `stream.error` reactively                                                       |
-| `onUpdateEvent`, `onCustomEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onMetadataEvent`, `onLangChainEvent` | removed — use `useChannel` for raw events or the dedicated [selector composables](./selector-composables.md)         |
-| `fetchStateHistory`                                                                                                      | removed — fork / branch flows are driven by `useMessageMetadata`                                                       |
-| `throttle`                                                                                                               | removed — the controller batches its own notifications                                                                 |
-| `filterSubagentMessages`, `subagentToolNames`                                                                            | removed — subagent views are per-namespace via `useMessages(stream, sub)`                                              |
+| v0 option                                                                                                                   | v1 equivalent                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `assistantId`                                                                                                               | **same** — required on the LGP branch, defaults to `"_"` for custom adapters                                 |
+| `apiUrl` / `apiKey`                                                                                                         | **same**                                                                                                     |
+| `client`                                                                                                                    | **same**                                                                                                     |
+| `threadId` (static)                                                                                                         | **same**; also accepts a getter `() => string \| null` for reactive swapping                                 |
+| `initialValues`                                                                                                             | **same**                                                                                                     |
+| `messagesKey`                                                                                                               | **same** (default `"messages"`)                                                                              |
+| `onThreadId`                                                                                                                | **same**                                                                                                     |
+| `onCreated`                                                                                                                 | **new** — fires with `{ run_id, thread_id }` as soon as the server accepts a run                             |
+| `transport`                                                                                                                 | now `"sse"` \| `"websocket"` \| an `AgentServerAdapter` instance                                             |
+| `fetch` / `webSocketFactory`                                                                                                | **same** on the LGP branch only                                                                              |
+| `tools` + `onTool`                                                                                                          | **new** headless-tool channel (see [Headless tools](./headless-tools.md))                                    |
+| `onFinish`, `onError`, `onStop`                                                                                             | removed — observe `stream.isLoading` / `stream.error` reactively                                             |
+| `onUpdateEvent`, `onCustomEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onMetadataEvent`, `onLangChainEvent` | removed — use `useChannel` for raw events or the dedicated [selector composables](./selector-composables.md) |
+| `fetchStateHistory`                                                                                                         | removed — fork / branch flows are driven by `useMessageMetadata`                                             |
+| `throttle`                                                                                                                  | removed — the controller batches its own notifications                                                       |
+| `filterSubagentMessages`, `subagentToolNames`                                                                               | removed — subagent views are per-namespace via `useMessages(stream, sub)`                                    |
 
 ## Return-shape changes
 
-| v0 field / method                                                                | v1 equivalent                                                                                                                    |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `values`, `messages`, `isLoading`, `error`, `interrupt`, `interrupts`            | **same**                                                                                                                         |
-| `threadId`                                                                       | **same**                                                                                                                         |
-| `isThreadLoading`                                                                | **same** — plus `hydrationPromise` for SvelteKit `load()` handlers                                                               |
-| `submit(values, options?)`                                                       | **same** — returns `Promise<void>`                                                                                               |
-| `stop()`                                                                         | **same**                                                                                                                         |
-| `client`, `assistantId`                                                          | **same**                                                                                                                         |
-| `toolCalls`                                                                      | **same** — assembled tool-call rows at the root                                                                                  |
-| `subagents`, `subgraphs`, `subgraphsByNode`                                      | **new** — discovery snapshots (namespaces). Use them as the `target` argument to selector composables                            |
-| `respond(response, target?)`                                                     | **new** — resume the agent after an interrupt                                                                                    |
-| `getThread()`                                                                    | **new** — v2 escape hatch returning the bound `ThreadStream`                                                                     |
-| `branch`, `setBranch`                                                            | removed — there is no global branch pointer in v2. Fork flows use `respond()` and `parentCheckpointId` from `useMessageMetadata`. |
-| `history`, `experimental_branchTree`                                             | removed — pull history via the `Client` directly when needed                                                                     |
-| `getMessagesMetadata(msg)`                                                       | `useMessageMetadata(stream, () => msg.id)` → `{ parentCheckpointId }`                                                            |
-| `joinStream(...)`                                                                | removed — `useStream` attaches automatically on mount                                                                            |
-| `switchThread(id)`                                                               | pass `threadId: () => active` as a getter; update the underlying state                                                           |
-| `queue.*`                                                                        | `useSubmissionQueue(stream)` → `{ entries, size, cancel, clear }`                                                                |
-| `activeSubagents`, `getSubagent`, `getSubagentsByType`, `getSubagentsByMessage`  | drop — read through `stream.subagents` (`ReadonlyMap`) plus selector composables                                                 |
+| v0 field / method                                                               | v1 equivalent                                                                                                                     |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `values`, `messages`, `isLoading`, `error`, `interrupt`, `interrupts`           | **same**                                                                                                                          |
+| `threadId`                                                                      | **same**                                                                                                                          |
+| `isThreadLoading`                                                               | **same** — plus `hydrationPromise` for SvelteKit `load()` handlers                                                                |
+| `submit(values, options?)`                                                      | **same** — returns `Promise<void>`                                                                                                |
+| `stop()`                                                                        | **same**                                                                                                                          |
+| `client`, `assistantId`                                                         | **same**                                                                                                                          |
+| `toolCalls`                                                                     | **same** — assembled tool-call rows at the root                                                                                   |
+| `subagents`, `subgraphs`, `subgraphsByNode`                                     | **new** — discovery snapshots (namespaces). Use them as the `target` argument to selector composables                             |
+| `respond(response, target?)`                                                    | **new** — resume the agent after an interrupt                                                                                     |
+| `getThread()`                                                                   | **new** — v2 escape hatch returning the bound `ThreadStream`                                                                      |
+| `branch`, `setBranch`                                                           | removed — there is no global branch pointer in v2. Fork flows use `respond()` and `parentCheckpointId` from `useMessageMetadata`. |
+| `history`, `experimental_branchTree`                                            | removed — pull history via the `Client` directly when needed                                                                      |
+| `getMessagesMetadata(msg)`                                                      | `useMessageMetadata(stream, () => msg.id)` → `{ parentCheckpointId }`                                                             |
+| `joinStream(...)`                                                               | removed — `useStream` attaches automatically on mount                                                                             |
+| `switchThread(id)`                                                              | pass `threadId: () => active` as a getter; update the underlying state                                                            |
+| `queue.*`                                                                       | `useSubmissionQueue(stream)` → `{ entries, size, cancel, clear }`                                                                 |
+| `activeSubagents`, `getSubagent`, `getSubagentsByType`, `getSubagentsByMessage` | drop — read through `stream.subagents` (`ReadonlyMap`) plus selector composables                                                  |
 
 ## Recipes
 
@@ -142,7 +142,3 @@ Passing `null` clears the thread; the next `submit()` creates a fresh one.
 ```
 
 Each mounted `useMessages(stream, sub)` opens a ref-counted namespace subscription on demand and releases it on unmount.
-
-## Deprecated aliases
-
-`setStreamContext` / `getStreamContext` still work but emit a dev-mode warning on first use. Prefer [`provideStream` / `getStream`](./stream-context.md) going forward. The aliases will be removed in a future major.

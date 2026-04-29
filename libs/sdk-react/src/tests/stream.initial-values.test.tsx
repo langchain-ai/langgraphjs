@@ -32,7 +32,7 @@ it("renders cached messages synchronously from initialValues", async () => {
       .element(screen.getByTestId("values"))
       .toHaveTextContent("Cached user message");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -62,6 +62,6 @@ it("replaces initialValues with server state once a run starts", async () => {
       .element(screen.getByTestId("message-1"))
       .toHaveTextContent("Plan accepted.");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

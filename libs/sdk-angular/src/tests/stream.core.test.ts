@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { render } from "vitest-browser-angular";
 
 import { BasicStreamComponent } from "./components/BasicStream.js";
+import { MessageRemovalComponent } from "./components/MessageRemoval.js";
 
 it("renders initial state correctly", async () => {
   const screen = await render(BasicStreamComponent);
@@ -80,4 +81,52 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
 
   await expect.poll(() => created.length).toBeGreaterThanOrEqual(1);
   expect(created[0].thread_id).toBe(threadIds[0]);
+});
+
+it("forwards submit options without tripping the controller", async () => {
+  const screen = await render(BasicStreamComponent, {
+    inputs: {
+      submitOptions: {
+        metadata: { tag: "protocol-v2", run: 42 },
+        config: { configurable: { tone: "friendly" } },
+      },
+    },
+  });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15_000 })
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("message-1"))
+    .toHaveTextContent("Hey");
+});
+
+it("applies RemoveMessage deltas to the projected messages array", async () => {
+  const rendered: string[][] = [];
+  const screen = await render(MessageRemovalComponent, {
+    inputs: {
+      onRender: (messages: string[]) => rendered.push(messages),
+    },
+  });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15_000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("messages"))
+    .not.toHaveTextContent("Step 1: To Remove");
+  await expect
+    .element(screen.getByTestId("messages"))
+    .toHaveTextContent("Step 2: To Keep");
+  await expect
+    .element(screen.getByTestId("messages"))
+    .toHaveTextContent("Step 3: To Keep");
+
+  expect(rendered.some((messages) => messages.join(",").includes("To Remove")))
+    .toBe(true);
 });

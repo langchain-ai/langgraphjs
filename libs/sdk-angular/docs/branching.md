@@ -10,7 +10,7 @@ import { Component, Input } from "@angular/core";
 import type { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import {
   injectMessageMetadata,
-  injectStreamContext,
+  injectStream,
 } from "@langchain/angular";
 
 @Component({
@@ -27,7 +27,7 @@ import {
 export class EditButtonComponent {
   @Input({ required: true }) message!: BaseMessage;
 
-  readonly stream = injectStreamContext();
+  readonly stream = injectStream();
   readonly metadata = injectMessageMetadata(
     this.stream,
     () => this.message.id,

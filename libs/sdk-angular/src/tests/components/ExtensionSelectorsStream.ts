@@ -1,0 +1,59 @@
+import { Component } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import { inject } from "vitest";
+import { injectStream } from "../../inject-stream.js";
+import {
+  injectChannel,
+  injectExtension,
+  injectValues,
+} from "../../selectors.js";
+
+const serverUrl = inject("serverUrl");
+
+interface StreamState {
+  messages: BaseMessage[];
+}
+
+@Component({
+  template: `
+    <div>
+      <div data-testid="loading">
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+      </div>
+      <div data-testid="extension-label">{{ extension()?.label ?? "" }}</div>
+      <div data-testid="custom-event-count">{{ customEvents().length }}</div>
+      <div data-testid="custom-event-types">{{ customEventTypes() }}</div>
+      <div data-testid="values-message-count">
+        {{ values().messages.length }}
+      </div>
+      <button data-testid="submit" (click)="onSubmit()">Send</button>
+    </div>
+  `,
+})
+export class ExtensionSelectorsStreamComponent {
+  readonly stream = injectStream<StreamState>({
+    assistantId: "customChannelAgent",
+    apiUrl: serverUrl,
+  });
+
+  readonly extension = injectExtension<{ label: string }>(
+    this.stream,
+    "status",
+  );
+
+  readonly customEvents = injectChannel(this.stream, ["custom"]);
+
+  readonly values = injectValues(this.stream);
+
+  customEventTypes(): string {
+    return this.customEvents()
+      .map((event) => event.method ?? "")
+      .join(",");
+  }
+
+  onSubmit(): void {
+    void this.stream.submit({
+      messages: [new HumanMessage("Trigger custom writer")],
+    });
+  }
+}

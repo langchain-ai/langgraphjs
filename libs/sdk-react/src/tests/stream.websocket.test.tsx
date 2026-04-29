@@ -23,7 +23,7 @@ it("streams successfully over the websocket transport", async () => {
       .element(screen.getByTestId("message-1"))
       .toHaveTextContent("Plan accepted.");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -59,6 +59,6 @@ it("discovers subgraphs over the websocket transport", async () => {
       .element(screen.getByTestId("subgraph-nodes"))
       .toHaveTextContent(/^research:1$/);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

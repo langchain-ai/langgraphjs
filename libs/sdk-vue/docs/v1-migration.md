@@ -8,8 +8,8 @@ Short version: **the `useStream` import name does not change, but the
 return shape, option bag, and protocol semantics do.** Most chat apps
 migrate in well under an hour by following the checklists below. Apps
 that lean heavily on `branch` / `setBranch` / `fetchStateHistory` or on
-a custom `UseStreamTransport` have more work to do and are covered in
-dedicated sections.
+custom transport implementations have more work to do and are covered
+in dedicated sections.
 
 If you are cross-referencing the React migration, every behavioural
 change is identical — only the binding idioms differ (Composition API
@@ -27,7 +27,7 @@ refs instead of React hooks).
 6. [Companion selector composables — the new mental model](#6-companion-selector-composables--the-new-mental-model)
 7. [Subagents & subgraphs](#7-subagents--subgraphs)
 8. [Headless tools (`tools` + `onTool`)](#8-headless-tools-tools--ontool)
-9. [Custom transports: `UseStreamTransport` → `AgentServerAdapter`](#9-custom-transports-usestreamtransport--agentserveradapter)
+9. [Custom transports with `AgentServerAdapter`](#9-custom-transports-with-agentserveradapter)
 10. [`provideStream` / `useStreamContext`](#10-providestream--usestreamcontext)
 11. [Suspense-like hydration](#11-suspense-like-hydration)
 12. [Type helpers](#12-type-helpers)
@@ -87,7 +87,7 @@ flagged in the later sections.
       `onCheckpointEvent`, `onTaskEvent`, `onToolEvent`, `onStop`,
       `fetchStateHistory`, `reconnectOnMount`, `throttle`, `thread`,
       `filterSubagentMessages`, `subagentToolNames`.
-- [ ] **Replace `transport: new FetchStreamTransport(...)`** with
+- [ ] **Replace legacy custom transports** with
       `transport: new HttpAgentServerAdapter(...)` (see §9).
 - [ ] **Remove these return-shape fields** (they moved or were dropped;
       see §4): `branch`, `setBranch`, `history`,
@@ -437,7 +437,7 @@ discovery snapshot:
 <!-- Parent -->
 <template>
   <SubagentCard
-    v-for="sub in [...stream.subagents.value.values()]"
+    v-for="sub in [...stream.subagents.values()]"
     :key="sub.id"
     :stream="stream"
     :subagent="sub"
@@ -511,18 +511,17 @@ exports (`flushPendingHeadlessToolInterrupts`, `findHeadlessTool`,
 
 ---
 
-## 9. Custom transports: `UseStreamTransport` → `AgentServerAdapter`
+## 9. Custom transports with `AgentServerAdapter`
 
-The legacy custom-transport surface returned an async iterator of
-protocol-v1 events. v1 swaps that for the framework-agnostic
+The custom-transport surface now uses the framework-agnostic
 `AgentServerAdapter` interface (same contract the React binding uses),
-with a helper `HttpAgentServerAdapter` covering the common case.
+with `HttpAgentServerAdapter` covering the common HTTP/SSE case.
 
 ```ts
-import { HttpAgentServerAdapter } from "@langchain/langgraph-sdk/stream";
+import { HttpAgentServerAdapter, useStream } from "@langchain/vue";
 
 const adapter = new HttpAgentServerAdapter({
-  baseUrl: "/api/agent",
+  apiUrl: "/api/agent",
   headers: () => ({ Authorization: `Bearer ${token.value}` }),
 });
 
@@ -534,12 +533,9 @@ const stream = useStream({
 
 When `transport` is an `AgentServerAdapter` instance, the LGP-specific
 options (`client`, `apiUrl`, `apiKey`, `fetch`, `webSocketFactory`) are
-not accepted — the option bag is a discriminated union.
-
-See the `_plan-custom-transport.md` document in
-[@langchain/react](https://www.npmjs.com/package/@langchain/react) for
-the full adapter contract — it is framework-agnostic and applies
-verbatim to Vue.
+not accepted — the option bag is a discriminated union. See
+[`transports.md`](./transports.md) for the adapter contract and a full
+custom transport example.
 
 ---
 

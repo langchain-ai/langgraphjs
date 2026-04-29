@@ -22,7 +22,7 @@ TestBed.configureTestingModule({
 ```
 
 `STREAM_INSTANCE` is the `InjectionToken` that `provideStream` binds
-to and `injectStreamContext` reads from — overriding it in the test
+to and zero-argument `injectStream()` reads from — overriding it in the test
 bed short-circuits any `provideStream(…)` declared on the component.
 
 ## Driving the fake from a test
@@ -42,7 +42,7 @@ expect(element.textContent).toContain("Hi there!");
 ## Faking selectors
 
 Selectors read from the `stream` argument, so they pick up the fake
-as long as your component gets it via `injectStreamContext()`.
+as long as your component gets it via zero-argument `injectStream()`.
 Selectors that accept a `target` (e.g. `injectMessages(stream,
 subagent)`) still work — just make sure the fake exposes the subset
 of fields the selector reads (typically `values`, `messages`,

@@ -97,6 +97,17 @@ the controller automatically.
   state, tool args, and per-subagent state flow through to every
   selector.
 
+## Public stream types
+
+Use `StreamApi<T>` when you need to name the return type of
+`injectStream`, `useStream`, `provideStream`, or `StreamService` in
+Angular code. It is the Angular-facing alias for the Signals-first
+handle.
+
+`UseStreamResult<T>` is also exported as a React-compatible alias for
+the same shape. Prefer it only in shared utilities that are designed to
+accept stream handles from multiple framework packages.
+
 ## Documentation
 
 In-depth guides live under [`docs/`](./docs):
@@ -110,7 +121,7 @@ In-depth guides live under [`docs/`](./docs):
 - [`headless-tools.md`](./docs/headless-tools.md) — browser-side tool implementations
 - [`subagents-subgraphs.md`](./docs/subagents-subgraphs.md) — discovery snapshots and scoped content
 - [`dependency-injection.md`](./docs/dependency-injection.md) — `provideStream`, `provideStreamDefaults`, `StreamService`
-- [`type-safety.md`](./docs/type-safety.md) — generics and agent inference
+- [`type-safety.md`](./docs/type-safety.md) — generics, agent inference, and public stream aliases
 - [`testing.md`](./docs/testing.md) — `STREAM_INSTANCE` fakes and service overrides
 - [`v1-migration.md`](./docs/v1-migration.md) — migrating from `0.x`
 

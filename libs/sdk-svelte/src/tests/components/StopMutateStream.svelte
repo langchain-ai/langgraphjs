@@ -17,11 +17,13 @@
   }>({
     assistantId,
     apiUrl,
-    onStop: ({ mutate }: any) => {
-      stopped = true;
-      mutate(onStopMutate);
-    },
   });
+
+  function stop() {
+    stopped = true;
+    onStopMutate(stream.values);
+    void stream.stop();
+  }
 </script>
 
 <div>
@@ -49,5 +51,5 @@
   >
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
+  <button data-testid="stop" onclick={stop}>Stop</button>
 </div>

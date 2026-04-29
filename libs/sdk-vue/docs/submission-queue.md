@@ -27,10 +27,10 @@ function onSubmit() {
     {{ typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }}
   </div>
 
-  <div v-if="queue.size.value > 0">
-    <p>{{ queue.size.value }} run(s) queued</p>
+  <div v-if="queue.size > 0">
+    <p>{{ queue.size }} run(s) queued</p>
     <button
-      v-for="entry in queue.entries.value"
+      v-for="entry in queue.entries"
       :key="entry.id"
       @click="queue.cancel(entry.id)"
     >

@@ -18,7 +18,7 @@ await stream.hydrationPromise.value;
 </script>
 
 <template>
-  <ChatTranscript :messages="stream.messages.value" />
+  <ChatTranscript :messages="stream.messages" />
 </template>
 ```
 

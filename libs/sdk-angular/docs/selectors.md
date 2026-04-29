@@ -36,7 +36,7 @@ import { Component, Input } from "@angular/core";
 import type { SubagentDiscoverySnapshot } from "@langchain/langgraph-sdk/stream";
 import {
   injectMessages,
-  injectStreamContext,
+  injectStream,
   injectToolCalls,
 } from "@langchain/angular";
 
@@ -56,7 +56,7 @@ import {
 export class SubagentCardComponent {
   @Input({ required: true }) subagent!: SubagentDiscoverySnapshot;
 
-  readonly stream = injectStreamContext();
+  readonly stream = injectStream();
   readonly messages = injectMessages(this.stream, () => this.subagent);
   readonly toolCalls = injectToolCalls(this.stream, () => this.subagent);
 

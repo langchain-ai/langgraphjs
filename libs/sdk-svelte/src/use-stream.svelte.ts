@@ -488,6 +488,13 @@ export function useStream<
   return handle;
 }
 
+/** Convenience alias for the fully-resolved stream handle type. */
+export type UseStreamResult<
+  T = Record<string, unknown>,
+  InterruptType = unknown,
+  ConfigurableType extends object = Record<string, unknown>,
+> = UseStreamReturn<T, InterruptType, ConfigurableType>;
+
 /**
  * Helper used by the selector composables to reach the underlying
  * {@link ChannelRegistry} from a stream handle. Kept internal —

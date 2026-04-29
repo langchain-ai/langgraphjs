@@ -21,7 +21,7 @@ it("renders initial state correctly", async () => {
       .element(screen.getByTestId("error"))
       .not.toBeInTheDocument();
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -46,7 +46,7 @@ it("submits input, streams values, and projects messages", async () => {
       .element(screen.getByTestId("loading"))
       .toHaveTextContent("Not loading");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -92,7 +92,7 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
     expect(typeof created.run_id).toBe("string");
     expect(created.thread_id).toBe(threadId);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -121,7 +121,7 @@ it("honours an externally-supplied thread id", async () => {
       .element(screen.getByTestId("thread-id"))
       .toHaveTextContent(predeterminedThreadId);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -147,7 +147,7 @@ it("forwards submit options without tripping the controller", async () => {
       .element(screen.getByTestId("message-1"))
       .toHaveTextContent("Plan accepted.");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -162,7 +162,7 @@ it("cancels an in-flight run via stop()", async () => {
       .element(screen.getByTestId("loading"))
       .toHaveTextContent("Not loading");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -178,7 +178,7 @@ it("recovers to idle when the underlying graph errors", async () => {
       .element(screen.getByTestId("loading"), { timeout: 15_000 })
       .toHaveTextContent("Not loading");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -215,6 +215,6 @@ it("applies RemoveMessage deltas to the projected messages array", async () => {
       finalTexts.some((t) => t.includes("Step 3: To Keep")),
     ).toBe(true);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

@@ -15,7 +15,7 @@ const stream = useStream<typeof agent>({
   apiUrl: "http://localhost:2024",
 });
 // stream.values.value is typed from `agent`
-// stream.toolCalls.value[0].call.name is the literal tool union
+// stream.toolCalls.value[0].name is the literal tool union
 ```
 
 ## Custom state shapes

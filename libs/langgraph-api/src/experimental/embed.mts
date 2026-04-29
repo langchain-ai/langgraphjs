@@ -29,7 +29,7 @@ export function createEmbedServer(options: {
   upgradeWebSocket?: UpgradeWebSocket;
 }) {
   async function getGraph(graphId: string) {
-    const targetGraph = options.graph[graphId];
+    const targetGraph = await options.graph[graphId];
     targetGraph.store = options.store;
     targetGraph.checkpointer = options.checkpointer;
     return targetGraph;

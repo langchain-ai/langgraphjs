@@ -22,6 +22,6 @@ it("invokes per-submit onError when the underlying graph errors", async () => {
       .element(screen.getByTestId("error"))
       .toBeInTheDocument();
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

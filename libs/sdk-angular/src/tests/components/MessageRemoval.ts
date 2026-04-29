@@ -1,8 +1,13 @@
 import { Component, input } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
+
+interface StreamState {
+  messages: BaseMessage[];
+}
 
 @Component({
   template: `
@@ -24,10 +29,9 @@ const serverUrl = inject("serverUrl");
 export class MessageRemovalComponent {
   onRender = input<((msgs: string[]) => void) | undefined>(undefined);
 
-  stream = injectStream({
+  stream = injectStream<StreamState>({
     assistantId: "removeMessageAgent",
     apiUrl: serverUrl,
-    throttle: false,
   });
 
   fmtMessages() {
@@ -47,7 +51,7 @@ export class MessageRemovalComponent {
 
   onSubmit() {
     void this.stream.submit({
-      messages: [{ content: "Hello", type: "human" }],
-    } as any);
+      messages: [new HumanMessage("Hello")],
+    });
   }
 }

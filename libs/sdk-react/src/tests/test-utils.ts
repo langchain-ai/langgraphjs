@@ -22,8 +22,8 @@ afterEach(async () => {
   await new Promise((resolve) => setTimeout(resolve, 200));
 });
 
-export function cleanupRender(screen: unknown): void {
-  const withUnmount = screen as { unmount?: () => void };
-  withUnmount.unmount?.();
+export async function cleanupRender(screen: unknown): Promise<void> {
+  const withUnmount = screen as { unmount?: () => void | Promise<void> };
+  await withUnmount.unmount?.();
   document.body.innerHTML = "";
 }

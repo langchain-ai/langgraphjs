@@ -27,7 +27,7 @@ it("routes client-backed requests through onRequest", async () => {
   await expect
     .element(seed.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  cleanupRender(seed);
+  await cleanupRender(seed);
 
   onRequestCallback.mockClear();
 
@@ -69,6 +69,6 @@ it("routes client-backed requests through onRequest", async () => {
       expect(init).toBeDefined();
     }
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

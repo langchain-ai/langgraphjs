@@ -7,6 +7,7 @@ export {
   type StateOf,
   type ThreadStream,
   type UseStreamOptions,
+  type UseStreamResult,
   type UseStreamReturn,
 } from "./use-stream.js";
 
@@ -78,30 +79,17 @@ export {
   type VideoMedia,
 } from "@langchain/langgraph-sdk/stream";
 
-export type {
-  AcceptBaseMessages,
-  GetToolCallsType,
-  ResolveStreamInterface,
-  ResolveStreamOptions,
-  UseAgentStream,
-  UseAgentStreamOptions,
-  UseDeepAgentStream,
-  UseDeepAgentStreamOptions,
-  UseStreamCustomOptions,
-  UseStreamTransport,
-} from "@langchain/langgraph-sdk/ui";
-
 export {
   executeHeadlessTool,
   filterOutHeadlessToolInterrupts,
   findHeadlessTool,
   flushPendingHeadlessToolInterrupts,
   handleHeadlessToolInterrupt,
+  HttpAgentServerAdapter,
   headlessToolResumeCommand,
   isHeadlessToolInterrupt,
   parseHeadlessToolInterruptPayload,
   type AnyHeadlessToolImplementation,
-  type HttpAgentServerAdapter,
   type HttpAgentServerAdapterOptions,
   type DefaultToolCall,
   type FlushPendingHeadlessToolInterruptsOptions,

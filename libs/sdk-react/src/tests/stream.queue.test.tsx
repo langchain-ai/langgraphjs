@@ -35,7 +35,7 @@ it("records rapid submits in the submission queue", async () => {
       .element(screen.getByTestId("queue-size"), { timeout: 15_000 })
       .toHaveTextContent("3");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -59,7 +59,7 @@ it("exposes queued submission payloads via entries", async () => {
       .element(screen.getByTestId("queue-entries"))
       .toHaveTextContent("Msg2,Msg3,Msg4");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -86,7 +86,7 @@ it("drains the queue sequentially once the active run terminates", async () => {
       .element(screen.getByTestId("message-count"), { timeout: 5_000 })
       .toHaveTextContent("8");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -115,7 +115,7 @@ it("removes a queued entry via cancel()", async () => {
       .element(screen.getByTestId("queue-entries"), { timeout: 15_000 })
       .toHaveTextContent("Msg3,Msg4");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -144,7 +144,7 @@ it("empties the queue via clear()", async () => {
       .element(screen.getByTestId("queue-size"))
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -170,6 +170,6 @@ it("clears the queue when the controller switches thread", async () => {
       .element(screen.getByTestId("queue-size"), { timeout: 15_000 })
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

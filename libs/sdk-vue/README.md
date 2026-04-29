@@ -62,14 +62,11 @@ function onSubmit() {
 
 <template>
   <div>
-    <div
-      v-for="(msg, i) in stream.messages.value"
-      :key="msg.id ?? i"
-    >
+    <div v-for="(msg, i) in stream.messages" :key="msg.id ?? i">
       {{ typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }}
     </div>
 
-    <button :disabled="stream.isLoading.value" @click="onSubmit">
+    <button :disabled="stream.isLoading" @click="onSubmit">
       Send
     </button>
   </div>
@@ -77,10 +74,10 @@ function onSubmit() {
 ```
 
 Reactive fields on the handle are Vue refs (`ShallowRef` /
-`ComputedRef`) — read them via `.value` in `<script setup>` or
-directly in `<template>` (Vue auto-unwraps refs in templates, so
-`stream.messages` and `stream.messages.value` behave the same way
-inside the template block).
+`ComputedRef`). In `<script setup>`, read them with `.value`:
+`stream.messages.value`, `stream.isLoading.value`. In `<template>`,
+Vue auto-unwraps refs, so prefer the shorter
+`stream.messages` / `stream.isLoading` form.
 
 ## Documentation
 

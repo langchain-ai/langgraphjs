@@ -21,7 +21,7 @@ it(
         .element(screen.getByTestId("tool-event-1"), { timeout: 20_000 })
         .toHaveTextContent("success:get_location");
     } finally {
-      cleanupRender(screen);
+      await cleanupRender(screen);
     }
   },
 );
@@ -45,7 +45,7 @@ it(
         .element(screen.getByTestId("tool-event-1"), { timeout: 20_000 })
         .toHaveTextContent("error:get_location:GPS unavailable");
     } finally {
-      cleanupRender(screen);
+      await cleanupRender(screen);
     }
   },
 );

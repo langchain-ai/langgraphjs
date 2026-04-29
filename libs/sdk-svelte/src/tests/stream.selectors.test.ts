@@ -3,6 +3,7 @@ import { render } from "vitest-browser-svelte";
 
 import RootSelectorsStream from "./components/RootSelectorsStream.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
+import SubgraphStream from "./components/SubgraphStream.svelte";
 
 const serverUrl = inject("serverUrl");
 
@@ -88,4 +89,20 @@ it("discovers subagents and scopes useMessages/useToolCalls to each namespace", 
   await expect
     .element(screen.getByTestId("root-toolcall-names"))
     .toHaveTextContent(/task/);
+});
+
+it("populates subgraphs and subgraphsByNode maps", async () => {
+  const screen = render(SubgraphStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 15_000 })
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("subgraph-count"), { timeout: 15_000 })
+    .not.toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("subgraph-nodes"))
+    .not.toHaveTextContent("");
 });

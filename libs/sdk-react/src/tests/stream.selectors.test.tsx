@@ -62,7 +62,7 @@ it("discovers subagents and scopes useMessages/useToolCalls to each namespace", 
       .element(screen.getByTestId("root-toolcall-names"))
       .toHaveTextContent(/task/);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -88,7 +88,7 @@ it("populates subgraphs and subgraphsByNode maps and scoped useMessages", async 
       .element(screen.getByTestId("subgraph-nodes"))
       .toHaveTextContent(/^child:1$/);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -124,7 +124,7 @@ it("ignores leaf function nodes and only promotes subgraph hosts", async () => {
       .element(screen.getByTestId("subgraph-nodes"))
       .toHaveTextContent(/^research:1$/);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -146,7 +146,7 @@ it("captures anonymous writer events on the raw custom channel", async () => {
       .element(screen.getByTestId("custom-event-types"))
       .toHaveTextContent(/custom/);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -168,6 +168,6 @@ it("exposes the latest thread values via useValues", async () => {
     );
     expect(valuesCount).toBeGreaterThanOrEqual(2);
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

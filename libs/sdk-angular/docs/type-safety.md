@@ -42,6 +42,36 @@ Selectors pick up the same generics through the `stream` argument —
 `injectValues(stream)` returns `Signal<StateType>`, no extra typing
 needed.
 
+## Public stream aliases
+
+When you need to name a stream handle in Angular code, use
+`StreamApi<T>`:
+
+```typescript
+import type { StreamApi } from "@langchain/angular";
+
+function acceptsAngularStream(stream: StreamApi<ChatState>) {
+  return stream.messages();
+}
+```
+
+`StreamApi<T>` is the Angular-facing alias for the return value of
+`injectStream`, `useStream`, `provideStream`, and `StreamService`.
+
+`UseStreamResult<T>` is exported for cross-framework shared code. It is
+the same shape, but matches the React naming convention:
+
+```typescript
+import type { UseStreamResult } from "@langchain/angular";
+
+function acceptsSharedStream(stream: UseStreamResult<ChatState>) {
+  return stream.values();
+}
+```
+
+Prefer `StreamApi<T>` unless the type is part of a helper shared across
+React, Angular, Vue, or Svelte packages.
+
 ## Why prefer `typeof agent`?
 
 When the agent is defined with the compiled graph builder,

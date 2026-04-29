@@ -57,6 +57,6 @@ it("secondary hook attaches to an in-flight run on the same thread", async () =>
       .element(screen.getByTestId("secondary-message-count"))
       .toHaveTextContent("2");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

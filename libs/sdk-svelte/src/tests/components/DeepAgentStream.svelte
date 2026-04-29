@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { useStream } from "../../index.js";
+  import { AIMessage } from "@langchain/core/messages";
+  import { useMessages, useStream, useToolCalls } from "../../index.js";
   import type { DeepAgentGraph } from "../fixtures/browser-fixtures.js";
 
   interface Props {
@@ -12,7 +13,6 @@
   const stream = useStream<DeepAgentGraph>({
     assistantId: "deepAgent",
     apiUrl,
-    filterSubagentMessages: true,
   });
 
   const toolCallStates = new Set<string>();
@@ -21,41 +21,44 @@
   let observedSubagentStatuses = $state("");
 
   const sortedSubagents = $derived(
-    [...stream.subagents.values()].sort((a: any, b: any) => {
-      const typeA = a.toolCall?.args?.subagent_type ?? "";
-      const typeB = b.toolCall?.args?.subagent_type ?? "";
-      return typeA.localeCompare(typeB);
-    })
+    [...stream.subagents.values()].sort((a, b) =>
+      (a.name ?? "").localeCompare(b.name ?? ""),
+    ),
   );
 
   $effect(() => {
     for (const sub of sortedSubagents) {
-      const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+      const subType = sub.name ?? "unknown";
       subagentStatuses.add(`${subType}:${sub.status}`);
-      for (const tc of sub.toolCalls) {
-        toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
-      }
     }
     observedToolCallStates = [...toolCallStates].sort().join(",");
     observedSubagentStatuses = [...subagentStatuses].sort().join(",");
   });
 
   function formatMessage(msg: any): string {
-    if (msg.type === "ai" && msg.tool_calls?.length) {
-      return msg.tool_calls
-        .map((tc: any) => `tool_call:${tc.name}:${JSON.stringify(tc.args)}`)
-        .join(",");
+    if (AIMessage.isInstance(msg)) {
+      return (
+        msg.tool_calls
+          ?.map((tc: any) => `tool_call:${tc.name}:${JSON.stringify(tc.args)}`)
+          .join(",") ?? ""
+      );
     }
     if (msg.type === "tool") {
       return `tool_result:${typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}`;
     }
-    return typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+    return typeof msg.content === "string"
+      ? msg.content
+      : JSON.stringify(msg.content);
   }
 </script>
 
-<div data-testid="deep-agent-root" style="font-family: monospace; font-size: 13px">
+<div
+  data-testid="deep-agent-root"
+  style="font-family: monospace; font-size: 13px"
+>
   <div data-testid="loading">
-    <b>Status:</b> {stream.isLoading ? "Loading..." : "Not loading"}
+    <b>Status:</b>
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
 
   {#if stream.error}
@@ -71,31 +74,48 @@
       </div>
     {/each}
   </div>
+  <div data-testid="root-toolcall-count">{stream.toolCalls.length}</div>
+  <div data-testid="root-toolcall-names">
+    {stream.toolCalls.map((tc) => tc.name).join(",")}
+  </div>
 
   <hr />
-  <div><b>Subagents</b> (<span data-testid="subagent-count">{sortedSubagents.length}</span>)</div>
+  <div>
+    <b>Subagents</b> (<span data-testid="subagent-count"
+      >{sortedSubagents.length}</span
+    >)
+  </div>
+  <div data-testid="subagent-names">
+    {sortedSubagents.map((sub) => sub.name).join(",")}
+  </div>
 
   {#each sortedSubagents as sub (sub.id)}
-    {@const subType = sub.toolCall?.args?.subagent_type ?? "unknown"}
-    <div data-testid={`subagent-${subType}`}
-      style="margin: 8px 0; padding-left: 12px; border-left: 2px solid #999">
+    {@const subType = sub.name ?? "unknown"}
+    {@const messages = useMessages(stream, sub)}
+    {@const toolCalls = useToolCalls(stream, sub)}
+    <div
+      data-testid={`subagent-${subType}`}
+      style="margin: 8px 0; padding-left: 12px; border-left: 2px solid #999"
+    >
       <div data-testid={`subagent-${subType}-status`}>
         SubAgent ({subType}) status: {sub.status}
       </div>
       <div data-testid={`subagent-${subType}-task-description`}>
-        Task: {sub.toolCall?.args?.description ?? ""}
+        Task: {sub.taskInput ?? ""}
       </div>
       <div data-testid={`subagent-${subType}-result`}>
-        Result: {sub.result ?? ""}
+        Result: {typeof sub.output === "string"
+          ? sub.output
+          : JSON.stringify(sub.output)}
       </div>
       <div data-testid={`subagent-${subType}-messages-count`}>
-        {sub.messages.length}
+        {messages.current.length}
       </div>
       <div data-testid={`subagent-${subType}-toolcalls-count`}>
-        {sub.toolCalls.length}
+        {toolCalls.current.length}
       </div>
       <div data-testid={`subagent-${subType}-toolcall-names`}>
-        {sub.toolCalls.map((tc) => tc.call.name).join(",")}
+        {toolCalls.current.map((tc) => tc.name).join(",")}
       </div>
     </div>
   {/each}
@@ -110,7 +130,10 @@
   <hr />
   <button
     data-testid="submit"
-    onclick={() => void stream.submit({ messages: [{ content: "Run analysis", type: "human" }] }, { streamSubgraphs: true })}
+    onclick={() =>
+      void stream.submit({
+        messages: [{ content: "Run analysis", type: "human" }],
+      })}
   >
     Send
   </button>

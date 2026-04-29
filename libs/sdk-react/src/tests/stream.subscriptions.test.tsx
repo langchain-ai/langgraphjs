@@ -46,7 +46,7 @@ it("does not open any scoped subscriptions for a bare useStream mount", async ()
       .element(screen.getByTestId("registry-size"))
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -73,7 +73,7 @@ it("root useMessages(stream) is served by the always-on projection and never reg
       .element(screen.getByTestId("registry-size"), { timeout: 2_000 })
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -119,7 +119,7 @@ it("opens exactly one scoped subscription per (selector, namespace) and releases
       .element(screen.getByTestId("registry-size"), { timeout: 2_000 })
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -179,7 +179,7 @@ it("dedupes registry entries across multiple consumers of the same (selector, na
       .element(screen.getByTestId("registry-size"), { timeout: 2_000 })
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -244,7 +244,7 @@ it("keeps subagent message streams fully isolated across namespaces", async () =
       .element(screen.getByTestId("registry-size"), { timeout: 2_000 })
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -308,7 +308,7 @@ it.skip("opens separate registry entries for different selector kinds on the sam
       .element(screen.getByTestId("registry-size"), { timeout: 2_000 })
       .toHaveTextContent("0");
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });
 
@@ -360,6 +360,6 @@ it("opens subagent subscriptions lazily — entry count ratchets with each obser
         .toHaveTextContent(String(step.expected));
     }
   } finally {
-    cleanupRender(screen);
+    await cleanupRender(screen);
   }
 });

@@ -34,8 +34,8 @@ function onResume() {
     {{ typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }}
   </div>
 
-  <div v-if="stream.interrupt.value">
-    <p>{{ stream.interrupt.value.value.question }}</p>
+  <div v-if="stream.interrupt">
+    <p>{{ stream.interrupt.value.question }}</p>
     <button @click="onResume">Approve</button>
   </div>
 
@@ -69,7 +69,7 @@ authoritative snapshot after reconciliation. Safe to call
 unconditionally — when no run is active it is a no-op.
 
 ```vue
-<button :disabled="!stream.isLoading.value" @click="() => void stream.stop()">
+<button :disabled="!stream.isLoading" @click="() => void stream.stop()">
   Stop
 </button>
 ```

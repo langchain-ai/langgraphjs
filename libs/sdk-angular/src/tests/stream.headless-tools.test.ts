@@ -25,6 +25,10 @@ it(
     await expect
       .element(screen.getByTestId("tool-event-1"), { timeout: 20_000 })
       .toHaveTextContent("success:get_location");
+
+    await expect
+      .element(screen.getByTestId("interrupt-count"))
+      .toHaveTextContent("0");
   },
 );
 

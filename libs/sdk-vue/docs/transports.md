@@ -6,11 +6,11 @@
   pre-configured `client`). The built-in SSE transport is used by
   default; pass `transport: "websocket"` for the WebSocket variant.
 - **Custom backend** — pass `transport: myAdapter` where `myAdapter`
-  implements
-  [`AgentServerAdapter`](https://github.com/langchain-ai/langgraphjs/blob/main/libs/sdk/src/client/stream/transport.ts)
-  from `@langchain/langgraph-sdk`.
+  implements `AgentServerAdapter`, re-exported from `@langchain/vue`.
 
-Passing both `assistantId` and an adapter is a compile-time error.
+When using a custom adapter, LGP-specific options such as `client`,
+`apiUrl`, `apiKey`, `fetch`, and `webSocketFactory` are compile-time
+errors.
 
 ## Built-in SSE (default)
 
@@ -64,14 +64,12 @@ const stream = useStream({
 ## Custom adapter
 
 Bring your own backend by passing an `AgentServerAdapter`
-implementation. `HttpAgentServerAdapter` from
-`@langchain/langgraph-sdk` covers HTTP + SSE + WebSocket out of the
-box:
+implementation. `HttpAgentServerAdapter`, re-exported from
+`@langchain/vue`, covers HTTP + SSE + WebSocket out of the box:
 
 ```vue
 <script setup lang="ts">
-import { useStream } from "@langchain/vue";
-import { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
+import { HttpAgentServerAdapter, useStream } from "@langchain/vue";
 
 const stream = useStream({
   transport: new HttpAgentServerAdapter({
@@ -86,6 +84,7 @@ function onSubmit() {
 </script>
 
 <template>
+  <!-- Template expressions auto-unwrap stream refs. -->
   <div v-for="(msg, i) in stream.messages" :key="msg.id ?? i">
     {{ typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }}
   </div>

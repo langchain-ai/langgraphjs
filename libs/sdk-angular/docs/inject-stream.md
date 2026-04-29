@@ -77,10 +77,14 @@ see [`v1-migration.md`](./v1-migration.md) §3.
 
 ## Return shape
 
-The root handle returned by `injectStream` is a plain object of
-`Signal`s plus imperative methods. Reactive fields are always Angular
-`Signal<T>`s — call them as functions in templates
-(`stream.messages()`).
+The root handle returned by `injectStream` is the public
+`StreamApi<T>` type: a plain object of `Signal`s plus imperative
+methods. Reactive fields are always Angular `Signal<T>`s — call them
+as functions in templates (`stream.messages()`).
+
+`UseStreamResult<T>` is an alias for the same shape, kept so
+cross-framework helpers can use the same type name as the React SDK.
+In Angular app and library code, prefer `StreamApi<T>`.
 
 | Property | Type | Notes |
 |---|---|---|
