@@ -14,6 +14,7 @@ import {
 import {
   filterStream,
   findLast,
+  fetchHistory,
   onFinishRequiresThreadState,
   unique,
 } from "../ui/utils.js";
@@ -58,22 +59,6 @@ function getFetchHistoryKey(
   limit: boolean | number
 ) {
   return [getClientConfigHash(client), threadId, limit].join(":");
-}
-
-function fetchHistory<StateType extends Record<string, unknown>>(
-  client: Client,
-  threadId: string,
-  options?: { limit?: boolean | number }
-) {
-  if (options?.limit === false) {
-    return client.threads.getState<StateType>(threadId).then((state) => {
-      if (state.checkpoint == null) return [];
-      return [state];
-    });
-  }
-
-  const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads.getHistory<StateType>(threadId, { limit });
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(

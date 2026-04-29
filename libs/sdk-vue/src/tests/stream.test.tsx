@@ -1206,6 +1206,138 @@ it("branching", async () => {
     .toHaveTextContent("1 / 2");
 });
 
+it("branching: regenerating the first ai message after a long chat resets to that checkpoint", async () => {
+  const TestComponent = defineComponent({
+    setup() {
+      const { submit, messages, getMessagesMetadata, setBranch } = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        fetchStateHistory: true,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {messages.value.map((msg, i: number) => {
+              const metadata = getMessagesMetadata(msg, i);
+              const checkpoint =
+                metadata?.firstSeenState?.parent_checkpoint ?? undefined;
+              const text =
+                typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content);
+              const branchOptions = metadata?.branchOptions;
+              const branch = metadata?.branch;
+              const branchIndex =
+                branchOptions && branch ? branchOptions.indexOf(branch) : -1;
+
+              return (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  <div data-testid={`content-${i}`}>{text}</div>
+
+                  {branchOptions && branch && (
+                    <div data-testid={`branch-nav-${i}`}>
+                      <button
+                        data-testid={`prev-${i}`}
+                        onClick={() => {
+                          const prevBranch = branchOptions[branchIndex - 1];
+                          if (prevBranch) setBranch(prevBranch);
+                        }}
+                      >
+                        Previous
+                      </button>
+                      <span data-testid={`branch-info-${i}`}>
+                        {branchIndex + 1} / {branchOptions.length}
+                      </span>
+                      <button
+                        data-testid={`next-${i}`}
+                        onClick={() => {
+                          const nextBranch = branchOptions[branchIndex + 1];
+                          if (nextBranch) setBranch(nextBranch);
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+
+                  {msg.type === "human" && (
+                    <button
+                      data-testid={`fork-${i}`}
+                      onClick={() =>
+                        void submit(
+                          {
+                            messages: [
+                              { type: "human", content: `Fork: ${text}` },
+                            ],
+                          } as any,
+                          { checkpoint },
+                        )
+                      }
+                    >
+                      Fork
+                    </button>
+                  )}
+
+                  {msg.type === "ai" && (
+                    <button
+                      data-testid={`regenerate-${i}`}
+                      onClick={() =>
+                        void submit(undefined as any, { checkpoint })
+                      }
+                    >
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            data-testid="submit"
+            onClick={() =>
+              void submit({
+                messages: [{ content: "Hello", type: "human" }],
+              } as any)
+            }
+          >
+            Send
+          </button>
+        </div>
+      );
+    },
+  });
+
+  const screen = render(TestComponent);
+
+  for (let i = 0; i < 7; i += 1) {
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId(`content-${i * 2}`), { timeout: 10_000 })
+      .toHaveTextContent("Hello");
+    await expect
+      .element(screen.getByTestId(`content-${i * 2 + 1}`), { timeout: 10_000 })
+      .toHaveTextContent("Hey");
+  }
+
+  await expect
+    .element(screen.getByTestId("message-13"), { timeout: 10_000 })
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("regenerate-1").click();
+
+  await expect
+    .element(screen.getByTestId("message-0"), { timeout: 10_000 })
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("message-1"), { timeout: 10_000 })
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-1"), { timeout: 10_000 })
+    .toHaveTextContent("2 / 2");
+  await expect.element(screen.getByTestId("message-2")).not.toBeInTheDocument();
+});
+
 it("fetchStateHistory: { limit: 2 }", async () => {
   const onRequestCallback = vi.fn();
   const client = new Client({

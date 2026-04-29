@@ -30,6 +30,7 @@ export {
   unique,
   findLast,
   filterStream,
+  fetchHistory,
   onFinishRequiresThreadState,
 } from "./utils.js";
 export {
