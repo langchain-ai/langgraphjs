@@ -3,7 +3,10 @@ import {
   type ContentBlock as CoreContentBlock,
   type UsageMetadata,
 } from "@langchain/core/messages";
-import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
+import type {
+  ChatModelStreamEvent,
+  ContentBlockDelta as CoreContentBlockDelta,
+} from "@langchain/core/language_models/event";
 import type {
   ContentBlock,
   FinalizedContentBlock,
@@ -60,6 +63,74 @@ function applyCoreContentDelta(
     }
     default:
       return { ...target, ...delta } as CoreContentBlock;
+  }
+}
+
+function coreContentBlockFromDelta(
+  delta: CoreContentBlockDelta,
+  current?: CoreContentBlock
+): CoreContentBlock {
+  switch (delta.type) {
+    case "text-delta":
+      return { type: "text", text: delta.text } as CoreContentBlock;
+    case "reasoning-delta":
+      return {
+        type: "reasoning",
+        reasoning: delta.reasoning,
+      } as CoreContentBlock;
+    case "data-delta": {
+      const merged = { ...(current ?? {}), data: delta.data } as Record<
+        string,
+        unknown
+      >;
+      if (delta.encoding) merged.encoding = delta.encoding;
+      return merged as unknown as CoreContentBlock;
+    }
+    case "block-delta":
+      return delta.fields as CoreContentBlock;
+  }
+}
+
+function applyCoreEventDelta(
+  current: CoreContentBlock | undefined,
+  event: Extract<ChatModelStreamEvent, { event: "content-block-delta" }> & {
+    content?: CoreContentBlock;
+  }
+): CoreContentBlock {
+  if (event.content) {
+    return current
+      ? applyCoreContentDelta(current, event.content)
+      : event.content;
+  }
+
+  switch (event.delta.type) {
+    case "text-delta":
+      if (current?.type === "text") {
+        return {
+          ...current,
+          text: `${"text" in current ? current.text : ""}${event.delta.text}`,
+        } as CoreContentBlock;
+      }
+      return coreContentBlockFromDelta(event.delta, current);
+    case "reasoning-delta":
+      if (current?.type === "reasoning") {
+        return {
+          ...current,
+          reasoning: `${"reasoning" in current ? current.reasoning : ""}${event.delta.reasoning}`,
+        } as CoreContentBlock;
+      }
+      return coreContentBlockFromDelta(event.delta, current);
+    case "data-delta": {
+      const merged = { ...(current ?? {}) } as Record<string, unknown>;
+      merged.data = `${(merged.data as string | undefined) ?? ""}${event.delta.data}`;
+      if (event.delta.encoding) merged.encoding = event.delta.encoding;
+      return merged as unknown as CoreContentBlock;
+    }
+    case "block-delta":
+      return {
+        ...(current ?? {}),
+        ...event.delta.fields,
+      } as CoreContentBlock;
   }
 }
 
@@ -358,9 +429,7 @@ export class StreamingMessage
           break;
         case "content-block-delta": {
           const current = contentBlocks[event.index];
-          contentBlocks[event.index] = current
-            ? applyCoreContentDelta(current, event.content)
-            : event.content;
+          contentBlocks[event.index] = applyCoreEventDelta(current, event);
           break;
         }
         case "content-block-finish":
@@ -450,6 +519,22 @@ export class StreamingMessage
  * streaming handle instead of as the finalized `AIMessage`.
  */
 export type StreamingMessageHandle = Omit<StreamingMessage, "then">;
+
+export function toStreamingMessageHandle(
+  message: StreamingMessage
+): StreamingMessageHandle {
+  return new Proxy(message, {
+    get(target, prop) {
+      if (prop === "then") return undefined;
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    has(target, prop) {
+      if (prop === "then") return false;
+      return prop in target;
+    },
+  }) as StreamingMessageHandle;
+}
 
 /**
  * Emitted by `MessageAssembler.consume()` to describe how a message changed in

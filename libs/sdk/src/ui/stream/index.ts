@@ -32,7 +32,7 @@ import type {
 } from "./deep-agent.js";
 
 // Re-export all stream interfaces
-export type { BaseStream } from "./base.js";
+export type { BaseStream, StateRecord } from "./base.js";
 export type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
 export type {
   UseDeepAgentStream,
@@ -227,10 +227,10 @@ export type ResolveStreamInterface<T, Bag extends BagTemplate = BagTemplate> =
  */
 export type ResolveStreamOptions<T, Bag extends BagTemplate = BagTemplate> =
   IsDeepAgent<T> extends true
-    ? UseDeepAgentStreamOptions<InferStateType<T>, Bag>
+    ? UseDeepAgentStreamOptions<StateRecord<InferStateType<T>>, Bag>
     : IsReactAgent<T> extends true
-      ? UseAgentStreamOptions<InferStateType<T>, Bag>
-      : UseStreamOptions<InferStateType<T>, Bag>;
+      ? UseAgentStreamOptions<StateRecord<InferStateType<T>>, Bag>
+      : UseStreamOptions<StateRecord<InferStateType<T>>, Bag>;
 
 // ============================================================================
 // Convenience Type Aliases

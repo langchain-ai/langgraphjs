@@ -28,8 +28,11 @@ import {
   TriggeredSubgraphDiscoveryHandle,
   TriggeredSubgraphHandle,
 } from "./handles/index.js";
-import { StreamingMessageAssembler } from "./messages.js";
-import type { StreamingMessage, StreamingMessageHandle } from "./messages.js";
+import {
+  StreamingMessageAssembler,
+  toStreamingMessageHandle,
+} from "./messages.js";
+import type { StreamingMessageHandle } from "./messages.js";
 import type { AssembledToolCall } from "./handles/tools.js";
 import { MediaAssembler } from "./media.js";
 import type {
@@ -547,7 +550,7 @@ export class ThreadStream<
   // server subscriptions.
   readonly #onEventListeners = new Set<(event: Event) => void>();
 
-  #messagesIterable?: AsyncIterable<StreamingMessage>;
+  #messagesIterable?: AsyncIterable<StreamingMessageHandle>;
   #valuesProjection?: AsyncIterable<unknown> & PromiseLike<unknown>;
   #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
   #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
@@ -745,7 +748,7 @@ export class ThreadStream<
    */
   get messages(): AsyncIterable<StreamingMessageHandle> {
     if (this.#messagesIterable) return this.#messagesIterable;
-    const buffer = new MultiCursorBuffer<StreamingMessage>();
+    const buffer = new MultiCursorBuffer<StreamingMessageHandle>();
     this.#messagesIterable = buffer;
     const assembler = new StreamingMessageAssembler();
     void this.#startProjection(
@@ -753,7 +756,7 @@ export class ThreadStream<
       (event) => {
         if (event.method !== "messages") return;
         const msg = assembler.consume(event as MessagesEvent);
-        if (msg) buffer.push(msg);
+        if (msg) buffer.push(toStreamingMessageHandle(msg));
       },
       () => buffer.close()
     );
