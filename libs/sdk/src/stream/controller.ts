@@ -1049,7 +1049,7 @@ export class StreamController<
           }
           await subscription.waitForResume();
         }
-      } catch (err) {
+      } catch {
         resolveReady?.();
         resolveReady = undefined;
         /* thread closed or errored */
