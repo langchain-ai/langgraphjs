@@ -52,9 +52,7 @@ export {
   type ProvideStreamProps,
 } from "./context.js";
 
-export {
-  HttpAgentServerAdapter,
-} from "@langchain/langgraph-sdk";
+export { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
 export { MediaAssemblyError } from "@langchain/langgraph-sdk/stream";
 export type {
   AgentServerAdapter,
