@@ -760,13 +760,17 @@ export class StreamOrchestrator<
     this.stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
 
     const tid = this.#threadId;
-    if (tid) {
+    if (this.historyLimit !== false && tid) {
       const controller = new AbortController();
       void this.stream.fetchSubagentHistory(
         this.#accessors.getClient().threads,
         tid,
         {
           messagesKey: this.#accessors.getMessagesKey(),
+          historyLimit:
+            typeof this.historyLimit === "number"
+              ? this.historyLimit
+              : undefined,
           signal: controller.signal,
         }
       );

@@ -395,10 +395,12 @@ export function useStreamLGP<
       // Fetch internal messages for each subagent from their subgraph checkpoints.
       // These messages are not in the main thread state but are persisted in the
       // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      if (threadId) {
+      if (historyLimit !== false && threadId) {
         const controller = new AbortController();
         void stream.fetchSubagentHistory(client.threads, threadId, {
           messagesKey: options.messagesKey ?? "messages",
+          historyLimit:
+            typeof historyLimit === "number" ? historyLimit : undefined,
           signal: controller.signal,
         });
         return () => controller.abort();
