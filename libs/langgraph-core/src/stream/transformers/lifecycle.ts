@@ -29,10 +29,7 @@ import type {
   ProtocolEvent,
   StreamEmitter,
 } from "../types.js";
-import type {
-  LifecycleEntry,
-  LifecycleTransformerOptions,
-} from "./types.js";
+import type { LifecycleEntry, LifecycleTransformerOptions } from "./types.js";
 
 /**
  * Projection returned from the lifecycle transformer's `init()`.

@@ -92,4 +92,3 @@ export interface LifecycleTransformerOptions {
    */
   serializeError?: (err: unknown) => string;
 }
-
