@@ -352,7 +352,7 @@ Instead of connecting to a LangGraph API, you can provide your own streaming tra
 
   const stream = useStream<{ messages: BaseMessage[] }>({
     transport: new FetchStreamTransport({
-      url: "https://my-api.example.com/stream",
+      apiUrl: "https://my-api.example.com/stream",
     }),
     threadId: null,
     onThreadId: (id) => console.log("Thread created:", id),

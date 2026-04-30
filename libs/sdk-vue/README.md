@@ -261,7 +261,7 @@ const {
   getMessagesMetadata,
 } = useStream<{ messages: BaseMessage[] }>({
   transport: new FetchStreamTransport({
-    url: "https://my-api.example.com/stream",
+    apiUrl: "https://my-api.example.com/stream",
   }),
   threadId: null,
   onThreadId: (id) => console.log("Thread created:", id),
