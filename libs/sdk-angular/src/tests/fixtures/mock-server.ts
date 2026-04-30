@@ -5,8 +5,8 @@ import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
+import { createNodeWebSocket, type NodeWebSocket } from "@hono/node-ws";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
-import { dispatchCustomEvent } from "@langchain/core/callbacks/dispatch";
 import {
   AIMessage,
   AIMessageChunk,
@@ -125,9 +125,19 @@ const slowGraph = new StateGraph(MessagesAnnotation)
 const customChannelAgent = new StateGraph(MessagesAnnotation)
   .addNode("agent", async (_state, runtime: Runtime) => {
     runtime.writer?.({ stage: "thinking" });
-    await dispatchCustomEvent("status", { label: "answering" });
     runtime.writer?.({ stage: "done" });
     return { messages: [new AIMessage("Custom channel reply")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+const namedCustomChannelAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async (_state, runtime: Runtime) => {
+    runtime.writer?.({
+      name: "status",
+      payload: { label: "answering" },
+    });
+    return { messages: [new AIMessage("Named custom channel reply")] };
   })
   .addEdge(START, "agent")
   .compile();
@@ -521,6 +531,7 @@ const graphs: Record<string, AnyPregel> = {
   parentAgent,
   slow_graph: slowGraph,
   customChannelAgent,
+  namedCustomChannelAgent,
   embeddedSubgraphAgent,
   removeMessageAgent,
   errorAgent,
@@ -529,11 +540,21 @@ const graphs: Record<string, AnyPregel> = {
 };
 
 let httpServer: { close: () => void } | null = null;
+let webSocketServer: NodeWebSocket["wss"] | null = null;
 
 export async function setup({ provide }: TestProject) {
-  const embedApp = createEmbedServer({ graph: graphs, checkpointer, threads });
   const app = new Hono();
   app.use("*", cors({ origin: "*", exposeHeaders: ["Content-Location"] }));
+  const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
+    app,
+  });
+  webSocketServer = wss;
+  const embedApp = createEmbedServer({
+    graph: graphs,
+    checkpointer,
+    threads,
+    upgradeWebSocket,
+  });
   app.route("/", embedApp as unknown as Parameters<typeof app.route>[1]);
 
   await new Promise<void>((resolve) => {
@@ -543,10 +564,17 @@ export async function setup({ provide }: TestProject) {
       console.log(`Mock server started at ${url}`);
       resolve();
     });
+    injectWebSocket(httpServer as Server);
   });
 }
 
 export async function teardown() {
+  for (const client of webSocketServer?.clients ?? []) {
+    client.terminate();
+  }
+  webSocketServer?.close();
+  webSocketServer = null;
   (httpServer as Server)?.closeAllConnections();
   httpServer?.close();
+  httpServer = null;
 }

@@ -91,7 +91,7 @@ it("hydrates pre-existing thread state on mount", async () => {
 
   const screen = render(BasicStream, {
     apiUrl: serverUrl,
-    initialThreadId: threadId!,
+    threadId: threadId!,
   });
 
   await expect

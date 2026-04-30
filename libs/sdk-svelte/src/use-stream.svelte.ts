@@ -14,30 +14,26 @@ import {
 import {
   StreamController,
   type AgentServerAdapter,
+  type AgentServerOptions as StreamAgentServerOptions,
   type AssembledToolCall,
   type ChannelRegistry,
+  type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
   type RootSnapshot,
+  type StateOf as StreamStateOf,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
   type SubgraphByNodeMap,
   type SubgraphDiscoverySnapshot,
   type SubgraphMap,
+  type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
 
-/**
- * Legacy alias kept for parity with the React binding. Unwraps a
- * compiled graph or agent brand into its state shape.
- *
- * @deprecated Prefer {@link InferStateType}.
- */
-export type StateOf<T> =
-  InferStateType<T> extends Record<string, unknown>
-    ? InferStateType<T>
-    : Record<string, unknown>;
+/** @deprecated Prefer {@link InferStateType}. */
+export type StateOf<T> = StreamStateOf<T>;
 
 /**
  * A value that may be either a plain `T` or a getter `() => T`. Used
@@ -54,73 +50,23 @@ function readValueOrGetter<T>(
   return input;
 }
 
-/** Options common to both transport branches of {@link useStream}. */
-interface UseStreamCommonOptions<StateType extends object> {
-  /**
-   * Initial / reactive thread id. Accepts either a static value or a
-   * getter; when a getter is supplied the composable re-hydrates when
-   * its return value changes.
-   */
-  threadId?: ValueOrGetter<string | null | undefined>;
-  onThreadId?: (threadId: string) => void;
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
-  initialValues?: StateType;
-  /** State key holding the message array. Defaults to `"messages"`. */
-  messagesKey?: string;
-  /** Headless tool implementations; auto-resumes matching interrupts. */
-  tools?: AnyHeadlessToolImplementation[];
-  /** Observe lifecycle events for registered {@link tools}. */
-  onTool?: OnToolCallback;
-}
+type SvelteThreadId = ValueOrGetter<string | null | undefined>;
 
-/**
- * LGP branch — caller points the composable at an assistant on a
- * LangGraph-Platform-compatible server.
- */
-export interface AgentServerOptions<
-  StateType extends object,
-> extends UseStreamCommonOptions<StateType> {
-  assistantId: string;
-  client?: Client;
-  apiUrl?: string;
-  apiKey?: string;
-  callerOptions?: ClientConfig["callerOptions"];
-  defaultHeaders?: ClientConfig["defaultHeaders"];
-  /** Built-in wire transport. Defaults to `"sse"`. */
-  transport?: "sse" | "websocket";
-  /** Optional `fetch` override forwarded to the built-in SSE transport. */
-  fetch?: typeof fetch;
-  /** Optional `WebSocket` factory for the built-in WS transport. */
-  webSocketFactory?: (url: string) => WebSocket;
-}
+export type AgentServerOptions<StateType extends object> =
+  StreamAgentServerOptions<StateType, SvelteThreadId>;
 
-/**
- * Custom-adapter branch — caller brings their own
- * {@link AgentServerAdapter}. Discriminated from
- * {@link AgentServerOptions} by `transport` being an adapter instance.
- */
-export interface CustomAdapterOptions<
-  StateType extends object,
-> extends UseStreamCommonOptions<StateType> {
-  transport: AgentServerAdapter;
-  /**
-   * Optional assistant id passed through to the adapter. Defaults to
-   * `"_"` — adapters that don't multiplex on assistant id can ignore
-   * it.
-   */
-  assistantId?: string;
-  client?: never;
-  apiUrl?: never;
-  apiKey?: never;
-  callerOptions?: never;
-  defaultHeaders?: never;
-  fetch?: never;
-  webSocketFactory?: never;
-}
+export type CustomAdapterOptions<StateType extends object> =
+  StreamCustomAdapterOptions<StateType, SvelteThreadId, string>;
 
 export type UseStreamOptions<
   StateType extends object = Record<string, unknown>,
-> = AgentServerOptions<StateType> | CustomAdapterOptions<StateType>;
+> = StreamUseStreamOptions<
+  StateType,
+  SvelteThreadId,
+  string | undefined,
+  string | undefined,
+  string
+>;
 
 /**
  * Private field on the handle that carries the {@link StreamController}
@@ -291,7 +237,9 @@ export function useStream<
 
   // Custom adapters may omit `assistantId`; the controller still
   // requires one so it has something to forward to `threads.stream`.
-  const assistantId = options.assistantId ?? "_";
+  const sentinel = "_";
+  const assistantId =
+    "assistantId" in options ? (options.assistantId ?? sentinel) : sentinel;
 
   const initialThreadId = readValueOrGetter(asBag.threadId) ?? null;
 

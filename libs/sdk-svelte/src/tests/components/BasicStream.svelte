@@ -9,6 +9,7 @@
     submitOptions?: Record<string, unknown>;
     transport?: "sse" | "websocket";
     onThreadId?: (threadId: string) => void;
+    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
   }
 
   const {
@@ -19,6 +20,7 @@
     submitOptions,
     transport,
     onThreadId,
+    onCreated,
   }: Props = $props();
 
   // svelte-ignore state_referenced_locally
@@ -28,10 +30,12 @@
     threadId,
     transport,
     onThreadId,
+    onCreated,
   });
 </script>
 
 <div>
+  <div data-testid="message-count">{stream.messages.length}</div>
   <div data-testid="messages">
     {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>

@@ -1,6 +1,8 @@
 import {
+  DestroyRef,
   computed,
   effect,
+  inject,
   isSignal,
   signal,
   untracked,
@@ -48,6 +50,7 @@ export function injectProjection<T>(
   initialValue: T
 ): Signal<T> {
   const state = signal<T>(initialValue);
+  const destroyRef = inject(DestroyRef);
 
   const registrySignal: () => ChannelRegistry | null | undefined = isSignal(
     registry
@@ -58,26 +61,50 @@ export function injectProjection<T>(
     ? (key as Signal<string>)
     : () => key as string;
 
-  effect((onCleanup) => {
-    const nextRegistry = registrySignal();
-    // Track the key so a key change reruns the effect. The key itself
-    // is not consumed — the `specFactory` closure recomputes the spec.
-    keySignal();
+  let currentRegistry: ChannelRegistry | null | undefined;
+  let currentKey: string | undefined;
+  let currentRelease: (() => void) | undefined;
+  let currentUnsubscribe: (() => void) | undefined;
 
-    untracked(() => {
-      if (nextRegistry == null) {
-        state.set(initialValue);
-        return;
-      }
-      const acquired = nextRegistry.acquire(specFactory());
+  const detach = () => {
+    currentUnsubscribe?.();
+    currentUnsubscribe = undefined;
+    currentRelease?.();
+    currentRelease = undefined;
+  };
+
+  const attach = (
+    nextRegistry: ChannelRegistry | null | undefined,
+    nextKey: string
+  ) => {
+    if (nextRegistry === currentRegistry && nextKey === currentKey) return;
+    detach();
+    currentRegistry = nextRegistry;
+    currentKey = nextKey;
+
+    if (nextRegistry == null) {
+      state.set(initialValue);
+      return;
+    }
+
+    const acquired = nextRegistry.acquire(specFactory());
+    state.set(acquired.store.getSnapshot());
+    currentUnsubscribe = acquired.store.subscribe(() => {
       state.set(acquired.store.getSnapshot());
-      const unsubscribe = acquired.store.subscribe(() => {
-        state.set(acquired.store.getSnapshot());
-      });
-      onCleanup(() => {
-        unsubscribe();
-        acquired.release();
-      });
+    });
+    currentRelease = acquired.release;
+  };
+
+  // Acquire synchronously so selectors are subscribed before a user can
+  // submit and emit short-lived custom/projection events.
+  attach(registrySignal(), keySignal());
+  destroyRef.onDestroy(detach);
+
+  effect(() => {
+    const nextRegistry = registrySignal();
+    const nextKey = keySignal();
+    untracked(() => {
+      attach(nextRegistry, nextKey);
     });
   });
 

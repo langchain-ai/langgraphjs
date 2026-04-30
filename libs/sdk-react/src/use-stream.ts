@@ -8,8 +8,6 @@ import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
-  type AnyHeadlessToolImplementation,
-  type OnToolCallback,
 } from "@langchain/langgraph-sdk";
 import {
   Client as ClientCtor,
@@ -19,8 +17,10 @@ import {
 import {
   StreamController,
   type AgentServerAdapter,
+  type AgentServerOptions as StreamAgentServerOptions,
   type AssembledToolCall,
   type ChannelRegistry,
+  type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
   type RootSnapshot,
@@ -30,124 +30,19 @@ import {
   type SubgraphByNodeMap,
   type SubgraphDiscoverySnapshot,
   type SubgraphMap,
+  type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
 
-/**
- * Legacy alias for {@link InferStateType}. Unwraps a compiled graph
- * type (anything carrying the `~RunOutput` brand from
- * `CompiledGraph`) or an agent brand into its state shape. Any other
- * `object` type is treated as the state itself.
- *
- * @deprecated Use {@link InferStateType} from `@langchain/react` — the
- * v1 public name. This alias is kept so existing call sites that
- * reference `StateOf<T>` keep resolving without change.
- *
- * @example
- * ```ts
- * const agent = new StateGraph({ messages: MessagesValue }).compile();
- * type State = StateOf<typeof agent>; // { messages: BaseMessage[] }
- * type Plain = StateOf<{ foo: string }>; // { foo: string }
- * ```
- */
-export type StateOf<T> =
-  InferStateType<T> extends Record<string, unknown>
-    ? InferStateType<T>
-    : Record<string, unknown>;
+export type AgentServerOptions<StateType extends object> =
+  StreamAgentServerOptions<StateType>;
 
-/**
- * Options common to both the default LangGraph-Platform code path and
- * the custom-adapter code path. See {@link UseStreamOptions}
- * for the discriminated union the hook actually accepts.
- */
-interface UseStreamCommonOptions<StateType extends object> {
-  threadId?: string | null;
-  onThreadId?: (threadId: string) => void;
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
-  initialValues?: StateType;
-  /** State key holding the message array. Defaults to `"messages"`. */
-  messagesKey?: string;
-  /**
-   * Headless tools implementations. When the server emits an interrupt
-   * that matches one of these tools, the hook invokes its handler and
-   * auto-resumes the run with the handler's return value. Mirrors the
-   * legacy `useStream({ tools })` surface.
-   */
-  tools?: AnyHeadlessToolImplementation[];
-  /**
-   * Observe every tool lifecycle event for registered {@link tools}
-   * (`start` / `success` / `error`). Equivalent to the legacy
-   * `useStream({ onTool })` option.
-   */
-  onTool?: OnToolCallback;
-}
+export type CustomAdapterOptions<StateType extends object> =
+  StreamCustomAdapterOptions<StateType>;
 
-/**
- * LGP branch: caller points the hook at an assistant on a LangGraph
- * Platform-compatible server. The hook owns client / transport
- * construction. Discriminated against {@link CustomAdapterOptions}
- * by `transport` being absent or a string.
- */
-export interface AgentServerOptions<
-  StateType extends object,
-> extends UseStreamCommonOptions<StateType> {
-  assistantId: string;
-  client?: Client;
-  apiUrl?: string;
-  apiKey?: string;
-  callerOptions?: ClientConfig["callerOptions"];
-  defaultHeaders?: ClientConfig["defaultHeaders"];
-  /** Built-in wire transport. Defaults to `"sse"`. */
-  transport?: "sse" | "websocket";
-  /** Optional `fetch` override forwarded to the built-in SSE transport. */
-  fetch?: typeof fetch;
-  /** Optional `WebSocket` factory for the built-in WS transport. */
-  webSocketFactory?: (url: string) => WebSocket;
-}
-
-/**
- * Custom-adapter branch: caller brings their own
- * {@link AgentServerAdapter} (e.g. a thin Next.js route, a self-hosted
- * Python agent, a mock in tests). Discriminated against
- * {@link AgentServerOptions} by `transport` being an adapter instance.
- */
-export interface CustomAdapterOptions<
-  StateType extends object,
-> extends UseStreamCommonOptions<StateType> {
-  /**
-   * Custom {@link AgentServerAdapter} used for every command and
-   * subscription. Replaces the built-in `sse`/`websocket` factories
-   * entirely.
-   */
-  transport: AgentServerAdapter;
-  /**
-   * Optional assistant id passed through to the adapter. Defaults to
-   * `"_"` — custom adapters that don't multiplex over assistant id
-   * can ignore it.
-   */
-  assistantId?: string;
-  /** Must not be supplied; the adapter replaces the LGP client. */
-  client?: never;
-  apiUrl?: never;
-  apiKey?: never;
-  callerOptions?: never;
-  defaultHeaders?: never;
-  fetch?: never;
-  webSocketFactory?: never;
-}
-
-/**
- * Options accepted by {@link useStream}. Discriminated on
- * the shape of `transport`:
- *
- * - omitted or a string (`"sse"` / `"websocket"`) → LGP branch
- *   ({@link AgentServerOptions}); supply `assistantId` + `apiUrl`.
- * - an {@link AgentServerAdapter} instance → custom-adapter branch
- *   ({@link CustomAdapterOptions}); bring your own transport.
- */
 export type UseStreamOptions<
   StateType extends object = Record<string, unknown>,
-> = AgentServerOptions<StateType> | CustomAdapterOptions<StateType>;
+> = StreamUseStreamOptions<StateType>;
 
 /**
  * Private field on the hook return that carries the
@@ -348,7 +243,7 @@ export type AnyStream = UseStreamReturn<any, any, any>;
  * The first generic accepts either a plain state type
  * (`useStream<MyState>()`) *or* a compiled graph type
  * (`useStream<typeof agent>()`); in the latter case the
- * state shape is unwrapped from the graph via {@link StateOf}, so
+ * state shape is unwrapped from the graph via {@link InferStateType}, so
  * `stream.values` is always typed as the state, never as the graph
  * class itself.
  */
@@ -411,7 +306,9 @@ export function useStream<
   // Custom adapters may omit `assistantId`; the controller still
   // requires one so it has something to forward to `threads.stream`.
   // `"_"` is the well-known sentinel for "adapter doesn't care".
-  const assistantId = options.assistantId ?? "_";
+  const sentinel = "_";
+  const assistantId =
+    "assistantId" in options ? (options.assistantId ?? sentinel) : sentinel;
 
   // Recreate the controller only on assistantId / client / transport
   // change; the ThreadStream is bound to one assistant for its

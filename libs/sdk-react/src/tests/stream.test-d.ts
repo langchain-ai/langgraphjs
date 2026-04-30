@@ -140,7 +140,7 @@ describe("useStream — return type", () => {
 
   test("compiled graph type unwraps to its state shape", async () => {
     // A real compiled graph — `typeof agent` carries the `"~RunOutput"`
-    // brand inherited from `CompiledGraph`, which `StateOf<T>` mines
+    // brand inherited from `CompiledGraph`, which `InferStateType<T>` mines
     // to recover the state type.
     const { MessagesAnnotation, StateGraph } = await import(
       "@langchain/langgraph"

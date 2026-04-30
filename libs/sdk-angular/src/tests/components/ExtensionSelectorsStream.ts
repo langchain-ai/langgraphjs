@@ -35,6 +35,7 @@ export class ExtensionSelectorsStreamComponent {
   readonly stream = injectStream<StreamState>({
     assistantId: "customChannelAgent",
     apiUrl: serverUrl,
+    initialValues: { messages: [] },
   });
 
   readonly extension = injectExtension<{ label: string; params?: unknown }>(
@@ -61,6 +62,48 @@ export class ExtensionSelectorsStreamComponent {
   onSubmit(): void {
     void this.stream.submit({
       messages: [new HumanMessage("Trigger custom writer")],
+    });
+  }
+}
+
+@Component({
+  template: `
+    <div>
+      <div data-testid="loading">
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+      </div>
+      <div data-testid="extension-label">{{ extension()?.label ?? "" }}</div>
+      <div data-testid="extension-json">{{ extensionJson() }}</div>
+      <div data-testid="values-message-count">
+        {{ values().messages.length }}
+      </div>
+      <button data-testid="submit" (click)="onSubmit()">Send</button>
+    </div>
+  `,
+})
+export class NamedExtensionSelectorsStreamComponent {
+  readonly stream = injectStream<StreamState>({
+    assistantId: "namedCustomChannelAgent",
+    apiUrl: serverUrl,
+    initialValues: { messages: [] },
+  });
+
+  readonly extension = injectExtension<{ label: string; params?: unknown }>(
+    this.stream,
+    "status",
+  );
+
+  readonly values = injectValues(this.stream);
+
+  extensionJson(): string {
+    const extension = this.extension();
+    if (extension == null) return "";
+    return JSON.stringify(extension);
+  }
+
+  onSubmit(): void {
+    void this.stream.submit({
+      messages: [new HumanMessage("Trigger named custom writer")],
     });
   }
 }

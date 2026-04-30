@@ -89,15 +89,20 @@ export type {
 
 export type {
   AcquiredProjection,
+  AgentServerOptions,
+  CustomAdapterOptions,
   ProjectionRuntime,
   ProjectionSpec,
   RootEventBus,
   RootSnapshot,
+  StateOf,
   StreamControllerOptions,
   StreamSubmitOptions,
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,
   Target,
+  UseStreamCommonOptions,
+  UseStreamOptions,
 } from "./types.js";
 
 // `AgentServerAdapter` / `TransportAdapter` live in the client-side

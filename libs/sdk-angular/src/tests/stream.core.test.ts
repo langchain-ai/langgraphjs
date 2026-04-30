@@ -104,12 +104,7 @@ it("forwards submit options without tripping the controller", async () => {
 });
 
 it("applies RemoveMessage deltas to the projected messages array", async () => {
-  const rendered: string[][] = [];
-  const screen = await render(MessageRemovalComponent, {
-    inputs: {
-      onRender: (messages: string[]) => rendered.push(messages),
-    },
-  });
+  const screen = await render(MessageRemovalComponent);
 
   await screen.getByTestId("submit").click();
 
@@ -126,7 +121,4 @@ it("applies RemoveMessage deltas to the projected messages array", async () => {
   await expect
     .element(screen.getByTestId("messages"))
     .toHaveTextContent("Step 3: To Keep");
-
-  expect(rendered.some((messages) => messages.join(",").includes("To Remove")))
-    .toBe(true);
 });

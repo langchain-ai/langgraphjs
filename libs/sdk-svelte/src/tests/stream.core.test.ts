@@ -54,8 +54,8 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
 
   const screen = render(BasicStream, {
     apiUrl: serverUrl,
-    onThreadIdCallback: (id: string) => threadIds.push(id),
-    onCreatedCallback: (meta: { run_id: string; thread_id: string }) =>
+    onThreadId: (id: string) => threadIds.push(id),
+    onCreated: (meta: { run_id: string; thread_id: string }) =>
       created.push(meta),
   });
 

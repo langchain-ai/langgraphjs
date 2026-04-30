@@ -176,17 +176,21 @@ it("onRequest gets called when a request is made", async () => {
     .element(screen.getByTestId("message-1"))
     .toHaveTextContent("Hey");
 
-  expect(onRequestCallback.mock.calls).toMatchObject([
-    [expect.stringContaining("/threads"), { method: "POST" }],
-    [
-      expect.stringContaining("/runs/stream"),
-      {
-        method: "POST",
-        body: {
-          input: { messages: [{ content: "Hello", type: "human" }] },
-          assistant_id: "agent",
-        },
-      },
-    ],
-  ]);
+  expect(onRequestCallback.mock.calls).toEqual(
+    expect.arrayContaining([
+      [
+        expect.stringMatching(/\/threads\/[^/]+\/commands$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.objectContaining({
+            method: "run.input",
+            params: expect.objectContaining({
+              input: { messages: [{ content: "Hello", type: "human" }] },
+              assistant_id: "agent",
+            }),
+          }),
+        }),
+      ],
+    ]),
+  );
 });

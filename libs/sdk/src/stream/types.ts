@@ -8,7 +8,7 @@
  */
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Interrupt } from "../schema.js";
-import type { Client } from "../client/index.js";
+import type { Client, ClientConfig } from "../client/index.js";
 import type {
   ThreadStream,
   ThreadStreamOptions,
@@ -18,8 +18,115 @@ import type {
   AgentServerAdapter,
   TransportAdapter,
 } from "../client/stream/transport.js";
+import type {
+  AnyHeadlessToolImplementation,
+  OnToolCallback,
+} from "../headless-tools.js";
+import type { InferStateType } from "./types-inference.js";
 import type { Channel, Event } from "@langchain/protocol";
 import type { StreamStore } from "./store.js";
+
+/**
+ * Legacy alias shared by the framework bindings.
+ * Unwraps a compiled graph or agent brand into its state shape.
+ *
+ * @deprecated Prefer {@link InferStateType}.
+ */
+export type StateOf<T> =
+  InferStateType<T> extends Record<string, unknown>
+    ? InferStateType<T>
+    : Record<string, unknown>;
+
+/** Options common to both transport branches of framework `useStream` APIs. */
+export interface UseStreamCommonOptions<
+  StateType extends object,
+  ThreadIdType = string | null,
+> {
+  threadId?: ThreadIdType;
+  onThreadId?: (threadId: string) => void;
+  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+  initialValues?: StateType;
+  /** State key holding the message array. Defaults to `"messages"`. */
+  messagesKey?: string;
+  /** Headless tool implementations; auto-resumes matching interrupts. */
+  tools?: AnyHeadlessToolImplementation[];
+  /** Observe lifecycle events for registered {@link tools}. */
+  onTool?: OnToolCallback;
+}
+
+/**
+ * Agent-server branch: caller points `useStream` at an assistant on a
+ * LangGraph-Platform-compatible server. Discriminated against
+ * {@link CustomAdapterOptions} by `transport` being absent or a string.
+ */
+export interface AgentServerOptions<
+  StateType extends object,
+  ThreadIdType = string | null,
+  ApiUrlType = string | undefined,
+  ApiKeyType = string | undefined,
+> extends UseStreamCommonOptions<StateType, ThreadIdType> {
+  assistantId: string;
+  client?: Client;
+  apiUrl?: ApiUrlType;
+  apiKey?: ApiKeyType;
+  callerOptions?: ClientConfig["callerOptions"];
+  defaultHeaders?: ClientConfig["defaultHeaders"];
+  /** Built-in wire transport. Defaults to `"sse"`. */
+  transport?: "sse" | "websocket";
+  /** Optional `fetch` override forwarded to the built-in SSE transport. */
+  fetch?: typeof fetch;
+  /** Optional `WebSocket` factory for the built-in WS transport. */
+  webSocketFactory?: (url: string) => WebSocket;
+}
+
+/**
+ * Custom-adapter branch: caller brings their own
+ * {@link AgentServerAdapter}. Discriminated against
+ * {@link AgentServerOptions} by `transport` being an adapter instance.
+ */
+export interface CustomAdapterOptions<
+  StateType extends object,
+  ThreadIdType = string | null,
+  CustomAssistantIdType = never,
+> extends UseStreamCommonOptions<StateType, ThreadIdType> {
+  /**
+   * Custom {@link AgentServerAdapter} used for every command and
+   * subscription. Replaces the built-in `sse`/`websocket` factories
+   * entirely.
+   */
+  transport: AgentServerAdapter;
+  /**
+   * Optional assistant id passed through to the adapter. Defaults to
+   * `"_"`; adapters that don't multiplex on assistant id can ignore it.
+   */
+  assistantId?: CustomAssistantIdType;
+  client?: never;
+  apiUrl?: never;
+  apiKey?: never;
+  callerOptions?: never;
+  defaultHeaders?: never;
+  fetch?: never;
+  webSocketFactory?: never;
+}
+
+/**
+ * Options accepted by framework `useStream` APIs. Discriminated on the
+ * shape of `transport`:
+ *
+ * - omitted or a string (`"sse"` / `"websocket"`) -> agent-server branch
+ *   ({@link AgentServerOptions}); supply `assistantId` + `apiUrl`.
+ * - an {@link AgentServerAdapter} instance -> custom-adapter branch
+ *   ({@link CustomAdapterOptions}); bring your own transport.
+ */
+export type UseStreamOptions<
+  StateType extends object = Record<string, unknown>,
+  ThreadIdType = string | null,
+  ApiUrlType = string | undefined,
+  ApiKeyType = string | undefined,
+  CustomAssistantIdType = never,
+> =
+  | AgentServerOptions<StateType, ThreadIdType, ApiUrlType, ApiKeyType>
+  | CustomAdapterOptions<StateType, ThreadIdType, CustomAssistantIdType>;
 
 /**
  * Read-only fan-out of the {@link StreamController}'s always-on root

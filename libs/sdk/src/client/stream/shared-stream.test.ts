@@ -294,9 +294,45 @@ describe("ThreadStream (SSE shared stream)", () => {
       )
     );
     await flush();
+    await flush();
 
     expect(messages.isPaused).toBe(true);
     expect(tools.isPaused).toBe(true);
+
+    await thread.close();
+  });
+
+  it("delivers trailing custom events emitted immediately after terminal lifecycle", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "a" });
+
+    const custom = await thread.subscribe({ channels: ["custom"] });
+
+    await thread.run.input({ input: {} });
+
+    transport.pushEvent(
+      eventOf(
+        "lifecycle",
+        { event: "completed" } as never,
+        { namespace: [], seq: 1, eventId: "evt_done" }
+      )
+    );
+    transport.pushEvent(
+      eventOf(
+        "custom",
+        { name: "a2a", payload: { status: "finished" } } as never,
+        { namespace: [], seq: 2, eventId: "evt_a2a_done" }
+      )
+    );
+
+    expect(await nextValue(custom)).toMatchObject({
+      method: "custom",
+      params: { data: { name: "a2a", payload: { status: "finished" } } },
+    });
+
+    await flush();
+    await flush();
+    expect(custom.isPaused).toBe(true);
 
     await thread.close();
   });

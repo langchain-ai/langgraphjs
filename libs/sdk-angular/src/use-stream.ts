@@ -24,116 +24,44 @@ import {
 import {
   StreamController,
   type AgentServerAdapter,
+  type AgentServerOptions as StreamAgentServerOptions,
   type AssembledToolCall,
   type ChannelRegistry,
+  type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
   type RootSnapshot,
+  type StateOf as StreamStateOf,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
   type SubgraphByNodeMap,
   type SubgraphDiscoverySnapshot,
   type SubgraphMap,
+  type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
 
-/**
- * Legacy alias kept for parity with the other framework bindings.
- * Unwraps a compiled graph or agent brand into its state shape.
- * @deprecated Prefer {@link InferStateType}.
- */
-export type StateOf<T> =
-  InferStateType<T> extends Record<string, unknown>
-    ? InferStateType<T>
-    : Record<string, unknown>;
+/** @deprecated Prefer {@link InferStateType}. */
+export type StateOf<T> = StreamStateOf<T>;
 
-/** Options common to both transport branches of {@link useStream}. */
-interface UseStreamCommonOptions<StateType extends object> {
-  /**
-   * Thread id the controller binds to. Accepts a static string, a
-   * `Signal<string | null>`, or plain `null` for "start a new thread
-   * on first submit". Updating the signal re-hydrates against the new
-   * thread in place.
-   */
-  threadId?: string | null | Signal<string | null | undefined>;
-  onThreadId?: (threadId: string) => void;
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
-  initialValues?: StateType;
-  /** State key holding the message array. Defaults to `"messages"`. */
-  messagesKey?: string;
-  /** Headless tool implementations; auto-resumes matching interrupts. */
-  tools?: AnyHeadlessToolImplementation[];
-  /** Observe lifecycle events for registered {@link tools}. */
-  onTool?: OnToolCallback;
-}
+type AngularThreadId = string | null | Signal<string | null | undefined>;
 
-/**
- * Agent-server branch: caller points the controller at an assistant
- * on a LangGraph-Platform-compatible server. Discriminated against
- * {@link CustomAdapterOptions} by `transport` being absent or a
- * string.
- */
-export interface AgentServerOptions<
-  StateType extends object,
-> extends UseStreamCommonOptions<StateType> {
-  assistantId: string;
-  client?: Client;
-  apiUrl?: string;
-  apiKey?: string;
-  callerOptions?: ClientConfig["callerOptions"];
-  defaultHeaders?: ClientConfig["defaultHeaders"];
-  /** Built-in wire transport. Defaults to `"sse"`. */
-  transport?: "sse" | "websocket";
-  /** Optional `fetch` override forwarded to the built-in SSE transport. */
-  fetch?: typeof fetch;
-  /** Optional `WebSocket` factory for the built-in WS transport. */
-  webSocketFactory?: (url: string) => WebSocket;
-}
+export type AgentServerOptions<StateType extends object> =
+  StreamAgentServerOptions<StateType, AngularThreadId>;
 
-/**
- * Custom-adapter branch: caller brings their own
- * {@link AgentServerAdapter}. Discriminated against
- * {@link AgentServerOptions} by `transport` being an adapter
- * instance.
- */
-export interface CustomAdapterOptions<
-  StateType extends object,
-> extends UseStreamCommonOptions<StateType> {
-  /**
-   * Custom {@link AgentServerAdapter} used for every command and
-   * subscription. Replaces the built-in `sse`/`websocket` factories
-   * entirely.
-   */
-  transport: AgentServerAdapter;
-  /**
-   * Optional assistant id passed through to the adapter. Defaults to
-   * `"_"` — adapters that don't multiplex on assistant id can ignore
-   * it.
-   */
-  assistantId?: string;
-  client?: never;
-  apiUrl?: never;
-  apiKey?: never;
-  callerOptions?: never;
-  defaultHeaders?: never;
-  fetch?: never;
-  webSocketFactory?: never;
-}
+export type CustomAdapterOptions<StateType extends object> =
+  StreamCustomAdapterOptions<StateType, AngularThreadId, string>;
 
-/**
- * Options accepted by {@link useStream}. Discriminated on the shape
- * of `transport`:
- *
- *  - omitted or a string (`"sse"` / `"websocket"`) → agent-server
- *    branch ({@link AgentServerOptions}); supply `assistantId` +
- *    `apiUrl`.
- *  - an {@link AgentServerAdapter} instance → custom-adapter branch
- *    ({@link CustomAdapterOptions}); bring your own transport.
- */
 export type UseStreamOptions<
   StateType extends object = Record<string, unknown>,
-> = AgentServerOptions<StateType> | CustomAdapterOptions<StateType>;
+> = StreamUseStreamOptions<
+  StateType,
+  AngularThreadId,
+  string | undefined,
+  string | undefined,
+  string
+>;
 
 /**
  * Private field on the handle that carries the
@@ -304,7 +232,9 @@ export function useStream<
 
   // Custom adapters may omit `assistantId`; the controller still
   // requires one so it has something to forward to `threads.stream`.
-  const assistantId = options.assistantId ?? "_";
+  const sentinel = "_";
+  const assistantId =
+    "assistantId" in options ? (options.assistantId ?? sentinel) : sentinel;
 
   // Normalize threadId input to a signal — callers may pass plain
   // values, nulls, or their own signals.

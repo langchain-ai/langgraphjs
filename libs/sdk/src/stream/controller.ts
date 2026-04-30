@@ -975,7 +975,10 @@ export class StreamController<
           namespaces: [[] as string[]],
           depth: 1,
         });
-        if (this.#usesEventStreamTransport()) {
+        if (
+          this.#usesEventStreamTransport() ||
+          this.#options.transport === "websocket"
+        ) {
           /**
            * SSE streams can legitimately withhold response headers until
            * the first event is available. Waiting for `subscribe()` here
@@ -985,6 +988,12 @@ export class StreamController<
            * registered the local subscription and scheduled the stream
            * rotation by this point; waiting one microtask lets the fetch
            * get kicked off without requiring headers to arrive.
+           *
+           * The WebSocket command path has the same ordering issue with
+           * fast new-thread runs: the subscribe command has been sent on
+           * the socket, and the following run command is sent after it on
+           * the same ordered connection, so it is safe to unblock here
+           * without waiting for the subscribe response.
            */
           queueMicrotask(() => {
             resolveReady?.();

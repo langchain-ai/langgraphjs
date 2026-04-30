@@ -93,12 +93,17 @@ function createMediaProjection<
 
       const start = async () => {
         try {
-          handle = await thread.subscribe({
+          const subscription = await thread.subscribe({
             channels: ["messages"],
             namespaces: ns.length > 0 ? [ns] : [[]],
             depth: 1,
           });
-          for await (const event of handle) {
+          handle = subscription;
+          if (disposed) {
+            await subscription.unsubscribe();
+            return;
+          }
+          for await (const event of subscription) {
             if (disposed) break;
             if (event.method !== "messages") continue;
             assembler.consume(event as MessagesEvent);

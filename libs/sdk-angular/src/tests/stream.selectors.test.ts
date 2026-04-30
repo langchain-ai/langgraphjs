@@ -1,7 +1,10 @@
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-angular";
 
-import { ExtensionSelectorsStreamComponent } from "./components/ExtensionSelectorsStream.js";
+import {
+  ExtensionSelectorsStreamComponent,
+  NamedExtensionSelectorsStreamComponent,
+} from "./components/ExtensionSelectorsStream.js";
 import { SelectorsStreamComponent } from "./components/SelectorsStream.js";
 import {
   EmbeddedSubgraphDiscoveryStreamComponent,
@@ -97,7 +100,7 @@ it("captures anonymous writer events on the raw custom channel", async () => {
 });
 
 it("captures named custom events and exposes latest values", async () => {
-  const screen = await render(ExtensionSelectorsStreamComponent);
+  const screen = await render(NamedExtensionSelectorsStreamComponent);
 
   await screen.getByTestId("submit").click();
 
@@ -112,5 +115,5 @@ it("captures named custom events and exposes latest values", async () => {
     .toHaveTextContent('{"label":"answering"}');
   await expect
     .element(screen.getByTestId("values-message-count"))
-    .toHaveTextContent("2");
+    .toHaveTextContent("1");
 });

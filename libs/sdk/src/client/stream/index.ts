@@ -519,6 +519,7 @@ export class ThreadStream<
   #rotationState: "idle" | "scheduled" | "rotating" = "idle";
   /** Pending `subscribe()` promises waiting for a covering rotation. */
   readonly #pendingSubResolves: PendingSubResolve[] = [];
+  #terminalPauseTimer: ReturnType<typeof setTimeout> | undefined;
 
   #lifecycleSubId: string | null = null;
   #lifecycleStartPromise?: Promise<void>;
@@ -730,6 +731,10 @@ export class ThreadStream<
   #prepareForNextRun(): void {
     this.interrupted = false;
     this.interrupts.length = 0;
+    if (this.#terminalPauseTimer != null) {
+      clearTimeout(this.#terminalPauseTimer);
+      this.#terminalPauseTimer = undefined;
+    }
     for (const [id, subscription] of this.#subscriptions) {
       if (id !== this.#lifecycleSubId) {
         subscription.resume();
@@ -1393,6 +1398,10 @@ export class ThreadStream<
       return;
     }
     this.#closed = true;
+    if (this.#terminalPauseTimer != null) {
+      clearTimeout(this.#terminalPauseTimer);
+      this.#terminalPauseTimer = undefined;
+    }
     // Reject any `subscribe()` promises still waiting for a covering
     // rotation, and tear down the shared SSE stream. A rotation in
     // flight will observe `#closed` after its `await ready` and bail.
@@ -2007,14 +2016,23 @@ export class ThreadStream<
         });
         // A single shared stream delivers every subscription's events,
         // so a terminal event applies to all currently active
-        // non-lifecycle subscriptions. Only fire when we actually
-        // delivered the terminal event to at least one sub this tick
-        // — a pure dedup re-arrival must not re-pause subs.
-        for (const [id, subscription] of this.#subscriptions) {
-          if (id !== this.#lifecycleSubId) {
-            subscription.pause();
-          }
+        // non-lifecycle subscriptions. Defer the pause one macrotask:
+        // transformer `finalize()` hooks can emit trailing custom events
+        // immediately after root lifecycle completion, and pausing
+        // synchronously would buffer those same-run events until the
+        // next submit resumes subscriptions.
+        if (this.#terminalPauseTimer != null) {
+          clearTimeout(this.#terminalPauseTimer);
         }
+        this.#terminalPauseTimer = setTimeout(() => {
+          this.#terminalPauseTimer = undefined;
+          if (this.#closed) return;
+          for (const [id, subscription] of this.#subscriptions) {
+            if (id !== this.#lifecycleSubId) {
+              subscription.pause();
+            }
+          }
+        }, 0);
       }
       return;
     }

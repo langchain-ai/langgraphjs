@@ -13,10 +13,11 @@
     [key: string]: unknown;
   }
 
-  const { apiUrl, assistantId = "slowAgent" }: Props = $props();
+  const { apiUrl, assistantId = "slow_graph" }: Props = $props();
 
   let threadId = $state<string | null>(null);
 
+  // svelte-ignore state_referenced_locally
   const stream = useStream<StreamState>({
     assistantId,
     apiUrl,

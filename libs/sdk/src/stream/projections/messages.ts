@@ -141,7 +141,7 @@ export function messagesProjection(
 
       const start = async () => {
         try {
-          handle = await thread.subscribe({
+          const subscription = await thread.subscribe({
             // Subscribe to both `messages` (live token deltas that
             // drive the in-flight assistant bubble) and `values`
             // (periodic full-state snapshots that include
@@ -159,7 +159,12 @@ export function messagesProjection(
             // those subagents are rendered.
             depth: 1,
           });
-          for await (const event of handle) {
+          handle = subscription;
+          if (disposed) {
+            await subscription.unsubscribe();
+            return;
+          }
+          for await (const event of subscription) {
             if (disposed) break;
             if (event.method === "messages") {
               applyEvent(event as MessagesEvent);

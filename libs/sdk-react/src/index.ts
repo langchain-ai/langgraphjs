@@ -11,7 +11,6 @@ export {
   useStream,
   STREAM_CONTROLLER,
   type AnyStream,
-  type StateOf,
   type UseStreamResult,
   type UseStreamReturn,
   type UseStreamOptions,
