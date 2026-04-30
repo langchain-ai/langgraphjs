@@ -43,6 +43,49 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       : {};
   }
 
+  /**
+   * Asserts that a value sourced from {@link RunnableConfig.configurable} (or
+   * any other caller-influenced position) is safe to embed directly in a
+   * MongoDB query: it must be a primitive string and not, for instance, an
+   * object such as `{ $ne: null }` that the driver would interpret as a
+   * query operator.
+   *
+   * Without this guard a caller that can shape `thread_id`, `checkpoint_ns`,
+   * `checkpoint_id`, or `taskId` (multi-tenant SDK deployments where the
+   * config originates from request input, webhook bodies that flow into a
+   * persisted thread, etc.) can promote a string field into an operator
+   * expression and cause MongoDB to return or overwrite checkpoints
+   * belonging to other tenants. CWE-943: Improper Neutralization of Special
+   * Elements in Data Query Logic (NoSQL Injection).
+   *
+   * Mirrors the existing primitive-only enforcement applied to `filter`
+   * values in {@link list} (added to defend the `metadata.*` query keys),
+   * and extends it to the top-level identifier keys those callers also
+   * control.
+   *
+   * @param field Name of the configurable field, used in the error message.
+   * @param value Value to validate. `undefined` is accepted so this guard
+   *              composes with the existing required-field checks each
+   *              method already performs.
+   */
+  private static assertSafeIdentifier(
+    field: string,
+    value: unknown
+  ): asserts value is string | undefined {
+    if (value === undefined) return;
+    if (typeof value !== "string") {
+      const observed =
+        value === null
+          ? "null"
+          : Array.isArray(value)
+          ? "array"
+          : typeof value;
+      throw new Error(
+        `Invalid configurable value for key "${field}": expected a string identifier (got ${observed}). This guard protects the MongoDB query from NoSQL operator injection.`
+      );
+    }
+  }
+
   constructor(
     {
       client,
@@ -78,6 +121,9 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns = "",
       checkpoint_id,
     } = config.configurable ?? {};
+    MongoDBSaver.assertSafeIdentifier("thread_id", thread_id);
+    MongoDBSaver.assertSafeIdentifier("checkpoint_ns", checkpoint_ns);
+    MongoDBSaver.assertSafeIdentifier("checkpoint_id", checkpoint_id);
     let query;
     if (checkpoint_id) {
       query = {
@@ -156,15 +202,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     const { limit, before, filter } = options ?? {};
     const query: Record<string, unknown> = {};
 
-    if (config?.configurable?.thread_id) {
-      query.thread_id = config.configurable.thread_id;
+    const threadId = config?.configurable?.thread_id;
+    if (threadId !== undefined && threadId !== null && threadId !== "") {
+      MongoDBSaver.assertSafeIdentifier("thread_id", threadId);
+      query.thread_id = threadId;
     }
 
-    if (
-      config?.configurable?.checkpoint_ns !== undefined &&
-      config?.configurable?.checkpoint_ns !== null
-    ) {
-      query.checkpoint_ns = config.configurable.checkpoint_ns;
+    const checkpointNs = config?.configurable?.checkpoint_ns;
+    if (checkpointNs !== undefined && checkpointNs !== null) {
+      MongoDBSaver.assertSafeIdentifier("checkpoint_ns", checkpointNs);
+      query.checkpoint_ns = checkpointNs;
     }
 
     if (filter) {
@@ -180,7 +227,12 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
 
     if (before) {
-      query.checkpoint_id = { $lt: before.configurable?.checkpoint_id };
+      const beforeCheckpointId = before.configurable?.checkpoint_id;
+      MongoDBSaver.assertSafeIdentifier(
+        "checkpoint_id",
+        beforeCheckpointId
+      );
+      query.checkpoint_id = { $lt: beforeCheckpointId };
     }
 
     let result = this.db
@@ -242,6 +294,13 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with a "thread_id" field.`
       );
     }
+    MongoDBSaver.assertSafeIdentifier("thread_id", thread_id);
+    MongoDBSaver.assertSafeIdentifier("checkpoint_ns", checkpoint_ns);
+    MongoDBSaver.assertSafeIdentifier("checkpoint_id", checkpoint_id);
+    MongoDBSaver.assertSafeIdentifier(
+      "parent_checkpoint_id",
+      config.configurable?.checkpoint_id
+    );
     const [
       [checkpointType, serializedCheckpoint],
       [metadataType, serializedMetadata],
@@ -301,6 +360,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with "thread_id", "checkpoint_ns" and "checkpoint_id" fields.`
       );
     }
+    MongoDBSaver.assertSafeIdentifier("thread_id", thread_id);
+    MongoDBSaver.assertSafeIdentifier("checkpoint_ns", checkpoint_ns);
+    MongoDBSaver.assertSafeIdentifier("checkpoint_id", checkpoint_id);
+    MongoDBSaver.assertSafeIdentifier("task_id", taskId);
 
     const operations = await Promise.all(
       writes.map(async ([channel, value], idx) => {
@@ -333,6 +396,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string) {
+    MongoDBSaver.assertSafeIdentifier("thread_id", threadId);
+
     await this.db
       .collection(this.checkpointCollectionName)
       .deleteMany({ thread_id: threadId });
