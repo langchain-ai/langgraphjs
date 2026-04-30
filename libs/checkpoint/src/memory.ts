@@ -364,7 +364,9 @@ export class MemorySaver extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _taskPath?: string
   ): Promise<void> {
     const threadId = config.configurable?.thread_id;
     const checkpointNamespace = config.configurable?.checkpoint_ns;
