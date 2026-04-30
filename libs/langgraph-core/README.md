@@ -61,6 +61,46 @@ const result = await agent.invoke({
 });
 ```
 
+### Using with MiniMax
+
+LangGraph also supports [MiniMax](https://www.minimax.io) models via the OpenAI-compatible API. Use the `ChatMiniMax` wrapper from `@langchain/langgraph-supervisor` for automatic temperature clamping and think-tag stripping:
+
+```ts
+// npm install @langchain/langgraph-supervisor @langchain/openai
+import { createReactAgent, tool } from "langchain";
+import { ChatMiniMax } from "@langchain/langgraph-supervisor";
+import { z } from "zod";
+
+const search = tool(
+  async ({ query }) => {
+    return "It's 30 degrees and sunny.";
+  },
+  {
+    name: "search",
+    description: "Call to search the web.",
+    schema: z.object({
+      query: z.string().describe("The query to search for."),
+    }),
+  }
+);
+
+const model = new ChatMiniMax({
+  model: "MiniMax-M2.7", // or "MiniMax-M2.7-highspeed"
+  apiKey: process.env.MINIMAX_API_KEY,
+});
+
+const agent = createReactAgent({
+  llm: model,
+  tools: [search],
+});
+
+const result = await agent.invoke({
+  messages: [{ role: "user", content: "what is the weather in beijing" }],
+});
+```
+
+See the [MiniMax agent example](./examples/minimax-agent/) for more patterns including multi-agent supervisor.
+
 ## Full-stack Quickstart
 
 Get started quickly by building a full-stack LangGraph application using the [`create-agent-chat-app`](https://www.npmjs.com/package/create-agent-chat-app) CLI:

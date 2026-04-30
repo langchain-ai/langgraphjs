@@ -1,0 +1,14 @@
+{
+  "name": "@examples/minimax-agent",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@langchain/core": "^1.0.1",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/langgraph-supervisor": "workspace:*",
+    "@langchain/openai": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.3",
+    "zod": "^3.23.8"
+  }
+}
