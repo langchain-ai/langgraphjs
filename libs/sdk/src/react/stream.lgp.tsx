@@ -13,12 +13,11 @@ import {
 } from "react";
 import {
   filterStream,
-  findLast,
   onFinishRequiresThreadState,
   unique,
 } from "../ui/utils.js";
 import { StreamError } from "../ui/errors.js";
-import { getBranchContext } from "../ui/branching.js";
+import { getBranchContext, getMessagesMetadataMap } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
   AnyStreamOptions,
@@ -72,8 +71,56 @@ function fetchHistory<StateType extends Record<string, unknown>>(
     });
   }
 
-  const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads.getHistory<StateType>(threadId, { limit });
+  const explicitLimit =
+    typeof options?.limit === "number" ? options.limit : undefined;
+  const initialLimit = explicitLimit ?? 10;
+
+  const getOrphanedParentCount = (history: ThreadState<StateType>[]) => {
+    const nodeIds = new Set<string>();
+    const parentIds = new Set<string>();
+
+    for (const state of history) {
+      const checkpointId = state.checkpoint?.checkpoint_id;
+      if (checkpointId != null) nodeIds.add(checkpointId);
+
+      const parentId = state.parent_checkpoint?.checkpoint_id;
+      if (parentId != null) parentIds.add(parentId);
+    }
+
+    let orphanCount = 0;
+    for (const parentId of parentIds) {
+      if (!nodeIds.has(parentId)) orphanCount += 1;
+    }
+
+    return orphanCount;
+  };
+
+  const fetchWithExpansion = async () => {
+    let limit = initialLimit;
+    let history = await client.threads.getHistory<StateType>(threadId, {
+      limit,
+    });
+
+    // Explicit limits are user-owned tradeoffs; preserve them exactly.
+    if (explicitLimit != null) return history;
+
+    // Multiple orphan parents means the limited window clipped at least one
+    // branch root, which can undercount branch options. Expand until the
+    // branching view has a single orphan root (or we have all available history).
+    while (history.length === limit && getOrphanedParentCount(history) > 1) {
+      const nextLimit = limit * 2;
+      const nextHistory = await client.threads.getHistory<StateType>(threadId, {
+        limit: nextLimit,
+      });
+      if (nextHistory.length <= history.length) break;
+      history = nextHistory;
+      limit = nextLimit;
+    }
+
+    return history;
+  };
+
+  return fetchWithExpansion();
 }
 
 function useThreadHistory<StateType extends Record<string, unknown>>(
@@ -425,46 +472,12 @@ export function useStreamLGP<
     return error;
   })();
 
-  const messageMetadata = (() => {
-    const alreadyShown = new Set<string>();
-    return getMessages(historyValues).map(
-      (message, idx): Omit<MessageMetadata<StateType>, "streamMetadata"> => {
-        const messageId = message.id ?? idx;
-
-        // Find the first checkpoint where the message was seen
-        const firstSeenState = findLast(
-          history.data ?? [],
-          (state) =>
-            state.values != null &&
-            getMessages(state.values)
-              .map((m, idx) => m.id ?? idx)
-              .includes(messageId)
-        );
-
-        const checkpointId = firstSeenState?.checkpoint?.checkpoint_id;
-        let branch =
-          checkpointId != null
-            ? branchContext.branchByCheckpoint[checkpointId]
-            : undefined;
-        if (!branch?.branch?.length) branch = undefined;
-
-        // serialize branches
-        const optionsShown = branch?.branchOptions?.flat(2).join(",");
-        if (optionsShown) {
-          if (alreadyShown.has(optionsShown)) branch = undefined;
-          alreadyShown.add(optionsShown);
-        }
-
-        return {
-          messageId: messageId.toString(),
-          firstSeenState,
-
-          branch: branch?.branch,
-          branchOptions: branch?.branchOptions,
-        };
-      }
-    );
-  })();
+  const messageMetadata = getMessagesMetadataMap({
+    initialValues: options.initialValues,
+    history: history.data,
+    getMessages,
+    branchContext,
+  });
 
   const stop = () =>
     stream.stop(historyValues, {
@@ -910,8 +923,9 @@ export function useStreamLGP<
       trackStreamMode("values");
 
       const streamMetadata = messageManager.get(message.id)?.metadata;
+      const historyMessageId = message.id ?? index?.toString();
       const historyMetadata = messageMetadata?.find(
-        (m) => m.messageId === (message.id ?? index)
+        (m) => m.messageId === historyMessageId
       );
 
       if (streamMetadata != null || historyMetadata != null) {

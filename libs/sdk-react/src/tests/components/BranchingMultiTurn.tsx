@@ -5,7 +5,10 @@ interface Props {
   assistantId?: string;
 }
 
-export function Branching({ apiUrl, assistantId = "agent" }: Props) {
+export function BranchingMultiTurn({
+  apiUrl,
+  assistantId = "agent",
+}: Props) {
   const { submit, messages, getMessagesMetadata, setBranch } = useStream({
     assistantId,
     apiUrl,
@@ -33,6 +36,9 @@ export function Branching({ apiUrl, assistantId = "agent" }: Props) {
           return (
             <div key={msg.id ?? i} data-testid={`message-${i}`}>
               <div data-testid={`content-${i}`}>{text}</div>
+              <div data-testid={`fork-parent-${i}`}>
+                {metadata?.forkParentCheckpoint?.checkpoint_id ?? ""}
+              </div>
 
               {branchOptions && branch && (
                 <div data-testid={`branch-nav-${i}`}>
@@ -89,14 +95,24 @@ export function Branching({ apiUrl, assistantId = "agent" }: Props) {
         })}
       </div>
       <button
-        data-testid="submit"
+        data-testid="submit-root"
         onClick={() =>
           void submit({
             messages: [{ content: "Hello", type: "human" }],
           })
         }
       >
-        Send
+        Send Root
+      </button>
+      <button
+        data-testid="submit-follow-up"
+        onClick={() =>
+          void submit({
+            messages: [{ content: "Follow up", type: "human" }],
+          })
+        }
+      >
+        Send Follow Up
       </button>
     </div>
   );

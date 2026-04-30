@@ -34,6 +34,9 @@
 
       <div data-testid={`message-${i}`}>
         <div data-testid={`content-${i}`}>{text}</div>
+        <div data-testid={`fork-parent-${i}`}>
+          {metadata?.forkParentCheckpoint?.checkpoint_id ?? ""}
+        </div>
 
         {#if branchOptions && currentBranch}
           <div data-testid={`branch-nav-${i}`}>
@@ -67,9 +70,7 @@
             onclick={() =>
               void stream.submit(
                 {
-                  messages: [
-                    { type: "human", content: `Fork: ${text}` },
-                  ],
+                  messages: [{ type: "human", content: `Fork: ${text}` }],
                 } as any,
                 { checkpoint },
               )}
@@ -90,12 +91,21 @@
     {/each}
   </div>
   <button
-    data-testid="submit"
+    data-testid="submit-root"
     onclick={() =>
       void stream.submit({
         messages: [{ content: "Hello", type: "human" }],
       } as any)}
   >
-    Send
+    Send Root
+  </button>
+  <button
+    data-testid="submit-follow-up"
+    onclick={() =>
+      void stream.submit({
+        messages: [{ content: "Follow up", type: "human" }],
+      } as any)}
+  >
+    Send Follow Up
   </button>
 </div>

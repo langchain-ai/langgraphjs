@@ -24,6 +24,7 @@ import { MessageRemovalComponent } from "./components/MessageRemoval.js";
 import { MultiSubmitComponent } from "./components/MultiSubmit.js";
 import { NewThreadIdComponent } from "./components/NewThreadId.js";
 import { BranchingComponent } from "./components/Branching.js";
+import { BranchingMultiTurnComponent } from "./components/BranchingMultiTurn.js";
 import {
   OnRequestComponent,
   onRequestCalls,
@@ -599,6 +600,117 @@ it("branching", async () => {
   await expect
     .element(screen.getByTestId("branch-info-1"))
     .toHaveTextContent("1 / 2");
+});
+
+it("branching: repeated forks stay in a single branch set", async () => {
+  const screen = await render(BranchingComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("3 / 3");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 3");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 3");
+});
+
+it("branching: later-turn edits on a branched conversation preserve prior context", async () => {
+  const screen = await render(BranchingMultiTurnComponent);
+
+  await screen.getByTestId("submit-root").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("submit-follow-up").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("content-2"))
+    .toHaveTextContent("Follow up");
+  await expect
+    .element(screen.getByTestId("content-3"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .poll(() => {
+      const turn1ForkParent =
+        screen.getByTestId("fork-parent-0").element().textContent?.trim() ?? "";
+      const turn2ForkParent =
+        screen.getByTestId("fork-parent-2").element().textContent?.trim() ?? "";
+
+      return (
+        turn1ForkParent.length > 0 &&
+        turn2ForkParent.length > 0 &&
+        turn1ForkParent !== turn2ForkParent
+      );
+    })
+    .toBe(true);
+
+  await screen.getByTestId("fork-2").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("content-2"))
+    .toHaveTextContent("Fork: Follow up");
+  await expect
+    .element(screen.getByTestId("content-3"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-2"))
+    .toHaveTextContent("2 / 2");
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {

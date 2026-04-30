@@ -1032,7 +1032,7 @@ it("accepts newThreadId option without errors", async () => {
     });
 });
 
-it("branching", async () => {
+function renderBranching() {
   const TestComponent = defineComponent({
     setup() {
       const { submit, messages, getMessagesMetadata, setBranch } = useStream({
@@ -1047,7 +1047,9 @@ it("branching", async () => {
             {messages.value.map((msg, i: number) => {
               const metadata = getMessagesMetadata(msg, i);
               const checkpoint =
-                metadata?.firstSeenState?.parent_checkpoint ?? undefined;
+                metadata?.forkParentCheckpoint ??
+                metadata?.firstSeenState?.parent_checkpoint ??
+                undefined;
               const text =
                 typeof msg.content === "string"
                   ? msg.content
@@ -1134,7 +1136,131 @@ it("branching", async () => {
     },
   });
 
-  const screen = render(TestComponent);
+  return render(TestComponent);
+}
+
+function renderBranchingMultiTurn() {
+  const TestComponent = defineComponent({
+    setup() {
+      const { submit, messages, getMessagesMetadata, setBranch } = useStream({
+        assistantId: "agent",
+        apiUrl: serverUrl,
+        fetchStateHistory: true,
+      });
+
+      return () => (
+        <div>
+          <div data-testid="messages">
+            {messages.value.map((msg, i: number) => {
+              const metadata = getMessagesMetadata(msg, i);
+              const checkpoint =
+                metadata?.forkParentCheckpoint ??
+                metadata?.firstSeenState?.parent_checkpoint ??
+                undefined;
+              const text =
+                typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content);
+              const branchOptions = metadata?.branchOptions;
+              const branch = metadata?.branch;
+              const branchIndex =
+                branchOptions && branch ? branchOptions.indexOf(branch) : -1;
+
+              return (
+                <div key={msg.id ?? i} data-testid={`message-${i}`}>
+                  <div data-testid={`content-${i}`}>{text}</div>
+                  <div data-testid={`fork-parent-${i}`}>
+                    {metadata?.forkParentCheckpoint?.checkpoint_id ?? ""}
+                  </div>
+
+                  {branchOptions && branch && (
+                    <div data-testid={`branch-nav-${i}`}>
+                      <button
+                        data-testid={`prev-${i}`}
+                        onClick={() => {
+                          const prevBranch = branchOptions[branchIndex - 1];
+                          if (prevBranch) setBranch(prevBranch);
+                        }}
+                      >
+                        Previous
+                      </button>
+                      <span data-testid={`branch-info-${i}`}>
+                        {branchIndex + 1} / {branchOptions.length}
+                      </span>
+                      <button
+                        data-testid={`next-${i}`}
+                        onClick={() => {
+                          const nextBranch = branchOptions[branchIndex + 1];
+                          if (nextBranch) setBranch(nextBranch);
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+
+                  {msg.type === "human" && (
+                    <button
+                      data-testid={`fork-${i}`}
+                      onClick={() =>
+                        void submit(
+                          {
+                            messages: [
+                              { type: "human", content: `Fork: ${text}` },
+                            ],
+                          } as any,
+                          { checkpoint },
+                        )
+                      }
+                    >
+                      Fork
+                    </button>
+                  )}
+
+                  {msg.type === "ai" && (
+                    <button
+                      data-testid={`regenerate-${i}`}
+                      onClick={() =>
+                        void submit(undefined as any, { checkpoint })
+                      }
+                    >
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            data-testid="submit-root"
+            onClick={() =>
+              void submit({
+                messages: [{ content: "Hello", type: "human" }],
+              } as any)
+            }
+          >
+            Send Root
+          </button>
+          <button
+            data-testid="submit-follow-up"
+            onClick={() =>
+              void submit({
+                messages: [{ content: "Follow up", type: "human" }],
+              } as any)
+            }
+          >
+            Send Follow Up
+          </button>
+        </div>
+      );
+    },
+  });
+
+  return render(TestComponent);
+}
+
+it("branching", async () => {
+  const screen = renderBranching();
 
   await screen.getByTestId("submit").click();
 
@@ -1204,6 +1330,117 @@ it("branching", async () => {
   await expect
     .element(screen.getByTestId("branch-info-1"))
     .toHaveTextContent("1 / 2");
+});
+
+it("branching: repeated forks stay in a single branch set", async () => {
+  const screen = renderBranching();
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("3 / 3");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 3");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 3");
+});
+
+it("branching: later-turn edits on a branched conversation preserve prior context", async () => {
+  const screen = renderBranchingMultiTurn();
+
+  await screen.getByTestId("submit-root").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("submit-follow-up").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("content-2"))
+    .toHaveTextContent("Follow up");
+  await expect
+    .element(screen.getByTestId("content-3"))
+    .toHaveTextContent("Hey");
+
+  await expect
+    .poll(() => {
+      const turn1ForkParent =
+        screen.getByTestId("fork-parent-0").element().textContent?.trim() ?? "";
+      const turn2ForkParent =
+        screen.getByTestId("fork-parent-2").element().textContent?.trim() ?? "";
+
+      return (
+        turn1ForkParent.length > 0 &&
+        turn2ForkParent.length > 0 &&
+        turn1ForkParent !== turn2ForkParent
+      );
+    })
+    .toBe(true);
+
+  await screen.getByTestId("fork-2").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("content-2"))
+    .toHaveTextContent("Fork: Follow up");
+  await expect
+    .element(screen.getByTestId("content-3"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-2"))
+    .toHaveTextContent("2 / 2");
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {

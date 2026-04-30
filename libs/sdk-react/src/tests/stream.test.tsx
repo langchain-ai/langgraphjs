@@ -14,6 +14,7 @@ import { MessageRemoval } from "./components/MessageRemoval.js";
 import { MultiSubmit } from "./components/MultiSubmit.js";
 import { NewThreadId } from "./components/NewThreadId.js";
 import { Branching } from "./components/Branching.js";
+import { BranchingMultiTurn } from "./components/BranchingMultiTurn.js";
 import { OnRequest } from "./components/OnRequest.js";
 import { SwitchThread } from "./components/SwitchThread.js";
 import { CustomStreamMethods } from "./components/CustomStreamMethods.js";
@@ -580,6 +581,198 @@ it("branching", async () => {
   await expect
     .element(screen.getByTestId("branch-info-1"))
     .toHaveTextContent("1 / 2");
+});
+
+/**
+ * Issue #2295: Repeated fork (3+ edits) should show correct branch count.
+ *
+ * Steps:
+ * 1. Submit "Hello" → get "Hey"
+ * 2. Fork "Hello" → "Fork: Hello" + "Hey" (human shows 2/2)
+ * 3. Fork "Fork: Hello" → "Fork: Fork: Hello" + "Hey" (human shows 3/3)
+ * 4. Navigate backwards through all 3 branches to verify accessibility
+ */
+it("branching: 3+ repeated forks (issue #2295)", async () => {
+  const screen = await render(<Branching apiUrl={serverUrl} />);
+
+  // Step 1: Initial submit
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  // Step 2: First fork
+  await screen.getByTestId("fork-0").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 2");
+
+  // Step 3: Second fork — this is where issue #2295 manifested (was "2/2", now "3/3")
+  await screen.getByTestId("fork-0").click();
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("3 / 3");
+
+  // Step 4: Navigate backwards through all 3 branches
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 3");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("1 / 3");
+});
+
+it("branching: repeated forks beyond the default history window keep the full branch count", async () => {
+  const screen = await render(<Branching apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("2 / 2");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("3 / 3");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("4 / 4");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("5 / 5");
+
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("5 / 5");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("4 / 5");
+
+  await screen.getByTestId("prev-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Fork: Hello");
+  await expect
+    .element(screen.getByTestId("branch-info-0"))
+    .toHaveTextContent("3 / 5");
+});
+
+it("branching: later-turn edits on a branched conversation preserve prior context", async () => {
+  const screen = await render(<BranchingMultiTurn apiUrl={serverUrl} />);
+
+  await screen.getByTestId("submit-root").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("fork-0").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+
+  await screen.getByTestId("submit-follow-up").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("content-2"))
+    .toHaveTextContent("Follow up");
+  await expect
+    .element(screen.getByTestId("content-3"))
+    .toHaveTextContent("Hey");
+  await expect
+    .poll(() => {
+      const turn1ForkParent =
+        screen.getByTestId("fork-parent-0").element().textContent?.trim() ?? "";
+      const turn2ForkParent =
+        screen.getByTestId("fork-parent-2").element().textContent?.trim() ?? "";
+
+      return (
+        turn1ForkParent.length > 0 &&
+        turn2ForkParent.length > 0 &&
+        turn1ForkParent !== turn2ForkParent
+      );
+    })
+    .toBe(true);
+
+  await screen.getByTestId("fork-2").click();
+  await expect
+    .element(screen.getByTestId("content-0"))
+    .toHaveTextContent("Fork: Hello");
+  await expect
+    .element(screen.getByTestId("content-1"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("content-2"))
+    .toHaveTextContent("Fork: Follow up");
+  await expect
+    .element(screen.getByTestId("content-3"))
+    .toHaveTextContent("Hey");
+  await expect
+    .element(screen.getByTestId("branch-info-2"))
+    .toHaveTextContent("2 / 2");
 });
 
 it("fetchStateHistory: { limit: 2 }", async () => {
