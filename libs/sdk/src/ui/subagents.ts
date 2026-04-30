@@ -867,6 +867,21 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     this.onSubagentChange?.();
   }
 
+  // Drop per-subagent chunk accumulators and any un-flushed buffered
+  // messages, while keeping the subagent registry (keyed by tool_call_id)
+  // and the namespace-to-tool-call mapping intact. Those are idempotent
+  // on re-registration, the chunk state is not — see #2028 and the
+  // companion fix in StreamManager.resetChunkAccumulator().
+  resetChunkAccumulator(): void {
+    this.messageManagers.clear();
+    this.pendingMessages.clear();
+    for (const [toolCallId, existing] of this.subagents) {
+      if (existing.messages.length > 0) {
+        this.subagents.set(toolCallId, { ...existing, messages: [] });
+      }
+    }
+  }
+
   /**
    * Process a tool message to complete a subagent.
    *

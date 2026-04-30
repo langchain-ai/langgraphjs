@@ -846,6 +846,22 @@ export class StreamOrchestrator<
     if (!tid) return;
     this.#threadIdStreaming = tid;
 
+    // A full replay (lastEventId === "-1") re-sends every chunk the server
+    // has produced so far. The MessageTupleManager still holds the chunks
+    // from the pre-disconnect stream, and MessageTupleManager.add() would
+    // concat the replay onto them, doubling the message content
+    // (issue #2028). Drop the chunk accumulator — not state.values — and
+    // seed each visible message's index so the replay overwrites at the
+    // original position instead of appending a duplicate.
+    //
+    // TODO: track last-seen event id inside StreamManager.enqueue and
+    // thread it through here so the server resumes at the correct cursor
+    // instead of replaying from zero — same pattern streamWithRetry uses
+    // at libs/sdk/src/utils/stream.ts around lastEventId tracking.
+    if (lastEventId === "-1") {
+      this.stream.resetChunkAccumulator(this.#getMessages(this.values));
+    }
+
     const callbackMeta: RunCallbackMeta = {
       thread_id: tid,
       run_id: runId,

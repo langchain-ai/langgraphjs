@@ -1184,4 +1184,29 @@ export class StreamManager<
     // Clear subagent state
     this.subagentManager.clear();
   };
+
+  // Drop the MessageTupleManager's per-run chunk accumulator (plus the
+  // per-subagent chunk accumulators) without touching state.values, the
+  // abort controller, or the subagent registry.
+  //
+  // Called by joinStream when a reconnect is about to replay events from
+  // the beginning (lastEventId === "-1"): otherwise the replayed chunks
+  // concatenate onto the chunk still held from the pre-disconnect stream
+  // and the assistant message doubles. See
+  // https://github.com/langchain-ai/langgraphjs/issues/2028.
+  //
+  // If `existingMessages` is supplied, each id in the list is seeded with
+  // its current index but no chunk, so the replay overwrites the message
+  // at its original position instead of appending a duplicate.
+  resetChunkAccumulator = (existingMessages?: Message[]) => {
+    this.messages.clear();
+    this.subagentManager.resetChunkAccumulator();
+    if (!existingMessages) return;
+    for (let i = 0; i < existingMessages.length; i += 1) {
+      const id = existingMessages[i]?.id;
+      if (typeof id === "string" && id.length > 0) {
+        this.messages.chunks[id] = { index: i };
+      }
+    }
+  };
 }

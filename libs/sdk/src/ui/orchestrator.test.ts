@@ -943,4 +943,162 @@ describe("StreamOrchestrator", () => {
       orch.dispose();
     });
   });
+
+  // Regression coverage for https://github.com/langchain-ai/langgraphjs/issues/2028
+  describe("joinStream replay (issue #2028)", () => {
+    // Emits an AIMessageChunk "messages" event for a streamed assistant reply.
+    // Two chunks with the same id concatenate to form the final content, which
+    // is how real servers deliver token-by-token output.
+    const streamedChunks = () => [
+      {
+        event: "messages" as const,
+        data: [
+          { type: "ai", id: "m1", content: "Hel" },
+          {},
+        ] as unknown as [unknown, Record<string, unknown>],
+      },
+      {
+        event: "messages" as const,
+        data: [
+          { type: "ai", id: "m1", content: "lo" },
+          {},
+        ] as unknown as [unknown, Record<string, unknown>],
+      },
+    ];
+
+    it("does not double message content when the server replays from the beginning", async () => {
+      // Initial run: server delivers "Hel" + "lo" → content = "Hello".
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          opts: { onRunCreated?: (p: { run_id: string }) => void }
+        ) => {
+          opts.onRunCreated?.({ run_id: "run-1" });
+          const events = streamedChunks();
+          return (async function* () {
+            for (const ev of events) yield ev;
+          })();
+        }
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(orch.values.messages).toHaveLength(1);
+      expect(orch.values.messages[0].id).toBe("m1");
+      expect(orch.values.messages[0].content).toBe("Hello");
+
+      // Reconnect: the server has no Location header, so lastEventId defaults
+      // to "-1" and the replay delivers the same two chunks. Before the fix,
+      // MessageTupleManager kept the already-concatenated "Hello" chunk and
+      // appended "Hel" + "lo" onto it, producing "HelHellolo" / "HelloHello".
+      (client.runs.joinStream as ReturnType<typeof vi.fn>).mockImplementation(
+        () => {
+          const events = streamedChunks();
+          return (async function* () {
+            for (const ev of events) yield ev;
+          })();
+        }
+      );
+
+      await orch.joinStream("run-1");
+
+      expect(orch.values.messages).toHaveLength(1);
+      expect(orch.values.messages[0].id).toBe("m1");
+      expect(orch.values.messages[0].content).toBe("Hello");
+
+      orch.dispose();
+    });
+
+    it("does not double tool_call args when the server replays a streamed tool call", async () => {
+      // Tool-call streaming is the practical impact of the same bug: without
+      // a reset, the replay concatenates the args JSON and AIMessageChunk
+      // reducer has to recover from "{}\"path\":\"/\"}{\"path\":\"/\"}".
+      const toolChunks = () => [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              type: "ai",
+              id: "m2",
+              content: "",
+              tool_call_chunks: [
+                { id: "call-1", index: 0, name: "ls", args: '{"pa' },
+              ],
+            },
+            {},
+          ] as unknown as [unknown, Record<string, unknown>],
+        },
+        {
+          event: "messages" as const,
+          data: [
+            {
+              type: "ai",
+              id: "m2",
+              content: "",
+              tool_call_chunks: [{ index: 0, args: 'th":"/"}' }],
+            },
+            {},
+          ] as unknown as [unknown, Record<string, unknown>],
+        },
+      ];
+
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          opts: { onRunCreated?: (p: { run_id: string }) => void }
+        ) => {
+          opts.onRunCreated?.({ run_id: "run-2" });
+          const events = toolChunks();
+          return (async function* () {
+            for (const ev of events) yield ev;
+          })();
+        }
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      const afterSubmit = orch.values.messages[0] as unknown as {
+        tool_calls?: Array<{ args: Record<string, unknown> }>;
+      };
+      expect(afterSubmit.tool_calls).toEqual([
+        expect.objectContaining({ args: { path: "/" } }),
+      ]);
+
+      (client.runs.joinStream as ReturnType<typeof vi.fn>).mockImplementation(
+        () => {
+          const events = toolChunks();
+          return (async function* () {
+            for (const ev of events) yield ev;
+          })();
+        }
+      );
+
+      await orch.joinStream("run-2");
+
+      const afterJoin = orch.values.messages[0] as unknown as {
+        tool_calls?: Array<{ args: Record<string, unknown> }>;
+      };
+      // Without the fix, the tool_call args JSON doubles
+      // ('{"path":"/"}{"path":"/"}') and tool_calls parses empty.
+      expect(afterJoin.tool_calls).toEqual([
+        expect.objectContaining({ args: { path: "/" } }),
+      ]);
+
+      orch.dispose();
+    });
+  });
 });
