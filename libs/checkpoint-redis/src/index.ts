@@ -167,6 +167,20 @@ export class RedisSaver extends BaseCheckpointSaver {
     const { checkpoint, pendingWrites } =
       await this.loadCheckpointWithWrites(jsonDoc);
 
+    // Restore channel_values from blob store using (channel, version) lookup.
+    // If no blob keys exist this is legacy data (stored before blob separation),
+    // so fall back to channel_values embedded in the checkpoint document.
+    const checkpointNsActual =
+      jsonDoc.checkpoint_ns === "__empty__" ? "" : jsonDoc.checkpoint_ns;
+    const { channelValues, hasBlobKeys } = await this.loadBlobs(
+      jsonDoc.thread_id,
+      checkpointNsActual,
+      checkpoint.channel_versions
+    );
+    checkpoint.channel_values = hasBlobKeys
+      ? channelValues
+      : checkpoint.channel_values ?? {};
+
     return await this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
   }
 
@@ -189,29 +203,20 @@ export class RedisSaver extends BaseCheckpointSaver {
     const checkpointId = checkpoint.id || uuid6(0);
     const key = `checkpoint:${threadId}:${checkpointNs}:${checkpointId}`;
 
-    // Copy checkpoint and filter channel_values to only include changed channels
-    const storedCheckpoint = copyCheckpoint(checkpoint);
+    // Dump channel blobs: store each channel's value separately indexed by (channel, version).
+    // Only channels in newVersions are written; unchanged channels keep their previous blob.
+    // When newVersions is undefined (backward-compat), fall back to all channel_versions.
+    const versionsToStore = newVersions ?? checkpoint.channel_versions ?? {};
+    const blobKeys = await this.dumpBlobs(
+      threadId,
+      checkpointNs,
+      checkpoint.channel_values ?? {},
+      versionsToStore
+    );
 
-    // If newVersions is provided and has keys, only store those channels that changed
-    // If newVersions is empty {}, store no channel values
-    // If newVersions is not provided (undefined), keep all channel_values as-is
-    if (storedCheckpoint.channel_values && newVersions !== undefined) {
-      if (Object.keys(newVersions).length === 0) {
-        // Empty newVersions means no channels changed - store empty channel_values
-        storedCheckpoint.channel_values = {};
-      } else {
-        // Only store the channels that are in newVersions
-        const filteredChannelValues: Record<string, any> = {};
-        for (const channel of Object.keys(newVersions)) {
-          if (channel in storedCheckpoint.channel_values) {
-            filteredChannelValues[channel] =
-              storedCheckpoint.channel_values[channel];
-          }
-        }
-        storedCheckpoint.channel_values = filteredChannelValues;
-      }
-    }
-    // If newVersions is undefined, keep all channel_values as-is (for backward compatibility)
+    // Store the checkpoint document without channel_values (values live in blobs)
+    const storedCheckpoint = copyCheckpoint(checkpoint);
+    storedCheckpoint.channel_values = {};
 
     // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
     const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
@@ -238,7 +243,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Apply TTL if configured
     if (this.ttlConfig?.defaultTTL) {
-      await this.applyTTL(key);
+      await this.applyTTL(key, ...blobKeys);
     }
 
     return {
@@ -788,6 +793,81 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
 
     return { checkpoint, pendingWrites };
+  }
+
+  /**
+   * Store channel blobs for the channels that changed (newVersions).
+   * Each blob is keyed by `checkpoint_blob:{threadId}:{ns}:{channel}:{version}`.
+   * Channels not in newVersions are skipped — their existing blobs remain intact.
+   * Mirrors Python's BaseCheckpointSaver._dump_blobs().
+   */
+  private async dumpBlobs(
+    threadId: string,
+    checkpointNs: string,
+    values: Record<string, any>,
+    versions: ChannelVersions
+  ): Promise<string[]> {
+    const blobKeys: string[] = [];
+    for (const [channel, version] of Object.entries(versions)) {
+      const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
+      blobKeys.push(blobKey);
+
+      if (channel in values) {
+        const [type, blob] = await this.serde.dumpsTyped(values[channel]);
+        await this.client.json.set(blobKey, "$", {
+          thread_id: threadId,
+          checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
+          channel,
+          version: String(version),
+          type,
+          blob: blob instanceof Uint8Array ? Array.from(blob) : blob,
+        } as any);
+      } else {
+        // Channel listed in versions but has no value → store empty marker
+        await this.client.json.set(blobKey, "$", {
+          thread_id: threadId,
+          checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
+          channel,
+          version: String(version),
+          type: "empty",
+          blob: null,
+        } as any);
+      }
+    }
+    return blobKeys;
+  }
+
+  /**
+   * Restore channel_values by looking up each channel's blob via (channel, version).
+   * Because blob keys encode the version, an unchanged channel's blob is found directly.
+   *
+   * Returns { channelValues, hasBlobKeys } where hasBlobKeys indicates whether at
+   * least one blob key existed in Redis. This lets callers distinguish between:
+   *   - Legacy data (no blob keys at all)  → hasBlobKeys = false
+   *   - New data with all-empty channels   → hasBlobKeys = true, channelValues = {}
+   */
+  private async loadBlobs(
+    threadId: string,
+    checkpointNs: string,
+    channelVersions: ChannelVersions
+  ): Promise<{ channelValues: Record<string, any>; hasBlobKeys: boolean }> {
+    const channelValues: Record<string, any> = {};
+    let hasBlobKeys = false;
+    for (const [channel, version] of Object.entries(channelVersions)) {
+      const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
+      const blobDoc = (await this.client.json.get(blobKey)) as any;
+      if (!blobDoc) {
+        continue;
+      }
+      hasBlobKeys = true;
+      if (blobDoc.type === "empty") {
+        continue;
+      }
+      const rawBlob = blobDoc.blob;
+      const blob = Array.isArray(rawBlob) ? new Uint8Array(rawBlob) : rawBlob;
+      channelValues[channel] = await this.serde.loadsTyped(blobDoc.type, blob);
+    }
+    return { channelValues, hasBlobKeys };
   }
 
   // Migrate pending sends from parent checkpoint (matches SQLite implementation)

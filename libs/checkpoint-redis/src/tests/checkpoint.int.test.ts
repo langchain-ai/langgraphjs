@@ -322,6 +322,198 @@ describe("RedisSaver Basic", () => {
 });
 
 // ============================================================================
+// DELTA STORAGE / blob-based channel value restoration UNIT TESTS
+// ============================================================================
+describe("RedisSaver Delta Storage (blob-based)", () => {
+  /**
+   * Build a mock Redis client whose json.get understands both checkpoint keys
+   * (checkpoint:{threadId}:{ns}:{checkpointId}) and blob keys
+   * (checkpoint_blob:{threadId}:{ns}:{channel}:{version}).
+   */
+  function makeMockClient(
+    checkpointDocs: Record<string, any>,
+    blobDocs: Record<string, any>
+  ) {
+    return {
+      json: {
+        get: async (key: string) => {
+          if (key.startsWith("checkpoint_blob:")) return blobDocs[key] ?? null;
+          return checkpointDocs[key] ?? null;
+        },
+      },
+      ft: {
+        info: async () => {
+          throw new Error("Index not found");
+        },
+        create: async () => {},
+      },
+    } as any;
+  }
+
+  it("restores channel values from blobs when current checkpoint has delta-only storage", async () => {
+    // cp1 stored blobs: messages@v1 and value@v1
+    // cp2 stored blobs: messages@v2 only (value version unchanged → same blob key as cp1)
+    // getTuple(cp2) should return { messages: ["hello", "world"], value: "New Value" }
+    const cp2Doc = {
+      thread_id: "t1",
+      checkpoint_ns: "__empty__",
+      checkpoint_id: "cp2",
+      parent_checkpoint_id: "cp1",
+      checkpoint: {
+        v: 4,
+        id: "cp2",
+        ts: "2024-01-01T00:01:00Z",
+        channel_values: {},
+        channel_versions: { messages: 2, value: 1 },
+        versions_seen: {},
+      },
+      metadata: {},
+      has_writes: "false",
+    };
+
+    const blobs: Record<string, any> = {
+      // messages changed in cp2 → new blob at version 2
+      "checkpoint_blob:t1::messages:2": {
+        type: "json",
+        blob: JSON.stringify(["hello", "world"]),
+      },
+      // value did NOT change → blob still at version 1 (written when cp1 was saved)
+      "checkpoint_blob:t1::value:1": {
+        type: "json",
+        blob: JSON.stringify("New Value"),
+      },
+    };
+
+    const mockClient = makeMockClient({ "checkpoint:t1::cp2": cp2Doc }, blobs);
+
+    const saver = new RedisSaver(mockClient);
+    const result = await saver.getTuple({
+      configurable: { thread_id: "t1", checkpoint_id: "cp2" },
+    });
+
+    expect(result?.checkpoint.channel_values).toEqual({
+      messages: ["hello", "world"],
+      value: "New Value",
+    });
+  });
+
+  it("uses latest blob version so updated channel value overwrites older one", async () => {
+    // cp2 updates value to version 2 → blob at checkpoint_blob:t1::value:2
+    // cp1's blob at version 1 is irrelevant — lookup uses version from channel_versions
+    const cp2Doc = {
+      thread_id: "t1",
+      checkpoint_ns: "__empty__",
+      checkpoint_id: "cp2",
+      parent_checkpoint_id: "cp1",
+      checkpoint: {
+        v: 4,
+        id: "cp2",
+        ts: "2024-01-01T00:01:00Z",
+        channel_values: {},
+        channel_versions: { value: 2 },
+        versions_seen: {},
+      },
+      metadata: {},
+      has_writes: "false",
+    };
+
+    const blobs: Record<string, any> = {
+      "checkpoint_blob:t1::value:1": {
+        type: "json",
+        blob: JSON.stringify("Old Value"),
+      },
+      "checkpoint_blob:t1::value:2": {
+        type: "json",
+        blob: JSON.stringify("Updated Value"),
+      },
+    };
+
+    const mockClient = makeMockClient({ "checkpoint:t1::cp2": cp2Doc }, blobs);
+
+    const saver = new RedisSaver(mockClient);
+    const result = await saver.getTuple({
+      configurable: { thread_id: "t1", checkpoint_id: "cp2" },
+    });
+
+    expect(result?.checkpoint.channel_values?.value).toBe("Updated Value");
+  });
+
+  it("restores channel values across a multi-level chain via blob versions", async () => {
+    // cp1: a@v1, cp2: b@v1 (a stays at v1), cp3: c@v1 (a,b stay at v1)
+    // All three blobs are keyed by (channel, version) — no chain traversal needed
+    const cp3Doc = {
+      thread_id: "t1",
+      checkpoint_ns: "__empty__",
+      checkpoint_id: "cp3",
+      parent_checkpoint_id: "cp2",
+      checkpoint: {
+        v: 4,
+        id: "cp3",
+        ts: "2024-01-01T00:02:00Z",
+        channel_values: {},
+        channel_versions: { a: 1, b: 1, c: 1 },
+        versions_seen: {},
+      },
+      metadata: {},
+      has_writes: "false",
+    };
+
+    const blobs: Record<string, any> = {
+      "checkpoint_blob:t1::a:1": { type: "json", blob: JSON.stringify(1) },
+      "checkpoint_blob:t1::b:1": { type: "json", blob: JSON.stringify(2) },
+      "checkpoint_blob:t1::c:1": { type: "json", blob: JSON.stringify(3) },
+    };
+
+    const mockClient = makeMockClient({ "checkpoint:t1::cp3": cp3Doc }, blobs);
+
+    const saver = new RedisSaver(mockClient);
+    const result = await saver.getTuple({
+      configurable: { thread_id: "t1", checkpoint_id: "cp3" },
+    });
+
+    expect(result?.checkpoint.channel_values).toEqual({ a: 1, b: 2, c: 3 });
+  });
+
+  it("falls back to channel_values in checkpoint doc when no blobs exist (legacy data)", async () => {
+    // Simulates data written before blob separation was introduced.
+    // The checkpoint doc has channel_values embedded; no blob keys exist.
+    const legacyDoc = {
+      thread_id: "t1",
+      checkpoint_ns: "__empty__",
+      checkpoint_id: "cp-legacy",
+      parent_checkpoint_id: null,
+      checkpoint: {
+        v: 4,
+        id: "cp-legacy",
+        ts: "2024-01-01T00:00:00Z",
+        channel_values: { messages: ["hello"], value: "legacy" },
+        channel_versions: { messages: 1, value: 1 },
+        versions_seen: {},
+      },
+      metadata: {},
+      has_writes: "false",
+    };
+
+    // No blob keys exist for this checkpoint
+    const mockClient = makeMockClient(
+      { "checkpoint:t1::cp-legacy": legacyDoc },
+      {}
+    );
+
+    const saver = new RedisSaver(mockClient);
+    const result = await saver.getTuple({
+      configurable: { thread_id: "t1", checkpoint_id: "cp-legacy" },
+    });
+
+    // Should read values from the embedded channel_values, not blobs
+    expect(result?.checkpoint.channel_values).toEqual({
+      messages: ["hello"],
+      value: "legacy",
+    });
+  });
+});
+
+// ============================================================================
 // INTEGRATION TESTS (from integration.test.ts)
 // ============================================================================
 describe("RedisSaver Integration Tests", () => {
@@ -964,7 +1156,51 @@ describe("test_sync_redis_checkpointer", () => {
     await saver.end();
   });
 
-  it("should preserve pendingWrites when putWrites is called before put (interrupt flow)", async () => {
+  it("restores channel values missing from delta-stored checkpoint by merging from parent chain", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const threadConfig: RunnableConfig = {
+      configurable: { thread_id: "delta-merge-thread", checkpoint_ns: "" },
+    };
+
+    // Step 1: save cp1 with messages + value both changed
+    const cp1 = emptyCheckpoint();
+    cp1.id = uuid6(0);
+    cp1.channel_versions = { messages: 1, value: 1 };
+    cp1.channel_values = { messages: ["hi"], value: "from-beforeAgent" };
+
+    const cp1Config = await saver.put(
+      threadConfig,
+      cp1,
+      { source: "input", step: 0, parents: {} },
+      { messages: 1, value: 1 } // both channels changed
+    );
+
+    // Step 2: save cp2 where only messages changed (value not in newVersions)
+    const cp2 = emptyCheckpoint();
+    cp2.id = uuid6(1);
+    cp2.channel_versions = { messages: 2, value: 1 }; // value version unchanged
+    cp2.channel_values = {
+      messages: ["hi", "reply"],
+      value: "from-beforeAgent", // full state, but delta filter will drop value
+    };
+
+    const cp2Config = await saver.put(
+      { ...cp1Config, configurable: { ...cp1Config.configurable } },
+      cp2,
+      { source: "loop", step: 1, parents: {} },
+      { messages: 2 } // only messages changed — value is NOT in newVersions
+    );
+
+    // Read back cp2 — value must be merged from cp1
+    const tuple = await saver.getTuple(cp2Config);
+
+    expect(tuple).toBeDefined();
+    expect(tuple?.checkpoint.channel_values?.messages).toEqual(["hi", "reply"]);
+    expect(tuple?.checkpoint.channel_values?.value).toBe("from-beforeAgent");
+  });
+
+  it("preserves pendingWrites when putWrites is called before put (interrupt flow)", async () => {
     const saver = new RedisSaver(redisClient);
 
     const checkpointId = uuid6(0);
