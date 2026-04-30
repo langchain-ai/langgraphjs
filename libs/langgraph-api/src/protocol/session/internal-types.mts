@@ -1,9 +1,7 @@
 import type {
   AgentStatus,
-  ContentBlockFinishData,
   MessageMetadata,
   Namespace,
-  ProtocolEvent,
   ProtocolEventByMethod,
   SupportedChannel,
   UpdatesEvent,
@@ -43,39 +41,6 @@ export type NamespaceInfo = {
 };
 
 /**
- * Incremental state for a single streamed content block.
- */
-export type MessageBlockState = {
-  type: "text" | "reasoning" | "tool_call_chunk" | "finalized";
-  value: string;
-  finished: boolean;
-  id?: string;
-  name?: string;
-  contentBlock?: ContentBlockFinishData["content_block"];
-};
-
-/**
- * Incremental state for a single streamed message.
- */
-export type MessageState = {
-  metadata?: ProtocolCompatibleMessageMetadata;
-  namespace?: Namespace;
-  started: boolean;
-  lastText: string;
-  finished: boolean;
-  blocks: Map<number, MessageBlockState>;
-};
-
-/**
- * Synthetic state created for task tool calls that represent subagents.
- */
-export type SyntheticSubagentState = {
-  namespace: Namespace;
-  messages: Array<Record<string, unknown>>;
-  completed: boolean;
-};
-
-/**
  * Normalized representation of an updates payload emitted by the run stream.
  */
 export type NormalizedUpdatesData = {
@@ -91,35 +56,13 @@ export type ProtocolEventDataMap = {
   updates:
     | ProtocolEventByMethod<"updates">["params"]["data"]
     | UpdatesEvent["params"]["data"]["values"];
+  checkpoints: ProtocolEventByMethod<"checkpoints">["params"]["data"];
   messages: ProtocolEventByMethod<"messages">["params"]["data"];
   tools: ProtocolEventByMethod<"tools">["params"]["data"];
   custom: ProtocolEventByMethod<"custom">["params"]["data"];
   lifecycle: ProtocolEventByMethod<"lifecycle">["params"]["data"];
   input: ProtocolEventByMethod<"input">["params"]["data"];
-  debug: ProtocolEventByMethod<"debug">["params"]["data"];
-  checkpoints: ProtocolEventByMethod<"checkpoints">["params"]["data"];
   tasks: ProtocolEventByMethod<"tasks">["params"]["data"];
-};
-
-/**
- * Callback surface used by the message processor to emit normalized events.
- */
-export type MessageProcessorCallbacks = {
-  ensureNamespaces: (namespace: Namespace) => Promise<void>;
-  pushEvent: (event: ProtocolEvent) => Promise<void>;
-  emitLifecycleEvent: (
-    namespace: Namespace,
-    status: AgentStatus,
-    options?: { graphName?: string; error?: string }
-  ) => Promise<void>;
-  createMessagesEvent: (
-    namespace: Namespace,
-    data: ProtocolEventDataMap["messages"]
-  ) => ProtocolEventByMethod<"messages">;
-  createValuesEvent: (
-    namespace: Namespace,
-    data: ProtocolEventDataMap["values"]
-  ) => ProtocolEventByMethod<"values">;
 };
 
 /**
@@ -128,13 +71,12 @@ export type MessageProcessorCallbacks = {
 export const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
   "values",
   "updates",
+  "checkpoints",
   "messages",
   "tools",
   "custom",
   "lifecycle",
   "input",
-  "debug",
-  "checkpoints",
   "tasks",
 ]);
 

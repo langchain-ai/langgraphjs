@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
+import { dispatchCustomEvent } from "@langchain/core/callbacks/dispatch";
 import {
   AIMessage,
   AIMessageChunk,
@@ -110,6 +111,61 @@ const parentAgent = new StateGraph(MessagesAnnotation)
   .addEdge(START, "child")
   .compile();
 
+const customChannelAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async (_state, runtime: Runtime) => {
+    runtime.writer?.({ stage: "thinking" });
+    await dispatchCustomEvent("status", { label: "answering" });
+    runtime.writer?.({ stage: "done" });
+    return { messages: [new AIMessage("Custom channel reply")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+const embeddedSubgraphModel = new FakeStreamingChatModel({
+  responses: [new AIMessage("Subgraph reply")],
+});
+
+const embeddedResearchSubgraph = new StateGraph(MessagesAnnotation)
+  .addNode(
+    "inner",
+    async (state: { messages: BaseMessage[] }, runtime: Runtime) => {
+      runtime.writer?.({ type: "progress", label: "research-started" });
+      const response = await embeddedSubgraphModel.invoke(state.messages);
+      runtime.writer?.({ type: "progress", label: "research-finished" });
+      return { messages: [response] };
+    },
+  )
+  .addEdge(START, "inner")
+  .compile();
+
+const embeddedResearch = async (state: { messages: BaseMessage[] }) => {
+  const result = await embeddedResearchSubgraph.invoke({
+    messages: state.messages,
+  });
+  const last = result.messages.at(-1);
+
+  return {
+    messages: [
+      new AIMessage(
+        typeof last?.content === "string" ? last.content : "Research done",
+      ),
+    ],
+  };
+};
+
+const embeddedSummarize = async () => ({
+  messages: [new AIMessage("Summary line")],
+});
+
+const embeddedSubgraphAgent = new StateGraph(MessagesAnnotation)
+  .addNode("research", embeddedResearch, {
+    subgraphs: [embeddedResearchSubgraph],
+  })
+  .addNode("summarize", embeddedSummarize)
+  .addEdge(START, "research")
+  .addEdge("research", "summarize")
+  .compile();
+
 const removeMessageAgent = new StateGraph(MessagesAnnotation)
   .addSequence({
     step1: () => ({ messages: [new AIMessage("Step 1: To Remove")] }),
@@ -135,6 +191,16 @@ const removeMessageAgent = new StateGraph(MessagesAnnotation)
 const errorAgent = new StateGraph(MessagesAnnotation)
   .addNode("agent", async () => {
     throw new Error("Intentional error for testing");
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+const slowAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      messages: [new AIMessage("Done.")],
+    };
   })
   .addEdge(START, "agent")
   .compile();
@@ -454,8 +520,11 @@ const graphs: Record<string, AnyPregel> = {
   parentAgent,
   removeMessageAgent,
   errorAgent,
+  slowAgent,
   headlessToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
+  customChannelAgent,
+  embeddedSubgraphAgent,
 };
 
 let httpServer: { close: () => void } | null = null;

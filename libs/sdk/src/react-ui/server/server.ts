@@ -78,7 +78,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
         tags: config.tags,
         name: config.runName,
         ...message?.metadata,
-        ...(options?.message ? { message_id: options.message.id } : null),
+        ...(options?.message ? { id: options.message.id } : null),
       },
     };
     items.push(evt);

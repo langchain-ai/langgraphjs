@@ -17,6 +17,7 @@ import {
   toThreadMessages,
 } from "../lib/message-utils";
 import { useThreadIdParam } from "../lib/thread-id";
+import type { agent } from "../../agent"
 
 const attachmentAdapter = new CompositeAttachmentAdapter([
   new SimpleImageAttachmentAdapter(),
@@ -27,12 +28,10 @@ const apiUrl =
 
 export function MyAssistant() {
   const [threadId, onThreadId] = useThreadIdParam();
-  const stream = useStream({
+  const stream = useStream<typeof agent>({
     apiUrl,
     assistantId: import.meta.env.VITE_LANGGRAPH_ASSISTANT_ID ?? "claude",
     onThreadId,
-    reconnectOnMount: true,
-    fetchStateHistory: true,
     threadId,
   });
 

@@ -1,6 +1,5 @@
 import type { Run } from "../../storage/types.mjs";
 import type {
-  DebugEvent,
   ProtocolEventDataByMethod,
   ToolErrorData,
   ToolFinishedData,
@@ -37,33 +36,6 @@ export const extractErrorMessage = (value: unknown) => {
   if (isRecord(value) && typeof value.message === "string")
     return value.message;
   return safeStringify(value);
-};
-
-/**
- * Extracts text content from a legacy streamed message payload.
- *
- * @param value - Message content in string or block-array form.
- * @returns Concatenated text content when available.
- */
-export const extractTextContent = (value: unknown): string | undefined => {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    const parts = value
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (
-          isRecord(item) &&
-          item.type === "text" &&
-          typeof item.text === "string"
-        ) {
-          return item.text;
-        }
-        return undefined;
-      })
-      .filter((part): part is string => part != null);
-    if (parts.length > 0) return parts.join("");
-  }
-  return undefined;
 };
 
 /**
@@ -210,42 +182,4 @@ export const normalizeToolData = (
         delta: safeStringify(value),
       } satisfies ToolOutputDeltaData;
   }
-};
-
-/**
- * Checks whether a debug payload type is supported by the protocol.
- *
- * @param value - Raw debug payload type.
- * @returns Whether the type is one of the protocol debug variants.
- */
-export const isDebugChunkType = (
-  value: unknown
-): value is DebugEvent["params"]["data"]["type"] =>
-  value === "checkpoint" || value === "task" || value === "task_result";
-
-/**
- * Normalizes raw debug payloads into protocol debug events.
- *
- * @param value - Raw debug payload.
- * @returns A normalized protocol debug payload.
- */
-export const normalizeDebugData = (
-  value: unknown
-): DebugEvent["params"]["data"] => {
-  if (
-    isRecord(value) &&
-    typeof value.step === "number" &&
-    isDebugChunkType(value.type)
-  ) {
-    return {
-      step: value.step,
-      type: value.type,
-      payload: value.payload,
-    };
-  }
-  return {
-    step: -1,
-    type: "task",
-    payload: value,
-  };
 };

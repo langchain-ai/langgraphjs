@@ -179,7 +179,87 @@ describe("streamState", () => {
     ]);
   });
 
-  it("uses native messages events for protocol-gated runs", async () => {
+  it("does not route legacy runs through streamStateV2 for graph transformers", async () => {
+    const run = createRun({
+      kwargs: {
+        config: {
+          configurable: {
+            graph_id: "deep-agent",
+          },
+        },
+        stream_mode: ["updates"],
+        subgraphs: true,
+        resumable: true,
+      },
+    });
+
+    let streamEventsV3Invoked = false;
+    const chunks: Array<{ event: string; data: unknown }> = [];
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          streamTransformers: [() => ({})],
+          streamEvents(_input: unknown, options: { version?: string }) {
+            if (options?.version === "v3") {
+              streamEventsV3Invoked = true;
+              return Promise.resolve({
+                async *[Symbol.asyncIterator]() {
+                  yield {
+                    type: "event" as const,
+                    seq: 0,
+                    method: "updates" as const,
+                    params: {
+                      namespace: [],
+                      timestamp: 1,
+                      data: { ignored: true },
+                    },
+                  };
+                },
+              });
+            }
+
+            return (async function* () {
+              yield {
+                event: "on_chain_stream",
+                run_id: run.run_id,
+                data: {
+                  chunk: [
+                    ["worker"],
+                    "updates",
+                    {
+                      worker: {
+                        status: "legacy",
+                      },
+                    },
+                  ],
+                },
+              };
+            })();
+          },
+        }) as never,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(streamEventsV3Invoked).toBe(false);
+    expect(chunks).toEqual([
+      {
+        event: "metadata",
+        data: { run_id: run.run_id, attempt: 1 },
+      },
+      {
+        event: "updates|worker",
+        data: {
+          worker: {
+            status: "legacy",
+          },
+        },
+      },
+    ]);
+  });
+
+  it("routes protocol-gated runs through streamStateV2", async () => {
     const run = createRun({
       kwargs: {
         config: {
@@ -194,35 +274,34 @@ describe("streamState", () => {
       },
     });
 
+    // Protocol-gated runs must skip the v1/v2 `streamEvents` path and flow
+    // through `graph.streamEvents(..., { version: "v3" })`, which is what lets core's
+    // `LifecycleTransformer` emit authoritative subgraph lifecycle
+    // events. By mocking the v3 overload here, we assert the run is
+    // actually routed to the protocol pipeline.
+    let streamEventsV3Invoked = false;
     const chunks: Array<{ event: string; data: unknown }> = [];
     for await (const chunk of streamState(run, {
       attempt: 1,
       getGraph: async () =>
         ({
-          async *streamEvents() {
-            yield {
-              event: "on_chain_stream",
-              run_id: run.run_id,
-              data: {
-                chunk: [
-                  "messages",
-                  {
-                    event: "message-start",
-                    messageId: "msg_1",
+          async streamEvents() {
+            streamEventsV3Invoked = true;
+            return {
+              async *[Symbol.asyncIterator]() {
+                yield {
+                  type: "event" as const,
+                  seq: 0,
+                  method: "messages" as const,
+                  params: {
+                    namespace: [],
+                    timestamp: 1,
+                    data: {
+                      event: "message-start",
+                      messageId: "msg_1",
+                    },
                   },
-                ],
-              },
-            };
-            yield {
-              event: "on_chat_model_stream",
-              run_id: "00000000-0000-7000-8000-000000000099",
-              metadata: { langgraph_checkpoint_ns: "" },
-              data: {
-                chunk: {
-                  id: "msg_1",
-                  type: "AIMessageChunk",
-                  content: "Hello",
-                },
+                };
               },
             };
           },
@@ -231,6 +310,7 @@ describe("streamState", () => {
       chunks.push(chunk);
     }
 
+    expect(streamEventsV3Invoked).toBe(true);
     expect(chunks).toEqual([
       {
         event: "metadata",
@@ -242,6 +322,7 @@ describe("streamState", () => {
           event: "message-start",
           messageId: "msg_1",
         },
+        normalized: true,
       },
     ]);
   });

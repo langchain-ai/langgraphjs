@@ -1,10 +1,44 @@
 import type {
+  Channel,
   Event,
-  MediaType,
   Namespace,
   SubscribeParams,
 } from "@langchain/protocol";
-import type { SubscribableChannel } from "./types.js";
+
+/**
+ * Strip dynamic suffixes (after `:`) from a namespace segment.
+ *
+ * Mirrors `normalize_namespace_segment` in
+ * `api/langgraph_api/protocol/namespace.py`. Server-emitted namespaces
+ * contain runtime-generated suffixes like `"fetcher:abc-uuid"`, while
+ * user-supplied filters are typically static names (`"fetcher"`).
+ */
+function normalizeSegment(segment: string): string {
+  const idx = segment.indexOf(":");
+  return idx === -1 ? segment : segment.slice(0, idx);
+}
+
+/**
+ * Whether `eventNamespace` starts with `prefix`.
+ *
+ * Segments are compared literally first; if the prefix segment itself
+ * contains no `:`, the candidate segment is also compared after its
+ * dynamic suffix is stripped. This mirrors `is_prefix_match` in
+ * `api/langgraph_api/protocol/namespace.py` so server-side filtering
+ * and client-side per-subscription narrowing stay consistent.
+ */
+function isPrefixMatch(eventNamespace: Namespace, prefix: Namespace): boolean {
+  if (prefix.length > eventNamespace.length) return false;
+  for (let i = 0; i < prefix.length; i += 1) {
+    const segment = prefix[i]!;
+    const candidate = eventNamespace[i]!;
+    if (candidate === segment) continue;
+    if (segment.includes(":")) return false;
+    if (normalizeSegment(candidate) === segment) continue;
+    return false;
+  }
+  return true;
+}
 
 function namespaceMatches(
   eventNamespace: Namespace,
@@ -16,51 +50,26 @@ function namespaceMatches(
   }
 
   return prefixes.some((prefix) => {
-    if (prefix.length > eventNamespace.length) {
-      return false;
-    }
-
-    for (let index = 0; index < prefix.length; index += 1) {
-      if (prefix[index] !== eventNamespace[index]) {
-        return false;
-      }
-    }
-
-    if (depth === undefined) {
-      return true;
-    }
-
+    if (!isPrefixMatch(eventNamespace, prefix)) return false;
+    if (depth === undefined) return true;
     return eventNamespace.length - prefix.length <= depth;
   });
-}
-
-function mediaTypeMatches(
-  event: Event,
-  mediaTypes: MediaType[] | undefined
-): boolean {
-  if (!mediaTypes || mediaTypes.length === 0) {
-    return true;
-  }
-
-  if (
-    event.method === "media.streamStart" ||
-    event.method === "media.artifact"
-  ) {
-    return mediaTypes.includes(event.params.media_type);
-  }
-
-  return true;
 }
 
 /**
  * Maps a protocol event method to its subscription channel.
  *
+ * Returns `undefined` for unrecognized methods so that new server-side
+ * channels (e.g. from extension transformers) don't break existing clients.
+ *
  * @param event - Event whose method should be mapped to a channel.
  */
-export function inferChannel(event: Event): SubscribableChannel {
+export function inferChannel(event: Event): Channel | undefined {
   switch (event.method) {
     case "values":
       return "values";
+    case "checkpoints":
+      return "checkpoints";
     case "updates":
       return "updates";
     case "messages":
@@ -73,33 +82,12 @@ export function inferChannel(event: Event): SubscribableChannel {
     }
     case "lifecycle":
       return "lifecycle";
-    case "media.streamStart":
-    case "media.streamEnd":
-    case "media.artifact":
-      return "media";
-    case "resource.changed":
-      return "resource";
-    case "sandbox.started":
-    case "sandbox.output":
-    case "sandbox.exited":
-      return "sandbox";
     case "input.requested":
       return "input";
-    case "state.updated":
-      return "state";
-    case "usage.llmCall":
-    case "usage.summary":
-      return "usage";
-    case "debug":
-      return "debug";
-    case "checkpoints":
-      return "checkpoints";
     case "tasks":
       return "tasks";
     default:
-      throw new Error(
-        `Unknown event method: ${String((event as { method?: string }).method)}`
-      );
+      return undefined;
   }
 }
 
@@ -114,8 +102,9 @@ export function matchesSubscription(
   definition: SubscribeParams
 ): boolean {
   const channel = inferChannel(event);
-  const channels = definition.channels as SubscribableChannel[];
-  // "custom:a2a" matches exactly; "custom" matches all custom events
+  if (channel === undefined) return false;
+
+  const channels = definition.channels as Channel[];
   const channelMatched =
     channels.includes(channel) ||
     (channel.startsWith("custom:") && channels.includes("custom"));
@@ -123,15 +112,9 @@ export function matchesSubscription(
     return false;
   }
 
-  if (
-    !namespaceMatches(
-      event.params.namespace,
-      definition.namespaces,
-      definition.depth
-    )
-  ) {
-    return false;
-  }
-
-  return mediaTypeMatches(event, definition.media_types);
+  return namespaceMatches(
+    event.params.namespace,
+    definition.namespaces,
+    definition.depth
+  );
 }

@@ -1,8 +1,22 @@
 import { Component, input } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import type { StreamSubmitOptions } from "@langchain/langgraph-sdk/stream";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
+
+interface StreamState {
+  messages: BaseMessage[];
+  [key: string]: unknown;
+}
+
+let pendingSubmitOptions: StreamSubmitOptions<StreamState> | undefined;
+export function setMultiSubmitOptions(
+  options: StreamSubmitOptions<StreamState> | undefined
+): void {
+  pendingSubmitOptions = options;
+}
 
 @Component({
   template: `
@@ -29,7 +43,7 @@ const serverUrl = inject("serverUrl");
 export class MultiSubmitComponent {
   onRender = input<((msgs: string[]) => void) | undefined>(undefined);
 
-  stream = injectStream({ assistantId: "agent", apiUrl: serverUrl });
+  stream = injectStream<StreamState>({ assistantId: "agent", apiUrl: serverUrl });
 
   fmtMessages() {
     const msgs = this.stream
@@ -47,14 +61,20 @@ export class MultiSubmitComponent {
   }
 
   onSubmitFirst() {
-    void this.stream.submit({
-      messages: [{ content: "Hello (1)", type: "human" }],
-    } as any);
+    void this.stream.submit(
+      {
+        messages: [new HumanMessage("Hello (1)")],
+      },
+      pendingSubmitOptions
+    );
   }
 
   onSubmitSecond() {
-    void this.stream.submit({
-      messages: [{ content: "Hello (2)", type: "human" }],
-    } as any);
+    void this.stream.submit(
+      {
+        messages: [new HumanMessage("Hello (2)")],
+      },
+      pendingSubmitOptions
+    );
   }
 }

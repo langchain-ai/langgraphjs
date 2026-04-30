@@ -9,6 +9,7 @@ import type {
   ResolveStreamOptions,
   InferBag,
   InferStateType,
+  StateRecord,
 } from "../ui/stream/index.js";
 
 function isCustomOptions<
@@ -33,7 +34,10 @@ export function useStream<
   T = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+  options: UseStreamCustomOptions<
+    StateRecord<InferStateType<T>>,
+    InferBag<T, Bag>
+  >
 ): ResolveStreamInterface<T, InferBag<T, Bag>>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

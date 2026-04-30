@@ -2,11 +2,11 @@
  * StreamMux — central dispatcher with transformer pipeline.
  *
  * Routes raw stream chunks through registered StreamTransformers, then appends
- * the resulting ProtocolEvents to the main EventLog.  Also tracks namespace
- * discovery for SubgraphRunStream creation.
+ * the resulting ProtocolEvents to the main local channel.  Also tracks
+ * namespace discovery for SubgraphRunStream creation.
  *
  * lifecycle:
- *   graph.streamV2(input)
+ *   graph.streamEvents(input, { version: "v3" })
  *     ├─ StreamMux starts pumping from graph.stream(…, { subgraphs: true })
  *     ├─ For each ProtocolEvent:
  *     │   ├─ transformer_1.process(event)
@@ -17,48 +17,79 @@
 
 import type { StreamChunk } from "../pregel/stream.js";
 import { INTERRUPT, isInterrupted, type Interrupt } from "../constants.js";
-import { EventLog } from "./event-log.js";
-import { convertToProtocolEvent, STREAM_V2_MODES } from "./convert.js";
+import { convertToProtocolEvent, STREAM_EVENTS_V3_MODES } from "./convert.js";
+import { StreamChannel, isStreamChannel } from "./stream-channel.js";
 import type {
   InterruptPayload,
   Namespace,
   ProtocolEvent,
+  StreamEmitter,
   StreamTransformer,
 } from "./types.js";
 
-export { STREAM_V2_MODES };
+export { STREAM_EVENTS_V3_MODES };
+
+/**
+ * Structural `PromiseLike<T>` predicate — true for thenables including
+ * native promises, user-constructed `{ then }` objects, and helper
+ * wrappers. Used by {@link StreamMux.wireChannels} to detect final-value
+ * projections distinctly from streaming `StreamChannel` values.
+ */
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value != null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+/**
+ * Symbol key used by {@link StreamMux} to resolve the values promise on a
+ * stream handle. Using a symbol keeps this off the public autocomplete surface.
+ */
+export const RESOLVE_VALUES: unique symbol = Symbol("resolveValues");
+
+/**
+ * Symbol key used by {@link StreamMux} to reject the values promise on a
+ * stream handle. Using a symbol keeps this off the public autocomplete surface.
+ */
+export const REJECT_VALUES: unique symbol = Symbol("rejectValues");
+
+/**
+ * Minimal interface that {@link StreamMux} requires from stream handles
+ * for lifecycle resolution. This avoids a direct dependency on
+ * `GraphRunStream` / `SubgraphRunStream`.
+ */
+export interface StreamHandle {
+  [RESOLVE_VALUES](values: unknown): void;
+  [REJECT_VALUES](err: unknown): void;
+}
+
+/**
+ * Factory function that creates a subgraph stream handle for a newly
+ * discovered namespace.
+ *
+ * Historically consumed by {@link StreamMux} at construction time;
+ * today factories are consumed by
+ * `createSubgraphDiscoveryTransformer` (via its `createStream`
+ * option).  This shape is retained for consumers that still thread a
+ * mux reference through the factory — the narrower transformer
+ * option omits `mux` because it captures the mux in a closure.
+ */
+export type SubgraphStreamFactory = (
+  path: Namespace,
+  mux: StreamMux,
+  discoveryStart: number,
+  eventStart: number
+) => StreamHandle;
 
 /**
  * A discovered subgraph namespace paired with its run stream handle.
  */
 export type SubgraphDiscovery = {
   ns: Namespace;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: any;
+  stream: StreamHandle;
 };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _SubgraphRunStreamCtor: new (...args: any[]) => any;
-
-/**
- * Registers the concrete run-stream constructors used by {@link StreamMux}
- * to create subgraph stream handles.  Called once by `run-stream.ts` at
- * module load to break the circular dependency.
- *
- * @internal
- * @param _graphCtor - The graph-level run stream constructor (unused here,
- *   accepted for symmetry with the registration call).
- * @param subCtor - The subgraph run stream constructor instantiated for
- *   each newly discovered namespace.
- */
-export function setRunStreamClasses(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _graphCtor: new (...args: any[]) => any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  subCtor: new (...args: any[]) => any
-): void {
-  _SubgraphRunStreamCtor = subCtor;
-}
 
 /**
  * Central event dispatcher that routes {@link ProtocolEvent}s through a
@@ -66,26 +97,50 @@ export function setRunStreamClasses(
  * subgraph streams, and exposes async iteration over filtered event
  * sequences.
  *
- * One `StreamMux` instance exists per top-level `streamV2()` invocation.
+ * One `StreamMux` instance exists per top-level
+ * `streamEvents(..., { version: "v3" })` invocation.
  */
 export class StreamMux {
   /** @internal All protocol events in arrival order (after reducer pipeline). */
-  readonly _events = new EventLog<ProtocolEvent>();
+  readonly _events = StreamChannel.local<ProtocolEvent>();
 
   /** @internal New-namespace discovery notifications. */
-  readonly _discoveries = new EventLog<SubgraphDiscovery>();
+  readonly _discoveries = StreamChannel.local<SubgraphDiscovery>();
 
-  /** Monotonic counter for events emitted by reducers via `emit()`. */
+  /** Monotonic counter for auto-forwarded channel events. */
   #nextEmitSeq = 0;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly #transformers: StreamTransformer<any>[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly #streamMap = new Map<string, any>();
-  readonly #seenNs = new Set<string>();
+  /** Whether the mux has been closed or failed. */
+  #closed = false;
+
+  /** The error passed to {@link fail}, if any. */
+  #error: unknown;
+
+  /** Whether the run was interrupted. */
+  #interrupted = false;
+
+  /**
+   * Namespace of the event currently being processed by
+   * {@link push}.  Read by {@link StreamChannel} wiring callbacks so
+   * auto-forwarded events inherit the triggering event's namespace.
+   */
+  #currentNamespace: Namespace = [];
+
+  readonly #transformers: StreamTransformer<unknown>[] = [];
+  readonly #channels: StreamChannel<unknown>[] = [];
+  readonly #streamMap = new Map<string, StreamHandle>();
   readonly #latestValues = new Map<string, Record<string, unknown>>();
   readonly #interrupts: InterruptPayload[] = [];
-  #interrupted = false;
+
+  /**
+   * Final-value projection keys tracked for remote surfacing. Populated
+   * by {@link wireChannels} when a transformer's projection contains a
+   * `PromiseLike` value. Each entry is flushed as a `custom:<name>`
+   * protocol event during {@link close} so that remote clients can
+   * observe final-value transformers via `thread.extensions.<name>`.
+   */
+  readonly #finalValues: Array<{ name: string; promise: Promise<unknown> }> =
+    [];
 
   /**
    * Associates a pre-existing stream handle with a namespace so that
@@ -94,53 +149,124 @@ export class StreamMux {
    * @param path - The namespace path to register.
    * @param stream - The run stream handle for that namespace.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register(path: Namespace, stream: any): void {
+  register(path: Namespace, stream: StreamHandle): void {
     this.#streamMap.set(nsKey(path), stream);
   }
 
   /**
-   * Appends a transformer to the pipeline.  Transformers run in registration
-   * order for every event passed to {@link push}.
+   * Registers a transformer and replays all buffered events through it so
+   * it catches up with events already processed by the mux.  When the event
+   * log is empty (typical at construction time) the replay is a no-op.
    *
-   * @param transformer - The transformer to add.
+   * The transformer must already have been initialised (i.e. `init()` called
+   * and any projection wired).  The sequence is:
+   *
+   *   1. Snapshot the current event log length.
+   *   2. Append the transformer so future {@link push} calls reach it.
+   *   3. Replay events `[0, snapshot)` through `process()`.
+   *   4. If the mux is already closed, call `finalize()` (or `fail()`)
+   *      immediately so the transformer's log/channel terminates cleanly.
+   *
+   * @param transformer - An already-initialised transformer to register.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  addTransformer(transformer: StreamTransformer<any>): void {
+  addTransformer(transformer: StreamTransformer<unknown>): void {
+    const snapshot = this._events.size;
     this.#transformers.push(transformer);
+
+    // Hand the transformer a narrow emitter handle *before* replay so
+    // synthetic-emission transformers (e.g. deepagents
+    // `SubagentTransformer`) can inject events into the mux during
+    // their own `process()` calls — including the initial replay
+    // triggered just below.
+    if (transformer.onRegister) {
+      const emitter: StreamEmitter = {
+        // Transformer-originated events use a placeholder `seq` of
+        // `0`.  `push()` is the single authority for sequence numbers
+        // and will re-stamp this event with the next monotonically
+        // increasing value.
+        push: (ns, event) => this.push(ns, event),
+      };
+      transformer.onRegister(emitter);
+    }
+
+    for (let i = 0; i < snapshot; i += 1) {
+      transformer.process(this._events.get(i));
+    }
+
+    if (this.#closed) {
+      if (this.#error !== undefined) {
+        transformer.fail?.(this.#error);
+      } else {
+        transformer.finalize?.();
+      }
+    }
+  }
+
+  /**
+   * Scans a transformer projection for streaming and final-value primitives.
+   * Remote stream channels are wired to auto-forward to the protocol event
+   * stream; local stream channels are tracked for lifecycle only.
+   *
+   * Two projection shapes are recognised:
+   *
+   *   - {@link StreamChannel} values — named channels forward each `push()`
+   *     immediately as a protocol event on the channel's declared
+   *     `channelName` method. Unnamed channels remain in-process-only.
+   *
+   *   - `PromiseLike<unknown>` values — tracked as final-value
+   *     projections and flushed on {@link close} as a single
+   *     `custom:<key>` event, where `<key>` is the projection key.
+   *     This mirrors the in-process `await run.extensions.<key>`
+   *     ergonomics on remote clients via
+   *     `await thread.extensions.<key>`.
+   *
+   * Plain values that are neither are ignored — they remain in-process-only,
+   * matching prior behaviour.
+   *
+   * @param projection - The object returned by `transformer.init()`.
+   */
+  wireChannels(projection: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(projection)) {
+      if (isStreamChannel(value)) {
+        this.#channels.push(value);
+        if (typeof value.channelName !== "string") {
+          continue;
+        }
+        value._wire((item: unknown) => {
+          this._events.push({
+            type: "event",
+            seq: this.#nextEmitSeq++,
+            method: value.channelName as ProtocolEvent["method"],
+            params: {
+              namespace: this.#currentNamespace,
+              timestamp: Date.now(),
+              data: item,
+            },
+          });
+        });
+        continue;
+      }
+      if (isPromiseLike(value)) {
+        this.#finalValues.push({
+          name: key,
+          promise: Promise.resolve(value),
+        });
+      }
+    }
   }
 
   /**
    * Distributes an event through the transformer pipeline, then appends it to
-   * the main event log.  Creates {@link SubgraphDiscovery} entries for any
-   * namespace segments not yet seen.
+   * the main event log.
+   *
+   * Subgraph discovery (materializing a {@link StreamHandle} for each
+   * newly observed top-level namespace) is handled by the
+   * {@link createSubgraphDiscoveryTransformer} when installed, not here.
    *
    * @param ns - The namespace path that produced the event.
    * @param event - The protocol event to process and store.
    */
   push(ns: Namespace, event: ProtocolEvent): void {
-    // Only announce first-level namespace segments as discoverable
-    // subgraphs.  Deeper segments (e.g. ["researcher:uuid", "tools:uuid"])
-    // are internal Pregel checkpoint namespace entries for nodes within a
-    // subgraph and should not appear as user-facing SubgraphRunStream
-    // instances.  We still track them in #seenNs / #streamMap so that
-    // values resolution and event filtering work correctly.
-    if (ns.length > 0) {
-      const topNs = ns.slice(0, 1);
-      const topKey = nsKey(topNs);
-      if (!this.#seenNs.has(topKey)) {
-        this.#seenNs.add(topKey);
-        const subStream = new _SubgraphRunStreamCtor(
-          topNs,
-          this,
-          this._discoveries.size,
-          this._events.size
-        );
-        this.#streamMap.set(topKey, subStream);
-        this._discoveries.push({ ns: topNs, stream: subStream });
-      }
-    }
-
     if (event.method === "values") {
       this.#latestValues.set(
         nsKey(ns),
@@ -148,90 +274,132 @@ export class StreamMux {
       );
     }
 
-    // Track seq from the incoming event so reducer-emitted events
-    // get subsequent sequence numbers.
-    this.#nextEmitSeq = Math.max(this.#nextEmitSeq, event.seq + 1);
-
-    const pendingEmissions: ProtocolEvent[] = [];
-    const emit = (method: string, data: unknown) => {
-      pendingEmissions.push({
-        type: "event",
-        seq: this.#nextEmitSeq++,
-        method: method as ProtocolEvent["method"],
-        params: { namespace: ns, timestamp: Date.now(), data },
-      });
-    };
+    // Save the outer namespace so re-entrant `push()` calls (e.g. from
+    // `StreamTransformer.onRegister` emitters synthesizing events
+    // inside a transformer's `process()`) can set their own namespace
+    // without clobbering the outer scope's `StreamChannel` routing
+    // when control returns to the outer transformer loop.
+    const outerNamespace = this.#currentNamespace;
+    this.#currentNamespace = ns;
 
     let keep = true;
     for (const transformer of this.#transformers) {
-      if (!transformer.process(event, emit)) {
+      if (!transformer.process(event)) {
         keep = false;
       }
     }
 
-    if (keep) {
-      this._events.push(event);
-    }
+    this.#currentNamespace = outerNamespace;
 
-    for (const emitted of pendingEmissions) {
-      this._events.push(emitted);
+    if (keep) {
+      // The mux is the single authority for sequence numbers.  Callers
+      // (the `pump`, transformer emitters, channel forwarders) pass a
+      // placeholder `seq`; we re-stamp every event here so the log is
+      // strictly monotonic across all origination paths.  Stamping
+      // happens *after* `process()` so that any channel-forwarded
+      // events pushed during processing get earlier sequence numbers
+      // than the triggering event, matching their in-order appearance
+      // in `_events`.
+      this._events.push({ ...event, seq: this.#nextEmitSeq++ });
     }
   }
 
   /**
    * Gracefully ends the stream: resolves values promises on all known
-   * streams, finalizes every transformer, and closes both event logs.
+   * streams, finalizes every transformer, auto-closes streaming
+   * channels, flushes any final-value projections as `custom:<name>`
+   * events, and closes both event logs.
+   *
+   * When final-value projections are present, `_events.close()` is
+   * deferred until every tracked projection promise has settled so
+   * remote consumers observe the flushed values before their event
+   * stream ends. Callers do not need to await — `close()` returns
+   * synchronously and any downstream consumer iterating
+   * {@link _events} naturally waits for the final events.
    */
   close(): void {
+    this.#closed = true;
     for (const [key, values] of this.#latestValues.entries()) {
       const ns = key ? key.split("\x00") : [];
       const stream = this.#streamMap.get(nsKey(ns));
-      stream?._resolveValues(values);
+      stream?.[RESOLVE_VALUES](values);
     }
 
-    const finalizeEmit = (method: string, data: unknown) => {
-      this._events.push({
-        type: "event",
-        seq: this.#nextEmitSeq++,
-        method: method as ProtocolEvent["method"],
-        params: { namespace: [], timestamp: Date.now(), data },
-      });
-    };
-
+    const finalizePromises: PromiseLike<void>[] = [];
     for (const transformer of this.#transformers) {
-      transformer.finalize(finalizeEmit);
+      const result = transformer.finalize?.();
+      if (
+        result != null &&
+        typeof (result as PromiseLike<void>).then === "function"
+      ) {
+        finalizePromises.push(result as PromiseLike<void>);
+      }
     }
 
-    this._events.close();
-    this._discoveries.close();
+    for (const channel of this.#channels) {
+      channel._close();
+    }
+
+    const finalValues = this.#finalValues;
+    if (finalValues.length === 0 && finalizePromises.length === 0) {
+      this._events.close();
+      this._discoveries.close();
+    } else {
+      void Promise.allSettled([
+        ...finalizePromises,
+        ...finalValues.map(async ({ name, promise }) => {
+          try {
+            const resolved = await promise;
+            if (!this._events.done) {
+              this._events.push({
+                type: "event",
+                seq: this.#nextEmitSeq++,
+                method: "custom",
+                params: {
+                  namespace: [],
+                  timestamp: Date.now(),
+                  data: { name, payload: resolved },
+                },
+              });
+            }
+          } catch {
+            // Rejected final-value projections are intentionally dropped
+            // so a single failing extension can't poison the protocol
+            // stream. The corresponding in-process Promise still
+            // surfaces the rejection to its direct awaiters via the
+            // transformer's own `fail()` hook.
+          }
+        }),
+      ]).then(() => {
+        this._events.close();
+        this._discoveries.close();
+      });
+    }
 
     for (const stream of this.#streamMap.values()) {
-      stream._resolveValues(undefined);
+      stream[RESOLVE_VALUES](undefined);
     }
   }
 
   /**
-   * Propagates a failure to all transformers, event logs, and stream handles.
+   * Propagates a failure to all transformers, channels, event logs, and
+   * stream handles.
    *
    * @param err - The error that caused the run to fail.
    */
   fail(err: unknown): void {
-    const failEmit = (method: string, data: unknown) => {
-      this._events.push({
-        type: "event",
-        seq: this.#nextEmitSeq++,
-        method: method as ProtocolEvent["method"],
-        params: { namespace: [], timestamp: Date.now(), data },
-      });
-    };
-
+    this.#closed = true;
+    this.#error = err;
     for (const transformer of this.#transformers) {
-      transformer.fail(err, failEmit);
+      transformer.fail?.(err);
+    }
+    for (const channel of this.#channels) {
+      channel._fail(err);
     }
     this._events.fail(err);
     this._discoveries.fail(err);
     for (const stream of this.#streamMap.values()) {
-      stream._rejectValues(err);
+      stream[REJECT_VALUES](err);
     }
   }
 
@@ -287,40 +455,6 @@ export class StreamMux {
       },
     };
   }
-
-  /**
-   * Returns an async iterator that yields subgraph stream handles for
-   * direct children of {@link path} (i.e. namespaces exactly one level
-   * deeper).
-   *
-   * @param path - Parent namespace to watch for children.
-   * @param startAt - Zero-based index into the discovery log to begin from.
-   * @returns An async iterator over subgraph stream handles.
-   */
-  subscribeSubgraphs(
-    path: Namespace,
-    startAt = 0
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): AsyncIterator<any> {
-    const base = this._discoveries.iterate(startAt);
-    const targetDepth = path.length + 1;
-    return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async next(): Promise<IteratorResult<any>> {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const result = await base.next();
-          if (result.done) {
-            return { value: undefined, done: true };
-          }
-          const { ns, stream } = result.value;
-          if (ns.length === targetDepth && hasPrefix(ns, path)) {
-            return { value: stream, done: false };
-          }
-        }
-      },
-    };
-  }
 }
 
 /**
@@ -340,7 +474,7 @@ export async function pump(
   let seq = 0;
   try {
     for await (const chunk of source) {
-      const [ns, mode, payload] = chunk;
+      const [ns, mode, payload, meta] = chunk;
 
       // Detect interrupt payloads attached to values-mode chunks.
       if (mode === "values" && isInterrupted(payload)) {
@@ -353,9 +487,9 @@ export async function pump(
         );
       }
 
-      const event = convertToProtocolEvent(ns, mode, payload, seq);
-      seq += 1;
-      if (event !== null) {
+      const events = convertToProtocolEvent(ns, mode, payload, seq, meta);
+      seq += events.length;
+      for (const event of events) {
         mux.push(ns, event);
       }
     }

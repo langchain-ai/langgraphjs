@@ -62,25 +62,6 @@ const isUsageMetadataLike = (value: unknown): value is UsageMetadataLike =>
   "total_tokens" in value;
 
 /**
- * Normalizes provider-specific stop reasons into the protocol-compatible enum.
- *
- * @param value - Raw stop reason from provider metadata.
- * @returns Normalized protocol finish reason.
- */
-const normalizeMessageFinishReason = (value: unknown) => {
-  switch (value) {
-    case "length":
-    case "content_filter":
-      return value;
-    case "tool_use":
-    case "tool_calls":
-      return "tool_use";
-    default:
-      return "stop";
-  }
-};
-
-/**
  * Merges an incoming content block snapshot into the accumulated block state
  * for the same index.
  *
@@ -164,8 +145,8 @@ const finalizeContentBlock = (
 };
 
 /**
- * Converts LangChain's snake_case `usage_metadata` into the protocol's
- * camelCase `UsageInfo` shape expected by `@langchain/protocol`.
+ * Converts LangChain's `usage_metadata` into the protocol's
+ * `UsageInfo` shape defined by `@langchain/protocol`.
  *
  * @param usage - LangChain-format usage metadata.
  * @returns Protocol-compatible usage info, or `undefined` if input is nullish.
@@ -175,14 +156,14 @@ const toProtocolUsage = (
 ): Record<string, unknown> | undefined => {
   if (usage == null) return undefined;
   return {
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    totalTokens: usage.total_tokens,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    total_tokens: usage.total_tokens,
     ...(usage.input_token_details != null
-      ? { inputTokenDetails: usage.input_token_details }
+      ? { input_token_details: usage.input_token_details }
       : {}),
     ...(usage.output_token_details != null
-      ? { outputTokenDetails: usage.output_token_details }
+      ? { output_token_details: usage.output_token_details }
       : {}),
   };
 };
@@ -227,6 +208,128 @@ const accumulateUsageMetadata = (
         }
       : {}),
   };
+};
+
+const MIME_TYPE_BY_AUDIO_FORMAT: Record<string, string> = {
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  flac: "audio/flac",
+  opus: "audio/opus",
+  aac: "audio/aac",
+  pcm16: "audio/pcm",
+};
+
+const MIME_TYPE_BY_IMAGE_FORMAT: Record<string, string> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+/**
+ * Extracts image content blocks from OpenAI Responses API
+ * `image_generation_call` entries attached to
+ * `message.additional_kwargs.tool_outputs`.
+ *
+ * Each `image_generation_call` output carries a base64-encoded image payload
+ * that is not part of the message's content array. This helper lifts every
+ * such entry into a protocol-shaped image block so downstream consumers can
+ * render it alongside other content blocks.
+ *
+ * @param message - Final message produced by the chat model.
+ * @returns Image blocks extracted from tool outputs, in order of appearance.
+ */
+const extractImageBlocksFromToolOutputs = (
+  message: BaseMessage
+): CompatibleContentBlock[] => {
+  const additional = (message as unknown as { additional_kwargs?: unknown })
+    .additional_kwargs;
+  if (additional == null || typeof additional !== "object") return [];
+  const toolOutputs = (additional as Record<string, unknown>).tool_outputs;
+  if (!Array.isArray(toolOutputs)) return [];
+
+  const blocks: CompatibleContentBlock[] = [];
+  for (const entry of toolOutputs) {
+    if (entry == null || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (record.type !== "image_generation_call") continue;
+    const data = typeof record.result === "string" ? record.result : undefined;
+    const url = typeof record.url === "string" ? record.url : undefined;
+    if (data == null && url == null) continue;
+
+    const outputFormat =
+      typeof record.output_format === "string"
+        ? record.output_format.toLowerCase()
+        : undefined;
+    const mimeType =
+      (outputFormat != null
+        ? MIME_TYPE_BY_IMAGE_FORMAT[outputFormat]
+        : undefined) ?? "image/png";
+
+    blocks.push({
+      type: "image",
+      ...(typeof record.id === "string" ? { id: record.id } : {}),
+      ...(url != null ? { url } : {}),
+      ...(data != null ? { data } : {}),
+      mime_type: mimeType,
+    });
+  }
+  return blocks;
+};
+
+/**
+ * Extracts an audio content block from `message.additional_kwargs.audio`.
+ *
+ * Some providers (notably OpenAI's `gpt-4o-audio-preview` non-streaming path)
+ * return audio payloads outside of the standard content array and instead
+ * attach them to `additional_kwargs`. This helper lifts the payload into a
+ * protocol-compatible audio content block so downstream consumers can treat
+ * it uniformly with inline audio blocks.
+ *
+ * @param message - Final message produced by the chat model.
+ * @returns Protocol-shaped audio block, or `undefined` if none was attached.
+ */
+const extractAudioBlockFromAdditionalKwargs = (
+  message: BaseMessage
+): CompatibleContentBlock | undefined => {
+  const additional = (message as unknown as { additional_kwargs?: unknown })
+    .additional_kwargs;
+  if (additional == null || typeof additional !== "object") return undefined;
+  const audio = (additional as Record<string, unknown>).audio;
+  if (audio == null || typeof audio !== "object") return undefined;
+  const audioRecord = audio as Record<string, unknown>;
+
+  const data =
+    typeof audioRecord.data === "string" ? audioRecord.data : undefined;
+  const url = typeof audioRecord.url === "string" ? audioRecord.url : undefined;
+  if (data == null && url == null) return undefined;
+
+  const explicitMimeType =
+    typeof audioRecord.mime_type === "string"
+      ? audioRecord.mime_type
+      : typeof audioRecord.mimeType === "string"
+        ? audioRecord.mimeType
+        : undefined;
+  const format =
+    typeof audioRecord.format === "string"
+      ? audioRecord.format.toLowerCase()
+      : undefined;
+  const mimeType =
+    explicitMimeType ??
+    (format != null ? MIME_TYPE_BY_AUDIO_FORMAT[format] : undefined) ??
+    (data != null ? "audio/wav" : undefined);
+
+  return {
+    type: "audio",
+    ...(typeof audioRecord.id === "string" ? { id: audioRecord.id } : {}),
+    ...(url != null ? { url } : {}),
+    ...(data != null ? { data } : {}),
+    ...(mimeType != null ? { mime_type: mimeType } : {}),
+    ...(typeof audioRecord.transcript === "string"
+      ? { transcript: audioRecord.transcript }
+      : {}),
+  } satisfies CompatibleContentBlock;
 };
 
 /**
@@ -328,6 +431,17 @@ function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
   return BaseMessage.isInstance((x as ChatGenerationChunk)?.message);
 }
 
+interface StreamingAudioState {
+  /** Block index where the streaming audio block was emitted. */
+  index: number;
+  /** Stable audio id from the first chunk (used across deltas). */
+  id?: string;
+  /** Inferred mime type (e.g. `audio/pcm` for pcm16). */
+  mimeType?: string;
+  /** Accumulated transcript text, if any. */
+  transcript: string;
+}
+
 interface ProtocolStreamRunState {
   /** Stable message ID associated with the active streamed response. */
   messageId?: string;
@@ -337,6 +451,8 @@ interface ProtocolStreamRunState {
   blocks: Map<number, CompatibleContentBlock>;
   /** Running usage snapshot built from streamed chunks. */
   usage?: UsageMetadataLike;
+  /** Progressive audio assembly state (pcm16 / OpenAI `additional_kwargs.audio`). */
+  streamingAudio?: StreamingAudioState;
 }
 
 /**
@@ -453,7 +569,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.emitProtocolEvent(meta, {
       event: "message-start",
       role: "ai",
-      ...(messageId != null ? { message_id: messageId } : {}),
+      ...(messageId != null ? { id: messageId } : {}),
     });
   }
 
@@ -479,7 +595,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index,
-        content_block: previous,
+        content: previous,
       });
     }
 
@@ -492,7 +608,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.emitProtocolEvent(meta, {
       event: "content-block-delta",
       index,
-      content_block: protocolDelta,
+      content: protocolDelta,
     });
   }
 
@@ -531,15 +647,61 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
           : message.type === "tool"
             ? ("tool" as const)
             : "ai";
+    // Tool messages carry a `tool_call_id` that pairs them with the
+    // AI turn that issued the call. Surface it on `message-start` so
+    // namespace-scoped message projections (which don't have access
+    // to the full `values.messages` snapshot) can reconstruct the
+    // ToolMessage with its id intact and UI layers can pair tool
+    // results to the originating tool card.
+    const toolCallId =
+      role === "tool" && ToolMessage.isInstance(message)
+        ? message.tool_call_id
+        : undefined;
     this.emitProtocolEvent(meta, {
       event: "message-start",
       role,
-      ...(messageId != null ? { message_id: messageId } : {}),
+      ...(messageId != null ? { id: messageId } : {}),
+      ...(typeof toolCallId === "string" ? { tool_call_id: toolCallId } : {}),
     });
 
-    const normalizedContent = Array.isArray(message.content)
-      ? message.content
-      : [{ type: "text", text: String(message.content ?? ""), index: 0 }];
+    const inlineContent = Array.isArray(message.content)
+      ? (message.content as Array<CompatibleContentBlock & { index?: number }>)
+      : null;
+    const hasInlineAudioBlock =
+      inlineContent != null &&
+      inlineContent.some(
+        (block) =>
+          block != null && typeof block === "object" && block.type === "audio"
+      );
+    const hasInlineImageBlock =
+      inlineContent != null &&
+      inlineContent.some(
+        (block) =>
+          block != null && typeof block === "object" && block.type === "image"
+      );
+    const extraAudioBlock = hasInlineAudioBlock
+      ? undefined
+      : extractAudioBlockFromAdditionalKwargs(message);
+    const extraImageBlocks = hasInlineImageBlock
+      ? []
+      : extractImageBlocksFromToolOutputs(message);
+    const extraBlocks: CompatibleContentBlock[] = [
+      ...extraImageBlocks,
+      ...(extraAudioBlock != null ? [extraAudioBlock] : []),
+    ];
+    let normalizedContent: Array<CompatibleContentBlock & { index?: number }>;
+    if (inlineContent != null) {
+      normalizedContent = inlineContent;
+    } else {
+      const rawText = String(message.content ?? "");
+      normalizedContent =
+        rawText.length > 0 || extraBlocks.length === 0
+          ? [{ type: "text", text: rawText, index: 0 }]
+          : [];
+    }
+    if (extraBlocks.length > 0) {
+      normalizedContent = [...normalizedContent, ...extraBlocks];
+    }
 
     for (let offset = 0; offset < normalizedContent.length; offset += 1) {
       const rawBlock = normalizedContent[offset] as CompatibleContentBlock & {
@@ -551,7 +713,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       this.emitProtocolEvent(meta, {
         event: "content-block-start",
         index,
-        content_block: startBlock,
+        content: startBlock,
       });
 
       const deltaBlock = toProtocolDeltaBlock(startBlock, rawBlock);
@@ -559,14 +721,14 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         this.emitProtocolEvent(meta, {
           event: "content-block-delta",
           index,
-          content_block: deltaBlock,
+          content: deltaBlock,
         });
       }
 
       this.emitProtocolEvent(meta, {
         event: "content-block-finish",
         index,
-        content_block:
+        content:
           rawBlock.type === "tool_call"
             ? rawBlock
             : rawBlock.type === "tool_call_chunk"
@@ -581,9 +743,6 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       message.response_metadata != null
         ? (message.response_metadata as Record<string, unknown>)
         : undefined;
-    const finishReason = normalizeMessageFinishReason(
-      responseMetadata?.stop_reason
-    );
     const usage =
       "usage_metadata" in message && isUsageMetadataLike(message.usage_metadata)
         ? message.usage_metadata
@@ -592,7 +751,6 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
 
     this.emitProtocolEvent(meta, {
       event: "message-finish",
-      reason: finishReason,
       ...(protocolUsage != null ? { usage: protocolUsage } : {}),
       ...(responseMetadata != null ? { metadata: responseMetadata } : {}),
     });
@@ -688,7 +846,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
               this.emitProtocolEvent(meta!, {
                 event: "content-block-start",
                 index,
-                content_block: rawBlock,
+                content: rawBlock,
               });
             }
             break;
@@ -722,6 +880,110 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         runState.usage,
         message.usage_metadata
       );
+    }
+
+    this.emitStreamingAudioDelta(runState, meta!, message);
+  }
+
+  /**
+   * Emits progressive audio content-block events when the chat model streams
+   * audio via `additional_kwargs.audio.data` (for example, OpenAI
+   * `gpt-4o-audio-preview` with `format: "pcm16"`). Each chunk carries a
+   * delta of base64-encoded samples; we surface the initial `content-block-start`
+   * on the first chunk and follow up with `content-block-delta` events so
+   * consumers can start playback before the model finishes.
+   *
+   * @param runState - Per-run protocol streaming state.
+   * @param meta - Namespace / metadata tuple for the active run.
+   * @param message - Chat-model chunk that may carry an audio delta.
+   */
+  private emitStreamingAudioDelta(
+    runState: ProtocolStreamRunState,
+    meta: Meta,
+    message: BaseMessage
+  ) {
+    const additional = (message as unknown as { additional_kwargs?: unknown })
+      .additional_kwargs;
+    if (additional == null || typeof additional !== "object") return;
+    const audio = (additional as Record<string, unknown>).audio;
+    if (audio == null || typeof audio !== "object") return;
+    const audioRecord = audio as Record<string, unknown>;
+
+    const deltaData =
+      typeof audioRecord.data === "string" ? audioRecord.data : undefined;
+    const transcriptDelta =
+      typeof audioRecord.transcript === "string"
+        ? audioRecord.transcript
+        : undefined;
+    if (deltaData == null && transcriptDelta == null) return;
+
+    if (runState.streamingAudio == null) {
+      const knownIndexes = runState.blocks.keys();
+      let nextIndex = 0;
+      for (const index of knownIndexes) {
+        if (index >= nextIndex) nextIndex = index + 1;
+      }
+      const format =
+        typeof audioRecord.format === "string"
+          ? audioRecord.format.toLowerCase()
+          : undefined;
+      const explicitMimeType =
+        typeof audioRecord.mime_type === "string"
+          ? audioRecord.mime_type
+          : typeof audioRecord.mimeType === "string"
+            ? audioRecord.mimeType
+            : undefined;
+      const mimeType =
+        explicitMimeType ??
+        (format != null ? MIME_TYPE_BY_AUDIO_FORMAT[format] : undefined) ??
+        "audio/pcm";
+
+      runState.streamingAudio = {
+        index: nextIndex,
+        id: typeof audioRecord.id === "string" ? audioRecord.id : undefined,
+        mimeType,
+        transcript: "",
+      };
+
+      const startBlock: CompatibleContentBlock = {
+        type: "audio",
+        ...(runState.streamingAudio.id != null
+          ? { id: runState.streamingAudio.id }
+          : {}),
+        data: "",
+        mime_type: mimeType,
+      };
+      runState.blocks.set(nextIndex, startBlock);
+      this.emitProtocolEvent(meta, {
+        event: "content-block-start",
+        index: nextIndex,
+        content: startBlock,
+      });
+    }
+
+    const stream = runState.streamingAudio;
+    const audioBlockId =
+      stream.id ??
+      (typeof audioRecord.id === "string" ? audioRecord.id : undefined);
+    if (stream.id == null && audioBlockId != null) {
+      stream.id = audioBlockId;
+    }
+    if (transcriptDelta != null) {
+      stream.transcript += transcriptDelta;
+    }
+
+    if (deltaData != null && deltaData.length > 0) {
+      const deltaBlock: CompatibleContentBlock = {
+        type: "audio",
+        ...(audioBlockId != null ? { id: audioBlockId } : {}),
+        data: deltaData,
+        mime_type: stream.mimeType ?? "audio/pcm",
+      };
+      this.emitProtocolEvent(meta, {
+        event: "content-block-delta",
+        index: stream.index,
+        content: deltaBlock,
+      });
     }
   }
 
@@ -768,17 +1030,77 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       for (const [index, block] of [...runState.blocks.entries()].sort(
         ([left], [right]) => left - right
       )) {
+        let finalBlock = finalizeContentBlock(block);
+        if (
+          runState.streamingAudio != null &&
+          index === runState.streamingAudio.index &&
+          finalBlock.type === "audio"
+        ) {
+          const audioBlock = finalBlock as CompatibleContentBlock & {
+            type: "audio";
+          };
+          const transcript = runState.streamingAudio.transcript;
+          if (transcript.length > 0 && !("transcript" in audioBlock)) {
+            finalBlock = {
+              ...audioBlock,
+              transcript,
+            } as CompatibleContentBlock;
+          }
+        }
         this.emitProtocolEvent(meta!, {
           event: "content-block-finish",
           index,
-          content_block: finalizeContentBlock(block),
+          content: finalBlock,
         });
+      }
+
+      if (message != null) {
+        const knownBlockIndexes = new Set(runState.blocks.keys());
+        const hasInlineAudio =
+          runState.streamingAudio != null ||
+          (Array.isArray(message.content)
+            ? (message.content as Array<{ type?: string }>).some(
+                (block) => block?.type === "audio"
+              )
+            : false);
+        const hasInlineImage = Array.isArray(message.content)
+          ? (message.content as Array<{ type?: string }>).some(
+              (block) => block?.type === "image"
+            )
+          : false;
+        const extraBlocks: CompatibleContentBlock[] = [
+          ...(hasInlineImage ? [] : extractImageBlocksFromToolOutputs(message)),
+          ...(hasInlineAudio
+            ? []
+            : (() => {
+                const audio = extractAudioBlockFromAdditionalKwargs(message);
+                return audio != null ? [audio] : [];
+              })()),
+        ];
+        if (extraBlocks.length > 0) {
+          let syntheticIndex =
+            (knownBlockIndexes.size === 0
+              ? 0
+              : Math.max(...knownBlockIndexes) + 1) - 1;
+          for (const block of extraBlocks) {
+            syntheticIndex += 1;
+            this.emitProtocolEvent(meta!, {
+              event: "content-block-start",
+              index: syntheticIndex,
+              content: block,
+            });
+            this.emitProtocolEvent(meta!, {
+              event: "content-block-finish",
+              index: syntheticIndex,
+              content: block,
+            });
+          }
+        }
       }
 
       const protocolUsage = toProtocolUsage(finishUsage);
       this.emitProtocolEvent(meta!, {
         event: "message-finish",
-        reason: normalizeMessageFinishReason(responseMetadata?.stop_reason),
         ...(protocolUsage != null ? { usage: protocolUsage } : {}),
         ...(responseMetadata != null ? { metadata: responseMetadata } : {}),
       });

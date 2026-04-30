@@ -1,16 +1,25 @@
 import { useState } from "react";
-import type { Message } from "@langchain/langgraph-sdk";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+
 import { useStream } from "../../index.js";
+
+interface StreamState {
+  messages: BaseMessage[];
+}
 
 interface Props {
   apiUrl: string;
+  assistantId?: string;
 }
 
-export function SubmitOnError({ apiUrl }: Props) {
+export function SubmitOnError({
+  apiUrl,
+  assistantId = "error_graph",
+}: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const thread = useStream<{ messages: Message[] }>({
-    assistantId: "errorAgent",
+  const thread = useStream<StreamState>({
+    assistantId,
     apiUrl,
   });
 
@@ -22,12 +31,14 @@ export function SubmitOnError({ apiUrl }: Props) {
       {thread.error ? (
         <div data-testid="error">{String(thread.error)}</div>
       ) : null}
-      {submitError ? <div data-testid="submit-error">{submitError}</div> : null}
+      {submitError ? (
+        <div data-testid="submit-error">{submitError}</div>
+      ) : null}
       <button
         data-testid="submit"
         onClick={() =>
           void thread.submit(
-            { messages: [{ content: "Hello", type: "human" }] },
+            { messages: [new HumanMessage("Hello")] },
             {
               onError: (error: unknown) => {
                 setSubmitError(

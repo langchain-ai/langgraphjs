@@ -8,28 +8,27 @@ import type {
 } from "../storage/types.mjs";
 import type { RunCommand } from "../command.mjs";
 import type {
-  CapabilityAdvertisement,
+  EventSinkEntry,
+  EventSinkFilter,
   ProtocolCommand,
   ProtocolCommandByMethod,
   ProtocolError,
   ProtocolEvent,
   ProtocolSuccess,
-  ProtocolVersion,
   RunInputParams,
   RunResult,
-  SessionRecord,
-  SessionResult,
-  ProtocolTarget,
+  ThreadRecord,
   ProtocolTransportName,
   StateGetResult,
-  SubscribeResult,
-  TransportProfile,
-  ModuleCapability,
 } from "./types.mjs";
+import {
+  isSupportedChannel,
+  isRecord as isRecordInternal,
+} from "./session/internal-types.mjs";
 import { PROTOCOL_MESSAGES_STREAM_CONFIG_KEY } from "./constants.mjs";
 import { RunProtocolSession } from "./session/index.mjs";
 
-type SessionBindings = {
+type ServiceBindings = {
   runs: RunsRepo;
   threads: ThreadsRepo;
 };
@@ -40,158 +39,60 @@ type SessionBindings = {
  */
 type EventSink = (message: ProtocolEvent) => Promise<void> | void;
 
-const PROTOCOL_VERSION: ProtocolVersion = "0.3.0";
 const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
   "values",
   "updates",
   "messages",
   "tools",
   "custom",
-  "debug",
-  "checkpoints",
   "tasks",
-];
-
-const STREAM_CHANNEL_CAPABILITIES: ModuleCapability[] = [
-  {
-    name: "values",
-    channels: ["values"],
-  },
-  {
-    name: "updates",
-    channels: ["updates"],
-  },
-  {
-    name: "messages",
-    channels: ["messages"],
-  },
-  {
-    name: "tools",
-    channels: ["tools"],
-  },
-  {
-    name: "custom",
-    channels: ["custom"],
-  },
-  {
-    name: "debug",
-    channels: ["debug"],
-  },
-  {
-    name: "checkpoints",
-    channels: ["checkpoints"],
-  },
-  {
-    name: "tasks",
-    channels: ["tasks"],
-  },
-];
-
-const MODULE_CAPABILITIES: ModuleCapability[] = [
-  {
-    name: "session",
-    commands: ["session.open", "session.describe", "session.close"],
-  },
-  {
-    name: "run",
-    commands: ["run.input"],
-  },
-  {
-    name: "subscription",
-    commands: [
-      "subscription.subscribe",
-      "subscription.unsubscribe",
-      "subscription.reconnect",
-    ],
-  },
-  {
-    name: "input",
-    commands: ["input.respond"],
-    channels: ["input"],
-  },
-  {
-    name: "agent",
-    commands: ["agent.getTree"],
-    channels: ["lifecycle"],
-    events: ["spawned", "running", "completed", "failed", "interrupted"],
-  },
-  ...STREAM_CHANNEL_CAPABILITIES,
-  {
-    name: "state",
-    commands: ["state.get", "state.listCheckpoints", "state.fork"],
-    channels: ["state"],
-  },
-];
-
-const CONTENT_BLOCK_TYPES: NonNullable<
-  CapabilityAdvertisement["content_block_types"]
-> = [
-  "text",
-  "reasoning",
-  "tool_call",
-  "tool_call_chunk",
-  "invalid_tool_call",
-  "server_tool_call",
-  "server_tool_call_chunk",
-  "server_tool_call_result",
-  "image",
-  "audio",
-  "video",
-  "file",
-  "non_standard",
-];
-
-const PAYLOAD_TYPES: NonNullable<CapabilityAdvertisement["payload_types"]> = [
-  "LifecycleEvent",
-  "MessagesEvent",
-  "ToolsEvent",
-  "ValuesEvent",
-  "UpdatesEvent",
-  "InputRequestedEvent",
-  "CustomEvent",
-  "DebugEvent",
-  "CheckpointsEvent",
-  "TasksEvent",
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const defaultTransportProfile = (
-  transportName: ProtocolTransportName
-): TransportProfile => ({
-  name: transportName,
-  event_ordering: "seq",
-  command_delivery:
-    transportName === "websocket" ? "in-band" : "request-response",
-  media_transfer_modes:
-    transportName === "websocket"
-      ? ["artifact-only"]
-      : ["artifact-only", "upgrade-to-websocket"],
-});
+/**
+ * `run.input` params as accepted by the service. Wider than the
+ * stock `RunInputParams` from `@langchain/protocol` to carry the
+ * SDK-side `forkFrom: { checkpointId }` convenience field, which
+ * `createOrResumeRun` promotes to `config.configurable.checkpoint_id`
+ * so the engine replays from the requested fork target. Callers that
+ * prefer to set `config.configurable.checkpoint_id` directly remain
+ * fully supported — `forkFrom` is merged after the caller's config so
+ * it takes precedence when both are provided.
+ */
+type ExtendedRunInputParams = RunInputParams & {
+  forkFrom?: { checkpointId: string };
+};
 
-const normalizeRunInput = (value: unknown): RunInputParams => {
+const normalizeForkFrom = (
+  value: unknown
+): { checkpointId: string } | undefined => {
+  if (!isRecord(value)) return undefined;
+  const checkpointId = value.checkpointId;
+  if (typeof checkpointId !== "string" || checkpointId.length === 0) {
+    return undefined;
+  }
+  return { checkpointId };
+};
+
+const normalizeRunInput = (value: unknown): ExtendedRunInputParams => {
   if (isRecord(value)) {
     return {
+      assistant_id:
+        typeof value.assistant_id === "string" ? value.assistant_id : "",
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
+      forkFrom: normalizeForkFrom(value.forkFrom),
     };
   }
   return {
+    assistant_id: "",
     input: undefined,
     config: undefined,
     metadata: undefined,
   };
-};
-
-const getThreadIdFromConfig = (value: unknown): string | undefined => {
-  if (!isRecord(value)) return undefined;
-  const configurable = value.configurable;
-  if (!isRecord(configurable)) return undefined;
-  return typeof configurable.thread_id === "string"
-    ? configurable.thread_id
-    : undefined;
 };
 
 const normalizeKeys = (value: unknown): string[] | undefined => {
@@ -201,124 +102,69 @@ const normalizeKeys = (value: unknown): string[] | undefined => {
 };
 
 /**
- * Shared session registry and command dispatcher for protocol transports.
+ * Thread-scoped connection registry and command dispatcher.
  *
- * This service owns the session lifecycle that sits above individual runs. It
- * allows graph/agent-targeted sessions to queue protocol commands before a run
- * exists, then replays those commands into the bound run session once
- * `run.input` starts work.
+ * In the thread-centric protocol, a `ThreadRecord` holds ephemeral
+ * connection state for an active client interacting with a thread. The
+ * thread itself is durable (lives in the checkpoint store); records are
+ * created lazily on first interaction and dropped when all connections
+ * close.
  */
 export class ProtocolService {
-  private readonly bindings: SessionBindings;
+  private readonly bindings: ServiceBindings;
 
-  private readonly sessions = new Map<string, SessionRecord>();
+  private readonly threads = new Map<string, ThreadRecord>();
 
-  constructor(bindings: SessionBindings) {
+  constructor(bindings: ServiceBindings) {
     this.bindings = bindings;
   }
 
-  getSession(sessionId: string) {
-    return this.sessions.get(sessionId);
-  }
-
-  deleteSession(sessionId: string) {
-    this.sessions.delete(sessionId);
+  getThread(threadId: string) {
+    return this.threads.get(threadId);
   }
 
   /**
-   * Create a new protocol session and bind it immediately when the target is an
-   * existing run.
+   * Get or create the in-memory record for a thread. Records hold
+   * ephemeral connection state (event sinks, current run session) and
+   * are created on first use for any thread the client targets.
    */
-  async openSession(options: {
-    transportName: ProtocolTransportName;
-    auth: SessionRecord["auth"];
-    target: ProtocolTarget;
+  ensureThread(options: {
+    threadId: string;
+    transport: ProtocolTransportName;
+    auth?: ThreadRecord["auth"];
     sendEvent?: EventSink;
-  }): Promise<{
-    record: SessionRecord;
-    response: ProtocolSuccess;
-  }> {
-    const sessionId = uuid7();
-    const record: SessionRecord = {
-      sessionId,
-      protocol_version: PROTOCOL_VERSION,
-      transport: defaultTransportProfile(options.transportName),
-      auth: options.auth,
-      target: options.target,
-      capabilities: {
-        modules: MODULE_CAPABILITIES.map((module) => ({ ...module })),
-        payload_types: PAYLOAD_TYPES.slice(),
-        content_block_types: CONTENT_BLOCK_TYPES.slice(),
-      },
-      seq: 0,
-      session: undefined,
-      currentRunId: undefined,
-      currentThreadId: undefined,
-      sendEvent: options.sendEvent,
-      queuedEvents: [],
-      pendingCommands: [],
-    };
-    this.sessions.set(sessionId, record);
-    if ("kind" in record.target && record.target.kind === "run") {
-      const run = await this.bindings.runs.get(
-        record.target.id,
-        record.target.threadId,
-        record.auth
-      );
-      if (run == null) {
-        this.sessions.delete(sessionId);
-        throw new Error(`No run found for target ${record.target.id}`);
-      }
-      record.currentRunId = run.run_id;
-      record.currentThreadId = run.thread_id;
-      await this.ensureRunSession(record, run);
+  }): ThreadRecord {
+    let record = this.threads.get(options.threadId);
+    if (record == null) {
+      record = {
+        threadId: options.threadId,
+        transport: options.transport,
+        auth: options.auth,
+        seq: 0,
+        session: undefined,
+        currentRunId: undefined,
+        sendEvent: options.sendEvent,
+        eventSinks: new Map(),
+        queuedEvents: [],
+        activeSubscriptions: [],
+        pendingSubscribes: [],
+      };
+      this.threads.set(options.threadId, record);
+    } else if (options.sendEvent != null) {
+      record.sendEvent = options.sendEvent;
     }
-    return {
-      record,
-      response: {
-        type: "success",
-        id: 0,
-        result: {
-          session_id: sessionId,
-          protocol_version: record.protocol_version,
-          transport: record.transport,
-          capabilities: record.capabilities,
-        } satisfies SessionResult,
-        meta: {
-          session_id: sessionId,
-          applied_through_seq: record.seq,
-        },
-      },
-    };
-  }
-
-  describeSession(sessionId: string): ProtocolSuccess {
-    const record = this.requireSession(sessionId);
-    return {
-      type: "success",
-      id: 0,
-      result: {
-        session_id: record.sessionId,
-        protocol_version: record.protocol_version,
-        transport: record.transport,
-        capabilities: record.capabilities,
-      } satisfies SessionResult,
-      meta: {
-        session_id: record.sessionId,
-        applied_through_seq: record.seq,
-      },
-    };
+    return record;
   }
 
   /**
-   * Attach a live transport consumer and flush any events buffered before the
-   * consumer connected.
+   * Attach a live transport consumer (WebSocket) and flush any buffered
+   * events.
    */
   async attachEventSink(
-    sessionId: string,
+    threadId: string,
     sendEvent: EventSink
-  ): Promise<SessionRecord> {
-    const record = this.requireSession(sessionId);
+  ): Promise<ThreadRecord> {
+    const record = this.requireThread(threadId);
     record.sendEvent = sendEvent;
     for (const event of record.queuedEvents.splice(0)) {
       await sendEvent(event);
@@ -326,77 +172,81 @@ export class ProtocolService {
     return record;
   }
 
-  async closeSession(sessionId: string) {
-    const record = this.sessions.get(sessionId);
-    if (record == null) return;
-    await record.session?.close();
-    this.sessions.delete(sessionId);
+  /**
+   * Attach a filtered SSE event sink and replay buffered events that
+   * match the filter.
+   *
+   * The sink is flagged `pendingReplay` while draining so that the live
+   * `send` path skips it — preventing live events from interleaving with
+   * the replay loop's awaits and producing out-of-order delivery.
+   */
+  async attachFilteredEventSink(
+    threadId: string,
+    sink: EventSinkEntry
+  ): Promise<ThreadRecord> {
+    const record = this.requireThread(threadId);
+    sink.pendingReplay = true;
+    record.eventSinks.set(sink.id, sink);
+    try {
+      // Walk the buffer by index so events pushed during an `await`
+      // are still picked up in order before we unblock live delivery.
+      let cursor = 0;
+      while (cursor < record.queuedEvents.length) {
+        const event = record.queuedEvents[cursor++];
+        if (matchesSinkFilter(sink.filter, event)) {
+          await sink.send(event);
+        }
+      }
+    } finally {
+      sink.pendingReplay = false;
+    }
+    return record;
   }
 
   /**
-   * Route a protocol command through the shared session core.
+   * Remove an SSE event sink when the connection closes.
+   */
+  detachEventSink(threadId: string, sinkId: string): void {
+    const record = this.threads.get(threadId);
+    record?.eventSinks.delete(sinkId);
+  }
+
+  async closeThread(threadId: string) {
+    const record = this.threads.get(threadId);
+    if (record == null) return;
+    // Resolve any still-parked WebSocket subscribes with `no_such_run` so
+    // the transport's `onMessage` await unblocks and doesn't leak. The
+    // thread is going away before a session was ever bound, so the client
+    // will never receive a valid subscription_id anyway.
+    const pending = record.pendingSubscribes.splice(0);
+    for (const { command, resolve } of pending) {
+      resolve({
+        type: "error",
+        id: command.id,
+        error: "no_such_run",
+        message: "Thread closed before a run was bound.",
+      });
+    }
+    await record.session?.close();
+    this.threads.delete(threadId);
+  }
+
+  /**
+   * Route a protocol command on a thread.
    *
-   * Commands that need an active run session are queued for graph/agent targets
-   * until `run.input` creates and binds a run.
+   * `subscription.subscribe` can resolve to `null` on ordered
+   * transports (WebSocket) — see
+   * `ProtocolSession.handleSubscribeForResponse` for the rationale.
+   * Callers must treat `null` as "response already sent on the wire"
+   * and skip any additional send.
    */
   async handleCommand(
-    sessionId: string,
+    threadId: string,
     command: ProtocolCommand
-  ): Promise<ProtocolSuccess | ProtocolError> {
-    const record = this.requireSession(sessionId);
-    if (
-      record.session == null &&
-      command.method !== "run.input" &&
-      command.method !== "input.respond" &&
-      command.method !== "session.describe" &&
-      command.method !== "session.close" &&
-      command.method !== "state.get"
-    ) {
-      record.pendingCommands.push(command);
-      return {
-        type: "success",
-        id: command.id,
-        result:
-          command.method === "subscription.subscribe"
-            ? ({
-                subscription_id: uuid7(),
-                replayed_events: 0,
-              } satisfies SubscribeResult)
-            : {},
-        meta: {
-          session_id: record.sessionId,
-          applied_through_seq: record.seq,
-        },
-      };
-    }
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
+    const record = this.requireThread(threadId);
 
     switch (command.method) {
-      case "session.describe":
-        return {
-          type: "success",
-          id: command.id,
-          result: {
-            session_id: record.sessionId,
-            protocol_version: record.protocol_version,
-            transport: record.transport,
-            capabilities: record.capabilities,
-          } satisfies SessionResult,
-          meta: {
-            session_id: record.sessionId,
-            applied_through_seq: record.seq,
-          },
-        };
-      case "session.close":
-        await this.closeSession(sessionId);
-        return {
-          type: "success",
-          id: command.id,
-          result: {},
-          meta: {
-            session_id: sessionId,
-            applied_through_seq: record.seq,
-          },
-        };
       case "run.input":
         return await this.handleRunInput(record, command);
       case "input.respond":
@@ -409,29 +259,47 @@ export class ProtocolService {
   }
 
   /**
-   * Start a new run, resume an interrupted run, or continue on the current
-   * thread depending on the session's bound state.
+   * Start a new run, resume an interrupted run, or continue on the
+   * thread depending on its current state.
    */
   private async handleRunInput(
-    record: SessionRecord,
+    record: ThreadRecord,
     command: ProtocolCommandByMethod<"run.input">
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = normalizeRunInput(command.params);
-    const run = await this.createOrResumeRun(record, params);
+    if (!params.assistant_id) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        "run.input requires an assistant_id."
+      );
+    }
+    if (
+      record.assistantId != null &&
+      record.assistantId !== params.assistant_id
+    ) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        `Thread ${record.threadId} is bound to assistant ${record.assistantId}; cannot run ${params.assistant_id}.`
+      );
+    }
+    record.assistantId = params.assistant_id;
 
+    const run = await this.createOrResumeRun(record, params);
     return {
       type: "success",
       id: command.id,
       result: { run_id: run.run_id } satisfies RunResult,
       meta: {
-        session_id: record.sessionId,
+        thread_id: record.threadId,
         applied_through_seq: record.seq,
       },
     };
   }
 
   private async handleInputRespond(
-    record: SessionRecord,
+    record: ThreadRecord,
     command: ProtocolCommandByMethod<"input.respond">
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = isRecord(command.params)
@@ -447,12 +315,19 @@ export class ProtocolService {
         "input.respond requires an interrupt_id."
       );
     }
+    if (record.assistantId == null) {
+      return this.error(
+        command.id,
+        "no_such_run",
+        "Thread has no active assistant; call run.input first."
+      );
+    }
 
     const currentRun =
       record.currentRunId != null
         ? await this.bindings.runs.get(
             record.currentRunId,
-            record.currentThreadId,
+            record.threadId,
             record.auth
           )
         : null;
@@ -461,7 +336,7 @@ export class ProtocolService {
       return this.error(
         command.id,
         "no_such_run",
-        "No interrupted run is bound to this session."
+        "No interrupted run is bound to this thread."
       );
     }
     if (!hasPendingInterrupts) {
@@ -473,6 +348,7 @@ export class ProtocolService {
     }
 
     await this.createOrResumeRun(record, {
+      assistant_id: record.assistantId,
       input: { [params.interrupt_id]: params.response },
       config: undefined,
       metadata: undefined,
@@ -483,36 +359,29 @@ export class ProtocolService {
       id: command.id,
       result: {},
       meta: {
-        session_id: record.sessionId,
+        thread_id: record.threadId,
         applied_through_seq: record.seq,
       },
     };
   }
 
   private async createOrResumeRun(
-    record: SessionRecord,
-    params: RunInputParams
+    record: ThreadRecord,
+    params: ExtendedRunInputParams
   ) {
-    const targetId = record.target.id;
-    const configuredThreadId = getThreadIdFromConfig(params.config);
-
+    const assistantId = getAssistantId(params.assistant_id);
     const currentRun =
       record.currentRunId != null
         ? await this.bindings.runs.get(
             record.currentRunId,
-            record.currentThreadId,
+            record.threadId,
             record.auth
           )
         : null;
-    const assistantId = currentRun?.assistant_id ?? getAssistantId(targetId);
     const currentStatus = currentRun?.status;
-    const resolvedThreadId = record.currentThreadId ?? configuredThreadId;
     const hasPendingInterrupts =
-      params.input != null && resolvedThreadId != null
-        ? await this.hasPendingInterruptsForThread(
-            resolvedThreadId,
-            record.auth
-          )
+      params.input != null
+        ? await this.hasPendingInterruptsForThread(record.threadId, record.auth)
         : false;
     const isResume =
       params.input != null &&
@@ -520,14 +389,26 @@ export class ProtocolService {
         hasPendingInterrupts);
 
     /**
-     * We need to set the PROTOCOL_MESSAGES_STREAM_CONFIG_KEY to true to ensure that
-     * the message stream uses the new protocol messages stream.
+     * We need to set the PROTOCOL_MESSAGES_STREAM_CONFIG_KEY to true to ensure
+     * that the message stream uses the new protocol messages stream.
+     *
+     * When `forkFrom: { checkpointId }` is present, promote it to
+     * `configurable.checkpoint_id` so the engine replays from the
+     * requested fork target. `forkFrom` is merged last so it wins over
+     * any `checkpoint_id` the caller may have pre-baked into
+     * `config.configurable`; in resume flows we intentionally skip the
+     * promotion because a resume must follow the thread's active
+     * checkpoint, not a historical fork.
      */
     const runConfig = {
       ...params.config,
       configurable: {
         ...params.config?.configurable,
+        thread_id: record.threadId,
         [PROTOCOL_MESSAGES_STREAM_CONFIG_KEY]: true,
+        ...(!isResume && params.forkFrom?.checkpointId != null
+          ? { checkpoint_id: params.forkFrom.checkpointId }
+          : {}),
       },
     };
 
@@ -562,7 +443,7 @@ export class ProtocolService {
         resumable: runPayload.stream_resumable,
       },
       {
-        threadId: record.currentThreadId ?? configuredThreadId,
+        threadId: record.threadId,
         metadata: runPayload.metadata,
         status: "pending",
         multitaskStrategy: runPayload.multitask_strategy,
@@ -572,28 +453,53 @@ export class ProtocolService {
       record.auth
     );
 
-    record.currentRunId = run.run_id;
-    record.currentThreadId = run.thread_id;
     await this.ensureRunSession(record, run);
-    for (const pending of record.pendingCommands.splice(0)) {
-      await record.session?.handleProtocolCommand(pending, {
-        session_id: record.sessionId,
-        applied_through_seq: record.seq,
-      });
+    record.currentRunId = run.run_id;
+
+    // For WebSocket transports, register subscriptions on the session
+    // BEFORE starting it so the success responses for parked and sticky
+    // subscribes reach the client ahead of the session's first events.
+    // `ensureRunSession` intentionally leaves the session unstarted; we
+    // kick `session.start()` off after the drain below.
+    //
+    //   1. Replay sticky subscriptions from previous runs (empty on the
+    //      first run). These must land first so that parked subs from
+    //      the current run are appended at the end of
+    //      `activeSubscriptions` and aren't double-applied here.
+    //   2. Drain subscribes that arrived while `record.session` was
+    //      still null. Their deferred `handleCommand` responses resolve
+    //      here — the awaiting WebSocket `onMessage` handlers will flush
+    //      `ws.send(success)` on the next microtask tick, which runs
+    //      before `session.start()`'s first `pushEvent` completes its
+    //      `await` chain. The client therefore has every subscription
+    //      handle registered in `#subscriptions` by the time the run's
+    //      initial lifecycle/values events arrive.
+    if (record.transport === "websocket") {
+      for (const cmd of record.activeSubscriptions) {
+        await record.session?.handleProtocolCommand(
+          cmd,
+          {
+            thread_id: record.threadId,
+            applied_through_seq: record.seq,
+          },
+          { deliverResponseInline: true }
+        );
+      }
+      await this.drainPendingSubscribes(record);
     }
+
+    await record.session?.start();
 
     return run;
   }
 
-  private async hasPendingInterrupts(record: SessionRecord) {
-    const threadId = record.currentThreadId;
-    if (threadId == null) return false;
-    return this.hasPendingInterruptsForThread(threadId, record.auth);
+  private async hasPendingInterrupts(record: ThreadRecord) {
+    return this.hasPendingInterruptsForThread(record.threadId, record.auth);
   }
 
   private async hasPendingInterruptsForThread(
     threadId: string,
-    auth: SessionRecord["auth"]
+    auth: ThreadRecord["auth"]
   ) {
     try {
       const state = await this.bindings.threads.state.get(
@@ -610,23 +516,16 @@ export class ProtocolService {
   }
 
   private async handleStateGet(
-    record: SessionRecord,
+    record: ThreadRecord,
     command: ProtocolCommandByMethod<"state.get">
   ): Promise<ProtocolSuccess | ProtocolError> {
-    if (record.currentThreadId == null) {
-      return this.error(
-        command.id,
-        "no_such_run",
-        "No active run is bound to this session."
-      );
-    }
     const params = isRecord(command.params)
       ? (command.params as Partial<
           ProtocolCommandByMethod<"state.get">["params"]
         >)
       : {};
     const values = await this.bindings.threads.state.get(
-      { configurable: { thread_id: record.currentThreadId } },
+      { configurable: { thread_id: record.threadId } },
       { subgraphs: true },
       record.auth
     );
@@ -660,35 +559,101 @@ export class ProtocolService {
         checkpoint,
       } satisfies StateGetResult,
       meta: {
-        session_id: record.sessionId,
+        thread_id: record.threadId,
         applied_through_seq: record.seq,
       },
     };
   }
 
   private async forwardToRunSession(
-    record: SessionRecord,
+    record: ThreadRecord,
     command: ProtocolCommand
-  ): Promise<ProtocolSuccess | ProtocolError> {
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
     const runSession = record.session;
     if (runSession == null) {
+      // WebSocket subscribes can arrive before the concurrent `run.input`
+      // has bound a session (the SDK's root pump + legacy lifecycle/values
+      // subs are opened eagerly so no events are missed on fast runs).
+      // Park the response promise here and resolve it once the first
+      // session is bound — see `drainPendingSubscribes`. Mirrors the
+      // existing cross-run `activeSubscriptions` replay path.
+      if (
+        command.method === "subscription.subscribe" &&
+        record.transport === "websocket"
+      ) {
+        return await new Promise<ProtocolSuccess | ProtocolError | null>(
+          (resolve) => {
+            record.pendingSubscribes.push({ command, resolve });
+          }
+        );
+      }
       return this.error(
         command.id,
         "no_such_run",
-        "No active run is bound to this session."
+        "No active run is bound to this thread."
       );
     }
-    return await runSession.handleProtocolCommand(command, {
-      session_id: record.sessionId,
-      applied_through_seq: record.seq,
-    });
+    if (
+      command.method === "subscription.subscribe" &&
+      record.transport === "websocket"
+    ) {
+      record.activeSubscriptions.push(command);
+    }
+    return await runSession.handleProtocolCommand(
+      command,
+      {
+        thread_id: record.threadId,
+        applied_through_seq: record.seq,
+      },
+      // WebSocket is an ordered single-channel transport: events and
+      // the subscribe response share one wire. Emit the response
+      // first via the session's send queue so the client registers
+      // the subscription handle before the replay events arrive
+      // (otherwise the per-sub fan-out drops them). HTTP `/commands`
+      // keeps the default return-the-response behaviour so the
+      // response lands in the HTTP body.
+      record.transport === "websocket"
+        ? { deliverResponseInline: true }
+        : undefined
+    );
   }
 
   /**
-   * Bind the shared session to a concrete LangGraph run and forward that run's
-   * normalized protocol events into the transport-level session buffer.
+   * Drain any WebSocket subscribes that arrived before the first run
+   * session was bound. Called from `createOrResumeRun` right after
+   * {@link ensureRunSession} sets up `record.session`.
+   *
+   * Each parked command is forwarded to the freshly-bound session,
+   * added to `activeSubscriptions` so it persists across subsequent
+   * runs, and its deferred `handleCommand` promise is resolved so the
+   * WebSocket handler can finally send the response.
    */
-  private async ensureRunSession(record: SessionRecord, run: Run) {
+  private async drainPendingSubscribes(record: ThreadRecord): Promise<void> {
+    if (record.session == null) return;
+    if (record.pendingSubscribes.length === 0) return;
+    const pending = record.pendingSubscribes.splice(0);
+    for (const { command, resolve } of pending) {
+      record.activeSubscriptions.push(command);
+      const response = await record.session.handleProtocolCommand(
+        command,
+        {
+          thread_id: record.threadId,
+          applied_through_seq: record.seq,
+        },
+        // Parked subscribes are always WebSocket-origin (see
+        // `forwardToRunSession`), so the response must land on the
+        // wire before the soon-to-start session's first events.
+        { deliverResponseInline: true }
+      );
+      resolve(response);
+    }
+  }
+
+  /**
+   * Bind the thread record to a concrete LangGraph run and forward
+   * normalized protocol events to attached sinks.
+   */
+  private async ensureRunSession(record: ThreadRecord, run: Run) {
     if (record.session != null && record.currentRunId === run.run_id) return;
 
     await record.session?.close();
@@ -704,6 +669,8 @@ export class ProtocolService {
       record.auth
     );
 
+    const isSSE = record.transport === "sse-http";
+
     const session = new RunProtocolSession({
       runId: run.run_id,
       threadId: run.thread_id,
@@ -718,10 +685,24 @@ export class ProtocolService {
           record.auth
         ),
       source,
+      startSeq: record.seq,
+      passthrough: isSSE,
       send: async (payload) => {
         const parsed = JSON.parse(payload) as ProtocolEvent;
         record.seq = Math.max(record.seq, parsed.seq ?? record.seq);
-        if (record.sendEvent != null) {
+        if (isSSE) {
+          // Always buffer events so late-attaching sinks can replay
+          // matching history via attachFilteredEventSink(). Sinks with
+          // `pendingReplay` are skipped here — their replay loop will
+          // deliver this event in buffer order.
+          record.queuedEvents.push(parsed);
+          for (const sink of record.eventSinks.values()) {
+            if (sink.pendingReplay) continue;
+            if (matchesSinkFilter(sink.filter, parsed)) {
+              await sink.send(parsed);
+            }
+          }
+        } else if (record.sendEvent != null) {
           await record.sendEvent(parsed);
         } else {
           record.queuedEvents.push(parsed);
@@ -730,13 +711,20 @@ export class ProtocolService {
     });
 
     record.session = session;
-    await session.start();
+    // NOTE: `session.start()` is intentionally deferred to the caller
+    // (see {@link createOrResumeRun}). On WebSocket we need to drain any
+    // parked `subscription.subscribe` commands onto the fresh session —
+    // and let the client observe their success responses — BEFORE the
+    // session begins emitting events. Otherwise the initial run events
+    // are serialised ahead of the subscribe responses on the wire and
+    // the client drops them because it hasn't registered the matching
+    // subscription handles in `#subscriptions` yet.
   }
 
-  private requireSession(sessionId: string) {
-    const record = this.sessions.get(sessionId);
+  private requireThread(threadId: string) {
+    const record = this.threads.get(threadId);
     if (record == null) {
-      throw new Error(`No session found for ${sessionId}`);
+      throw new Error(`No thread record found for ${threadId}`);
     }
     return record;
   }
@@ -753,4 +741,51 @@ export class ProtocolService {
       message,
     };
   }
+}
+
+function isPrefixMatch(namespace: string[], prefix: string[]): boolean {
+  if (prefix.length > namespace.length) return false;
+  return prefix.every((segment, i) => namespace[i] === segment);
+}
+
+/**
+ * Check whether a protocol event matches an SSE event sink filter.
+ * Mirrors the subscription matching logic in {@link RunProtocolSession}.
+ */
+export function matchesSinkFilter(
+  filter: EventSinkFilter,
+  event: ProtocolEvent
+): boolean {
+  if (filter.since != null && (event.seq ?? 0) <= filter.since) return false;
+
+  const channel: string | undefined =
+    event.method === "input.requested"
+      ? "input"
+      : isSupportedChannel(event.method)
+        ? event.method
+        : undefined;
+  if (channel == null) return false;
+
+  let channelMatched = filter.channels.has(channel);
+  if (!channelMatched && channel === "custom") {
+    const params = event.params as Record<string, unknown>;
+    const eventName =
+      isRecordInternal(params.data) && typeof params.data.name === "string"
+        ? params.data.name
+        : undefined;
+    if (eventName != null) {
+      channelMatched = filter.channels.has(`custom:${eventName}`);
+    }
+  }
+  if (!channelMatched) return false;
+
+  if (filter.namespaces == null || filter.namespaces.length === 0) {
+    return true;
+  }
+
+  return filter.namespaces.some((prefix) => {
+    if (!isPrefixMatch(event.params.namespace, prefix)) return false;
+    if (filter.depth == null) return true;
+    return event.params.namespace.length - prefix.length <= filter.depth;
+  });
 }

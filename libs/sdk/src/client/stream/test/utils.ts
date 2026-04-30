@@ -3,69 +3,26 @@ import type {
   CommandResponse,
   Event,
   Message,
-  SessionOpenParams,
-  SessionResult,
+  SubscribeParams,
 } from "@langchain/protocol";
 
-import type { TransportAdapter } from "../transport.js";
+import { matchesSubscription } from "../subscription.js";
+import type { TransportAdapter, EventStreamHandle } from "../transport.js";
 
 export class MockTransport implements TransportAdapter {
+  readonly threadId: string;
   private readonly eventQueue: Message[] = [];
   private readonly waiters: Array<(result: IteratorResult<Message>) => void> =
     [];
   readonly sentCommands: Command[] = [];
-  readonly sessionResult: SessionResult;
   closed = false;
 
-  constructor(sessionResult?: Partial<SessionResult>) {
-    this.sessionResult = {
-      session_id: "sess_test",
-      protocol_version: "0.3.0",
-      transport: {
-        name: "in-process",
-        event_ordering: "seq",
-        command_delivery: "direct-call",
-      },
-      capabilities: {
-        modules: [
-          {
-            name: "session",
-            commands: ["open", "describe", "close"],
-          },
-          {
-            name: "subscription",
-            commands: ["subscribe", "unsubscribe", "reconnect"],
-          },
-          {
-            name: "run",
-            commands: ["input"],
-          },
-          {
-            name: "agent",
-            commands: ["getTree"],
-            channels: ["lifecycle"],
-          },
-          {
-            name: "messages",
-            channels: ["messages"],
-          },
-          {
-            name: "tools",
-            channels: ["tools"],
-          },
-          {
-            name: "usage",
-            commands: ["setBudget"],
-            channels: ["usage"],
-          },
-        ],
-      },
-      ...sessionResult,
-    };
+  constructor(options?: { threadId?: string }) {
+    this.threadId = options?.threadId ?? "thread_test";
   }
 
-  async open(_params: SessionOpenParams): Promise<SessionResult> {
-    return this.sessionResult;
+  async open(): Promise<void> {
+    // no-op for the mock
   }
 
   async send(command: Command): Promise<CommandResponse> {
@@ -79,8 +36,6 @@ export class MockTransport implements TransportAdapter {
           result: { subscription_id: `sub_${command.id}` },
         };
       case "subscription.unsubscribe":
-      case "session.close":
-      case "usage.setBudget":
         return {
           type: "success",
           id: command.id,
@@ -92,18 +47,6 @@ export class MockTransport implements TransportAdapter {
           id: command.id,
           result: { run_id: "run_1" },
           meta: { applied_through_seq: 9 },
-        };
-      case "subscription.reconnect":
-        return {
-          type: "success",
-          id: command.id,
-          result: { restored: true, missed_events: 2 },
-        };
-      case "session.describe":
-        return {
-          type: "success",
-          id: command.id,
-          result: this.sessionResult,
         };
       default:
         return {
@@ -149,6 +92,257 @@ export class MockTransport implements TransportAdapter {
         },
       }),
     };
+  }
+}
+
+/**
+ * Mock SSE-style transport: each subscription gets its own filtered stream
+ * (via `openEventStream`) with a replay buffer, mirroring
+ * `ProtocolSseTransportAdapter`. Every pushed event is stored in the buffer
+ * and fanned out to every open stream whose filter matches — so opening
+ * a second subscription replays all prior matching events, exactly like
+ * the real server.
+ */
+/**
+ * Per-open record exposed via `mock.streamHandles` for test inspection.
+ * Test code can inspect/toggle these to simulate server behaviours.
+ */
+export interface MockSseStreamRecord {
+  index: number;
+  params: SubscribeParams;
+  closed: boolean;
+  readyResolved: boolean;
+  resolveReady: () => void;
+  rejectReady: (err: unknown) => void;
+  failPump: (err: unknown) => void;
+}
+
+export interface MockSseTransportOptions {
+  threadId?: string;
+  /**
+   * If set, new streams open in a "pending" state — their `ready` promise
+   * stays unresolved until the test calls `resolveReady(index)`.
+   * Defaults to `false`: streams are ready immediately.
+   */
+  manualReady?: boolean;
+}
+
+export class MockSseTransport implements TransportAdapter {
+  readonly threadId: string;
+  readonly sentCommands: Command[] = [];
+  closed = false;
+
+  /** Every stream ever opened, in open-order. Inspected by tests. */
+  readonly streamHandles: MockSseStreamRecord[] = [];
+
+  private readonly manualReady: boolean;
+  private readonly buffer: Event[] = [];
+  private readonly streams = new Set<{
+    record: MockSseStreamRecord;
+    push: (event: Event) => void;
+    pushError: (err: unknown) => void;
+  }>();
+
+  constructor(options?: MockSseTransportOptions) {
+    this.threadId = options?.threadId ?? "thread_test";
+    this.manualReady = options?.manualReady ?? false;
+  }
+
+  /** Number of streams currently open (not closed). */
+  get activeStreamCount(): number {
+    return this.streamHandles.filter((s) => !s.closed).length;
+  }
+
+  /** Number of streams ever opened. */
+  get totalStreamCount(): number {
+    return this.streamHandles.length;
+  }
+
+  /** The filter passed to the most recent `openEventStream` call. */
+  get lastFilter(): SubscribeParams | undefined {
+    return this.streamHandles.at(-1)?.params;
+  }
+
+  /**
+   * Resolve the `ready` promise of the stream at `index`. Only useful when
+   * constructed with `{ manualReady: true }`.
+   */
+  resolveReady(index: number): void {
+    this.streamHandles[index]?.resolveReady();
+  }
+
+  /**
+   * Reject the `ready` promise of the stream at `index`, simulating a
+   * server-side open failure.
+   */
+  rejectReady(index: number, err: unknown): void {
+    this.streamHandles[index]?.rejectReady(err);
+  }
+
+  /**
+   * Simulate a mid-pump failure on the stream at `index` (e.g. the server
+   * closes the connection with an error).
+   */
+  failStream(index: number, err: unknown): void {
+    this.streamHandles[index]?.failPump(err);
+  }
+
+  async open(): Promise<void> {
+    // no-op for the mock
+  }
+
+  async send(command: Command): Promise<CommandResponse> {
+    this.sentCommands.push(command);
+    switch (command.method) {
+      case "run.input":
+        return {
+          type: "success",
+          id: command.id,
+          result: { run_id: "run_1" },
+          meta: { applied_through_seq: 9 },
+        };
+      default:
+        return {
+          type: "success",
+          id: command.id,
+          result: {},
+        };
+    }
+  }
+
+  events(): AsyncIterable<Message> {
+    return {
+      [Symbol.asyncIterator]: () => ({
+        next: async () => ({ done: true, value: undefined }),
+      }),
+    };
+  }
+
+  openEventStream(params: SubscribeParams): EventStreamHandle {
+    const queue: Message[] = [];
+    const waiters: Array<(result: IteratorResult<Message>) => void> = [];
+    let rejectedWith: unknown | undefined;
+    const index = this.streamHandles.length;
+
+    let resolveReady!: () => void;
+    let rejectReady!: (err: unknown) => void;
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+
+    const record: MockSseStreamRecord = {
+      index,
+      params,
+      closed: false,
+      readyResolved: false,
+      resolveReady: () => {
+        if (record.readyResolved) return;
+        record.readyResolved = true;
+        resolveReady();
+      },
+      rejectReady: (err) => {
+        if (record.readyResolved) return;
+        record.readyResolved = true;
+        rejectReady(err);
+      },
+      failPump: (err) => {
+        if (record.closed) return;
+        rejectedWith = err;
+        const waiter = waiters.shift();
+        if (waiter) {
+          // Reject current waiter by surfacing an error from next()
+          // — handled in the async iterator below via `rejectedWith`.
+          waiter({ done: true, value: undefined });
+        }
+      },
+    };
+    this.streamHandles.push(record);
+
+    const stream = {
+      record,
+      push: (event: Event) => {
+        if (record.closed) return;
+        const waiter = waiters.shift();
+        if (waiter) {
+          waiter({ done: false, value: event });
+          return;
+        }
+        queue.push(event);
+      },
+      pushError: (err: unknown) => {
+        record.failPump(err);
+      },
+    };
+    this.streams.add(stream);
+
+    for (const event of this.buffer) {
+      if (matchesSubscription(event, params)) {
+        stream.push(event);
+      }
+    }
+
+    if (!this.manualReady) record.resolveReady();
+
+    const close = () => {
+      if (record.closed) return;
+      record.closed = true;
+      this.streams.delete(stream);
+      while (waiters.length > 0) {
+        waiters.shift()?.({ done: true, value: undefined });
+      }
+    };
+
+    return {
+      ready,
+      events: {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<Message>> => {
+            if (rejectedWith !== undefined) {
+              const err = rejectedWith;
+              rejectedWith = undefined;
+              throw err;
+            }
+            if (queue.length > 0) {
+              return { done: false, value: queue.shift()! };
+            }
+            if (record.closed) {
+              return { done: true, value: undefined };
+            }
+            return await new Promise<IteratorResult<Message>>((resolve) => {
+              waiters.push(resolve);
+            });
+          },
+          return: async () => {
+            close();
+            return { done: true, value: undefined };
+          },
+        }),
+      },
+      close,
+    };
+  }
+
+  /**
+   * Broadcast an event to all matching open streams and add it to the
+   * buffer for later-attaching subscriptions (server-replay simulation).
+   */
+  pushEvent(event: Event): void {
+    this.buffer.push(event);
+    for (const stream of this.streams) {
+      if (stream.record.closed) continue;
+      if (matchesSubscription(event, stream.record.params)) {
+        stream.push(event);
+      }
+    }
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    for (const stream of Array.from(this.streams)) {
+      stream.record.closed = true;
+    }
+    this.streams.clear();
   }
 }
 

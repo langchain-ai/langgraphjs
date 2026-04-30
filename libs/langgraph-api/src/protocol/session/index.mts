@@ -7,7 +7,6 @@ import type {
   AgentResult,
   AgentTreeNode,
   CustomData,
-  FlowCapacityParams,
   Namespace,
   ProtocolCommand,
   ProtocolCommandByMethod,
@@ -23,10 +22,8 @@ import type {
   UnsubscribeParams,
 } from "../types.mjs";
 import {
-  normalizeDebugData,
   normalizeInputRequestedData,
   normalizeToolData,
-  normalizeUpdatesData,
   stripInterruptsFromValues,
   toLifecycleStatus,
 } from "./event-normalizers.mjs";
@@ -41,7 +38,6 @@ import {
   isRecord,
   isSupportedChannel,
 } from "./internal-types.mjs";
-import { SessionMessageProcessor } from "./message-processor.mjs";
 import {
   guessGraphName,
   isPrefixMatch,
@@ -50,7 +46,6 @@ import {
   toNamespaceKey,
 } from "./namespace.mjs";
 import { normalizeProtocolStatePayload } from "./state-normalizers.mjs";
-import { isMessageTuplePayload } from "./tool-calls.mjs";
 
 /**
  * Normalizes one LangGraph run into protocol events and manages per-run
@@ -80,8 +75,6 @@ export class RunProtocolSession {
 
   private readonly namespaces = new Map<string, NamespaceInfo>();
 
-  private readonly messageProcessor: SessionMessageProcessor;
-
   private readonly abortController = new AbortController();
 
   private readonly buffer: ProtocolEvent[] = [];
@@ -92,15 +85,18 @@ export class RunProtocolSession {
 
   private nextSeq = 0;
 
-  private maxBufferSize = 1000;
-
   private rootGraphName = "root";
 
   private terminalLifecycleEmitted = false;
 
-  #loggedEvents = new Set<string>();
-
   private readonly pendingInterruptIds = new Set<string>();
+
+  /**
+   * When true, every event is sent unconditionally via {@link sendJson}
+   * regardless of subscription state. Used for SSE transports where
+   * per-connection filtering is handled by the outer service layer.
+   */
+  private readonly passthrough: boolean;
 
   /**
    * Creates a run-scoped protocol session.
@@ -118,28 +114,18 @@ export class RunProtocolSession {
     } | null>;
     send: (payload: string) => Promise<void> | void;
     source?: AsyncIterable<SourceStreamEvent>;
+    startSeq?: number;
+    passthrough?: boolean;
   }) {
     this.initialRun = options.initialRun;
     this.getRun = options.getRun;
     this.getThreadState = options.getThreadState;
     this.send = options.send;
     this.source = options.source;
-    this.messageProcessor = new SessionMessageProcessor({
-      ensureNamespaces: async (namespace) => this.ensureNamespaces(namespace),
-      pushEvent: async (event) => this.pushEvent(event),
-      emitLifecycleEvent: async (namespace, status, options) =>
-        this.emitNamespaceLifecycle(namespace, status, options),
-      createMessagesEvent: (namespace, data) =>
-        this.createEvent("messages", namespace, data),
-      createValuesEvent: (namespace, data) =>
-        this.createEvent("values", namespace, data),
-    });
-  }
-
-  #logOnce(message: string) {
-    if (this.#loggedEvents.has(message)) return;
-    this.#loggedEvents.add(message);
-    console.log(`[RunProtocolSession] ${message}`);
+    this.passthrough = options.passthrough ?? false;
+    if (options.startSeq != null) {
+      this.nextSeq = options.startSeq;
+    }
   }
 
   /**
@@ -223,9 +209,6 @@ export class RunProtocolSession {
             tree: this.buildTree([]),
           } satisfies AgentResult);
           return;
-        case "flow.setCapacity":
-          await this.handleSetCapacity(command);
-          return;
         case "subscription.reconnect":
           await this.sendError(
             command.id,
@@ -253,24 +236,33 @@ export class RunProtocolSession {
   /**
    * Handles a structured protocol command and returns a typed response.
    *
+   * When `options.deliverResponseInline` is `true`, a
+   * `subscription.subscribe` resolves to `null` — the success response
+   * has already been written through the shared transport queue ahead
+   * of the replay events (see `handleSubscribeForResponse` for
+   * rationale). Callers that forward the response onto a separate wire
+   * (the WS `onMessage` handler) must treat `null` as
+   * "nothing more to send".
+   *
    * @param command - Parsed protocol command.
    * @param meta - Optional response metadata from the outer transport.
-   * @returns A typed success or error response.
+   * @param options - Server-internal delivery flags.
+   * @returns A typed success/error response, or `null` when the
+   *     response was already sent inline.
    */
   async handleProtocolCommand(
     command: ProtocolCommand,
-    meta?: ProtocolResponseMeta
-  ): Promise<ProtocolSuccess | ProtocolError> {
+    meta?: ProtocolResponseMeta,
+    options?: { deliverResponseInline?: boolean }
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
     try {
       switch (command.method) {
         case "subscription.subscribe":
-          return await this.handleSubscribeForResponse(command, meta);
+          return await this.handleSubscribeForResponse(command, meta, options);
         case "subscription.unsubscribe":
           return await this.handleUnsubscribeForResponse(command, meta);
         case "agent.getTree":
           return this.success(command.id, { tree: this.buildTree([]) }, meta);
-        case "flow.setCapacity":
-          return await this.handleSetCapacityForResponse(command, meta);
         case "subscription.reconnect":
           return this.error(
             command.id,
@@ -330,7 +322,11 @@ export class RunProtocolSession {
   }
 
   /**
-   * Emits a terminal lifecycle event once the underlying run finishes.
+   * Emits the terminal root lifecycle event once the underlying run
+   * finishes.  Child namespaces are cascaded upstream by core's
+   * `LifecycleTransformer` — the session only owns the root because
+   * terminal status depends on API-only signals (persisted run
+   * status, thread-level pending interrupts).
    */
   private async emitTerminalLifecycle() {
     if (this.terminalLifecycleEmitted) return;
@@ -342,20 +338,28 @@ export class RunProtocolSession {
 
     let status: NamespaceInfo["status"] = toLifecycleStatus(currentRun.status);
     if (status === "completed") {
-      const threadState = await this.getThreadState?.();
-      const hasPendingInterrupts = (threadState?.tasks ?? []).some(
-        (task) => Array.isArray(task.interrupts) && task.interrupts.length > 0
-      );
-      if (hasPendingInterrupts) {
+      if (this.pendingInterruptIds.size > 0) {
         status = "interrupted";
+      } else {
+        const threadState = await this.getThreadState?.();
+        const hasPendingInterrupts = (threadState?.tasks ?? []).some(
+          (task) => Array.isArray(task.interrupts) && task.interrupts.length > 0
+        );
+        if (hasPendingInterrupts) {
+          status = "interrupted";
+        }
       }
     }
     if (status === "running") return;
 
     this.terminalLifecycleEmitted = true;
-    await this.emitNamespaceLifecycle([], status, {
-      graphName: this.rootGraphName,
-    });
+    this.setNamespaceInfo([], status, { graphName: this.rootGraphName });
+    await this.pushEvent(
+      this.createEvent("lifecycle", [], {
+        event: status,
+        graph_name: this.rootGraphName,
+      })
+    );
   }
 
   /**
@@ -367,16 +371,49 @@ export class RunProtocolSession {
     if (event.event === "metadata") return;
 
     if (event.event === "error") {
+      // Core's `LifecycleTransformer.fail()` has already cascaded
+      // `lifecycle.failed` to every sub-namespace.  The session owns
+      // the root lifecycle, so emit only the root here.
       this.terminalLifecycleEmitted = true;
-      await this.emitNamespaceLifecycle([], "failed", {
-        graphName: this.rootGraphName,
-        error: serializeError(event.data).message,
-      });
+      this.setNamespaceInfo([], "failed", { graphName: this.rootGraphName });
+      await this.pushEvent(
+        this.createEvent("lifecycle", [], {
+          event: "failed",
+          graph_name: this.rootGraphName,
+          error: serializeError(event.data).message,
+        })
+      );
       return;
     }
 
     const { method, namespace: rawNamespace } = parseEventName(event.event);
     const namespace = normalizeNamespace(rawNamespace);
+
+    if (
+      event.normalized &&
+      (await this.forwardNormalizedSourceEvent(method, namespace, event.data))
+    ) {
+      return;
+    }
+
+    // Authoritative `lifecycle` events come from core's
+    // `LifecycleTransformer`.  The session is an *observer*: it
+    // updates its in-memory namespace tracking for agent-tree queries
+    // and forwards the event to subscribers.  Root lifecycle events
+    // are owned by the session (see `start()` and
+    // `emitTerminalLifecycle()`) — core is configured with
+    // `emitRootOnRegister: false` so root events never leak through
+    // this path, but we defensively drop them if they do.
+    if (method === "lifecycle") {
+      if (namespace.length === 0) return;
+      const data = event.data as ProtocolEventDataMap["lifecycle"];
+      this.setNamespaceInfo(namespace, data.event, {
+        graphName: data.graph_name,
+      });
+      await this.pushEvent(this.createEvent("lifecycle", namespace, data));
+      return;
+    }
+
     if (method !== "messages") {
       await this.ensureNamespaces(namespace);
     }
@@ -394,70 +431,20 @@ export class RunProtocolSession {
         await this.pushEvent(
           this.createEvent("values", namespace, normalizedValues.values)
         );
-        await this.messageProcessor.emitSyntheticSubagentEvents(
-          namespace,
-          normalizedValues.values
+        return;
+      }
+      case "checkpoints": {
+        await this.pushEvent(
+          this.createEvent(
+            "checkpoints",
+            namespace,
+            event.data as ProtocolEventDataMap["checkpoints"]
+          )
         );
         return;
       }
       case "messages":
-        if (namespace.length > 0) {
-          await this.ensureNamespaces(namespace);
-        }
-        if (isRecord(event.data) && typeof event.data.event === "string") {
-          this.#logOnce(`model supports v2 stream mode`);
-          await this.pushEvent(
-            this.createEvent(
-              "messages",
-              namespace,
-              event.data as ProtocolEventDataMap["messages"]
-            )
-          );
-          return;
-        }
-        if (isMessageTuplePayload(event.data)) {
-          this.#logOnce(`model uses legacy stream mode`);
-          await this.messageProcessor.normalizeTupleMessageEvent(
-            namespace,
-            event.data[0],
-            event.data[1]
-          );
-        }
         return;
-      case "updates": {
-        const normalized = normalizeUpdatesData(event.data);
-        if (normalized.node === "__interrupt__") {
-          // Interrupt-only updates should surface on the dedicated input channel,
-          // not through protocol state/update events.
-          await this.emitInputRequestedEvents(
-            namespace,
-            normalizeInputRequestedData(event.data)
-          );
-          return;
-        }
-
-        const strippedUpdates = stripInterruptsFromValues(normalized.values);
-        await this.emitInputRequestedEvents(
-          namespace,
-          strippedUpdates.inputRequests
-        );
-        if (!this.hasStatePayload(strippedUpdates.values)) {
-          return;
-        }
-        await this.pushEvent(
-          this.createEvent(
-            "updates",
-            namespace,
-            strippedUpdates.values as ProtocolEventDataMap["updates"],
-            normalized.node
-          )
-        );
-        await this.messageProcessor.emitSyntheticSubagentEvents(
-          namespace,
-          strippedUpdates.values
-        );
-        return;
-      }
       case "custom":
         await this.pushEvent(
           this.createEvent("custom", namespace, {
@@ -465,18 +452,8 @@ export class RunProtocolSession {
           } satisfies CustomData)
         );
         return;
-      case "debug":
-        await this.pushEvent(
-          this.createEvent("debug", namespace, normalizeDebugData(event.data))
-        );
-        return;
       case "tasks":
         await this.pushEvent(this.createEvent("tasks", namespace, event.data));
-        return;
-      case "checkpoints":
-        await this.pushEvent(
-          this.createEvent("checkpoints", namespace, event.data)
-        );
         return;
       case "tools":
         await this.pushEvent(
@@ -485,15 +462,6 @@ export class RunProtocolSession {
             namespace,
             normalizeToolData(event.data, event.id ?? uuid7())
           )
-        );
-        return;
-      case "messages/metadata":
-      case "messages/partial":
-      case "messages/complete":
-        await this.messageProcessor.normalizeLegacyMessageEvent(
-          method,
-          namespace,
-          event.data
         );
         return;
       default:
@@ -511,24 +479,121 @@ export class RunProtocolSession {
   }
 
   /**
-   * Ensures lifecycle state exists for each namespace prefix.
+   * Forwards events already converted by core's
+   * `streamEvents(..., { version: "v3" })` pipeline.
    *
-   * @param namespace - Namespace whose prefixes should be materialized.
+   * Only events marked by `streamStateV2` after `convertToProtocolEvent` and
+   * the built-in stream transformers have run take this path.
+   */
+  private async forwardNormalizedSourceEvent(
+    method: string,
+    namespace: Namespace,
+    data: unknown
+  ): Promise<boolean> {
+    switch (method) {
+      case "lifecycle": {
+        if (namespace.length === 0) return true;
+        const lifecycleData = data as ProtocolEventDataMap["lifecycle"];
+        this.setNamespaceInfo(namespace, lifecycleData.event, {
+          graphName: lifecycleData.graph_name,
+        });
+        await this.pushEvent(
+          this.createEvent("lifecycle", namespace, lifecycleData)
+        );
+        return true;
+      }
+      case "messages": {
+        if (namespace.length > 0) {
+          await this.ensureNamespaces(namespace);
+        }
+        await this.pushEvent(
+          this.createEvent(
+            "messages",
+            namespace,
+            data as ProtocolEventDataMap["messages"]
+          )
+        );
+        return true;
+      }
+      case "updates": {
+        await this.ensureNamespaces(namespace);
+        const updatesData = data as { node?: string; values: unknown };
+        if (updatesData.node === "__interrupt__") {
+          await this.emitInputRequestedEvents(
+            namespace,
+            normalizeInputRequestedData(updatesData.values)
+          );
+          return true;
+        }
+        await this.pushEvent(
+          this.createEvent(
+            "updates",
+            namespace,
+            updatesData.values as ProtocolEventDataMap["updates"],
+            updatesData.node
+          )
+        );
+        return true;
+      }
+      case "tools": {
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent(
+            "tools",
+            namespace,
+            data as ProtocolEventDataMap["tools"]
+          )
+        );
+        return true;
+      }
+      case "custom": {
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent(
+            "custom",
+            namespace,
+            data as ProtocolEventDataMap["custom"]
+          )
+        );
+        return true;
+      }
+      case "checkpoints": {
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent(
+            "checkpoints",
+            namespace,
+            data as ProtocolEventDataMap["checkpoints"]
+          )
+        );
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Ensures the session is tracking each prefix of `namespace` so
+   * agent-tree queries and message routing can resolve it.
+   *
+   * Does **not** emit any wire events: authoritative
+   * `lifecycle.started` events are produced upstream by core's
+   * `LifecycleTransformer` and observed by the session's lifecycle
+   * handler in {@link RunProtocolSession.handleSourceEvent}.  This
+   * method is a defensive fallback for event paths that reference a namespace
+   * before the corresponding `lifecycle` event has been ingested.
+   *
+   * @param namespace - Namespace whose prefixes should be tracked.
    */
   private async ensureNamespaces(namespace: Namespace) {
     for (let length = 1; length <= namespace.length; length += 1) {
       const partial = namespace.slice(0, length);
       const key = toNamespaceKey(partial);
       if (this.namespaces.has(key)) continue;
-
-      const graphName = guessGraphName(partial);
-      this.setNamespaceInfo(partial, "spawned", { graphName });
-      await this.pushEvent(
-        this.createEvent("lifecycle", partial, {
-          event: "spawned",
-          graph_name: graphName,
-        })
-      );
+      this.setNamespaceInfo(partial, "started", {
+        graphName: guessGraphName(partial),
+      });
     }
   }
 
@@ -558,47 +623,6 @@ export class RunProtocolSession {
     });
   }
 
-  /**
-   * Updates cached lifecycle state for a namespace and emits the matching event.
-   *
-   * @param namespace - Namespace to update.
-   * @param status - Lifecycle status to emit.
-   * @param options - Optional graph name override and error payload.
-   */
-  private async emitNamespaceLifecycle(
-    namespace: Namespace,
-    status: NamespaceInfo["status"],
-    options?: { graphName?: string; error?: string }
-  ) {
-    const key = toNamespaceKey(namespace);
-    if (namespace.length > 0 && !this.namespaces.has(key)) {
-      await this.ensureNamespaces(namespace);
-    }
-
-    const current = this.namespaces.get(key);
-    const graphName =
-      options?.graphName ??
-      current?.graphName ??
-      (namespace.length === 0 ? this.rootGraphName : guessGraphName(namespace));
-
-    if (
-      current?.status === status &&
-      current.graphName === graphName &&
-      options?.error == null
-    ) {
-      return;
-    }
-
-    this.setNamespaceInfo(namespace, status, { graphName });
-    await this.pushEvent(
-      this.createEvent("lifecycle", namespace, {
-        event: status,
-        graph_name: graphName,
-        ...(options?.error != null ? { error: options.error } : {}),
-      })
-    );
-  }
-
   private createEvent(
     method: "values",
     namespace: Namespace,
@@ -610,6 +634,11 @@ export class RunProtocolSession {
     data: ProtocolEventDataMap["updates"],
     node?: string
   ): ProtocolEventByMethod<"updates">;
+  private createEvent(
+    method: "checkpoints",
+    namespace: Namespace,
+    data: ProtocolEventDataMap["checkpoints"]
+  ): ProtocolEventByMethod<"checkpoints">;
   private createEvent(
     method: "input",
     namespace: Namespace,
@@ -637,16 +666,6 @@ export class RunProtocolSession {
     namespace: Namespace,
     data: ProtocolEventDataMap["lifecycle"]
   ): ProtocolEventByMethod<"lifecycle">;
-  private createEvent(
-    method: "debug",
-    namespace: Namespace,
-    data: ProtocolEventDataMap["debug"]
-  ): ProtocolEventByMethod<"debug">;
-  private createEvent(
-    method: "checkpoints",
-    namespace: Namespace,
-    data: ProtocolEventDataMap["checkpoints"]
-  ): ProtocolEventByMethod<"checkpoints">;
   private createEvent(
     method: "tasks",
     namespace: Namespace,
@@ -690,23 +709,25 @@ export class RunProtocolSession {
 
   /**
    * Buffers an event and delivers it to all matching subscriptions.
+   * Applies the active flow-control strategy when the buffer is at capacity.
    *
    * @param event - Protocol event to buffer and fan out.
    */
   private async pushEvent(event: ProtocolEvent) {
     this.buffer.push(event);
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
-    }
 
-    for (const subscription of this.subscriptions.values()) {
-      if (
-        !subscription.active ||
-        !this.matchesSubscription(subscription, event)
-      ) {
-        continue;
-      }
+    if (this.passthrough) {
       await this.sendJson(event);
+    } else {
+      for (const subscription of this.subscriptions.values()) {
+        if (
+          !subscription.active ||
+          !this.matchesSubscription(subscription, event)
+        ) {
+          continue;
+        }
+        await this.sendJson(event);
+      }
     }
   }
 
@@ -789,7 +810,7 @@ export class RunProtocolSession {
       this.namespaces.get(key) ??
       ({
         namespace,
-        status: "spawned",
+        status: "started",
         graphName:
           namespace.length === 0
             ? this.rootGraphName
@@ -914,16 +935,40 @@ export class RunProtocolSession {
   }
 
   /**
-   * Handles a subscribe command and returns a typed response.
+   * Handles a subscribe command and (optionally) writes the
+   * success/error response inline through the shared transport
+   * queue, signalling to callers (via a `null` return) that no
+   * further send is required.
+   *
+   * When `options.deliverResponseInline` is `true`, the success
+   * response is emitted via `sendJson` BEFORE the replay events and
+   * the method returns `null`. This ordering is critical on
+   * single-channel transports like WebSocket where the command
+   * response and event frames share one ordered wire: if events
+   * preceded the response, the client would receive events whose
+   * `subscription_id` it hasn't yet registered (the awaiter in
+   * `#subscribeViaCommand` only adds the subscription to its local
+   * map after the response resolves) and drop them in the per-sub
+   * fan-out.
+   *
+   * When `deliverResponseInline` is absent/`false` (the default, used
+   * by HTTP `/commands`), the response is returned so the caller can
+   * place it in the HTTP response body, matching the prior behaviour.
+   * Input-validation errors always return normally regardless of the
+   * flag so they surface consistently in both modes.
    *
    * @param command - Subscribe command to process.
    * @param meta - Optional response metadata from the outer transport.
-   * @returns A typed success or error response.
+   * @param options - Server-internal delivery flags.
+   * @returns `null` when the response was sent inline; a typed
+   *     success/error response otherwise.
    */
   private async handleSubscribeForResponse(
     command: ProtocolCommandByMethod<"subscription.subscribe">,
-    meta?: ProtocolResponseMeta
-  ): Promise<ProtocolSuccess | ProtocolError> {
+    meta?: ProtocolResponseMeta,
+    options?: { deliverResponseInline?: boolean }
+  ): Promise<ProtocolSuccess | ProtocolError | null> {
+    const deliverResponseInline = options?.deliverResponseInline === true;
     const params = isRecord(command.params)
       ? (command.params as Partial<SubscribeParams>)
       : undefined;
@@ -987,6 +1032,22 @@ export class RunProtocolSession {
         this.matchesSubscription(subscription, event)
     );
 
+    const responsePayload: ProtocolSuccess = {
+      type: "success",
+      id: command.id,
+      result: {
+        subscription_id: subscription.id,
+        replayed_events: snapshot.length,
+      } satisfies SubscribeResult,
+      ...(meta != null ? { meta } : {}),
+    };
+
+    if (deliverResponseInline) {
+      // Response first, replay events second — see method-level
+      // comment on why the ordering matters for ordered transports.
+      await this.sendJson(responsePayload);
+    }
+
     for (const event of snapshot) {
       await this.sendJson(event);
     }
@@ -1006,14 +1067,7 @@ export class RunProtocolSession {
     }
 
     subscription.active = true;
-    return this.success(
-      command.id,
-      {
-        subscription_id: subscription.id,
-        replayed_events: snapshot.length,
-      } satisfies SubscribeResult,
-      meta
-    );
+    return deliverResponseInline ? null : responsePayload;
   }
 
   /**
@@ -1080,75 +1134,6 @@ export class RunProtocolSession {
         `Unknown subscription: ${subscriptionId}`,
         meta
       );
-    }
-
-    return this.success(command.id, {}, meta);
-  }
-
-  /**
-   * Handles a flow capacity command and writes the response to the transport.
-   *
-   * @param command - Flow capacity command to process.
-   */
-  private async handleSetCapacity(
-    command: ProtocolCommandByMethod<"flow.setCapacity">
-  ) {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<FlowCapacityParams>)
-      : undefined;
-    const maxBufferSize = params?.max_buffer_size;
-    if (
-      typeof maxBufferSize !== "number" ||
-      !Number.isInteger(maxBufferSize) ||
-      maxBufferSize < 1
-    ) {
-      await this.sendError(
-        command.id,
-        "invalid_argument",
-        "flow.setCapacity requires max_buffer_size to be a positive integer."
-      );
-      return;
-    }
-
-    this.maxBufferSize = maxBufferSize;
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
-    }
-
-    await this.sendSuccess(command.id, {});
-  }
-
-  /**
-   * Handles a flow capacity command and returns a typed response.
-   *
-   * @param command - Flow capacity command to process.
-   * @param meta - Optional response metadata from the outer transport.
-   * @returns A typed success or error response.
-   */
-  private async handleSetCapacityForResponse(
-    command: ProtocolCommandByMethod<"flow.setCapacity">,
-    meta?: ProtocolResponseMeta
-  ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<FlowCapacityParams>)
-      : undefined;
-    const maxBufferSize = params?.max_buffer_size;
-    if (
-      typeof maxBufferSize !== "number" ||
-      !Number.isInteger(maxBufferSize) ||
-      maxBufferSize < 1
-    ) {
-      return this.error(
-        command.id,
-        "invalid_argument",
-        "flow.setCapacity requires max_buffer_size to be a positive integer.",
-        meta
-      );
-    }
-
-    this.maxBufferSize = maxBufferSize;
-    if (this.buffer.length > this.maxBufferSize) {
-      this.buffer.splice(0, this.buffer.length - this.maxBufferSize);
     }
 
     return this.success(command.id, {}, meta);

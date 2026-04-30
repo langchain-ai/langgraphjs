@@ -1,16 +1,23 @@
 import { Suspense } from "react";
-import type { Message } from "@langchain/langgraph-sdk";
-import { useSuspenseStream, invalidateSuspenseCache } from "../../index.js";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+
+import { useSuspenseStream } from "../../index.js";
 
 interface Props {
   apiUrl: string;
   assistantId?: string;
+  threadId?: string;
 }
 
-function SuspenseChat({ apiUrl, assistantId = "agent" }: Props) {
-  const thread = useSuspenseStream<{ messages: Message[] }>({
+function SuspenseChat({
+  apiUrl,
+  assistantId = "stategraph_text",
+  threadId,
+}: Props) {
+  const thread = useSuspenseStream<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
+    threadId,
   });
 
   return (
@@ -30,9 +37,7 @@ function SuspenseChat({ apiUrl, assistantId = "agent" }: Props) {
       <button
         data-testid="submit"
         onClick={() =>
-          void thread.submit({
-            messages: [{ content: "Hello", type: "human" }],
-          })
+          void thread.submit({ messages: [new HumanMessage("Hello")] })
         }
       >
         Send
@@ -44,12 +49,12 @@ function SuspenseChat({ apiUrl, assistantId = "agent" }: Props) {
   );
 }
 
-export function SuspenseBasicStream({ apiUrl, assistantId }: Props) {
+export function SuspenseBasicStream(props: Props) {
   return (
-    <Suspense fallback={<div data-testid="suspense-fallback">Loading...</div>}>
-      <SuspenseChat apiUrl={apiUrl} assistantId={assistantId} />
+    <Suspense
+      fallback={<div data-testid="suspense-fallback">Loading...</div>}
+    >
+      <SuspenseChat {...props} />
     </Suspense>
   );
 }
-
-export { invalidateSuspenseCache };

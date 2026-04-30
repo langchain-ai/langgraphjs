@@ -1,13 +1,11 @@
 import { DefaultValues } from "../schema.js";
-import { type ClientConfig, getApiKey, type HeaderValue } from "./base.js";
+import { type ClientConfig } from "./base.js";
 import { AssistantsClient } from "./assistants/index.js";
 import { ThreadsClient } from "./threads/index.js";
 import { RunsClient } from "./runs/index.js";
 import { CronsClient } from "./crons/index.js";
 import { StoreClient } from "./store/index.js";
 import { UiClient } from "./ui-internal/index.js";
-import { ProtocolClient } from "./stream/index.js";
-import { ProtocolSseTransportAdapter } from "./stream/transport/http.js";
 
 export class Client<
   TStateType = DefaultValues,
@@ -38,13 +36,6 @@ export class Client<
    * The client for interacting with the KV store.
    */
   public store: StoreClient;
-
-  /**
-   * The client for interacting with the streaming protocol (v2).
-   * Provides session-based streaming with subscriptions, message assembly,
-   * and capability-gated modules over SSE or WebSocket transports.
-   */
-  public stream: ProtocolClient;
 
   /**
    * The client for interacting with the UI.
@@ -83,26 +74,6 @@ export class Client<
     this.crons = new CronsClient(config);
     this.store = new StoreClient(config);
     this["~ui"] = new UiClient(config);
-
-    const apiUrl =
-      config?.apiUrl?.replace(/\/$/, "") || "http://localhost:8123";
-    const apiKey = getApiKey(config?.apiKey);
-    const defaultHeaders: Record<string, HeaderValue> = {
-      ...config?.defaultHeaders,
-    };
-    if (apiKey) {
-      defaultHeaders["x-api-key"] = apiKey;
-    }
-
-    this.stream = new ProtocolClient(
-      () =>
-        new ProtocolSseTransportAdapter({
-          apiUrl,
-          defaultHeaders,
-          onRequest: config?.onRequest,
-          fetch: config?.callerOptions?.fetch,
-        })
-    );
   }
 }
 
@@ -123,42 +94,67 @@ export { CronsClient } from "./crons/index.js";
 export { StoreClient } from "./store/index.js";
 
 export {
-  ProtocolClient,
   ProtocolError,
-  Session,
+  ThreadStream,
   SubscriptionHandle,
-  MessageSubscriptionHandle,
-  EventBuffer,
+  StreamingMessage,
+  StreamingMessageAssembler,
   MessageAssembler,
+  MediaAssembler,
+  MediaAssemblyError,
+  ToolCallAssembler,
+  SubgraphDiscoveryHandle,
+  SubgraphHandle,
+  SubagentHandle,
+  SubagentDiscoveryHandle,
   inferChannel,
   matchesSubscription,
 } from "./stream/index.js";
 
 export type {
   TransportAdapter,
+  AgentServerAdapter,
   AssembledMessage,
   MessageAssemblyUpdate,
+  AssembledToolCall,
+  ToolCallStatus,
+  Subscribable,
+  InterruptPayload,
   SubscribeOptions,
-  SubscribableChannel,
   EventMethodByChannel,
   EventForChannel,
   EventForChannels,
-  ProtocolClientOptions,
+  ThreadStreamOptions,
+  ThreadStreamTransport,
+  ThreadStreamTransportKind,
   SessionOrderingState,
   EventSubscription,
   MessageSubscription,
-  ResourceModule,
-  SandboxModule,
   InputModule,
   StateModule,
-  SessionModules,
-  ClientOpenResult,
+  ThreadModules,
+  ThreadExtension,
+  ThreadExtensions,
+  UnwrapExtension,
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblerCallbacks,
+  MediaAssemblerOptions,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  VideoMedia,
 } from "./stream/index.js";
 
 export {
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
+  HttpAgentServerAdapter,
 } from "./stream/transport/index.js";
+
+export type { HttpAgentServerAdapterOptions } from "./stream/transport/index.js";
 
 export type {
   ProtocolRequestHook,

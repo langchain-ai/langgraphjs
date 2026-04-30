@@ -1,0 +1,7 @@
+{
+  "node_version": "20",
+  "graphs": {
+    "bedtime-story": "./src/agent.ts:graph"
+  },
+  "env": ".env"
+}

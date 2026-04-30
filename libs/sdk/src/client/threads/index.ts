@@ -1,3 +1,5 @@
+import { v7 as uuidv7 } from "uuid";
+
 import {
   Checkpoint,
   Config,
@@ -14,6 +16,14 @@ import {
 import type { Command, OnConflictBehavior, StreamEvent } from "../../types.js";
 import type { ThreadStreamMode } from "../../types.stream.js";
 import { BaseClient } from "../base.js";
+import { ThreadStream } from "../stream/index.js";
+import type {
+  ThreadStreamOptions,
+  ThreadStreamTransportKind,
+} from "../stream/types.js";
+import { ProtocolSseTransportAdapter } from "../stream/transport/http.js";
+import { ProtocolWebSocketTransportAdapter } from "../stream/transport/websocket.js";
+import type { TransportAdapter } from "../stream/transport.js";
 
 export class ThreadsClient<
   TStateType = DefaultValues,
@@ -378,5 +388,88 @@ export class ThreadsClient<
         ? { stream_mode: options.streamMode }
         : undefined,
     });
+  }
+
+  /**
+   * Open a protocol stream over the thread-centric v2 protocol.
+   *
+   * Returns a {@link ThreadStream} with lazy getters
+   * (`.messages`, `.values`, `.toolCalls`, `.subgraphs`, `.subagents`,
+   * `.output`) and `thread.run.input({ input, ... })` for starting runs.
+   * Mirrors the in-process `graph.streamEvents(..., { version: "v3" })` API.
+   *
+   * The thread is bound to `options.assistantId` for its lifetime.
+   * The wire transport defaults to SSE; pass `transport: "websocket"`
+   * in options (or configure `streamProtocol: "v2-websocket"` on the
+   * client) to use a WebSocket instead.
+   *
+   * @example New thread (UUID generated client-side)
+   * ```ts
+   * const thread = client.threads.stream({ assistantId: "my-agent" });
+   * ```
+   *
+   * @example Attach to an existing thread
+   * ```ts
+   * const thread = client.threads.stream(threadId, { assistantId: "my-agent" });
+   * ```
+   *
+   * @example WebSocket transport
+   * ```ts
+   * const thread = client.threads.stream({
+   *   assistantId: "my-agent",
+   *   transport: "websocket",
+   * });
+   * ```
+   */
+  stream<TExtensions extends Record<string, unknown> = Record<string, unknown>>(
+    options: ThreadStreamOptions
+  ): ThreadStream<TExtensions>;
+  stream<TExtensions extends Record<string, unknown> = Record<string, unknown>>(
+    threadId: string,
+    options: ThreadStreamOptions
+  ): ThreadStream<TExtensions>;
+  stream<TExtensions extends Record<string, unknown> = Record<string, unknown>>(
+    threadIdOrOptions: string | ThreadStreamOptions,
+    maybeOptions?: ThreadStreamOptions
+  ): ThreadStream<TExtensions> {
+    const { threadId, options } =
+      typeof threadIdOrOptions === "string"
+        ? {
+            threadId: threadIdOrOptions,
+            options: maybeOptions as ThreadStreamOptions,
+          }
+        : { threadId: uuidv7(), options: threadIdOrOptions };
+
+    // `transport` accepts either a preset string (`"sse"` / `"websocket"`)
+    // or a custom {@link AgentServerAdapter}. A custom adapter replaces
+    // the built-in factories entirely — this is the seam that lets users
+    // point `useStream` at any agent server (including the thin wrappers
+    // produced by `HttpAgentServerAdapter`).
+    let transport: TransportAdapter;
+    if (options.transport != null && typeof options.transport !== "string") {
+      transport = options.transport;
+    } else {
+      const transportKind: ThreadStreamTransportKind =
+        options.transport ??
+        (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
+      transport =
+        transportKind === "websocket"
+          ? new ProtocolWebSocketTransportAdapter({
+              apiUrl: this.apiUrl,
+              threadId,
+              defaultHeaders: this.defaultHeaders,
+              onRequest: this.onRequest,
+              webSocketFactory: options.webSocketFactory,
+            })
+          : new ProtocolSseTransportAdapter({
+              apiUrl: this.apiUrl,
+              threadId,
+              defaultHeaders: this.defaultHeaders,
+              onRequest: this.onRequest,
+              fetch: options.fetch,
+            });
+    }
+
+    return new ThreadStream<TExtensions>(transport, options);
   }
 }

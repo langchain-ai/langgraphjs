@@ -11,6 +11,10 @@ import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_MESSAGES_STREAM_CONFIG_KEY } from "./protocol/constants.mjs";
+import type {
+  Checkpoint as ProtocolCheckpoint,
+  SourceStreamEvent,
+} from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -156,7 +160,7 @@ export async function* streamState(
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
   }
-): AsyncGenerator<{ event: string; data: unknown }> {
+): AsyncGenerator<SourceStreamEvent> {
   const kwargs = run.kwargs;
   const graphId = kwargs.config?.configurable?.graph_id;
 
@@ -168,17 +172,18 @@ export async function* streamState(
     checkpointer: kwargs.temporary ? null : undefined,
   });
 
-  // Delegate to streamStateV2 when the graph has compile-time transformers,
-  // so custom stream projections flow to clients automatically.
-  if (graph.streamTransformers?.length > 0) {
+  // Only v2 protocol entrypoints opt into `streamStateV2`.
+  // Legacy run/stream endpoints stay on the existing `streamEvents`
+  // path even if a graph defines stream transformers, so they do not
+  // emit protocol-framed events on non-protocol transports.
+  const isProtocolV2Run =
+    kwargs.config?.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
+  if (isProtocolV2Run) {
     yield* streamStateV2(run, { ...options, graph });
     return;
   }
 
   const userStreamMode = kwargs.stream_mode ?? [];
-  const useProtocolMessagesStream =
-    userStreamMode.includes("messages") &&
-    kwargs.config?.configurable?.[PROTOCOL_MESSAGES_STREAM_CONFIG_KEY] === true;
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
@@ -264,11 +269,19 @@ export async function* streamState(
       event.event === "on_chain_stream" &&
       (kwargs.subgraphs || event.run_id === run.run_id)
     ) {
-      const [ns, mode, chunk] = (
+      // Pregel's stream tuple is `[ns, mode, payload, meta?]` (4th element
+      // is the optional `StreamChunkMeta`, preserved when streaming with
+      // `subgraphs: true`). The meta carries the lightweight checkpoint
+      // envelope attached by `_emitValuesWithCheckpointMeta`, which we
+      // forward as a companion `checkpoints` source event below.
+      const rawTuple = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
-      ) as [string[] | null, LangGraphStreamMode, unknown];
+      ) as [string[] | null, LangGraphStreamMode, unknown, unknown?];
+      const [ns, mode, chunk] = rawTuple;
+      const chunkMeta = rawTuple[3] as
+        | { checkpoint?: ProtocolCheckpoint }
+        | undefined;
 
-      // Listen for debug events and capture checkpoint
       let data: unknown = chunk;
       if (mode === "debug") {
         const debugChunk = chunk as LangGraphDebugChunk;
@@ -296,11 +309,24 @@ export async function* streamState(
         data = debugTask;
       }
 
+      // Emit the lightweight checkpoint envelope as a dedicated
+      // `checkpoints` source event immediately BEFORE the companion
+      // `values` event so clients subscribed to both channels have the
+      // envelope buffered by the time the values payload arrives
+      // (`useMessageMetadata(msg.id).parentCheckpointId` for fork /
+      // edit flows). Clients that only want fork / time-travel metadata
+      // subscribe to `checkpoints` alone and avoid the full-state
+      // payload.
+      if (mode === "values" && chunkMeta?.checkpoint != null) {
+        const sseEvent =
+          kwargs.subgraphs && ns?.length
+            ? `checkpoints|${ns.join("|")}`
+            : "checkpoints";
+        yield { event: sseEvent, data: chunkMeta.checkpoint };
+      }
+
       if (mode === "messages") {
-        if (
-          userStreamMode.includes("messages-tuple") ||
-          useProtocolMessagesStream
-        ) {
+        if (userStreamMode.includes("messages-tuple")) {
           if (kwargs.subgraphs && ns?.length) {
             yield { event: `messages|${ns.join("|")}`, data };
           } else {
@@ -308,11 +334,9 @@ export async function* streamState(
           }
         }
       } else if (userStreamMode.includes(mode)) {
-        if (kwargs.subgraphs && ns?.length) {
-          yield { event: `${mode}|${ns.join("|")}`, data };
-        } else {
-          yield { event: mode, data };
-        }
+        const sseEvent =
+          kwargs.subgraphs && ns?.length ? `${mode}|${ns.join("|")}` : mode;
+        yield { event: sseEvent, data };
       }
     } else if (userStreamMode.includes("events")) {
       yield { event: "events", data: event };
@@ -325,7 +349,7 @@ export async function* streamState(
     // - handleLLMEnd receives the final message as BaseMessageChunk rather than BaseMessage, which from the outside will become indistinguishable.
     // - handleLLMEnd should not dedupe the message
     // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
-    if (userStreamMode.includes("messages") && !useProtocolMessagesStream) {
+    if (userStreamMode.includes("messages")) {
       if (
         event.event === "on_chain_stream" &&
         (kwargs.subgraphs || event.run_id === run.run_id)
@@ -398,9 +422,9 @@ export async function* streamState(
 }
 
 /**
- * Executes a graph run using `graph.streamV2()` and maps the resulting
- * `ProtocolEvent` objects into the `{ event, data }` shape consumed by
- * both the legacy SSE path and the protocol v2 session.
+ * Executes a graph run using `graph.streamEvents(..., { version: "v3" })`
+ * and maps the resulting `ProtocolEvent` objects into the `{ event, data }`
+ * shape consumed by both the legacy SSE path and the protocol v2 session.
  *
  * This path activates graph-level `streamTransformers` (registered via
  * `.compile({ transformers })`) so that custom transformer output flows to
@@ -424,7 +448,7 @@ export async function* streamStateV2(
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
   }
-): AsyncGenerator<{ event: string; data: unknown }> {
+): AsyncGenerator<SourceStreamEvent> {
   const kwargs = run.kwargs;
   const graph = options.graph;
 
@@ -462,11 +486,17 @@ export async function* streamStateV2(
       })
     : undefined;
 
-  const graphRun = await graph.streamV2(
+  const rootGraphName =
+    typeof kwargs.config?.configurable?.graph_id === "string"
+      ? kwargs.config.configurable.graph_id
+      : run.assistant_id;
+
+  const graphRun = await graph.streamEvents(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
       : (kwargs.input ?? null),
     {
+      version: "v3",
       interruptAfter: kwargs.interrupt_after,
       interruptBefore: kwargs.interrupt_before,
 
@@ -482,6 +512,14 @@ export async function* streamStateV2(
       runId: run.run_id,
       signal: options?.signal,
       ...(tracer && { callbacks: [tracer] }),
+
+      // The root `lifecycle.started` and terminal root event are owned
+      // by `RunProtocolSession` so that API-specific semantics (initial
+      // run status, thread-level pending interrupts, replay) remain
+      // authoritative.  Core's `LifecycleTransformer` still tracks the
+      // root namespace internally for child cascade purposes and emits
+      // authoritative events for every sub-namespace.
+      lifecycle: { emitRootOnRegister: false, rootGraphName },
     }
   );
 
@@ -511,14 +549,6 @@ export async function* streamStateV2(
         };
         continue;
       }
-    } else if (mode === "checkpoints") {
-      const debugCheckpoint = preprocessDebugCheckpoint(
-        data as DebugCheckpoint
-      );
-      options?.onCheckpoint?.(debugCheckpoint);
-      const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
-      yield { event: sseEvent, data: debugCheckpoint };
-      continue;
     } else if (mode === "tasks") {
       const debugTask = preprocessDebugCheckpointTask(data as DebugTask);
       if ("result" in debugTask || "error" in debugTask) {
@@ -530,7 +560,28 @@ export async function* streamStateV2(
     }
 
     const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
-    yield { event: sseEvent, data };
+
+    /**
+     * These modes have already been converted to their protocol shape by
+     * core's `convertToProtocolEvent`, so the session can skip
+     * re-normalization.  Other modes (values, debug, tasks) still
+     * require API-specific processing (interrupt stripping, state
+     * message normalization, checkpoint preprocessing). `checkpoints`
+     * is emitted by core as a standalone protocol event whose `data` is
+     * already the lightweight envelope; the session frames it on the
+     * dedicated `checkpoints` channel.  `lifecycle` events are
+     * synthesized by core's `LifecycleTransformer` and forwarded
+     * verbatim by the session.
+     */
+    const normalized =
+      mode === "tools" ||
+      mode === "updates" ||
+      mode === "custom" ||
+      mode === "messages" ||
+      mode === "checkpoints" ||
+      mode === "lifecycle";
+
+    yield { event: sseEvent, data, normalized };
   }
 
   if (kwargs.feedback_keys) {

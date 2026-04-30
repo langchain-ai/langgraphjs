@@ -2,31 +2,28 @@ import type {
   AgentResult,
   AgentStatus,
   AgentTreeNode,
-  CapabilityAdvertisement,
-  CheckpointsEvent,
   Channel,
+  Checkpoint,
+  CheckpointSource,
   Command,
   CommandResponse,
   ContentBlockDeltaData,
   ContentBlockFinishData,
   ContentBlockStartData,
   CustomData,
-  DebugEvent,
   ErrorCode,
   ErrorResponse,
   Event,
+  LifecycleCause,
   MessageErrorData,
-  MessagesData,
-  FlowCapacityParams,
   MessageFinishData,
   MessageMetadata,
   MessageStartData,
-  ModuleCapability,
+  MessagesData,
   Namespace,
   ResponseMeta,
   RunInputParams,
   RunResult,
-  SessionResult,
   StateGetResult,
   SubscribeParams,
   SubscribeResult,
@@ -35,61 +32,65 @@ import type {
   ToolOutputDeltaData,
   ToolStartedData,
   ToolsData,
-  TransportProfile,
   UnsubscribeParams,
   UpdatesEvent,
 } from "@langchain/protocol";
+
+export type { LifecycleCause };
 import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session/index.mjs";
 
 /**
- * Raw events emitted by the existing LangGraph run stream implementation before
- * they are normalized into protocol-framed events.
+ * Raw events emitted by the existing LangGraph run stream implementation
+ * before they are normalized into protocol-framed events.
+ *
+ * The session emits two independent events per persisted checkpoint:
+ * - `event: "values"` carries the full state snapshot on the `values`
+ *   protocol channel.
+ * - `event: "checkpoints"` carries the lightweight {@link Checkpoint}
+ *   envelope on the dedicated `checkpoints` channel, paired with the
+ *   adjacent `values` event by `(namespace, step)` so fork/time-travel
+ *   UIs can subscribe without also paying for full-state payloads.
+ *
+ * When {@link normalized} is `true` the payload has already been converted
+ * to its protocol shape by the in-process streaming layer
+ * (`streamEvents(..., { version: "v3" })`) and should be passed through
+ * without re-normalization.
  */
 export type SourceStreamEvent = {
   id?: string;
   event: string;
   data: unknown;
+  normalized?: boolean;
 };
-
-/**
- * Protocol version currently implemented by the API transport layer.
- */
-export type ProtocolVersion = SessionResult["protocol_version"];
 
 /**
  * Transport profiles currently exposed by the LangGraph API implementation.
  */
 export type ProtocolTransportName = "websocket" | "sse-http";
 
-export type SessionTransportName = ProtocolTransportName;
-
-export type SessionTransportKind = ProtocolTransportName;
-
 export type SupportedChannel = Extract<
   Channel,
   | "values"
   | "updates"
+  | "checkpoints"
   | "messages"
   | "tools"
   | "custom"
   | "lifecycle"
   | "input"
-  | "debug"
-  | "checkpoints"
   | "tasks"
 >;
 
 export type EventMethodByChannel = {
   values: "values";
   updates: "updates";
+  checkpoints: "checkpoints";
   messages: "messages";
   tools: "tools";
   custom: "custom";
   lifecycle: "lifecycle";
   input: "input.requested";
-  debug: "debug";
-  checkpoints: "checkpoints";
   tasks: "tasks";
 };
 
@@ -110,25 +111,21 @@ export type {
   AgentResult,
   AgentStatus,
   AgentTreeNode,
-  CapabilityAdvertisement,
-  CheckpointsEvent,
+  Checkpoint,
+  CheckpointSource,
   ContentBlockDeltaData,
   ContentBlockFinishData,
   ContentBlockStartData,
   CustomData,
-  DebugEvent,
   ErrorCode,
-  FlowCapacityParams,
   MessageErrorData,
   MessageFinishData,
   MessageMetadata,
   MessagesData,
   MessageStartData,
-  ModuleCapability,
   Namespace,
   RunInputParams,
   RunResult,
-  SessionResult,
   StateGetResult,
   SubscribeParams,
   SubscribeResult,
@@ -137,61 +134,74 @@ export type {
   ToolOutputDeltaData,
   ToolStartedData,
   ToolsData,
-  TransportProfile,
   UnsubscribeParams,
   UpdatesEvent,
 };
 
 /**
- * Session targets supported by the API transport layer.
+ * Per-connection filter for SSE event sinks.
  *
- * Graph- and agent-targeted sessions start a run later via `run.input`, while
- * run-targeted sessions attach immediately to an existing run.
+ * Each SSE `POST .../events` connection carries its own filter so the server
+ * can deliver only matching events without persisting subscription state.
  */
-export type ProtocolTarget =
-  | {
-      id: string;
-    }
-  | {
-      kind: "run";
-      id: string;
-      threadId?: string;
-    };
-
-export type SessionTarget = ProtocolTarget;
-export type ProtocolSessionTarget = ProtocolTarget;
-
-/**
- * Normalized session-open request shape used internally by the HTTP and
- * WebSocket transport adapters.
- */
-export type ProtocolOpenRequest = {
-  protocol_version: string;
-  preferred_transports?: string[];
-  media_transfer_modes?: string[];
-  target: ProtocolTarget;
-  transport: ProtocolTransportName;
+export type EventSinkFilter = {
+  channels: Set<string>;
+  namespaces?: string[][];
+  depth?: number;
+  since?: number;
 };
 
 /**
- * Runtime state tracked for an active protocol session.
+ * A single SSE event sink attached to a thread.
  *
- * This remains local to the API package even though protocol message types come
- * from `@langchain/protocol`, because it stores transport bindings, buffered
- * events, and deferred commands that are implementation-specific.
+ * `pendingReplay` is true while {@link ProtocolService.attachFilteredEventSink}
+ * is draining buffered events into this sink. While true, the live `send`
+ * callback must skip this sink so that the replay loop — not the live path —
+ * owns strict in-order delivery.
  */
-export type SessionRecord = {
-  sessionId: string;
-  protocol_version: ProtocolVersion;
-  transport: TransportProfile;
+export type EventSinkEntry = {
+  id: string;
+  filter: EventSinkFilter;
+  send: (message: ProtocolEvent) => Promise<void> | void;
+  pendingReplay?: boolean;
+};
+
+/**
+ * Runtime state tracked for an active thread connection.
+ *
+ * In the thread-centric protocol, threads are durable but ephemeral
+ * connection state lives here: the active run session, attached SSE
+ * sinks, and a queue of events waiting for a sink.
+ */
+export type ThreadRecord = {
+  threadId: string;
+  transport: ProtocolTransportName;
   auth?: AuthContext;
-  target: ProtocolTarget;
-  capabilities: CapabilityAdvertisement;
+  assistantId?: string;
   seq: number;
   session?: RunProtocolSession;
   currentRunId?: string;
-  currentThreadId?: string;
+  /** WebSocket-only: single event delivery callback. */
   sendEvent?: ((message: ProtocolEvent) => Promise<void> | void) | undefined;
+  /** SSE: per-connection filtered event sinks. */
+  eventSinks: Map<string, EventSinkEntry>;
+  /** Events buffered when no sink is attached yet. */
   queuedEvents: ProtocolEvent[];
-  pendingCommands: ProtocolCommand[];
+  /** WebSocket-only: subscription commands replayed on new run sessions. */
+  activeSubscriptions: ProtocolCommand[];
+  /**
+   * WebSocket-only: subscribes that arrived before a run session was bound.
+   *
+   * The SDK opens its root-pump subscription (and legacy lifecycle/values
+   * subs) eagerly on thread creation so that no events are missed on fast
+   * runs. On WebSocket those subscribes can race ahead of the concurrent
+   * `run.input` and hit the service before `ensureRunSession` has bound a
+   * session. Rather than rejecting them with `no_such_run`, we park each
+   * command's response promise here and resolve it once the first session
+   * is bound — mirroring the cross-run `activeSubscriptions` replay path.
+   */
+  pendingSubscribes: Array<{
+    command: ProtocolCommand;
+    resolve: (response: ProtocolSuccess | ProtocolError | null) => void;
+  }>;
 };

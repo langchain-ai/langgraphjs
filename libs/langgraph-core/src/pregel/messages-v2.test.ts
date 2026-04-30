@@ -70,7 +70,8 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-start",
-          message_id: "msg-123",
+          id: "msg-123",
+          role: "ai",
         },
       ],
       [
@@ -79,7 +80,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
       ],
       [
@@ -88,7 +89,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Hello" },
+          content: { type: "text", text: "Hello" },
         },
       ],
       [
@@ -97,7 +98,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: { type: "text", text: "Hello" },
+          content: { type: "text", text: "Hello" },
         },
       ],
       [
@@ -105,7 +106,6 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-finish",
-          reason: "stop",
           metadata: { stop_reason: "end_turn" },
         },
       ],
@@ -147,7 +147,8 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-start",
-          message_id: "msg-456",
+          id: "msg-456",
+          role: "ai",
         },
       ],
       [
@@ -156,7 +157,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-start",
           index: 0,
-          content_block: { type: "text", text: "" },
+          content: { type: "text", text: "" },
         },
       ],
       [
@@ -165,7 +166,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-delta",
           index: 0,
-          content_block: { type: "text", text: "Done" },
+          content: { type: "text", text: "Done" },
         },
       ],
       [
@@ -174,7 +175,7 @@ describe("StreamProtocolMessagesHandler", () => {
         {
           event: "content-block-finish",
           index: 0,
-          content_block: { type: "text", text: "Done", index: 0 },
+          content: { type: "text", text: "Done", index: 0 },
         },
       ],
       [
@@ -182,10 +183,97 @@ describe("StreamProtocolMessagesHandler", () => {
         "messages",
         {
           event: "message-finish",
-          reason: "tool_use",
           metadata: { stop_reason: "tool_use" },
         },
       ],
+    ]);
+  });
+
+  it("lifts additional_kwargs.audio into an audio content block", () => {
+    const streamFn = vi.fn();
+    const handler = new StreamProtocolMessagesHandler(streamFn);
+    const runId = "audio-run";
+
+    handler.handleChatModelStart(
+      {} as Serialized,
+      [],
+      runId,
+      undefined,
+      {},
+      [],
+      {
+        langgraph_checkpoint_ns: "ns-audio",
+        __protocol_messages_stream: true,
+      },
+      "ModelName"
+    );
+
+    handler.handleLLMEnd(
+      {
+        generations: [
+          [
+            {
+              text: "",
+              message: new AIMessage({
+                id: "msg-audio",
+                content: "",
+                additional_kwargs: {
+                  audio: {
+                    id: "audio_abc",
+                    data: "AAAA",
+                    format: "wav",
+                    transcript: "hello",
+                  },
+                },
+                response_metadata: { stop_reason: "stop" },
+              }),
+            },
+          ],
+        ],
+      } as unknown as LLMResult,
+      runId
+    );
+
+    const events = streamFn.mock.calls.map((call) => call[0][2]);
+    expect(events).toEqual([
+      { event: "message-start", id: "msg-audio", role: "ai" },
+      {
+        event: "content-block-start",
+        index: 0,
+        content: {
+          type: "audio",
+          id: "audio_abc",
+          data: "AAAA",
+          mime_type: "audio/wav",
+          transcript: "hello",
+        },
+      },
+      {
+        event: "content-block-delta",
+        index: 0,
+        content: {
+          type: "audio",
+          id: "audio_abc",
+          data: "AAAA",
+          mime_type: "audio/wav",
+          transcript: "hello",
+        },
+      },
+      {
+        event: "content-block-finish",
+        index: 0,
+        content: {
+          type: "audio",
+          id: "audio_abc",
+          data: "AAAA",
+          mime_type: "audio/wav",
+          transcript: "hello",
+        },
+      },
+      {
+        event: "message-finish",
+        metadata: { stop_reason: "stop" },
+      },
     ]);
   });
 });

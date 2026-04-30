@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useStream } from "../../index.js";
+  import { useStream, useSubmissionQueue } from "../../index.js";
 
   interface Props {
     apiUrl: string;
@@ -14,7 +14,6 @@
   const stream = useStream({
     assistantId: "agent",
     apiUrl,
-    fetchStateHistory: false,
     onCreated: () => {
       if (pending.length > 0) {
         const followUps = pending;
@@ -27,6 +26,7 @@
       }
     },
   });
+  const queue = useSubmissionQueue(stream);
 
   function onSubmitPresets() {
     pending = PRESETS.slice(1);
@@ -50,7 +50,7 @@
     {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <div data-testid="message-count">{stream.messages.length}</div>
-  <div data-testid="queue-size">{stream.queue.size}</div>
+  <div data-testid="queue-size">{queue.size}</div>
   <button data-testid="submit-presets" onclick={onSubmitPresets}>
     Submit Presets
   </button>

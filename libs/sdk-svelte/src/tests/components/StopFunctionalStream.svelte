@@ -16,10 +16,12 @@
       counter: 5,
       items: ["item1", "item2"],
     },
-    onStop: ({ mutate }: any) => {
-      mutate(onStopMutate);
-    },
   });
+
+  function stop() {
+    onStopMutate(stream.values);
+    void stream.stop();
+  }
 </script>
 
 <div>
@@ -35,5 +37,5 @@
   <button data-testid="submit" onclick={() => void stream.submit({} as any)}>
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
+  <button data-testid="stop" onclick={stop}>Stop</button>
 </div>

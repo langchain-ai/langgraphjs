@@ -11,20 +11,82 @@
  *   .interrupts    — interrupt payloads
  *   .abort()       — programmatic cancellation
  *   .extensions    — merged transformer projections
+ *
+ * Internal LangChain products (ReactAgent, DeepAgent) can subclass
+ * GraphRunStream to add native projections (e.g. `run.toolCalls`,
+ * `run.subagents`).  See docs/native-stream-transformers.md for the
+ * pattern.
  */
 
 import type { StreamChunk } from "../pregel/stream.js";
-import { EventLog } from "./event-log.js";
-import { StreamMux, setRunStreamClasses, pump } from "./mux.js";
-import { createMessagesReducer, createValuesReducer } from "./reducers.js";
-import type {
-  ChatModelStream,
-  InferExtensions,
-  InterruptPayload,
-  Namespace,
-  ProtocolEvent,
-  StreamTransformer,
+import {
+  createLifecycleTransformer,
+  createMessagesTransformer,
+  createSubgraphDiscoveryTransformer,
+  createValuesTransformer,
+  filterLifecycleEntries,
+  filterSubgraphHandles,
+  type LifecycleEntry,
+  type LifecycleTransformerOptions,
+} from "./transformers/index.js";
+import { StreamMux, pump, RESOLVE_VALUES, REJECT_VALUES } from "./mux.js";
+import {
+  isNativeTransformer,
+  type ChatModelStreamHandle,
+  type InferExtensions,
+  type InterruptPayload,
+  type Namespace,
+  type ProtocolEvent,
+  type StreamTransformer,
 } from "./types.js";
+import type { StreamChannel } from "./stream-channel.js";
+
+/**
+ * Symbol key for attaching the values log to a stream handle.
+ * Using a symbol keeps this off the public autocomplete surface.
+ */
+export const SET_VALUES_LOG: unique symbol = Symbol("setValuesLog");
+
+/**
+ * Symbol key for attaching the messages iterable to a stream handle.
+ * Using a symbol keeps this off the public autocomplete surface.
+ */
+export const SET_MESSAGES_ITERABLE: unique symbol = Symbol(
+  "setMessagesIterable"
+);
+
+/**
+ * Symbol key for attaching the lifecycle iterable to a stream handle.
+ * Using a symbol keeps this off the public autocomplete surface.
+ */
+export const SET_LIFECYCLE_ITERABLE: unique symbol = Symbol(
+  "setLifecycleIterable"
+);
+
+/**
+ * Symbol key for attaching the subgraphs iterable to a stream handle.
+ * Using a symbol keeps this off the public autocomplete surface.
+ */
+export const SET_SUBGRAPHS_ITERABLE: unique symbol = Symbol(
+  "setSubgraphsIterable"
+);
+
+/**
+ * Shared empty async iterable, returned from getters that haven't
+ * been wired by {@link createGraphRunStream}.  Avoids allocating a
+ * fresh empty iterable on every access.
+ */
+const EMPTY_ASYNC_ITERABLE: AsyncIterable<never> = {
+  [Symbol.asyncIterator](): AsyncIterator<never> {
+    return {
+      next: () =>
+        Promise.resolve({
+          value: undefined as never,
+          done: true,
+        }),
+    };
+  },
+};
 
 /**
  * Primary run stream for a LangGraph execution.
@@ -70,8 +132,10 @@ export class GraphRunStream<
   #rejectValuesFn?: (e: unknown) => void;
   readonly #valuesDone: Promise<TValues>;
 
-  #valuesLog?: EventLog<Record<string, unknown>>;
-  #messagesIterable?: AsyncIterable<ChatModelStream>;
+  #valuesLog?: StreamChannel<Record<string, unknown>>;
+  #messagesIterable?: AsyncIterable<ChatModelStreamHandle>;
+  #lifecycleIterable?: AsyncIterable<LifecycleEntry>;
+  #subgraphsIterable?: AsyncIterable<SubgraphRunStream>;
 
   /**
    * @param path - Namespace path for this stream (empty array for root).
@@ -99,6 +163,11 @@ export class GraphRunStream<
       this.#resolveValuesFn = resolve;
       this.#rejectValuesFn = reject;
     });
+    this.#valuesDone.catch(() => {
+      // Keep run failures observable to explicit `await run.output` callers
+      // without reporting unhandled rejections when consumers only iterate
+      // protocol events.
+    });
   }
 
   /**
@@ -115,11 +184,23 @@ export class GraphRunStream<
    * Async iterable of child {@link SubgraphRunStream} instances discovered
    * during the run. Each yielded stream represents a direct child namespace.
    *
+   * Backed by the shared `_discoveries` log on the mux, populated by
+   * {@link createSubgraphDiscoveryTransformer}.  For streams created
+   * through {@link createGraphRunStream} the iterable is pre-wired
+   * (via {@link SET_SUBGRAPHS_ITERABLE}) so iteration is cheap.
+   * Streams constructed directly (e.g. in unit tests) fall back to
+   * filtering `_mux._discoveries` on demand, preserving the original
+   * behavior without requiring explicit wiring.
+   *
    * @returns An async iterable of subgraph run streams.
    */
   get subgraphs(): AsyncIterable<SubgraphRunStream> {
-    const iter = this._mux.subscribeSubgraphs(this.path, this.#discoveryStart);
-    return { [Symbol.asyncIterator]: () => iter };
+    if (this.#subgraphsIterable) return this.#subgraphsIterable;
+    return filterSubgraphHandles<SubgraphRunStream>(
+      this._mux._discoveries,
+      this.path,
+      this.#discoveryStart
+    );
   }
 
   /**
@@ -183,16 +264,37 @@ export class GraphRunStream<
    *
    * @returns An async iterable of chat model streams.
    */
-  get messages(): AsyncIterable<ChatModelStream> {
+  get messages(): AsyncIterable<ChatModelStreamHandle> {
     if (this.#messagesIterable) return this.#messagesIterable;
     // Lazily create a messages transformer scoped to this stream's path.
     // This handles SubgraphRunStream instances that are created
     // dynamically by StreamMux and don't have a transformer pre-wired.
-    const transformer = createMessagesReducer(this.path);
-    this._mux.addTransformer(transformer);
+    // Uses addTransformer (which replays buffered events) so that
+    // messages emitted before the getter is first accessed are not lost.
+    const transformer = createMessagesTransformer(this.path);
     const projection = transformer.init();
+    this._mux.addTransformer(transformer);
     this.#messagesIterable = projection.messages;
     return this.#messagesIterable;
+  }
+
+  /**
+   * Sequence of {@link LifecycleEntry} records tracking the
+   * `lifecycle` channel: when the run starts, when each subgraph
+   * enters/exits, and the terminal status of the run as a whole.
+   *
+   * Backed by the built-in {@link createLifecycleTransformer}; the
+   * root stream's iterable is wired during
+   * {@link createGraphRunStream} setup, and each
+   * {@link SubgraphRunStream} is wired in the subgraph discovery
+   * factory with a subtree-scoped view (via
+   * {@link filterLifecycleEntries}).  Streams constructed outside
+   * `createGraphRunStream` and not wired will yield nothing.
+   *
+   * @returns An async iterable of lifecycle entries in emission order.
+   */
+  get lifecycle(): AsyncIterable<LifecycleEntry> {
+    return this.#lifecycleIterable ?? EMPTY_ASYNC_ITERABLE;
   }
 
   /**
@@ -202,10 +304,10 @@ export class GraphRunStream<
    * @param node - The graph node name to filter messages by.
    * @returns An async iterable of chat model streams from the given node.
    */
-  messagesFrom(node: string): AsyncIterable<ChatModelStream> {
-    const transformer = createMessagesReducer(this.path, node);
-    this._mux.addTransformer(transformer);
+  messagesFrom(node: string): AsyncIterable<ChatModelStreamHandle> {
+    const transformer = createMessagesTransformer(this.path, node);
     const projection = transformer.init();
+    this._mux.addTransformer(transformer);
     return projection.messages;
   }
 
@@ -263,7 +365,7 @@ export class GraphRunStream<
    * @param values - The final state values, or `undefined` if none.
    * @internal
    */
-  _resolveValues(values: TValues | undefined): void {
+  [RESOLVE_VALUES](values: TValues | undefined): void {
     this.#resolveValuesFn?.(values as TValues);
     this.#resolveValuesFn = undefined;
   }
@@ -275,7 +377,7 @@ export class GraphRunStream<
    * @param err - The error that caused the run to fail.
    * @internal
    */
-  _rejectValues(err: unknown): void {
+  [REJECT_VALUES](err: unknown): void {
     this.#rejectValuesFn?.(err);
     this.#rejectValuesFn = undefined;
   }
@@ -287,7 +389,7 @@ export class GraphRunStream<
    * @param log - The event log from the values transformer projection.
    * @internal
    */
-  _setValuesLog(log: EventLog<Record<string, unknown>>): void {
+  [SET_VALUES_LOG](log: StreamChannel<Record<string, unknown>>): void {
     this.#valuesLog = log;
   }
 
@@ -298,8 +400,35 @@ export class GraphRunStream<
    * @param iterable - The async iterable from the messages transformer projection.
    * @internal
    */
-  _setMessagesIterable(iterable: AsyncIterable<ChatModelStream>): void {
+  [SET_MESSAGES_ITERABLE](
+    iterable: AsyncIterable<ChatModelStreamHandle>
+  ): void {
     this.#messagesIterable = iterable;
+  }
+
+  /**
+   * Attach the transformer-populated async iterable backing the
+   * `.lifecycle` accessor. Called during stream setup in
+   * {@link createGraphRunStream}.
+   *
+   * @param iterable - The async iterable from the lifecycle transformer projection.
+   * @internal
+   */
+  [SET_LIFECYCLE_ITERABLE](iterable: AsyncIterable<LifecycleEntry>): void {
+    this.#lifecycleIterable = iterable;
+  }
+
+  /**
+   * Attach the transformer-populated async iterable backing the
+   * `.subgraphs` accessor. Called during root stream setup in
+   * {@link createGraphRunStream} and during child stream
+   * construction in the discovery transformer factory.
+   *
+   * @param iterable - The async iterable of direct-child stream handles.
+   * @internal
+   */
+  [SET_SUBGRAPHS_ITERABLE](iterable: AsyncIterable<SubgraphRunStream>): void {
+    this.#subgraphsIterable = iterable;
   }
 }
 
@@ -360,21 +489,48 @@ export class SubgraphRunStream<
   }
 }
 
-// Register constructors with StreamMux to break the circular dependency.
-setRunStreamClasses(GraphRunStream, SubgraphRunStream);
+/**
+ * Options accepted by {@link createGraphRunStream}.
+ */
+export interface CreateGraphRunStreamOptions {
+  /**
+   * Optional abort controller shared with the outer run; if omitted, a
+   * fresh controller is allocated for the returned stream.
+   */
+  abortController?: AbortController;
+
+  /**
+   * Configuration forwarded to the built-in lifecycle transformer.
+   * Pass to customize the root graph name, initial status, terminal
+   * status override, or to delegate root emission to an outer
+   * authority (e.g. the protocol session).
+   */
+  lifecycle?: LifecycleTransformerOptions;
+}
 
 /**
  * Creates a {@link GraphRunStream} with built-in transformers and kicks off the
  * background pump that feeds raw stream chunks through the transformer pipeline.
  *
- * Built-in transformers (values and messages) are registered first, followed by
- * any user-supplied transformer factories. The root stream is registered with the
- * mux and the pump is started in the background.
+ * Built-in transformers are registered in this order:
+ *   1. subgraph discovery — materializes SubgraphRunStream handles
+ *      for each newly observed top-level namespace and announces them
+ *      on the mux `_discoveries` log.
+ *   2. lifecycle — synthesizes `lifecycle` channel events.
+ *   3. values — powers `run.values` / `run.output`.
+ *   4. messages — powers `run.messages` / `.messagesFrom`.
+ *
+ * Subgraph discovery is registered first so that downstream
+ * transformers (notably lifecycle) observe child namespaces with
+ * their stream handles already in place.  User-supplied transformer
+ * factories are registered afterwards.
  *
  * @typeParam TValues - Shape of the graph's state values.
  * @param source - Raw async iterable from `graph.stream(…, { subgraphs: true })`.
  * @param transformers - User-supplied transformer factories.
- * @param abortController - Optional controller for cancellation.
+ * @param optionsOrAbortController - Either a full
+ *   {@link CreateGraphRunStreamOptions} object or (for backward
+ *   compatibility) a bare `AbortController`.
  * @returns A {@link GraphRunStream} for the root namespace.
  */
 export function createGraphRunStream<
@@ -384,20 +540,89 @@ export function createGraphRunStream<
 >(
   source: AsyncIterable<StreamChunk>,
   transformers: TTransformers = [] as unknown as TTransformers,
-  abortController?: AbortController
+  optionsOrAbortController?: CreateGraphRunStreamOptions | AbortController
 ): GraphRunStream<TValues, InferExtensions<TTransformers>> {
+  const options: CreateGraphRunStreamOptions =
+    // oxlint-disable-next-line no-instanceof/no-instanceof
+    optionsOrAbortController instanceof AbortController
+      ? { abortController: optionsOrAbortController }
+      : (optionsOrAbortController ?? {});
+  const { abortController, lifecycle: lifecycleOptions } = options;
+
   const mux = new StreamMux();
 
-  const valuesTransformer = createValuesReducer([]);
-  const messagesTransformer = createMessagesReducer([]);
+  // Init lifecycle first so the subgraph discovery factory can close
+  // over its log to wire each new child's `.lifecycle` view.
+  const lifecycleTransformer = createLifecycleTransformer(lifecycleOptions);
+  const lifecycleProjection = lifecycleTransformer.init();
+  const lifecycleLog = lifecycleProjection._lifecycleLog;
+
+  const subgraphDiscoveryTransformer =
+    createSubgraphDiscoveryTransformer<SubgraphRunStream>(mux, {
+      createStream: (path, discoveryStart, eventStart) => {
+        const sub = new SubgraphRunStream(
+          path,
+          mux,
+          discoveryStart,
+          eventStart
+        );
+        // Wire the child's `.subgraphs` to the shared discoveries log,
+        // scoped to the child's path and its construction-time offset.
+        sub[SET_SUBGRAPHS_ITERABLE](
+          filterSubgraphHandles<SubgraphRunStream>(
+            mux._discoveries,
+            path,
+            discoveryStart
+          )
+        );
+        // Wire the child's `.lifecycle` to the shared lifecycle log,
+        // filtered to its subtree.  Capture the current log size so
+        // entries emitted before discovery (e.g. root's `started`)
+        // aren't replayed to the child.  Entries emitted for this
+        // discovery event itself land after the factory returns (the
+        // subgraph transformer runs before the lifecycle transformer),
+        // so the child still receives its own `started`.
+        sub[SET_LIFECYCLE_ITERABLE](
+          filterLifecycleEntries(lifecycleLog, path, lifecycleLog.size)
+        );
+        return sub;
+      },
+    });
+  const subgraphsProjection = subgraphDiscoveryTransformer.init();
+
+  // Registration order matters: subgraph discovery runs first so that
+  // lifecycle and downstream transformers see child stream handles
+  // already materialized.
+  mux.addTransformer(subgraphDiscoveryTransformer);
+  mux.addTransformer(lifecycleTransformer);
+
+  const valuesTransformer = createValuesTransformer([]);
+  const messagesTransformer = createMessagesTransformer([]);
   mux.addTransformer(valuesTransformer);
   mux.addTransformer(messagesTransformer);
 
   const extensions: Record<string, unknown> = {};
+  const nativeProjections: Record<string, unknown>[] = [];
   for (const factory of transformers) {
     const transformer = factory();
     mux.addTransformer(transformer);
-    Object.assign(extensions, transformer.init());
+    const projection = transformer.init();
+    if (isNativeTransformer(transformer)) {
+      nativeProjections.push(projection);
+    } else {
+      Object.assign(extensions, projection);
+    }
+    // Only wire channels for extension transformers. Native transformers
+    // produce non-serializable projections (Promises, AsyncIterables) that
+    // must stay in-process — wiring them would inject garbage into the
+    // protocol event stream.
+    if (
+      typeof projection === "object" &&
+      projection !== null &&
+      !isNativeTransformer(transformer)
+    ) {
+      mux.wireChannels(projection as Record<string, unknown>);
+    }
   }
 
   const root = new GraphRunStream<TValues, InferExtensions<TTransformers>>(
@@ -409,12 +634,21 @@ export function createGraphRunStream<
     abortController
   );
 
+  /**
+   * Assign native transformer projections to the root stream.
+   */
+  for (const proj of nativeProjections) {
+    Object.assign(root, proj);
+  }
+
   // Wire transformer projections into the root stream.
   const valuesProjection = valuesTransformer.init();
-  root._setValuesLog(valuesProjection._valuesLog);
+  root[SET_VALUES_LOG](valuesProjection._valuesLog);
 
   const messagesProjection = messagesTransformer.init();
-  root._setMessagesIterable(messagesProjection.messages);
+  root[SET_MESSAGES_ITERABLE](messagesProjection.messages);
+  root[SET_LIFECYCLE_ITERABLE](lifecycleProjection.lifecycle);
+  root[SET_SUBGRAPHS_ITERABLE](subgraphsProjection.subgraphs);
 
   mux.register([], root);
 

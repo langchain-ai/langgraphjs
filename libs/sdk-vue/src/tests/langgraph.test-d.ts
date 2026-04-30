@@ -331,66 +331,6 @@ describe("direct state types work without StateGraph", () => {
   });
 });
 
-describe("graph streams do not have agent-specific features", () => {
-  test("compiled graph does not have toolCalls", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("toolCalls");
-  });
-
-  test("compiled graph does not have getToolCalls", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("getToolCalls");
-  });
-
-  test("compiled graph does not have subagents", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("subagents");
-  });
-
-  test("compiled graph does not have getSubagentsByType", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
-  });
-
-  test("compiled graph does not have activeSubagents", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("activeSubagents");
-  });
-
-  test("compiled graph does not have getSubagent", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("getSubagent");
-  });
-
-  test("direct state type also does not have agent features", () => {
-    const stream = useStream<BasicDirectState>({
-      assistantId: "direct",
-    });
-
-    expectTypeOf(stream).not.toHaveProperty("toolCalls");
-    expectTypeOf(stream).not.toHaveProperty("subagents");
-    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
-  });
-});
-
 describe("graph: core stream properties", () => {
   test("isLoading is boolean", () => {
     const stream = useStream<typeof researchGraph>({
@@ -432,22 +372,6 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.submit(null)).toEqualTypeOf<Promise<void>>();
   });
 
-  test("branch is string", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.branch.value).toEqualTypeOf<string>();
-  });
-
-  test("setBranch accepts string", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.setBranch).toBeCallableWith("main");
-  });
-
   test("assistantId is string", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
@@ -456,43 +380,6 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
   });
 
-  test("joinStream is a function", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    expectTypeOf(stream.joinStream).toBeFunction();
-  });
-});
-
-describe("graph: getMessagesMetadata accepts BaseMessage", () => {
-  test("getMessagesMetadata works with compiled graph messages", () => {
-    const stream = useStream<typeof researchGraph>({
-      assistantId: "graph",
-    });
-
-    const msg = stream.messages.value[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
-    if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
-      expectTypeOf(metadata.branch).toEqualTypeOf<string | undefined>();
-      expectTypeOf(metadata.branchOptions).toEqualTypeOf<
-        string[] | undefined
-      >();
-    }
-  });
-
-  test("getMessagesMetadata works with direct state type", () => {
-    const stream = useStream<BasicDirectState>({
-      assistantId: "direct",
-    });
-
-    const msg = stream.messages.value[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
-    if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
-    }
-  });
 });
 
 describe("graph: interrupt support", () => {

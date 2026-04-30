@@ -1766,7 +1766,12 @@ export class FileSystemRuns implements RunsRepo {
         lastEventId: string | undefined;
       },
       auth: AuthContext | undefined
-    ): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
+    ): AsyncGenerator<{
+      id?: string;
+      event: string;
+      data: unknown;
+      normalized?: boolean;
+    }> {
       const conn = this.conn;
       const runs = this.runs;
 
@@ -1812,7 +1817,14 @@ export class FileSystemRuns implements RunsRepo {
                 `run:${runId}:stream:`.length
               );
 
-              yield { id, event: streamTopic, data: message.data };
+              yield {
+                id,
+                event: streamTopic,
+                data: message.data,
+                ...(message.normalized != null
+                  ? { normalized: message.normalized }
+                  : {}),
+              };
             }
           } catch (error) {
             if (error instanceof AbortError) break;
@@ -1843,6 +1855,7 @@ export class FileSystemRuns implements RunsRepo {
       event: string;
       data: unknown;
       resumable: boolean;
+      normalized?: boolean;
     }) {
       const queue = StreamManager.getQueue(payload.runId, {
         ifNotFound: "create",
@@ -1851,6 +1864,9 @@ export class FileSystemRuns implements RunsRepo {
       queue.push({
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,
+        ...(payload.normalized != null
+          ? { normalized: payload.normalized }
+          : {}),
       });
     }
   };

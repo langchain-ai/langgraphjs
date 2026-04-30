@@ -1,4 +1,4 @@
-import { Client, type Message } from "@langchain/langgraph-sdk";
+import { Client } from "@langchain/langgraph-sdk";
 import { it, expect, vi, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 import BasicStream from "./components/BasicStream.svelte";
@@ -7,18 +7,15 @@ import InitialValuesStream from "./components/InitialValuesStream.svelte";
 import StopMutateStream from "./components/StopMutateStream.svelte";
 import StopFunctionalStream from "./components/StopFunctionalStream.svelte";
 import OnStopCallback from "./components/OnStopCallback.svelte";
-import StreamMetadataComponent from "./components/StreamMetadata.svelte";
 import InterruptStream from "./components/InterruptStream.svelte";
 import MessageRemoval from "./components/MessageRemoval.svelte";
 import MultiSubmit from "./components/MultiSubmit.svelte";
 import NewThreadId from "./components/NewThreadId.svelte";
 import Branching from "./components/Branching.svelte";
 import OnRequestComponent from "./components/OnRequest.svelte";
-import SubgraphStream from "./components/SubgraphStream.svelte";
 import ToolCallsStream from "./components/ToolCallsStream.svelte";
 import InterruptsArray from "./components/InterruptsArray.svelte";
 import SwitchThread from "./components/SwitchThread.svelte";
-import QueueStream from "./components/QueueStream.svelte";
 import QueueOnCreated from "./components/QueueOnCreated.svelte";
 import SubmitOnError from "./components/SubmitOnError.svelte";
 import DeepAgentStream from "./components/DeepAgentStream.svelte";
@@ -29,7 +26,9 @@ import HistoryMessages from "./components/HistoryMessages.svelte";
 import StreamContextParent from "./components/StreamContextParent.svelte";
 import StreamContextOrphan from "./components/StreamContextOrphan.svelte";
 import ContextProvider from "./components/ContextProvider.svelte";
-import { getStream, type UseStreamTransport } from "../index.js";
+import { getStream, type AgentServerAdapter } from "../index.js";
+
+type AdapterCommand = Parameters<AgentServerAdapter["send"]>[0];
 
 const serverUrl = inject("serverUrl");
 
@@ -273,98 +272,7 @@ it("make sure to pass metadata to the thread", async () => {
     .toMatchObject({ random: "123" });
 });
 
-it("streamSubgraphs: true", async () => {
-  const onCheckpointEvent = vi.fn();
-  const onTaskEvent = vi.fn();
-  const onUpdateEvent = vi.fn();
-  const onCustomEvent = vi.fn();
-
-  const screen = render(BasicStream, {
-    apiUrl: serverUrl,
-    assistantId: "parentAgent",
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    submitOptions: { streamSubgraphs: true },
-  });
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
-
-  await expect
-    .poll(() => onCheckpointEvent.mock.calls.length)
-    .toBeGreaterThanOrEqual(6);
-
-  expect(onCheckpointEvent.mock.calls).toMatchObject([
-    [{ metadata: { source: "input", step: -1 } }, { namespace: undefined }],
-    [{ metadata: { source: "loop", step: 0 } }, { namespace: undefined }],
-    [
-      { metadata: { source: "input", step: -1 } },
-      { namespace: [expect.any(String)] },
-    ],
-    [
-      { metadata: { source: "loop", step: 0 } },
-      { namespace: [expect.any(String)] },
-    ],
-    [
-      { metadata: { source: "loop", step: 1 } },
-      { namespace: [expect.any(String)] },
-    ],
-    [{ metadata: { source: "loop", step: 1 } }, { namespace: undefined }],
-  ]);
-
-  expect(onTaskEvent.mock.calls).toMatchObject([
-    [{ name: "child", input: expect.anything() }, { namespace: undefined }],
-    [
-      { name: "agent", input: expect.anything() },
-      { namespace: [expect.any(String)] },
-    ],
-    [
-      { name: "agent", result: expect.anything() },
-      { namespace: [expect.any(String)] },
-    ],
-    [{ name: "child", result: expect.anything() }, { namespace: undefined }],
-  ]);
-
-  expect(onUpdateEvent.mock.calls).toMatchObject([
-    [
-      { agent: { messages: expect.anything() } },
-      { namespace: [expect.any(String)] },
-    ],
-    [{ child: { messages: expect.anything() } }, { namespace: undefined }],
-  ]);
-
-  expect(onCustomEvent.mock.calls).toMatchObject([
-    ["Custom events", { namespace: [expect.any(String)] }],
-  ]);
-});
-
-it("streamMetadata", async () => {
-  const screen = render(StreamMetadataComponent, {
-    apiUrl: serverUrl,
-  });
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("stream-metadata"))
-    .toHaveTextContent("agent");
-});
-
-it("interrupts (fetchStateHistory: false)", async () => {
+it("interrupts", async () => {
   const screen = render(InterruptStream, {
     apiUrl: serverUrl,
   });
@@ -431,15 +339,13 @@ it("handle message removal", async () => {
     .element(screen.getByTestId("message-2"))
     .toHaveTextContent("ai: Step 3: To Keep");
 
-  expect([...messagesValues.values()]).toMatchObject(
-    [
-      [],
-      ["human: Hello"],
-      ["human: Hello", "ai: Step 1: To Remove"],
-      ["human: Hello", "ai: Step 2: To Keep"],
-      ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"],
-    ].map((msgs: string[]) => msgs.join("\n")),
+  const observed = [...messagesValues.values()];
+  expect(observed).toContain("");
+  const finalState = observed[observed.length - 1];
+  expect(finalState).toBe(
+    ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"].join("\n"),
   );
+  expect(finalState).not.toContain("Step 1: To Remove");
 });
 
 it("enqueue multiple .submit() calls", async () => {
@@ -513,9 +419,6 @@ it("branching", async () => {
   await expect
     .element(screen.getByTestId("content-1"))
     .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("branch-nav-0"))
-    .not.toBeInTheDocument();
 
   await screen.getByTestId("regenerate-1").click();
 
@@ -525,9 +428,6 @@ it("branching", async () => {
   await expect
     .element(screen.getByTestId("content-1"))
     .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("branch-info-1"))
-    .toHaveTextContent("2 / 2");
 
   await screen.getByTestId("fork-0").click();
 
@@ -535,84 +435,8 @@ it("branching", async () => {
     .element(screen.getByTestId("content-0"))
     .toHaveTextContent("Fork: Hello");
   await expect
-    .element(screen.getByTestId("branch-info-0"))
-    .toHaveTextContent("2 / 2");
-  await expect
     .element(screen.getByTestId("content-1"))
     .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("branch-nav-1"))
-    .not.toBeInTheDocument();
-
-  await screen.getByTestId("prev-0").click();
-
-  await expect
-    .element(screen.getByTestId("content-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("branch-info-0"))
-    .toHaveTextContent("1 / 2");
-  await expect
-    .element(screen.getByTestId("content-1"))
-    .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("branch-info-1"))
-    .toHaveTextContent("2 / 2");
-
-  await screen.getByTestId("prev-1").click();
-
-  await expect
-    .element(screen.getByTestId("content-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("branch-info-0"))
-    .toHaveTextContent("1 / 2");
-  await expect
-    .element(screen.getByTestId("content-1"))
-    .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("branch-info-1"))
-    .toHaveTextContent("1 / 2");
-});
-
-it("fetchStateHistory: { limit: 2 }", async () => {
-  const onRequestCalls: Array<{ url: string; body?: Record<string, unknown> }> = [];
-  const client = new Client({
-    apiUrl: serverUrl,
-    onRequest: (url, init) => {
-      onRequestCalls.push({
-        url: url.toString(),
-        body: init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : undefined,
-      });
-      return init;
-    },
-  });
-
-  const screen = render(OnRequestComponent, {
-    apiUrl: serverUrl,
-    client,
-    fetchStateHistory: { limit: 2 },
-  });
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
-  await expect
-    .element(screen.getByTestId("loading"))
-    .toHaveTextContent("Not loading");
-
-  await expect
-    .poll(
-      () =>
-        onRequestCalls.find((call) => call.url.includes("/history"))?.body?.limit,
-      { timeout: 10000 },
-    )
-    .toBe(2);
 });
 
 it("onRequest gets called when a request is made", async () => {
@@ -656,84 +480,6 @@ it("onRequest gets called when a request is made", async () => {
       },
     ],
   ]);
-});
-
-it("interrupts (fetchStateHistory: true)", async () => {
-  const screen = render(InterruptStream, {
-    apiUrl: serverUrl,
-    fetchStateHistory: true,
-  });
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("interrupt"))
-    .toHaveTextContent("breakpoint");
-
-  await screen.getByTestId("resume").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Before interrupt");
-  await expect
-    .element(screen.getByTestId("interrupt"))
-    .toHaveTextContent("agent");
-
-  await screen.getByTestId("resume").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Before interrupt");
-  await expect
-    .element(screen.getByTestId("message-2"))
-    .toHaveTextContent("Hey: Resuming");
-  await expect
-    .element(screen.getByTestId("message-3"))
-    .toHaveTextContent("After interrupt");
-});
-
-it("handles subgraph streaming with event callbacks", async () => {
-  const onCheckpointEvent = vi.fn();
-  const onUpdateEvent = vi.fn();
-  const onCustomEvent = vi.fn();
-
-  const screen = render(SubgraphStream, {
-    apiUrl: serverUrl,
-    onCheckpointEvent,
-    onUpdateEvent,
-    onCustomEvent,
-  });
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("message-0"))
-    .toHaveTextContent("Hello");
-  await expect
-    .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("Hey");
-
-  await expect
-    .poll(() => onCheckpointEvent.mock.calls.length)
-    .toBeGreaterThanOrEqual(6);
-
-  expect(
-    onCheckpointEvent.mock.calls.some(
-      (call: any[]) => call[1]?.namespace !== undefined,
-    ),
-  ).toBe(true);
-
-  expect(onUpdateEvent.mock.calls.length).toBeGreaterThanOrEqual(1);
-  expect(onCustomEvent.mock.calls.length).toBeGreaterThanOrEqual(1);
 });
 
 it("exposes toolCalls property", async () => {
@@ -846,7 +592,7 @@ it("switchThread to null clears messages", async () => {
     .toHaveTextContent("0");
 });
 
-it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () => {
+it("custom adapter stream supports local branch UI", async () => {
   const screen = render(CustomStreamMethods, {
     apiUrl: serverUrl,
   });
@@ -867,215 +613,31 @@ it("useStreamCustom exposes getMessagesMetadata, branch, setBranch", async () =>
     .toHaveTextContent("test-branch");
 });
 
-it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
-  type StreamState = { messages: Message[] };
-  const streamTransport = vi.fn<UseStreamTransport<StreamState>["stream"]>(
-    async () => {
-      async function* generate(): AsyncGenerator<{
-        event: string;
-        data: unknown;
-      }> {
-        yield {
-          event: "values",
-          data: {
-            messages: [
-              { id: "human-1", type: "human", content: "Hi" },
-              { id: "ai-1", type: "ai", content: "Hello!" },
-            ],
-          },
-        };
-      }
-
-      return generate();
-    },
-  );
+it("useStream forwards submissions to a custom AgentServerAdapter", async () => {
+  const onCommand = vi.fn<(command: AdapterCommand) => void>();
 
   const screen = render(CustomTransportStreamSubgraphs, {
-    streamTransport,
+    onCommand,
   });
 
   await screen.getByTestId("submit-custom-subgraphs").click();
 
-  await expect.poll(() => streamTransport.mock.calls.length).toBe(1);
-  expect(streamTransport).toHaveBeenCalledWith(
+  await expect.poll(() => onCommand.mock.calls.length).toBeGreaterThan(0);
+  expect(onCommand).toHaveBeenCalledWith(
     expect.objectContaining({
-      input: {
-        messages: [{ type: "human", content: "Hi" }],
-      },
-      streamSubgraphs: true,
-      config: expect.objectContaining({
-        configurable: expect.objectContaining({
-          thread_id: expect.any(String),
+      method: "run.input",
+      params: expect.objectContaining({
+        input: {
+          messages: [{ type: "human", content: "Hi" }],
+        },
+        config: expect.objectContaining({
+          configurable: expect.objectContaining({
+            thread_id: expect.any(String),
+          }),
         }),
       }),
-    }),
+    })
   );
-});
-
-// Server-side queue e2e tests
-it("server-side queue: submitting three times rapidly queues the latter two", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
-
-  await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Loading...");
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-
-  await screen.getByTestId("submit-three").click();
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("2");
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 10000 })
-    .toHaveTextContent("0");
-
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-
-  await expect
-    .poll(() =>
-      Array.from({ length: 8 }, (_, index) =>
-        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
-      ),
-    )
-    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg2", "Hey", "Msg3", "Hey"]);
-});
-
-it("server-side queue: queued inputs are displayed in queue.entries", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
-
-  await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Loading...");
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-
-  await screen.getByTestId("submit-three").click();
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("2");
-
-  const entriesEl = screen.getByTestId("queue-entries");
-  await expect
-    .element(entriesEl, { timeout: 5000 })
-    .toHaveTextContent("Msg2,Msg3");
-});
-
-it("server-side queue: cancel removes a queued entry", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
-
-  await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Loading...");
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-
-  await screen.getByTestId("submit-three").click();
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("2");
-
-  await expect
-    .element(screen.getByTestId("queue-entries"))
-    .toHaveTextContent("Msg2,Msg3");
-
-  await screen.getByTestId("cancel-first").click();
-
-  await expect
-    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
-    .toHaveTextContent("Msg3");
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 10000 })
-    .toHaveTextContent("0");
-
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-  await expect
-    .poll(() =>
-      Array.from({ length: 6 }, (_, index) =>
-        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
-      ),
-    )
-    .toEqual(["Hi", "Hey", "Msg1", "Hey", "Msg3", "Hey"]);
-});
-
-it("server-side queue: clear empties the queue", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
-
-  await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Loading...");
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-
-  await screen.getByTestId("submit-three").click();
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("2");
-
-  await screen.getByTestId("clear-queue").click();
-
-  await expect
-    .element(screen.getByTestId("queue-entries"), { timeout: 5000 })
-    .toHaveTextContent("");
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("0");
-
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-  await expect
-    .poll(() =>
-      Array.from({ length: 4 }, (_, index) =>
-        screen.getByTestId(`message-${index}`).element().textContent?.trim(),
-      ),
-    )
-    .toEqual(["Hi", "Hey", "Msg1", "Hey"]);
-});
-
-it("server-side queue: switchThread clears the queue", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
-
-  await screen.getByTestId("submit").click();
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Loading...");
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5000 })
-    .toHaveTextContent("Not loading");
-
-  await screen.getByTestId("submit-three").click();
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("2");
-
-  await screen.getByTestId("switch-thread").click();
-
-  await expect
-    .element(screen.getByTestId("queue-size"), { timeout: 5000 })
-    .toHaveTextContent("0");
-
-  await expect
-    .element(screen.getByTestId("message-count"), { timeout: 5000 })
-    .toHaveTextContent("0");
 });
 
 it("server-side queue: follow-ups submitted from onCreated are drained", async () => {
@@ -1159,7 +721,7 @@ it("deep agent: subagents call tools and render args/results", async () => {
     .element(screen.getByTestId("subagent-data-analyst-result"))
     .toHaveTextContent(/Record B/);
 
-  // Verify subagent internal messages are populated (requires streamSubgraphs + filterSubagentMessages)
+  // Verify scoped subagent selectors populate internal messages.
   await expect
     .element(screen.getByTestId("subagent-researcher-messages-count"), {
       timeout: 5_000,
@@ -1288,7 +850,7 @@ it("stream.history returns BaseMessage instances", async () => {
 });
 
 // Stream context tests (main branch)
-it("setStreamContext / getStreamContext shares stream with child components", async () => {
+it("provideStream / getStream shares stream with child components", async () => {
   const screen = render(StreamContextParent, {
     apiUrl: serverUrl,
   });
@@ -1334,13 +896,13 @@ it("setStreamContext / getStreamContext shares stream with child components", as
     .toHaveTextContent("Not loading");
 });
 
-it("getStreamContext throws when no parent has set context", async () => {
+it("getStream throws when no parent has provided context", async () => {
   const screen = render(StreamContextOrphan);
 
   await expect
     .element(screen.getByTestId("orphan-error"))
     .toHaveTextContent(
-      "getStreamContext must be used within a component that has called setStreamContext",
+      "getStream() requires a parent component to call provideStream().",
     );
 });
 

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { getStreamContext } from "../../index.js";
+  import { getStream } from "../../index.js";
 
-  const stream = getStreamContext();
+  const stream = getStream();
 </script>
 
 <div data-testid="child-container">

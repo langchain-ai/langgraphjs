@@ -16,28 +16,25 @@ describe("inferChannel", () => {
     expect(
       inferChannel({
         type: "event",
-        method: "media.streamStart",
+        method: "lifecycle",
         params: {
           namespace: [],
           timestamp: 0,
-          data: {},
-          media_type: "image/png",
-          stream_id: "s1",
-          codec: "raw",
+          data: { event: "started" },
         },
       } as unknown as Event)
-    ).toBe("media");
+    ).toBe("lifecycle");
     expect(
       inferChannel({
         type: "event",
-        method: "sandbox.started",
+        method: "input.requested",
         params: {
           namespace: [],
           timestamp: 0,
-          data: { terminal_id: "t1", command: "bash" },
+          data: { interrupt_id: "i1", payload: {} },
         },
       } as unknown as Event)
-    ).toBe("sandbox");
+    ).toBe("input");
   });
 
   it("returns 'custom' for unnamed custom events", () => {
@@ -52,13 +49,33 @@ describe("inferChannel", () => {
     });
     expect(inferChannel(event)).toBe("custom:a2a");
   });
+
+  it("returns undefined for unknown event methods", () => {
+    const event = {
+      type: "event",
+      method: "unknown.future.method",
+      params: { namespace: [], timestamp: 0, data: {} },
+    } as unknown as Event;
+    expect(inferChannel(event)).toBeUndefined();
+  });
+});
+
+describe("matchesSubscription with unknown methods", () => {
+  it("drops events with unknown methods", () => {
+    const event = {
+      type: "event",
+      method: "unknown.future.method",
+      params: { namespace: [], timestamp: 0, data: {} },
+    } as unknown as Event;
+    expect(matchesSubscription(event, { channels: ["messages"] })).toBe(false);
+  });
 });
 
 describe("matchesSubscription", () => {
   it("matches events by channel", () => {
     const event = eventOf(
       "messages",
-      { event: "message-start", message_id: "m1" },
+      { event: "message-start", id: "m1" },
       { namespace: [] }
     );
     expect(matchesSubscription(event, { channels: ["messages"] })).toBe(true);
@@ -68,7 +85,7 @@ describe("matchesSubscription", () => {
   it("filters by namespace prefix", () => {
     const event = eventOf(
       "messages",
-      { event: "message-start", message_id: "m1" },
+      { event: "message-start", id: "m1" },
       { namespace: ["agent_1", "sub"] }
     );
     expect(
@@ -85,10 +102,62 @@ describe("matchesSubscription", () => {
     ).toBe(false);
   });
 
+  it("strips dynamic ':<id>' suffix on candidate segments when prefix has none", () => {
+    // Mirrors server-side `is_prefix_match` which normalizes segments
+    // like `"fetcher:abc-uuid"` down to `"fetcher"` when the user's
+    // prefix segment contains no `:`. Without this, client-side
+    // narrowing drops every event the server legitimately delivers
+    // for a namespace-prefixed subscription against subgraphs that
+    // append runtime IDs (e.g. `nested_subgraphs`).
+    const event = eventOf(
+      "values",
+      { data: {} },
+      { namespace: ["fetcher:abc-uuid"] }
+    );
+    expect(
+      matchesSubscription(event, {
+        channels: ["values"],
+        namespaces: [["fetcher"]],
+      })
+    ).toBe(true);
+
+    const deeper = eventOf(
+      "values",
+      { data: {} },
+      { namespace: ["fetcher:abc", "validator:def"] }
+    );
+    expect(
+      matchesSubscription(deeper, {
+        channels: ["values"],
+        namespaces: [["fetcher", "validator"]],
+      })
+    ).toBe(true);
+  });
+
+  it("still requires literal match when prefix segment itself contains ':'", () => {
+    const event = eventOf(
+      "values",
+      { data: {} },
+      { namespace: ["fetcher:abc"] }
+    );
+    expect(
+      matchesSubscription(event, {
+        channels: ["values"],
+        namespaces: [["fetcher:abc"]],
+      })
+    ).toBe(true);
+    expect(
+      matchesSubscription(event, {
+        channels: ["values"],
+        namespaces: [["fetcher:xyz"]],
+      })
+    ).toBe(false);
+  });
+
   it("respects depth constraint", () => {
     const event = eventOf(
       "messages",
-      { event: "message-start", message_id: "m1" },
+      { event: "message-start", id: "m1" },
       { namespace: ["agent_1", "deep", "nested"] }
     );
     expect(

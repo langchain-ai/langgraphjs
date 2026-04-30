@@ -6,21 +6,22 @@
     apiUrl: string;
     assistantId?: string;
     client: Client;
-    fetchStateHistory?: boolean | { limit: number };
+    threadId?: string;
   }
 
   const {
     apiUrl,
     assistantId = "agent",
     client,
-    fetchStateHistory,
+    threadId,
   }: Props = $props();
 
+  // svelte-ignore state_referenced_locally
   const stream = useStream({
     assistantId,
     apiUrl,
     client,
-    fetchStateHistory,
+    threadId,
   });
 </script>
 

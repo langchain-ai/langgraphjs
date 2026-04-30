@@ -7,24 +7,27 @@ describe("convertToProtocolEvent", () => {
   it("converts 'messages' mode events", () => {
     const payload = { event: "message-start", role: "assistant" };
     const result = convertToProtocolEvent(ns, "messages", payload, 1);
-    expect(result).toMatchObject({
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
       type: "event",
       seq: 1,
       method: "messages",
       params: { namespace: ns, data: payload },
     });
-    expect(result!.params.timestamp).toBeTypeOf("number");
+    expect(result[0].params.timestamp).toBeTypeOf("number");
   });
 
   it("converts 'values' mode events", () => {
     const payload = { count: 42 };
     const result = convertToProtocolEvent(ns, "values", payload, 2);
-    expect(result).toMatchObject({
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
       type: "event",
       seq: 2,
       method: "values",
       params: { namespace: ns, data: payload },
     });
+    expect(result[0].params).not.toHaveProperty("checkpoint");
   });
 
   it("converts 'updates' mode — extracts node from {nodeName: delta} shape", () => {
@@ -34,12 +37,23 @@ describe("convertToProtocolEvent", () => {
       { myNode: { foo: "bar" } },
       3
     );
-    expect(result).toMatchObject({
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
       method: "updates",
       params: {
+        // The completed node is surfaced at the top level of `params`
+        // so transformers (e.g. `LifecycleTransformer`) can attribute
+        // the emission to the child namespace without re-parsing `data`.
+        node: "myNode",
         data: { node: "myNode", values: { foo: "bar" } },
       },
     });
+  });
+
+  it("converts 'updates' mode — omits params.node when payload has no named node", () => {
+    const result = convertToProtocolEvent(ns, "updates", {}, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0].params).not.toHaveProperty("node");
   });
 
   it("converts 'tools' mode — on_tool_start → tool-started", () => {
@@ -50,7 +64,8 @@ describe("convertToProtocolEvent", () => {
       input: { q: "hello" },
     };
     const result = convertToProtocolEvent(ns, "tools", payload, 4);
-    expect(result!.params.data).toEqual({
+    expect(result).toHaveLength(1);
+    expect(result[0].params.data).toEqual({
       event: "tool-started",
       tool_name: "search",
       tool_call_id: "tc_1",
@@ -65,7 +80,8 @@ describe("convertToProtocolEvent", () => {
       toolCallId: "tc_2",
     };
     const result = convertToProtocolEvent(ns, "tools", payload, 5);
-    expect(result!.params.data).toEqual({
+    expect(result).toHaveLength(1);
+    expect(result[0].params.data).toEqual({
       event: "tool-finished",
       output: "result",
       tool_call_id: "tc_2",
@@ -79,7 +95,7 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_error", error: new Error("boom") },
       6
     );
-    expect(withError!.params.data).toMatchObject({
+    expect(withError[0].params.data).toMatchObject({
       event: "tool-error",
       message: "boom",
     });
@@ -90,7 +106,7 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_error", error: "plain failure" },
       7
     );
-    expect(withString!.params.data).toMatchObject({
+    expect(withString[0].params.data).toMatchObject({
       event: "tool-error",
       message: "plain failure",
     });
@@ -103,7 +119,7 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_event", data: "chunk", toolCallId: "tc_3" },
       8
     );
-    expect(result!.params.data).toEqual({
+    expect(result[0].params.data).toEqual({
       event: "tool-output-delta",
       delta: "chunk",
       tool_call_id: "tc_3",
@@ -113,52 +129,96 @@ describe("convertToProtocolEvent", () => {
   it("converts 'custom' mode events", () => {
     const payload = { key: "value" };
     const result = convertToProtocolEvent(ns, "custom", payload, 9);
-    expect(result).toMatchObject({
+    expect(result[0]).toMatchObject({
       method: "custom",
       params: { data: { payload } },
     });
   });
 
-  it("converts 'debug', 'checkpoints', 'tasks' mode events", () => {
-    for (const mode of ["debug", "checkpoints", "tasks"] as const) {
-      const payload = { info: mode };
-      const result = convertToProtocolEvent(ns, mode, payload, 10);
-      expect(result).toMatchObject({
-        method: mode,
-        params: { namespace: ns, data: payload },
-      });
+  it("converts 'tasks' mode events", () => {
+    const payload = { info: "tasks" };
+    const result = convertToProtocolEvent(ns, "tasks", payload, 10);
+    expect(result[0]).toMatchObject({
+      method: "tasks",
+      params: { namespace: ns, data: payload },
+    });
+  });
+
+  it("returns empty for 'debug' and 'checkpoints' modes (not part of V2)", () => {
+    for (const mode of ["debug", "checkpoints"] as const) {
+      const result = convertToProtocolEvent(ns, mode, { info: mode }, 10);
+      expect(result).toEqual([]);
     }
   });
 
-  it("returns null for unknown modes", () => {
+  it("emits a 'checkpoints' event immediately before the companion 'values' event when meta.checkpoint is present", () => {
+    const payload = { count: 1 };
+    const meta = {
+      checkpoint: {
+        id: "ckpt-2",
+        parent_id: "ckpt-1",
+        step: 1,
+        source: "loop" as const,
+      },
+    };
+    const result = convertToProtocolEvent(ns, "values", payload, 20, meta);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      seq: 20,
+      method: "checkpoints",
+      params: {
+        namespace: ns,
+        data: {
+          id: "ckpt-2",
+          parent_id: "ckpt-1",
+          step: 1,
+          source: "loop",
+        },
+      },
+    });
+    expect(result[1]).toMatchObject({
+      seq: 21,
+      method: "values",
+      params: { namespace: ns, data: payload },
+    });
+    expect(result[1].params).not.toHaveProperty("checkpoint");
+  });
+
+  it("omits the companion checkpoints event on 'values' when meta is absent", () => {
+    const result = convertToProtocolEvent(ns, "values", { count: 1 }, 21);
+    expect(result).toHaveLength(1);
+    expect(result[0].method).toBe("values");
+  });
+
+  it("returns empty array for unknown modes", () => {
     const result = convertToProtocolEvent(
       ns,
       "nonexistent" as never,
       {},
       11
     );
-    expect(result).toBeNull();
+    expect(result).toEqual([]);
   });
 
   it("preserves namespace in params", () => {
     const deep = ["root", "sub", "leaf"];
     const result = convertToProtocolEvent(deep, "values", {}, 12);
-    expect(result!.params.namespace).toEqual(deep);
+    expect(result[0].params.namespace).toEqual(deep);
   });
 
   it("assigns correct seq numbers", () => {
     const r1 = convertToProtocolEvent(ns, "values", {}, 100);
     const r2 = convertToProtocolEvent(ns, "values", {}, 200);
-    expect(r1!.seq).toBe(100);
-    expect(r2!.seq).toBe(200);
+    expect(r1[0].seq).toBe(100);
+    expect(r2[0].seq).toBe(200);
   });
 
   it("updates payload with empty object when non-object", () => {
     const result = convertToProtocolEvent(ns, "updates", null, 13);
-    expect(result!.params.data).toEqual({ values: {} });
+    expect(result[0].params.data).toEqual({ values: {} });
 
     const result2 = convertToProtocolEvent(ns, "updates", 42, 14);
-    expect(result2!.params.data).toEqual({ values: {} });
+    expect(result2[0].params.data).toEqual({ values: {} });
   });
 
   it("toolCallId is preserved when present, defaults to empty string when absent", () => {
@@ -168,7 +228,7 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_start", name: "t", toolCallId: "id_1" },
       15
     );
-    expect(withId!.params.data).toHaveProperty("tool_call_id", "id_1");
+    expect(withId[0].params.data).toHaveProperty("tool_call_id", "id_1");
 
     const withoutId = convertToProtocolEvent(
       ns,
@@ -176,6 +236,6 @@ describe("convertToProtocolEvent", () => {
       { event: "on_tool_start", name: "t" },
       16
     );
-    expect(withoutId!.params.data).toHaveProperty("tool_call_id", "");
+    expect(withoutId[0].params.data).toHaveProperty("tool_call_id", "");
   });
 });

@@ -1,9 +1,10 @@
 /**
- * Protocol event conversion — maps raw `[ns, mode, payload]` stream chunks
- * from graph.stream() to CDDL-aligned ProtocolEvents.
+ * Protocol event conversion — maps raw `[ns, mode, payload, meta?]` stream
+ * chunks from graph.stream() to CDDL-aligned ProtocolEvents.
  */
 
 import type { StreamMode } from "../pregel/types.js";
+import type { StreamChunkMeta } from "../pregel/stream.js";
 import type {
   Namespace,
   ProtocolEvent,
@@ -12,111 +13,161 @@ import type {
 } from "./types.js";
 
 /**
- * The complete set of stream modes requested by `streamV2()`, ensuring every
- * protocol-defined channel is captured.
+ * The set of stream modes requested by
+ * `streamEvents(..., { version: "v3" })` — every mode the protocol maps
+ * to a channel.
+ *
+ * The verbose `"debug"` mode is intentionally excluded: it was a thin
+ * re-wrap of `checkpoints` + `tasks` carrying no new information.
+ *
+ * The `"checkpoints"` mode is likewise excluded from the stream-mode
+ * request because the protocol's `checkpoints` channel carries only a
+ * lightweight envelope (`id`, `parent_id`, `step`, `source`) derived from
+ * {@link StreamChunkMeta.checkpoint} on the adjacent `values` chunk — not
+ * the full-state shape that Pregel's `checkpoints` stream mode produces.
+ * `convertToProtocolEvent` emits a companion `checkpoints` protocol event
+ * next to each `values` event when meta is present, so clients can build
+ * branching/time-travel UIs without a full-state `checkpoints` subscription.
  */
-export const STREAM_V2_MODES: StreamMode[] = [
+export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
   "values",
   "updates",
   "messages",
   "tools",
   "custom",
-  "debug",
-  "checkpoints",
   "tasks",
 ];
 
 /**
- * Converts a raw `[ns, mode, payload]` stream chunk emitted by
- * `graph.stream()` into a CDDL-aligned {@link ProtocolEvent}.
+ * Converts a raw `[ns, mode, payload, meta?]` stream chunk emitted by
+ * `graph.stream()` into one or more CDDL-aligned {@link ProtocolEvent}s.
  *
- * Returns `null` for stream modes that have no protocol mapping.
+ * Most modes produce a single event. `values` chunks carrying
+ * {@link StreamChunkMeta.checkpoint} additionally produce a companion
+ * `checkpoints` event immediately after the `values` event, so clients
+ * that subscribe only to `checkpoints` can build a branching timeline
+ * without also paying for full-state `values` payloads, and clients that
+ * subscribe to both can correlate the pair by `(namespace, step)` or by
+ * adjacent `seq` numbers.
+ *
+ * Returns an empty array for stream modes that have no protocol mapping.
  *
  * @param ns - Hierarchical namespace path identifying the source in the
  *   agent tree.
  * @param mode - The stream mode that produced this chunk (e.g. `"messages"`,
  *   `"tools"`).
  * @param payload - The raw payload emitted by the stream for this mode.
- * @param seq - Monotonically increasing sequence number for ordering.
- * @returns A {@link ProtocolEvent} ready for downstream reducers, or `null`
- *   if the mode is unrecognised.
+ * @param seq - Monotonically increasing sequence number assigned to the
+ *   first returned event; the companion `checkpoints` event (when emitted)
+ *   uses `seq + 1`.
+ * @param meta - Optional chunk-level metadata (e.g. the checkpoint envelope
+ *   paired with a `values` chunk).
+ * @returns An ordered list of {@link ProtocolEvent}s ready for downstream
+ *   reducers. Callers advance their `seq` counter by `result.length`.
  */
 export function convertToProtocolEvent(
   ns: Namespace,
   mode: StreamMode,
   payload: unknown,
-  seq: number
-): ProtocolEvent | null {
+  seq: number,
+  meta?: StreamChunkMeta
+): ProtocolEvent[] {
   const timestamp = Date.now();
-  const base = { type: "event" as const, seq };
+  const base = { type: "event" as const };
 
   switch (mode) {
     case "messages":
-      return {
-        ...base,
-        method: "messages",
-        params: { namespace: ns, timestamp, data: payload },
-      };
+      return [
+        {
+          ...base,
+          seq,
+          method: "messages",
+          params: { namespace: ns, timestamp, data: payload },
+        },
+      ];
 
     case "tools":
-      return {
-        ...base,
-        method: "tools",
-        params: {
-          namespace: ns,
-          timestamp,
-          data: convertToolsPayload(payload),
+      return [
+        {
+          ...base,
+          seq,
+          method: "tools",
+          params: {
+            namespace: ns,
+            timestamp,
+            data: convertToolsPayload(payload),
+          },
         },
-      };
+      ];
 
-    case "values":
-      return {
+    case "values": {
+      // Emit the `checkpoints` event immediately BEFORE its companion
+      // `values` event so clients subscribed to both channels have the
+      // envelope buffered by the time the values payload arrives. This
+      // lets the SDK attach `parentCheckpointId` to messages extracted
+      // from the values snapshot without waiting for a second pass.
+      const events: ProtocolEvent[] = [];
+      if (meta?.checkpoint != null) {
+        events.push({
+          ...base,
+          seq,
+          method: "checkpoints",
+          params: { namespace: ns, timestamp, data: meta.checkpoint },
+        });
+      }
+      events.push({
         ...base,
+        seq: meta?.checkpoint != null ? seq + 1 : seq,
         method: "values",
         params: { namespace: ns, timestamp, data: payload },
-      };
+      });
+      return events;
+    }
 
-    case "updates":
-      return {
-        ...base,
-        method: "updates",
-        params: {
-          namespace: ns,
-          timestamp,
-          data: convertUpdatesPayload(payload),
+    case "updates": {
+      const data = convertUpdatesPayload(payload);
+      return [
+        {
+          ...base,
+          seq,
+          method: "updates",
+          params: {
+            namespace: ns,
+            timestamp,
+            // Surface the completed node at the top level of `params` so
+            // transformers (notably `LifecycleTransformer`) can attribute
+            // a finished task to its child namespace without re-parsing
+            // the payload.  The same value is retained inside `data` for
+            // downstream consumers that inspect the event body.
+            ...(typeof data.node === "string" ? { node: data.node } : {}),
+            data,
+          },
         },
-      };
+      ];
+    }
 
     case "custom":
-      return {
-        ...base,
-        method: "custom",
-        params: { namespace: ns, timestamp, data: { payload } },
-      };
-
-    case "debug":
-      return {
-        ...base,
-        method: "debug",
-        params: { namespace: ns, timestamp, data: payload },
-      };
-
-    case "checkpoints":
-      return {
-        ...base,
-        method: "checkpoints",
-        params: { namespace: ns, timestamp, data: payload },
-      };
+      return [
+        {
+          ...base,
+          seq,
+          method: "custom",
+          params: { namespace: ns, timestamp, data: { payload } },
+        },
+      ];
 
     case "tasks":
-      return {
-        ...base,
-        method: "tasks",
-        params: { namespace: ns, timestamp, data: payload },
-      };
+      return [
+        {
+          ...base,
+          seq,
+          method: "tasks",
+          params: { namespace: ns, timestamp, data: payload },
+        },
+      ];
 
     default:
-      return null;
+      return [];
   }
 }
 

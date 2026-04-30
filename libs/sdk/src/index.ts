@@ -2,28 +2,42 @@ export { Client, getApiKey } from "./client.js";
 export type { ClientConfig, RequestHook } from "./client.js";
 
 export {
-  ProtocolClient,
   ProtocolError,
-  Session,
+  ThreadStream,
   SubscriptionHandle,
-  MessageSubscriptionHandle,
-  EventBuffer,
   MessageAssembler,
+  MediaAssembler,
+  MediaAssemblyError,
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
+  HttpAgentServerAdapter,
 } from "./client.js";
+export type { HttpAgentServerAdapterOptions } from "./client.js";
 
 export type {
   TransportAdapter,
+  AgentServerAdapter,
   AssembledMessage,
-  ProtocolClientOptions,
+  ThreadStreamOptions,
   SessionOrderingState,
   EventSubscription,
   MessageSubscription,
-  SubscribableChannel,
+  ThreadExtension,
+  ThreadExtensions,
+  UnwrapExtension,
   ProtocolRequestHook,
   ProtocolSseTransportOptions,
   ProtocolWebSocketTransportOptions,
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblerCallbacks,
+  MediaAssemblerOptions,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  VideoMedia,
 } from "./client.js";
 
 export type {
@@ -57,7 +71,6 @@ export type {
   Command,
   OnConflictBehavior,
   RunsInvokePayload,
-  StreamProtocol,
   StreamEvent,
 } from "./types.js";
 export type {
@@ -89,6 +102,7 @@ export type {
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "./types.stream.js";
+export { NAMESPACE_SEPARATOR } from "./stream/index.js";
 
 export type { BagTemplate } from "./types.template.js";
 export type * from "./ui/stream/index.js";

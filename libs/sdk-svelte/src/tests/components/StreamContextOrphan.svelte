@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { getStreamContext } from "../../index.js";
+  import { getStream } from "../../index.js";
 
   let errorMessage = $state("");
 
   try {
-    getStreamContext();
+    getStream();
   } catch (e: any) {
     errorMessage = e.message;
   }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useStream, setStreamContext } from "../../index.js";
+  import { provideStream } from "../../index.js";
   import StreamContextChild from "./StreamContextChild.svelte";
 
   interface Props {
@@ -9,12 +9,11 @@
 
   const { apiUrl, assistantId = "agent" }: Props = $props();
 
-  const stream = useStream({
+  // svelte-ignore state_referenced_locally
+  const stream = provideStream({
     assistantId,
     apiUrl,
   });
-
-  setStreamContext(stream);
 </script>
 
 <div data-testid="parent-container">

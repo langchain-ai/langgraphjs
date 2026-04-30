@@ -7,6 +7,7 @@ export type ProtocolRequestHook = (
 
 export interface ProtocolSseTransportOptions {
   apiUrl: string;
+  threadId: string;
   defaultHeaders?: Record<string, HeaderValue>;
   onRequest?: ProtocolRequestHook;
   fetch?: typeof fetch;
@@ -15,6 +16,7 @@ export interface ProtocolSseTransportOptions {
 
 export interface ProtocolWebSocketTransportOptions {
   apiUrl: string;
+  threadId: string;
   defaultHeaders?: Record<string, HeaderValue>;
   onRequest?: ProtocolRequestHook;
   webSocketFactory?: (url: string) => WebSocket;

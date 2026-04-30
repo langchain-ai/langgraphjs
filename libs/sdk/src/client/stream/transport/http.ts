@@ -1,8 +1,7 @@
 import { AsyncQueue } from "./queue.js";
 import type {
   Message,
-  SessionOpenParams,
-  SessionResult,
+  SubscribeParams,
   Command,
   CommandResponse,
   ErrorResponse,
@@ -13,7 +12,7 @@ import type {
   ProtocolRequestHook,
   ProtocolSseTransportOptions,
 } from "./types.js";
-import type { TransportAdapter } from "../transport.js";
+import type { TransportAdapter, EventStreamHandle } from "../transport.js";
 import {
   toAbsoluteUrl,
   isRecord,
@@ -25,10 +24,32 @@ import { BytesLineDecoder, SSEDecoder } from "./decoder.js";
 import { IterableReadableStream } from "./stream.js";
 
 /**
- * Transport adapter that speaks the protocol over HTTP commands plus an SSE
- * event stream.
+ * Gated diagnostic logger for the HTTP/SSE transport. Silent by default;
+ * opt in from the browser DevTools console with
+ * `globalThis.__LG_STREAM_DEBUG__ = true` to trace raw SSE line
+ * delivery, per-stream event counts, and connection life-cycle
+ * transitions. Mirrors the hooks in `client/stream/index.ts` and
+ * `stream/controller.ts` so one flag lights up the full event path.
+ */
+function lgDebug(tag: string, ...args: unknown[]): void {
+  if (
+    (globalThis as { __LG_STREAM_DEBUG__?: boolean }).__LG_STREAM_DEBUG__ !==
+    true
+  ) {
+    return;
+  }
+  console.log(`[lg:${tag}]`, ...args);
+}
+
+/**
+ * Transport adapter that speaks the thread-centric protocol over HTTP
+ * commands plus SSE event streams. Bound to a specific `threadId`
+ * at construction. Each {@link openEventStream} call opens an independent
+ * filtered SSE connection via `POST /threads/:thread_id/stream`.
  */
 export class ProtocolSseTransportAdapter implements TransportAdapter {
+  readonly threadId: string;
+
   private readonly queue = new AsyncQueue<Message>();
 
   private readonly fetchImpl: typeof fetch;
@@ -39,9 +60,15 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly onRequest?: ProtocolRequestHook;
 
-  private sessionId: string | null = null;
+  private readonly fetchFactory?: () => typeof fetch | Promise<typeof fetch>;
 
-  private eventAbortController: AbortController | null = null;
+  private readonly commandsUrl: string;
+
+  private readonly streamUrl: string;
+
+  private readonly sessionAbortController = new AbortController();
+
+  private readonly eventStreams = new Set<AbortController>();
 
   private closed = false;
 
@@ -51,9 +78,10 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.defaultHeaders = options.defaultHeaders ?? {};
     this.onRequest = options.onRequest;
     this.fetchFactory = options.fetchFactory;
+    this.threadId = options.threadId;
+    this.commandsUrl = `/threads/${this.threadId}/commands`;
+    this.streamUrl = `/threads/${this.threadId}/stream`;
   }
-
-  private readonly fetchFactory?: () => typeof fetch | Promise<typeof fetch>;
 
   private async resolveFetch(): Promise<typeof fetch> {
     if (this.fetchFactory) {
@@ -62,58 +90,23 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return this.fetchImpl;
   }
 
-  async open(params: SessionOpenParams): Promise<SessionResult> {
-    const response = await this.request("/v2/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: 0,
-        method: "session.open",
-        params,
-      } satisfies Command),
-    });
-
-    const payload = (await response.json()) as unknown;
-    if (!isProtocolResponse(payload)) {
-      throw new Error("Protocol session did not return a valid open response.");
-    }
-    if (payload.type === "error") {
-      throw new Error(payload.message);
-    }
-    if (
-      !isRecord(payload.result) ||
-      typeof payload.result.session_id !== "string"
-    ) {
-      throw new Error("Protocol session did not return a session ID.");
-    }
-
-    this.sessionId = payload.result.session_id;
-    this.closed = false;
-    await this.startEventsLoop(
-      typeof payload.result.events_url === "string"
-        ? payload.result.events_url
-        : `/v2/sessions/${this.sessionId}/events`
-    );
-
-    return payload.result as SessionResult;
+  /**
+   * HTTP/SSE transports have no handshake — connections are made
+   * per-command and per-subscription.
+   */
+  async open(): Promise<void> {
+    // no-op
   }
 
   async send(
     command: Command
   ): Promise<CommandResponse | ErrorResponse | void> {
-    if (this.sessionId == null) {
-      throw new Error("Protocol session is not open.");
-    }
-
-    const response = await this.request(
-      `/v2/sessions/${this.sessionId}/commands`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(command),
-        signal: this.eventAbortController?.signal,
-      }
-    );
+    const response = await this.request(this.commandsUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+      signal: this.sessionAbortController.signal,
+    });
 
     if (response.status === 202 || response.status === 204) {
       return undefined;
@@ -126,6 +119,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return payload;
   }
 
+  /**
+   * WebSocket-style single event stream.
+   * For the SSE transport this returns a dummy iterable; real event
+   * delivery happens via {@link openEventStream}.
+   */
   events(): AsyncIterable<Message> {
     const queue = this.queue;
     return {
@@ -139,72 +137,137 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     };
   }
 
+  openEventStream(params: SubscribeParams): EventStreamHandle {
+    if (this.closed) {
+      throw new Error("Protocol transport is closed.");
+    }
+
+    const ac = new AbortController();
+    this.eventStreams.add(ac);
+    const streamQueue = new AsyncQueue<Message>();
+    const streamUrl = this.streamUrl;
+
+    let resolveReady!: () => void;
+    let rejectReady!: (err: unknown) => void;
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+
+    const streamId = Math.random().toString(36).slice(2, 8);
+    lgDebug("http.open", {
+      streamId,
+      channels: params.channels,
+      namespaces: params.namespaces,
+      depth: params.depth,
+    });
+    const since = (params as SubscribeParams & { since?: unknown }).since;
+
+    const startStream = async () => {
+      try {
+        const response = await this.request(streamUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            channels: params.channels,
+            ...(params.namespaces ? { namespaces: params.namespaces } : {}),
+            ...(params.depth != null ? { depth: params.depth } : {}),
+            ...(typeof since === "number" ? { since } : {}),
+          }),
+          signal: ac.signal,
+        });
+
+        resolveReady();
+        lgDebug("http.ready", { streamId, status: response.status });
+
+        const readable =
+          response.body ??
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          });
+
+        const stream = readable
+          .pipeThrough(BytesLineDecoder())
+          .pipeThrough(SSEDecoder());
+        const iterable = IterableReadableStream.fromReadableStream(stream);
+
+        let count = 0;
+        for await (const event of iterable) {
+          if (ac.signal.aborted || this.closed) {
+            lgDebug("http.break", {
+              streamId,
+              count,
+              aborted: ac.signal.aborted,
+              closed: this.closed,
+            });
+            break;
+          }
+          if (isRecord(event.data)) {
+            count += 1;
+            const msg = event.data as Message & {
+              seq?: number;
+              method?: string;
+            };
+            lgDebug("http.event", {
+              streamId,
+              count,
+              seq: msg.seq,
+              method: msg.method,
+              eventId: (msg as { event_id?: string }).event_id,
+            });
+            streamQueue.push(msg);
+          }
+        }
+        lgDebug("http.loop-end", { streamId, count });
+        streamQueue.close();
+      } catch (error) {
+        lgDebug("http.error", { streamId, error: String(error) });
+        rejectReady(error);
+        if (ac.signal.aborted || this.closed) {
+          streamQueue.close();
+          return;
+        }
+        streamQueue.close(error);
+      }
+    };
+
+    void startStream();
+
+    const cleanup = () => {
+      this.eventStreams.delete(ac);
+      ac.abort();
+      streamQueue.close();
+    };
+
+    return {
+      events: {
+        [Symbol.asyncIterator]: () => ({
+          next: async () => await streamQueue.shift(),
+          return: async () => {
+            cleanup();
+            return { done: true, value: undefined };
+          },
+        }),
+      },
+      ready,
+      close: cleanup,
+    };
+  }
+
   async close(): Promise<void> {
     if (this.closed) {
       return;
     }
-
     this.closed = true;
-    this.eventAbortController?.abort();
-    this.eventAbortController = null;
+    this.sessionAbortController.abort();
+    for (const ac of this.eventStreams) ac.abort();
+    this.eventStreams.clear();
     this.queue.close();
-
-    const sessionId = this.sessionId;
-    this.sessionId = null;
-
-    if (sessionId == null) {
-      return;
-    }
-
-    await this.request(`/v2/sessions/${sessionId}`, {
-      method: "DELETE",
-    }).catch(() => undefined);
-  }
-
-  private async startEventsLoop(path: string): Promise<void> {
-    this.eventAbortController?.abort();
-    this.eventAbortController = new AbortController();
-
-    const response = await this.request(path, {
-      method: "GET",
-      headers: { accept: "text/event-stream" },
-      signal: this.eventAbortController.signal,
-    });
-
-    const readable =
-      response.body ??
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.close();
-        },
-      });
-
-    const stream = readable
-      .pipeThrough(BytesLineDecoder())
-      .pipeThrough(SSEDecoder());
-    const iterable = IterableReadableStream.fromReadableStream(stream);
-    const signal = this.eventAbortController.signal;
-
-    void (async () => {
-      try {
-        for await (const event of iterable) {
-          if (signal.aborted || this.closed) {
-            break;
-          }
-
-          if (isRecord(event.data)) {
-            this.queue.push(event.data as Message);
-          }
-        }
-        this.queue.close();
-      } catch (error) {
-        if (signal.aborted || this.closed) {
-          this.queue.close();
-          return;
-        }
-        this.queue.close(error);
-      }
-    })();
   }
 
   private async request(path: string, init: RequestInit): Promise<Response> {
@@ -222,9 +285,24 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       const fetchImpl = await this.resolveFetch();
       const response = await fetchImpl(url.toString(), requestInit);
       if (!response.ok) {
-        throw new Error(
-          `Protocol request failed: ${response.status} ${response.statusText}`
-        );
+        let detail = "";
+        try {
+          const body = await response.text();
+          const parsed = JSON.parse(body);
+          if (typeof parsed === "object" && parsed != null) {
+            detail =
+              ((parsed as Record<string, unknown>).message as string) ??
+              ((parsed as Record<string, unknown>).error as string) ??
+              "";
+          }
+          if (!detail) detail = body;
+        } catch {
+          // body unreadable or not JSON — fall through
+        }
+        const message = detail
+          ? `Protocol request failed: ${response.status} ${response.statusText} — ${detail}`
+          : `Protocol request failed: ${response.status} ${response.statusText}`;
+        throw new Error(message);
       }
       return response;
     } catch (error) {

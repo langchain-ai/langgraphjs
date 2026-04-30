@@ -88,7 +88,7 @@ import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
  * messages from the main `messages` array.
  */
 export interface UseDeepAgentStream<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
+  StateType extends object = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
   Bag extends BagTemplate = BagTemplate,

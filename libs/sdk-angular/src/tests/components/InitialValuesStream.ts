@@ -1,8 +1,19 @@
 import { Component } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
+
+interface InitialValuesState {
+  messages: BaseMessage[];
+  [key: string]: unknown;
+}
+
+let initialValuesFixture: InitialValuesState = { messages: [] };
+export function setInitialValuesFixture(values: InitialValuesState): void {
+  initialValuesFixture = values;
+}
 
 @Component({
   template: `
@@ -26,15 +37,10 @@ const serverUrl = inject("serverUrl");
   `,
 })
 export class InitialValuesComponent {
-  stream = injectStream({
+  stream = injectStream<InitialValuesState>({
     assistantId: "agent",
     apiUrl: serverUrl,
-    initialValues: {
-      messages: [
-        { id: "cached-1", type: "human", content: "Cached user message" },
-        { id: "cached-2", type: "ai", content: "Cached AI response" },
-      ],
-    } as any,
+    initialValues: initialValuesFixture,
   });
 
   str(v: unknown) {
@@ -47,7 +53,9 @@ export class InitialValuesComponent {
 
   onSubmit() {
     void this.stream.submit({
-      messages: [{ content: "Hello", type: "human" }],
-    } as any);
+      messages: [new HumanMessage("Hello")],
+    });
   }
 }
+
+export const InitialValuesStreamComponent = InitialValuesComponent;
