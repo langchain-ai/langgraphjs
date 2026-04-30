@@ -53,8 +53,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_CHECKPOINT_ID,
   CONFIG_KEY_RESUME_MAP,
+  CONFIG_KEY_REPLAY_STATE,
   START,
 } from "../constants.js";
+import { ReplayState } from "./replay.js";
 import {
   _applyWrites,
   _prepareNextTasks,
@@ -363,6 +365,10 @@ export class PregelLoop {
     );
   }
 
+  get isReplaying(): boolean {
+    return !this.skipDoneTasks;
+  }
+
   constructor(params: PregelLoopParams) {
     this.input = params.input;
     this.checkpointer = params.checkpointer;
@@ -464,14 +470,34 @@ export class PregelLoop {
         CHECKPOINT_NAMESPACE_SEPARATOR
       ) ?? [];
 
-    const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
-      checkpointConfig
-    )) ?? {
-      config,
-      checkpoint: emptyCheckpoint(),
-      metadata: { source: "input", step: -2, parents: {} },
-      pendingWrites: [],
-    };
+    let saved: CheckpointTuple | undefined;
+    if (!params.checkpointer) {
+      saved = undefined;
+    } else if (checkpointConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID]) {
+      saved = await params.checkpointer.getTuple(checkpointConfig);
+    } else if (config.configurable?.[CONFIG_KEY_REPLAY_STATE]) {
+      const replayState = config.configurable[
+        CONFIG_KEY_REPLAY_STATE
+      ] as ReplayState;
+      saved = await replayState.getCheckpoint(
+        config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] ?? "",
+        params.checkpointer,
+        checkpointConfig
+      );
+      if (config.configurable) {
+        delete config.configurable[CONFIG_KEY_RESUMING];
+      }
+    } else {
+      saved = await params.checkpointer.getTuple(checkpointConfig);
+    }
+    if (!saved) {
+      saved = {
+        config,
+        checkpoint: emptyCheckpoint(),
+        metadata: { source: "input", step: -2, parents: {} },
+        pendingWrites: [],
+      };
+    }
     checkpointConfig = {
       ...config,
       ...saved.config,
@@ -1089,8 +1115,30 @@ export class PregelLoop {
         this.triggerToNodes
       );
     }
-    const isCommandUpdateOrGoto =
-      isCommand(this.input) && nullWrites.length > 0;
+    const inputIsCommand = isCommand(this.input);
+    const isCommandUpdateOrGoto = inputIsCommand && nullWrites.length > 0;
+
+    const isTimeTraveling =
+      this.isReplaying && // Time-travel to a subgraph checkpoint: the parent sets
+      // RESUMING=True (it can't distinguish time-travel from resume),
+      // so we check if this subgraph's own ns is in checkpoint_map.
+      ((this.isNested &&
+        configurable?.[CONFIG_KEY_CHECKPOINT_NS] !== undefined &&
+        configurable?.[CONFIG_KEY_CHECKPOINT_NS] !== "" &&
+        configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
+        configurable[CONFIG_KEY_CHECKPOINT_NS] in
+          configurable[CONFIG_KEY_CHECKPOINT_MAP]) ||
+        !(
+          (inputIsCommand && (this.input as Command).resume != null) ||
+          configurable?.[CONFIG_KEY_RESUMING] === true
+        ));
+
+    if (isTimeTraveling) {
+      this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
+        (w) => w[1] !== RESUME
+      );
+    }
+
     if (this.isResuming || isCommandUpdateOrGoto) {
       for (const channelName in this.channels) {
         if (!Object.prototype.hasOwnProperty.call(this.channels, channelName))
@@ -1103,6 +1151,18 @@ export class PregelLoop {
           };
         }
       }
+
+      if (
+        isTimeTraveling &&
+        this.checkpointMetadata.source !== "update" &&
+        this.checkpointMetadata.source !== "fork"
+      ) {
+        this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
+          (w) => w[1] !== INTERRUPT
+        );
+        await this._putCheckpoint({ source: "fork" });
+      }
+
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -1160,8 +1220,24 @@ export class PregelLoop {
       }
     }
     if (!this.isNested) {
+      let replayState: ReplayState | undefined;
+      if (this.isReplaying) {
+        let replayCheckpointId = this.checkpoint.id;
+        if (
+          (this.checkpointMetadata.source === "update" ||
+            this.checkpointMetadata.source === "fork") &&
+          this.prevCheckpointConfig
+        ) {
+          replayCheckpointId =
+            this.prevCheckpointConfig.configurable?.[
+              CONFIG_KEY_CHECKPOINT_ID
+            ] ?? replayCheckpointId;
+        }
+        replayState = new ReplayState(replayCheckpointId);
+      }
       this.config = patchConfigurable(this.config, {
         [CONFIG_KEY_RESUMING]: this.isResuming,
+        [CONFIG_KEY_REPLAY_STATE]: replayState,
       });
     }
   }

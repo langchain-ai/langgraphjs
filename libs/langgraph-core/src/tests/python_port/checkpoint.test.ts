@@ -1379,13 +1379,15 @@ describe("Checkpoint Tests (Python port)", () => {
         newHistory.push(state);
       }
 
-      // Check updated history
-      expect(newHistory.length).toBe(history.length + 1);
+      // +2: one fork checkpoint from time travel, one from the new execution
+      expect(newHistory.length).toBe(history.length + 2);
+      // newHistory[0] is the new execution result, newHistory[1] is the fork
+      expect(newHistory[1].metadata.source).toBe("fork");
 
-      // Compare original history with new history (skipping the first new state)
+      // Compare original history with new history (skipping the first 2 new states)
       for (let i = 0; i < history.length; i += 1) {
         const original = history[i];
-        const newState = newHistory[i + 1];
+        const newState = newHistory[i + 2];
 
         expect(newState.values).toEqual(original.values);
         expect(newState.next).toEqual(original.next);
@@ -1403,7 +1405,7 @@ describe("Checkpoint Tests (Python port)", () => {
       };
 
       // Compare tasks
-      expect(getTasks(newHistory, 1)).toEqual(getTasks(history, 0));
+      expect(getTasks(newHistory, 2)).toEqual(getTasks(history, 0));
     } else {
       throw new Error("Expected checkpoint_id to be defined in history[1]");
     }
