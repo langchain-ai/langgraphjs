@@ -36,6 +36,7 @@ import {
   _isSend,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
+  CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_READ,
   CONFIG_KEY_RESUMING,
@@ -438,7 +439,8 @@ export class PregelLoop {
     if (
       !isNested &&
       config.configurable?.checkpoint_ns !== undefined &&
-      config.configurable?.checkpoint_ns !== ""
+      config.configurable?.checkpoint_ns !== "" &&
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       config = patchConfigurable(config, {
         checkpoint_ns: "",
@@ -447,6 +449,7 @@ export class PregelLoop {
     }
     let checkpointConfig = config;
     if (
+      config.configurable?.checkpoint_id === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
         config.configurable?.checkpoint_ns
@@ -484,7 +487,23 @@ export class PregelLoop {
     const prevCheckpointConfig = saved.parentConfig;
     const checkpoint = copyCheckpoint(saved.checkpoint);
     const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
-    const checkpointPendingWrites = saved.pendingWrites ?? [];
+    let checkpointPendingWrites = saved.pendingWrites ?? [];
+    const currentCheckpointNamespace = config.configurable?.checkpoint_ns;
+    const checkpointMap = config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP];
+    const isDirectSubgraphTimeTravel =
+      typeof currentCheckpointNamespace === "string" &&
+      currentCheckpointNamespace !== "" &&
+      typeof checkpointMap === "object" &&
+      checkpointMap !== null &&
+      currentCheckpointNamespace in checkpointMap;
+
+    if (isDirectSubgraphTimeTravel && checkpointPendingWrites.length > 0) {
+      // Direct subgraph time-travel should re-fire interrupts instead of
+      // consuming stale resume values that were written during the original run.
+      checkpointPendingWrites = checkpointPendingWrites.filter(
+        ([, channel]) => channel !== RESUME
+      );
+    }
 
     const channels = emptyChannels(params.channelSpecs, checkpoint);
 
