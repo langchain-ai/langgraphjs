@@ -2360,10 +2360,9 @@ export class Pregel<
 function _buildServerInfo(
   config: LangGraphRunnableConfig
 ): ServerInfo | undefined {
-  const metadata = config.metadata ?? {};
   const configurable = config.configurable ?? {};
-  const assistantId = metadata.assistant_id as string | undefined;
-  const graphId = metadata.graph_id as string | undefined;
+  const assistantId = configurable.assistant_id as string | undefined;
+  const graphId = configurable.graph_id as string | undefined;
 
   const authUserData = configurable.langgraph_auth_user as
     | Record<string, any>
