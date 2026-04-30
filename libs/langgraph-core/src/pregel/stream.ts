@@ -139,7 +139,17 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   }
 
   push(chunk: StreamChunk) {
+    // Prevent pushing to a closed stream to avoid race condition errors
+    if (this._closed || !this.controller) {
+      // Silently drop chunks when stream is closed - this is expected behavior
+      // when async operations try to push after stream termination
+      return;
+    }
+
+    // Forward chunk to passthrough function if provided
     this.passthroughFn?.(chunk);
+
+    // Attempt to enqueue the chunk to the underlying stream
     this.controller.enqueue(chunk);
   }
 
