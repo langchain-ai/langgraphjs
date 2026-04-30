@@ -1573,8 +1573,15 @@ export class CompiledStateGraph<
 
     if (isCommand(input)) {
       const parsedInput = input;
-      if (input.update && schema != null)
-        parsedInput.update = interopParse(schema, input.update);
+      if (input.update && schema != null) {
+        const updateObj = Array.isArray(input.update)
+          ? Object.fromEntries(input.update)
+          : input.update;
+        const parsed = interopParse(schema, updateObj);
+        parsedInput.update = Object.fromEntries(
+          Object.keys(updateObj).map((k) => [k, parsed[k]])
+        );
+      }
       return parsedInput;
     }
     if (schema != null) return interopParse(schema, input);
