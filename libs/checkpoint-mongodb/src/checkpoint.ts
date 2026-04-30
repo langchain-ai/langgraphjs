@@ -43,6 +43,29 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       : {};
   }
 
+  /**
+   * Reject non-primitive values for `thread_id`, `checkpoint_ns`, and
+   * `checkpoint_id` before they reach a MongoDB query. Mongo treats nested
+   * objects as operator expressions (e.g. `{ $gt: "" }`), so allowing
+   * caller-shaped objects here would let an attacker bypass thread scoping
+   * and read other tenants' checkpoints. Mirrors the existing guard in
+   * `list()` for the `filter` argument.
+   */
+  private static assertConfigurableScalars(values: {
+    thread_id?: unknown;
+    checkpoint_ns?: unknown;
+    checkpoint_id?: unknown;
+  }): void {
+    for (const [name, value] of Object.entries(values)) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === "object" || typeof value === "function") {
+        throw new Error(
+          `Invalid configurable.${name}: must be a primitive (string, number, or boolean), got ${typeof value}.`
+        );
+      }
+    }
+  }
+
   constructor(
     {
       client,
@@ -78,6 +101,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns = "",
       checkpoint_id,
     } = config.configurable ?? {};
+    MongoDBSaver.assertConfigurableScalars({
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id,
+    });
     let query;
     if (checkpoint_id) {
       query = {
@@ -154,6 +182,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
     const { limit, before, filter } = options ?? {};
+    MongoDBSaver.assertConfigurableScalars({
+      thread_id: config?.configurable?.thread_id,
+      checkpoint_ns: config?.configurable?.checkpoint_ns,
+      checkpoint_id: before?.configurable?.checkpoint_id,
+    });
     const query: Record<string, unknown> = {};
 
     if (config?.configurable?.thread_id) {
@@ -242,6 +275,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with a "thread_id" field.`
       );
     }
+    MongoDBSaver.assertConfigurableScalars({
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id: config.configurable?.checkpoint_id,
+    });
     const [
       [checkpointType, serializedCheckpoint],
       [metadataType, serializedMetadata],
@@ -301,6 +339,11 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         `The provided config must contain a configurable field with "thread_id", "checkpoint_ns" and "checkpoint_id" fields.`
       );
     }
+    MongoDBSaver.assertConfigurableScalars({
+      thread_id,
+      checkpoint_ns,
+      checkpoint_id,
+    });
 
     const operations = await Promise.all(
       writes.map(async ([channel, value], idx) => {

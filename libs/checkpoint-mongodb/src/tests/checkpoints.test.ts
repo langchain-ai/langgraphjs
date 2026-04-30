@@ -121,4 +121,141 @@ describe("MongoDBSaver", () => {
       expect(result.done).toBe(true);
     });
   });
+
+  describe("configurable scalar validation", () => {
+    it("should reject MongoDB operator object as thread_id in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const maliciousConfig = {
+        configurable: {
+          thread_id: { $gt: "" },
+          checkpoint_ns: { $ne: null },
+        },
+      };
+
+      await expect(saver.getTuple(maliciousConfig)).rejects.toThrow(
+        "Invalid configurable.thread_id: must be a primitive"
+      );
+    });
+
+    it("should reject object checkpoint_id in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const maliciousConfig = {
+        configurable: {
+          thread_id: "user-A",
+          checkpoint_id: { $gt: "" },
+        },
+      };
+
+      await expect(saver.getTuple(maliciousConfig)).rejects.toThrow(
+        "Invalid configurable.checkpoint_id: must be a primitive"
+      );
+    });
+
+    it("should accept primitive thread_id in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const config = { configurable: { thread_id: "test-thread" } };
+
+      const result = await saver.getTuple(config);
+      // Mock returns no results, so undefined is expected
+      expect(result).toBeUndefined();
+    });
+
+    it("should reject object thread_id in list", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const maliciousConfig = {
+        configurable: { thread_id: { $gt: "" } },
+      };
+
+      const generator = saver.list(maliciousConfig);
+
+      await expect(generator.next()).rejects.toThrow(
+        "Invalid configurable.thread_id: must be a primitive"
+      );
+    });
+
+    it("should reject object checkpoint_id in before option of list", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const config = { configurable: { thread_id: "test-thread" } };
+      const before = {
+        configurable: { checkpoint_id: { $gt: "" } },
+      };
+
+      const generator = saver.list(config, { before });
+
+      await expect(generator.next()).rejects.toThrow(
+        "Invalid configurable.checkpoint_id: must be a primitive"
+      );
+    });
+
+    it("should reject object thread_id in put", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const maliciousConfig = {
+        configurable: { thread_id: { $gt: "" } },
+      };
+
+      await expect(
+        saver.put(
+          maliciousConfig,
+          {
+            v: 1,
+            id: "checkpoint-1",
+            ts: new Date().toISOString(),
+            channel_values: {},
+            channel_versions: {},
+            versions_seen: {},
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any
+        )
+      ).rejects.toThrow(
+        "Invalid configurable.thread_id: must be a primitive"
+      );
+    });
+
+    it("should reject object thread_id in putWrites", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const maliciousConfig = {
+        configurable: {
+          thread_id: { $gt: "" },
+          checkpoint_ns: "",
+          checkpoint_id: "checkpoint-1",
+        },
+      };
+
+      await expect(
+        saver.putWrites(maliciousConfig, [["channel", "value"]], "task-1")
+      ).rejects.toThrow(
+        "Invalid configurable.thread_id: must be a primitive"
+      );
+    });
+  });
 });
