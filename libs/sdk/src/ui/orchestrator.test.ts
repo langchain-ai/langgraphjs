@@ -416,6 +416,52 @@ describe("StreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("does not reuse the history messages array for submit stream values", async () => {
+      const historyMessage = { id: "m1", content: "hello", type: "human" };
+      const historyMessages = [historyMessage];
+      const historyState = {
+        values: { messages: historyMessages },
+        checkpoint: {
+          thread_id: "t1",
+          checkpoint_id: "cp1",
+          checkpoint_ns: "",
+          checkpoint_map: null,
+        },
+        next: [],
+        tasks: [],
+        metadata: undefined,
+        created_at: null,
+        parent_checkpoint: null,
+      };
+      (client.threads.getState as ReturnType<typeof vi.fn>).mockResolvedValue(
+        historyState
+      );
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          yield { event: "updates" as const, data: {} };
+        },
+      });
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: false }),
+        accessors
+      );
+
+      orch.initThreadId("t1");
+
+      await vi.waitFor(() => {
+        expect(orch.historyData.data).toEqual([historyState]);
+      });
+
+      await orch.submit({ messages: [] });
+
+      expect(orch.values.messages).toEqual(historyMessages);
+      expect(orch.values.messages).not.toBe(historyMessages);
+      expect(orch.values.messages[0]).toBe(historyMessage);
+
+      orch.dispose();
+    });
   });
 
   describe("branch management", () => {
