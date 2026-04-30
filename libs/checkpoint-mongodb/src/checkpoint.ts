@@ -75,11 +75,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     if (value === undefined) return;
     if (typeof value !== "string") {
       const observed =
-        value === null
-          ? "null"
-          : Array.isArray(value)
-          ? "array"
-          : typeof value;
+        value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
       throw new Error(
         `Invalid configurable value for key "${field}": expected a string identifier (got ${observed}). This guard protects the MongoDB query from NoSQL operator injection.`
       );
@@ -228,10 +224,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
     if (before) {
       const beforeCheckpointId = before.configurable?.checkpoint_id;
-      MongoDBSaver.assertSafeIdentifier(
-        "checkpoint_id",
-        beforeCheckpointId
-      );
+      MongoDBSaver.assertSafeIdentifier("checkpoint_id", beforeCheckpointId);
       query.checkpoint_id = { $lt: beforeCheckpointId };
     }
 
