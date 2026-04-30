@@ -17,6 +17,76 @@ import {
 } from "./types.js";
 import { TASKS } from "./serde/types.js";
 
+/**
+ * Keys that, when written into a plain JavaScript object via bracket
+ * notation, traverse the prototype chain and mutate `Object.prototype`
+ * (or the constructor) instead of creating a new own property. Any of
+ * the three reaches `Object.prototype` and pollutes every object in
+ * the running process. CWE-1321 (Prototype Pollution).
+ */
+const POLLUTION_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Asserts that a value sourced from {@link RunnableConfig.configurable} (or
+ * any other caller-influenced position) is safe to use as a property key
+ * on the in-memory checkpoint store.
+ *
+ * `MemorySaver` keeps state in two nested plain objects (`storage` and
+ * `writes`) and writes to them with bracket notation:
+ *
+ *     this.storage[threadId][checkpointNamespace][checkpoint.id] = ...
+ *
+ * Without this guard a `threadId` of `"__proto__"` (or `"constructor"`)
+ * resolves through the prototype chain, and the subsequent assignment
+ * mutates `Object.prototype`. From that point every plain object in the
+ * process inherits the injected property: `for...in` loops over unrelated
+ * objects iterate it, framework code that does `if (obj[x])` short-circuits
+ * unexpectedly, and downstream serializers may emit it. In a Node.js
+ * server this is a stepping stone to remote code execution.
+ *
+ * `MemorySaver` is the default saver used by every quickstart, every
+ * tutorial, and most test fixtures, so this guard runs in the hot path
+ * for the most common LangGraph configuration.
+ *
+ * @param field Name of the configurable field, used in the error message.
+ * @param value Value to validate. Must be a non-empty string that is not
+ *              one of the three prototype-pollution keys.
+ * @param options.allowEmpty When true the empty string is accepted, used
+ *                            for the documented empty `checkpoint_ns`
+ *                            default; otherwise an empty string is
+ *                            rejected the same way as a non-string.
+ */
+function assertSafeStorageKey(
+  field: string,
+  value: unknown,
+  options: { allowEmpty?: boolean } = {}
+): asserts value is string {
+  const { allowEmpty = false } = options;
+  if (typeof value !== "string") {
+    const observed =
+      value === null
+        ? "null"
+        : value === undefined
+          ? "undefined"
+          : Array.isArray(value)
+            ? "array"
+            : typeof value;
+    throw new Error(
+      `Invalid configurable value for key "${field}": expected a string identifier (got ${observed}). This guard protects MemorySaver from prototype pollution.`
+    );
+  }
+  if (!allowEmpty && value === "") {
+    throw new Error(
+      `Invalid configurable value for key "${field}": empty string is not permitted as an in-memory storage key.`
+    );
+  }
+  if (POLLUTION_KEYS.has(value)) {
+    throw new Error(
+      `Invalid configurable value for key "${field}": value "${value}" is reserved (would mutate Object.prototype). This guard protects MemorySaver from prototype pollution.`
+    );
+  }
+}
+
 function _generateKey(
   threadId: string,
   checkpointNamespace: string,
@@ -78,6 +148,20 @@ export class MemorySaver extends BaseCheckpointSaver {
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     let checkpoint_id = getCheckpointId(config);
+
+    // Defense in depth: every public entry that mutates state already
+    // validates these, but read paths must not return data sourced from
+    // prototype-chain lookups when an attacker passes the magic keys.
+    // `checkpoint_id` is intentionally allowed to be empty / undefined
+    // here because the downstream `if (checkpoint_id)` branch treats
+    // both as "fetch the latest checkpoint" rather than as a lookup key.
+    if (thread_id !== undefined) {
+      assertSafeStorageKey("thread_id", thread_id);
+    }
+    assertSafeStorageKey("checkpoint_ns", checkpoint_ns, { allowEmpty: true });
+    if (checkpoint_id) {
+      assertSafeStorageKey("checkpoint_id", checkpoint_id);
+    }
 
     if (checkpoint_id) {
       const saved = this.storage[thread_id]?.[checkpoint_ns]?.[checkpoint_id];
@@ -201,6 +285,20 @@ export class MemorySaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     // eslint-disable-next-line prefer-const
     let { before, limit, filter } = options ?? {};
+    if (config.configurable?.thread_id !== undefined) {
+      assertSafeStorageKey("thread_id", config.configurable.thread_id);
+    }
+    if (config.configurable?.checkpoint_ns !== undefined) {
+      assertSafeStorageKey("checkpoint_ns", config.configurable.checkpoint_ns, {
+        allowEmpty: true,
+      });
+    }
+    if (config.configurable?.checkpoint_id) {
+      assertSafeStorageKey("checkpoint_id", config.configurable.checkpoint_id);
+    }
+    if (before?.configurable?.checkpoint_id) {
+      assertSafeStorageKey("checkpoint_id", before.configurable.checkpoint_id);
+    }
     const threadIds = config.configurable?.thread_id
       ? [config.configurable?.thread_id]
       : Object.keys(this.storage);
@@ -333,6 +431,12 @@ export class MemorySaver extends BaseCheckpointSaver {
       );
     }
 
+    assertSafeStorageKey("thread_id", threadId);
+    assertSafeStorageKey("checkpoint_ns", checkpointNamespace, {
+      allowEmpty: true,
+    });
+    assertSafeStorageKey("checkpoint_id", checkpoint.id);
+
     if (!this.storage[threadId]) {
       this.storage[threadId] = {};
     }
@@ -379,6 +483,12 @@ export class MemorySaver extends BaseCheckpointSaver {
         `Failed to put writes. The passed RunnableConfig is missing a required "checkpoint_id" field in its "configurable" property.`
       );
     }
+    assertSafeStorageKey("thread_id", threadId);
+    assertSafeStorageKey("checkpoint_ns", checkpointNamespace, {
+      allowEmpty: true,
+    });
+    assertSafeStorageKey("checkpoint_id", checkpointId);
+    assertSafeStorageKey("task_id", taskId);
     const outerKey = _generateKey(threadId, checkpointNamespace, checkpointId);
     const outerWrites_ = this.writes[outerKey];
     if (this.writes[outerKey] === undefined) {
@@ -402,6 +512,7 @@ export class MemorySaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
+    assertSafeStorageKey("thread_id", threadId);
     delete this.storage[threadId];
     for (const key of Object.keys(this.writes)) {
       if (_parseKey(key).threadId === threadId) delete this.writes[key];
