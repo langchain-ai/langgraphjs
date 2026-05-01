@@ -369,7 +369,7 @@ export function registerProtocolRoutes(
   }
 
   api.post(
-    "/threads/:thread_id/commands",
+    "/v2/threads/:thread_id/commands",
     zValidator("param", ThreadIdSchema),
     zValidator("json", ProtocolCommandSchema),
     async (c) => {
@@ -381,7 +381,7 @@ export function registerProtocolRoutes(
   );
 
   api.post(
-    "/threads/:thread_id/stream",
+    "/v2/threads/:thread_id/stream",
     zValidator("param", ThreadIdSchema),
     zValidator("json", EventsFilterSchema),
     async (c) => {
@@ -451,7 +451,7 @@ export function registerProtocolRoutes(
 
   if (upgradeWebSocket != null) {
     api.get(
-      "/threads/:thread_id/stream",
+      "/v2/threads/:thread_id/stream",
       zValidator("param", ThreadIdSchema),
       upgradeWebSocket((c: any) => {
         const { thread_id } = c.req.valid("param");

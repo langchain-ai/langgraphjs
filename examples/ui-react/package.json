@@ -18,7 +18,7 @@
     "@langchain/quickjs": "https://pkg.pr.new/@langchain/quickjs@7493df1",
     "@langchain/react": "workspace:*",
     "@uiw/react-json-view": "^2.0.0-alpha.38",
-    "deepagents": "https://pkg.pr.new/deepagents@7493df1",
+    "deepagents": "https://pkg.pr.new/deepagents@9a528ec",
     "langchain": "1.4.0-dev-1777615538778",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -1189,7 +1189,7 @@ importers:
         version: link:../../libs/sdk
       '@langchain/quickjs':
         specifier: https://pkg.pr.new/@langchain/quickjs@7493df1
-        version: https://pkg.pr.new/@langchain/quickjs@7493df1(deepagents@https://pkg.pr.new/deepagents@7493df1(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)))
+        version: https://pkg.pr.new/@langchain/quickjs@7493df1(deepagents@https://pkg.pr.new/deepagents@9a528ec(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)))
       '@langchain/react':
         specifier: workspace:*
         version: link:../../libs/sdk-react
@@ -1197,8 +1197,8 @@ importers:
         specifier: ^2.0.0-alpha.38
         version: 2.0.0-alpha.42(@babel/runtime@7.29.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       deepagents:
-        specifier: https://pkg.pr.new/deepagents@7493df1
-        version: https://pkg.pr.new/deepagents@7493df1(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
+        specifier: https://pkg.pr.new/deepagents@9a528ec
+        version: https://pkg.pr.new/deepagents@9a528ec(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
       langchain:
         specifier: 1.4.0-dev-1777615538778
         version: 1.4.0-dev-1777615538778(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
@@ -4119,18 +4119,6 @@ packages:
       zod-to-json-schema:
         optional: true
 
-  '@langchain/langgraph@https://pkg.pr.new/langchain-ai/langgraphjs/@langchain/langgraph@de53eb4':
-    resolution: {tarball: https://pkg.pr.new/langchain-ai/langgraphjs/@langchain/langgraph@de53eb4}
-    version: 1.2.8
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@langchain/core': 1.1.43-dev-1777615538778
-      zod: ^4.3.5
-      zod-to-json-schema: ^3.x
-    peerDependenciesMeta:
-      zod-to-json-schema:
-        optional: true
-
   '@langchain/mistralai@1.0.7':
     resolution: {integrity: sha512-5lXqdDnicHTTHMVv08q9Uja3CNkml3+JF3iq3Odfw+uOZ0wvwlQ5w90QNgW5rHluVQ1xnwI8PlBwsD8IhEqpvg==}
     engines: {node: '>=20'}
@@ -4151,9 +4139,6 @@ packages:
 
   '@langchain/protocol@0.0.15':
     resolution: {integrity: sha512-MllvbpMjqHevUm+v94M422mH7XKN+wGCvJRBVROTWBotEDOATYB4Ktk2UheYP859y9o2LlhtPek5t1T9eyfAbQ==}
-
-  '@langchain/protocol@0.0.7':
-    resolution: {integrity: sha512-IHByVwH3sYiCWUDPj+/JWeZ4Pzl5tHRDNUchkddJb/4L5Z2ZI9sCdSJM6vkeMVF+Owj/75Id7AP0Fk6e/S6XMw==}
 
   '@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@7493df1':
     resolution: {tarball: https://pkg.pr.new/@langchain/quickjs@7493df1}
@@ -8190,14 +8175,14 @@ packages:
     peerDependencies:
       langsmith: '>=0.5.19 <1'
 
-  deepagents@https://pkg.pr.new/deepagents@7493df1:
-    resolution: {tarball: https://pkg.pr.new/deepagents@7493df1}
+  deepagents@https://pkg.pr.new/deepagents@91d9510:
+    resolution: {integrity: sha512-AGhjo7qmFsHL7RsLejWTAjDDX1cIIRxGzqOXovgARCYQFBqB0Kvzv+c2jGeL61yH92cJFPKbtDIQsgl13D67qg==, tarball: https://pkg.pr.new/deepagents@91d9510}
     version: 1.9.0
     peerDependencies:
       langsmith: '>=0.5.19 <1.0.0'
 
-  deepagents@https://pkg.pr.new/deepagents@91d9510:
-    resolution: {integrity: sha512-AGhjo7qmFsHL7RsLejWTAjDDX1cIIRxGzqOXovgARCYQFBqB0Kvzv+c2jGeL61yH92cJFPKbtDIQsgl13D67qg==, tarball: https://pkg.pr.new/deepagents@91d9510}
+  deepagents@https://pkg.pr.new/deepagents@9a528ec:
+    resolution: {integrity: sha512-oLIzx+GxJTHidKVaXcQDVAk/jKhKnlnhCbImRcV44NbvbPgFVA3YQ9LMAWr+gXpwhsfahLHB0Pw6NEDbTVtiJw==, tarball: https://pkg.pr.new/deepagents@9a528ec}
     version: 1.9.0
     peerDependencies:
       langsmith: '>=0.5.19 <1.0.0'
@@ -13856,18 +13841,6 @@ snapshots:
     optionalDependencies:
       zod-to-json-schema: 3.25.2(zod@4.3.6)
 
-  '@langchain/langgraph@https://pkg.pr.new/langchain-ai/langgraphjs/@langchain/langgraph@de53eb4(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)':
-    dependencies:
-      '@langchain/core': 1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
-      '@langchain/langgraph-checkpoint': link:libs/checkpoint
-      '@langchain/langgraph-sdk': link:libs/sdk
-      '@langchain/protocol': 0.0.7
-      '@standard-schema/spec': 1.1.0
-      uuid: 10.0.0
-      zod: 4.3.6
-    optionalDependencies:
-      zod-to-json-schema: 3.25.2(zod@4.3.6)
-
   '@langchain/mistralai@1.0.7(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))':
     dependencies:
       '@langchain/core': 1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
@@ -13903,15 +13876,13 @@ snapshots:
 
   '@langchain/protocol@0.0.15': {}
 
-  '@langchain/protocol@0.0.7': {}
-
-  '@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@7493df1(deepagents@https://pkg.pr.new/deepagents@7493df1(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)))':
+  '@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@7493df1(deepagents@https://pkg.pr.new/deepagents@9a528ec(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)))':
     dependencies:
       '@jitl/quickjs-ng-wasmfile-release-asyncify': 0.32.0
       '@sveltejs/acorn-typescript': 1.0.9(acorn@8.16.0)
       acorn: 8.16.0
       dedent: 1.7.2
-      deepagents: https://pkg.pr.new/deepagents@7493df1(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
+      deepagents: https://pkg.pr.new/deepagents@9a528ec(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
       estree-walker: 3.0.3
       json-schema-to-typescript: 15.0.4
       magic-string: 0.30.21
@@ -18065,10 +18036,10 @@ snapshots:
       - ws
       - zod-to-json-schema
 
-  deepagents@https://pkg.pr.new/deepagents@7493df1(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)):
+  deepagents@https://pkg.pr.new/deepagents@91d9510(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)):
     dependencies:
       '@langchain/core': 1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
-      '@langchain/langgraph': https://pkg.pr.new/langchain-ai/langgraphjs/@langchain/langgraph@de53eb4(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
+      '@langchain/langgraph': https://pkg.pr.new/langchain-ai/langgraphjs/@langchain/langgraph@9c3a004(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
       '@langchain/langgraph-sdk': link:libs/sdk
       fast-glob: 3.3.3
       langchain: 1.4.0-dev-1777615538778(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
@@ -18084,7 +18055,7 @@ snapshots:
       - ws
       - zod-to-json-schema
 
-  deepagents@https://pkg.pr.new/deepagents@91d9510(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)):
+  deepagents@https://pkg.pr.new/deepagents@9a528ec(@opentelemetry/api@1.9.0)(langsmith@0.5.21(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.3.6)):
     dependencies:
       '@langchain/core': 1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
       '@langchain/langgraph': https://pkg.pr.new/langchain-ai/langgraphjs/@langchain/langgraph@9c3a004(@langchain/core@1.1.43-dev-1777615538778(@opentelemetry/api@1.9.0)(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
