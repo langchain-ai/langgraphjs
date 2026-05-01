@@ -88,6 +88,7 @@ import {
   ToStateDefinition,
   type StateDefinitionInit,
 } from "./types.js";
+import type { StreamTransformer } from "../stream/types.js";
 
 const ROOT = "__root__";
 
@@ -1075,9 +1076,8 @@ export class StateGraph<
 
   override compile<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const TTransformers extends ReadonlyArray<
-      () => import("../stream/types.js").StreamTransformer<any>
-    > = [],
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
   >({
     checkpointer,
     store,
@@ -1264,9 +1264,7 @@ export class CompiledStateGraph<
   InterruptType = unknown,
   WriterType = unknown,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TStreamTransformers extends ReadonlyArray<
-    () => import("../stream/types.js").StreamTransformer<any>
-  > = [],
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 > extends CompiledGraph<
   N,
   S,

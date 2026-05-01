@@ -77,14 +77,14 @@ type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
   streamTransformers: infer Transformers;
 }
   ? Transformers extends ReadonlyArray<
-      () => import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+      () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
     >
     ? Transformers
     : Transformers extends ReadonlyArray<
-          import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+          StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
         >
       ? { readonly [K in keyof Transformers]: () => Transformers[K] }
-      : Transformers extends import("../stream/types.js").StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+      : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
         ? readonly [() => Transformers]
         : []
   : [];
@@ -483,9 +483,8 @@ export class Graph<
 
   compile<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const TTransformers extends ReadonlyArray<
-      () => import("../stream/types.js").StreamTransformer<any>
-    > = [],
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
   >({
     checkpointer,
     interruptBefore,
@@ -643,9 +642,7 @@ export class CompiledGraph<
   NodeReturnType = unknown,
   CommandType = unknown,
   StreamCustomType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  TStreamTransformers extends ReadonlyArray<
-    () => import("../stream/types.js").StreamTransformer<any>
-  > = [], // eslint-disable-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [], // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
