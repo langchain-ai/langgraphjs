@@ -18,7 +18,7 @@
     "directory": "libs/sdk-angular"
   },
   "dependencies": {
-    "@langchain/langgraph-sdk": "workspace:^"
+    "@langchain/langgraph-sdk": "workspace:*"
   },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "^2.4.0",
