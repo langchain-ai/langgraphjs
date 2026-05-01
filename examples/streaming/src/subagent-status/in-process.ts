@@ -31,6 +31,13 @@ const run = await agent.streamEvents(
   { version: "v3", configurable: { thread_id: `subagent-status-${Date.now()}` } }
 );
 
+const graphStartMs = performance.now();
+
+function elapsedSinceGraphStart(): string {
+  const s = (performance.now() - graphStartMs) / 1000;
+  return `${s.toFixed(2)}s`;
+}
+
 let started = 0;
 let completed = 0;
 let failed = 0;
@@ -39,9 +46,9 @@ function printStatus() {
   const total = started + completed + failed;
   console.log(
     `  [${total} subagent(s)] ` +
-      `started: ${started}, ` +
-      `completed: ${completed}, ` +
-      `failed: ${failed}`
+    `started: ${started}, ` +
+    `completed: ${completed}, ` +
+    `failed: ${failed}`
   );
 }
 
@@ -49,7 +56,7 @@ const watchers: Promise<void>[] = [];
 
 for await (const sub of run.subagents) {
   started += 1;
-  console.log(`${sub.name}: started`);
+  console.log(`[${elapsedSinceGraphStart()}] ${sub.name}: started`);
   printStatus();
 
   watchers.push(
@@ -57,13 +64,13 @@ for await (const sub of run.subagents) {
       () => {
         started -= 1;
         completed += 1;
-        console.log(`${sub.name}: completed`);
+        console.log(`[${elapsedSinceGraphStart()}] ${sub.name}: completed`);
         printStatus();
       },
       () => {
         started -= 1;
         failed += 1;
-        console.log(`${sub.name}: failed`);
+        console.log(`[${elapsedSinceGraphStart()}] ${sub.name}: failed`);
         printStatus();
       }
     )
@@ -74,6 +81,6 @@ await Promise.all(watchers);
 
 console.log("\n=== Final ===");
 console.log(
-  `  started: ${started}, completed: ${completed}, failed: ${failed}`
+  `  [${elapsedSinceGraphStart()}] started: ${started}, completed: ${completed}, failed: ${failed}`
 );
 console.log("\nDone.");

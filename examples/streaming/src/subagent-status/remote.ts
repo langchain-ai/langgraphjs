@@ -37,6 +37,13 @@ async function main() {
       },
     });
 
+    const graphStartMs = performance.now();
+
+    function elapsedSinceGraphStart(): string {
+      const s = (performance.now() - graphStartMs) / 1000;
+      return `${s.toFixed(2)}s`;
+    }
+
     let started = 0;
     let completed = 0;
     let failed = 0;
@@ -45,28 +52,34 @@ async function main() {
       const total = started + completed + failed;
       console.log(
         `  [${total} subagent(s)] ` +
-          `started: ${started}, ` +
-          `completed: ${completed}, ` +
-          `failed: ${failed}`
+        `started: ${started}, ` +
+        `completed: ${completed}, ` +
+        `failed: ${failed}`
       );
     }
 
     for await (const subagent of thread.subagents) {
       started += 1;
-      console.log(`${subagent.name}: started (${subagent.callId})`);
+      console.log(
+        `[${elapsedSinceGraphStart()}] ${subagent.name}: started (${subagent.callId})`
+      );
       printStatus();
 
       subagent.output.then(
         () => {
           started -= 1;
           completed += 1;
-          console.log(`${subagent.name}: completed (${subagent.callId})`);
+          console.log(
+            `[${elapsedSinceGraphStart()}] ${subagent.name}: completed (${subagent.callId})`
+          );
           printStatus();
         },
         () => {
           started -= 1;
           failed += 1;
-          console.log(`${subagent.name}: failed (${subagent.callId})`);
+          console.log(
+            `[${elapsedSinceGraphStart()}] ${subagent.name}: failed (${subagent.callId})`
+          );
           printStatus();
         }
       );
@@ -74,7 +87,7 @@ async function main() {
 
     console.log("\n=== Final ===");
     console.log(
-      `  started: ${started}, completed: ${completed}, failed: ${failed}`
+      `  [${elapsedSinceGraphStart()}] started: ${started}, completed: ${completed}, failed: ${failed}`
     );
 
     await thread.close();
