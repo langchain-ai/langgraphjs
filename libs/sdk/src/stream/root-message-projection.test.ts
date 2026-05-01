@@ -125,9 +125,11 @@ function usageEvent(namespace: string[] = []): MessagesEvent {
 function parseSseFixture(path: URL): Event[] {
   const contents = readFileSync(path, "utf8");
   return contents
-    .split(/\n\n+/)
+    .split(/\r?\n\r?\n+/)
     .flatMap((block) => {
-      const dataLine = block.split(/\n/).find((line) => line.startsWith("data: "));
+      const dataLine = block
+        .split(/\r?\n/)
+        .find((line) => line.startsWith("data: "));
       return dataLine == null
         ? []
         : [JSON.parse(dataLine.slice("data: ".length)) as Event];
@@ -152,14 +154,30 @@ function replayRootProjection(events: readonly Event[]) {
       event.method === "values" &&
       event.params.namespace.length === 0
     ) {
-      const rawMessages = (event.params.data as State).messages;
+      const values = extractValuesState(event.params.data);
+      const rawMessages = values.messages;
       projection.applyValues(
-        event.params.data as State,
+        values,
         Array.isArray(rawMessages) ? ensureMessageInstances(rawMessages) : []
       );
     }
   }
   return store.getSnapshot();
+}
+
+function extractValuesState(data: unknown): State {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) {
+    return {};
+  }
+  const record = data as Record<string, unknown>;
+  if (
+    record.values != null &&
+    typeof record.values === "object" &&
+    !Array.isArray(record.values)
+  ) {
+    return record.values as State;
+  }
+  return record as State;
 }
 
 function summarizeContent(content: unknown): unknown {
@@ -195,7 +213,7 @@ function summarizeMessage(
     status?: unknown;
   };
   return {
-    type: message.getType(),
+    type: message.type,
     id: message.id,
     content: summarizeContent(message.content),
     tool_calls: record.tool_calls,
@@ -487,6 +505,7 @@ describe("RootMessageProjection", () => {
         )
       );
 
+      expect(snapshot.messages).not.toHaveLength(0);
       expect(snapshot.messages.map(summarizeMessage)).toMatchInlineSnapshot(`
         [
           {

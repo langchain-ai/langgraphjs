@@ -21,10 +21,29 @@ export async function checkSemver(
     const required = peerDependencies[pkg.name];
     if (!required) return [];
 
-    const satisfies = semver.satisfies(pkg.version, required, {
-      includePrerelease: true,
-    });
+    const satisfies = satisfiesPeerRange(pkg.version, required);
     return { ...pkg, required, satisfies };
+  });
+}
+
+function satisfiesPeerRange(version: string, required: string): boolean {
+  if (semver.satisfies(version, required, { includePrerelease: true })) {
+    return true;
+  }
+
+  const parsed = semver.parse(version);
+  if (parsed == null || parsed.prerelease.length === 0) {
+    return false;
+  }
+
+  // CI often installs internal dev builds such as
+  // `1.1.40-dev-<timestamp>`. Semver orders those below the final
+  // `1.1.40`, so `^1.1.40` does not match directly even though the
+  // build targets that release line. Validate the release tuple as a
+  // compatibility check while still rejecting prereleases below range.
+  const releaseVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+  return semver.satisfies(releaseVersion, required, {
+    includePrerelease: true,
   });
 }
 

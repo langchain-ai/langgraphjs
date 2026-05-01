@@ -4,7 +4,10 @@ import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
-import { createNodeWebSocket } from "@hono/node-ws";
+import {
+  createNodeWebSocket,
+  type NodeWebSocket,
+} from "@hono/node-ws";
 import {
   createEmbedServer,
   type ThreadSaver,
@@ -80,6 +83,7 @@ const graphs: Record<string, AnyPregel> = {
 };
 
 let httpServer: Server | null = null;
+let webSocketServer: NodeWebSocket["wss"] | null = null;
 
 export async function setup({ provide }: TestProject) {
   const app = new Hono();
@@ -87,7 +91,10 @@ export async function setup({ provide }: TestProject) {
     "*",
     cors({ origin: "*", exposeHeaders: ["Content-Location"] }),
   );
-  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+  const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
+    app,
+  });
+  webSocketServer = wss;
 
   const embedApp = createEmbedServer({
     graph: graphs,
@@ -108,7 +115,24 @@ export async function setup({ provide }: TestProject) {
 }
 
 export async function teardown() {
+  for (const client of webSocketServer?.clients ?? []) {
+    client.terminate();
+  }
+  await new Promise<void>((resolve) => {
+    if (webSocketServer == null) {
+      resolve();
+      return;
+    }
+    webSocketServer.close(() => resolve());
+  });
+  webSocketServer = null;
   httpServer?.closeAllConnections();
-  httpServer?.close();
+  await new Promise<void>((resolve) => {
+    if (httpServer == null) {
+      resolve();
+      return;
+    }
+    httpServer.close(() => resolve());
+  });
   httpServer = null;
 }
