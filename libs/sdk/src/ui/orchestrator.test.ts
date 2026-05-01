@@ -8,7 +8,9 @@ import type { Client } from "../client.js";
 import type { HeadlessToolImplementation } from "../headless-tools.js";
 
 type TestState = {
-  messages: Array<{ id: string; content: string; type: string }>;
+  messages: Array<
+    { id: string; content: string; type: string } & Record<string, unknown>
+  >;
   count?: number;
 };
 
@@ -60,6 +62,54 @@ function createOptions(
     assistantId: "test-assistant",
     ...overrides,
   } as AnyStreamOptions<TestState>;
+}
+
+function createSubagentStateValues(): TestState {
+  return {
+    messages: [
+      { id: "m1", content: "research tires", type: "human" },
+      {
+        id: "m2",
+        content: "",
+        type: "ai",
+        tool_calls: [
+          {
+            id: "task-1",
+            name: "task",
+            type: "tool_call",
+            args: {
+              description: "Calculate tire sizes",
+              subagent_type: "researcher",
+            },
+          },
+        ],
+      },
+      {
+        id: "m3",
+        content: "completed",
+        type: "tool",
+        name: "task",
+        tool_call_id: "task-1",
+      },
+    ],
+  };
+}
+
+function createThreadState(values: TestState) {
+  return {
+    values,
+    checkpoint: {
+      thread_id: "t1",
+      checkpoint_id: "cp1",
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    },
+    next: [],
+    tasks: [],
+    metadata: undefined,
+    created_at: null,
+    parent_checkpoint: null,
+  };
 }
 
 describe("StreamOrchestrator", () => {
@@ -807,6 +857,68 @@ describe("StreamOrchestrator", () => {
 
       expect(orch.reconstructSubagentsIfNeeded()).toBeNull();
 
+      orch.dispose();
+    });
+
+    it("does not fetch subagent history when fetchStateHistory is false", async () => {
+      const values = createSubagentStateValues();
+      (client.threads.getState as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createThreadState(values)
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({
+          fetchStateHistory: false,
+          filterSubagentMessages: true,
+        }),
+        accessors
+      );
+
+      orch.initThreadId("t1");
+
+      await vi.waitFor(() => {
+        expect(orch.historyData.isLoading).toBe(false);
+      });
+
+      expect(orch.reconstructSubagentsIfNeeded()).toBeNull();
+      expect(orch.subagents.size).toBe(1);
+      expect(client.threads.getHistory).not.toHaveBeenCalled();
+
+      orch.dispose();
+    });
+
+    it("uses fetchStateHistory limit for subagent history discovery", async () => {
+      const values = createSubagentStateValues();
+      (client.threads.getHistory as ReturnType<typeof vi.fn>).mockResolvedValue(
+        [createThreadState(values)]
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({
+          fetchStateHistory: { limit: 2 },
+          filterSubagentMessages: true,
+        }),
+        accessors
+      );
+
+      orch.initThreadId("t1");
+
+      await vi.waitFor(() => {
+        expect(orch.historyData.isLoading).toBe(false);
+      });
+
+      (client.threads.getHistory as ReturnType<typeof vi.fn>).mockClear();
+
+      const controller = orch.reconstructSubagentsIfNeeded();
+
+      await vi.waitFor(() => {
+        expect(client.threads.getHistory).toHaveBeenCalledWith(
+          "t1",
+          expect.objectContaining({ limit: 2 })
+        );
+      });
+
+      controller?.abort();
       orch.dispose();
     });
   });

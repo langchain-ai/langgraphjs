@@ -333,7 +333,11 @@ export class StreamManager<
       >;
     },
     threadId: string,
-    options?: { messagesKey?: string; signal?: AbortSignal }
+    options?: {
+      messagesKey?: string;
+      historyLimit?: number;
+      signal?: AbortSignal;
+    }
   ): Promise<void> {
     const messagesKey = options?.messagesKey ?? "messages";
     const signal = options?.signal;
@@ -381,7 +385,7 @@ export class StreamManager<
        */
       const mainHistory = await threads.getHistory<Record<string, unknown>>(
         threadId,
-        { limit: 20, signal }
+        { limit: options?.historyLimit ?? 20, signal }
       );
 
       for (const checkpoint of mainHistory) {

@@ -1,5 +1,14 @@
 # @langchain/vue
 
+## 0.4.6
+
+### Patch Changes
+
+- [#2340](https://github.com/langchain-ai/langgraphjs/pull/2340) [`6bab458`](https://github.com/langchain-ai/langgraphjs/commit/6bab458d4a03ce2d7b2708488b92226899eb94d4) Thanks [@cwlbraa](https://github.com/cwlbraa)! - Respect `fetchStateHistory` when restoring subagent history.
+
+- Updated dependencies [[`6bab458`](https://github.com/langchain-ai/langgraphjs/commit/6bab458d4a03ce2d7b2708488b92226899eb94d4)]:
+  - @langchain/langgraph-sdk@1.8.10
+
 ## 0.4.5
 
 ### Patch Changes

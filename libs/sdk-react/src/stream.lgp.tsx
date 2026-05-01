@@ -437,10 +437,12 @@ export function useStreamLGP<
       // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
       // We use an AbortController so React Strict Mode's effect cleanup can cancel
       // the in-flight fetch before the effect re-runs (preventing stale updates).
-      if (threadId) {
+      if (historyLimit !== false && threadId) {
         const controller = new AbortController();
         void stream.fetchSubagentHistory(client.threads, threadId, {
           messagesKey: options.messagesKey ?? "messages",
+          historyLimit:
+            typeof historyLimit === "number" ? historyLimit : undefined,
           signal: controller.signal,
         });
         return () => controller.abort();
