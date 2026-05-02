@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph-checkpoint": minor
+"@langchain/langgraph-checkpoint": patch
 ---
 
 Improve `MemorySaver` diagnostics when checkpoint writes are missing a
