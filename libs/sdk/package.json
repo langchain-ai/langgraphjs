@@ -18,7 +18,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.43",
     "@langchain/protocol": "^0.0.15",
     "@types/json-schema": "^7.0.15",
     "p-queue": "^9.0.1",
@@ -26,7 +26,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.43",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
