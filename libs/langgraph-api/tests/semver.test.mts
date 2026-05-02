@@ -50,8 +50,8 @@ describe("checkSemver", () => {
 
   it("should accept prerelease builds for a satisfying release tuple", async () => {
     const result = await checkSemver([
-      { name: "@langchain/core", version: "1.1.40-dev-1777587649451" },
-      { name: "@langchain/core", version: "1.1.39-dev-1777587649451" },
+      { name: "@langchain/core", version: "1.1.44-dev-1777587649451" },
+      { name: "@langchain/core", version: "1.1.43-dev-1777587649451" },
     ]);
 
     expect(result).toMatchObject([

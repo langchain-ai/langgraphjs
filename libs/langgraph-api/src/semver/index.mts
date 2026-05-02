@@ -37,8 +37,8 @@ function satisfiesPeerRange(version: string, required: string): boolean {
   }
 
   // CI often installs internal dev builds such as
-  // `1.1.40-dev-<timestamp>`. Semver orders those below the final
-  // `1.1.40`, so `^1.1.40` does not match directly even though the
+  // `1.1.44-dev-<timestamp>`. Semver orders those below the final
+  // `1.1.44`, so `^1.1.44` does not match directly even though the
   // build targets that release line. Validate the release tuple as a
   // compatibility check while still rejecting prereleases below range.
   const releaseVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
