@@ -10,10 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.43",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^1.4.1",
+    "@langchain/openai": "^1.4.5",
     "@langchain/svelte": "workspace:*",
     "zod": "^3.23.8"
   },

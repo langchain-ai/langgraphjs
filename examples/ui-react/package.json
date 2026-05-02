@@ -10,12 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.43",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^1.4.1",
+    "@langchain/openai": "^1.4.5",
     "deepagents": "^1.8.3",
-    "langchain": "^1.3.0",
+    "langchain": "^1.3.5",
     "lucide-react": "^0.577.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
