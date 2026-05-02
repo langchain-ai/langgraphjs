@@ -25,15 +25,6 @@ function getMessageStreamKey(data: MessagesEventData): string {
   return "__default__";
 }
 
-// Keep this adapter until the protocol package and Core share a single
-// ChatModelStreamEvent type. The runtime shape is intentionally aligned; the
-// generated protocol types still differ from Core's content block definitions
-// and narrower finish-reason union. Core now accepts protocol-compatible
-// partial usage directly, so no value normalization is needed here.
-function toCoreEvent(data: MessagesEventData): ChatModelStreamEvent {
-  return data as unknown as ChatModelStreamEvent;
-}
-
 /**
  * Creates a {@link StreamTransformer} that groups `messages` channel events into
  * per-message {@link ChatModelStream} instances.
@@ -92,7 +83,7 @@ export function createMessagesTransformer(
             }
           ) as ChatModelStream;
           active.set(key, { source, stream });
-          source.push(toCoreEvent(data));
+          source.push(data as unknown as ChatModelStreamEvent);
           log.push(stream);
           break;
         }
@@ -100,14 +91,16 @@ export function createMessagesTransformer(
         case "content-block-start":
         case "content-block-delta":
         case "content-block-finish":
-          active.get(getMessageStreamKey(data))?.source.push(toCoreEvent(data));
+          active
+            .get(getMessageStreamKey(data))
+            ?.source.push(data as unknown as ChatModelStreamEvent);
           break;
 
         case "message-finish": {
           const key = getMessageStreamKey(data);
           const stream = active.get(key);
           if (stream) {
-            stream.source.push(toCoreEvent(data));
+            stream.source.push(data as unknown as ChatModelStreamEvent);
             stream.source.close();
             active.delete(key);
           }
@@ -115,7 +108,9 @@ export function createMessagesTransformer(
         }
 
         case "error":
-          active.get(getMessageStreamKey(data))?.source.push(toCoreEvent(data));
+          active
+            .get(getMessageStreamKey(data))
+            ?.source.push(data as unknown as ChatModelStreamEvent);
           break;
       }
 

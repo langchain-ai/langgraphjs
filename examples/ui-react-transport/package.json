@@ -12,7 +12,7 @@
   "dependencies": {
     "@a2a-js/sdk": "^0.3.13",
     "@hono/node-server": "^1.19.13",
-    "@langchain/core": "^1.1.43",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.4.1",
     "@langchain/protocol": "^0.0.15",
