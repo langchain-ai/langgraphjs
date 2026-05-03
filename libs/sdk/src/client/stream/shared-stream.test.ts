@@ -173,6 +173,41 @@ describe("ThreadStream (SSE shared stream)", () => {
     await thread.close();
   });
 
+  it("drains late values that arrive after root terminal pause", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "a" });
+
+    const root = await thread.subscribe({
+      channels: ["lifecycle", "values"],
+      namespaces: [[]],
+      depth: 1,
+    });
+
+    const terminal = eventOf(
+      "lifecycle",
+      { event: "completed" } as never,
+      { namespace: [], seq: 10, eventId: "completed" }
+    );
+    transport.pushEvent(terminal);
+    await expect(nextValue(root)).resolves.toBe(terminal);
+    await flush();
+    expect(root.isPaused).toBe(true);
+
+    const finalValues = eventOf(
+      "values",
+      { messages: [{ id: "ai-2", content: "Done." }] } as never,
+      { namespace: [], seq: 11, eventId: "final-values" }
+    );
+    transport.pushEvent(finalValues);
+    await flush();
+
+    await expect(nextValue(root)).resolves.toBe(finalValues);
+    await flush();
+    expect(root.isPaused).toBe(true);
+
+    await thread.close();
+  });
+
   it("dedups events during rotation overlap (open-before-close)", async () => {
     const transport = new MockSseTransport();
     const thread = new ThreadStream(transport, { assistantId: "a" });

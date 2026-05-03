@@ -536,6 +536,7 @@ export class ThreadStream<
   /** Pending `subscribe()` promises waiting for a covering rotation. */
   readonly #pendingSubResolves: PendingSubResolve[] = [];
   #terminalPauseTimer: ReturnType<typeof setTimeout> | undefined;
+  #terminalPauseSeq: number | null | undefined;
 
   #lifecycleSubId: string | null = null;
   #lifecycleStartPromise?: Promise<void>;
@@ -751,6 +752,7 @@ export class ThreadStream<
       clearTimeout(this.#terminalPauseTimer);
       this.#terminalPauseTimer = undefined;
     }
+    this.#terminalPauseSeq = undefined;
     for (const [id, subscription] of this.#subscriptions) {
       if (id !== this.#lifecycleSubId) {
         subscription.resume();
@@ -1453,6 +1455,7 @@ export class ThreadStream<
       clearTimeout(this.#terminalPauseTimer);
       this.#terminalPauseTimer = undefined;
     }
+    this.#terminalPauseSeq = undefined;
     // Reject any `subscribe()` promises still waiting for a covering
     // rotation, and tear down the shared SSE stream. A rotation in
     // flight will observe `#closed` after its `await ready` and bail.
@@ -1954,6 +1957,37 @@ export class ThreadStream<
     }
   }
 
+  /**
+   * Pause non-lifecycle subscriptions after a root terminal lifecycle.
+   *
+   * The pause is deferred one macrotask so same-run trailing events
+   * emitted immediately after terminal (for example final `values`)
+   * can still drain. `terminalSeq` lets replay attachers skip terminals
+   * that happened before they registered, so late subscribers can keep
+   * consuming the replayed history they joined for.
+   */
+  #scheduleTerminalPause(terminalSeq: number | undefined): void {
+    if (this.#terminalPauseTimer != null) {
+      clearTimeout(this.#terminalPauseTimer);
+    }
+    this.#terminalPauseSeq = terminalSeq ?? null;
+    this.#terminalPauseTimer = setTimeout(() => {
+      this.#terminalPauseTimer = undefined;
+      if (this.#closed) return;
+      for (const [id, subscription] of this.#subscriptions) {
+        if (id === this.#lifecycleSubId) continue;
+        if (
+          terminalSeq != null &&
+          subscription.registeredAfterSeq != null &&
+          subscription.registeredAfterSeq >= terminalSeq
+        ) {
+          continue;
+        }
+        subscription.pause();
+      }
+    }, 0);
+  }
+
   #handleIncoming(message: Message): void {
     if (message.type === "event") {
       if (typeof message.seq === "number") {
@@ -2018,6 +2052,42 @@ export class ThreadStream<
         fannedToAny = true;
       }
 
+      // A root terminal schedules subscription pause on a macrotask,
+      // but reconnect/replay can still deliver same-run trailing state
+      // afterward (for example the final `values` snapshot). Drain that
+      // event, briefly resume any paused consumers, then re-arm the
+      // terminal pause so idle subscriptions still settle.
+      if (
+        fannedToAny &&
+        this.#terminalPauseSeq !== undefined &&
+        !(
+          message.method === "lifecycle" &&
+          message.params.namespace.length === 0
+        )
+      ) {
+        const eventSeq =
+          typeof message.seq === "number" ? message.seq : undefined;
+        const terminalSeq = this.#terminalPauseSeq;
+        if (
+          terminalSeq === null ||
+          eventSeq == null ||
+          eventSeq > terminalSeq
+        ) {
+          if (this.#terminalPauseTimer != null) {
+            clearTimeout(this.#terminalPauseTimer);
+            this.#terminalPauseTimer = undefined;
+          }
+          for (const [id, subscription] of this.#subscriptions) {
+            if (id !== this.#lifecycleSubId) {
+              subscription.resume();
+            }
+          }
+          this.#scheduleTerminalPause(
+            terminalSeq === null ? undefined : terminalSeq
+          );
+        }
+      }
+
       if (
         fannedToAny &&
         message.method === "lifecycle" &&
@@ -2038,26 +2108,9 @@ export class ThreadStream<
         // immediately after root lifecycle completion, and pausing
         // synchronously would buffer those same-run events until the
         // next submit resumes subscriptions.
-        if (this.#terminalPauseTimer != null) {
-          clearTimeout(this.#terminalPauseTimer);
-        }
-        this.#terminalPauseTimer = setTimeout(() => {
-          this.#terminalPauseTimer = undefined;
-          if (this.#closed) return;
-          for (const [id, subscription] of this.#subscriptions) {
-            if (id === this.#lifecycleSubId) continue;
-            const terminalSeq =
-              typeof message.seq === "number" ? message.seq : undefined;
-            if (
-              terminalSeq != null &&
-              subscription.registeredAfterSeq != null &&
-              subscription.registeredAfterSeq >= terminalSeq
-            ) {
-              continue;
-            }
-            subscription.pause();
-          }
-        }, 0);
+        this.#scheduleTerminalPause(
+          typeof message.seq === "number" ? message.seq : undefined
+        );
       }
       return;
     }
