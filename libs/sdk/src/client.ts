@@ -1091,11 +1091,84 @@ export class ThreadsClient<
        */
       ttl?: number | { ttl: number; strategy?: "delete" };
       /**
+       * If true, request a 204 response with no body.
+       */
+      returnMinimal?: false;
+      /**
        * Signal to abort the request.
        */
       signal?: AbortSignal;
     }
-  ): Promise<Thread> {
+  ): Promise<Thread>;
+  async update(
+    threadId: string,
+    payload: {
+      /**
+       * Metadata for the thread.
+       */
+      metadata?: Metadata;
+      /**
+       * Optional time-to-live in minutes for the thread.
+       * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+       * You may also provide an object { ttl: number, strategy?: "delete" }.
+       */
+      ttl?: number | { ttl: number; strategy?: "delete" };
+      /**
+       * If true, request a 204 response with no body.
+       */
+      returnMinimal: true;
+      /**
+       * Signal to abort the request.
+       */
+      signal?: AbortSignal;
+    }
+  ): Promise<void>;
+  async update(
+    threadId: string,
+    payload: {
+      /**
+       * Metadata for the thread.
+       */
+      metadata?: Metadata;
+      /**
+       * Optional time-to-live in minutes for the thread.
+       * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+       * You may also provide an object { ttl: number, strategy?: "delete" }.
+       */
+      ttl?: number | { ttl: number; strategy?: "delete" };
+      /**
+       * If true, request a 204 response with no body.
+       */
+      returnMinimal: boolean;
+      /**
+       * Signal to abort the request.
+       */
+      signal?: AbortSignal;
+    }
+  ): Promise<Thread | void>;
+  async update(
+    threadId: string,
+    payload?: {
+      /**
+       * Metadata for the thread.
+       */
+      metadata?: Metadata;
+      /**
+       * Optional time-to-live in minutes for the thread.
+       * If a number is provided, it is treated as minutes and defaults to strategy "delete".
+       * You may also provide an object { ttl: number, strategy?: "delete" }.
+       */
+      ttl?: number | { ttl: number; strategy?: "delete" };
+      /**
+       * If true, request a 204 response with no body.
+       */
+      returnMinimal?: boolean;
+      /**
+       * Signal to abort the request.
+       */
+      signal?: AbortSignal;
+    }
+  ): Promise<Thread | void> {
     const ttlPayload =
       typeof payload?.ttl === "number"
         ? { ttl: payload.ttl, strategy: "delete" as const }
@@ -1103,6 +1176,9 @@ export class ThreadsClient<
 
     return this.fetch<Thread>(`/threads/${threadId}`, {
       method: "PATCH",
+      headers: payload?.returnMinimal
+        ? { Prefer: "return=minimal" }
+        : undefined,
       json: { metadata: payload?.metadata, ttl: ttlPayload },
       signal: payload?.signal,
     });
