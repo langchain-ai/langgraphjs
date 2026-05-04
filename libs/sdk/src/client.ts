@@ -1174,7 +1174,7 @@ export class ThreadsClient<
         ? { ttl: payload.ttl, strategy: "delete" as const }
         : payload?.ttl;
 
-    return this.fetch<Thread>(`/threads/${threadId}`, {
+    return this.fetch<Thread | void>(`/threads/${threadId}`, {
       method: "PATCH",
       headers: payload?.returnMinimal
         ? { Prefer: "return=minimal" }
