@@ -4,7 +4,7 @@
  * The SDK defaults to SSE+HTTP; passing `transport: "websocket"` (or
  * setting `streamProtocol: "v2-websocket"` on the client) routes every
  * command and event over a single full-duplex WebSocket on
- * `ws://<host>/v2/threads/{thread_id}`.
+ * `ws://<host>/threads/{thread_id}/stream/events`.
  *
  * This script verifies:
  *   - The WS route accepts `subscription.subscribe`,

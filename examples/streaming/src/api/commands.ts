@@ -10,7 +10,7 @@
  *   - Malformed envelope — confirm the route's `invalid_argument` path.
  *
  * Unlike the other api/ scripts, this one talks directly to the
- * `POST /v2/threads/{thread_id}/commands` endpoint via `fetch` so we
+ * `POST /threads/{thread_id}/commands` endpoint via `fetch` so we
  * can assert on the raw `ProtocolError` / `ProtocolSuccess` shapes
  * the server returns.
  *
@@ -38,7 +38,7 @@ async function send(
   threadId: string,
   payload: Record<string, unknown>
 ): Promise<ProtocolResponse> {
-  const res = await fetch(`${url}/v2/threads/${threadId}/commands`, {
+  const res = await fetch(`${url}/threads/${threadId}/commands`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -115,7 +115,7 @@ async function main() {
 
   // 7. Malformed envelope — missing method
   const malformed = await fetch(
-    `${url}/v2/threads/${threadId}/commands`,
+    `${url}/threads/${threadId}/commands`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },

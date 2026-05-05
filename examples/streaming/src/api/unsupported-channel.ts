@@ -2,7 +2,7 @@
  * Malformed / unsupported subscribe-envelope validation against the
  * Python `langgraph-api` server.
  *
- * Goes at the raw HTTP layer (``fetch`` → ``POST /events``) so we can
+ * Goes at the raw HTTP layer (``fetch`` → ``POST /stream/events``) so we can
  * assert on the ``invalid_argument`` / HTTP 4xx shapes the server
  * returns. The SDK sanitizes most of these before they reach the
  * wire; this script hits the validator directly.
@@ -94,7 +94,7 @@ const PROBES: readonly Probe[] = [
 ];
 
 async function probe(url: string, threadId: string, p: Probe) {
-  const res = await fetch(`${url}/v2/threads/${threadId}/events`, {
+  const res = await fetch(`${url}/threads/${threadId}/stream/events`, {
     method: "POST",
     headers: {
       "content-type": "application/json",

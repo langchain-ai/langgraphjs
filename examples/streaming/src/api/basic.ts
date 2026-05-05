@@ -6,8 +6,8 @@
  * core channels until the run completes.
  *
  * This exercises:
- *   - `POST /v2/threads/{thread_id}/commands` for `run.start`
- *   - `POST /v2/threads/{thread_id}/events` SSE stream
+ *   - `POST /threads/{thread_id}/commands` for `run.start`
+ *   - `POST /threads/{thread_id}/stream/events` SSE stream
  *   - CDDL envelope shape (`type`, `seq`, `event_id`, `method`, `params`)
  *   - Lifecycle events (`running`, `completed`)
  *   - Messages content-block lifecycle (`message-start` →

@@ -58,7 +58,7 @@ export default function createProtocolApi(
   });
 
   api.get(
-    "/v2/threads/:thread_id/stream",
+    "/threads/:thread_id/stream/events",
     zValidator("param", ThreadIdSchema),
     upgradeWebSocket((c: any) => {
       const { thread_id } = c.req.valid("param");
@@ -134,7 +134,7 @@ export default function createProtocolApi(
   );
 
   api.post(
-    "/v2/threads/:thread_id/commands",
+    "/threads/:thread_id/commands",
     zValidator("param", ThreadIdSchema),
     zValidator("json", ProtocolCommandSchema),
     async (c) => {
@@ -153,7 +153,7 @@ export default function createProtocolApi(
   );
 
   api.post(
-    "/v2/threads/:thread_id/stream",
+    "/threads/:thread_id/stream/events",
     zValidator("param", ThreadIdSchema),
     zValidator("json", EventsFilterSchema),
     async (c) => {

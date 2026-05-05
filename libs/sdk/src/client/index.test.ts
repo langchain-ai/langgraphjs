@@ -65,7 +65,7 @@ describe("Client", () => {
 
     await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain("/v2/threads/my-thread/stream");
+    expect(calls[0]).toContain("/threads/my-thread/stream/events");
   });
 
   it("threads.stream forwards fetch to the sse adapter", async () => {
@@ -94,10 +94,10 @@ describe("Client", () => {
 
     await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
     expect(calls).toHaveLength(1);
-    expect(calls[0].pathname).toContain("/v2/threads/my-thread/stream");
+    expect(calls[0].pathname).toContain("/threads/my-thread/stream/events");
   });
 
-  it("uses the v2 protocol commands path for sse commands", async () => {
+  it("uses the protocol commands path for sse commands", async () => {
     const calls: URL[] = [];
     const customFetch = ((input: URL | RequestInfo) => {
       calls.push(
@@ -127,6 +127,6 @@ describe("Client", () => {
     await transport.send({ id: 1, method: "state.get", params: { namespace: [] } });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].pathname).toBe("/v2/threads/my-thread/commands");
+    expect(calls[0].pathname).toBe("/threads/my-thread/commands");
   });
 });

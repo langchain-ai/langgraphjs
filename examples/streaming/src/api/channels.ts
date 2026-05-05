@@ -122,7 +122,7 @@ async function main() {
   });
 
   // Open each subscription sequentially (each ``thread.subscribe`` is
-  // ``await``-ed before moving on) so 8 concurrent ``POST /events``
+  // ``await``-ed before moving on) so 8 concurrent ``POST /stream/events``
   // requests don't race undici's connection pool before the run even
   // starts. Drains run in parallel after every handle is established.
   const drains: Record<Channel, Promise<CollectedEvent[]>> = {} as Record<

@@ -42,7 +42,7 @@ export interface HttpAgentServerAdapterOptions {
   defaultHeaders?: Record<string, HeaderValue>;
   /** Per-request hook for last-mile header mutation. */
   onRequest?: ProtocolRequestHook;
-  /** Override the default `/v2/threads/:threadId/...` protocol paths. */
+  /** Override the default `/threads/:threadId/...` protocol paths. */
   paths?: ProtocolTransportPaths;
   /**
    * Optional `fetch` override, forwarded to the SSE transport. Useful

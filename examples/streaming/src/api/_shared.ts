@@ -16,10 +16,10 @@
  *
  *     LANGGRAPH_API_URL=http://localhost:8080 npx tsx src/api/basic.ts
  *
- * These scripts exercise the protocol-v2 endpoints shipped in the
- * Python API: `POST /v2/threads/{thread_id}/commands`,
- * `POST /v2/threads/{thread_id}/events`, and the WebSocket at
- * `/v2/threads/{thread_id}`.
+ * These scripts exercise the protocol endpoints shipped in the Python API:
+ * `POST /threads/{thread_id}/commands`,
+ * `POST /threads/{thread_id}/stream/events`, and the WebSocket at
+ * `/threads/{thread_id}/stream/events`.
  */
 
 export const DEFAULT_API_URL = "http://localhost:9123";

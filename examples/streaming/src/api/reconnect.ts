@@ -1,7 +1,7 @@
 /**
  * SSE reconnect / replay verification for the Python `langgraph-api`.
  *
- * Opens a raw `POST /v2/threads/{thread_id}/events` SSE stream, starts a
+ * Opens a raw `POST /threads/{thread_id}/stream/events` SSE stream, starts a
  * run, reads events until some point in the middle, drops the
  * connection, then reopens it with a `Last-Event-ID: <seq>` header and
  * asserts every event after that point is replayed in order with no
@@ -50,7 +50,7 @@ function parseFrame(rawFrame: string): SseField | null {
  *
  * We deliberately use `node:http` instead of `fetch` here: Node's fetch
  * (undici) default pool holds keep-alive slots on the origin and the
- * second POST to `/events` stalls waiting for a free slot after the
+ * second POST to `/stream/events` stalls waiting for a free slot after the
  * first connection is aborted. `http.request` with `Connection: close`
  * forces a fresh socket per call and destroys cleanly on abort.
  */
@@ -60,7 +60,7 @@ function openSseStream(
   filter: Record<string, unknown>
 ): Promise<{ res: http.IncomingMessage; req: http.ClientRequest }> {
   return new Promise((resolve, reject) => {
-    const target = new NodeURL(`/v2/threads/${threadId}/events`, url);
+    const target = new NodeURL(`/threads/${threadId}/stream/events`, url);
     const body = JSON.stringify(filter);
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -177,14 +177,14 @@ async function main() {
   // raw streams below, not the SDK wrapper). Use ``node:http`` here as
   // well so the entire test sticks to one transport — mixing undici's
   // fetch with follow-up ``http.request`` streams on the same origin
-  // has proven to stall the second POST to ``/events``.
+  // has proven to stall the second POST to ``/stream/events``.
   const commandBody = await new Promise<{
     type: string;
     result?: { run_id?: string };
     error?: string;
     message?: string;
   }>((resolve, reject) => {
-    const target = new NodeURL(`/v2/threads/${threadId}/commands`, url);
+    const target = new NodeURL(`/threads/${threadId}/commands`, url);
     const payload = JSON.stringify({
       id: 1,
       method: "run.start",

@@ -97,7 +97,7 @@ describe("protocol transport", () => {
       const thread = await client.threads.create();
 
       const socket = new WebSocket(
-        `${API_URL.replace("http", "ws")}/v2/threads/${thread.thread_id}/stream`
+        `${API_URL.replace("http", "ws")}/threads/${thread.thread_id}/stream/events`
       );
       const collector = createSocketCollector(socket);
 

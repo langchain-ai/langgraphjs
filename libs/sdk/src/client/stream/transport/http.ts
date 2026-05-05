@@ -27,7 +27,7 @@ import { IterableReadableStream } from "./stream.js";
  * Transport adapter that speaks the thread-centric protocol over HTTP
  * commands plus SSE event streams. Bound to a specific `threadId`
  * at construction. Each {@link openEventStream} call opens an independent
- * filtered SSE connection via `POST /v2/threads/:thread_id/stream`.
+ * filtered SSE connection via `POST /threads/:thread_id/stream/events`.
  */
 export class ProtocolSseTransportAdapter implements TransportAdapter {
   readonly threadId: string;
@@ -62,9 +62,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.fetchFactory = options.fetchFactory;
     this.threadId = options.threadId;
     this.commandsUrl =
-      options.paths?.commands ?? `/v2/threads/${this.threadId}/commands`;
+      options.paths?.commands ?? `/threads/${this.threadId}/commands`;
     this.streamUrl =
-      options.paths?.stream ?? `/v2/threads/${this.threadId}/stream`;
+      options.paths?.stream ?? `/threads/${this.threadId}/stream/events`;
   }
 
   private async resolveFetch(): Promise<typeof fetch> {

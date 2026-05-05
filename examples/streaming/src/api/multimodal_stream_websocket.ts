@@ -3,7 +3,7 @@
  *
  * Same ``agent_multimodal_stream`` graph, same ``AudioBlock`` /
  * ``ImageBlock`` content-block shapes — just routed through the
- * ``ws://<host>/v2/threads/{id}`` transport instead of SSE. Proves
+ * ``ws://<host>/threads/{id}/stream/events`` transport instead of SSE. Proves
  * the SDK's media handles work identically on both transports.
  *
  * Node 22+ required: the SDK's WebSocket transport uses the global
