@@ -118,16 +118,47 @@ export class ThreadsClient<
     payload?: {
       metadata?: Metadata;
       ttl?: number | { ttl: number; strategy?: "delete" };
+      returnMinimal?: false;
       signal?: AbortSignal;
     }
-  ): Promise<Thread> {
+  ): Promise<Thread>;
+  async update(
+    threadId: string,
+    payload: {
+      metadata?: Metadata;
+      ttl?: number | { ttl: number; strategy?: "delete" };
+      returnMinimal: true;
+      signal?: AbortSignal;
+    }
+  ): Promise<void>;
+  async update(
+    threadId: string,
+    payload: {
+      metadata?: Metadata;
+      ttl?: number | { ttl: number; strategy?: "delete" };
+      returnMinimal: boolean;
+      signal?: AbortSignal;
+    }
+  ): Promise<Thread | void>;
+  async update(
+    threadId: string,
+    payload?: {
+      metadata?: Metadata;
+      ttl?: number | { ttl: number; strategy?: "delete" };
+      returnMinimal?: boolean;
+      signal?: AbortSignal;
+    }
+  ): Promise<Thread | void> {
     const ttlPayload =
       typeof payload?.ttl === "number"
         ? { ttl: payload.ttl, strategy: "delete" as const }
         : payload?.ttl;
 
-    return this.fetch<Thread>(`/threads/${threadId}`, {
+    return this.fetch<Thread | void>(`/threads/${threadId}`, {
       method: "PATCH",
+      headers: payload?.returnMinimal
+        ? { Prefer: "return=minimal" }
+        : undefined,
       json: { metadata: payload?.metadata, ttl: ttlPayload },
       signal: payload?.signal,
     });
