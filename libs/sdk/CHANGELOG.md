@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.9.1
+
+### Patch Changes
+
+- [#2366](https://github.com/langchain-ai/langgraphjs/pull/2366) [`2bb66bf`](https://github.com/langchain-ai/langgraphjs/commit/2bb66bf816a8b18b2968ed885ef2df15f684cb4e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): update endpoints
+
 ## 1.9.0
 
 ### Minor Changes
