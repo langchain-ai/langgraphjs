@@ -76,6 +76,39 @@ describe.each([["global"], ["mocked"]])(
       });
     });
 
+    describe("threads.update", () => {
+      it("should request a minimal response when returnMinimal is true", async () => {
+        expectedFetchMock.mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve(""),
+          headers: new Headers({}),
+        });
+
+        const client = new Client({ apiKey: "test-api-key" });
+        const result = await client.threads.update("thread_123", {
+          metadata: { foo: "bar" },
+          returnMinimal: true,
+        });
+
+        expect(result).toBeUndefined();
+        expect(expectedFetchMock).toHaveBeenCalledWith(
+          expect.stringContaining("/threads/thread_123"),
+          expect.objectContaining({
+            method: "PATCH",
+            headers: expect.objectContaining({
+              prefer: "return=minimal",
+            }),
+          })
+        );
+        expect(
+          JSON.parse((expectedFetchMock.mock.calls[0][1] as RequestInit).body as string)
+        ).toEqual({ metadata: { foo: "bar" } });
+        expect(unexpectedFetchMock).not.toHaveBeenCalled();
+      });
+    });
+
     describe("header coalescing", () => {
       it("should properly merge headers with conflicting name casing", async () => {
         const client = new Client({ apiKey: "test-api-key" });

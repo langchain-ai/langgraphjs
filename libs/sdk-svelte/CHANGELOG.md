@@ -1,5 +1,11 @@
 # @langchain/svelte
 
+## 0.4.7
+
+### Patch Changes
+
+- [#2354](https://github.com/langchain-ai/langgraphjs/pull/2354) [`733d28e`](https://github.com/langchain-ai/langgraphjs/commit/733d28ea637135876375fa005a8d8a5605a692e6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): pin framework SDKs to langgraph-sdk version
+
 ## 0.4.6
 
 ### Patch Changes

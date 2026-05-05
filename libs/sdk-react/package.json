@@ -1,6 +1,6 @@
 {
   "name": "@langchain/react",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "React integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -18,7 +18,7 @@
     "directory": "libs/sdk-react"
   },
   "dependencies": {
-    "@langchain/langgraph-sdk": "workspace:^"
+    "@langchain/langgraph-sdk": "workspace:*"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.13",

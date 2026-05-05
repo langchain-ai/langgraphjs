@@ -1,6 +1,6 @@
 {
   "name": "@langchain/vue",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "Vue integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -18,7 +18,7 @@
     "directory": "libs/sdk-vue"
   },
   "dependencies": {
-    "@langchain/langgraph-sdk": "workspace:^"
+    "@langchain/langgraph-sdk": "workspace:*"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.13",
