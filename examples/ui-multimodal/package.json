@@ -1,7 +1,7 @@
 {
   "name": "@examples/ui-multimodal",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n agent,web -c magenta,cyan \"npx --no-install langgraphjs dev --no-browser --port 2024\" \"vite\"",

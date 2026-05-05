@@ -1,5 +1,34 @@
 # @langchain/angular
 
+## 1.0.0
+
+### Major Changes
+
+- [#2314](https://github.com/langchain-ai/langgraphjs/pull/2314) [`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add the Angular event streaming integration.
+
+  Angular applications can now build on the shared event streaming runtime with
+  `useStream`, `injectStream`, `StreamService`, `provideStream`,
+  `provideStreamDefaults`, `injectProjection`, and selector helpers for messages,
+  values, tool calls, custom channels, extensions, media, message metadata, and
+  submission queues. The integration supports thread switching, run submission,
+  reattachment, interrupts, WebSocket and SSE/custom transports, headless tools,
+  subgraphs, subagents, and typed event projections.
+
+  This release also adds Angular-specific media helpers, including
+  `injectMediaUrl` and selectors for audio, images, video, and files. The package
+  now exports the shared stream, media, transport, headless-tool, and type
+  inference types needed to compose strongly typed streaming UIs.
+
+  The documentation has been refreshed with guides for dependency injection,
+  `injectStream`, selectors, transports, custom transports, interrupts,
+  submission queues, headless tools, subagents/subgraphs, type safety, testing,
+  and migration from the previous SDK surface.
+
+### Patch Changes
+
+- Updated dependencies [[`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb), [`d1e2fda`](https://github.com/langchain-ai/langgraphjs/commit/d1e2fda1b1165e122362780a62ab8d2ebff9f9b9)]:
+  - @langchain/langgraph-sdk@1.9.0
+
 ## 0.4.7
 
 ### Patch Changes

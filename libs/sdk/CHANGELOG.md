@@ -1,5 +1,35 @@
 # @langchain/langgraph-sdk
 
+## 1.9.0
+
+### Minor Changes
+
+- [#2314](https://github.com/langchain-ai/langgraphjs/pull/2314) [`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add the framework-agnostic event streaming SDK.
+
+  The SDK now includes a thread-focused streaming client built around
+  `ThreadStream`, `SubscriptionHandle`, message assembly, media assembly, typed
+  stream extensions, and pluggable protocol transports. Applications can stream
+  over SSE or WebSocket, provide custom agent-server adapters, subscribe to
+  values/messages/tools/custom/lifecycle/checkpoint channels, inspect and fork
+  state, respond to interrupts, and replay or dedupe ordered event streams.
+
+  This release also adds the reusable stream runtime used by the React, Vue,
+  Svelte, and Angular packages: `StreamController`, `StreamStore`,
+  `ChannelRegistry`, projection factories, subagent/subgraph discovery,
+  submission queue coordination, message metadata tracking, root message
+  projection, media projections, and helper types for agent/deep-agent state and
+  tool-call inference.
+
+  The client package has been reorganized into focused modules for assistants,
+  threads, runs, store, protocol streaming, transports, media, messages, and UI
+  helpers. New SDK documentation covers configuration, assistants, threads, runs,
+  store, streaming, transports, extensions, interrupts, messages, media,
+  subagents, and subgraphs.
+
+### Patch Changes
+
+- [#2363](https://github.com/langchain-ai/langgraphjs/pull/2363) [`d1e2fda`](https://github.com/langchain-ai/langgraphjs/commit/d1e2fda1b1165e122362780a62ab8d2ebff9f9b9) Thanks [@cwlbraa](https://github.com/cwlbraa)! - Add a `returnMinimal` option to `threads.update`.
+
 ## 1.8.10
 
 ### Patch Changes
