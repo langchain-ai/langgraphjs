@@ -157,7 +157,7 @@ describe("ExecutionInfo", () => {
 });
 
 describe("ServerInfo", () => {
-  it("should build serverInfo from assistant_id/graph_id in config metadata", async () => {
+  it("should build serverInfo from assistant_id/graph_id in config configurable", async () => {
     let captured: ServerInfo | undefined;
 
     const graph = new StateGraph(State)
@@ -171,7 +171,7 @@ describe("ServerInfo", () => {
 
     await graph.invoke(
       { message: "hi" },
-      { metadata: { assistant_id: "asst-abc", graph_id: "my-graph" } }
+      { configurable: { assistant_id: "asst-abc", graph_id: "my-graph" } }
     );
 
     expect(captured).toBeDefined();
@@ -180,7 +180,7 @@ describe("ServerInfo", () => {
     expect(captured!.user).toBeUndefined();
   });
 
-  it("should return undefined serverInfo when no metadata present", async () => {
+  it("should return undefined serverInfo when no configurable present", async () => {
     let captured: ServerInfo | undefined;
 
     const graph = new StateGraph(State)
@@ -219,8 +219,11 @@ describe("ServerInfo", () => {
     await graph.invoke(
       { message: "hi" },
       {
-        configurable: { langgraph_auth_user: proxyUser },
-        metadata: { assistant_id: "asst-proxy", graph_id: "graph-proxy" },
+        configurable: {
+          langgraph_auth_user: proxyUser,
+          assistant_id: "asst-proxy",
+          graph_id: "graph-proxy",
+        },
       }
     );
 
