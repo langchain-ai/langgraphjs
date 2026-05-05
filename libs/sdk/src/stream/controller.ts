@@ -777,15 +777,11 @@ export class StreamController<
          * for every resumed iteration until the subscription is
          * permanently closed or the controller is disposed.
          */
-        let iterationCount = 0;
         while (!this.#disposed) {
-          iterationCount += 1;
-          let perIterCount = 0;
           for await (const event of subscription) {
             if (this.#disposed) {
               break;
             }
-            perIterCount += 1;
             /**
              * Resilience: isolate per-event dispatch from the pump loop.
              *

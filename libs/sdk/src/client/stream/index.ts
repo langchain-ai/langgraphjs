@@ -1813,13 +1813,11 @@ export class ThreadStream<
    * pumps may be active briefly, with `#seenEventIds` deduping.
    */
   async #pumpStream(handle: EventStreamHandle): Promise<void> {
-    let count = 0;
     try {
       for await (const message of handle.events) {
         if (this.#closed) {
           break;
         }
-        count += 1;
         this.#handleIncoming(message);
       }
     } catch (err) {
@@ -2036,14 +2034,10 @@ export class ThreadStream<
       // dispatches to matching subscriptions based on each sub's
       // advertised filter, with per-sub dedup.
       let fannedToAny = false;
-      let matchCount = 0;
-      let dedupSkip = 0;
       for (const subscription of this.#subscriptions.values()) {
         if (!matchesSubscription(message, subscription.filter)) continue;
-        matchCount += 1;
         if (eventId != null) {
           if (subscription.seenEventIds.has(eventId)) {
-            dedupSkip += 1;
             continue;
           }
           subscription.seenEventIds.add(eventId);

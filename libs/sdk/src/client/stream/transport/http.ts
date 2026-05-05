@@ -172,13 +172,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           .pipeThrough(SSEDecoder());
         const iterable = IterableReadableStream.fromReadableStream(stream);
 
-        let count = 0;
         for await (const event of iterable) {
           if (ac.signal.aborted || this.closed) {
             break;
           }
           if (isRecord(event.data)) {
-            count += 1;
             const msg = event.data as Message & {
               seq?: number;
               method?: string;
