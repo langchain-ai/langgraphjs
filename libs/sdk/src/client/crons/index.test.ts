@@ -263,4 +263,21 @@ describe("crons.count", () => {
       metadata: { team: "infra" },
     });
   });
+
+  it("omits metadata when not provided", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(0),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    await client.crons.count();
+
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(body.metadata).toBeUndefined();
+  });
 });

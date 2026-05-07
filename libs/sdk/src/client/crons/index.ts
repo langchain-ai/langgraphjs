@@ -184,12 +184,12 @@ export class CronsClient extends BaseClient {
     assistantId?: string;
     threadId?: string;
     enabled?: boolean;
-    metadata?: Metadata;
     limit?: number;
     offset?: number;
     sortBy?: CronSortBy;
     sortOrder?: SortOrder;
     select?: CronSelectField[];
+    metadata?: Metadata;
     signal?: AbortSignal;
   }): Promise<Cron[]> {
     return this.fetch<Cron[]>("/runs/crons/search", {
@@ -198,12 +198,12 @@ export class CronsClient extends BaseClient {
         assistant_id: query?.assistantId ?? undefined,
         thread_id: query?.threadId ?? undefined,
         enabled: query?.enabled ?? undefined,
-        metadata: query?.metadata ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
         select: query?.select ?? undefined,
+        metadata: query?.metadata ?? undefined,
       },
       signal: query?.signal,
     });
