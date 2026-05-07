@@ -1329,6 +1329,25 @@ export class ThreadStream<
     this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherWebSocket();
   }
 
+  /**
+   * Public, idempotent entry point to start the wildcard lifecycle
+   * watcher.
+   *
+   * The watcher is normally started lazily by `submitRun` /
+   * `respondInput` because for fresh (self-created) threads the SSE
+   * stream would 404 if opened before the server has the thread row.
+   * Callers that already know the thread exists server-side
+   * (`StreamController.hydrate` of an existing thread) can use this
+   * to start the watcher up front, which is what makes first-level
+   * subagent discovery work for historical thread loads when the
+   * content pump is run at `depth: 0`.
+   *
+   * Idempotent — repeat calls reuse the in-flight start promise.
+   */
+  startLifecycleWatcher(): void {
+    this.#startLifecycleWatcher();
+  }
+
   async #startLifecycleWatcherSse(): Promise<void> {
     const filter: SubscribeParams = {
       channels: ["lifecycle", "input"],

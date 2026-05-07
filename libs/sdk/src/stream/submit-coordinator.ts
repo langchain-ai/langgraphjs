@@ -155,10 +155,17 @@ export class SubmitCoordinator<
   readonly #setCurrentThreadId: (threadId: string | null) => void;
   /** Records a thread id we created client-side so hydrate can skip a 404 round-trip. */
   readonly #rememberSelfCreatedThreadId: (threadId: string) => void;
+  /** Drops a thread id from the self-created set once it's committed server-side. */
+  readonly #forgetSelfCreatedThreadId: (threadId: string) => void;
   /** Triggers a hydrate on the controller (used by `options.threadId` rebinds). */
   readonly #hydrate: (threadId?: string | null) => Promise<void>;
   /** Lazily creates / returns the active {@link ThreadStream}. */
-  readonly #ensureThread: (threadId: string) => ThreadStream;
+  readonly #ensureThread: (
+    threadId: string,
+    deferRootPump?: boolean
+  ) => ThreadStream;
+  /** Starts the previously-deferred root pump after a self-created thread commits. */
+  readonly #startDeferredRootPump: () => void;
   /** Resolves once the controller's root subscription pump is up. */
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
@@ -185,8 +192,10 @@ export class SubmitCoordinator<
     getCurrentThreadId: () => string | null;
     setCurrentThreadId: (threadId: string | null) => void;
     rememberSelfCreatedThreadId: (threadId: string) => void;
+    forgetSelfCreatedThreadId: (threadId: string) => void;
     hydrate: (threadId?: string | null) => Promise<void>;
-    ensureThread: (threadId: string) => ThreadStream;
+    ensureThread: (threadId: string, deferRootPump?: boolean) => ThreadStream;
+    startDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
@@ -199,8 +208,10 @@ export class SubmitCoordinator<
     this.#getCurrentThreadId = params.getCurrentThreadId;
     this.#setCurrentThreadId = params.setCurrentThreadId;
     this.#rememberSelfCreatedThreadId = params.rememberSelfCreatedThreadId;
+    this.#forgetSelfCreatedThreadId = params.forgetSelfCreatedThreadId;
     this.#hydrate = params.hydrate;
     this.#ensureThread = params.ensureThread;
+    this.#startDeferredRootPump = params.startDeferredRootPump;
     this.#waitForRootPumpReady = params.waitForRootPumpReady;
     this.#awaitNextTerminal = params.awaitNextTerminal;
     this.#latestUnresolvedInterrupt = params.latestUnresolvedInterrupt;
@@ -249,7 +260,8 @@ export class SubmitCoordinator<
     // Self-created thread id path: mint client-side so the controller
     // (and Suspense boundaries) get a stable id even before the run
     // is dispatched.
-    if (this.#getCurrentThreadId() == null) {
+    const wasSelfCreated = this.#getCurrentThreadId() == null;
+    if (wasSelfCreated) {
       const threadId = uuidv7();
       this.#setCurrentThreadId(threadId);
       this.#rememberSelfCreatedThreadId(threadId);
@@ -262,7 +274,14 @@ export class SubmitCoordinator<
 
     const currentThreadId = this.#getCurrentThreadId();
     if (currentThreadId == null) return;
-    const thread = this.#ensureThread(currentThreadId);
+    // For client-self-created threads we defer the persistent root SSE
+    // pump until after `submitRun` / `respondInput` commits the thread
+    // server-side. Opening the pump's `subscription.subscribe` against
+    // a not-yet-existent thread row produces a `404: Thread not found`
+    // protocol error that strands lifecycle / messages events for the
+    // first run. The deferred path starts the pump after dispatch
+    // returns (see `#startDeferredRootPump` calls below).
+    const thread = this.#ensureThread(currentThreadId, wasSelfCreated);
     const activeThreadId = currentThreadId;
     // Wait for the root subscription to be live; otherwise the
     // dispatch could resolve before we're listening for events and
@@ -270,8 +289,19 @@ export class SubmitCoordinator<
     await this.#waitForRootPumpReady();
 
     const strategy = options?.multitaskStrategy ?? "rollback";
+    // `wasSelfCreated` short-circuit: when this submit just minted a
+    // brand-new thread id (the user clicked "New Thread"), the
+    // strategy check shouldn't see a run on the *previous* thread as
+    // a reason to enqueue. The previous run is on a thread the user
+    // navigated away from; abandoning its client-side abort tracking
+    // is correct (the server-side run continues independently).
+    // Without this, `enqueue` would trap the new submission and
+    // `submitRun` never fires for the new thread — leaving a freshly-
+    // minted thread id committed to the URL but never to the server.
     const hasActiveRun =
-      this.#runAbort != null && !this.#runAbort.signal.aborted;
+      !wasSelfCreated &&
+      this.#runAbort != null &&
+      !this.#runAbort.signal.aborted;
     if (hasActiveRun && strategy === "reject") {
       throw new Error(
         "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
@@ -332,6 +362,17 @@ export class SubmitCoordinator<
           interrupt_id: target.interruptId,
           response: resumeCommand,
         });
+        // Defer the pump start until the dispatch HTTP response
+        // lands — see the analogous block in the non-resume path
+        // below for the rationale (thread row not committed
+        // synchronously). For a resume the thread exists already
+        // (it must, since `latestUnresolvedInterrupt()` was non-null),
+        // so `#startDeferredRootPump` is typically a no-op here, but
+        // we keep the same shape to avoid a future regression.
+        void commandPromise.then(
+          () => this.#startDeferredRootPump(),
+          () => {}
+        );
         // Mark resolved synchronously: even if the response races and
         // the command settles after the terminal, we don't want to
         // re-target this same interrupt on the next submit.
@@ -367,6 +408,26 @@ export class SubmitCoordinator<
               ? "enqueue"
               : options?.multitaskStrategy,
         });
+        // Start the deferred root pump *after* the dispatch HTTP
+        // response lands — that's when the thread row exists server-
+        // side. Doing it synchronously here would race the response
+        // and the pump's `subscription.subscribe` would 404. Same
+        // reason we drop the self-created flag only after dispatch:
+        // future hydrates need the thread to exist before they fetch
+        // state.
+        //
+        // Fire-and-forget: we don't want to gate Promise.race on this,
+        // and `commandPromise.catch` is already handled below. A
+        // dispatch failure means there's no thread to pump anyway.
+        void commandPromise.then(
+          () => {
+            this.#startDeferredRootPump();
+            this.#forgetSelfCreatedThreadId(activeThreadId);
+          },
+          () => {
+            /* dispatch failed — error handling below surfaces it */
+          }
+        );
         const notifyCreated = (result: { run_id?: unknown }) => {
           this.#options.onCreated?.({
             run_id: result.run_id as string,
