@@ -4,6 +4,7 @@ import {
   CronCreateForThreadResponse,
   CronCreateResponse,
   CronSortBy,
+  Metadata,
   SortOrder,
 } from "../../schema.js";
 import type { CronsCreatePayload, CronsUpdatePayload } from "../../types.js";
@@ -183,6 +184,7 @@ export class CronsClient extends BaseClient {
     assistantId?: string;
     threadId?: string;
     enabled?: boolean;
+    metadata?: Metadata;
     limit?: number;
     offset?: number;
     sortBy?: CronSortBy;
@@ -196,6 +198,7 @@ export class CronsClient extends BaseClient {
         assistant_id: query?.assistantId ?? undefined,
         thread_id: query?.threadId ?? undefined,
         enabled: query?.enabled ?? undefined,
+        metadata: query?.metadata ?? undefined,
         limit: query?.limit ?? 10,
         offset: query?.offset ?? 0,
         sort_by: query?.sortBy ?? undefined,
@@ -211,11 +214,13 @@ export class CronsClient extends BaseClient {
    *
    * @param query.assistantId Assistant ID to filter by.
    * @param query.threadId Thread ID to filter by.
+   * @param query.metadata Metadata to filter by. Exact match filter for each KV pair.
    * @returns Number of cron jobs matching the criteria.
    */
   async count(query?: {
     assistantId?: string;
     threadId?: string;
+    metadata?: Metadata;
     signal?: AbortSignal;
   }): Promise<number> {
     return this.fetch<number>(`/runs/crons/count`, {
@@ -223,6 +228,7 @@ export class CronsClient extends BaseClient {
       json: {
         assistant_id: query?.assistantId ?? undefined,
         thread_id: query?.threadId ?? undefined,
+        metadata: query?.metadata ?? undefined,
       },
       signal: query?.signal,
     });
