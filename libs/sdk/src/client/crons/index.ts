@@ -178,6 +178,8 @@ export class CronsClient extends BaseClient {
   /**
    *
    * @param query Query options.
+   * @param query.metadata Metadata to filter by. Exact match filter for each KV pair.
+   *   Available in Agent Server version 0.9.0 and later.
    * @returns List of crons.
    */
   async search(query?: {
@@ -215,6 +217,7 @@ export class CronsClient extends BaseClient {
    * @param query.assistantId Assistant ID to filter by.
    * @param query.threadId Thread ID to filter by.
    * @param query.metadata Metadata to filter by. Exact match filter for each KV pair.
+   *   Available in Agent Server version 0.9.0 and later.
    * @returns Number of cron jobs matching the criteria.
    */
   async count(query?: {
