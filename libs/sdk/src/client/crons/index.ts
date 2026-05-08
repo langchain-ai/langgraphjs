@@ -4,6 +4,7 @@ import {
   CronCreateForThreadResponse,
   CronCreateResponse,
   CronSortBy,
+  Metadata,
   SortOrder,
 } from "../../schema.js";
 import type { CronsCreatePayload, CronsUpdatePayload } from "../../types.js";
@@ -177,6 +178,8 @@ export class CronsClient extends BaseClient {
   /**
    *
    * @param query Query options.
+   * @param query.metadata Metadata to filter by. Exact match filter for each KV pair.
+   *   Available in Agent Server version 0.9.0 and later.
    * @returns List of crons.
    */
   async search(query?: {
@@ -188,6 +191,7 @@ export class CronsClient extends BaseClient {
     sortBy?: CronSortBy;
     sortOrder?: SortOrder;
     select?: CronSelectField[];
+    metadata?: Metadata;
     signal?: AbortSignal;
   }): Promise<Cron[]> {
     return this.fetch<Cron[]>("/runs/crons/search", {
@@ -201,6 +205,7 @@ export class CronsClient extends BaseClient {
         sort_by: query?.sortBy ?? undefined,
         sort_order: query?.sortOrder ?? undefined,
         select: query?.select ?? undefined,
+        metadata: query?.metadata ?? undefined,
       },
       signal: query?.signal,
     });
@@ -211,11 +216,14 @@ export class CronsClient extends BaseClient {
    *
    * @param query.assistantId Assistant ID to filter by.
    * @param query.threadId Thread ID to filter by.
+   * @param query.metadata Metadata to filter by. Exact match filter for each KV pair.
+   *   Available in Agent Server version 0.9.0 and later.
    * @returns Number of cron jobs matching the criteria.
    */
   async count(query?: {
     assistantId?: string;
     threadId?: string;
+    metadata?: Metadata;
     signal?: AbortSignal;
   }): Promise<number> {
     return this.fetch<number>(`/runs/crons/count`, {
@@ -223,6 +231,7 @@ export class CronsClient extends BaseClient {
       json: {
         assistant_id: query?.assistantId ?? undefined,
         thread_id: query?.threadId ?? undefined,
+        metadata: query?.metadata ?? undefined,
       },
       signal: query?.signal,
     });

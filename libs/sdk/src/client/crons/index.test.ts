@@ -163,3 +163,121 @@ describe("crons.update", () => {
     expect(options.signal).toBe(abortController.signal);
   });
 });
+
+describe("crons.search", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    overrideFetchImplementation(fetchMock);
+    (globalThis as any).fetch = fetchMock;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("forwards metadata filter to API", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve([cronPayload()]),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    await client.crons.search({
+      assistantId: "asst_123",
+      metadata: { owner: "alice" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+
+    expect(url).toContain("/runs/crons/search");
+    expect(options.method).toBe("POST");
+    expect(body).toEqual({
+      assistant_id: "asst_123",
+      metadata: { owner: "alice" },
+      limit: 10,
+      offset: 0,
+    });
+  });
+
+  it("omits metadata when not provided", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve([]),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    await client.crons.search();
+
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(body.metadata).toBeUndefined();
+  });
+});
+
+describe("crons.count", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    overrideFetchImplementation(fetchMock);
+    (globalThis as any).fetch = fetchMock;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("forwards metadata filter to API", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(2),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    const result = await client.crons.count({
+      assistantId: "asst_123",
+      metadata: { team: "infra" },
+    });
+
+    expect(result).toBe(2);
+    const [url, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+
+    expect(url).toContain("/runs/crons/count");
+    expect(options.method).toBe("POST");
+    expect(body).toEqual({
+      assistant_id: "asst_123",
+      metadata: { team: "infra" },
+    });
+  });
+
+  it("omits metadata when not provided", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(0),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    await client.crons.count();
+
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(body.metadata).toBeUndefined();
+  });
+});
