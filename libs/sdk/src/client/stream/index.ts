@@ -330,7 +330,10 @@ function normalizeSubscribeParams(
 export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
   implements AsyncIterable<TYield>, EventSubscription<TYield>
 {
-  readonly subscriptionId: string;
+  // Mutated by `#subscribeViaCommand` on WS once the server-assigned
+  // subscription id arrives — see the placeholder→resolved transition
+  // there. SSE paths set this once at construction and never change it.
+  subscriptionId: string;
   readonly params: SubscribeParams;
   private readonly queue: TYield[] = [];
   private readonly waiters: Array<(value: IteratorResult<TYield>) => void> = [];
@@ -777,16 +780,17 @@ export class ThreadStream<
   async #withRunStartGate<T>(operation: () => Promise<T>): Promise<T> {
     let resolveGate!: () => void;
     let rejectGate!: (err: unknown) => void;
-    this.#runStartReady = new Promise<void>((resolve, reject) => {
+    const gate = new Promise<void>((resolve, reject) => {
       resolveGate = resolve;
       rejectGate = reject;
     });
+    this.#runStartReady = gate;
     // Swallow unhandled rejection: gate-awaiters that surface the
     // rejection via their own error path don't need a second log line,
     // and consumers that never await it (the typical case once
     // `run.start` resolves successfully) shouldn't trigger
     // `unhandledrejection` either.
-    this.#runStartReady.catch(() => undefined);
+    gate.catch(() => undefined);
     try {
       const result = await operation();
       resolveGate();
@@ -795,7 +799,14 @@ export class ThreadStream<
       rejectGate(err);
       throw err;
     } finally {
-      this.#runStartReady = null;
+      // Only clear the gate if it's still our gate. Concurrent
+      // run.start calls (multitaskStrategy: enqueue) would otherwise
+      // null out a later call's gate when this earlier call's finally
+      // ran, leaving subscribers that raced in after our finally but
+      // before the later run.start commits with no gate to wait on.
+      if (this.#runStartReady === gate) {
+        this.#runStartReady = null;
+      }
     }
   }
 
@@ -1653,10 +1664,27 @@ export class ThreadStream<
    *   the regular `subscribe()` path. Callers still get a working
    *   `SubscriptionHandle`.
    *
+   * **Side-effect bypass** (SSE path only): events delivered through
+   * a dedicated stream do *not* flow through `#handleIncoming`, so the
+   * following side effects are skipped:
+   *   - `ordering.lastSeenSeq` is not advanced
+   *   - `#onEventListeners` (used by `StreamController` for deep
+   *     interrupt tracking and subagent discovery hand-off) do not fire
+   *   - cross-subscription `seenEventIds` dedup is not run
+   *   - `input` events do not update interrupt state
+   *
+   * The shared content pump's filter excludes the channels/namespaces a
+   * dedicated subscriber consumes by design, so duplicate delivery is
+   * not a current concern — but consumers that rely on the above side
+   * effects must use `subscribe()` instead.
+   *
    * The structurally-cleaner long-term fix is per-namespace channel
    * filters in the protocol (so a single shared stream can carry
    * different channel sets per namespace); this is the workaround
    * that keeps the win client-only.
+   *
+   * @experimental Surface intended for projection runtimes; the
+   * side-effect bypass above makes it inappropriate for general use.
    */
   async subscribeDedicated(
     params: SubscribeParams
@@ -1672,6 +1700,11 @@ export class ThreadStream<
     return this.#subscribeViaDedicatedStream(params);
   }
 
+  // Pushes events directly into the handle queue, bypassing
+  // `#handleIncoming` — see the side-effect bypass note on
+  // `subscribeDedicated`. Intentional: the whole point of a dedicated
+  // stream is to avoid coupling a narrow projection to the shared
+  // pump's bookkeeping.
   async #subscribeViaDedicatedStream(
     params: SubscribeParams
   ): Promise<SubscriptionHandle<Event>> {
@@ -1720,8 +1753,16 @@ export class ThreadStream<
           if (message.type !== "event") continue;
           handle.push(message as Event);
         }
-      } catch {
-        /* stream errored or closed — fall through to handle.close() */
+      } catch (err) {
+        // Stream errored or closed mid-pump. Surface the cause so an
+        // empty-projection bug doesn't require a debugger break to
+        // diagnose; the projection itself will see the handle close
+        // via the `if (!pumpStopped) handle.close()` below.
+        console.warn(
+          "[langgraph-sdk] dedicated stream errored:",
+          // oxlint-disable-next-line no-instanceof/no-instanceof
+          err instanceof Error ? err.message : err
+        );
       }
       if (!pumpStopped) handle.close();
     })();
@@ -1921,10 +1962,15 @@ export class ThreadStream<
     if (this.#runStartReady != null) {
       try {
         await this.#runStartReady;
-      } catch {
+      } catch (err) {
         // The pending `run.start` failed; abandon this rotation and
         // let the rejected `run.start` surface the error to callers.
-        this.#rejectUncoveredPending(new Error("run.start failed"));
+        // Forward the original cause so pending subscribers see the
+        // real reason rather than a generic "run.start failed".
+        const normalized =
+          // oxlint-disable-next-line no-instanceof/no-instanceof
+          err instanceof Error ? err : new Error("run.start failed");
+        this.#rejectUncoveredPending(normalized);
         return;
       }
       if (this.#closed) return;
@@ -2166,7 +2212,7 @@ export class ThreadStream<
         throw err;
       }
     }
-    let result;
+    let result: SubscribeResult;
     try {
       result = await this.#send("subscription.subscribe", params);
     } catch (err) {
@@ -2175,6 +2221,13 @@ export class ThreadStream<
     }
     this.#subscriptions.delete(placeholderId);
     resolvedId = result.subscription_id;
+    // Re-key the map AND update the handle's public id. Without the
+    // second write, `#lifecycleSubId === handle.subscriptionId` checks
+    // (see `#prepareForNextRun` and the terminal-pause logic) compare
+    // the cached placeholder against the live map key and silently
+    // fail, causing the lifecycle subscription to be paused at
+    // terminal events on the WS transport.
+    handle.subscriptionId = resolvedId;
     this.#subscriptions.set(resolvedId, subscription);
     return handle as SubscriptionHandle<Event>;
   }
