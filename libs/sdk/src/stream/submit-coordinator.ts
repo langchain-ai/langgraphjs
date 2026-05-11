@@ -166,6 +166,8 @@ export class SubmitCoordinator<
   ) => ThreadStream;
   /** Starts the previously-deferred root pump after a self-created thread commits. */
   readonly #startDeferredRootPump: () => void;
+  /** Abandons a deferred root pump after a self-created dispatch fails. */
+  readonly #abandonDeferredRootPump: () => void;
   /** Resolves once the controller's root subscription pump is up. */
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
@@ -196,6 +198,7 @@ export class SubmitCoordinator<
     hydrate: (threadId?: string | null) => Promise<void>;
     ensureThread: (threadId: string, deferRootPump?: boolean) => ThreadStream;
     startDeferredRootPump: () => void;
+    abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
@@ -212,6 +215,7 @@ export class SubmitCoordinator<
     this.#hydrate = params.hydrate;
     this.#ensureThread = params.ensureThread;
     this.#startDeferredRootPump = params.startDeferredRootPump;
+    this.#abandonDeferredRootPump = params.abandonDeferredRootPump;
     this.#waitForRootPumpReady = params.waitForRootPumpReady;
     this.#awaitNextTerminal = params.awaitNextTerminal;
     this.#latestUnresolvedInterrupt = params.latestUnresolvedInterrupt;
@@ -369,6 +373,12 @@ export class SubmitCoordinator<
         // (it must, since `latestUnresolvedInterrupt()` was non-null),
         // so `#startDeferredRootPump` is typically a no-op here, but
         // we keep the same shape to avoid a future regression.
+        //
+        // Asymmetry with the non-resume path: we don't call
+        // `#forgetSelfCreatedThreadId` because a resume implies the
+        // thread already committed, so the self-created marker was
+        // already cleared on the original submit. Same reason we
+        // don't call `#abandonDeferredRootPump` on failure here.
         void commandPromise.then(
           () => this.#startDeferredRootPump(),
           () => {}
@@ -425,7 +435,17 @@ export class SubmitCoordinator<
             this.#forgetSelfCreatedThreadId(activeThreadId);
           },
           () => {
-            /* dispatch failed — error handling below surfaces it */
+            // Dispatch failed. Without abandoning, `#rootPumpDeferred`
+            // stays armed and `selfCreatedThreadIds` still holds this
+            // id — a retry submit would see `wasSelfCreated=false`
+            // (currentThreadId is no longer null), `#ensureThread`
+            // would early-return because `#thread != null`, and the
+            // root pump would never start. Tear down so the next
+            // submit re-runs `#ensureThread` from scratch.
+            if (wasSelfCreated) {
+              this.#abandonDeferredRootPump();
+              this.#forgetSelfCreatedThreadId(activeThreadId);
+            }
           }
         );
         const notifyCreated = (result: { run_id?: unknown }) => {

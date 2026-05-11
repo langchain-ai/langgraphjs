@@ -146,6 +146,12 @@ export class StreamController<
   #rootSubscription: SubscriptionHandle<Event> | undefined;
   #rootPump: Promise<void> | undefined;
   #rootPumpReady: Promise<void> | undefined;
+  /**
+   * `true` while a self-created thread has its root pump deferred until
+   * the first `submitRun` / `respondInput` commits the thread row
+   * server-side. See `#ensureThread` and `#startDeferredRootPump`.
+   */
+  #rootPumpDeferred = false;
   #threadEventUnsubscribe: (() => void) | undefined;
   #disposed = false;
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -240,6 +246,7 @@ export class StreamController<
       ensureThread: (threadId, deferRootPump) =>
         this.#ensureThread(threadId, deferRootPump),
       startDeferredRootPump: () => this.#startDeferredRootPump(),
+      abandonDeferredRootPump: () => this.#abandonDeferredRootPump(),
       forgetSelfCreatedThreadId: (threadId) => {
         this.#selfCreatedThreadIds.delete(threadId);
       },
@@ -702,7 +709,30 @@ export class StreamController<
     this.#startRootPump(this.#thread);
   }
 
-  #rootPumpDeferred: boolean = false;
+  /**
+   * Abandon a deferred root pump that never started because its
+   * triggering dispatch (`submitRun` / `respondInput`) failed.
+   *
+   * Without this, the controller would be wedged in a state where:
+   *   - `#thread` is wired but no content pump is open
+   *   - `#rootPumpDeferred` stays `true`
+   *   - `selfCreatedThreadIds` still holds the id
+   *
+   * A retry submit on the same controller would see
+   * `wasSelfCreated=false` (because `currentThreadId` is no longer
+   * null), `#ensureThread(id, false)` would early-return because
+   * `#thread != null`, and the pump would never start. The thread
+   * would have an id committed to the URL but no live subscription.
+   *
+   * Tearing down `#thread` so the next submit re-runs `#ensureThread`
+   * from scratch is the simplest recovery — the failed dispatch
+   * means there was nothing to subscribe to anyway.
+   */
+  #abandonDeferredRootPump(): void {
+    if (!this.#rootPumpDeferred) return;
+    this.#rootPumpDeferred = false;
+    void this.#teardownThread();
+  }
 
   /**
    * Close the current thread stream and reset per-thread assembly state.
@@ -726,6 +756,10 @@ export class StreamController<
     }
     this.#rootSubscription = undefined;
     this.#rootPumpReady = undefined;
+    // Reset so a swap to a new thread doesn't carry over a stale
+    // deferred flag — `#ensureThread` will set it again if the new
+    // thread is self-created.
+    this.#rootPumpDeferred = false;
     try {
       await this.#rootPump;
     } catch {

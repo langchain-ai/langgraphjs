@@ -284,4 +284,61 @@ describe("StreamController", () => {
     unsubscribe();
     await controller.dispose();
   });
+
+  it("calls thread.startLifecycleWatcher() on hydrate of an existing thread", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-existing",
+    });
+    await controller.hydrationPromise;
+
+    expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    await controller.dispose();
+  });
+
+  it("does not call thread.startLifecycleWatcher() on hydrate when no threadId is bound", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: null,
+    });
+    await controller.hydrationPromise;
+
+    // No thread bound → no lifecycle watcher attached yet. The
+    // submit-path call inside `submitRun` is what kicks it for
+    // self-created threads (covered by submit-coordinator tests).
+    expect(startLifecycleWatcher).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
 });
