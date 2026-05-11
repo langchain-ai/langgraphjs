@@ -615,10 +615,11 @@ describe("RootMessageProjection", () => {
               "args": undefined,
               "id": undefined,
               "name": undefined,
-              "text": "Two quick mental approaches:
+              "reasoning": "**Estimating multiplication mentally**
 
-        ",
-              "type": "text",
+        The user",
+              "text": undefined,
+              "type": "reasoning",
             },
             {
               "args": undefined,
@@ -629,6 +630,15 @@ describe("RootMessageProjection", () => {
         To",
               "text": undefined,
               "type": "reasoning",
+            },
+            {
+              "args": undefined,
+              "id": undefined,
+              "name": undefined,
+              "text": "Two quick mental approaches:
+
+        ",
+              "type": "text",
             },
           ],
           "id": "run-019e15fb-934e-7029-94f8-87176a5ffc6a",
@@ -675,6 +685,15 @@ describe("RootMessageProjection", () => {
         To estimate 17 × 24, I can round 17 to 20, which gives 20 × 24 = 480—an overestimate. Alternatively, rounding 24 to 25 gives 17 × 25 = 425, which is close; if I subtract 17 from that, it leads me to 408. I could also round both numbers together, resulting in 20 × 25 = 500, but that's even bigger. So, using the distributive property, the final answer is 408. I'll keep this clear and concise!",
                 "text": undefined,
                 "type": "reasoning",
+              },
+              {
+                "args": undefined,
+                "id": undefined,
+                "name": undefined,
+                "text": "Two quick mental approaches:
+
+        ",
+                "type": "text",
               },
             ],
             "id": "run-019e15fb-934e-7029-94f8-87176a5ffc6a",
