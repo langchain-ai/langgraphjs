@@ -105,8 +105,8 @@ export function assembledToBaseMessage(
       };
       return toolCallChunks.length > 0
         ? new AIMessageChunk(
-          payload as ConstructorParameters<typeof AIMessageChunk>[0]
-        )
+            payload as ConstructorParameters<typeof AIMessageChunk>[0]
+          )
         : new AIMessage(payload as ConstructorParameters<typeof AIMessage>[0]);
     }
   }

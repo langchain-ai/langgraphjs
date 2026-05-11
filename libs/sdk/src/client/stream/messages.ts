@@ -872,7 +872,8 @@ export class MessageAssembler {
   private clearBlockIndexAliases(activeKey: string): void {
     const prefix = `${activeKey}::`;
     for (const key of this.blockIndexByProtocolIndexAndType.keys()) {
-      if (key.startsWith(prefix)) this.blockIndexByProtocolIndexAndType.delete(key);
+      if (key.startsWith(prefix))
+        this.blockIndexByProtocolIndexAndType.delete(key);
     }
   }
 }
@@ -885,7 +886,10 @@ function blockIndexKey(
   return `${activeKey}::${protocolIndex}::${blockType}`;
 }
 
-function areCompatibleBlockTypes(currentType: string, nextType: string): boolean {
+function areCompatibleBlockTypes(
+  currentType: string,
+  nextType: string
+): boolean {
   const toolCallTypes = new Set([
     "tool_call",
     "tool_call_chunk",
