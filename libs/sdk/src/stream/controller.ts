@@ -151,6 +151,19 @@ export class StreamController<
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #resolvedInterrupts = new Set<string>();
   /**
+   * Set of interrupt IDs the server reports as currently *active* on
+   * the thread (from `state.tasks[].interrupts`). Populated during
+   * {@link hydrate} from `client.threads.getState()` and used as a
+   * strict allowlist when processing replayed `input.requested`
+   * events from the persistent SSE subscription. Without this guard,
+   * SSE replay re-adds historically-requested interrupts that have
+   * since been resolved (no `input.responded` event exists in the
+   * protocol, so the SDK has no other way to tell replay from live
+   * for an idle thread). `null` outside the hydrate-window so
+   * genuinely new live interrupts on an active run aren't filtered;
+   * cleared at the start of `submit()` for the same reason.
+   */
+  /**
    * Thread ids we minted client-side on first `submit()`. Keeping them
    * here lets `hydrate()` skip the `threads.getState()` round-trip —
    * we know there is nothing checkpointed server-side yet (and the
@@ -214,7 +227,6 @@ export class StreamController<
     this.#rootMessages = new RootMessageProjection({
       messagesKey: this.#messagesKey,
       store: this.rootStore,
-      subagents: this.#subagents,
     });
     this.#lifecycleLoading = new LifecycleLoadingTracker({
       store: this.rootStore,
@@ -395,6 +407,33 @@ export class StreamController<
             : undefined;
         this.#applyValues(state.values as unknown, syntheticCheckpoint);
       }
+      /**
+       * Sync the visible interrupt list to the server's authoritative
+       * `state.tasks[].interrupts`. Without this, SSE replay of past
+       * `input.requested` events would re-add resolved interrupts to
+       * the UI on every page navigation back to the thread.
+       */
+      const activeInterrupts: Interrupt<InterruptType>[] = [];
+      const activeIds = new Set<string>();
+      if (Array.isArray(state?.tasks)) {
+        for (const task of state.tasks) {
+          if (!Array.isArray(task?.interrupts)) continue;
+          for (const interrupt of task.interrupts) {
+            const id = (interrupt as { id?: string })?.id;
+            if (typeof id !== "string" || activeIds.has(id)) continue;
+            activeIds.add(id);
+            activeInterrupts.push({
+              id,
+              value: (interrupt as { value?: unknown })?.value as InterruptType,
+            });
+          }
+        }
+      }
+      this.rootStore.setState((s) => ({
+        ...s,
+        interrupts: activeInterrupts,
+        interrupt: activeInterrupts[0],
+      }));
     } catch (error) {
       /**
        * A 404 on hydrate means the thread does not exist server-side
@@ -624,6 +663,9 @@ export class StreamController<
    * Return the active thread stream, creating and binding one when needed.
    *
    * @param threadId - Thread id used when constructing the stream.
+   * @param deferRootPump - When `true`, build the ThreadStream and bind
+   *   the registry but skip starting the persistent root SSE pump. Used
+   *   for client-self-created thread ids whose server-side thread row
    */
   #ensureThread(threadId: string): ThreadStream {
     if (this.#thread != null) return this.#thread;
