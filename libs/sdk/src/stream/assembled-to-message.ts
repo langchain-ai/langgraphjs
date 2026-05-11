@@ -189,20 +189,55 @@ interface LooseToolCallChunk {
 function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
   const out: LooseToolCallChunk[] = [];
   for (const block of blocks) {
-    if (block.type !== "tool_call_chunk") continue;
-    const tc = block as {
-      id?: string;
-      name?: string;
-      args?: string;
-      index?: number;
-    };
-    out.push({
-      id: tc.id,
-      name: tc.name,
-      args: tc.args,
-      index: tc.index,
-      type: "tool_call_chunk",
-    });
+    if (block.type === "tool_call_chunk") {
+      const tc = block as {
+        id?: string;
+        name?: string;
+        args?: string;
+        index?: number;
+      };
+      out.push({
+        id: tc.id,
+        name: tc.name,
+        args: tc.args,
+        index: tc.index,
+        type: "tool_call_chunk",
+      });
+      continue;
+    }
+    if (block.type === "tool_call") {
+      // Re-encode finalized ``tool_call`` blocks as chunks. When a
+      // streaming AI message has BOTH finalized and still-streaming
+      // tool calls (parallel tool calls land sequentially during a
+      // single message — block 1 finishes while blocks 2-N are still
+      // streaming) the LangChain core ``AIMessageChunk`` constructor
+      // drops the caller-supplied ``tool_calls`` field and rebuilds
+      // it from ``tool_call_chunks`` via ``collapseToolCallChunks``.
+      // Without this re-encoding, every finished tool call disappears
+      // from ``message.tool_calls`` until ``message-finish`` flips
+      // the message to a plain ``AIMessage`` — visible on the
+      // coordinator panel as "only one Subagent Task card during
+      // streaming, then four at the end".
+      const tc = block as {
+        id?: string;
+        name?: string;
+        args?: unknown;
+        index?: number;
+      };
+      const argsString =
+        tc.args != null && typeof tc.args === "object"
+          ? safeJsonStringify(tc.args)
+          : typeof tc.args === "string"
+            ? tc.args
+            : "";
+      out.push({
+        id: tc.id,
+        name: tc.name,
+        args: argsString,
+        index: tc.index,
+        type: "tool_call_chunk",
+      });
+    }
   }
   return out;
 }
@@ -226,4 +261,12 @@ function normalizeToolCallArgs(value: unknown): Record<string, unknown> {
     }
   }
   return {};
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
 }
