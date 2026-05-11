@@ -1,9 +1,105 @@
+import { isBaseMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
+
 import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
 import { mergeSignals } from "../utils/signals.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { streamWithRetry, StreamRequestParams } from "../utils/stream.js";
 import type { StreamProtocol } from "../types.js";
+
+/**
+ * Convert a langchain.js ``BaseMessage`` instance to the canonical dict
+ * shape the langgraph-api Python server's ``convert_to_messages`` accepts.
+ *
+ * The default JSON.stringify on a BaseMessage invokes its ``toJSON()``
+ * method, which produces an ``{lc, type:"constructor", id, kwargs}``
+ * envelope. The server used to revive those via ``langchain_core.load.load``
+ * but that path was removed (Corridor CWE-502 finding) since the
+ * deserializer was broader than message types and a moderate-severity
+ * gadget. Normalising on the way out means the wire shape is always one
+ * the server already understands without a deserialization step.
+ *
+ * Plain dicts pass through this helper unchanged because the
+ * ``isBaseMessage`` typeguard rejects them.
+ */
+function messageToDict(m: BaseMessage): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    type: m.getType(),
+    content: m.content,
+  };
+  // Optional fields: only include when set so the wire payload stays
+  // minimal and matches what a hand-crafted dict client would send.
+  const additional = (m as { additional_kwargs?: Record<string, unknown> })
+    .additional_kwargs;
+  if (additional && Object.keys(additional).length > 0) {
+    out.additional_kwargs = additional;
+  }
+  const responseMetadata = (
+    m as { response_metadata?: Record<string, unknown> }
+  ).response_metadata;
+  if (responseMetadata && Object.keys(responseMetadata).length > 0) {
+    out.response_metadata = responseMetadata;
+  }
+  const id = (m as { id?: string }).id;
+  if (id) out.id = id;
+  const name = (m as { name?: string }).name;
+  if (name) out.name = name;
+  // AIMessage carries tool_calls / invalid_tool_calls / usage_metadata
+  const toolCalls = (m as { tool_calls?: unknown[] }).tool_calls;
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    out.tool_calls = toolCalls;
+  }
+  const invalidToolCalls = (m as { invalid_tool_calls?: unknown[] })
+    .invalid_tool_calls;
+  if (Array.isArray(invalidToolCalls) && invalidToolCalls.length > 0) {
+    out.invalid_tool_calls = invalidToolCalls;
+  }
+  const usageMetadata = (m as { usage_metadata?: unknown }).usage_metadata;
+  if (usageMetadata) out.usage_metadata = usageMetadata;
+  // ToolMessage carries tool_call_id / status / artifact
+  const toolCallId = (m as { tool_call_id?: string }).tool_call_id;
+  if (toolCallId) out.tool_call_id = toolCallId;
+  const status = (m as { status?: string }).status;
+  if (status) out.status = status;
+  const artifact = (m as { artifact?: unknown }).artifact;
+  if (artifact !== undefined) out.artifact = artifact;
+  return out;
+}
+
+/**
+ * Pre-walk the request payload, replacing any ``BaseMessage`` instance
+ * with the canonical dict shape returned by :func:`messageToDict`.
+ *
+ * A JSON.stringify replacer cannot do this: ``BaseMessage.toJSON()``
+ * runs *before* the replacer is invoked, so by the time the replacer
+ * sees the value it's already the legacy ``{lc, type:"constructor",
+ * id, kwargs}`` envelope dict — the BaseMessage typeguard fails. We
+ * have to intercept on the original object graph instead.
+ *
+ * Walks dicts, arrays, and ``Map``-like containers; primitives and
+ * unrecognised objects pass through unchanged. Plain objects from
+ * client code (already in the canonical dict shape) hit the
+ * fall-through branch and are returned untouched.
+ */
+function normalizeMessageInstances(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (isBaseMessage(value)) return messageToDict(value);
+  if (Array.isArray(value)) return value.map(normalizeMessageInstances);
+  // Plain object — recurse on each value. We don't try to handle
+  // ``Map`` / ``Set`` / class instances generically; those would be
+  // unusual in a JSON request body and the existing JSON.stringify
+  // semantics still apply for anything we don't unwrap.
+  const proto = Object.getPrototypeOf(value);
+  if (proto === Object.prototype || proto === null) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = normalizeMessageInstances(v);
+    }
+    return out;
+  }
+  return value;
+}
 
 export type HeaderValue = string | undefined | null;
 
@@ -190,7 +286,9 @@ export class BaseClient {
     };
 
     if (mutatedOptions.json) {
-      mutatedOptions.body = JSON.stringify(mutatedOptions.json);
+      mutatedOptions.body = JSON.stringify(
+        normalizeMessageInstances(mutatedOptions.json)
+      );
       mutatedOptions.headers = mergeHeaders(mutatedOptions.headers, {
         "content-type": "application/json",
       });
