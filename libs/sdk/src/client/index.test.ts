@@ -97,6 +97,45 @@ describe("Client", () => {
     expect(calls[0].pathname).toContain("/threads/my-thread/stream/events");
   });
 
+  it("normalises BaseMessage instances in v2 SSE command bodies", async () => {
+    // Regression: the v2 transport JSON.stringifies commands directly,
+    // bypassing BaseClient.prepareFetchOptions. Without normalization the
+    // server (which no longer revives the legacy ``{lc, type:"constructor",
+    // id, kwargs}`` envelope post-CWE-502) would reject these payloads.
+    const bodies: string[] = [];
+    const customFetch = ((_input: URL | RequestInfo, init?: RequestInit) => {
+      bodies.push(String(init?.body ?? ""));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ type: "success", id: 1, result: {} }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+    }) as typeof fetch;
+
+    const { HumanMessage } = await import("@langchain/core/messages");
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:9999",
+      threadId: "t",
+      fetch: customFetch,
+    });
+
+    await transport.send({
+      id: 1,
+      method: "run.start",
+      params: {
+        assistant_id: "a",
+        input: { messages: [new HumanMessage("hi")] },
+      },
+    } as Parameters<typeof transport.send>[0]);
+
+    const body = JSON.parse(bodies[0]);
+    const msg = body.params.input.messages[0];
+    expect(msg).toEqual({ type: "human", content: "hi" });
+    expect(msg).not.toHaveProperty("lc");
+    expect(msg).not.toHaveProperty("kwargs");
+  });
+
   it("uses the protocol commands path for sse commands", async () => {
     const calls: URL[] = [];
     const customFetch = ((input: URL | RequestInfo) => {

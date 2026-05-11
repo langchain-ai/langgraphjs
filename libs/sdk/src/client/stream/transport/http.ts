@@ -20,6 +20,7 @@ import {
   toError,
   isProtocolResponse,
 } from "./utils.js";
+import { normalizeMessageInstances } from "../../base.js";
 import { BytesLineDecoder, SSEDecoder } from "./decoder.js";
 import { IterableReadableStream } from "./stream.js";
 
@@ -88,7 +89,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     const response = await this.request(this.commandsUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(command),
+      body: JSON.stringify(normalizeMessageInstances(command)),
       signal: this.sessionAbortController.signal,
     });
 
