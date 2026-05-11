@@ -203,6 +203,77 @@ describe("MessageAssembler", () => {
     expect(finished?.message.blocks[0]).toEqual({ type: "text", text: "Hello" });
   });
 
+  it("keeps reasoning and text deltas separate when they reuse the same protocol index", () => {
+    const assembler = new MessageAssembler();
+
+    assembler.consume(
+      eventOf("messages", { event: "message-start", id: "msg_reason" }, {
+        namespace: [],
+        node: "bot",
+      }) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-start",
+          index: 0,
+          content: { type: "reasoning", reasoning: "think" },
+        },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: { type: "reasoning-delta", reasoning: " more" },
+        },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: { type: "text-delta", text: "answer" },
+        },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: { type: "text-delta", text: " text" },
+        },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const finishedReasoning = assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-finish",
+          index: 0,
+          content: { type: "reasoning", reasoning: "think more" },
+        },
+        { namespace: [], node: "bot" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    expect(finishedReasoning?.message.blocks).toEqual([
+      { type: "reasoning", reasoning: "think more" },
+      { type: "text", text: "answer text" },
+    ]);
+  });
+
   it("preserves message id when converting assembled messages to BaseMessage", () => {
     const message = assembledMessageToBaseMessage(
       {
@@ -215,6 +286,27 @@ describe("MessageAssembler", () => {
 
     expect(message.id).toBe("msg_base");
     expect(message.text).toBe("Hello");
+  });
+
+  it("preserves reasoning blocks when converting assembled AI messages", () => {
+    const message = assembledMessageToBaseMessage(
+      {
+        id: "msg_reasoning",
+        namespace: [],
+        blocks: [
+          { type: "reasoning", reasoning: "Thinking through it." },
+          { type: "text", text: "Final answer." },
+        ],
+      },
+      "ai"
+    );
+
+    expect(message.id).toBe("msg_reasoning");
+    expect(message.text).toBe("Final answer.");
+    expect(message.contentBlocks).toEqual([
+      { type: "reasoning", reasoning: "Thinking through it." },
+      { type: "text", text: "Final answer." },
+    ]);
   });
 
   it("keeps usage events from terminating message projection", () => {

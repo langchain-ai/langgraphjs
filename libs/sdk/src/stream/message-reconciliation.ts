@@ -138,9 +138,36 @@ export function shouldPreferValuesMessageForToolCalls(
       .map((toolCall) => toolCall.id)
       .filter((id): id is string => typeof id === "string" && id.length > 0)
   );
-  return valuesToolCalls.some((toolCall) => {
-    return typeof toolCall.id === "string" && !streamedIds.has(toolCall.id);
+  if (
+    valuesToolCalls.some((toolCall) => {
+      return typeof toolCall.id === "string" && !streamedIds.has(toolCall.id);
+    })
+  ) {
+    return true;
+  }
+
+  // Values snapshots carry the finalized tool-call args. Prefer them only when
+  // they add meaningful data, so empty placeholder args do not replace an
+  // otherwise useful streamed message.
+  return valuesToolCalls.some((valuesToolCall) => {
+    const streamedToolCall = streamedToolCalls.find(
+      (candidate) =>
+        typeof valuesToolCall.id === "string" &&
+        candidate.id === valuesToolCall.id
+    );
+    return (
+      streamedToolCall != null &&
+      hasMeaningfulArgs(valuesToolCall.args) &&
+      !jsonishEqual(valuesToolCall.args, streamedToolCall.args)
+    );
   });
+}
+
+function hasMeaningfulArgs(args: unknown): boolean {
+  if (args == null) return false;
+  if (typeof args === "string") return args.length > 0;
+  if (typeof args === "object") return Object.keys(args).length > 0;
+  return true;
 }
 
 export function messagesEqualList(
@@ -201,11 +228,11 @@ function normalizedMessageId(message: BaseMessage): string | undefined {
 
 function getMessageToolCalls(
   message: BaseMessage
-): Array<{ id?: string; name?: string }> {
+): Array<{ id?: string; name?: string; args?: unknown }> {
   const raw = (message as unknown as { tool_calls?: unknown }).tool_calls;
   if (!Array.isArray(raw)) return [];
   return raw.filter(
-    (toolCall): toolCall is { id?: string; name?: string } =>
+    (toolCall): toolCall is { id?: string; name?: string; args?: unknown } =>
       toolCall != null && typeof toolCall === "object"
   );
 }

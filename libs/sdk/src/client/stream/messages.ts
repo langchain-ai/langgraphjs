@@ -586,17 +586,6 @@ function cloneBlock<T extends ContentBlock>(block: T): T {
   return structuredClone(block);
 }
 
-function ensureBlockIndex(
-  blocks: ContentBlock[],
-  index: number,
-  fallback: ContentBlock
-): ContentBlock {
-  while (blocks.length <= index) {
-    blocks.push(cloneBlock(fallback));
-  }
-  return blocks[index] ?? (blocks[index] = cloneBlock(fallback));
-}
-
 function blockFromDelta(
   delta: CoreContentBlockDelta,
   current?: ContentBlock
@@ -678,6 +667,7 @@ function toChatModelStreamEvent(event: MessagesEvent): ChatModelStreamEvent {
 export class MessageAssembler {
   private readonly activeMessages = new Map<string, AssembledMessage>();
   private readonly activeByNamespaceNode = new Map<string, string>();
+  private readonly blockIndexByProtocolIndexAndType = new Map<string, number>();
 
   /**
    * Applies a single message event and returns the resulting assembly update.
@@ -740,6 +730,10 @@ export class MessageAssembler {
     switch (data.event) {
       case "content-block-start": {
         message.blocks[data.index] = cloneBlock(data.content);
+        this.blockIndexByProtocolIndexAndType.set(
+          blockIndexKey(activeKey, data.index, data.content.type),
+          data.index
+        );
         return {
           kind: "content-block-start",
           key: activeKey,
@@ -762,16 +756,20 @@ export class MessageAssembler {
         if (deltaBlock == null) {
           throw new Error("Received content-block-delta without content");
         }
-        const current = ensureBlockIndex(
+        const targetIndex = this.resolveBlockIndex(
+          activeKey,
           message.blocks,
           data.index,
-          deltaBlock
+          deltaBlock.type
         );
-        message.blocks[data.index] =
+        const current = message.blocks[targetIndex];
+        message.blocks[targetIndex] =
           deltaEvent.content != null
-            ? applyContentDelta(current, deltaEvent.content)
+            ? current == null
+              ? cloneBlock(deltaEvent.content)
+              : applyContentDelta(current, deltaEvent.content)
             : (applyCoreEventDelta(
-                current as unknown as CoreContentBlock,
+                current as CoreContentBlock | undefined,
                 data as unknown as Extract<
                   ChatModelStreamEvent,
                   { event: "content-block-delta" }
@@ -781,18 +779,23 @@ export class MessageAssembler {
           kind: "content-block-delta",
           key: activeKey,
           message,
-          index: data.index,
+          index: targetIndex,
           block: deltaBlock,
           event,
         };
       }
       case "content-block-finish": {
-        message.blocks[data.index] = cloneBlock(data.content);
+        const targetIndex = this.resolveFinishBlockIndex(
+          activeKey,
+          data.index,
+          data.content.type
+        );
+        message.blocks[targetIndex] = cloneBlock(data.content);
         return {
           kind: "content-block-finish",
           key: activeKey,
           message,
-          index: data.index,
+          index: targetIndex,
           block: data.content,
           event,
         };
@@ -802,6 +805,7 @@ export class MessageAssembler {
         message.finishMetadata = data.responseMetadata;
         this.activeMessages.delete(activeKey);
         this.activeByNamespaceNode.delete(namespaceNodeKey);
+        this.clearBlockIndexAliases(activeKey);
         return {
           kind: "message-finish",
           key: activeKey,
@@ -813,6 +817,7 @@ export class MessageAssembler {
         message.error = { message: data.message, code: data.code };
         this.activeMessages.delete(activeKey);
         this.activeByNamespaceNode.delete(namespaceNodeKey);
+        this.clearBlockIndexAliases(activeKey);
         return {
           kind: "message-error",
           key: activeKey,
@@ -822,6 +827,84 @@ export class MessageAssembler {
       }
     }
   }
+
+  private resolveBlockIndex(
+    activeKey: string,
+    blocks: ContentBlock[],
+    protocolIndex: number,
+    blockType: string
+  ): number {
+    const current = blocks[protocolIndex];
+    if (
+      current == null ||
+      current.type === blockType ||
+      areCompatibleBlockTypes(current.type, blockType)
+    ) {
+      this.blockIndexByProtocolIndexAndType.set(
+        blockIndexKey(activeKey, protocolIndex, blockType),
+        protocolIndex
+      );
+      return protocolIndex;
+    }
+
+    const key = blockIndexKey(activeKey, protocolIndex, blockType);
+    const existing = this.blockIndexByProtocolIndexAndType.get(key);
+    if (existing != null) return existing;
+
+    const nextIndex = blocks.length;
+    this.blockIndexByProtocolIndexAndType.set(key, nextIndex);
+    return nextIndex;
+  }
+
+  private resolveFinishBlockIndex(
+    activeKey: string,
+    protocolIndex: number,
+    blockType: string
+  ): number {
+    const key = blockIndexKey(activeKey, protocolIndex, blockType);
+    const existing = this.blockIndexByProtocolIndexAndType.get(key);
+    if (existing != null) return existing;
+
+    this.blockIndexByProtocolIndexAndType.set(key, protocolIndex);
+    return protocolIndex;
+  }
+
+  private clearBlockIndexAliases(activeKey: string): void {
+    const prefix = `${activeKey}::`;
+    for (const key of this.blockIndexByProtocolIndexAndType.keys()) {
+      if (key.startsWith(prefix))
+        this.blockIndexByProtocolIndexAndType.delete(key);
+    }
+  }
+}
+
+function blockIndexKey(
+  activeKey: string,
+  protocolIndex: number,
+  blockType: string
+): string {
+  return `${activeKey}::${protocolIndex}::${blockType}`;
+}
+
+function areCompatibleBlockTypes(
+  currentType: string,
+  nextType: string
+): boolean {
+  const toolCallTypes = new Set([
+    "tool_call",
+    "tool_call_chunk",
+    "tool_use",
+    "input_json_delta",
+  ]);
+  const serverToolCallTypes = new Set([
+    "server_tool_call",
+    "server_tool_call_chunk",
+  ]);
+
+  return (
+    (toolCallTypes.has(currentType) && toolCallTypes.has(nextType)) ||
+    (serverToolCallTypes.has(currentType) && serverToolCallTypes.has(nextType))
+  );
 }
 
 /**
