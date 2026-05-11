@@ -66,7 +66,6 @@ import {
 } from "./assembled-to-message.js";
 import type { StreamStore } from "./store.js";
 import type { RootSnapshot } from "./types.js";
-import type { SubagentDiscovery } from "./discovery/index.js";
 import { namespaceKey } from "./namespace.js";
 import {
   buildMessageIndex,
@@ -98,14 +97,6 @@ export class RootMessageProjection<
 
   /** Root snapshot store written to on every merge. */
   readonly #store: StreamStore<RootSnapshot<StateType, InterruptType>>;
-
-  /**
-   * Subagent discovery runner notified about every assembled root
-   * message. Driving discovery from assembled messages (rather than
-   * raw events) lets us discover subagents from synthesized
-   * `tool_calls` without re-parsing protocol payloads.
-   */
-  readonly #subagents: SubagentDiscovery;
 
   /**
    * Stateful chunk assembler for in-flight messages. Reset (via a
@@ -150,17 +141,13 @@ export class RootMessageProjection<
    * @param params.messagesKey - Key inside `values` that holds the
    *   message array.
    * @param params.store       - Root snapshot store to mutate.
-   * @param params.subagents   - Discovery runner fed by each new
-   *   assembled message.
    */
   constructor(params: {
     messagesKey: string;
     store: StreamStore<RootSnapshot<StateType, InterruptType>>;
-    subagents: SubagentDiscovery;
   }) {
     this.#messagesKey = params.messagesKey;
     this.#store = params.store;
-    this.#subagents = params.subagents;
   }
 
   /**
@@ -242,7 +229,6 @@ export class RootMessageProjection<
     const base = assembledMessageToBaseMessage(update.message, captured.role, {
       toolCallId: captured.toolCallId,
     });
-    this.#subagents.discoverFromMessage(base, event.params.namespace);
 
     this.#store.setState((s) => {
       const existingIdx = this.#indexById.get(id);
