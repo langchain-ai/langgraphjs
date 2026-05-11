@@ -541,6 +541,18 @@ export class ThreadStream<
   #lifecycleSubId: string | null = null;
   #lifecycleStartPromise?: Promise<void>;
 
+  // Set to the in-flight `run.start` send while it is awaiting the
+  // server response, then cleared. Sites that open server-side
+  // resources against `/threads/{id}/stream/events` (the SSE content
+  // pump, the SSE lifecycle watcher, and the WS `subscription.subscribe`
+  // command) await this so they don't race the thread's server-side
+  // creation and trip a `404: Thread not found`. Subscribers that
+  // arrive after `run.start` resolves see `null` and proceed
+  // immediately — `await null` is a microtask, not a real wait — so
+  // late selector-hook mounts (`useToolCalls` after subagent discovery)
+  // take no extra latency.
+  #runStartReady: Promise<void> | null = null;
+
   // ---------- v2 lifecycle watcher ----------
   // Dedicated wildcard `{channels: ["lifecycle", "input"]}` stream
   // opened by `submitRun` / `respondInput` (v2 entry points). Carries
@@ -629,38 +641,35 @@ export class ThreadStream<
     this.run = {
       start: async (params) => {
         this.#prepareForNextRun();
-        // The lifecycle watcher and the values projection both open
-        // server-side subscriptions on `/threads/{id}/stream/events`.
-        // We MUST await `run.start` before kicking those off — the
-        // server creates the thread as part of `run.start`, so any
-        // subscription opened earlier hits the not-yet-existent
-        // thread and the server emits a `404: Thread not found`
-        // protocol error into the SSE stream, leaving the client
-        // permanently waiting for terminal lifecycle events.
-        //
-        // The server buffers events between thread creation and
-        // first subscription open, so deferring here doesn't lose
-        // events as long as `subscription.subscribe` lands before
-        // the run terminates (true in practice — the buffer is
-        // bounded by the thread's run lifetime, not by wall-clock).
-        const result = await this.#send("run.start", {
-          ...params,
-          assistant_id: this.assistantId,
+        // Kick off the lifecycle watcher and the values projection
+        // SYNCHRONOUSLY so the React layer (and any other consumer that
+        // races subagent discovery) sees them registered immediately.
+        // Both open server-side subscriptions on
+        // `/threads/{id}/stream/events`, which would 404 if they landed
+        // before `run.start` committed the thread server-side — so we
+        // stage them behind `#runStartReady`, a promise resolved when
+        // the in-flight `run.start` send completes. Sites that open
+        // SSE/WS resources await this gate; everything else (event
+        // dispatch, projection bookkeeping) runs without delay.
+        return await this.#withRunStartGate(() => {
+          this.#ensureLifecycleTracking();
+          // Eagerly start the values projection so `thread.output` /
+          // `thread.values` resolve with the final state regardless of
+          // whether they are accessed before or after the run completes.
+          // Without this, late access would open a fresh subscription
+          // that misses every `values` event from the run.
+          void this.values;
+          // NOTE: `thread.extensions.<name>` is NOT eagerly subscribed.
+          // The shared custom dispatcher is opened lazily on first
+          // extension access and relies on the server's event buffer to
+          // replay any custom events that were emitted before the
+          // subscription landed. This keeps the zero-extensions hot path
+          // free of an unused `custom` subscription per run.
+          return this.#send("run.start", {
+            ...params,
+            assistant_id: this.assistantId,
+          });
         });
-        this.#ensureLifecycleTracking();
-        // Eagerly start the values projection so `thread.output` /
-        // `thread.values` resolve with the final state regardless of
-        // whether they are accessed before or after the run completes.
-        // Without this, late access would open a fresh subscription
-        // that misses every `values` event from the run.
-        void this.values;
-        // NOTE: `thread.extensions.<name>` is NOT eagerly subscribed.
-        // The shared custom dispatcher is opened lazily on first
-        // extension access and relies on the server's event buffer to
-        // replay any custom events that were emitted before the
-        // subscription landed. This keeps the zero-extensions hot path
-        // free of an unused `custom` subscription per run.
-        return result;
       },
     };
     this.agent = {
@@ -753,6 +762,41 @@ export class ThreadStream<
       });
       this.#lifecycleSubId = sub.subscriptionId;
     })().catch(() => undefined);
+  }
+
+  /**
+   * Run `operation` (a `run.start` send) while holding the run-start
+   * gate. Sets `#runStartReady` before invoking `operation` so any
+   * subscription kicked off synchronously inside it (e.g. the lifecycle
+   * watcher and the values projection) sees the gate when it eventually
+   * reaches `#startLifecycleWatcherSse` / `#reconcileStream` /
+   * `#subscribeViaCommand` and awaits it. The gate resolves the moment
+   * `operation` settles, so server-side subscribes land immediately
+   * after the thread is committed.
+   */
+  async #withRunStartGate<T>(operation: () => Promise<T>): Promise<T> {
+    let resolveGate!: () => void;
+    let rejectGate!: (err: unknown) => void;
+    this.#runStartReady = new Promise<void>((resolve, reject) => {
+      resolveGate = resolve;
+      rejectGate = reject;
+    });
+    // Swallow unhandled rejection: gate-awaiters that surface the
+    // rejection via their own error path don't need a second log line,
+    // and consumers that never await it (the typical case once
+    // `run.start` resolves successfully) shouldn't trigger
+    // `unhandledrejection` either.
+    this.#runStartReady.catch(() => undefined);
+    try {
+      const result = await operation();
+      resolveGate();
+      return result;
+    } catch (err) {
+      rejectGate(err);
+      throw err;
+    } finally {
+      this.#runStartReady = null;
+    }
   }
 
   /**
@@ -1239,17 +1283,18 @@ export class ThreadStream<
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
     this.#prepareForNextRun();
-    // Defer the lifecycle watcher's `subscription.subscribe` until after
-    // `run.start` has committed the thread server-side. Otherwise the
-    // SSE subscription opens against a not-yet-existent thread and the
-    // server emits a `404: Thread not found` protocol error into the
-    // stream, leaving terminal lifecycle events undelivered.
-    const result = await this.#send("run.start", {
-      ...(params as Record<string, unknown>),
-      assistant_id: this.assistantId,
+    // See `this.run.start` for the gating rationale — the lifecycle
+    // watcher must register synchronously (so subagent discovery and
+    // its downstream `useToolCalls` / `useMessages` subscriptions
+    // don't race the run), but its server-side SSE/WS open is staged
+    // behind `#runStartReady` to avoid a `404: Thread not found`.
+    return await this.#withRunStartGate(() => {
+      this.#startLifecycleWatcher();
+      return this.#send("run.start", {
+        ...(params as Record<string, unknown>),
+        assistant_id: this.assistantId,
+      });
     });
-    this.#startLifecycleWatcher();
-    return result;
   }
 
   /**
@@ -1330,6 +1375,17 @@ export class ThreadStream<
   }
 
   async #startLifecycleWatcherSse(): Promise<void> {
+    // Wait for any in-flight `run.start` send to commit the thread
+    // server-side. Without this the SSE GET on
+    // `/threads/{id}/stream/events` 404s and the watcher tears down
+    // before delivering any lifecycle event.
+    if (this.#runStartReady != null) {
+      try {
+        await this.#runStartReady;
+      } catch {
+        return;
+      }
+    }
     const filter: SubscribeParams = {
       channels: ["lifecycle", "input"],
     };
@@ -1855,6 +1911,27 @@ export class ThreadStream<
     const desired = this.#computeUnionFilter();
     if (desired == null) return;
 
+    // Wait for any in-flight `run.start` send so the SSE GET on
+    // `/threads/{id}/stream/events` doesn't 404 against a thread the
+    // server hasn't created yet. Late subscribers (after `run.start`
+    // resolves) see a null gate and proceed immediately.
+    if (this.#runStartReady != null) {
+      try {
+        await this.#runStartReady;
+      } catch {
+        // The pending `run.start` failed; abandon this rotation and
+        // let the rejected `run.start` surface the error to callers.
+        this.#rejectUncoveredPending(new Error("run.start failed"));
+        return;
+      }
+      if (this.#closed) return;
+      // Re-read through a local — TS narrowed `#rotationState` above
+      // and doesn't widen it back across the await, but another
+      // reconcile may have set it in the interim.
+      const stateNow: string = this.#rotationState;
+      if (stateNow === "rotating") return;
+    }
+
     // Bail only when nothing structurally changed AND nobody is
     // waiting on a fresh replay. A pending sub always needs a
     // rotation even when the filter is unchanged, because the server
@@ -2073,6 +2150,19 @@ export class ThreadStream<
       seenEventIds: new Set<string>(),
     });
     this.#subscriptions.set(placeholderId, subscription);
+    // Wait for any in-flight `run.start` send to commit the thread
+    // server-side. WS `subscription.subscribe` is rejected with
+    // `404: Thread not found` if it arrives before the thread is
+    // created — mirroring the SSE gates in `#startLifecycleWatcherSse`
+    // and `#reconcileStream`.
+    if (this.#runStartReady != null) {
+      try {
+        await this.#runStartReady;
+      } catch (err) {
+        this.#subscriptions.delete(placeholderId);
+        throw err;
+      }
+    }
     let result;
     try {
       result = await this.#send("subscription.subscribe", params);
