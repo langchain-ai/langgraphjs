@@ -629,6 +629,24 @@ export class ThreadStream<
     this.run = {
       start: async (params) => {
         this.#prepareForNextRun();
+        // The lifecycle watcher and the values projection both open
+        // server-side subscriptions on `/threads/{id}/stream/events`.
+        // We MUST await `run.start` before kicking those off — the
+        // server creates the thread as part of `run.start`, so any
+        // subscription opened earlier hits the not-yet-existent
+        // thread and the server emits a `404: Thread not found`
+        // protocol error into the SSE stream, leaving the client
+        // permanently waiting for terminal lifecycle events.
+        //
+        // The server buffers events between thread creation and
+        // first subscription open, so deferring here doesn't lose
+        // events as long as `subscription.subscribe` lands before
+        // the run terminates (true in practice — the buffer is
+        // bounded by the thread's run lifetime, not by wall-clock).
+        const result = await this.#send("run.start", {
+          ...params,
+          assistant_id: this.assistantId,
+        });
         this.#ensureLifecycleTracking();
         // Eagerly start the values projection so `thread.output` /
         // `thread.values` resolve with the final state regardless of
@@ -642,10 +660,7 @@ export class ThreadStream<
         // replay any custom events that were emitted before the
         // subscription landed. This keeps the zero-extensions hot path
         // free of an unused `custom` subscription per run.
-        return await this.#send("run.start", {
-          ...params,
-          assistant_id: this.assistantId,
-        });
+        return result;
       },
     };
     this.agent = {
@@ -1224,11 +1239,17 @@ export class ThreadStream<
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
     this.#prepareForNextRun();
-    this.#startLifecycleWatcher();
-    return await this.#send("run.start", {
+    // Defer the lifecycle watcher's `subscription.subscribe` until after
+    // `run.start` has committed the thread server-side. Otherwise the
+    // SSE subscription opens against a not-yet-existent thread and the
+    // server emits a `404: Thread not found` protocol error into the
+    // stream, leaving terminal lifecycle events undelivered.
+    const result = await this.#send("run.start", {
       ...(params as Record<string, unknown>),
       assistant_id: this.assistantId,
     });
+    this.#startLifecycleWatcher();
+    return result;
   }
 
   /**
@@ -1242,11 +1263,14 @@ export class ThreadStream<
     response: unknown;
   }): Promise<void> {
     this.#prepareForNextRun();
-    this.#startLifecycleWatcher();
+    // Same ordering rationale as `submitRun` — await `input.respond`
+    // first so the thread row is committed before any subscription
+    // opens, then start the lifecycle watcher.
     await this.#send(
       "input.respond",
       params as unknown as CommandParamsMap["input.respond"]
     );
+    this.#startLifecycleWatcher();
   }
 
   /**
