@@ -217,6 +217,27 @@ describe("MessageAssembler", () => {
     expect(message.text).toBe("Hello");
   });
 
+  it("preserves reasoning blocks when converting assembled AI messages", () => {
+    const message = assembledMessageToBaseMessage(
+      {
+        id: "msg_reasoning",
+        namespace: [],
+        blocks: [
+          { type: "reasoning", reasoning: "Thinking through it." },
+          { type: "text", text: "Final answer." },
+        ],
+      },
+      "ai"
+    );
+
+    expect(message.id).toBe("msg_reasoning");
+    expect(message.text).toBe("Final answer.");
+    expect(message.contentBlocks).toEqual([
+      { type: "reasoning", reasoning: "Thinking through it." },
+      { type: "text", text: "Final answer." },
+    ]);
+  });
+
   it("keeps usage events from terminating message projection", () => {
     const assembler = new MessageAssembler();
 
