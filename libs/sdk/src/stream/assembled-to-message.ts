@@ -206,6 +206,7 @@ function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
       continue;
     }
     if (block.type === "tool_call") {
+      // WORKAROUND(@langchain/core AIMessageChunk constructor):
       // Re-encode finalized ``tool_call`` blocks as chunks. When a
       // streaming AI message has BOTH finalized and still-streaming
       // tool calls (parallel tool calls land sequentially during a
@@ -218,6 +219,19 @@ function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
       // the message to a plain ``AIMessage`` — visible on the
       // coordinator panel as "only one Subagent Task card during
       // streaming, then four at the end".
+      //
+      // The ``tool_calls`` field at line 97 is therefore *also*
+      // redundant on the chunk path: AIMessageChunk discards it. We
+      // keep it for the no-chunks AIMessage branch below, where it's
+      // still load-bearing.
+      //
+      // TODO: remove this branch once upstream preserves the caller
+      // ``tool_calls`` field when ``tool_call_chunks`` is non-empty.
+      // Args are assumed JSON-safe (LLM-emitted): NaN/Infinity/Date/
+      // undefined will round-trip lossily through JSON.stringify ->
+      // parsePartialJson. Cyclic or BigInt args trigger
+      // safeJsonStringify's fallback and the call surfaces as an
+      // invalid_tool_call with a marker args string.
       const tc = block as {
         id?: string;
         name?: string;
@@ -225,8 +239,10 @@ function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
         index?: number;
       };
       const argsString =
-        tc.args != null && typeof tc.args === "object"
-          ? safeJsonStringify(tc.args)
+        tc.args != null &&
+        typeof tc.args === "object" &&
+        !Array.isArray(tc.args)
+          ? safeJsonStringify(tc.args, tc.id)
           : typeof tc.args === "string"
             ? tc.args
             : "";
@@ -263,10 +279,23 @@ function normalizeToolCallArgs(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function safeJsonStringify(value: unknown): string {
+function safeJsonStringify(value: unknown, toolCallId?: string): string {
   try {
     return JSON.stringify(value);
-  } catch {
+  } catch (error) {
+    // Cyclic refs / BigInt / other JSON-hostile values surface here.
+    // Returning "" lets ``parsePartialJson`` substitute ``"{}"`` and
+    // produce a tool call with empty args — the call itself survives,
+    // but a UI subagent card would render with no inputs. Warn so the
+    // failure mode isn't silent.
+    const id = toolCallId ? ` (tool_call id=${toolCallId})` : "";
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[langgraph-sdk] failed to JSON-stringify finalized tool_call.args${id}; ` +
+        `streaming UI will see empty args until message-finish: ${
+          (error as { message?: string } | null)?.message ?? String(error)
+        }`
+    );
     return "";
   }
 }
