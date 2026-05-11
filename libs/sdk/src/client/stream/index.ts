@@ -1914,7 +1914,10 @@ export class ThreadStream<
     // Wait for any in-flight `run.start` send so the SSE GET on
     // `/threads/{id}/stream/events` doesn't 404 against a thread the
     // server hasn't created yet. Late subscribers (after `run.start`
-    // resolves) see a null gate and proceed immediately.
+    // resolves) see a null gate and proceed immediately. The
+    // `openEventStream` adapter contract requires implementations to
+    // buffer events and replay them on new opens, so the rotation
+    // doesn't lose events that were emitted during the wait.
     if (this.#runStartReady != null) {
       try {
         await this.#runStartReady;
