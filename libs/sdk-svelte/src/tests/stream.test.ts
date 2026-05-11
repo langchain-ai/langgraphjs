@@ -117,6 +117,12 @@ it("make sure to pass metadata to the thread", async () => {
 
 it("handle message removal", async () => {
   const messagesValues = new Set<string>();
+  const keptStep2 = `ai: ${JSON.stringify([
+    { type: "text", text: "Step 2: To Keep" },
+  ])}`;
+  const keptStep3 = `ai: ${JSON.stringify([
+    { type: "text", text: "Step 3: To Keep" },
+  ])}`;
 
   const screen = render(MessageRemoval, {
     apiUrl: serverUrl,
@@ -135,17 +141,15 @@ it("handle message removal", async () => {
     .toHaveTextContent("human: Hello");
   await expect
     .element(screen.getByTestId("message-1"))
-    .toHaveTextContent("ai: Step 2: To Keep");
+    .toHaveTextContent(keptStep2);
   await expect
     .element(screen.getByTestId("message-2"))
-    .toHaveTextContent("ai: Step 3: To Keep");
+    .toHaveTextContent(keptStep3);
 
   const observed = [...messagesValues.values()];
   expect(observed).toContain("");
   const finalState = observed[observed.length - 1];
-  expect(finalState).toBe(
-    ["human: Hello", "ai: Step 2: To Keep", "ai: Step 3: To Keep"].join("\n"),
-  );
+  expect(finalState).toBe(["human: Hello", keptStep2, keptStep3].join("\n"));
   expect(finalState).not.toContain("Step 1: To Remove");
 });
 
