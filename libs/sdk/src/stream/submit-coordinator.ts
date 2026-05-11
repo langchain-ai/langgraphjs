@@ -361,6 +361,8 @@ export class SubmitCoordinator<
           namespace: target.namespace,
           interrupt_id: target.interruptId,
           response: resumeCommand,
+          config: boundConfig as Record<string, unknown> | undefined,
+          metadata: options?.metadata,
         });
         // Defer the pump start until the dispatch HTTP response
         // lands — see the analogous block in the non-resume path
