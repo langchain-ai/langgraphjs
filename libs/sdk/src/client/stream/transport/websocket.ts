@@ -7,6 +7,7 @@ import type {
 } from "@langchain/protocol";
 
 import { toWebSocketUrl, isRecord, hasHeaders, toError } from "./utils.js";
+import { normalizeMessageInstances } from "../../base.js";
 import type {
   HeaderValue,
   ProtocolRequestHook,
@@ -174,7 +175,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
         this.pending.set(command.id, { resolve, reject });
 
         try {
-          socket.send(JSON.stringify(command));
+          socket.send(JSON.stringify(normalizeMessageInstances(command)));
         } catch (error) {
           this.pending.delete(command.id);
           reject(toError(error));

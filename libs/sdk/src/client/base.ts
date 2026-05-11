@@ -1,5 +1,4 @@
-import { isBaseMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
 
 import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
@@ -23,23 +22,30 @@ import type { StreamProtocol } from "../types.js";
  * Plain dicts pass through this helper unchanged because the
  * ``isBaseMessage`` typeguard rejects them.
  */
-function messageToDict(m: BaseMessage): Record<string, unknown> {
+function messageToDict(
+  m: BaseMessage,
+  seen: WeakSet<object>
+): Record<string, unknown> {
   const out: Record<string, unknown> = {
     type: m.getType(),
-    content: m.content,
+    content: walk(m.content, seen),
   };
   // Optional fields: only include when set so the wire payload stays
   // minimal and matches what a hand-crafted dict client would send.
+  // Nested BaseMessage instances inside structured fields (tool_calls.args,
+  // additional_kwargs, artifact, ...) are recursively normalized too — a
+  // shallow copy would let toJSON() leak the legacy envelope back into
+  // the wire payload.
   const additional = (m as { additional_kwargs?: Record<string, unknown> })
     .additional_kwargs;
   if (additional && Object.keys(additional).length > 0) {
-    out.additional_kwargs = additional;
+    out.additional_kwargs = walk(additional, seen);
   }
   const responseMetadata = (
     m as { response_metadata?: Record<string, unknown> }
   ).response_metadata;
   if (responseMetadata && Object.keys(responseMetadata).length > 0) {
-    out.response_metadata = responseMetadata;
+    out.response_metadata = walk(responseMetadata, seen);
   }
   const id = (m as { id?: string }).id;
   if (id) out.id = id;
@@ -48,22 +54,22 @@ function messageToDict(m: BaseMessage): Record<string, unknown> {
   // AIMessage carries tool_calls / invalid_tool_calls / usage_metadata
   const toolCalls = (m as { tool_calls?: unknown[] }).tool_calls;
   if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-    out.tool_calls = toolCalls;
+    out.tool_calls = walk(toolCalls, seen);
   }
   const invalidToolCalls = (m as { invalid_tool_calls?: unknown[] })
     .invalid_tool_calls;
   if (Array.isArray(invalidToolCalls) && invalidToolCalls.length > 0) {
-    out.invalid_tool_calls = invalidToolCalls;
+    out.invalid_tool_calls = walk(invalidToolCalls, seen);
   }
   const usageMetadata = (m as { usage_metadata?: unknown }).usage_metadata;
-  if (usageMetadata) out.usage_metadata = usageMetadata;
+  if (usageMetadata) out.usage_metadata = walk(usageMetadata, seen);
   // ToolMessage carries tool_call_id / status / artifact
   const toolCallId = (m as { tool_call_id?: string }).tool_call_id;
   if (toolCallId) out.tool_call_id = toolCallId;
   const status = (m as { status?: string }).status;
   if (status) out.status = status;
   const artifact = (m as { artifact?: unknown }).artifact;
-  if (artifact !== undefined) out.artifact = artifact;
+  if (artifact !== undefined) out.artifact = walk(artifact, seen);
   return out;
 }
 
@@ -77,25 +83,40 @@ function messageToDict(m: BaseMessage): Record<string, unknown> {
  * id, kwargs}`` envelope dict — the BaseMessage typeguard fails. We
  * have to intercept on the original object graph instead.
  *
- * Walks dicts, arrays, and ``Map``-like containers; primitives and
- * unrecognised objects pass through unchanged. Plain objects from
- * client code (already in the canonical dict shape) hit the
- * fall-through branch and are returned untouched.
+ * Walks plain objects and arrays. ``Map`` / ``Set`` / ``Date`` / ``URL``
+ * and other class instances pass through unchanged so JSON.stringify's
+ * native handling still applies. Plain objects from client code
+ * (already in the canonical dict shape) hit the fall-through branch
+ * and are returned untouched.
+ *
+ * Cyclic graphs (``a.self = a``) return a sentinel placeholder rather
+ * than stack-overflowing — ``JSON.stringify`` would throw on the same
+ * input, so we degrade to a defined-shape value instead.
  */
-function normalizeMessageInstances(value: unknown): unknown {
+export function normalizeMessageInstances(value: unknown): unknown {
+  return walk(value, new WeakSet<object>());
+}
+
+function walk(value: unknown, seen: WeakSet<object>): unknown {
   if (value === null || typeof value !== "object") return value;
-  if (isBaseMessage(value)) return messageToDict(value);
-  if (Array.isArray(value)) return value.map(normalizeMessageInstances);
-  // Plain object — recurse on each value. We don't try to handle
-  // ``Map`` / ``Set`` / class instances generically; those would be
-  // unusual in a JSON request body and the existing JSON.stringify
-  // semantics still apply for anything we don't unwrap.
+  if (BaseMessage.isInstance(value)) return messageToDict(value, seen);
+  if (seen.has(value)) return "[Circular]";
+  if (Array.isArray(value)) {
+    seen.add(value);
+    const out = value.map((v) => walk(v, seen));
+    seen.delete(value);
+    return out;
+  }
+  // Plain object — recurse on each value. Class instances (Map, Set,
+  // Date, URL, ...) are left to JSON.stringify's default semantics.
   const proto = Object.getPrototypeOf(value);
   if (proto === Object.prototype || proto === null) {
+    seen.add(value);
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = normalizeMessageInstances(v);
+      out[k] = walk(v, seen);
     }
+    seen.delete(value);
     return out;
   }
   return value;

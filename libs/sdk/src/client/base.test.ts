@@ -469,6 +469,70 @@ describe("Client BaseMessage normalization on outbound requests", () => {
     ]);
   });
 
+  it("normalises BaseMessage nested inside tool_calls.args", async () => {
+    const client = new Client({ apiKey: "k" });
+    const inner = new HumanMessage("inner");
+    const msg = new AIMessage({
+      content: "x",
+      tool_calls: [
+        { id: "t", name: "tool", args: { msg: inner }, type: "tool_call" },
+      ],
+    });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: { input: { messages: [msg] } },
+    });
+    const body = captureBody() as {
+      input: {
+        messages: Array<{
+          tool_calls: Array<{ args: { msg: Record<string, unknown> } }>;
+        }>;
+      };
+    };
+    const innerOnWire = body.input.messages[0].tool_calls[0].args.msg;
+    expect(innerOnWire).toEqual({ type: "human", content: "inner" });
+    expect(innerOnWire).not.toHaveProperty("lc");
+    expect(innerOnWire).not.toHaveProperty("kwargs");
+  });
+
+  it("normalises BaseMessage nested inside additional_kwargs", async () => {
+    const client = new Client({ apiKey: "k" });
+    const memo = new SystemMessage("memo");
+    const msg = new AIMessage({
+      content: "x",
+      additional_kwargs: { memo },
+    });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: { input: { messages: [msg] } },
+    });
+    const body = captureBody() as {
+      input: {
+        messages: Array<{ additional_kwargs: { memo: Record<string, unknown> } }>;
+      };
+    };
+    expect(body.input.messages[0].additional_kwargs.memo).toEqual({
+      type: "system",
+      content: "memo",
+    });
+  });
+
+  it("does not stack-overflow on cyclic POJOs", async () => {
+    const client = new Client({ apiKey: "k" });
+    const cyclic: Record<string, unknown> = { type: "human", content: "x" };
+    cyclic.self = cyclic;
+    // JSON.stringify would throw on a cyclic graph; the normalizer now
+    // emits a sentinel and lets stringify succeed.
+    await expect(
+      (client.threads as any).fetch("/test", {
+        method: "POST",
+        json: { meta: cyclic },
+      })
+    ).resolves.toBeDefined();
+    const body = captureBody() as { meta: Record<string, unknown> };
+    expect(body.meta.self).toBe("[Circular]");
+  });
+
   it("walks nested message arrays anywhere in the body", async () => {
     const client = new Client({ apiKey: "k" });
     await (client.threads as any).fetch("/test", {
