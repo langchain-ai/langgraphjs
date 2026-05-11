@@ -67,6 +67,10 @@ export function toolCallsProjection(
         thread,
         channels: ["tools"],
         namespace: ns,
+        // Open a dedicated SSE stream — a `useToolCalls(stream, subagent)`
+        // consumer would otherwise pay for `messages` events at the
+        // subagent's namespace via the shared pump's channel union.
+        dedicated: true,
         onEvent(event) {
           if (event.method !== "tools") return;
           applyToolsEvent(event as ToolsEvent);

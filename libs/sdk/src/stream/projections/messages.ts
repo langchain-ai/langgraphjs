@@ -273,6 +273,11 @@ export function messagesProjection(
         // projections backfill history after the run has finished.
         channels: ["messages", "values"],
         namespace: ns,
+        // Open a dedicated SSE stream rather than joining the shared
+        // content pump's union filter — keeps namespace-scoped consumers
+        // from widening the wire request to the controller's full
+        // (channels, namespaces) cartesian product server-side.
+        dedicated: true,
         onEvent(event) {
           if (event.method === "messages") {
             applyEvent(event as MessagesEvent);
