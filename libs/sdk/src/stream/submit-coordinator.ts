@@ -167,6 +167,8 @@ export class SubmitCoordinator<
   readonly #latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
   /** Marks an interrupt id as resolved so it isn't re-targeted. */
   readonly #markInterruptResolved: (interruptId: string) => void;
+  /** Called once at the start of every {@link submit} invocation. */
+  readonly #onSubmitStart: () => void;
 
   /**
    * Active submission's abort controller. `undefined` between submits.
@@ -191,6 +193,7 @@ export class SubmitCoordinator<
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
     markInterruptResolved: (interruptId: string) => void;
+    onSubmitStart?: () => void;
   }) {
     this.#options = params.options;
     this.#rootStore = params.rootStore;
@@ -205,6 +208,7 @@ export class SubmitCoordinator<
     this.#awaitNextTerminal = params.awaitNextTerminal;
     this.#latestUnresolvedInterrupt = params.latestUnresolvedInterrupt;
     this.#markInterruptResolved = params.markInterruptResolved;
+    this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
   }
 
   /**
@@ -235,6 +239,7 @@ export class SubmitCoordinator<
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void> {
     if (this.#getDisposed()) return;
+    this.#onSubmitStart();
 
     // Per-submit thread override: rebind first so the rest of the
     // submit operates against the new thread.

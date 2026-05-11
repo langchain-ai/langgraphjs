@@ -81,25 +81,28 @@ function makePushableSubscription() {
   };
 }
 
-function inputRequestedEvent(): Event {
+function inputRequestedEvent(
+  interruptId = "interrupt-1",
+  payload: unknown = {
+    actionRequests: [
+      {
+        name: "send_release_update_email",
+        args: { to: "qa@example.com" },
+      },
+    ],
+  }
+): Event {
   return {
     type: "event",
-    event_id: "input-1",
+    event_id: `input-${interruptId}`,
     seq: 1,
     method: "input.requested",
     params: {
       namespace: [],
       timestamp: 0,
       data: {
-        interrupt_id: "interrupt-1",
-        payload: {
-          actionRequests: [
-            {
-              name: "send_release_update_email",
-              args: { to: "qa@example.com" },
-            },
-          ],
-        },
+        interrupt_id: interruptId,
+        payload,
       },
     },
   } as Event;
@@ -280,6 +283,197 @@ describe("StreamController", () => {
     });
 
     unsubscribe();
+    await controller.dispose();
+  });
+
+  it("hydrate seeds rootStore.interrupts from getState tasks", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          tasks: [
+            {
+              interrupts: [
+                { id: "active-1", value: { question: "approve?" } },
+                { id: "active-2", value: { question: "verify?" } },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-active",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    const snapshot = controller.rootStore.getSnapshot();
+    expect(snapshot.interrupts.map((i) => i.id)).toEqual([
+      "active-1",
+      "active-2",
+    ]);
+    expect(snapshot.interrupt?.id).toBe("active-1");
+
+    await controller.dispose();
+  });
+
+  it("filters replayed input.requested for resolved interrupts", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          // Server reports interrupt-active as the only currently-
+          // pending interrupt. The historical interrupt-resolved id
+          // is no longer present because it has been responded to.
+          tasks: [
+            { interrupts: [{ id: "interrupt-active", value: {} }] },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    // SSE replay surfaces a historical input.requested for the
+    // already-resolved interrupt. The allowlist must drop it.
+    onEvent?.(inputRequestedEvent("interrupt-resolved"));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["interrupt-active"]);
+
+    // Replay of the still-active interrupt is allowed (dedup keeps
+    // the list stable since hydrate already seeded it).
+    onEvent?.(inputRequestedEvent("interrupt-active"));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["interrupt-active"]);
+
+    await controller.dispose();
+  });
+
+  it("does not filter genuinely new interrupts after submit() clears the allowlist", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      // submitRun never resolves on its own — we abort via dispose()
+      // once the test assertions have run.
+      // submitRun rejects immediately so submit() unwinds through its
+      // error path without needing a real lifecycle terminal. The
+      // onSubmitStart hook (which clears the allowlist) fires
+      // synchronously before submitRun is invoked.
+      submitRun: vi.fn(async () => {
+        throw new Error("test-stub-submit-rejected");
+      }),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          tasks: [{ interrupts: [{ id: "old-interrupt", value: {} }] }],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-new-live",
+    });
+    await controller.hydrationPromise;
+
+    // Hydrate populates allowlist with [old-interrupt]. Without
+    // submit() clearing it, a brand-new live interrupt id would be
+    // dropped as "historical".
+    const submitPromise = controller.submit(null).catch(() => undefined);
+    // Yield so submit's synchronous onSubmitStart hook runs (which
+    // clears the allowlist) before the next event is delivered.
+    await Promise.resolve();
+    onEvent?.(inputRequestedEvent("brand-new-interrupt"));
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toContain("brand-new-interrupt");
+
+    await controller.dispose();
+    await submitPromise;
+  });
+
+  it("hydrate without tasks does not wipe in-flight interrupt state", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        // Runtime that doesn't return tasks at all. The mirror block
+        // must skip its setState and leave rootStore.interrupts
+        // alone — and must not seed the allowlist (so future live
+        // interrupts pass through).
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-no-tasks",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    // No tasks in response → allowlist stays null → a fresh live
+    // interrupt event lands in rootStore.interrupts unmodified.
+    onEvent?.(inputRequestedEvent("live-interrupt"));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["live-interrupt"]);
+
     await controller.dispose();
   });
 });
