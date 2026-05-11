@@ -629,6 +629,24 @@ export class ThreadStream<
     this.run = {
       start: async (params) => {
         this.#prepareForNextRun();
+        // The lifecycle watcher and the values projection both open
+        // server-side subscriptions on `/threads/{id}/stream/events`.
+        // We MUST await `run.start` before kicking those off — the
+        // server creates the thread as part of `run.start`, so any
+        // subscription opened earlier hits the not-yet-existent
+        // thread and the server emits a `404: Thread not found`
+        // protocol error into the SSE stream, leaving the client
+        // permanently waiting for terminal lifecycle events.
+        //
+        // The server buffers events between thread creation and
+        // first subscription open, so deferring here doesn't lose
+        // events as long as `subscription.subscribe` lands before
+        // the run terminates (true in practice — the buffer is
+        // bounded by the thread's run lifetime, not by wall-clock).
+        const result = await this.#send("run.start", {
+          ...params,
+          assistant_id: this.assistantId,
+        });
         this.#ensureLifecycleTracking();
         // Eagerly start the values projection so `thread.output` /
         // `thread.values` resolve with the final state regardless of
@@ -642,10 +660,7 @@ export class ThreadStream<
         // replay any custom events that were emitted before the
         // subscription landed. This keeps the zero-extensions hot path
         // free of an unused `custom` subscription per run.
-        return await this.#send("run.start", {
-          ...params,
-          assistant_id: this.assistantId,
-        });
+        return result;
       },
     };
     this.agent = {
@@ -1224,11 +1239,17 @@ export class ThreadStream<
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
     this.#prepareForNextRun();
-    this.#startLifecycleWatcher();
-    return await this.#send("run.start", {
+    // Defer the lifecycle watcher's `subscription.subscribe` until after
+    // `run.start` has committed the thread server-side. Otherwise the
+    // SSE subscription opens against a not-yet-existent thread and the
+    // server emits a `404: Thread not found` protocol error into the
+    // stream, leaving terminal lifecycle events undelivered.
+    const result = await this.#send("run.start", {
       ...(params as Record<string, unknown>),
       assistant_id: this.assistantId,
     });
+    this.#startLifecycleWatcher();
+    return result;
   }
 
   /**
@@ -1240,6 +1261,8 @@ export class ThreadStream<
     namespace: readonly string[];
     interrupt_id: string;
     response: unknown;
+    config?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
   }): Promise<void> {
     this.#prepareForNextRun();
     this.#startLifecycleWatcher();
@@ -1553,6 +1576,100 @@ export class ThreadStream<
     return await this.#subscribeRaw(params, {
       unwrapNamedCustom: !isParamsObject,
     });
+  }
+
+  /**
+   * Subscribe with a *dedicated* event stream (SSE) instead of joining
+   * the shared content pump's union filter.
+   *
+   * Use this for narrow namespace-scoped projections
+   * (`useMessages(stream, sub)` / `useToolCalls(stream, sub)`) that
+   * shouldn't widen the union — joining the union would pull every
+   * channel for every active namespace onto the wire just to satisfy
+   * a single narrow consumer.
+   *
+   * - **SSE transports**: opens a fresh `openEventStream` filter and
+   *   wraps the resulting `EventStreamHandle` in a `SubscriptionHandle`
+   *   so callers iterate it identically to a normal `subscribe()`.
+   * - **WebSocket transports**: there is no equivalent dedicated
+   *   stream (all events flow on the shared command connection), but
+   *   there is also no "union widening" cost on WS — we fall back to
+   *   the regular `subscribe()` path. Callers still get a working
+   *   `SubscriptionHandle`.
+   *
+   * The structurally-cleaner long-term fix is per-namespace channel
+   * filters in the protocol (so a single shared stream can carry
+   * different channel sets per namespace); this is the workaround
+   * that keeps the win client-only.
+   */
+  async subscribeDedicated(
+    params: SubscribeParams
+  ): Promise<SubscriptionHandle<Event>> {
+    await this.#ensureOpen();
+    if (this.#transportAdapter.openEventStream == null) {
+      // WS / non-SSE: no dedicated stream available. Fall back to the
+      // regular shared-command subscription — WS doesn't have the
+      // union-widening problem because all events flow on one
+      // connection regardless.
+      return this.#subscribeRaw(params, { unwrapNamedCustom: false });
+    }
+    return this.#subscribeViaDedicatedStream(params);
+  }
+
+  async #subscribeViaDedicatedStream(
+    params: SubscribeParams
+  ): Promise<SubscriptionHandle<Event>> {
+    let dedicatedHandle: EventStreamHandle | undefined;
+    let pumpStopped = false;
+    const subscriptionId = `sse-dedicated-${this.#nextCommandId++}`;
+    const handle = new SubscriptionHandle<Event, Event>(
+      subscriptionId,
+      params,
+      async () => {
+        pumpStopped = true;
+        try {
+          dedicatedHandle?.close();
+        } catch {
+          // best-effort close
+        }
+      }
+    );
+    try {
+      dedicatedHandle = this.#transportAdapter.openEventStream!(params);
+    } catch (err) {
+      handle.close();
+      throw err;
+    }
+    try {
+      await dedicatedHandle.ready;
+    } catch (err) {
+      try {
+        dedicatedHandle.close();
+      } catch {
+        /* best-effort */
+      }
+      handle.close();
+      throw err;
+    }
+    /**
+     * Drain the dedicated stream into the SubscriptionHandle queue.
+     * `Message` is a union with `type: "event"` as one variant; only
+     * forward those (skip subscription-confirm / error frames the
+     * iteration handler in #handleLifecycleWatcherMessage also drops).
+     */
+    void (async () => {
+      try {
+        for await (const message of dedicatedHandle!.events) {
+          if (pumpStopped) break;
+          if (message.type !== "event") continue;
+          handle.push(message as Event);
+        }
+      } catch {
+        /* stream errored or closed — fall through to handle.close() */
+      }
+      if (!pumpStopped) handle.close();
+    })();
+    return handle;
   }
 
   async #subscribeRaw(
@@ -1901,15 +2018,41 @@ export class ThreadStream<
     params: SubscribeParams,
     transform?: (event: Event) => unknown
   ): Promise<SubscriptionHandle<Event>> {
-    const result = await this.#send("subscription.subscribe", params);
+    // Register the subscription on the client BEFORE sending the
+    // ``subscription.subscribe`` command. The WebSocket server replays
+    // buffered events through ``install_subscription_with_replay``
+    // *before* returning the success response that carries the
+    // ``subscription_id``. If we waited for the response and only then
+    // ran ``this.#subscriptions.set(...)``, those replayed events would
+    // arrive at ``#handleIncoming`` while no matching subscription is
+    // registered — they would never reach the iterator, so
+    // namespace-scoped projections (``useMessages``) would render
+    // empty after click-to-expand on the WebSocket transport.
+    //
+    // ``#handleIncoming``'s fan-out matches purely on
+    // ``subscription.filter`` (channels + namespaces + depth), so a
+    // pre-registered entry under any temporary key already catches
+    // every replayed event. Once the server-assigned id arrives, we
+    // re-key the entry so a later ``unsubscribe`` finds it.
+    // ``#nextCommandId`` is post-incremented inside ``#send``; reading
+    // it here doesn't reserve the value, so two concurrent subscribes
+    // (typical under React StrictMode's mount→unmount→mount) would
+    // collide on the same placeholder. Mint a UUID-like suffix instead.
+    const placeholderId = `pending:${this.#nextCommandId}:${Math.random().toString(36).slice(2, 10)}`;
+    let resolvedId = placeholderId;
     const handle = new SubscriptionHandle<Event, unknown>(
-      result.subscription_id,
+      placeholderId,
       params,
-      async (id) => {
-        this.#subscriptions.delete(id);
-        if (!this.#closed) {
+      async () => {
+        // Use the server-assigned id once we have it; fall back to the
+        // placeholder while the subscribe command is still in flight
+        // (unsubscribe before subscribe-response is unusual but
+        // possible — disposing a projection that mounted and unmounted
+        // in the same React tick).
+        this.#subscriptions.delete(resolvedId);
+        if (!this.#closed && resolvedId !== placeholderId) {
           await this.#send("subscription.unsubscribe", {
-            subscription_id: id,
+            subscription_id: resolvedId,
           }).catch((err: unknown) => {
             if (
               // oxlint-disable-next-line no-instanceof/no-instanceof
@@ -1929,7 +2072,17 @@ export class ThreadStream<
       registeredAfterSeq: this.ordering.lastSeenSeq,
       seenEventIds: new Set<string>(),
     });
-    this.#subscriptions.set(result.subscription_id, subscription);
+    this.#subscriptions.set(placeholderId, subscription);
+    let result;
+    try {
+      result = await this.#send("subscription.subscribe", params);
+    } catch (err) {
+      this.#subscriptions.delete(placeholderId);
+      throw err;
+    }
+    this.#subscriptions.delete(placeholderId);
+    resolvedId = result.subscription_id;
+    this.#subscriptions.set(resolvedId, subscription);
     return handle as SubscriptionHandle<Event>;
   }
 
