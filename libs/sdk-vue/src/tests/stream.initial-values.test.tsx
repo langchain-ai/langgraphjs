@@ -63,7 +63,9 @@ it("replaces initialValues with server state once a run starts", async () => {
       .toHaveTextContent("Hey");
     await expect
       .element(screen.getByTestId("values"))
-      .toHaveTextContent(/^Fresh request\|Hey/);
+      .toHaveTextContent(
+        `Fresh request|${JSON.stringify([{ type: "text", text: "Hey" }])}`,
+      );
   } finally {
     await screen.unmount();
   }

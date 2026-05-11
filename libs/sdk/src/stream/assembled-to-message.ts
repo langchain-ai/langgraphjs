@@ -52,7 +52,7 @@ export function assembledToBaseMessage(
   input: AssembledToMessageInput
 ): BaseMessage {
   const { id, role, blocks, toolCallId, usage } = input;
-  const content = extractContentString(blocks);
+  const textContent = extractContentString(blocks);
   const toolCalls = extractToolCalls(blocks);
   const toolCallChunks = extractToolCallChunks(blocks);
   const additionalKwargs =
@@ -62,7 +62,7 @@ export function assembledToBaseMessage(
     case "human":
       return new HumanMessage({
         ...(id != null ? { id } : {}),
-        content,
+        content: textContent,
         ...(additionalKwargs != null
           ? { additional_kwargs: additionalKwargs }
           : {}),
@@ -70,7 +70,7 @@ export function assembledToBaseMessage(
     case "system":
       return new SystemMessage({
         ...(id != null ? { id } : {}),
-        content,
+        content: textContent,
         ...(additionalKwargs != null
           ? { additional_kwargs: additionalKwargs }
           : {}),
@@ -78,7 +78,7 @@ export function assembledToBaseMessage(
     case "tool":
       return new ToolMessage({
         ...(id != null ? { id } : {}),
-        content,
+        content: textContent,
         tool_call_id: toolCallId ?? "",
       });
     case "ai":
@@ -93,7 +93,7 @@ export function assembledToBaseMessage(
       // with `BaseMessage` and round-trips through the merge logic.
       const payload = {
         ...(id != null ? { id } : {}),
-        content,
+        content: cloneContentBlocks(blocks),
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
         ...(toolCallChunks.length > 0
           ? { tool_call_chunks: toolCallChunks }
@@ -101,10 +101,13 @@ export function assembledToBaseMessage(
         ...(additionalKwargs != null
           ? { additional_kwargs: additionalKwargs }
           : {}),
+        response_metadata: { output_version: "v1" as const },
       };
       return toolCallChunks.length > 0
-        ? new AIMessageChunk(payload)
-        : new AIMessage(payload);
+        ? new AIMessageChunk(
+            payload as ConstructorParameters<typeof AIMessageChunk>[0]
+          )
+        : new AIMessage(payload as ConstructorParameters<typeof AIMessage>[0]);
     }
   }
 }
@@ -140,6 +143,10 @@ function extractContentString(blocks: ContentBlock[]): string {
     }
   }
   return out;
+}
+
+function cloneContentBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  return blocks.map((block) => structuredClone(block));
 }
 
 interface LooseToolCall {

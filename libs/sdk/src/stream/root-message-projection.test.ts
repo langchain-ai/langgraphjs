@@ -192,13 +192,15 @@ function summarizeContent(content: unknown): unknown {
     return content.map((block) => {
       if (block == null || typeof block !== "object") return block;
       const record = block as Record<string, unknown>;
-      return {
+      const summary: Record<string, unknown> = {
         type: record.type,
         id: record.id,
         name: record.name,
         args: record.args,
         text: record.text,
       };
+      if ("reasoning" in record) summary.reasoning = record.reasoning;
+      return summary;
     });
   }
   return content;
@@ -238,7 +240,7 @@ describe("RootMessageProjection", () => {
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(1);
       expect(snap.messages[0].id).toBe("m1");
-      expect(snap.messages[0].content).toBe("Hi there");
+      expect(snap.messages[0].text).toBe("Hi there");
     });
 
     it("updates the same message index in place across deltas", () => {
@@ -253,7 +255,7 @@ describe("RootMessageProjection", () => {
       const after2 = store.getSnapshot().messages;
 
       expect(after2).toHaveLength(1);
-      expect(after2[0].content).toBe("ab");
+      expect(after2[0].text).toBe("ab");
       // The array is replaced so React's identity check fires.
       expect(after2).not.toBe(after1);
     });
@@ -272,7 +274,7 @@ describe("RootMessageProjection", () => {
 
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(1);
-      expect(snap.messages[0].content).toBe("Hi there");
+      expect(snap.messages[0].text).toBe("Hi there");
     });
 
     it("mirrors messages into values[messagesKey]", () => {
@@ -433,7 +435,7 @@ describe("RootMessageProjection", () => {
       expect(snap.messages).toHaveLength(2);
       expect(snap.messages[0]).toBe(human);
       // Streamed AIMessage retained for its in-flight content.
-      expect(snap.messages[1].content).toBe("streamed");
+      expect(snap.messages[1].text).toBe("streamed");
     });
 
     it("prefers the values version when it carries finalized tool-call data the stream lacks", () => {
@@ -555,7 +557,12 @@ describe("RootMessageProjection", () => {
             "type": "tool",
           },
           {
-            "content": "The result is **80,235**.
+            "content": [
+              {
+                "args": undefined,
+                "id": undefined,
+                "name": undefined,
+                "text": "The result is **80,235**.
 
         ## When You'd Use This in Code
 
@@ -577,7 +584,119 @@ describe("RootMessageProjection", () => {
         \`\`\`
 
         This makes it reusable and dynamic based on real data from users, databases, or APIs.",
+                "type": "text",
+              },
+            ],
             "id": "msg_01M6YsZj7Wn3ivDWCFZFrmt7",
+            "status": undefined,
+            "tool_call_id": undefined,
+            "tool_calls": [],
+            "type": "ai",
+          },
+        ]
+      `);
+    });
+
+    it("replays the reasoning token stream fixture without collapsing reasoning blocks", () => {
+      const events = parseSseFixture(
+        new URL("../tests/fixtures/reasoning-token-events.sse", import.meta.url)
+      );
+      const textDeltaSnapshot = replayRootProjection(
+        events.filter((event) => event.seq != null && event.seq <= 201)
+      );
+      const textDeltaAiMessage = textDeltaSnapshot.messages.find(
+        AIMessage.isInstance
+      );
+
+      expect(summarizeMessage(textDeltaAiMessage!)).toMatchInlineSnapshot(`
+        {
+          "content": [
+            {
+              "args": undefined,
+              "id": undefined,
+              "name": undefined,
+              "reasoning": "**Estimating multiplication mentally**
+
+        The user",
+              "text": undefined,
+              "type": "reasoning",
+            },
+            {
+              "args": undefined,
+              "id": undefined,
+              "name": undefined,
+              "reasoning": "**Estimating multiplication methods**
+
+        To",
+              "text": undefined,
+              "type": "reasoning",
+            },
+            {
+              "args": undefined,
+              "id": undefined,
+              "name": undefined,
+              "text": "Two quick mental approaches:
+
+        ",
+              "type": "text",
+            },
+          ],
+          "id": "run-019e15fb-934e-7029-94f8-87176a5ffc6a",
+          "status": undefined,
+          "tool_call_id": undefined,
+          "tool_calls": [],
+          "type": "ai",
+        }
+      `);
+
+      const snapshot = replayRootProjection(events);
+
+      expect(snapshot.messages).toHaveLength(2);
+      expect(snapshot.messages.map(summarizeMessage)).toMatchInlineSnapshot(`
+        [
+          {
+            "content": "Walk me through how you would estimate 17 × 24 mentally, then give the final number.",
+            "id": "766e0564-a666-4fc9-8e78-e00a476eb9cd",
+            "status": undefined,
+            "tool_call_id": undefined,
+            "tool_calls": undefined,
+            "type": "human",
+          },
+          {
+            "content": [
+              {
+                "args": undefined,
+                "id": undefined,
+                "name": undefined,
+                "reasoning": "**Estimating multiplication mentally**
+
+        The user wants to estimate 17 × 24 and then provide the final answer. I’ll start by showing techniques like rounding: I could round 17 to 20 and 24 to 25 to initially estimate 20 × 25, which equals 500, then adjust that down. 
+
+        Using the distributive property, I could express it as 17 × (20 + 4), leading to 340 + 68, giving the actual final answer of 408. So, I’ll clearly walk through those two methods!",
+                "text": undefined,
+                "type": "reasoning",
+              },
+              {
+                "args": undefined,
+                "id": undefined,
+                "name": undefined,
+                "reasoning": "**Estimating multiplication methods**
+
+        To estimate 17 × 24, I can round 17 to 20, which gives 20 × 24 = 480—an overestimate. Alternatively, rounding 24 to 25 gives 17 × 25 = 425, which is close; if I subtract 17 from that, it leads me to 408. I could also round both numbers together, resulting in 20 × 25 = 500, but that's even bigger. So, using the distributive property, the final answer is 408. I'll keep this clear and concise!",
+                "text": undefined,
+                "type": "reasoning",
+              },
+              {
+                "args": undefined,
+                "id": undefined,
+                "name": undefined,
+                "text": "Two quick mental approaches:
+
+        ",
+                "type": "text",
+              },
+            ],
+            "id": "run-019e15fb-934e-7029-94f8-87176a5ffc6a",
             "status": undefined,
             "tool_call_id": undefined,
             "tool_calls": [],
@@ -664,7 +783,7 @@ describe("RootMessageProjection", () => {
       expect(snap.messages).toHaveLength(2);
       expect(snap.messages[0]).toBe(human);
       expect(snap.messages[1].id).toBe("a1");
-      expect(String(snap.messages[1].content)).toContain("more");
+      expect(snap.messages[1].text).toContain("more");
     });
   });
 
