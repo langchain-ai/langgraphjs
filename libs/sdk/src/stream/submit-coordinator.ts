@@ -331,6 +331,8 @@ export class SubmitCoordinator<
           namespace: target.namespace,
           interrupt_id: target.interruptId,
           response: resumeCommand,
+          config: boundConfig as Record<string, unknown> | undefined,
+          metadata: options?.metadata,
         });
         // Mark resolved synchronously: even if the response races and
         // the command settles after the terminal, we don't want to

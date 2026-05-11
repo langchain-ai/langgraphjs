@@ -555,6 +555,8 @@ describe("SubmitCoordinator", () => {
         namespace: ["task:1"],
         interrupt_id: "interrupt-1",
         response: { value: 42 },
+        config: { configurable: { thread_id: "thread-1" } },
+        metadata: undefined,
       });
       expect(h.markInterruptResolved).toHaveBeenCalledWith("interrupt-1");
 
