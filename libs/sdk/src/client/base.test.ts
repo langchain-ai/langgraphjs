@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
 import { Client } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
 import * as envUtils from "../utils/env.js";
@@ -320,3 +326,167 @@ describe.each([["global"], ["mocked"]])(
     });
   }
 );
+
+describe("Client BaseMessage normalization on outbound requests", () => {
+  // The langgraph-api server used to revive ``{lc:1, type:"constructor", ...}``
+  // envelopes via ``langchain_core.load.load`` to undo this very
+  // ``JSON.stringify(BaseMessage)`` shape. That deserialization gadget was
+  // removed (Corridor CWE-502 finding); the SDK now normalises to canonical
+  // dicts on the way out so the wire shape never carries an envelope.
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  function captureBody(): unknown {
+    const lastCall = fetchMock.mock.calls.at(-1);
+    if (!lastCall) throw new Error("fetch was not called");
+    const init = lastCall[1] as { body?: string };
+    if (!init?.body) throw new Error("request had no body");
+    return JSON.parse(init.body);
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve(""),
+        headers: new Headers({}),
+      })
+    );
+    overrideFetchImplementation(fetchMock);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("converts a HumanMessage instance to a {type, content} dict", async () => {
+    const client = new Client({ apiKey: "k" });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: { input: { messages: [new HumanMessage("hi")] } },
+    });
+    const body = captureBody() as {
+      input: { messages: Array<Record<string, unknown>> };
+    };
+    expect(body.input.messages).toEqual([{ type: "human", content: "hi" }]);
+    // No envelope field should leak through.
+    expect(body.input.messages[0]).not.toHaveProperty("lc");
+    expect(body.input.messages[0]).not.toHaveProperty("kwargs");
+  });
+
+  it("preserves AIMessage tool_calls and additional metadata", async () => {
+    const client = new Client({ apiKey: "k" });
+    const msg = new AIMessage({
+      content: "thinking",
+      tool_calls: [
+        {
+          id: "tc-1",
+          name: "search",
+          args: { q: "weather" },
+          type: "tool_call",
+        },
+      ],
+      additional_kwargs: { custom: 1 },
+    });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: { input: { messages: [msg] } },
+    });
+    const body = captureBody() as {
+      input: { messages: Array<Record<string, unknown>> };
+    };
+    expect(body.input.messages[0]).toMatchObject({
+      type: "ai",
+      content: "thinking",
+      tool_calls: [
+        {
+          id: "tc-1",
+          name: "search",
+          args: { q: "weather" },
+          type: "tool_call",
+        },
+      ],
+      additional_kwargs: { custom: 1 },
+    });
+  });
+
+  it("preserves ToolMessage tool_call_id", async () => {
+    const client = new Client({ apiKey: "k" });
+    const msg = new ToolMessage({
+      content: "result",
+      tool_call_id: "tc-1",
+    });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: { input: { messages: [msg] } },
+    });
+    const body = captureBody() as {
+      input: { messages: Array<Record<string, unknown>> };
+    };
+    expect(body.input.messages[0]).toMatchObject({
+      type: "tool",
+      content: "result",
+      tool_call_id: "tc-1",
+    });
+  });
+
+  it("passes plain dicts through unchanged", async () => {
+    const client = new Client({ apiKey: "k" });
+    const dictPayload = {
+      input: {
+        messages: [{ type: "human", content: "already a dict" }],
+        config: { tags: ["t"] },
+      },
+    };
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: dictPayload,
+    });
+    expect(captureBody()).toEqual(dictPayload);
+  });
+
+  it("normalises mixed arrays of instances and dicts", async () => {
+    const client = new Client({ apiKey: "k" });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      json: {
+        input: {
+          messages: [
+            new SystemMessage("you are helpful"),
+            { type: "human", content: "hi" },
+            new AIMessage("hello"),
+          ],
+        },
+      },
+    });
+    const body = captureBody() as {
+      input: { messages: Array<Record<string, unknown>> };
+    };
+    expect(body.input.messages).toEqual([
+      { type: "system", content: "you are helpful" },
+      { type: "human", content: "hi" },
+      { type: "ai", content: "hello" },
+    ]);
+  });
+
+  it("walks nested message arrays anywhere in the body", async () => {
+    const client = new Client({ apiKey: "k" });
+    await (client.threads as any).fetch("/test", {
+      method: "POST",
+      // ``command.update`` payloads can carry messages too — the
+      // replacer walks the whole tree, so this works without enumerating
+      // known field names.
+      json: {
+        command: {
+          update: { messages: [new HumanMessage("nested")] },
+        },
+      },
+    });
+    const body = captureBody() as {
+      command: { update: { messages: Array<Record<string, unknown>> } };
+    };
+    expect(body.command.update.messages).toEqual([
+      { type: "human", content: "nested" },
+    ]);
+  });
+});
