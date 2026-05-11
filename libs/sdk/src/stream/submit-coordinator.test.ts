@@ -132,11 +132,13 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   const hydrate = vi.fn(async (id?: string | null) => {
     currentThreadId = id ?? null;
   });
-  const ensureThread = vi.fn((_id: string) => thread);
+  const ensureThread = vi.fn((_id: string, _deferRootPump?: boolean) => thread);
+  const startDeferredRootPump = vi.fn(() => undefined);
   const setCurrentThreadId = vi.fn((id: string | null) => {
     currentThreadId = id;
   });
   const rememberSelfCreatedThreadId = vi.fn(() => undefined);
+  const forgetSelfCreatedThreadId = vi.fn(() => undefined);
   const markInterruptResolved = vi.fn(() => undefined);
 
   const onCreated = vi.fn();
@@ -158,8 +160,10 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     getCurrentThreadId: () => currentThreadId,
     setCurrentThreadId,
     rememberSelfCreatedThreadId,
+    forgetSelfCreatedThreadId,
     hydrate,
     ensureThread,
+    startDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
     latestUnresolvedInterrupt: () => latestInterrupt,

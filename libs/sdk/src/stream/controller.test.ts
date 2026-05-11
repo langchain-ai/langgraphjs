@@ -153,6 +153,7 @@ describe("StreamController", () => {
       }),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -193,6 +194,7 @@ describe("StreamController", () => {
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {

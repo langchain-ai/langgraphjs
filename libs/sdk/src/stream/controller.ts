@@ -237,7 +237,12 @@ export class StreamController<
         this.#selfCreatedThreadIds.add(threadId);
       },
       hydrate: (threadId) => this.hydrate(threadId),
-      ensureThread: (threadId) => this.#ensureThread(threadId),
+      ensureThread: (threadId, deferRootPump) =>
+        this.#ensureThread(threadId, deferRootPump),
+      startDeferredRootPump: () => this.#startDeferredRootPump(),
+      forgetSelfCreatedThreadId: (threadId) => {
+        this.#selfCreatedThreadIds.delete(threadId);
+      },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
       latestUnresolvedInterrupt: () => this.#latestUnresolvedInterrupt(),
@@ -368,10 +373,12 @@ export class StreamController<
 
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
     let hydrationError: unknown;
+    let threadExists = false;
     try {
       const state = await this.#options.client.threads.getState<StateType>(
         this.#currentThreadId
       );
+      threadExists = state != null;
       if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape
@@ -426,7 +433,23 @@ export class StreamController<
      * `isLoading` transitions are driven by the persistent root
      * lifecycle listener registered in `#startRootPump`.
      */
-    this.#ensureThread(this.#currentThreadId);
+    const thread = this.#ensureThread(this.#currentThreadId);
+
+    /**
+     * Start the wildcard lifecycle watcher up-front for existing
+     * threads. The root content pump runs at `depth: 1`, which covers
+     * root-namespace and one-deep events but not arbitrarily-nested
+     * subagent / subgraph lifecycle — the dedicated watcher handles
+     * those.
+     *
+     * For self-created (new) threads we skip — the watcher would 404
+     * against a not-yet-existent thread. `submitRun` / `respondInput`
+     * call `startLifecycleWatcher` on first submission to cover that
+     * case.
+     */
+    if (threadExists) {
+      thread.startLifecycleWatcher();
+    }
   }
 
   /**
@@ -624,8 +647,24 @@ export class StreamController<
    * Return the active thread stream, creating and binding one when needed.
    *
    * @param threadId - Thread id used when constructing the stream.
+   * @param deferRootPump - When `true`, build the ThreadStream and bind
+   *   the registry but skip starting the persistent root SSE pump. Used
+   *   for client-self-created thread ids whose server-side thread row
+   *   doesn't exist yet — opening the pump's `subscription.subscribe`
+   *   against a not-yet-existent thread produces a `404: Thread not
+   *   found` protocol error that strands terminal lifecycle events and
+   *   leaves the UI showing nothing until the user reloads. The pump is
+   *   started later via {@link #startDeferredRootPump} after `submitRun`
+   *   / `respondInput` commits the thread server-side.
+   *
+   *   Note: PR 2381's `#runStartReady` gate covers the analogous race
+   *   for the in-flight `run.start` send, but only when that send is
+   *   already pending. `#ensureThread` runs *before* `submitRun` is
+   *   called (and thus before the gate is armed), so on transports
+   *   that subscribe synchronously (WebSocket) the deferred path is
+   *   still required.
    */
-  #ensureThread(threadId: string): ThreadStream {
+  #ensureThread(threadId: string, deferRootPump = false): ThreadStream {
     if (this.#thread != null) return this.#thread;
     this.#thread = this.#options.client.threads.stream(threadId, {
       assistantId: this.#options.assistantId,
@@ -634,10 +673,36 @@ export class StreamController<
       webSocketFactory: this.#options.webSocketFactory,
     });
     this.registry.bind(this.#thread);
-    this.#startRootPump(this.#thread);
+    if (deferRootPump) {
+      // Resolve `#rootPumpReady` immediately so `submit()`'s `await
+      // this.#rootPumpReady` doesn't block — the dispatch path only
+      // needs the ThreadStream wired up to call `submitRun`, not the
+      // persistent subscription.
+      this.#rootPumpReady = Promise.resolve();
+      this.#rootPumpDeferred = true;
+    } else {
+      this.#startRootPump(this.#thread);
+    }
     this.#notifyThreadListeners();
     return this.#thread;
   }
+
+  /**
+   * Start the previously-deferred root SSE pump after the first
+   * `submitRun` / `respondInput` has committed the thread server-side.
+   *
+   * No-op when the pump was started eagerly in {@link #ensureThread}
+   * (i.e. for hydrated existing threads, or for any thread whose pump
+   * has already been brought up).
+   */
+  #startDeferredRootPump(): void {
+    if (!this.#rootPumpDeferred) return;
+    if (this.#thread == null) return;
+    this.#rootPumpDeferred = false;
+    this.#startRootPump(this.#thread);
+  }
+
+  #rootPumpDeferred: boolean = false;
 
   /**
    * Close the current thread stream and reset per-thread assembly state.
@@ -734,13 +799,16 @@ export class StreamController<
     this.#rootPump = (async () => {
       try {
         /**
-         * Narrow the content pump to the root namespace, depth 1:
-         * this is enough to observe root LLM deltas and first-level
-         * discovery hints (tool-started for task:* / subgraph
-         * boundaries) without downloading content from every nested
-         * subagent / subgraph. Deeper content is pulled in lazily by
-         * per-namespace selector projections (e.g. `useMessages(sub)`),
-         * which expand `#computeUnionFilter` progressively.
+         * Root content pump: depth 1 is required because the controller
+         * classifies tool events at namespace length ≤ 1 as root-level
+         * (see `#onWildcardEvent`'s `isRootLevelTool` check). The deep-
+         * agent `task` dispatcher fires `tools.tool-started` at
+         * `["tools:<id>"]` (length 1), so a depth-0 filter would drop
+         * those events server-side before they reached `root.toolCalls`.
+         *
+         * Deeper content (subagent message tokens, values snapshots) is
+         * pulled in on demand by per-namespace selector projections
+         * (e.g. `useMessages(sub)`).
          */
         const subscriptionPromise = thread.subscribe({
           channels: [...ROOT_PUMP_CHANNELS] as Channel[],
