@@ -72,20 +72,27 @@ export const getToolCallsWithResults = (
       continue;
     }
 
-    // `AIMessageChunk` auto-derives `tool_calls` from
-    // `tool_call_chunks` with `args: {}` when the partial JSON can't
-    // be parsed yet, which would make the UI look "empty" mid-stream.
-    // While chunks are present we render from them (best-effort
-    // parsing the partial JSON) so the tool card shows live args.
-    // Once `content-block-finish` lands, chunks are gone and
-    // `tool_calls` carries the finalized args.
-    const hasChunks =
-      Array.isArray(message.tool_call_chunks) &&
-      message.tool_call_chunks.length > 0;
-
-    const finalized =
-      !hasChunks && Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    const chunkSource = hasChunks ? (message.tool_call_chunks ?? []) : [];
+    // Prefer ``tool_calls`` whenever LangChain core can produce them.
+    // ``AIMessageChunk`` derives ``tool_calls`` from ``tool_call_chunks``
+    // via ``collapseToolCallChunks`` (best-effort partial-JSON parse), so
+    // every streaming chunk surfaces in ``tool_calls`` with the same
+    // ``id`` and the args parsed to date — including the result paired
+    // by ``tool_call_id`` once a subagent finishes. Falling back to the
+    // raw chunk list (which forced ``state: "pending"`` for the chunk's
+    // entire lifetime) was hiding the completed status.
+    //
+    // The chunk fallback below only kicks in for the rare mid-stream
+    // window where every chunk so far has malformed args and
+    // ``collapseToolCallChunks`` shunted them all into
+    // ``invalid_tool_calls`` — without it the UI would render zero
+    // cards instead of showing the streaming chunks.
+    const finalized = Array.isArray(message.tool_calls)
+      ? message.tool_calls
+      : [];
+    const chunkSource =
+      finalized.length === 0 && Array.isArray(message.tool_call_chunks)
+        ? message.tool_call_chunks
+        : [];
 
     for (const [index, call] of finalized.entries()) {
       if (call == null || typeof call.name !== "string") {

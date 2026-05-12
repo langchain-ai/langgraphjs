@@ -36,11 +36,15 @@ export function openProjectionSubscription({
 
   const start = async () => {
     try {
-      const subscription = await thread.subscribe({
+      const subscribeParams = {
         channels: [...channels],
-        namespaces: namespace.length > 0 ? [[...namespace]] : [[]],
+        namespaces:
+          namespace.length > 0
+            ? ([[...namespace]] as string[][])
+            : ([[]] as string[][]),
         depth,
-      });
+      };
+      const subscription = await thread.subscribe(subscribeParams);
       handle = subscription;
       if (disposed) {
         await subscription.unsubscribe();

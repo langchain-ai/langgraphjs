@@ -36,8 +36,15 @@
       push: (message: ProtocolMessage) => void;
       close: () => void;
     }>();
+    // Replay buffer: per the `openEventStream` adapter contract, every
+    // emitted event must be deliverable to streams opened later (the
+    // SDK defers opens until after `run.start` commits and relies on
+    // replay to backfill). The protocol v2 server implements this with
+    // a bounded per-run buffer; this in-memory list mirrors that.
+    const buffer: ProtocolMessage[] = [];
 
     const publish = (message: ProtocolMessage) => {
+      buffer.push(message);
       for (const stream of streams) stream.push(message);
     };
 
@@ -78,7 +85,11 @@
         };
       },
       openEventStream() {
-        const queue: ProtocolMessage[] = [];
+        // Seed the new stream with the replay buffer so late opens
+        // (e.g. after `run.start` has already emitted its events)
+        // still receive the full run history. See the `buffer`
+        // declaration above for the contract.
+        const queue: ProtocolMessage[] = [...buffer];
         const waiters: Array<
           (result: IteratorResult<ProtocolMessage>) => void
         > = [];
