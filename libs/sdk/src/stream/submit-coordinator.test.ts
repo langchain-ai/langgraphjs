@@ -567,8 +567,46 @@ describe("SubmitCoordinator", () => {
         namespace: ["task:1"],
         interrupt_id: "interrupt-1",
         response: { value: 42 },
+        config: { configurable: { thread_id: "thread-1" } },
+        metadata: undefined,
       });
       expect(h.markInterruptResolved).toHaveBeenCalledWith("interrupt-1");
+
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+    });
+
+    it("forwards caller-supplied config and metadata through to respondInput", async () => {
+      const h = makeHarness();
+      h.setLatestInterrupt({
+        interruptId: "interrupt-1",
+        namespace: ["task:1"],
+      });
+
+      const submitPromise = h.coordinator.submit(null, {
+        command: { resume: { value: 42 } },
+        config: {
+          configurable: { llm_model_config: { model: "claude-opus-4-7" } },
+        },
+        metadata: { user_id: "u-1", trace_id: "t-9" },
+      });
+      await h.terminalRegistered();
+
+      // bindThreadConfig merges the caller's configurable with the
+      // thread_id stamp — both must survive.
+      expect(h.respondInput).toHaveBeenCalledWith({
+        namespace: ["task:1"],
+        interrupt_id: "interrupt-1",
+        response: { value: 42 },
+        config: {
+          configurable: {
+            thread_id: "thread-1",
+            llm_model_config: { model: "claude-opus-4-7" },
+          },
+        },
+        metadata: { user_id: "u-1", trace_id: "t-9" },
+      });
 
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
