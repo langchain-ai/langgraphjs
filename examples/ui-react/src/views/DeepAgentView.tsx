@@ -18,7 +18,7 @@ import { ViewShell } from "../components/ViewShell";
 import { formatNamespace } from "../utils";
 import { useEventTrace } from "./shared";
 
-const ASSISTANT_ID = "deep-agent";
+const ASSISTANT_ID = "deep_agent";
 
 const SUGGESTIONS = [
   "Write a haiku, limerick, quatrain, and fifty-line poem about spring rain in the city.",

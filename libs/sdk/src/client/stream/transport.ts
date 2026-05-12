@@ -54,6 +54,18 @@ export interface TransportAdapter {
    * Returns `undefined` when the transport does not support per-subscription
    * streams (e.g. WebSocket), in which case the caller should fall back to
    * command-based subscriptions over {@link events}.
+   *
+   * **Replay contract.** Implementations MUST buffer events emitted for
+   * the thread/run and replay them through every newly-opened stream
+   * whose filter matches. The SDK's shared-stream rotation relies on
+   * this: when a subscription's filter widens the union, the SDK opens
+   * a fresh stream and expects to receive the run's full history from
+   * `seq=0` (deduplication is handled client-side via `event_id`). The
+   * SDK also defers the open until after `run.start` has committed the
+   * thread server-side to avoid a `404: Thread not found`, which means
+   * events emitted during that window MUST be delivered to the late
+   * opener. The protocol v2 server implements this via a bounded
+   * per-run replay buffer; custom adapters should mirror that.
    */
   openEventStream?(params: SubscribeParams): EventStreamHandle;
   /**

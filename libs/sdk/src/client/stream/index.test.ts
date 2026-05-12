@@ -1186,3 +1186,81 @@ describe("interrupts", () => {
     expect(thread.interrupts).toHaveLength(0);
   });
 });
+
+describe("WS subscribe (command-stream) — placeholder → resolved id", () => {
+  it("rewrites SubscriptionHandle.subscriptionId to the server-assigned id", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+
+    const sub = await thread.subscribe({ channels: ["messages"] });
+
+    const subscribeCmd = transport.sentCommands.find(
+      (c) => c.method === "subscription.subscribe"
+    )!;
+    // MockTransport assigns `sub_${command.id}` as the subscription_id.
+    expect(sub.subscriptionId).toBe(`sub_${subscribeCmd.id}`);
+    expect(sub.subscriptionId).not.toMatch(/^pending:/);
+  });
+
+  it("cleans up placeholder entry when subscription.subscribe rejects", async () => {
+    // Custom transport: fail subscription.subscribe with a real error.
+    const failing = new MockTransport();
+    const originalSend = failing.send.bind(failing);
+    failing.send = async (command) => {
+      if (command.method === "subscription.subscribe") {
+        throw new ProtocolError({
+          type: "error",
+          id: command.id,
+          error: "unknown_error",
+          message: "boom",
+        });
+      }
+      return originalSend(command);
+    };
+    const thread = new ThreadStream(failing, { assistantId: "test-agent" });
+
+    await expect(
+      thread.subscribe({ channels: ["messages"] })
+    ).rejects.toThrow(/boom/);
+
+    // After failure, no buffered events should fan out to a stale
+    // placeholder entry. Pushing an event must not throw or leak.
+    failing.pushEvent(
+      eventOf(
+        "messages",
+        { event: "message-start", id: "m1" },
+        { namespace: [], seq: 1 }
+      )
+    );
+    // Give the event-loop a tick to process the push.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(thread.ordering.lastSeenSeq).toBe(1);
+  });
+});
+
+describe("run.start gate forwards real error on rejection", () => {
+  it("rejected run.start surfaces the original error to pending subscribers", async () => {
+    // Custom transport: fail run.start.
+    const failing = new MockSseTransport();
+    failing.send = async (command) => {
+      if (command.method === "run.start") {
+        throw new ProtocolError({
+          type: "error",
+          id: command.id,
+          error: "unknown_error",
+          message: "thread create failed",
+        });
+      }
+      return {
+        type: "success",
+        id: command.id,
+        result: {},
+      };
+    };
+    const thread = new ThreadStream(failing, { assistantId: "test-agent" });
+
+    await expect(thread.run.start({ input: {} })).rejects.toThrow(
+      /thread create failed/
+    );
+  });
+});

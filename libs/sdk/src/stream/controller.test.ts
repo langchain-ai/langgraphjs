@@ -156,6 +156,7 @@ describe("StreamController", () => {
       }),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -196,6 +197,7 @@ describe("StreamController", () => {
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -296,6 +298,7 @@ describe("StreamController", () => {
       }),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -342,6 +345,7 @@ describe("StreamController", () => {
       }),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -402,6 +406,7 @@ describe("StreamController", () => {
       submitRun: vi.fn(async () => {
         throw new Error("test-stub-submit-rejected");
       }),
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -447,6 +452,7 @@ describe("StreamController", () => {
       }),
       close: vi.fn(async () => undefined),
       interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
       threads: {
@@ -474,6 +480,63 @@ describe("StreamController", () => {
       controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
     ).toEqual(["live-interrupt"]);
 
+    await controller.dispose();
+  });
+
+  it("calls thread.startLifecycleWatcher() on hydrate of an existing thread", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-existing",
+    });
+    await controller.hydrationPromise;
+
+    expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    await controller.dispose();
+  });
+
+  it("does not call thread.startLifecycleWatcher() on hydrate when no threadId is bound", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: null,
+    });
+    await controller.hydrationPromise;
+
+    // No thread bound → no lifecycle watcher attached yet. The
+    // submit-path call inside `submitRun` is what kicks it for
+    // self-created threads (covered by submit-coordinator tests).
+    expect(startLifecycleWatcher).not.toHaveBeenCalled();
     await controller.dispose();
   });
 });
