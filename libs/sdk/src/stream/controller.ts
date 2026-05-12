@@ -157,6 +157,29 @@ export class StreamController<
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #resolvedInterrupts = new Set<string>();
   /**
+   * Set of interrupt IDs the server reports as currently *active* on
+   * the thread (from `state.tasks[].interrupts`). Populated during
+   * {@link hydrate} from `client.threads.getState()` and used as a
+   * strict allowlist when processing replayed `input.requested`
+   * events from the persistent SSE subscription. Without this guard,
+   * SSE replay re-adds historically-requested interrupts that have
+   * since been resolved (no `input.responded` event exists in the
+   * protocol, so the SDK has no other way to tell replay from live
+   * for an idle thread). `null` outside the hydrate-window so
+   * genuinely new live interrupts on an active run aren't filtered;
+   * cleared at the start of `submit()` for the same reason.
+   */
+  #hydratedActiveInterruptIds: Set<string> | null = null;
+  /**
+   * Monotonic counter bumped at the start of each `submit()` and used
+   * by {@link hydrate} to skip its post-fetch allowlist write when a
+   * submit started while the state fetch was in flight. Without this
+   * guard, a submit-then-hydrate race could re-install a stale
+   * allowlist that filters out genuinely-new live interrupts emitted
+   * by the just-started run.
+   */
+  #submitGeneration = 0;
+  /**
    * Thread ids we minted client-side on first `submit()`. Keeping them
    * here lets `hydrate()` skip the `threads.getState()` round-trip —
    * we know there is nothing checkpointed server-side yet (and the
@@ -220,7 +243,6 @@ export class StreamController<
     this.#rootMessages = new RootMessageProjection({
       messagesKey: this.#messagesKey,
       store: this.rootStore,
-      subagents: this.#subagents,
     });
     this.#lifecycleLoading = new LifecycleLoadingTracker({
       store: this.rootStore,
@@ -255,6 +277,14 @@ export class StreamController<
       latestUnresolvedInterrupt: () => this.#latestUnresolvedInterrupt(),
       markInterruptResolved: (interruptId) => {
         this.#resolvedInterrupts.add(interruptId);
+      },
+      onSubmitStart: () => {
+        // Clear the hydrate-window allowlist so genuinely-new live
+        // interrupts on the just-started run aren't filtered. Bump
+        // the generation so any in-flight hydrate skips its
+        // allowlist write on return (see #hydratedActiveInterruptIds).
+        this.#hydratedActiveInterruptIds = null;
+        this.#submitGeneration += 1;
       },
     });
     this.#hydrationPromise = this.#createHydrationPromise();
@@ -408,6 +438,50 @@ export class StreamController<
               }
             : undefined;
         this.#applyValues(state.values as unknown, syntheticCheckpoint);
+      }
+      /**
+       * Sync the visible interrupt list to the server's authoritative
+       * `state.tasks[].interrupts`. Without this, SSE replay of past
+       * `input.requested` events would re-add resolved interrupts to
+       * the UI on every page navigation back to the thread.
+       *
+       * Only runs when `state.tasks` is an array — runtimes that don't
+       * surface tasks in `threads.getState()` are left untouched (an
+       * unconditional overwrite would wipe any in-flight interrupt
+       * state the wildcard watcher may already have recorded).
+       */
+      if (Array.isArray(state?.tasks)) {
+        const generationAtFetch = this.#submitGeneration;
+        const activeInterrupts: Interrupt<InterruptType>[] = [];
+        const activeIds = new Set<string>();
+        for (const task of state.tasks) {
+          if (!Array.isArray(task?.interrupts)) continue;
+          for (const interrupt of task.interrupts) {
+            const typed = interrupt as
+              | { id?: string; value?: unknown }
+              | null
+              | undefined;
+            const id = typed?.id;
+            if (typeof id !== "string" || activeIds.has(id)) continue;
+            activeIds.add(id);
+            activeInterrupts.push({
+              id,
+              value: typed?.value as InterruptType,
+            });
+          }
+        }
+        this.rootStore.setState((s) => ({
+          ...s,
+          interrupts: activeInterrupts,
+          interrupt: activeInterrupts[0],
+        }));
+        // Only seed the allowlist when no submit started while the
+        // state fetch was in flight. If one did, the cleared
+        // (null) allowlist must stay null so the new run's live
+        // interrupts are not filtered.
+        if (this.#submitGeneration === generationAtFetch) {
+          this.#hydratedActiveInterruptIds = activeIds;
+        }
       }
     } catch (error) {
       /**
@@ -772,6 +846,9 @@ export class StreamController<
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
     this.#messageMetadata.reset();
+    // Drop the hydrate-window allowlist — the next thread's hydrate
+    // will repopulate it from that thread's `state.tasks[].interrupts`.
+    this.#hydratedActiveInterruptIds = null;
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
     );
@@ -1200,6 +1277,19 @@ export class StreamController<
     if (
       typeof interruptId !== "string" ||
       this.#resolvedInterrupts.has(interruptId)
+    ) {
+      return;
+    }
+    // Strict allowlist when populated by the most-recent hydrate: SSE
+    // replay of `input.requested` carries no signal distinguishing
+    // historical (already-resolved) interrupts from live ones, so we
+    // accept only ids the server reported as currently active in
+    // `state.tasks[].interrupts`. `null` (outside the hydrate window
+    // / after a submit clears it) disables filtering entirely so new
+    // live interrupts on an active run pass through.
+    if (
+      this.#hydratedActiveInterruptIds != null &&
+      !this.#hydratedActiveInterruptIds.has(interruptId)
     ) {
       return;
     }

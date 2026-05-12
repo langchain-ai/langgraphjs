@@ -34,7 +34,6 @@ function makeProjection() {
   const projection = new RootMessageProjection({
     messagesKey: "messages",
     store,
-    subagents,
     // Tests assert against the store immediately after each call
     // (no await ticks), so opt out of the production-side macrotask
     // batching that `RootMessageProjection` uses to coalesce SSE
@@ -851,11 +850,9 @@ describe("RootMessageProjection", () => {
   describe("messagesKey customization", () => {
     it("respects an alternate messages key", () => {
       const store = makeRootStore();
-      const subagents = new SubagentDiscovery();
       const projection = new RootMessageProjection({
         messagesKey: "history",
         store,
-        subagents,
         flushImmediately: true,
       });
 

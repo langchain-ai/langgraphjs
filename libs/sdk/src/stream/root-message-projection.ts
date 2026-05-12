@@ -10,10 +10,6 @@
  * `values.messages` snapshots from the server, and writes the merged
  * list back into the controller's root snapshot store.
  *
- * It also feeds {@link SubagentDiscovery} from each new root message
- * — that's the layer that surfaces `task` tool calls as discovered
- * subagents, even before any subagent-scoped subscription is opened.
- *
  * # Two streams of truth
  *
  * Root messages arrive on two channels and need to merge cleanly:
@@ -66,7 +62,6 @@ import {
 } from "./assembled-to-message.js";
 import type { StreamStore } from "./store.js";
 import type { RootSnapshot } from "./types.js";
-import type { SubagentDiscovery } from "./discovery/index.js";
 import { namespaceKey } from "./namespace.js";
 import {
   buildMessageIndex,
@@ -98,14 +93,6 @@ export class RootMessageProjection<
 
   /** Root snapshot store written to on every merge. */
   readonly #store: StreamStore<RootSnapshot<StateType, InterruptType>>;
-
-  /**
-   * Subagent discovery runner notified about every assembled root
-   * message. Driving discovery from assembled messages (rather than
-   * raw events) lets us discover subagents from synthesized
-   * `tool_calls` without re-parsing protocol payloads.
-   */
-  readonly #subagents: SubagentDiscovery;
 
   /**
    * Stateful chunk assembler for in-flight messages. Reset (via a
@@ -191,8 +178,6 @@ export class RootMessageProjection<
    * @param params.messagesKey      - Key inside `values` that holds
    *   the message array.
    * @param params.store            - Root snapshot store to mutate.
-   * @param params.subagents        - Discovery runner fed by each
-   *   new assembled message.
    * @param params.flushImmediately - Test-only: bypass the macrotask
    *   batching so the store reflects each write synchronously.
    *   Defaults to ``false``.
@@ -200,12 +185,10 @@ export class RootMessageProjection<
   constructor(params: {
     messagesKey: string;
     store: StreamStore<RootSnapshot<StateType, InterruptType>>;
-    subagents: SubagentDiscovery;
     flushImmediately?: boolean;
   }) {
     this.#messagesKey = params.messagesKey;
     this.#store = params.store;
-    this.#subagents = params.subagents;
     this.#flushImmediately = params.flushImmediately ?? false;
     this.#flushChannel =
       !this.#flushImmediately && typeof MessageChannel !== "undefined"
@@ -353,7 +336,6 @@ export class RootMessageProjection<
     const base = assembledMessageToBaseMessage(update.message, captured.role, {
       toolCallId: captured.toolCallId,
     });
-    this.#subagents.discoverFromMessage(base, event.params.namespace);
 
     // Compute against the pending baseline if we have one (so an
     // earlier handleMessage in the same tick is the input to this
