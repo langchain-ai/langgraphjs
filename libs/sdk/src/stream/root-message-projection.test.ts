@@ -34,7 +34,6 @@ function makeProjection() {
   const projection = new RootMessageProjection({
     messagesKey: "messages",
     store,
-    subagents,
   });
   return { store, subagents, projection };
 }
@@ -1005,11 +1004,9 @@ describe("RootMessageProjection", () => {
   describe("messagesKey customization", () => {
     it("respects an alternate messages key", async () => {
       const store = makeRootStore();
-      const subagents = new SubagentDiscovery();
       const projection = new RootMessageProjection({
         messagesKey: "history",
         store,
-        subagents,
       });
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
