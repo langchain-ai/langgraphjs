@@ -147,21 +147,126 @@ export class RootMessageProjection<
   readonly #toolCallIdByNamespace = new Map<string, string>();
 
   /**
-   * @param params.messagesKey - Key inside `values` that holds the
-   *   message array.
-   * @param params.store       - Root snapshot store to mutate.
-   * @param params.subagents   - Discovery runner fed by each new
-   *   assembled message.
+   * Coalescing buffer for store writes. {@link handleMessage} and
+   * {@link applyValues} compute their new ``messages`` / ``values``
+   * synchronously (and mutate {@link #indexById} /
+   * {@link #valuesMessageIds} synchronously, so subsequent calls in
+   * the same tick see the up-to-date positions) but stage the result
+   * here instead of calling ``store.setState`` per event. A single
+   * ``MessageChannel`` (macrotask) flush copies the staged values
+   * onto the store in one ``setState`` call per tick.
+   *
+   * This is the same pattern the namespace-scoped messages projection
+   * uses (``projections/messages.ts``). The motivation is identical:
+   * when many messages-channel events land in a single SSE parse
+   * (replay of an in-flight run, mid-run join after navigating back,
+   * or a rapidly-streaming subagent), they drain through the
+   * ``for await`` pump as a long microtask chain. ``store.setValue``
+   * per event fires ``useSyncExternalStore`` notifications per event,
+   * each scheduling a React update, and after ~50 the depth check
+   * trips with "Maximum update depth exceeded". Batching collapses
+   * the burst to one notification per macrotask and lets React's
+   * scheduler commit between flushes.
+   *
+   * ``null`` when there's nothing pending — the pending fields and
+   * the ``flushScheduled`` flag together represent the dirty bit.
+   */
+  #pendingMessages: BaseMessage[] | null = null;
+  #pendingValues: StateType | null = null;
+  #flushScheduled = false;
+  readonly #flushChannel: MessageChannel | null;
+
+  /**
+   * When ``true``, ``handleMessage`` / ``applyValues`` write to the
+   * store synchronously instead of deferring through the
+   * ``MessageChannel``. Used by unit tests that assert against the
+   * store immediately after a call; production callers leave it
+   * ``false`` so the batching kicks in and the ``setState`` burst
+   * during heavy SSE replay collapses to one notification per
+   * macrotask.
+   */
+  readonly #flushImmediately: boolean;
+
+  /**
+   * @param params.messagesKey      - Key inside `values` that holds
+   *   the message array.
+   * @param params.store            - Root snapshot store to mutate.
+   * @param params.subagents        - Discovery runner fed by each
+   *   new assembled message.
+   * @param params.flushImmediately - Test-only: bypass the macrotask
+   *   batching so the store reflects each write synchronously.
+   *   Defaults to ``false``.
    */
   constructor(params: {
     messagesKey: string;
     store: StreamStore<RootSnapshot<StateType, InterruptType>>;
     subagents: SubagentDiscovery;
+    flushImmediately?: boolean;
   }) {
     this.#messagesKey = params.messagesKey;
     this.#store = params.store;
     this.#subagents = params.subagents;
+    this.#flushImmediately = params.flushImmediately ?? false;
+    this.#flushChannel =
+      !this.#flushImmediately && typeof MessageChannel !== "undefined"
+        ? new MessageChannel()
+        : null;
+    if (this.#flushChannel != null) {
+      this.#flushChannel.port1.onmessage = this.#flushPending;
+    }
   }
+
+  /**
+   * Drain ``#pendingMessages`` / ``#pendingValues`` to the store in a
+   * single ``setState`` call. Called from the ``MessageChannel``
+   * macrotask handler (or ``setTimeout`` fallback in environments
+   * without ``MessageChannel``).
+   */
+  #flushPending = (): void => {
+    this.#flushScheduled = false;
+    const messages = this.#pendingMessages;
+    const values = this.#pendingValues;
+    this.#pendingMessages = null;
+    this.#pendingValues = null;
+    if (messages == null && values == null) return;
+    this.#store.setState((s) => {
+      // Other rootStore mutators (controller-driven `isLoading`,
+      // `interrupts`, `toolCalls`, etc.) do not touch
+      // `s.messages` / `s.values`, so a last-write-wins commit on
+      // those two fields is safe. If that ever changes, this is the
+      // spot to add a per-field merge instead.
+      if (messages == null) {
+        return values == null ? s : { ...s, values };
+      }
+      if (values == null) return { ...s, messages };
+      return { ...s, messages, values };
+    });
+  };
+
+  /**
+   * Schedule a ``#flushPending`` on the next macrotask. Idempotent
+   * within a tick — multiple ``handleMessage`` / ``applyValues``
+   * calls before the flush coalesce into one store write.
+   */
+  #scheduleFlush = (): void => {
+    if (this.#flushImmediately) {
+      // Synchronous path for unit tests — the test asserts against
+      // the store directly after each ``handleMessage`` /
+      // ``applyValues`` call without awaiting a tick.
+      this.#flushPending();
+      return;
+    }
+    if (this.#flushScheduled) return;
+    this.#flushScheduled = true;
+    if (this.#flushChannel != null) {
+      this.#flushChannel.port2.postMessage(null);
+    } else {
+      // ``setTimeout(0)`` is a macrotask in every browser/Node — same
+      // ordering as ``MessageChannel`` for our purposes (runs after
+      // the current microtask chain drains, so React gets to commit).
+      setTimeout(this.#flushPending, 0);
+    }
+  };
 
   /**
    * Drop all per-thread state. Called by the controller on thread
@@ -173,6 +278,12 @@ export class RootMessageProjection<
     this.#indexById.clear();
     this.#valuesMessageIds = new Set();
     this.#toolCallIdByNamespace.clear();
+    // Drop any unflushed pending state — it was computed against the
+    // previous thread's baseline, so committing it after reset would
+    // bleed stale messages into the new thread's snapshot.
+    this.#pendingMessages = null;
+    this.#pendingValues = null;
+    this.#flushScheduled = false;
   }
 
   /**
@@ -244,36 +355,46 @@ export class RootMessageProjection<
     });
     this.#subagents.discoverFromMessage(base, event.params.namespace);
 
-    this.#store.setState((s) => {
-      const existingIdx = this.#indexById.get(id);
-      let messages: BaseMessage[];
-      if (existingIdx == null) {
-        // First sighting: append at end and remember its index for
-        // future delta updates.
-        this.#indexById.set(id, s.messages.length);
-        messages = [...s.messages, base];
-      } else if (messagesEqual(s.messages[existingIdx], base)) {
-        // Identical re-emission of an already-projected message —
-        // skip the store write to keep snapshot identity stable.
-        return s;
-      } else {
-        // In-place update for a known id.
-        messages = s.messages.slice();
-        messages[existingIdx] = base;
-      }
+    // Compute against the pending baseline if we have one (so an
+    // earlier handleMessage in the same tick is the input to this
+    // one), else against the latest committed store snapshot.
+    // ``#indexById`` is the synchronous source of truth for "where
+    // is each id in the current messages list" — every code path in
+    // this method updates it before returning.
+    const baselineMessages =
+      this.#pendingMessages ?? this.#store.getSnapshot().messages;
+    const existingIdx = this.#indexById.get(id);
+    let messages: BaseMessage[];
+    if (existingIdx == null) {
+      // First sighting: append at end and remember its index for
+      // future delta updates.
+      this.#indexById.set(id, baselineMessages.length);
+      messages = [...baselineMessages, base];
+    } else if (messagesEqual(baselineMessages[existingIdx], base)) {
+      // Identical re-emission of an already-projected message —
+      // skip the store write to keep snapshot identity stable.
+      return;
+    } else {
+      // In-place update for a known id.
+      messages = baselineMessages.slice();
+      messages[existingIdx] = base;
+    }
 
-      // Mirror the new messages list into `values[messagesKey]` so
-      // direct `values` reads (used by some hooks and by the eventual
-      // `values` reconciliation) stay in sync.
-      const values = syncMessagesIntoValues(
-        s.values,
-        this.#messagesKey,
-        messages
-      );
-      return values === s.values
-        ? { ...s, messages }
-        : { ...s, messages, values };
-    });
+    // Mirror the new messages list into `values[messagesKey]` so
+    // direct `values` reads (used by some hooks and by the eventual
+    // `values` reconciliation) stay in sync.
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    const values = syncMessagesIntoValues(
+      baselineValues,
+      this.#messagesKey,
+      messages
+    );
+    this.#pendingMessages = messages;
+    if (values !== baselineValues) {
+      this.#pendingValues = values;
+    }
+    this.#scheduleFlush();
   }
 
   /**
@@ -292,45 +413,52 @@ export class RootMessageProjection<
    *   `values[messagesKey]` and coerced to `BaseMessage` instances.
    */
   applyValues(nextValues: StateType, nextMessages: BaseMessage[]): void {
-    this.#store.setState((s) => {
-      if (nextMessages.length === 0) {
-        return stateValuesShallowEqual(s.values, nextValues, this.#messagesKey)
-          ? s
-          : { ...s, values: nextValues };
-      }
+    const baselineSnapshot = this.#store.getSnapshot();
+    const baselineMessages = this.#pendingMessages ?? baselineSnapshot.messages;
+    const baselineValues = this.#pendingValues ?? baselineSnapshot.values;
 
-      const reconciliation = reconcileMessagesFromValues({
-        valueMessages: nextMessages,
-        currentMessages: s.messages,
-        currentIndexById: this.#indexById,
-        previousValueMessageIds: this.#valuesMessageIds,
-        preferValuesMessage: shouldPreferValuesMessageForToolCalls,
-      });
-      this.#valuesMessageIds = reconciliation.valueMessageIds;
-      const messages = reconciliation.messages as BaseMessage[];
-      const values = {
-        ...(nextValues as Record<string, unknown>),
-        [this.#messagesKey]: messages,
-      } as StateType;
+    if (nextMessages.length === 0) {
+      // Empty messages array — just refresh the values blob if it
+      // changed shape.
       if (
-        messages === s.messages &&
-        stateValuesShallowEqual(s.values, values, this.#messagesKey)
+        stateValuesShallowEqual(baselineValues, nextValues, this.#messagesKey)
       ) {
-        return s;
+        return;
       }
+      this.#pendingValues = nextValues;
+      this.#scheduleFlush();
+      return;
+    }
 
-      // Reconciliation may reorder, drop, or substitute messages, so
-      // rebuild the id → index map to match the new array.
-      this.#indexById.clear();
-      for (const [id, idx] of buildMessageIndex(messages)) {
-        this.#indexById.set(id, idx);
-      }
-      return {
-        ...s,
-        values,
-        messages,
-      };
+    const reconciliation = reconcileMessagesFromValues({
+      valueMessages: nextMessages,
+      currentMessages: baselineMessages,
+      currentIndexById: this.#indexById,
+      previousValueMessageIds: this.#valuesMessageIds,
+      preferValuesMessage: shouldPreferValuesMessageForToolCalls,
     });
+    this.#valuesMessageIds = reconciliation.valueMessageIds;
+    const messages = reconciliation.messages as BaseMessage[];
+    const values = {
+      ...(nextValues as Record<string, unknown>),
+      [this.#messagesKey]: messages,
+    } as StateType;
+    if (
+      messages === baselineMessages &&
+      stateValuesShallowEqual(baselineValues, values, this.#messagesKey)
+    ) {
+      return;
+    }
+
+    // Reconciliation may reorder, drop, or substitute messages, so
+    // rebuild the id → index map to match the new array.
+    this.#indexById.clear();
+    for (const [id, idx] of buildMessageIndex(messages)) {
+      this.#indexById.set(id, idx);
+    }
+    this.#pendingMessages = messages;
+    this.#pendingValues = values;
+    this.#scheduleFlush();
   }
 }
 
