@@ -1238,57 +1238,6 @@ describe("WS subscribe (command-stream) — placeholder → resolved id", () => 
   });
 });
 
-describe("subscribeDedicated", () => {
-  it("opens a dedicated SSE stream on SSE transports", async () => {
-    const transport = new MockSseTransport();
-    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
-
-    const before = transport.totalStreamCount;
-    const sub = await thread.subscribeDedicated({
-      channels: ["messages"],
-      namespaces: [["agent_1"]],
-    });
-    expect(transport.totalStreamCount).toBe(before + 1);
-    expect(transport.lastFilter?.namespaces).toEqual([["agent_1"]]);
-
-    transport.pushEvent(
-      eventOf(
-        "messages",
-        { event: "message-start", id: "m1" },
-        { namespace: ["agent_1"], seq: 1, eventId: "e1" }
-      )
-    );
-
-    const received = await nextValue(sub);
-    expect(received.method).toBe("messages");
-  });
-
-  it("falls back to shared subscribe() on transports without openEventStream", async () => {
-    const transport = new MockTransport();
-    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
-
-    const sub = await thread.subscribeDedicated({ channels: ["messages"] });
-
-    // WS path must produce a working subscription via subscription.subscribe.
-    expect(
-      transport.sentCommands.some((c) => c.method === "subscription.subscribe")
-    ).toBe(true);
-    expect(sub.subscriptionId).not.toMatch(/^sse-dedicated-/);
-  });
-
-  it("propagates errors from openEventStream's ready promise", async () => {
-    const transport = new MockSseTransport({ manualReady: true });
-    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
-
-    const pending = thread.subscribeDedicated({ channels: ["messages"] });
-    // Wait one tick for the stream to register before rejecting ready.
-    await new Promise((r) => setTimeout(r, 0));
-    transport.rejectReady(0, new Error("stream open failed"));
-
-    await expect(pending).rejects.toThrow(/stream open failed/);
-  });
-});
-
 describe("run.start gate forwards real error on rejection", () => {
   it("rejected run.start surfaces the original error to pending subscribers", async () => {
     // Custom transport: fail run.start.

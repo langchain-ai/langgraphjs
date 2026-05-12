@@ -273,12 +273,6 @@ export function messagesProjection(
         // projections backfill history after the run has finished.
         channels: ["messages", "values"],
         namespace: ns,
-        // Namespace-scoped path only. Open a dedicated SSE stream so
-        // this narrow projection doesn't widen the shared content
-        // pump's union (which would pull every channel for every
-        // active namespace onto the wire). Falls back to the shared
-        // command stream on WS.
-        dedicated: true,
         onEvent(event) {
           if (event.method === "messages") {
             applyEvent(event as MessagesEvent);

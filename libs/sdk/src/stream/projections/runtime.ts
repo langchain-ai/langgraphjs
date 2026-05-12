@@ -13,14 +13,6 @@ interface ProjectionSubscriptionOptions {
    * the projection already handled resume loops.
    */
   resumeOnPause?: boolean;
-  /**
-   * Open an isolated SSE event stream rather than joining the shared
-   * content pump. Avoids widening the shared pump's `(channels, namespaces)`
-   * union when a namespace-scoped projection only needs a narrow slice.
-   * Falls back to a shared subscription on transports that lack a
-   * dedicated event-stream channel (e.g. WebSocket).
-   */
-  dedicated?: boolean;
   onSubscribe?: () => void;
   onEvent(event: Event): void;
   onFinally?: () => void;
@@ -35,7 +27,6 @@ export function openProjectionSubscription({
   namespace,
   depth = 1,
   resumeOnPause = false,
-  dedicated = false,
   onSubscribe,
   onEvent,
   onFinally,
@@ -53,9 +44,7 @@ export function openProjectionSubscription({
             : ([[]] as string[][]),
         depth,
       };
-      const subscription = dedicated
-        ? await thread.subscribeDedicated(subscribeParams)
-        : await thread.subscribe(subscribeParams);
+      const subscription = await thread.subscribe(subscribeParams);
       handle = subscription;
       if (disposed) {
         await subscription.unsubscribe();

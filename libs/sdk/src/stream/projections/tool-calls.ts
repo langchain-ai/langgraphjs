@@ -67,12 +67,6 @@ export function toolCallsProjection(
         thread,
         channels: ["tools"],
         namespace: ns,
-        // Namespace-scoped path only — root-namespace tool events flow
-        // through the rootBus short-circuit above. Open a dedicated SSE
-        // stream so subagent tool projections don't widen the shared
-        // content pump's namespace union. Falls back to the shared
-        // command stream on WS.
-        dedicated: true,
         onEvent(event) {
           if (event.method !== "tools") return;
           applyToolsEvent(event as ToolsEvent);
