@@ -216,6 +216,94 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("subagent message namespace routing", () => {
+    it("prefers the stream event namespace over checkpoint metadata", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+      const onError = vi.fn();
+
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Research AI trends",
+                  },
+                },
+              ],
+            },
+            {},
+          ],
+        },
+        {
+          event: "values|tools:stream-task-id" as const,
+          data: {
+            messages: [
+              {
+                id: "sub-human-1",
+                type: "human",
+                content: "Research AI trends",
+              },
+            ],
+          },
+        },
+        {
+          event: "messages|tools:stream-task-id" as const,
+          data: [
+            {
+              id: "sub-ai-1",
+              type: "ai",
+              content: "",
+              tool_calls: [
+                {
+                  id: "search-1",
+                  name: "search_web",
+                  args: { query: "AI trends" },
+                },
+              ],
+            },
+            { checkpoint_ns: "tools:metadata-task-id" },
+          ],
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(manager.values?.messages).toHaveLength(1);
+      expect(manager.values?.messages[0]?.id).toBe("ai-1");
+
+      const subagent = manager.getSubagentsByMessage("ai-1")[0];
+      expect(subagent).toBeDefined();
+      expect(subagent?.messages).toHaveLength(1);
+      expect(subagent?.toolCalls).toHaveLength(1);
+      expect(subagent?.toolCalls[0]?.call.name).toBe("search_web");
+    });
+  });
+
   describe("tools stream events", () => {
     it("calls onToolEvent when tools event is received", async () => {
       const onToolEvent = vi.fn();
