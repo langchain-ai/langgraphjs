@@ -48,6 +48,9 @@ interface Harness {
   options: StreamControllerOptions<State>;
   hydrate: ReturnType<typeof vi.fn>;
   ensureThread: ReturnType<typeof vi.fn>;
+  startDeferredRootPump: ReturnType<typeof vi.fn>;
+  abandonDeferredRootPump: ReturnType<typeof vi.fn>;
+  forgetSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   markInterruptResolved: ReturnType<typeof vi.fn>;
   rememberSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   setCurrentThreadId: ReturnType<typeof vi.fn>;
@@ -132,11 +135,14 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   const hydrate = vi.fn(async (id?: string | null) => {
     currentThreadId = id ?? null;
   });
-  const ensureThread = vi.fn((_id: string) => thread);
+  const ensureThread = vi.fn((_id: string, _deferRootPump?: boolean) => thread);
+  const startDeferredRootPump = vi.fn(() => undefined);
+  const abandonDeferredRootPump = vi.fn(() => undefined);
   const setCurrentThreadId = vi.fn((id: string | null) => {
     currentThreadId = id;
   });
   const rememberSelfCreatedThreadId = vi.fn(() => undefined);
+  const forgetSelfCreatedThreadId = vi.fn(() => undefined);
   const markInterruptResolved = vi.fn(() => undefined);
 
   const onCreated = vi.fn();
@@ -158,8 +164,11 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     getCurrentThreadId: () => currentThreadId,
     setCurrentThreadId,
     rememberSelfCreatedThreadId,
+    forgetSelfCreatedThreadId,
     hydrate,
     ensureThread,
+    startDeferredRootPump,
+    abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
     latestUnresolvedInterrupt: () => latestInterrupt,
@@ -200,6 +209,9 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     options,
     hydrate,
     ensureThread,
+    startDeferredRootPump,
+    abandonDeferredRootPump,
+    forgetSelfCreatedThreadId,
     markInterruptResolved,
     rememberSelfCreatedThreadId,
     setCurrentThreadId,
@@ -618,6 +630,74 @@ describe("SubmitCoordinator", () => {
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await submitPromise;
+    });
+  });
+
+  describe("self-created thread lifecycle", () => {
+    it("passes deferRootPump=true to ensureThread on a self-created submit", async () => {
+      const h = makeHarness({ threadId: null });
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      const lastEnsureCall = h.ensureThread.mock.calls.at(-1);
+      expect(lastEnsureCall).toBeDefined();
+      expect(lastEnsureCall![1]).toBe(true);
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+    });
+
+    it("fires startDeferredRootPump and forgetSelfCreatedThreadId after dispatch resolves", async () => {
+      const h = makeHarness({ threadId: null });
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      expect(h.startDeferredRootPump).not.toHaveBeenCalled();
+      expect(h.forgetSelfCreatedThreadId).not.toHaveBeenCalled();
+
+      h.resolveSubmit();
+      // Let the .then() microtasks fan out.
+      await vi.runAllTimersAsync();
+
+      expect(h.startDeferredRootPump).toHaveBeenCalledOnce();
+      expect(h.forgetSelfCreatedThreadId).toHaveBeenCalledOnce();
+      expect(h.abandonDeferredRootPump).not.toHaveBeenCalled();
+
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+    });
+
+    it("calls abandonDeferredRootPump when a self-created dispatch fails", async () => {
+      const h = makeHarness({ threadId: null });
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      const err = new Error("dispatch failed");
+      h.rejectSubmit(err);
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(h.rootStore.getSnapshot().error).toBe(err);
+      expect(h.abandonDeferredRootPump).toHaveBeenCalledOnce();
+      expect(h.forgetSelfCreatedThreadId).toHaveBeenCalledOnce();
+      expect(h.startDeferredRootPump).not.toHaveBeenCalled();
+    });
+
+    it("does not call abandonDeferredRootPump when dispatch fails on a hydrated thread", async () => {
+      const h = makeHarness({ threadId: "thread-existing" });
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      const err = new Error("dispatch failed");
+      h.rejectSubmit(err);
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(h.rootStore.getSnapshot().error).toBe(err);
+      expect(h.abandonDeferredRootPump).not.toHaveBeenCalled();
     });
   });
 });
