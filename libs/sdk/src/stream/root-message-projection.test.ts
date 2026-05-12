@@ -34,6 +34,12 @@ function makeProjection() {
   const projection = new RootMessageProjection({
     messagesKey: "messages",
     store,
+    // Tests assert against the store immediately after each call
+    // (no await ticks), so opt out of the production-side macrotask
+    // batching that `RootMessageProjection` uses to coalesce SSE
+    // replay bursts. Production wiring (`StreamController`) leaves
+    // this default-false so the batching is in effect.
+    flushImmediately: true,
   });
   return { store, subagents, projection };
 }
@@ -847,6 +853,7 @@ describe("RootMessageProjection", () => {
       const projection = new RootMessageProjection({
         messagesKey: "history",
         store,
+        flushImmediately: true,
       });
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
