@@ -35,14 +35,20 @@ function makeProjection() {
     messagesKey: "messages",
     store,
     subagents,
-    // Tests assert against the store immediately after each call
-    // (no await ticks), so opt out of the production-side macrotask
-    // batching that `RootMessageProjection` uses to coalesce SSE
-    // replay bursts. Production wiring (`StreamController`) leaves
-    // this default-false so the batching is in effect.
-    flushImmediately: true,
   });
   return { store, subagents, projection };
+}
+
+/**
+ * Drain one macrotask so the projection's batched `setTimeout(0)`
+ * flush commits to the store. The projection coalesces a burst of
+ * synchronous writes (a microtask chain of SSE events) into one
+ * `store.setState` at the next macrotask boundary, so every test
+ * that asserts against the store after a `handleMessage` /
+ * `applyValues` call has to drain a macrotask first.
+ */
+function drainFlush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function startEvent(
@@ -148,7 +154,7 @@ function isInternalWorkNamespace(namespace: readonly string[]): boolean {
   );
 }
 
-function replayRootProjection(events: readonly Event[]) {
+async function replayRootProjection(events: readonly Event[]) {
   const { store, projection } = makeProjection();
   for (const event of events) {
     if (
@@ -168,6 +174,7 @@ function replayRootProjection(events: readonly Event[]) {
       );
     }
   }
+  await drainFlush();
   return store.getSnapshot();
 }
 
@@ -232,7 +239,7 @@ function summarizeMessage(
 
 describe("RootMessageProjection", () => {
   describe("handleMessage", () => {
-    it("appends a new assembled message into the root snapshot", () => {
+    it("appends a new assembled message into the root snapshot", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
@@ -243,21 +250,24 @@ describe("RootMessageProjection", () => {
         blockDeltaEvent(0, { type: "text", text: "there" })
       );
 
+      await drainFlush();
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(1);
       expect(snap.messages[0].id).toBe("m1");
       expect(snap.messages[0].text).toBe("Hi there");
     });
 
-    it("updates the same message index in place across deltas", () => {
+    it("updates the same message index in place across deltas", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
       projection.handleMessage(blockStartEvent(0, { type: "text", text: "" }));
       projection.handleMessage(blockDeltaEvent(0, { type: "text", text: "a" }));
+      await drainFlush();
       const after1 = store.getSnapshot().messages;
 
       projection.handleMessage(blockDeltaEvent(0, { type: "text", text: "b" }));
+      await drainFlush();
       const after2 = store.getSnapshot().messages;
 
       expect(after2).toHaveLength(1);
@@ -266,7 +276,7 @@ describe("RootMessageProjection", () => {
       expect(after2).not.toBe(after1);
     });
 
-    it("applies typed content-block deltas", () => {
+    it("applies typed content-block deltas", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
@@ -278,12 +288,13 @@ describe("RootMessageProjection", () => {
         coreBlockDeltaEvent(0, { type: "text-delta", text: " there" })
       );
 
+      await drainFlush();
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(1);
       expect(snap.messages[0].text).toBe("Hi there");
     });
 
-    it("mirrors messages into values[messagesKey]", () => {
+    it("mirrors messages into values[messagesKey]", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
@@ -291,12 +302,13 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "hi" })
       );
 
+      await drainFlush();
       const values = store.getSnapshot().values as State;
       expect(Array.isArray(values.messages)).toBe(true);
       expect((values.messages as Array<{ id?: string }>)[0]?.id).toBe("m1");
     });
 
-    it("does not duplicate an existing id on subsequent message-start events", () => {
+    it("does not duplicate an existing id on subsequent message-start events", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
@@ -313,12 +325,13 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "reset" })
       );
 
+      await drainFlush();
       const after = store.getSnapshot();
       expect(after.messages).toHaveLength(1);
       expect(after.messages[0].id).toBe("m1");
     });
 
-    it("uses message-start role to construct correct message classes", () => {
+    it("uses message-start role to construct correct message classes", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "human-1", role: "human" }));
@@ -326,11 +339,12 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "hello" })
       );
 
+      await drainFlush();
       const msg = store.getSnapshot().messages[0];
       expect(msg).toBeInstanceOf(HumanMessage);
     });
 
-    it("recovers tool_call_id from the legacy `<id>-tool-<callId>` message id format", () => {
+    it("recovers tool_call_id from the legacy `<id>-tool-<callId>` message id format", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(
@@ -340,12 +354,13 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "result" })
       );
 
+      await drainFlush();
       const msg = store.getSnapshot().messages[0] as ToolMessage;
       expect(msg).toBeInstanceOf(ToolMessage);
       expect(msg.tool_call_id).toBe("call_42");
     });
 
-    it("recovers tool_call_id from a recorded tool-started namespace mapping", () => {
+    it("recovers tool_call_id from a recorded tool-started namespace mapping", async () => {
       const { store, projection } = makeProjection();
 
       projection.recordToolCallNamespace(["tools:abc"], "call_99");
@@ -358,11 +373,12 @@ describe("RootMessageProjection", () => {
         ])
       );
 
+      await drainFlush();
       const msg = store.getSnapshot().messages[0] as ToolMessage;
       expect(msg.tool_call_id).toBe("call_99");
     });
 
-    it("prefers an explicit tool_call_id on message-start over fallbacks", () => {
+    it("prefers an explicit tool_call_id on message-start over fallbacks", async () => {
       const { store, projection } = makeProjection();
 
       projection.recordToolCallNamespace(["tools:abc"], "call_namespace");
@@ -380,12 +396,15 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "x" }, ["tools:abc"])
       );
 
+      await drainFlush();
       const msg = store.getSnapshot().messages[0] as ToolMessage;
       expect(msg.tool_call_id).toBe("call_explicit");
     });
 
-    it("feeds new assembled messages into subagent discovery", () => {
+    it("feeds new assembled messages into subagent discovery", async () => {
       const { subagents, projection } = makeProjection();
+      // Subagent discovery runs synchronously inside `handleMessage`
+      // (independent of the store-write flush), so no drain needed.
 
       // The simplest way to drive discovery is via the subagents'
       // value-flow, but we can also exercise the message-flow. Use a
@@ -408,7 +427,7 @@ describe("RootMessageProjection", () => {
   });
 
   describe("applyValues", () => {
-    it("seeds messages from a values snapshot when nothing has streamed yet", () => {
+    it("seeds messages from a values snapshot when nothing has streamed yet", async () => {
       const { store, projection } = makeProjection();
 
       const valueMsg = new AIMessage({ id: "a1", content: "values hello" });
@@ -417,10 +436,11 @@ describe("RootMessageProjection", () => {
         [valueMsg]
       );
 
+      await drainFlush();
       expect(store.getSnapshot().messages).toEqual([valueMsg]);
     });
 
-    it("keeps streamed in-flight content while values dictates ordering", () => {
+    it("keeps streamed in-flight content while values dictates ordering", async () => {
       const { store, projection } = makeProjection();
 
       // Stream an AI message in.
@@ -437,6 +457,7 @@ describe("RootMessageProjection", () => {
         [human, aiFromValues]
       );
 
+      await drainFlush();
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(2);
       expect(snap.messages[0]).toBe(human);
@@ -444,7 +465,7 @@ describe("RootMessageProjection", () => {
       expect(snap.messages[1].text).toBe("streamed");
     });
 
-    it("prefers the values version when it carries finalized tool-call data the stream lacks", () => {
+    it("prefers the values version when it carries finalized tool-call data the stream lacks", async () => {
       const { store, projection } = makeProjection();
 
       // Stream an AI message with no tool calls.
@@ -463,12 +484,13 @@ describe("RootMessageProjection", () => {
         [finalized]
       );
 
+      await drainFlush();
       const out = store.getSnapshot().messages[0] as AIMessage;
       expect(out.tool_calls).toHaveLength(1);
       expect(out.tool_calls?.[0]?.id).toBe("tc-1");
     });
 
-    it("continues to process values snapshots after message usage events", () => {
+    it("continues to process values snapshots after message usage events", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "a1", role: "ai" }, ["model:1"]));
@@ -495,6 +517,7 @@ describe("RootMessageProjection", () => {
         [human, ai, tool, final]
       );
 
+      await drainFlush();
       expect(store.getSnapshot().messages.map((message) => message.id)).toEqual([
         "h1",
         "a1",
@@ -503,8 +526,8 @@ describe("RootMessageProjection", () => {
       ]);
     });
 
-    it("replays the React agent tool-result stream fixture", () => {
-      const snapshot = replayRootProjection(
+    it("replays the React agent tool-result stream fixture", async () => {
+      const snapshot = await replayRootProjection(
         parseSseFixture(
           new URL(
             "../tests/fixtures/react-agent-tool-result-events.sse",
@@ -603,11 +626,11 @@ describe("RootMessageProjection", () => {
       `);
     });
 
-    it("replays the reasoning token stream fixture without collapsing reasoning blocks", () => {
+    it("replays the reasoning token stream fixture without collapsing reasoning blocks", async () => {
       const events = parseSseFixture(
         new URL("../tests/fixtures/reasoning-token-events.sse", import.meta.url)
       );
-      const textDeltaSnapshot = replayRootProjection(
+      const textDeltaSnapshot = await replayRootProjection(
         events.filter((event) => event.seq != null && event.seq <= 201)
       );
       const textDeltaAiMessage = textDeltaSnapshot.messages.find(
@@ -655,7 +678,7 @@ describe("RootMessageProjection", () => {
         }
       `);
 
-      const snapshot = replayRootProjection(events);
+      const snapshot = await replayRootProjection(events);
 
       expect(snapshot.messages).toHaveLength(2);
       expect(snapshot.messages.map(summarizeMessage)).toMatchInlineSnapshot(`
@@ -712,7 +735,7 @@ describe("RootMessageProjection", () => {
       `);
     });
 
-    it("drops messages removed from a later values snapshot", () => {
+    it("drops messages removed from a later values snapshot", async () => {
       const { store, projection } = makeProjection();
 
       const a = new AIMessage({ id: "a1", content: "first" });
@@ -721,16 +744,18 @@ describe("RootMessageProjection", () => {
         { messages: [a, b] } as State,
         [a, b]
       );
+      await drainFlush();
       expect(store.getSnapshot().messages).toHaveLength(2);
 
       projection.applyValues(
         { messages: [a] } as State,
         [a]
       );
+      await drainFlush();
       expect(store.getSnapshot().messages).toEqual([a]);
     });
 
-    it("only updates values when messages are empty", () => {
+    it("only updates values when messages are empty", async () => {
       const { store, projection } = makeProjection();
 
       projection.applyValues(
@@ -738,12 +763,13 @@ describe("RootMessageProjection", () => {
         []
       );
 
+      await drainFlush();
       const snap = store.getSnapshot();
       expect(snap.messages).toEqual([]);
       expect((snap.values as State).cursor).toBe("step-1");
     });
 
-    it("preserves snapshot identity for repeated values snapshots", () => {
+    it("preserves snapshot identity for repeated values snapshots", async () => {
       const { store, projection } = makeProjection();
 
       const a = new AIMessage({ id: "a1", content: "stable" });
@@ -751,6 +777,7 @@ describe("RootMessageProjection", () => {
         { messages: [a] } as State,
         [a]
       );
+      await drainFlush();
       const before = store.getSnapshot();
 
       const aClone = new AIMessage({ id: "a1", content: "stable" });
@@ -759,10 +786,11 @@ describe("RootMessageProjection", () => {
         [aClone]
       );
 
+      await drainFlush();
       expect(store.getSnapshot()).toBe(before);
     });
 
-    it("rebuilds the id index after a values reorder so subsequent deltas target the right slot", () => {
+    it("rebuilds the id index after a values reorder so subsequent deltas target the right slot", async () => {
       const { store, projection } = makeProjection();
 
       // Stream message a1 first.
@@ -785,6 +813,7 @@ describe("RootMessageProjection", () => {
         blockDeltaEvent(0, { type: "text", text: "+more" })
       );
 
+      await drainFlush();
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(2);
       expect(snap.messages[0]).toBe(human);
@@ -794,7 +823,7 @@ describe("RootMessageProjection", () => {
   });
 
   describe("reset", () => {
-    it("clears all per-thread state", () => {
+    it("clears all per-thread state", async () => {
       const { store, projection } = makeProjection();
 
       projection.handleMessage(startEvent({ id: "a1", role: "ai" }));
@@ -802,6 +831,7 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "hello" })
       );
       projection.recordToolCallNamespace(["tools:1"], "call_1");
+      await drainFlush();
       expect(store.getSnapshot().messages).toHaveLength(1);
 
       projection.reset();
@@ -816,17 +846,19 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "fresh" })
       );
 
+      await drainFlush();
       const after = store.getSnapshot();
       // Without the reset, the projection would have reused index 0.
       // After reset, the new message is appended at the next slot.
       expect(after.messages.length).toBeGreaterThan(beforeReplay.messages.length);
     });
 
-    it("re-clears the values-message id set so removals work after a thread swap", () => {
+    it("re-clears the values-message id set so removals work after a thread swap", async () => {
       const { store, projection } = makeProjection();
 
       const a = new AIMessage({ id: "a1", content: "v1" });
       projection.applyValues({ messages: [a] } as State, [a]);
+      await drainFlush();
       expect(store.getSnapshot().messages).toEqual([a]);
 
       // Simulate the controller resetting per-thread state on swap.
@@ -843,20 +875,141 @@ describe("RootMessageProjection", () => {
       );
 
       projection.applyValues({ messages: [] } as State, []);
+      await drainFlush();
       const messages = store.getSnapshot().messages;
       expect(messages.some((m) => m.id === "b1")).toBe(true);
     });
   });
 
+  describe("scheduling", () => {
+    // Two regressions live here:
+    //
+    //  1. The freeze that motivated PR #2384. When a long thread
+    //     replays through the `messages` channel — on refresh, on
+    //     resume of an in-flight run, or on a rapidly-streaming
+    //     subagent — many events drain through the `for await` pump
+    //     as a long microtask chain. Calling `store.setState` per
+    //     event fires `useSyncExternalStore` notifications per
+    //     event, and after enough notifications React's
+    //     `nestedUpdateCount` guard trips with "Maximum update
+    //     depth exceeded", freezing the UI on the first few messages.
+    //
+    //  2. PR #2384 itself, which fixed (1) by batching every write
+    //     through a `MessageChannel` macrotask but broke initial-
+    //     submit streaming — the user message and the streaming AI
+    //     response never rendered in the live browser until refresh.
+    //
+    // The contract this projection guarantees:
+    //   - A streamed event commits to the store within one
+    //     macrotask, so React renders it on the very next paint.
+    //   - A burst of events arriving in a single microtask chain
+    //     collapses to a small, bounded number of store
+    //     notifications.
+
+    it("commits a streamed event within one macrotask so the next render sees it", async () => {
+      const { store, projection } = makeProjection();
+
+      projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
+      projection.handleMessage(
+        blockStartEvent(0, { type: "text", text: "hello" })
+      );
+
+      // `drainFlush` is one `setTimeout(0)` — the same macrotask
+      // boundary the projection schedules its flush on. By the time
+      // it resolves, the store must reflect the streamed content.
+      // A scheduler that needed more than one macrotask (a chain of
+      // deferrals) would still show the pre-event state here and
+      // break initial-submit streaming in the live browser.
+      await drainFlush();
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].text).toBe("hello");
+    });
+
+    it("commits a values snapshot within one macrotask", async () => {
+      const { store, projection } = makeProjection();
+
+      const human = new HumanMessage({ id: "h1", content: "hi" });
+      projection.applyValues({ messages: [human] } as State, [human]);
+
+      // Hydrate on thread bind goes through `applyValues`. The
+      // hydrated state must be visible to React on the first paint
+      // after thread navigation; an unbounded deferral chain here
+      // would flash an empty state.
+      await drainFlush();
+      expect(store.getSnapshot().messages).toEqual([human]);
+    });
+
+    it("coalesces a synchronous burst of deltas so the store is notified a bounded number of times", async () => {
+      const { store, projection } = makeProjection();
+      let notifications = 0;
+      store.subscribe(() => {
+        notifications += 1;
+      });
+
+      projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
+      projection.handleMessage(
+        blockStartEvent(0, { type: "text", text: "" })
+      );
+      const burst = 200;
+      for (let i = 0; i < burst; i += 1) {
+        projection.handleMessage(
+          blockDeltaEvent(0, { type: "text", text: "x" })
+        );
+      }
+
+      // Drain the next macrotask so the coalesced flush commits.
+      await drainFlush();
+
+      // Without batching, each delta calls `store.setState`, which
+      // notifies once — over 200 notifications for this loop, which
+      // is what trips React's `nestedUpdateCount` guard in the
+      // browser. With macrotask coalescing the entire burst becomes
+      // a single store notification.
+      expect(notifications).toBeLessThan(10);
+      // The final accumulated content has to commit by the time the
+      // flush settles — losing the tail would mean stuck UI.
+      expect(store.getSnapshot().messages[0].text.length).toBe(burst);
+    });
+
+    it("coalesces a long values replay into the store", async () => {
+      const { store, projection } = makeProjection();
+      let notifications = 0;
+      store.subscribe(() => {
+        notifications += 1;
+      });
+
+      // Many sequential `applyValues` calls in the same tick — what
+      // a long-thread hydrate or a fast checkpoint replay looks like.
+      for (let i = 0; i < 50; i += 1) {
+        const a = new AIMessage({ id: `m${i}`, content: `v${i}` });
+        projection.applyValues(
+          { messages: [a] } as State,
+          [a]
+        );
+      }
+
+      await drainFlush();
+
+      // The final snapshot must commit; otherwise the UI shows a
+      // stale earlier replay step on first render.
+      expect((store.getSnapshot().messages[0] as AIMessage).content).toBe(
+        "v49"
+      );
+      // And the burst must coalesce — 50 sequential per-event
+      // notifications is what trips React's nested-update guard.
+      expect(notifications).toBeLessThan(10);
+    });
+  });
+
   describe("messagesKey customization", () => {
-    it("respects an alternate messages key", () => {
+    it("respects an alternate messages key", async () => {
       const store = makeRootStore();
       const subagents = new SubagentDiscovery();
       const projection = new RootMessageProjection({
         messagesKey: "history",
         store,
         subagents,
-        flushImmediately: true,
       });
 
       projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
@@ -864,6 +1017,7 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "hi" })
       );
 
+      await drainFlush();
       const values = store.getSnapshot().values as Record<string, unknown>;
       expect(Array.isArray(values.history)).toBe(true);
       expect(values.messages).toBeUndefined();
