@@ -218,8 +218,7 @@ export class SubagentDiscovery {
     const { parentId, depth } = lineageFromNamespace(eventNamespace);
     this.#recordTaskNamespaceCandidate(toolCallId, eventNamespace);
     if (input.description != null) {
-      const queue =
-        this.#toolCallIdByTaskInput.get(input.description) ?? [];
+      const queue = this.#toolCallIdByTaskInput.get(input.description) ?? [];
       queue.push(toolCallId);
       this.#toolCallIdByTaskInput.set(input.description, queue);
     }
@@ -305,12 +304,13 @@ function getFirstHumanMessageText(messages: unknown[]): string | null {
       lc_kwargs?: { type?: unknown; content?: unknown };
     };
     const type =
-      record.type ?? record.role ?? record.kwargs?.type ?? record.lc_kwargs?.type;
+      record.type ??
+      record.role ??
+      record.kwargs?.type ??
+      record.lc_kwargs?.type;
     if (type !== "human") continue;
     const content =
-      record.content ??
-      record.kwargs?.content ??
-      record.lc_kwargs?.content;
+      record.content ?? record.kwargs?.content ?? record.lc_kwargs?.content;
     return typeof content === "string" && content.length > 0 ? content : null;
   }
   return null;
