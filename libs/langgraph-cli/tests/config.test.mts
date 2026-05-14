@@ -1024,14 +1024,14 @@ describe("getBaseImage", () => {
     );
   });
 
-  it("api_version with suffix", () => {
+  it("api_version with compact suffix", () => {
     const config = getConfig({
       node_version: "22",
       graphs: { agent: "./agent.js:graph" },
-      api_version: "0.7.29-rc1",
+      api_version: "0.7.29rc1",
     });
     expect(getBaseImage(config)).toBe(
-      "langchain/langgraphjs-api:0.7.29-rc1-node22"
+      "langchain/langgraphjs-api:0.7.29rc1-node22"
     );
   });
 
@@ -1238,18 +1238,29 @@ it("node config and python config", () => {
     )
     .toThrow();
 
-  // Valid api_version with suffix
+  // Valid api_version with compact suffix
   expect(
     getConfig({
       node_version: "22",
       graphs: { agent: "./agent.js:graph" },
-      api_version: "0.7.29-rc1",
+      api_version: "0.7.29rc1",
     })
   ).toEqual({
     node_version: "22",
     dockerfile_lines: [],
     graphs: { agent: "./agent.js:graph" },
     env: {},
-    api_version: "0.7.29-rc1",
+    api_version: "0.7.29rc1",
   });
+
+  // Invalid api_version format - hyphen prerelease suffix
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "22",
+        graphs: { agent: "./agent.js:graph" },
+        api_version: "0.7.29-rc1",
+      })
+    )
+    .toThrow();
 });
