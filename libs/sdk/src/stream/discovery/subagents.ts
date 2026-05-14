@@ -46,6 +46,16 @@ export class SubagentDiscovery {
   #map = new Map<string, MutableSubagent>();
   #taskIdByObservedNamespace = new Map<string, string>();
   #observedOwnNamespaces = new Set<string>();
+  // Index from `taskInput` (the `description` arg) to a FIFO queue of
+  // pending parent `tool_call_id`s. Bridges the wire's missing link
+  // between a deepagents `task` dispatch and its subagent execution
+  // namespace — the server seeds the subagent's first HumanMessage
+  // with `taskInput` verbatim, so an exact-equality lookup is
+  // deterministic. The queue (not a single value) handles the case
+  // where the coordinator dispatches N task calls with identical
+  // descriptions; pregel preserves dispatch order across executions,
+  // so FIFO pop attributes them correctly.
+  #toolCallIdByTaskInput = new Map<string, string[]>();
 
   /** Feed a single root event. Non-discovery events are ignored. */
   push(event: Event): void {
@@ -119,6 +129,11 @@ export class SubagentDiscovery {
     if (data == null || typeof data !== "object" || Array.isArray(data)) return;
     const messages = (data as { messages?: unknown }).messages;
     if (!Array.isArray(messages)) return;
+
+    // If a `tools:<id>` namespace's first HumanMessage matches a known
+    // taskInput, that's the subagent's execution scope. Record the
+    // binding so `#recordObservedWorkNamespace` can promote it.
+    this.#bindNamespaceByTaskInput(event.params.namespace, messages);
 
     let changed = this.#recordObservedWorkNamespace(event.params.namespace);
     for (const message of messages) {
@@ -202,6 +217,12 @@ export class SubagentDiscovery {
     // the worker's scoped message/tool state exists.
     const { parentId, depth } = lineageFromNamespace(eventNamespace);
     this.#recordTaskNamespaceCandidate(toolCallId, eventNamespace);
+    if (input.description != null) {
+      const queue =
+        this.#toolCallIdByTaskInput.get(input.description) ?? [];
+      queue.push(toolCallId);
+      this.#toolCallIdByTaskInput.set(input.description, queue);
+    }
     this.#map.set(toolCallId, {
       id: toolCallId,
       name: input.subagent_type ?? "unknown",
@@ -252,6 +273,47 @@ export class SubagentDiscovery {
     if (!isConcreteToolNamespace(namespace)) return;
     this.#taskIdByObservedNamespace.set(namespaceKey(namespace), toolCallId);
   }
+
+  /**
+   * Bind a `tools:<id>` namespace to a registered subagent by looking
+   * up the first HumanMessage content in the `taskInput` index.
+   */
+  #bindNamespaceByTaskInput(
+    namespace: readonly string[],
+    messages: unknown[]
+  ): void {
+    if (!isConcreteToolNamespace(namespace)) return;
+    const namespaceKeyed = namespaceKey(namespace);
+    if (this.#taskIdByObservedNamespace.has(namespaceKeyed)) return;
+
+    const text = getFirstHumanMessageText(messages);
+    if (text == null) return;
+    const toolCallId = this.#toolCallIdByTaskInput.get(text)?.shift();
+    if (toolCallId == null) return;
+    this.#taskIdByObservedNamespace.set(namespaceKeyed, toolCallId);
+  }
+}
+
+function getFirstHumanMessageText(messages: unknown[]): string | null {
+  for (const message of messages) {
+    if (message == null || typeof message !== "object") continue;
+    const record = message as {
+      type?: unknown;
+      role?: unknown;
+      content?: unknown;
+      kwargs?: { type?: unknown; content?: unknown };
+      lc_kwargs?: { type?: unknown; content?: unknown };
+    };
+    const type =
+      record.type ?? record.role ?? record.kwargs?.type ?? record.lc_kwargs?.type;
+    if (type !== "human") continue;
+    const content =
+      record.content ??
+      record.kwargs?.content ??
+      record.lc_kwargs?.content;
+    return typeof content === "string" && content.length > 0 ? content : null;
+  }
+  return null;
 }
 
 function shouldPromoteToObservedNamespace(entry: MutableSubagent): boolean {

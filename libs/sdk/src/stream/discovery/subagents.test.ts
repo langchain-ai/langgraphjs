@@ -438,4 +438,130 @@ describe("SubagentDiscovery", () => {
     });
     expect(commits).toHaveLength(1);
   });
+
+  // When two parallel dispatches share the same `taskInput` (LLM
+  // re-uses a description, or the prompt asks for N copies of the
+  // same task), the content match alone is ambiguous. Pregel
+  // dispatches and starts executions in superstep order, so FIFO
+  // attribution by dispatch order matches execution start order.
+  it("attributes duplicate-taskInput dispatches to executions in FIFO order", () => {
+    const discovery = new SubagentDiscovery();
+
+    discovery.discoverFromMessage(
+      new AIMessage({
+        id: "orchestrator",
+        content: "",
+        tool_calls: [
+          {
+            id: "toolu_A",
+            name: "task",
+            args: {
+              description: "Write a haiku",
+              subagent_type: "haiku-drafter",
+            },
+          },
+          {
+            id: "toolu_B",
+            name: "task",
+            args: {
+              description: "Write a haiku",
+              subagent_type: "haiku-drafter",
+            },
+          },
+        ],
+      }),
+      []
+    );
+
+    // First execution fires.
+    discovery.push({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: ["tools:exec-X"],
+        timestamp: Date.now(),
+        data: { messages: [{ type: "human", content: "Write a haiku" }] },
+      },
+    } as ValuesEvent & Event);
+
+    // Second execution fires.
+    discovery.push({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: ["tools:exec-Y"],
+        timestamp: Date.now() + 1,
+        data: { messages: [{ type: "human", content: "Write a haiku" }] },
+      },
+    } as ValuesEvent & Event);
+
+    expect(discovery.snapshot.get("toolu_A")?.namespace).toEqual([
+      "tools:exec-X",
+    ]);
+    expect(discovery.snapshot.get("toolu_B")?.namespace).toEqual([
+      "tools:exec-Y",
+    ]);
+  });
+
+  // Deepagents-style: the parent's task tool call uses an Anthropic id
+  // (`toolu_*`), but the subagent's pregel execution emits at a
+  // distinct `tools:<uuid>` namespace. The wire carries no explicit
+  // link — taskInput → HumanMessage content is the deterministic one.
+  it("promotes deepagents-style subagents to the execution namespace by matching HumanMessage content to taskInput", () => {
+    const discovery = new SubagentDiscovery();
+
+    // Coordinator dispatches; subagent will execute under a distinct UUID.
+    discovery.discoverFromMessage(
+      new AIMessage({
+        id: "orchestrator",
+        content: "",
+        tool_calls: [
+          {
+            id: "toolu_haiku",
+            name: "task",
+            args: {
+              description: "Write a haiku about cats",
+              subagent_type: "haiku-drafter",
+            },
+          },
+        ],
+      }),
+      []
+    );
+
+    expect(discovery.snapshot.get("toolu_haiku")).toMatchObject({
+      id: "toolu_haiku",
+      name: "haiku-drafter",
+      namespace: ["tools:toolu_haiku"],
+      taskInput: "Write a haiku about cats",
+    });
+
+    // First values event at the execution namespace seeds the
+    // subagent with a HumanMessage of the taskInput.
+    discovery.push({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: ["tools:exec-uuid-123"],
+        timestamp: Date.now(),
+        data: {
+          messages: [
+            {
+              type: "human",
+              content: "Write a haiku about cats",
+              id: "subagent-human-1",
+            },
+          ],
+        },
+      },
+    } as ValuesEvent & Event);
+
+    // Subagent should now point at the execution namespace so
+    // `useMessages(stream, subagent)` resolves to the right scope.
+    expect(discovery.snapshot.get("toolu_haiku")).toMatchObject({
+      id: "toolu_haiku",
+      name: "haiku-drafter",
+      namespace: ["tools:exec-uuid-123"],
+    });
+  });
 });
