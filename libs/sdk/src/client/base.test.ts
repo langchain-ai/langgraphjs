@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AIMessage,
+  AIMessageChunk,
   HumanMessage,
+  RemoveMessage,
   SystemMessage,
   ToolMessage,
+  coerceMessageLikeToMessage,
 } from "@langchain/core/messages";
 import { Client } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
@@ -552,5 +555,127 @@ describe("Client BaseMessage normalization on outbound requests", () => {
     expect(body.command.update.messages).toEqual([
       { type: "human", content: "nested" },
     ]);
+  });
+
+  // The wire shape we emit on the way out is the same shape the JS server
+  // receives on the way in. ``coerceMessageLikeToMessage`` (which the JS
+  // server-side ``messagesStateReducer`` uses) is the canonical consumer
+  // of canonical message dicts — round-tripping every standard subclass
+  // through it locks the JS→JS contract: no class that worked under the
+  // pre-PR envelope shape should fail under the post-PR canonical shape.
+  describe("canonical dict round-trips through coerceMessageLikeToMessage", () => {
+    async function dictForMessage(
+      m: unknown
+    ): Promise<Record<string, unknown>> {
+      const client = new Client({ apiKey: "k" });
+      await (client.threads as any).fetch("/test", {
+        method: "POST",
+        json: { messages: [m] },
+      });
+      const body = captureBody() as {
+        messages: Array<Record<string, unknown>>;
+      };
+      return body.messages[0];
+    }
+
+    it("HumanMessage", async () => {
+      const original = new HumanMessage({
+        content: "hi",
+        id: "h1",
+        additional_kwargs: { custom: 1 },
+      });
+      const dict = await dictForMessage(original);
+      const revived = coerceMessageLikeToMessage(dict as never);
+      expect(HumanMessage.isInstance(revived)).toBe(true);
+      expect(revived.content).toBe("hi");
+      expect(revived.id).toBe("h1");
+      expect(revived.additional_kwargs).toEqual({ custom: 1 });
+    });
+
+    it("AIMessage with tool_calls / invalid_tool_calls / usage_metadata", async () => {
+      const original = new AIMessage({
+        content: "thinking",
+        tool_calls: [
+          { id: "tc1", name: "search", args: { q: "x" }, type: "tool_call" },
+        ],
+        invalid_tool_calls: [
+          {
+            id: "tc2",
+            name: "broken",
+            args: "{not json",
+            error: "parse failed",
+            type: "invalid_tool_call",
+          },
+        ],
+        usage_metadata: {
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15,
+        },
+      });
+      const dict = await dictForMessage(original);
+      const revived = coerceMessageLikeToMessage(dict as never) as AIMessage;
+      expect(AIMessage.isInstance(revived)).toBe(true);
+      expect(revived.content).toBe("thinking");
+      expect(revived.tool_calls).toEqual(original.tool_calls);
+      expect(revived.invalid_tool_calls).toEqual(original.invalid_tool_calls);
+      expect(revived.usage_metadata).toEqual(original.usage_metadata);
+    });
+
+    it("AIMessageChunk emits tool_call_chunks on the wire", async () => {
+      // ``_constructMessageFromParams`` routes both AIMessage and
+      // AIMessageChunk to ``new AIMessage(rest)`` and AIMessage has no
+      // ``tool_call_chunks`` field, so the server-side coercion drops
+      // them on revival — pre-existing and unrelated to this PR. The
+      // wire-level contract we're locking is just that the SDK doesn't
+      // *silently* eat the field on the way out.
+      const original = new AIMessageChunk({
+        content: "partial",
+        tool_call_chunks: [
+          { id: "tc1", name: "search", args: '{"q":', index: 0 },
+        ],
+      });
+      const dict = await dictForMessage(original);
+      expect(dict.tool_call_chunks).toEqual(original.tool_call_chunks);
+      expect(dict.type).toBe("ai");
+    });
+
+    it("SystemMessage", async () => {
+      const original = new SystemMessage({
+        content: "you are a helpful assistant",
+        id: "s1",
+      });
+      const dict = await dictForMessage(original);
+      const revived = coerceMessageLikeToMessage(dict as never);
+      expect(SystemMessage.isInstance(revived)).toBe(true);
+      expect(revived.content).toBe("you are a helpful assistant");
+      expect(revived.id).toBe("s1");
+    });
+
+    it("ToolMessage with status / artifact", async () => {
+      const original = new ToolMessage({
+        content: "result body",
+        tool_call_id: "tc-99",
+        name: "search",
+        status: "success",
+        artifact: { extra: "payload" },
+      });
+      const dict = await dictForMessage(original);
+      const revived = coerceMessageLikeToMessage(dict as never) as ToolMessage;
+      expect(ToolMessage.isInstance(revived)).toBe(true);
+      expect(revived.content).toBe("result body");
+      expect(revived.tool_call_id).toBe("tc-99");
+      expect(revived.name).toBe("search");
+      expect(revived.status).toBe("success");
+      expect(revived.artifact).toEqual({ extra: "payload" });
+    });
+
+    it("RemoveMessage", async () => {
+      const original = new RemoveMessage({ id: "msg-to-delete" });
+      const dict = await dictForMessage(original);
+      const revived = coerceMessageLikeToMessage(dict as never);
+      expect(RemoveMessage.isInstance(revived)).toBe(true);
+      expect(revived.id).toBe("msg-to-delete");
+    });
   });
 });

@@ -63,13 +63,30 @@ function messageToDict(
   }
   const usageMetadata = (m as { usage_metadata?: unknown }).usage_metadata;
   if (usageMetadata) out.usage_metadata = walk(usageMetadata, seen);
-  // ToolMessage carries tool_call_id / status / artifact
+  // AIMessageChunk carries streaming tool-call slices; clients rarely
+  // submit chunks but include them for lossless round-trips.
+  const toolCallChunks = (m as { tool_call_chunks?: unknown[] })
+    .tool_call_chunks;
+  if (Array.isArray(toolCallChunks) && toolCallChunks.length > 0) {
+    out.tool_call_chunks = walk(toolCallChunks, seen);
+  }
+  // ToolMessage carries tool_call_id / status / artifact / metadata
   const toolCallId = (m as { tool_call_id?: string }).tool_call_id;
   if (toolCallId) out.tool_call_id = toolCallId;
   const status = (m as { status?: string }).status;
   if (status) out.status = status;
   const artifact = (m as { artifact?: unknown }).artifact;
   if (artifact !== undefined) out.artifact = walk(artifact, seen);
+  const toolMetadata = (m as { metadata?: Record<string, unknown> }).metadata;
+  if (toolMetadata && Object.keys(toolMetadata).length > 0) {
+    out.metadata = walk(toolMetadata, seen);
+  }
+  // ChatMessage carries an arbitrary role; the server's
+  // ``_constructMessageFromParams`` only handles a fixed set of types,
+  // but emitting role keeps the round-trip lossless for any callers
+  // that *do* know how to handle it.
+  const role = (m as { role?: string }).role;
+  if (role) out.role = role;
   return out;
 }
 
