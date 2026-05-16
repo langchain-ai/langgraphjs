@@ -2051,7 +2051,9 @@ export class Pregel<
         }
       }
 
-      throw new Error(`Subgraph with namespace "${recastNamespace}" not found.`);
+      throw new Error(
+        `Subgraph with namespace "${recastNamespace}" not found.`
+      );
     }
 
     const stream = await super.stream(input, config);
