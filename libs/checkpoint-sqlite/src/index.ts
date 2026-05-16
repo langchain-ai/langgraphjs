@@ -6,6 +6,7 @@ import {
   type CheckpointListOptions,
   type CheckpointTuple,
   type SerializerProtocol,
+  type ChannelVersions,
   type PendingWrite,
   type CheckpointMetadata,
   TASKS,
@@ -410,7 +411,8 @@ CREATE TABLE IF NOT EXISTS writes (
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions?: ChannelVersions
   ): Promise<RunnableConfig> {
     this.setup();
 
@@ -429,6 +431,13 @@ CREATE TABLE IF NOT EXISTS writes (
     }
 
     const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
+    if (newVersions !== undefined) {
+      preparedCheckpoint.channel_values = Object.fromEntries(
+        Object.entries(preparedCheckpoint.channel_values ?? {}).filter(
+          ([channel]) => channel in newVersions
+        )
+      );
+    }
 
     const [[type1, serializedCheckpoint], [type2, serializedMetadata]] =
       await Promise.all([
