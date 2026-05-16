@@ -1,7 +1,8 @@
 import { z } from "zod/v3";
 import { extname } from "node:path";
 
-const API_VERSION_PATTERN = /^\d+(?:\.\d+){0,2}(?:[A-Za-z][0-9A-Za-z.-]*)?$/;
+const API_VERSION_PATTERN =
+  /^\d+(?:\.\d+){0,2}(?:(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)|(?:[A-Za-z][0-9A-Za-z.-]*))?$/;
 
 const GraphPathSchema = z.string().refine((i) => i.includes(":"), {
   message: "Import string must be in format '<file>:<export>'",
