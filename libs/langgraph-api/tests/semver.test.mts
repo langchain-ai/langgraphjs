@@ -47,6 +47,18 @@ describe("checkSemver", () => {
       { name: "@langchain/langgraph", satisfies: false },
     ]);
   });
+
+  it("should accept prerelease builds for a satisfying release tuple", async () => {
+    const result = await checkSemver([
+      { name: "@langchain/core", version: "1.1.44-dev-1777587649451" },
+      { name: "@langchain/core", version: "1.1.43-dev-1777587649451" },
+    ]);
+
+    expect(result).toMatchObject([
+      { name: "@langchain/core", satisfies: true },
+      { name: "@langchain/core", satisfies: false },
+    ]);
+  });
 });
 
 describe("checkLangGraphSemver", () => {

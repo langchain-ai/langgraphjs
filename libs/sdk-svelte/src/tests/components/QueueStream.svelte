@@ -1,67 +1,76 @@
 <script lang="ts">
-  import { useStream } from "../../index.js";
+  import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+  import { useStream, useSubmissionQueue } from "../../index.js";
+  import { formatMessage } from "./format.js";
 
   interface Props {
     apiUrl: string;
+    assistantId?: string;
   }
 
-  const { apiUrl }: Props = $props();
+  interface StreamState {
+    messages: BaseMessage[];
+    [key: string]: unknown;
+  }
 
-  const {
-    messages,
-    isLoading,
-    queue,
-    submit,
-    switchThread,
-  } = useStream({
-    assistantId: "agent",
+  const { apiUrl, assistantId = "slow_graph" }: Props = $props();
+
+  let threadId = $state<string | null>(null);
+
+  // svelte-ignore state_referenced_locally
+  const stream = useStream<StreamState>({
+    assistantId,
     apiUrl,
-    fetchStateHistory: false,
+    threadId: () => threadId,
+    onThreadId: (id) => {
+      threadId = id;
+    },
   });
 
-  const queueEntries = queue.entries;
-  const queueSize = queue.size;
+  const queue = useSubmissionQueue(stream);
+
+  function enqueue(content: string) {
+    void stream.submit(
+      { messages: [new HumanMessage(content)] },
+      { multitaskStrategy: "enqueue" },
+    );
+  }
+
+  const entriesText = $derived(
+    queue.entries
+      .map((entry) => {
+        const messages = (entry.values as StreamState | undefined)?.messages;
+        const first = Array.isArray(messages) ? messages[0] : undefined;
+        return first ? formatMessage(first) : "?";
+      })
+      .join(","),
+  );
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
-      <div data-testid={"message-" + i}>
-        {typeof msg.content === "string"
-          ? msg.content
-          : JSON.stringify(msg.content)}
-      </div>
+    {#each stream.messages as msg, i (msg.id ?? i)}
+      <div data-testid={"message-" + i}>{formatMessage(msg)}</div>
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  <div data-testid="message-count">{$messages.length}</div>
-  <div data-testid="queue-size">{$queueSize}</div>
-  <div data-testid="queue-entries">
-    {$queueEntries
-      .map((e) => e.values?.messages?.[0]?.content ?? "?")
-      .join(",")}
-  </div>
+  <div data-testid="message-count">{stream.messages.length}</div>
+  <div data-testid="queue-size">{queue.size}</div>
+  <div data-testid="queue-entries">{entriesText}</div>
   <button
-    data-testid="submit"
-    onclick={() =>
-      void submit({ messages: [{ content: "Hi", type: "human" }] } as any)}
+    data-testid="submit-first"
+    onclick={() => enqueue("Msg1")}
   >
-    Submit
+    Submit First
   </button>
   <button
     data-testid="submit-three"
     onclick={() => {
-      void submit({
-        messages: [{ content: "Msg1", type: "human" }],
-      } as any);
-      void submit({
-        messages: [{ content: "Msg2", type: "human" }],
-      } as any);
-      void submit({
-        messages: [{ content: "Msg3", type: "human" }],
-      } as any);
+      enqueue("Msg2");
+      enqueue("Msg3");
+      enqueue("Msg4");
     }}
   >
     Submit Three
@@ -69,7 +78,7 @@
   <button
     data-testid="cancel-first"
     onclick={() => {
-      const first = $queueEntries[0];
+      const first = queue.entries[0];
       if (first) void queue.cancel(first.id);
     }}
   >
@@ -80,7 +89,9 @@
   </button>
   <button
     data-testid="switch-thread"
-    onclick={() => switchThread(crypto.randomUUID())}
+    onclick={() => {
+      threadId = crypto.randomUUID();
+    }}
   >
     Switch Thread
   </button>

@@ -1,45 +1,43 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import type { Message } from "@langchain/langgraph-sdk";
 
   interface Props {
     apiUrl: string;
     assistantId?: string;
+    threadId?: string;
     submitInput?: Record<string, unknown>;
     submitOptions?: Record<string, unknown>;
-    onCheckpointEvent?: (...args: any[]) => void;
-    onTaskEvent?: (...args: any[]) => void;
-    onUpdateEvent?: (...args: any[]) => void;
-    onCustomEvent?: (...args: any[]) => void;
-    fetchStateHistory?: boolean | { limit: number };
+    transport?: "sse" | "websocket";
+    onThreadId?: (threadId: string) => void;
+    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
   }
 
   const {
     apiUrl,
     assistantId = "agent",
+    threadId,
     submitInput = { messages: [{ content: "Hello", type: "human" }] },
     submitOptions,
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    fetchStateHistory,
+    transport,
+    onThreadId,
+    onCreated,
   }: Props = $props();
 
-  const { messages, isLoading, error, submit, stop } = useStream({
+  // svelte-ignore state_referenced_locally
+  const stream = useStream({
     assistantId,
     apiUrl,
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    fetchStateHistory,
+    threadId,
+    transport,
+    onThreadId,
+    onCreated,
   });
 </script>
 
 <div>
+  <div data-testid="message-count">{stream.messages.length}</div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -48,16 +46,17 @@
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  {#if $error}
-    <div data-testid="error">{String($error)}</div>
+  <div data-testid="thread-id">{stream.threadId ?? "none"}</div>
+  {#if stream.error}
+    <div data-testid="error">{String(stream.error)}</div>
   {/if}
   <button
     data-testid="submit"
-    onclick={() => void submit(submitInput as any, submitOptions as any)}
+    onclick={() => void stream.submit(submitInput as any, submitOptions as any)}
   >
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stop()}>Stop</button>
+  <button data-testid="stop" onclick={() => void stream.stop()}>Stop</button>
 </div>

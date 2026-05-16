@@ -429,6 +429,26 @@ describe("AnyValue", () => {
     expect(channel.get()).toBe(5);
   });
 
+  it("should return correct boolean from update()", () => {
+    const channel = new AnyValue<number>();
+
+    // update with values should return true (channel was modified)
+    expect(channel.update([42])).toBe(true);
+    expect(channel.get()).toBe(42);
+
+    // update with empty array when channel has a value should return true
+    // (channel was modified by clearing)
+    expect(channel.update([])).toBe(true);
+
+    // update with empty array when channel is already empty should return false
+    // (no modification occurred)
+    expect(channel.update([])).toBe(false);
+
+    // update with values again should return true
+    expect(channel.update([7])).toBe(true);
+    expect(channel.get()).toBe(7);
+  });
+
   it.each([0, "", false, null])("should handle '%s'", (value) => {
     const channel = new AnyValue<unknown>();
     channel.update([value]);

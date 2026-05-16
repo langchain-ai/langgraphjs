@@ -75,13 +75,13 @@ export type {
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > extends StreamBase<
-    StateType,
-    GetToolCallsType<StateType>,
-    GetInterruptType<Bag>,
-    SubagentStates
-  > {
+  StateType,
+  GetToolCallsType<StateType>,
+  GetInterruptType<Bag>,
+  SubagentStates
+> {
   /**
    * Whether the thread is currently being loaded.
    */
@@ -169,7 +169,7 @@ export interface UseStream<
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > = Pick<
   UseStream<StateType, Bag, SubagentStates>,
   | "values"

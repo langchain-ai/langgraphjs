@@ -11,7 +11,7 @@ import type {
 export class Auth<
   TExtra = {}, // eslint-disable-line @typescript-eslint/ban-types
   TAuthReturn extends BaseAuthReturn = BaseAuthReturn,
-  TUser extends BaseUser = ToUserLike<TAuthReturn>
+  TUser extends BaseUser = ToUserLike<TAuthReturn>,
 > {
   /**
    * @internal

@@ -19,14 +19,14 @@ type GetMetaType<Bag extends BagTemplate> = Bag extends { MetaType: unknown }
 
 interface UseStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > extends UseStream<StateType, Bag> {
   meta?: GetMetaType<Bag>;
 }
 
 export function useStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(): UseStreamContext<StateType, Bag> {
   const ctx = React.useContext(UseStreamContext);
   if (!ctx) {
@@ -99,8 +99,10 @@ const EXT_STORE_SYMBOL = Symbol.for("LGUI_EXT_STORE");
 const REQUIRE_SYMBOL = Symbol.for("LGUI_REQUIRE");
 const REQUIRE_EXTRA_SYMBOL = Symbol.for("LGUI_REQUIRE_EXTRA");
 
-interface LoadExternalComponentProps
-  extends Pick<React.HTMLAttributes<HTMLDivElement>, "style" | "className"> {
+interface LoadExternalComponentProps extends Pick<
+  React.HTMLAttributes<HTMLDivElement>,
+  "style" | "className"
+> {
   stream: ReturnType<typeof useStream>;
   namespace?: string;
   message: UIMessage;

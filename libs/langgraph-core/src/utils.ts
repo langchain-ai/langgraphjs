@@ -111,14 +111,14 @@ export function prefixGenerator<T>(
 
 export function prefixGenerator<
   T,
-  Prefix extends string | undefined = undefined
+  Prefix extends string | undefined = undefined,
 >(
   generator: Generator<T>,
   prefix?: Prefix | undefined
 ): Generator<Prefix extends string ? [Prefix, T] : T>;
 export function* prefixGenerator<
   T,
-  Prefix extends string | undefined = undefined
+  Prefix extends string | undefined = undefined,
 >(
   generator: Generator<T>,
   prefix?: Prefix | undefined

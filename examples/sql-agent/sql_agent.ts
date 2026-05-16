@@ -136,7 +136,7 @@ const queryTool = tool(
   }
 );
 
-const tools = [listTablesTool, getSchemaTool, queryTool];
+const _tools = [listTablesTool, getSchemaTool, queryTool];
 
 // Create tool nodes
 const getSchemaNode = new ToolNode([getSchemaTool]);
@@ -315,7 +315,7 @@ const queryToolWithInterrupt = tool(
       const userFeedback = response.args;
       return userFeedback;
     }
-    
+
     throw new Error(`Unsupported interrupt response type: ${response.type}`);
   },
   {

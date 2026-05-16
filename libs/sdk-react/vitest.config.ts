@@ -4,11 +4,12 @@ import { webdriverio } from "@vitest/browser-webdriverio";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {},
   test: {
     globals: true,
-    testTimeout: 30_000,
-    retry: 2,
-    globalSetup: ["./src/tests/fixtures/mock-server.ts"],
+    testTimeout: 5_000,
+    retry: 1,
+    globalSetup: ["./src/tests/mock-server.ts"],
     browser: {
       enabled: true,
       connectTimeout: 120_000,
@@ -20,6 +21,7 @@ export default defineConfig({
     typecheck: {
       enabled: true,
       include: ["**/*.test-d.ts"],
+      tsconfig: "./tsconfig.typecheck.json",
     },
   },
 });

@@ -164,9 +164,8 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
 
     // Load checkpoint with pending writes
-    const { checkpoint, pendingWrites } = await this.loadCheckpointWithWrites(
-      jsonDoc
-    );
+    const { checkpoint, pendingWrites } =
+      await this.loadCheckpointWithWrites(jsonDoc);
 
     return await this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
   }
@@ -329,15 +328,15 @@ export class RedisSaver extends BaseCheckpointSaver {
           options?.before && !config?.configurable?.thread_id
             ? 1000 // Fetch many results for global search with 'before' filtering
             : options?.before
-            ? limit * 10
-            : limit;
+              ? limit * 10
+              : limit;
 
         const results = await this.client.ft.search("checkpoints", query, {
           LIMIT: { from: 0, size: fetchLimit },
           SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
         });
 
-        let documents = results.documents;
+        const documents = results.documents;
 
         let yieldedCount = 0;
 

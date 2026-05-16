@@ -1,5 +1,39 @@
 # @langchain/langgraph-cli
 
+## 1.2.2-rc.0
+
+### Patch Changes
+
+- [#2389](https://github.com/langchain-ai/langgraphjs/pull/2389) [`40bcdab`](https://github.com/langchain-ai/langgraphjs/commit/40bcdab38fa495028d8eba68062e48079dbe9208) Thanks [@jdrogers940](https://github.com/jdrogers940)! - Adding support for pre-release versions in api_version.
+
+- [#2396](https://github.com/langchain-ai/langgraphjs/pull/2396) [`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-cli): accept hyphenated prerelease tags in `api_version` values.
+
+- Updated dependencies [[`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8)]:
+  - @langchain/langgraph-api@1.2.2-rc.0
+
+## 1.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`2bb66bf`](https://github.com/langchain-ai/langgraphjs/commit/2bb66bf816a8b18b2968ed885ef2df15f684cb4e)]:
+  - @langchain/langgraph-api@1.2.1
+
+## 1.2.0
+
+### Patch Changes
+
+- Updated dependencies [[`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb)]:
+  - @langchain/langgraph-api@1.2.0
+
+## 1.1.17
+
+### Patch Changes
+
+- [#2247](https://github.com/langchain-ai/langgraphjs/pull/2247) [`9874420`](https://github.com/langchain-ai/langgraphjs/commit/9874420019199a7064501b53b9407bd23dc752f9) Thanks [@jdrogers940](https://github.com/jdrogers940)! - Respect when http config is set. Also don't log an error when .env file is missing.
+
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.1.17
+
 ## 1.1.16
 
 ### Patch Changes

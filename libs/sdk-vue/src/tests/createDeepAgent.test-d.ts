@@ -2,11 +2,10 @@
  * Type tests for `useStream` with DeepAgent types.
  *
  * Validates that:
- * - stream.messages is BaseMessage[] (React-specific class instances)
+ * - stream.messages is BaseMessage[] class instances
  * - stream.toolCalls is correctly typed from deep agent tools
  * - stream.values contains the expected agent state
- * - stream.subagents contains the right types for subagents
- * - getSubagentsByType returns correctly narrowed subagent streams
+ * - stream.subagents contains the right discovery snapshot types
  * - Subagent state includes middleware state
  *
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
@@ -147,28 +146,6 @@ describe("deep agent", () => {
     }
   });
 
-  test("has well typed history", () => {
-    const stream = useStream<typeof deepAgentTwoSubagents>({
-      assistantId: "deep-agent",
-      fetchStateHistory: true,
-    });
-
-    const state = stream.history.value[0];
-    expectTypeOf(state.values).toHaveProperty("messages");
-    expectTypeOf(state.values.todos).toEqualTypeOf<
-      {
-        content: string;
-        status: "completed" | "in_progress" | "pending";
-      }[] &
-        {
-          status: "pending" | "in_progress" | "completed" | "cancelled";
-          content: string;
-          id: string;
-        }[]
-    >();
-    expectTypeOf(state.values.count).toEqualTypeOf<number>();
-  });
-
   test("has well typed values", () => {
     const stream = useStream<typeof deepAgentTwoSubagents>({
       assistantId: "deep-agent",
@@ -208,49 +185,19 @@ describe("deep agent", () => {
     });
 
     const tc = stream.toolCalls.value[0];
-    expectTypeOf(tc.call.name).toEqualTypeOf<"get_weather" | "search_web">();
-    expectTypeOf(tc.call.args).toEqualTypeOf<
-      | {
-          location: string;
-        }
-      | {
-          query: string;
-          maxResults?: number | undefined;
-        }
-    >();
-    expectTypeOf(tc.id).toEqualTypeOf<string>();
-    expectTypeOf(tc.index).toEqualTypeOf<number>();
-    expectTypeOf(tc.state).toEqualTypeOf<"pending" | "completed" | "error">();
-    expectTypeOf(tc.result).toBeNullable();
+    expectTypeOf(tc.name).toEqualTypeOf<string>();
+    expectTypeOf(tc.callId).toEqualTypeOf<string>();
+    expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
+    expectTypeOf(tc.input).toEqualTypeOf<unknown>();
+    expectTypeOf(tc.output).toEqualTypeOf<Promise<unknown>>();
   });
 
-  test("getToolCalls is available on deep agent streams", () => {
+  test("toolCalls is available on deep agent streams", () => {
     const stream = useStream<typeof deepAgentTwoSubagents>({
       assistantId: "deep-agent",
     });
 
-    const msg = stream.messages.value[0];
-    if (AIMessage.isInstance(msg)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toolCalls = stream.getToolCalls(msg as any);
-      expectTypeOf(toolCalls[0].state).toEqualTypeOf<
-        "pending" | "completed" | "error"
-      >();
-      expectTypeOf(toolCalls[0].call.name).toEqualTypeOf<
-        "get_weather" | "search_web"
-      >();
-      expectTypeOf(toolCalls[0].call.args).toEqualTypeOf<
-        | {
-            location: string;
-          }
-        | {
-            query: string;
-            maxResults?: number | undefined;
-          }
-      >();
-      expectTypeOf(toolCalls[0].id).toEqualTypeOf<string>();
-      expectTypeOf(toolCalls[0].index).toEqualTypeOf<number>();
-    }
+    expectTypeOf(stream.toolCalls.value).toBeArray();
   });
 
   test("should have well typed subagent values", () => {
@@ -258,38 +205,27 @@ describe("deep agent", () => {
       assistantId: "deep-agent",
     });
 
-    const subagent = [...stream.subagents.values()][0];
+    const subagent = [...stream.subagents.value.values()][0];
     expectTypeOf(subagent.id).toEqualTypeOf<string>();
-    expectTypeOf(subagent.status).toEqualTypeOf<
-      "pending" | "running" | "complete" | "error"
-    >();
-    expectTypeOf(subagent.messages).toBeArray();
-    expectTypeOf(subagent.messages[0]).toExtend<BaseMessage>();
-    expectTypeOf(subagent.toolCall).toEqualTypeOf<{
-      id: string;
-      name: string;
-      args: {
-        description?: string | undefined;
-        subagent_type?: "researcher" | "writer" | undefined;
-        [key: string]: unknown;
-      };
-    }>();
-    expectTypeOf(subagent.result).toEqualTypeOf<string | null>();
-    expectTypeOf(subagent.namespace).toEqualTypeOf<string[]>();
+    expectTypeOf(subagent.name).toEqualTypeOf<string>();
+    expectTypeOf(subagent.status).toEqualTypeOf<"running" | "complete" | "error">();
+    expectTypeOf(subagent.taskInput).toEqualTypeOf<string | undefined>();
+    expectTypeOf(subagent.output).toEqualTypeOf<unknown>();
+    expectTypeOf(subagent.namespace).toExtend<readonly string[]>();
     expectTypeOf(subagent.parentId).toEqualTypeOf<string | null>();
     expectTypeOf(subagent.depth).toEqualTypeOf<number>();
-    expectTypeOf(subagent.startedAt).toEqualTypeOf<Date | null>();
+    expectTypeOf(subagent.startedAt).toEqualTypeOf<Date>();
     expectTypeOf(subagent.completedAt).toEqualTypeOf<Date | null>();
   });
 
-  test("subagent messages are not plain SDK Message objects", () => {
+  test("subagent discovery snapshots do not include eager content", () => {
     const stream = useStream<typeof deepAgentTwoSubagents>({
       assistantId: "deep-agent",
     });
 
-    const subagent = [...stream.subagents.values()][0];
+    const subagent = [...stream.subagents.value.values()][0];
 
-    expectTypeOf(subagent.messages).toBeArray();
-    expectTypeOf(subagent.messages).toExtend<BaseMessage[]>();
+    expectTypeOf(subagent).not.toHaveProperty("messages");
+    expectTypeOf(subagent).not.toHaveProperty("toolCalls");
   });
 });

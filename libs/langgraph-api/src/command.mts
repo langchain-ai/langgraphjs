@@ -12,7 +12,7 @@ export interface RunCommand {
 }
 
 export const getLangGraphCommand = (command: RunCommand) => {
-  let goto =
+  const goto =
     command.goto != null && !Array.isArray(command.goto)
       ? [command.goto]
       : command.goto;

@@ -7,7 +7,7 @@ import type { SubmitOptions, CustomSubmitOptions } from "./types.js";
  */
 export interface QueueEntry<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
+  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>,
 > {
   /** Server-side run ID (from `client.runs.create()`) */
   id: string;
@@ -28,7 +28,7 @@ export interface QueueEntry<
  */
 export interface QueueInterface<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
+  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>,
 > {
   /** Read-only array of pending queue entries */
   readonly entries: ReadonlyArray<QueueEntry<StateType, OptionsType>>;
@@ -51,7 +51,7 @@ export interface QueueInterface<
  */
 export class PendingRunsTracker<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>
+  OptionsType = SubmitOptions<StateType> | CustomSubmitOptions<StateType>,
 > {
   private pending: QueueEntry<StateType, OptionsType>[] = [];
 

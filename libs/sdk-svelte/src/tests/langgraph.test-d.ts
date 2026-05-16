@@ -2,8 +2,8 @@
  * Type tests for `useStream` with `StateGraph` from `@langchain/langgraph`.
  *
  * Validates that:
- * - stream.messages is Readable<BaseMessage[]> (Svelte-specific class instances)
- * - stream.values is Readable<StateType> containing the expected graph state
+ * - stream.messages is BaseMessage[] (Svelte-specific class instances)
+ * - stream.values is StateType containing the expected graph state
  * - Compiled graph streams use BaseStream (no toolCalls, no subagents)
  * - Direct state types work as fallback
  *
@@ -13,8 +13,6 @@
 
 import { describe, test, expectTypeOf } from "vitest";
 import { z } from "zod/v4";
-import { get } from "svelte/store";
-import type { Readable } from "svelte/store";
 import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
   AIMessage,
@@ -30,7 +28,7 @@ import {
   START,
   END,
 } from "@langchain/langgraph";
-import { useStream } from "../index.js";
+import { useMessageMetadata, useStream } from "../index.js";
 
 const SimpleGraphSchema = new StateSchema({
   messages: MessagesValue,
@@ -147,9 +145,8 @@ describe("graph: stream.messages is BaseMessage[]", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.messages).toExtend<Readable<BaseMessage[]>>();
-    expectTypeOf(get(stream.messages)).toExtend<BaseMessage[]>();
-    expectTypeOf(get(stream.messages)[0]).toExtend<BaseMessage>();
+    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
+    expectTypeOf(stream.messages[0]).toExtend<BaseMessage>();
   });
 
   test("graph messages can be narrowed with type guards", () => {
@@ -157,7 +154,7 @@ describe("graph: stream.messages is BaseMessage[]", () => {
       assistantId: "graph",
     });
 
-    const msg = get(stream.messages)[0];
+    const msg = stream.messages[0];
     if (AIMessage.isInstance(msg)) {
       expectTypeOf(msg).toExtend<AIMessage>();
       expectTypeOf(msg.type).toEqualTypeOf<"ai">();
@@ -195,7 +192,7 @@ describe("graph: stream.messages is BaseMessage[]", () => {
       assistantId: "graph",
     });
 
-    const msg = get(stream.messages)[0];
+    const msg = stream.messages[0];
     expectTypeOf(msg.text).toEqualTypeOf<string>();
     expectTypeOf(msg.id).toEqualTypeOf<string | undefined>();
     expectTypeOf(msg.getType()).toBeString();
@@ -207,13 +204,13 @@ describe("graph: stream.messages is BaseMessage[]", () => {
       assistantId: "graph",
     });
 
-    const aiMessages = get(stream.messages).filter(AIMessage.isInstance);
+    const aiMessages = stream.messages.filter(AIMessage.isInstance);
     expectTypeOf(aiMessages).toExtend<AIMessage[]>();
 
-    const humanMessages = get(stream.messages).filter(HumanMessage.isInstance);
+    const humanMessages = stream.messages.filter(HumanMessage.isInstance);
     expectTypeOf(humanMessages).toExtend<HumanMessage[]>();
 
-    const toolMessages = get(stream.messages).filter(ToolMessage.isInstance);
+    const toolMessages = stream.messages.filter(ToolMessage.isInstance);
     expectTypeOf(toolMessages).toExtend<ToolMessage[]>();
   });
 
@@ -222,7 +219,7 @@ describe("graph: stream.messages is BaseMessage[]", () => {
       assistantId: "graph",
     });
 
-    const texts = get(stream.messages).map((m) => m.text);
+    const texts = stream.messages.map((m) => m.text);
     expectTypeOf(texts).toEqualTypeOf<string[]>();
   });
 });
@@ -233,7 +230,7 @@ describe("graph: stream.values has correct state type", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("messages");
   });
 
   test("research graph: values has all custom fields", () => {
@@ -241,13 +238,13 @@ describe("graph: stream.values has correct state type", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
-    expectTypeOf(get(stream.values)).toHaveProperty("topic");
-    expectTypeOf(get(stream.values)).toHaveProperty("analyticalResearch");
-    expectTypeOf(get(stream.values)).toHaveProperty("creativeResearch");
-    expectTypeOf(get(stream.values).topic).toEqualTypeOf<string>();
-    expectTypeOf(get(stream.values).analyticalResearch).toEqualTypeOf<string>();
-    expectTypeOf(get(stream.values).creativeResearch).toEqualTypeOf<string>();
+    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("topic");
+    expectTypeOf(stream.values).toHaveProperty("analyticalResearch");
+    expectTypeOf(stream.values).toHaveProperty("creativeResearch");
+    expectTypeOf(stream.values.topic).toEqualTypeOf<string>();
+    expectTypeOf(stream.values.analyticalResearch).toEqualTypeOf<string>();
+    expectTypeOf(stream.values.creativeResearch).toEqualTypeOf<string>();
   });
 
   test("chatbot graph: values has enum and number fields", () => {
@@ -255,15 +252,15 @@ describe("graph: stream.values has correct state type", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
-    expectTypeOf(get(stream.values)).toHaveProperty("userName");
-    expectTypeOf(get(stream.values)).toHaveProperty("conversationMode");
-    expectTypeOf(get(stream.values)).toHaveProperty("messageCount");
-    expectTypeOf(get(stream.values).userName).toEqualTypeOf<string>();
-    expectTypeOf(get(stream.values).conversationMode).toEqualTypeOf<
+    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("userName");
+    expectTypeOf(stream.values).toHaveProperty("conversationMode");
+    expectTypeOf(stream.values).toHaveProperty("messageCount");
+    expectTypeOf(stream.values.userName).toEqualTypeOf<string>();
+    expectTypeOf(stream.values.conversationMode).toEqualTypeOf<
       "casual" | "professional" | "technical"
     >();
-    expectTypeOf(get(stream.values).messageCount).toEqualTypeOf<number>();
+    expectTypeOf(stream.values.messageCount).toEqualTypeOf<number>();
   });
 
   test("pipeline graph: values has nested object and array fields", () => {
@@ -271,25 +268,21 @@ describe("graph: stream.values has correct state type", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
-    expectTypeOf(get(stream.values)).toHaveProperty("rawInput");
-    expectTypeOf(get(stream.values)).toHaveProperty("parsedData");
-    expectTypeOf(get(stream.values)).toHaveProperty("summary");
-    expectTypeOf(get(stream.values)).toHaveProperty("tags");
+    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("rawInput");
+    expectTypeOf(stream.values).toHaveProperty("parsedData");
+    expectTypeOf(stream.values).toHaveProperty("summary");
+    expectTypeOf(stream.values).toHaveProperty("tags");
 
-    expectTypeOf(get(stream.values).rawInput).toEqualTypeOf<string>();
-    expectTypeOf(get(stream.values).summary).toEqualTypeOf<string>();
-    expectTypeOf(get(stream.values).tags).toEqualTypeOf<string[]>();
+    expectTypeOf(stream.values.rawInput).toEqualTypeOf<string>();
+    expectTypeOf(stream.values.summary).toEqualTypeOf<string>();
+    expectTypeOf(stream.values.tags).toEqualTypeOf<string[]>();
 
-    expectTypeOf(get(stream.values).parsedData.entities).toEqualTypeOf<
-      string[]
-    >();
-    expectTypeOf(get(stream.values).parsedData.sentiment).toEqualTypeOf<
+    expectTypeOf(stream.values.parsedData.entities).toEqualTypeOf<string[]>();
+    expectTypeOf(stream.values.parsedData.sentiment).toEqualTypeOf<
       "positive" | "negative" | "neutral"
     >();
-    expectTypeOf(
-      get(stream.values).parsedData.confidence,
-    ).toEqualTypeOf<number>();
+    expectTypeOf(stream.values.parsedData.confidence).toEqualTypeOf<number>();
   });
 });
 
@@ -299,7 +292,7 @@ describe("direct state types work without StateGraph", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("messages");
   });
 
   test("custom direct state: values has all fields", () => {
@@ -307,9 +300,9 @@ describe("direct state types work without StateGraph", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
-    expectTypeOf(get(stream.values)).toHaveProperty("sessionId");
-    expectTypeOf(get(stream.values)).toHaveProperty("metadata");
+    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("sessionId");
+    expectTypeOf(stream.values).toHaveProperty("metadata");
   });
 
   test("complex direct state: values has nested fields", () => {
@@ -317,10 +310,10 @@ describe("direct state types work without StateGraph", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(get(stream.values)).toHaveProperty("messages");
-    expectTypeOf(get(stream.values)).toHaveProperty("settings");
-    expectTypeOf(get(stream.values)).toHaveProperty("history");
-    expectTypeOf(get(stream.values)).toHaveProperty("isActive");
+    expectTypeOf(stream.values).toHaveProperty("messages");
+    expectTypeOf(stream.values).toHaveProperty("settings");
+    expectTypeOf(stream.values).toHaveProperty("history");
+    expectTypeOf(stream.values).toHaveProperty("isActive");
   });
 
   test("direct state: messages is still BaseMessage[]", () => {
@@ -328,17 +321,17 @@ describe("direct state types work without StateGraph", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(get(stream.messages)).toExtend<BaseMessage[]>();
+    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
   });
 });
 
-describe("graph streams do not have agent-specific features", () => {
-  test("compiled graph does not have toolCalls", () => {
+describe("graph streams expose v1 root projections and discovery", () => {
+  test("compiled graph has root toolCalls projection", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("toolCalls");
+    expectTypeOf(stream.toolCalls).toBeArray();
   });
 
   test("compiled graph does not have getToolCalls", () => {
@@ -349,12 +342,12 @@ describe("graph streams do not have agent-specific features", () => {
     expectTypeOf(stream).not.toHaveProperty("getToolCalls");
   });
 
-  test("compiled graph does not have subagents", () => {
+  test("compiled graph exposes subagent discovery map", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("subagents");
+    expectTypeOf(stream.subagents).toExtend<ReadonlyMap<string, unknown>>();
   });
 
   test("compiled graph does not have getSubagentsByType", () => {
@@ -386,8 +379,8 @@ describe("graph streams do not have agent-specific features", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("toolCalls");
-    expectTypeOf(stream).not.toHaveProperty("subagents");
+    expectTypeOf(stream).toHaveProperty("toolCalls");
+    expectTypeOf(stream).toHaveProperty("subagents");
     expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
   });
 });
@@ -398,7 +391,7 @@ describe("graph: core stream properties", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.isLoading)).toEqualTypeOf<boolean>();
+    expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
   });
 
   test("isThreadLoading is boolean", () => {
@@ -406,7 +399,7 @@ describe("graph: core stream properties", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.isThreadLoading)).toEqualTypeOf<boolean>();
+    expectTypeOf(stream.isThreadLoading).toEqualTypeOf<boolean>();
   });
 
   test("error is unknown", () => {
@@ -414,7 +407,7 @@ describe("graph: core stream properties", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.error)).toEqualTypeOf<unknown>();
+    expectTypeOf(stream.error).toEqualTypeOf<unknown>();
   });
 
   test("stop returns Promise<void>", () => {
@@ -433,20 +426,20 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.submit(null)).toEqualTypeOf<Promise<void>>();
   });
 
-  test("branch is string", () => {
+  test("threadId is nullable string", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.branch)).toEqualTypeOf<string>();
+    expectTypeOf(stream.threadId).toEqualTypeOf<string | null>();
   });
 
-  test("setBranch accepts string", () => {
+  test("hydrationPromise resolves to void", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.setBranch).toBeCallableWith("main");
+    expectTypeOf(stream.hydrationPromise).toEqualTypeOf<Promise<void>>();
   });
 
   test("assistantId is string", () => {
@@ -457,41 +450,49 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
   });
 
-  test("joinStream is a function", () => {
+  test("respond returns Promise<void>", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.joinStream).toBeFunction();
+    expectTypeOf(stream.respond("ok")).toEqualTypeOf<Promise<void>>();
+  });
+
+  test("getThread returns optional ThreadStream", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.getThread()).not.toBeNever();
   });
 });
 
-describe("graph: getMessagesMetadata accepts BaseMessage", () => {
-  test("getMessagesMetadata works with compiled graph messages", () => {
+describe("graph: useMessageMetadata accepts BaseMessage ids", () => {
+  test("useMessageMetadata works with compiled graph messages", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    const msg = get(stream.messages)[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
-    if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
-      expectTypeOf(metadata.branch).toEqualTypeOf<string | undefined>();
-      expectTypeOf(metadata.branchOptions).toEqualTypeOf<
-        string[] | undefined
+    const msg = stream.messages[0];
+    const metadata = useMessageMetadata(stream, () => msg.id);
+    if (metadata.current) {
+      expectTypeOf(metadata.current.parentCheckpointId).toEqualTypeOf<
+        string | undefined
       >();
     }
   });
 
-  test("getMessagesMetadata works with direct state type", () => {
+  test("useMessageMetadata works with direct state type", () => {
     const stream = useStream<BasicDirectState>({
       assistantId: "direct",
     });
 
-    const msg = get(stream.messages)[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
-    if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
+    const msg = stream.messages[0];
+    const metadata = useMessageMetadata(stream, () => msg.id);
+    if (metadata.current) {
+      expectTypeOf(metadata.current.parentCheckpointId).toEqualTypeOf<
+        string | undefined
+      >();
     }
   });
 });
@@ -511,7 +512,7 @@ describe("graph: interrupt support", () => {
       assistantId: "graph",
     });
 
-    const interruptValue = get(stream.interrupt);
+    const interruptValue = stream.interrupt;
     if (interruptValue) {
       expectTypeOf(interruptValue).toHaveProperty("id");
       expectTypeOf(interruptValue).toHaveProperty("value");
@@ -523,7 +524,7 @@ describe("graph: interrupt support", () => {
       assistantId: "graph",
     });
 
-    expectTypeOf(get(stream.interrupts)).toBeArray();
+    expectTypeOf(stream.interrupts).toBeArray();
   });
 });
 
@@ -533,16 +534,16 @@ describe("realistic StateGraph usage patterns", () => {
       assistantId: "graph",
     });
 
-    const { topic } = get(stream.values);
+    const { topic } = stream.values;
     expectTypeOf(topic).toEqualTypeOf<string>();
 
-    const analytical = get(stream.values).analyticalResearch;
+    const analytical = stream.values.analyticalResearch;
     expectTypeOf(analytical).toEqualTypeOf<string>();
 
-    const creative = get(stream.values).creativeResearch;
+    const creative = stream.values.creativeResearch;
     expectTypeOf(creative).toEqualTypeOf<string>();
 
-    for (const msg of get(stream.messages)) {
+    for (const msg of stream.messages) {
       expectTypeOf(msg).toExtend<BaseMessage>();
       expectTypeOf(msg.text).toEqualTypeOf<string>();
     }
@@ -553,7 +554,7 @@ describe("realistic StateGraph usage patterns", () => {
       assistantId: "graph",
     });
 
-    const mode = get(stream.values).conversationMode;
+    const mode = stream.values.conversationMode;
     if (mode === "casual") {
       expectTypeOf(mode).toEqualTypeOf<"casual">();
     }
@@ -564,7 +565,7 @@ describe("realistic StateGraph usage patterns", () => {
       expectTypeOf(mode).toEqualTypeOf<"technical">();
     }
 
-    expectTypeOf(get(stream.values).messageCount).toEqualTypeOf<number>();
+    expectTypeOf(stream.values.messageCount).toEqualTypeOf<number>();
   });
 
   test("render pipeline with nested parsed data", () => {
@@ -572,14 +573,14 @@ describe("realistic StateGraph usage patterns", () => {
       assistantId: "graph",
     });
 
-    const { entities, sentiment, confidence } = get(stream.values).parsedData;
+    const { entities, sentiment, confidence } = stream.values.parsedData;
     expectTypeOf(entities).toEqualTypeOf<string[]>();
     expectTypeOf(sentiment).toEqualTypeOf<
       "positive" | "negative" | "neutral"
     >();
     expectTypeOf(confidence).toEqualTypeOf<number>();
 
-    for (const tag of get(stream.values).tags) {
+    for (const tag of stream.values.tags) {
       expectTypeOf(tag).toEqualTypeOf<string>();
     }
   });
@@ -600,7 +601,7 @@ describe("realistic StateGraph usage patterns", () => {
       assistantId: "graph",
     });
 
-    const dicts = get(stream.messages).map((m) => m.toDict());
+    const dicts = stream.messages.map((m) => m.toDict());
     expectTypeOf(dicts).toEqualTypeOf<StoredMessage[]>();
   });
 
@@ -609,7 +610,7 @@ describe("realistic StateGraph usage patterns", () => {
       assistantId: "graph",
     });
 
-    const aiMessages = get(stream.messages).filter(AIMessage.isInstance);
+    const aiMessages = stream.messages.filter(AIMessage.isInstance);
     for (const ai of aiMessages) {
       expectTypeOf(ai.type).toEqualTypeOf<"ai">();
       if (ai.tool_calls && ai.tool_calls.length > 0) {

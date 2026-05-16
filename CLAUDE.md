@@ -2,8 +2,8 @@
 
 ## Build & Test Commands
 - Build: `pnpm build`
-- Lint: `pnpm lint` (fix with `pnpm lint:fix`)
-- Format: `pnpm format` (check with `pnpm format:check`)
+- Lint: `pnpm lint` (fix with `pnpm lint:fix`) — uses oxlint
+- Format: `pnpm format` (check with `pnpm format:check`) — uses oxfmt
 - Test: `pnpm test` (single test: `pnpm test:single /path/to/yourtest.test.ts`)
 - Integration tests: `pnpm test:int` (start deps: `pnpm test:int:deps`, stop: `pnpm test:int:deps:down`)
 

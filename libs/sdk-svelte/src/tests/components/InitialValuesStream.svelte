@@ -1,36 +1,51 @@
 <script lang="ts">
+  import { HumanMessage } from "@langchain/core/messages";
   import { useStream } from "../../index.js";
-  import type { UseStreamOptions } from "@langchain/langgraph-sdk/ui";
-  import type { Message } from "@langchain/langgraph-sdk";
+  import type { BaseMessage } from "@langchain/core/messages";
 
   interface Props {
-    options: UseStreamOptions<any, any>;
+    apiUrl: string;
+    assistantId?: string;
+    initialValues: {
+      messages: BaseMessage[];
+      [key: string]: unknown;
+    };
   }
 
-  const { options }: Props = $props();
+  const {
+    apiUrl,
+    assistantId = "stategraph_text",
+    initialValues,
+  }: Props = $props();
 
-  const { messages, values, submit } = useStream(options);
+  // svelte-ignore state_referenced_locally
+  const stream = useStream({
+    assistantId,
+    apiUrl,
+    initialValues,
+  });
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
-      <div
-        data-testid={msg.id?.includes("cached")
-          ? `message-cached-${i}`
-          : `message-${i}`}
-      >
+    {#each stream.messages as msg, i (msg.id ?? i)}
+      <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
           : JSON.stringify(msg.content)}
       </div>
     {/each}
   </div>
-  <div data-testid="values">{JSON.stringify($values)}</div>
+  <div data-testid="values">{JSON.stringify(stream.values)}</div>
+  <div data-testid="loading">
+    {stream.isLoading ? "Loading..." : "Not loading"}
+  </div>
   <button
     data-testid="submit"
     onclick={() =>
-      void submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+      void stream.submit({
+        messages: [new HumanMessage("Fresh request")],
+      })}
   >
     Submit
   </button>

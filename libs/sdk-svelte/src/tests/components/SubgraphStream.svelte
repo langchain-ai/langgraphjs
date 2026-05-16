@@ -3,30 +3,34 @@
 
   interface Props {
     apiUrl: string;
-    onCheckpointEvent?: (...args: any[]) => void;
-    onUpdateEvent?: (...args: any[]) => void;
-    onCustomEvent?: (...args: any[]) => void;
+    assistantId?: string;
+    transport?: "sse" | "websocket";
   }
 
   const {
     apiUrl,
-    onCheckpointEvent,
-    onUpdateEvent,
-    onCustomEvent,
+    assistantId = "parentAgent",
+    transport,
   }: Props = $props();
 
-  const { messages, isLoading, submit } = useStream({
-    assistantId: "parentAgent",
+  // svelte-ignore state_referenced_locally
+  const stream = useStream({
+    assistantId,
     apiUrl,
-    onCheckpointEvent,
-    onUpdateEvent,
-    onCustomEvent,
+    transport,
   });
+
+  const subgraphs = $derived([...stream.subgraphs.values()]);
+  const subgraphsByNodeEntries = $derived(
+    [...stream.subgraphsByNode.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    ),
+  );
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -35,14 +39,24 @@
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading" : "Not loading"}
+    {stream.isLoading ? "Loading" : "Not loading"}
   </div>
+  <div data-testid="subgraph-count">{subgraphs.length}</div>
+  <div data-testid="subgraph-nodes">
+    {subgraphsByNodeEntries
+      .map(([node, entries]) => `${node}:${entries.length}`)
+      .join(",")}
+  </div>
+  {#each subgraphs as subgraph, i (subgraph.id ?? i)}
+    <div data-testid={`subgraph-${i}-namespace`}>
+      {subgraph.namespace.join("/") || "root"}
+    </div>
+  {/each}
   <button
     data-testid="submit"
     onclick={() =>
-      void submit(
+      void stream.submit(
         { messages: [{ content: "Hello", type: "human" }] } as any,
-        { streamSubgraphs: true },
       )}
   >
     Send

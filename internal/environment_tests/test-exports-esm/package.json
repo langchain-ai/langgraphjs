@@ -15,14 +15,12 @@
     "test:cjs": "node src/require.cjs",
     "test:cjs:import": "node src/import.cjs",
     "test:entrypoints": "node src/entrypoints.js",
-    "test:ts": "node dist/index.js",
-    "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "test:ts": "node dist/index.js"
   },
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",
