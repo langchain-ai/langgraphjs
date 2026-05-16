@@ -1253,14 +1253,18 @@ it("node config and python config", () => {
     api_version: "0.7.29rc1",
   });
 
-  // Invalid api_version format - hyphen prerelease suffix
-  expect
-    .soft(() =>
-      getConfig({
-        node_version: "22",
-        graphs: { agent: "./agent.js:graph" },
-        api_version: "0.7.29-rc1",
-      })
-    )
-    .toThrow();
+  // Valid api_version with hyphen prerelease suffix
+  expect(
+    getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29-rc.0",
+    })
+  ).toEqual({
+    node_version: "22",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+    api_version: "0.7.29-rc.0",
+  });
 });
