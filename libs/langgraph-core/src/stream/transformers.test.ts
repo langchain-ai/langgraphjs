@@ -69,6 +69,69 @@ describe("createMessagesTransformer", () => {
     expect(text).toBe("hello");
   });
 
+  it("ignores tool-role message lifecycles", async () => {
+    const transformer = createMessagesTransformer([]);
+    const proj = transformer.init();
+
+    transformer.process(
+      makeEvent(
+        "messages",
+        { event: "message-start", role: "tool", run_id: "run-tool" },
+        agentNs
+      )
+    );
+    transformer.process(
+      makeEvent(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: { type: "text-delta", text: "[]" },
+          run_id: "run-tool",
+        },
+        agentNs
+      )
+    );
+    transformer.process(
+      makeEvent(
+        "messages",
+        { event: "message-finish", run_id: "run-tool" },
+        agentNs
+      )
+    );
+    transformer.process(
+      makeEvent(
+        "messages",
+        { event: "message-start", role: "ai", run_id: "run-ai" },
+        agentNs
+      )
+    );
+    transformer.process(
+      makeEvent(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: { type: "text-delta", text: "hello" },
+          run_id: "run-ai",
+        },
+        agentNs
+      )
+    );
+    transformer.process(
+      makeEvent(
+        "messages",
+        { event: "message-finish", run_id: "run-ai" },
+        agentNs
+      )
+    );
+    transformer.finalize?.();
+
+    const streams = await collect(proj.messages);
+    expect(streams).toHaveLength(1);
+    await expect(streams[0].text).resolves.toBe("hello");
+  });
+
   it("routes interleaved message streams by run id", async () => {
     const transformer = createMessagesTransformer([]);
     const proj = transformer.init();
