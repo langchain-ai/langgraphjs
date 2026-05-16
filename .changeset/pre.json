@@ -30,5 +30,15 @@
     "@langchain/svelte": "1.0.2",
     "@langchain/vue": "1.0.2"
   },
-  "changesets": []
+  "changesets": [
+    "batched-root-projection",
+    "bright-subagents-stream",
+    "common-items-fix",
+    "green-worms-ring",
+    "hunter-allow-js-prerelease",
+    "server-info-configurable",
+    "shaggy-items-care",
+    "soft-planes-clean",
+    "subagent-execution-namespace"
+  ]
 }
