@@ -1,6 +1,18 @@
 # @langchain/react
 
-React SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview). It provides a `useStream` hook that manages streaming, state, branching, and interrupts out of the box.
+React SDK for building AI-powered applications with [Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview), [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) and [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview).
+
+`@langchain/react` v1 ships a v2-native `useStream` hook together with a small family of companion selector hooks. The root hook gives you always-on access to thread state, messages, tool calls, and interrupts; the selector hooks open ref-counted subscriptions for the things that aren't needed on every view (per-subagent messages, media streams, submission queue, message metadata, raw channels, …).
+
+## Highlights
+
+- **v2-native streaming protocol.** Session-based transport with automatic re-attach on remount; no more `reconnectOnMount` / `joinStream` dance.
+- **Selector-based subscriptions.** Namespaced data (subagents, subgraphs, media) streams only when a component actually mounts the matching selector hook, and releases on unmount.
+- **Always-on root projections.** `values`, `messages`, `toolCalls`, and `interrupts` are live at the root with zero per-subscription cost.
+- **Agent-brand type inference.** `useStream<typeof agent>()` unwraps state, tool calls, and subagent state maps from an agent brand.
+- **Discriminated options.** The hosted Agent Server path and the custom-adapter path are two arms of a single typed union — mixing them is a compile-time error.
+- **Multimodal media streams.** Built-in assembly for audio, images, video, and files.
+- **Suspense integration.** `useSuspenseStream` hands the initial hydration phase to `<Suspense>` and non-streaming errors to Error Boundaries.
 
 ## Installation
 
@@ -8,7 +20,7 @@ React SDK for building AI-powered applications with [Deep Agents](https://docs.l
 npm install @langchain/react @langchain/core
 ```
 
-**Peer dependencies:** `react` (^18 || ^19), `@langchain/core` (^1.1.27)
+**Peer dependencies:** `react` (^18 || ^19), `@langchain/core` (^1.1.27).
 
 ## Quick Start
 
@@ -24,7 +36,7 @@ function Chat() {
   return (
     <div>
       {messages.map((msg, i) => (
-        <div key={msg.id ?? i}>{msg.content}</div>
+        <div key={msg.id ?? i}>{String(msg.content)}</div>
       ))}
 
       <button
@@ -42,544 +54,57 @@ function Chat() {
 }
 ```
 
-## `useStream` Options
+## Mental model
 
-| Option | Type | Description |
-|---|---|---|
-| `assistantId` | `string` | **Required.** The assistant/graph ID to stream from. |
-| `apiUrl` | `string` | Base URL of the LangGraph API. |
-| `client` | `Client` | Pre-configured `Client` instance (alternative to `apiUrl`). |
-| `messagesKey` | `string` | State key containing messages. Defaults to `"messages"`. |
-| `initialValues` | `StateType` | Initial state values before any stream data arrives. |
-| `fetchStateHistory` | `boolean \| { limit: number }` | Fetch thread history on stream completion. Enables branching. |
-| `throttle` | `boolean \| number` | Throttle state updates for performance. |
-| `onFinish` | `(state, error?) => void` | Called when the stream completes. |
-| `onError` | `(error, state?) => void` | Called on stream errors. |
-| `onThreadId` | `(threadId) => void` | Called when a new thread is created. |
-| `onUpdateEvent` | `(event) => void` | Receive update events from the stream. |
-| `onCustomEvent` | `(event) => void` | Receive custom events from the stream. |
-| `onStop` | `() => void` | Called when the stream is stopped by the user. |
+`@langchain/react` v1 splits the surface into two layers:
 
-## Return Values
-
-| Property | Type | Description |
-|---|---|---|
-| `values` | `StateType` | Current graph state. |
-| `messages` | `Message[]` | Messages from the current state. |
-| `isLoading` | `boolean` | Whether a stream is currently active. |
-| `error` | `unknown` | The most recent error, if any. |
-| `interrupt` | `Interrupt \| undefined` | Current interrupt requiring user input. |
-| `branch` | `string` | Active branch identifier. |
-| `submit(values, options?)` | `function` | Submit new input to the graph. When called while a stream is active, the run is created on the server with `multitaskStrategy: "enqueue"` and queued automatically. |
-| `stop()` | `function` | Cancel the active stream. |
-| `setBranch(branch)` | `function` | Switch to a different conversation branch. |
-| `getMessagesMetadata(msg, index?)` | `function` | Get branching and checkpoint metadata for a message. |
-| `switchThread(id)` | `(id: string \| null) => void` | Switch to a different thread. Pass `null` to start a new thread on next submit. |
-| `queue.entries` | `ReadonlyArray<QueueEntry>` | Pending server-side runs. Each entry has `id` (server run ID), `values`, `options`, and `createdAt`. |
-| `queue.size` | `number` | Number of pending runs on the server. |
-| `queue.cancel(id)` | `(id: string) => Promise<boolean>` | Cancel a pending run on the server by its run ID. |
-| `queue.clear()` | `() => Promise<void>` | Cancel all pending runs on the server. |
-
-## `useSuspenseStream`
-
-`useSuspenseStream` is a companion hook to `useStream` that integrates with React's [Suspense](https://react.dev/reference/react/Suspense) and [Error Boundary](https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary) protocols. Instead of handling loading and error states inside your component, you declare them in parent boundaries:
+1. **Root hook (`useStream`).** Owns the thread lifecycle, the transport, and a handful of always-on projections (`values`, `messages`, `toolCalls`, `interrupts`, `error`, `isLoading`, discovery maps). Mount it once per thread.
+2. **Companion selector hooks.** Each one opens a ref-counted subscription when the first component mounts it and releases it when the last consumer unmounts. Use them for anything scoped to a namespace, a subagent / subgraph, a specific message, a specific extension channel, or a media stream.
 
 ```tsx
-import { Suspense } from "react";
-import { ErrorBoundary } from "react-error-boundary";
-import { useSuspenseStream } from "@langchain/react";
-
-function App() {
-  return (
-    <ErrorBoundary
-      fallback={({ error, resetErrorBoundary }) => (
-        <div>
-          <p>{error.message}</p>
-          <button onClick={resetErrorBoundary}>Retry</button>
-        </div>
-      )}
-    >
-      <Suspense fallback={<Spinner />}>
-        <Chat />
-      </Suspense>
-    </ErrorBoundary>
-  );
-}
+import {
+  useStream,
+  useMessages,
+  useToolCalls,
+  useSubmissionQueue,
+} from "@langchain/react";
 
 function Chat() {
-  // No isLoading/error checks needed — Suspense and ErrorBoundary handle them.
-  const { messages, submit, isStreaming } = useSuspenseStream({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-  });
+  const stream = useStream({ assistantId: "agent", apiUrl: "/api" });
 
-  return (
-    <div>
-      {messages.map((msg, i) => (
-        <div key={msg.id ?? i}>{msg.content}</div>
-      ))}
-      {isStreaming && <TypingIndicator />}
+  // Root: free reads, no new subscription.
+  const messages = useMessages(stream); // same as stream.messages
 
-      <button
-        onClick={() =>
-          void submit({
-            messages: [{ type: "human", content: "Hello!" }],
-          })
-        }
-      >
-        Send
-      </button>
-    </div>
-  );
+  // Scoped: opens a namespaced subscription on mount.
+  const queue = useSubmissionQueue(stream);
 }
 ```
 
-### How it works
+## Documentation
 
-- **Suspends** while the initial thread history is loading (e.g. when a `threadId` is provided and the thread data is being fetched). The nearest `<Suspense>` boundary renders its fallback during this time.
-- **Throws errors** to the nearest Error Boundary when the stream encounters an error outside of active streaming.
-- **Does not suspend during streaming.** Streaming is incremental — messages arrive progressively and the UI must update in real time. The `isStreaming` flag indicates whether tokens are currently arriving.
+Detailed guides live in [`./docs`](./docs/). Start with the two files most apps need first:
 
-### Options
+- **[`useStream`](./docs/use-stream.md)** — options, return shape, `submit()`, `stop()`, `respond()`, `hydrationPromise`.
+- **[Companion selector hooks](./docs/selectors.md)** — `useValues`, `useMessages`, `useToolCalls`, `useMessageMetadata`, `useChannel`, `useExtension`, and friends.
 
-`useSuspenseStream` accepts the same options as `useStream` (LangGraph Platform mode), plus:
+Feature-specific guides:
 
-| Option | Type | Description |
-|---|---|---|
-| `suspenseCache` | `SuspenseCache` | Optional cache instance for Suspense history prefetching. Useful in tests to avoid cross-test cache sharing. |
+- **[Transports](./docs/transports.md)** — SSE, WebSocket, `HttpAgentServerAdapter`, custom `AgentServerAdapter`.
+- **[Custom transports](./docs/custom-transport.md)** — implementing `AgentServerAdapter` against your own backend, with a worked walkthrough of [`examples/ui-react-transport`](../../examples/ui-react-transport).
+- **[Interrupts & headless tools](./docs/interrupts.md)** — pausing runs, `respond()`, `tools` + `onTool`.
+- **[Fork / edit from a checkpoint](./docs/fork-from-checkpoint.md)** — `useMessageMetadata` + `submit({ forkFrom })`.
+- **[Submission queue](./docs/submission-queue.md)** — `multitaskStrategy: "enqueue"` + `useSubmissionQueue`.
+- **[Subagents & subgraphs](./docs/subagents.md)** — discovery maps, scoped selector subscriptions.
+- **[Multimodal media](./docs/multimodal.md)** — `useAudio` / `useImages` / `useVideo` / `useFiles`, `useMediaURL`, players.
+- **[`useSuspenseStream`](./docs/suspense.md)** — Suspense + Error Boundary integration.
+- **[`StreamProvider` / `useStreamContext`](./docs/context.md)** — share one stream across a subtree.
+- **[Type safety](./docs/type-safety.md)** — agent-brand inference, prop-drilling, type helpers.
 
-### Return Values
+## Migrating from v0 to v1
 
-The return type is identical to `useStream` except:
+The `useStream` import name is unchanged, but the return shape, option bag, and protocol semantics all shifted. Most chat apps migrate in well under an hour — the full migration guide with line-by-line diffs lives in [`./docs/v1-migration.md`](./docs/v1-migration.md).
 
-| Removed | Reason |
-|---|---|
-| `isLoading` | Replaced by `isStreaming`; initial loading is handled by Suspense. |
-| `error` | Thrown to the nearest Error Boundary instead. |
-| `isThreadLoading` | Handled by Suspense (the component suspends until the thread is ready). |
-
-| Added | Type | Description |
-|---|---|---|
-| `isStreaming` | `boolean` | `true` while the stream is receiving data. The component is never suspended during streaming. |
-
-All other properties (`messages`, `submit`, `stop`, `interrupt`, `branch`, `switchThread`, `queue`, etc.) are unchanged.
-
-### Thread-switching with Suspense
-
-`useSuspenseStream` works naturally with thread switching. When the `threadId` changes, the component suspends while the new thread's history loads, and `<Suspense>` shows a smooth skeleton/fallback transition:
-
-```tsx
-function App() {
-  const [threadId, setThreadId] = useState<string | null>(null);
-
-  return (
-    <div className="flex">
-      <ThreadSidebar onSelect={setThreadId} />
-
-      <Suspense fallback={<ThreadSkeleton />}>
-        <ChatPanel threadId={threadId} />
-      </Suspense>
-    </div>
-  );
-}
-
-function ChatPanel({ threadId }: { threadId: string | null }) {
-  const { messages, submit, isStreaming } = useSuspenseStream({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-    threadId,
-  });
-
-  return <MessageList messages={messages} />;
-}
-```
-
-### Error recovery
-
-When an error is thrown to an Error Boundary, call `invalidateSuspenseCache()` in the boundary's reset handler so the retry triggers a fresh data fetch:
-
-```tsx
-import { invalidateSuspenseCache } from "@langchain/react";
-
-<ErrorBoundary
-  onReset={() => invalidateSuspenseCache()}
-  fallbackRender={({ error, resetErrorBoundary }) => (
-    <div>
-      <p>{error.message}</p>
-      <button onClick={resetErrorBoundary}>Retry</button>
-    </div>
-  )}
->
-  <Suspense fallback={<Spinner />}>
-    <Chat />
-  </Suspense>
-</ErrorBoundary>
-```
-
-For test isolation, you can create and pass a dedicated cache instance:
-
-```tsx
-import { createSuspenseCache, useSuspenseStream } from "@langchain/react";
-
-const suspenseCache = createSuspenseCache();
-
-function Chat() {
-  const stream = useSuspenseStream({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-    suspenseCache,
-  });
-  // ...
-}
-```
-
-## Type Safety
-
-### With `createAgent`
-
-When using `createAgent`, pass `typeof agent` to automatically infer tool call types:
-
-```tsx
-import type { agent } from "./agent";
-
-function Chat() {
-  const stream = useStream<typeof agent>({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-  });
-
-  // stream.messages, tool calls, etc. are fully typed
-}
-```
-
-### With `StateGraph`
-
-For custom graphs, provide your state type directly:
-
-```tsx
-import type { BaseMessage } from "langchain";
-
-interface MyState {
-  messages: BaseMessage[];
-  context?: string;
-}
-
-function Chat() {
-  const { messages, submit } = useStream<MyState>({
-    assistantId: "my-graph",
-    apiUrl: "http://localhost:2024",
-  });
-}
-```
-
-### Typed Interrupts
-
-Pass interrupt types via the second generic parameter:
-
-```tsx
-const { interrupt, submit } = useStream<
-  MyState,
-  { InterruptType: { question: string } }
->({
-  assistantId: "my-graph",
-  apiUrl: "http://localhost:2024",
-});
-
-if (interrupt) {
-  // interrupt.value is typed as { question: string }
-}
-```
-
-## Handling Interrupts
-
-Interrupts let you pause graph execution and wait for user input:
-
-```tsx
-function Chat() {
-  const { messages, interrupt, submit } = useStream<
-    { messages: BaseMessage[] },
-    { InterruptType: { question: string } }
-  >({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-  });
-
-  return (
-    <div>
-      {messages.map((msg, i) => (
-        <div key={msg.id ?? i}>{msg.content}</div>
-      ))}
-
-      {interrupt && (
-        <div>
-          <p>{interrupt.value.question}</p>
-          <button
-            onClick={() =>
-              void submit(null, { command: { resume: "Approved" } })
-            }
-          >
-            Approve
-          </button>
-        </div>
-      )}
-
-      <button
-        onClick={() =>
-          void submit({
-            messages: [{ type: "human", content: "Hello" }],
-          })
-        }
-      >
-        Send
-      </button>
-    </div>
-  );
-}
-```
-
-## Branching
-
-Enable conversation branching by setting `fetchStateHistory: true`:
-
-```tsx
-function Chat() {
-  const { messages, submit, getMessagesMetadata, setBranch } = useStream({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-    fetchStateHistory: true,
-  });
-
-  return (
-    <div>
-      {messages.map((msg, i) => {
-        const metadata = getMessagesMetadata(msg, i);
-        const branchOptions = metadata?.branchOptions;
-        const branch = metadata?.branch;
-
-        return (
-          <div key={msg.id ?? i}>
-            <p>{msg.content}</p>
-            {branchOptions && branch && (
-              <div>
-                <button onClick={() => {
-                  const prev = branchOptions[branchOptions.indexOf(branch) - 1];
-                  if (prev) setBranch(prev);
-                }}>
-                  Previous
-                </button>
-                <button onClick={() => {
-                  const next = branchOptions[branchOptions.indexOf(branch) + 1];
-                  if (next) setBranch(next);
-                }}>
-                  Next
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-```
-
-## Server-Side Queuing
-
-When `submit()` is called while a stream is already active, the SDK automatically creates the run on the server with `multitaskStrategy: "enqueue"`. The pending runs are tracked in `queue` and processed in order as each finishes:
-
-```tsx
-function Chat() {
-  const { messages, submit, isLoading, queue, switchThread } = useStream({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-  });
-
-  return (
-    <div>
-      {messages.map((msg, i) => (
-        <div key={msg.id ?? i}>{msg.content}</div>
-      ))}
-
-      {queue.size > 0 && (
-        <div>
-          <p>{queue.size} message(s) queued</p>
-          <button onClick={() => void queue.clear()}>Clear Queue</button>
-        </div>
-      )}
-
-      <button
-        disabled={isLoading}
-        onClick={() =>
-          void submit({
-            messages: [{ type: "human", content: "Hello!" }],
-          })
-        }
-      >
-        Send
-      </button>
-      <button onClick={() => switchThread(null)}>New Thread</button>
-    </div>
-  );
-}
-```
-
-Switching threads via `switchThread()` cancels all pending runs and clears the queue.
-
-## Custom Transport
-
-Instead of connecting to a LangGraph API, you can provide your own streaming transport. Pass a `transport` object instead of `assistantId` to use a custom backend:
-
-```tsx
-import { useStream, FetchStreamTransport } from "@langchain/react";
-import type { BaseMessage } from "langchain";
-
-function Chat() {
-  const {
-    messages,
-    submit,
-    isLoading,
-    branch,
-    setBranch,
-    getMessagesMetadata,
-  } = useStream<{ messages: BaseMessage[] }>({
-    transport: new FetchStreamTransport({
-      url: "https://my-api.example.com/stream",
-    }),
-    threadId: null,
-    onThreadId: (id) => console.log("Thread created:", id),
-  });
-
-  return (
-    <div>
-      {messages.map((msg, i) => {
-        const metadata = getMessagesMetadata(msg, i);
-        return (
-          <div key={msg.id ?? i}>
-            <p>{msg.content}</p>
-            {metadata?.streamMetadata && (
-              <span>Node: {metadata.streamMetadata.langgraph_node}</span>
-            )}
-          </div>
-        );
-      })}
-
-      <p>Current branch: {branch}</p>
-
-      <button
-        disabled={isLoading}
-        onClick={() =>
-          void submit({
-            messages: [{ type: "human", content: "Hello!" }],
-          })
-        }
-      >
-        Send
-      </button>
-    </div>
-  );
-}
-```
-
-The custom transport interface returns the same properties as the standard `useStream` hook, including `getMessagesMetadata`, `branch`, `setBranch`, `switchThread`, and all message/interrupt/subagent helpers. When using a custom transport, `getMessagesMetadata` returns stream metadata sent alongside messages during streaming; `branch` and `setBranch` provide local branch state management. `onFinish` is also supported and receives a synthetic `ThreadState` built from the final locally streamed values; the run metadata argument is `undefined`.
-
-## Sharing State with `StreamProvider`
-
-When multiple components in a tree need access to the same stream (a message list, a header with loading status, an input bar), use `StreamProvider` and `useStreamContext` to avoid prop drilling:
-
-```tsx
-import { StreamProvider, useStreamContext } from "@langchain/react";
-
-function App() {
-  return (
-    <StreamProvider assistantId="agent" apiUrl="http://localhost:2024">
-      <ChatHeader />
-      <MessageList />
-      <MessageInput />
-    </StreamProvider>
-  );
-}
-
-function ChatHeader() {
-  const { isLoading, error } = useStreamContext();
-  return (
-    <header>
-      <h1>Chat</h1>
-      {isLoading && <span>Thinking...</span>}
-      {error != null && <span>Error occurred</span>}
-    </header>
-  );
-}
-
-function MessageList() {
-  const { messages, getMessagesMetadata } = useStreamContext();
-  return (
-    <div>
-      {messages.map((msg, i) => (
-        <div key={msg.id ?? i}>{msg.content}</div>
-      ))}
-    </div>
-  );
-}
-
-function MessageInput() {
-  const { submit, isLoading } = useStreamContext();
-  return (
-    <button
-      disabled={isLoading}
-      onClick={() =>
-        void submit({
-          messages: [{ type: "human", content: "Hello!" }],
-        })
-      }
-    >
-      Send
-    </button>
-  );
-}
-```
-
-### Type Safety with `StreamProvider`
-
-Pass agent or state types to both `StreamProvider` and `useStreamContext`:
-
-```tsx
-import type { agent } from "./agent";
-
-function App() {
-  return (
-    <StreamProvider<typeof agent>
-      assistantId="agent"
-      apiUrl="http://localhost:2024"
-    >
-      <Chat />
-    </StreamProvider>
-  );
-}
-
-function Chat() {
-  const { toolCalls } = useStreamContext<typeof agent>();
-  // toolCalls are fully typed from the agent's tools
-}
-```
-
-### Multiple Agents
-
-Nest providers for multi-agent scenarios — each subtree gets its own isolated stream:
-
-```tsx
-function MultiAgentApp() {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-      <StreamProvider assistantId="researcher" apiUrl="http://localhost:2024">
-        <ResearchPanel />
-      </StreamProvider>
-      <StreamProvider assistantId="writer" apiUrl="http://localhost:2024">
-        <WriterPanel />
-      </StreamProvider>
-    </div>
-  );
-}
-```
+Legacy type aliases (`UseStream`, `UseSuspenseStream`, `UseStreamOptions`, `UseStreamTransport`, `QueueEntry`, `GetToolCallsType`, `SubagentStream`, …) and the legacy `FetchStreamTransport` class are **no longer re-exported** from `@langchain/react`. Apps still on the legacy surface can import directly from `@langchain/langgraph-sdk/ui` during their migration.
 
 ## Playground
 

@@ -31,7 +31,7 @@
     "uuid": "^13.0.0"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {

@@ -1,8 +1,13 @@
-import { Component } from "@angular/core";
+import { Component, signal } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
-import { injectStream } from "../../index.js";
+import { injectStream, injectSubmissionQueue } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
+
+interface StreamState {
+  messages: BaseMessage[];
+}
 
 @Component({
   template: `
@@ -18,11 +23,14 @@ const serverUrl = inject("serverUrl");
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="message-count">{{ stream.messages().length }}</div>
-      <div data-testid="queue-size">{{ stream.queue.size() }}</div>
+      <div data-testid="queue-size">{{ queue.size() }}</div>
       <div data-testid="queue-entries">
         {{ queueEntriesStr() }}
       </div>
       <button data-testid="submit" (click)="onSubmit()">Submit</button>
+      <button data-testid="submit-first" (click)="onSubmitFirst()">
+        Submit First
+      </button>
       <button data-testid="submit-three" (click)="onSubmitThree()">
         Submit Three
       </button>
@@ -39,14 +47,19 @@ const serverUrl = inject("serverUrl");
   `,
 })
 export class QueueStreamComponent {
-  stream = injectStream({
-    assistantId: "agent",
+  private readonly threadId = signal<string | null>(null);
+
+  stream = injectStream<StreamState>({
+    assistantId: "slow_graph",
     apiUrl: serverUrl,
-    fetchStateHistory: false,
+    threadId: this.threadId,
+    onThreadId: (id) => this.threadId.set(id),
   });
 
+  queue = injectSubmissionQueue(this.stream);
+
   queueEntriesStr() {
-    return this.stream.queue
+    return this.queue
       .entries()
       .map((e) => {
         const msgs = e.values?.messages;
@@ -61,33 +74,37 @@ export class QueueStreamComponent {
   }
 
   onSubmit() {
+    this.submitEnqueue("Hi");
+  }
+
+  onSubmitFirst() {
+    this.submitEnqueue("Msg1");
+  }
+
+  private submitEnqueue(content: string) {
     void this.stream.submit({
-      messages: [{ content: "Hi", type: "human" }],
-    } as any);
+      messages: [new HumanMessage(content)],
+    }, {
+      multitaskStrategy: "enqueue",
+    });
   }
 
   onSubmitThree() {
-    void this.stream.submit({
-      messages: [{ content: "Msg1", type: "human" }],
-    } as any);
-    void this.stream.submit({
-      messages: [{ content: "Msg2", type: "human" }],
-    } as any);
-    void this.stream.submit({
-      messages: [{ content: "Msg3", type: "human" }],
-    } as any);
+    this.submitEnqueue("Msg2");
+    this.submitEnqueue("Msg3");
+    this.submitEnqueue("Msg4");
   }
 
   onCancelFirst() {
-    const first = this.stream.queue.entries()[0];
-    if (first) void this.stream.queue.cancel(first.id);
+    const first = this.queue.entries()[0];
+    if (first) void this.queue.cancel(first.id);
   }
 
   onClearQueue() {
-    void this.stream.queue.clear();
+    void this.queue.clear();
   }
 
   onSwitchThread() {
-    this.stream.switchThread(crypto.randomUUID());
+    this.threadId.set(crypto.randomUUID());
   }
 }

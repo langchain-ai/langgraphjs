@@ -1,4 +1,6 @@
 import { serve } from "@hono/node-server";
+import type { Server } from "node:http";
+import { createNodeWebSocket } from "@hono/node-ws";
 import { Hono } from "hono";
 import { contextStorage } from "hono/context-storage";
 
@@ -9,6 +11,7 @@ import threads from "./api/threads.mjs";
 import assistants from "./api/assistants.mjs";
 import store from "./api/store.mjs";
 import meta from "./api/meta.mjs";
+import protocol from "./api/protocol.mjs";
 
 import type { Ops, Store, StorageEnv } from "./storage/types.mjs";
 import { zValidator } from "@hono/zod-validator";
@@ -115,9 +118,12 @@ export async function startServer(
   }
   const callbacks = await Promise.all(initCalls);
 
+  let closeServer: (() => Promise<void>) | undefined;
+
   const cleanup = async () => {
     logger.info(`Flushing to persistent storage, exiting...`);
     await Promise.all(callbacks.map((c) => c.flush()));
+    await closeServer?.();
   };
 
   // Register global logger that can be consumed via SDK
@@ -155,6 +161,7 @@ export async function startServer(
   });
 
   const app = new Hono<StorageEnv>();
+  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
   app.use(contextStorage());
   app.use(async (c, next) => {
@@ -208,6 +215,8 @@ export async function startServer(
   if (!options.http?.disable_runs) app.route("/", runs);
   if (!options.http?.disable_threads) app.route("/", threads);
   if (!options.http?.disable_store) app.route("/", store);
+  if (!options.http?.disable_runs)
+    app.route("/", protocol(upgradeWebSocket, ops));
 
   if (options.ui) {
     logger.info(`Registering UI from ${options.cwd}`);
@@ -223,13 +232,28 @@ export async function startServer(
   for (let i = 0; i < options.nWorkers; i++) queue(ops);
 
   return new Promise<{ host: string; cleanup: () => Promise<void> }>(
-    (resolve) => {
-      serve(
+    (resolve, reject) => {
+      const server = serve(
         { fetch: app.fetch, port: options.port, hostname: options.host },
         (c) => {
           resolve({ host: `${c.address}:${c.port}`, cleanup });
         }
-      );
+      ) as Server;
+
+      closeServer = async () =>
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server.closeAllConnections();
+          server.close((error) => {
+            if (error) {
+              rejectClose(error);
+              return;
+            }
+            resolveClose();
+          });
+        });
+
+      server.once("error", reject);
+      injectWebSocket(server);
     }
   );
 }

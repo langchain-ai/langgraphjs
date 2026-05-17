@@ -984,14 +984,19 @@ export class StreamManager<
           const [serialized, metadata] = data;
 
           // Check if this message is from a subagent namespace
+          const eventCheckpointNs =
+            namespace && isSubagentNamespace(namespace) ? namespace : undefined;
           const rawCheckpointNs =
             (metadata?.langgraph_checkpoint_ns as string | undefined) ||
             (metadata?.checkpoint_ns as string | undefined);
-          const checkpointNs: string | undefined =
-            typeof rawCheckpointNs === "string" ? rawCheckpointNs : undefined;
+          const checkpointNs: string[] | undefined =
+            eventCheckpointNs ??
+            (typeof rawCheckpointNs === "string"
+              ? rawCheckpointNs.split("|")
+              : undefined);
           const isFromSubagent = isSubagentNamespace(checkpointNs);
           const toolCallId = isFromSubagent
-            ? extractToolCallIdFromNamespace(checkpointNs?.split("|"))
+            ? extractToolCallIdFromNamespace(checkpointNs)
             : undefined;
 
           // If filtering is enabled and this is a subagent message,

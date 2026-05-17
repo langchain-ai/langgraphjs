@@ -5,6 +5,7 @@ import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
+import { createNodeWebSocket } from "@hono/node-ws";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
 import {
   AIMessage,
@@ -88,6 +89,13 @@ const agent = new StateGraph(MessagesAnnotation)
   .addEdge(START, "agent")
   .compile();
 
+const stategraphText = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async () => {
+    return { messages: [new AIMessage("Plan accepted.")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
 const interruptAgent = new StateGraph(MessagesAnnotation)
   .addNode("beforeInterrupt", async () => {
     return { messages: [new AIMessage("Before interrupt")] };
@@ -108,6 +116,55 @@ const interruptAgent = new StateGraph(MessagesAnnotation)
 const parentAgent = new StateGraph(MessagesAnnotation)
   .addNode("child", agent, { subgraphs: [agent] })
   .addEdge(START, "child")
+  .compile();
+
+const researchSubgraph = new StateGraph(MessagesAnnotation)
+  .addNode(
+    "inner",
+    async (_state: { messages: BaseMessage[] }, runtime: Runtime) => {
+      runtime.writer?.({ type: "progress", label: "research-started" });
+      runtime.writer?.({ type: "progress", label: "research-finished" });
+      return { messages: [new AIMessage("Subgraph reply")] };
+    },
+  )
+  .addEdge(START, "inner")
+  .compile();
+
+async function research(state: { messages: BaseMessage[] }) {
+  const result = await researchSubgraph.invoke({
+    messages: state.messages,
+  });
+  const last = result.messages.at(-1);
+  return {
+    messages: [
+      new AIMessage(
+        typeof last?.content === "string" ? last.content : "Research done",
+      ),
+    ],
+  };
+}
+
+async function summarize(_state: { messages: BaseMessage[] }) {
+  return {
+    messages: [new AIMessage("Summary line")],
+  };
+}
+
+const embeddedSubgraphAgent = new StateGraph(MessagesAnnotation)
+  .addNode("research", research, { subgraphs: [researchSubgraph] })
+  .addNode("summarize", summarize)
+  .addEdge(START, "research")
+  .addEdge("research", "summarize")
+  .compile();
+
+const customChannelAgent = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async (_state, runtime: Runtime) => {
+    runtime.writer?.({ stage: "thinking" });
+    runtime.writer?.({ name: "status", payload: { label: "answering" } });
+    runtime.writer?.({ stage: "done" });
+    return { messages: [new AIMessage("Custom channel reply")] };
+  })
+  .addEdge(START, "agent")
   .compile();
 
 const removeMessageAgent = new StateGraph(MessagesAnnotation)
@@ -135,6 +192,14 @@ const removeMessageAgent = new StateGraph(MessagesAnnotation)
 const errorAgent = new StateGraph(MessagesAnnotation)
   .addNode("agent", async () => {
     throw new Error("Intentional error for testing");
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+const slowGraph = new StateGraph(MessagesAnnotation)
+  .addNode("agent", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { messages: [new AIMessage("Done.")] };
   })
   .addEdge(START, "agent")
   .compile();
@@ -194,6 +259,9 @@ class FakeToolCallingModel extends BaseChatModel {
     const content = this._resolveContent(baseMsg, messages);
 
     const chunkFields: Record<string, unknown> = { content };
+    if (baseMsg.id != null) {
+      chunkFields.id = baseMsg.id;
+    }
 
     const toolCalls = (baseMsg as AIMessage).tool_calls;
     if (toolCalls?.length) {
@@ -289,6 +357,7 @@ const queryDatabaseTool = tool(
 const deepOrchestratorModel = new FakeToolCallingModel({
   responses: [
     new AIMessage({
+      id: "deep-orchestrator-tool-call",
       content: "",
       tool_calls: [
         {
@@ -311,13 +380,17 @@ const deepOrchestratorModel = new FakeToolCallingModel({
         },
       ],
     }),
-    new AIMessage("Both agents completed their tasks successfully."),
+    new AIMessage({
+      id: "deep-orchestrator-final",
+      content: "Both agents completed their tasks successfully.",
+    }),
   ],
 });
 
 const deepResearcherModel = new FakeToolCallingModel({
   responses: [
     new AIMessage({
+      id: "search-1-message",
       content: "",
       tool_calls: [
         {
@@ -328,13 +401,17 @@ const deepResearcherModel = new FakeToolCallingModel({
         },
       ],
     }),
-    new AIMessage("Research completed: found relevant results."),
+    new AIMessage({
+      id: "search-1-final",
+      content: "Research completed: found relevant results.",
+    }),
   ],
 });
 
 const deepAnalystModel = new FakeToolCallingModel({
   responses: [
     new AIMessage({
+      id: "query-1-message",
       content: "",
       tool_calls: [
         {
@@ -345,7 +422,10 @@ const deepAnalystModel = new FakeToolCallingModel({
         },
       ],
     }),
-    new AIMessage("Analysis completed: found 2 records."),
+    new AIMessage({
+      id: "query-1-final",
+      content: "Analysis completed: found 2 records.",
+    }),
   ],
 });
 
@@ -450,20 +530,30 @@ const headlessToolAgent = createAgent({
 
 const graphs: Record<string, AnyPregel> = {
   agent,
+  stategraph_text: stategraphText,
   interruptAgent,
   parentAgent,
+  embedded_subgraph_graph: embeddedSubgraphAgent,
   removeMessageAgent,
   errorAgent,
+  slow_graph: slowGraph,
+  customChannelAgent,
   headlessToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
 };
 
-let httpServer: { close: () => void } | null = null;
+let httpServer: Server | null = null;
 
 export async function setup({ provide }: TestProject) {
-  const embedApp = createEmbedServer({ graph: graphs, checkpointer, threads });
   const app = new Hono();
   app.use("*", cors({ origin: "*", exposeHeaders: ["Content-Location"] }));
+  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+  const embedApp = createEmbedServer({
+    graph: graphs,
+    checkpointer,
+    threads,
+    upgradeWebSocket,
+  });
   app.route("/", embedApp);
 
   await new Promise<void>((resolve) => {
@@ -472,11 +562,13 @@ export async function setup({ provide }: TestProject) {
       provide("serverUrl", url);
       console.log(`Mock server started at ${url}`);
       resolve();
-    });
+    }) as Server;
+    injectWebSocket(httpServer);
   });
 }
 
 export async function teardown() {
-  (httpServer as Server)?.closeAllConnections();
+  httpServer?.closeAllConnections();
   httpServer?.close();
+  httpServer = null;
 }

@@ -72,6 +72,32 @@ for pkg in libs/*/; do
   fi
 done
 
+# Match the test app's direct @langchain/core dependency to the local LangGraph peer.
+# This lets the environment tests follow dev builds that are not covered by ^1.x.
+node <<'EOF'
+const fs = require("fs");
+
+const langgraphPackageJson = JSON.parse(
+  fs.readFileSync("libs/langgraph-core/package.json", "utf8")
+);
+const coreVersion =
+  langgraphPackageJson.peerDependencies?.["@langchain/core"] ??
+  langgraphPackageJson.devDependencies?.["@langchain/core"];
+
+if (!coreVersion) {
+  throw new Error(
+    "Could not find @langchain/core version in libs/langgraph-core/package.json"
+  );
+}
+
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+packageJson.dependencies ??= {};
+packageJson.dependencies["@langchain/core"] = coreVersion;
+
+fs.writeFileSync("package.json", `${JSON.stringify(packageJson, null, 2)}\n`);
+console.log(`Pinned @langchain/core to ${coreVersion}`);
+EOF
+
 # Install production dependencies only
 pnpm install --prod
 
