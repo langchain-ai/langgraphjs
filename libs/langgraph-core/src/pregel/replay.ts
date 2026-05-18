@@ -31,15 +31,15 @@ export class ReplayState {
    *
    * Task-id suffixes are stripped so the same subgraph invoked across loop
    * iterations shares one visit record.
-   * 
+   *
    * @param checkpointNs - Subgraph checkpoint namespace.
    */
   #isFirstVisit(checkpointNs: string): boolean {
     const stableNs = checkpointNs.includes(CHECKPOINT_NAMESPACE_END)
       ? checkpointNs.slice(
-        0,
-        checkpointNs.lastIndexOf(CHECKPOINT_NAMESPACE_END)
-      )
+          0,
+          checkpointNs.lastIndexOf(CHECKPOINT_NAMESPACE_END)
+        )
       : checkpointNs;
     if (this.#visitedNs.has(stableNs)) {
       return false;
