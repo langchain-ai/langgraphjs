@@ -1,5 +1,5 @@
 ---
-"@fake-scope/fake-pkg": patch
+"@langchain/langgraph": patch
 ---
 
 fix(langgraph-core): keep tool results out of v3 message streams
