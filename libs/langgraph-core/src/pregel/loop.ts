@@ -142,6 +142,7 @@ type PregelLoopParams = {
   checkpointNamespace: string[];
   skipDoneTasks: boolean;
   isNested: boolean;
+  resumeAtHead: boolean;
   manager?: CallbackManagerForChainRun;
   stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
@@ -301,6 +302,9 @@ export class PregelLoop {
 
   isNested: boolean;
 
+  /** True when an explicit checkpoint_id targets the latest saved checkpoint. */
+  protected resumeAtHead: boolean;
+
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
   /**
@@ -413,6 +417,7 @@ export class PregelLoop {
     this.config = params.config;
     this.checkpointConfig = params.checkpointConfig;
     this.isNested = params.isNested;
+    this.resumeAtHead = params.resumeAtHead;
     this.manager = params.manager;
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
@@ -461,6 +466,10 @@ export class PregelLoop {
 
       scratchpad.subgraphCounter += 1;
     }
+
+    const requestedCheckpointId = config.configurable?.checkpoint_id as
+      | string
+      | undefined;
 
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
@@ -550,6 +559,23 @@ export class PregelLoop {
       );
     }
 
+    let resumeAtHead = false;
+    const threadId = checkpointConfig.configurable?.thread_id;
+    const checkpointNs = checkpointConfig.configurable?.checkpoint_ns ?? "";
+    if (
+      params.checkpointer &&
+      requestedCheckpointId &&
+      typeof threadId === "string"
+    ) {
+      const latest = await params.checkpointer.getTuple({
+        configurable: { thread_id: threadId, checkpoint_ns: checkpointNs },
+      });
+      resumeAtHead =
+        latest?.config.configurable?.checkpoint_id === requestedCheckpointId &&
+        checkpointMetadata.source !== "update" &&
+        checkpointMetadata.source !== "fork";
+    }
+
     const channels = emptyChannels(params.channelSpecs, checkpoint);
 
     const step = (checkpointMetadata.step ?? 0) + 1;
@@ -575,6 +601,7 @@ export class PregelLoop {
       checkpointNamespace,
       channels,
       isNested,
+      resumeAtHead,
       manager: params.manager,
       skipDoneTasks,
       step,
@@ -1175,7 +1202,8 @@ export class PregelLoop {
           configurable[CONFIG_KEY_CHECKPOINT_MAP]) ||
         !(
           (inputIsCommand && (this.input as Command).resume != null) ||
-          configurable?.[CONFIG_KEY_RESUMING] === true
+          configurable?.[CONFIG_KEY_RESUMING] === true ||
+          this.resumeAtHead
         ));
 
     if (isTimeTraveling) {
