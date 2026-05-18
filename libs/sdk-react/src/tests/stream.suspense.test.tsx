@@ -65,10 +65,7 @@ interface BoundaryProps {
   fallback: (error: Error) => ReactNode;
 }
 
-class ErrorBoundary extends Component<
-  BoundaryProps,
-  { error: Error | null }
-> {
+class ErrorBoundary extends Component<BoundaryProps, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
     return { error };
@@ -79,17 +76,12 @@ class ErrorBoundary extends Component<
   }
 }
 
-function ErrorChat({
-  apiUrl,
-  threadId,
-}: {
-  apiUrl: string;
-  threadId: string;
-}) {
+function ErrorChat({ apiUrl, threadId }: { apiUrl: string; threadId: string }) {
   const stream = useSuspenseStream<{ messages: BaseMessage[] }>({
     assistantId: "error_graph",
     apiUrl,
     threadId,
+    // Connection errors trip retry logic, so we choose to fail fast here
     callerOptions: { maxRetries: 0 },
   });
   return (
@@ -119,9 +111,7 @@ it("routes non-streaming errors to the nearest Error Boundary", async () => {
 
     const screen = await render(
       <ErrorBoundary
-        fallback={(error) => (
-          <div data-testid="boundary">{error.message}</div>
-        )}
+        fallback={(error) => <div data-testid="boundary">{error.message}</div>}
       >
         <Suspense fallback={<div data-testid="fallback">loading</div>}>
           <ErrorChat apiUrl={invalidUrl} threadId={threadId} />
