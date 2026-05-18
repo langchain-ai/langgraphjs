@@ -62,6 +62,7 @@ export default defineConfig((env) => {
       environment: "node",
       include: ["**/*.test-d.ts", ...configDefaults.include],
       typecheck: { enabled: true },
+      setupFiles: ["./src/tests/matchers/setup.ts"],
     },
   };
 });
