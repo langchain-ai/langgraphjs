@@ -1,5 +1,16 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.3.1
+
+### Patch Changes
+
+- [#2397](https://github.com/langchain-ai/langgraphjs/pull/2397) [`284226c`](https://github.com/langchain-ai/langgraphjs/commit/284226c7ca164b3c81fe2d9e32b10f1fc6b99a3c) Thanks [@hntrl](https://github.com/hntrl)! - fix(checkpoint-mongodb): validate configurable checkpoint identifiers before queries
+
+  Add runtime validation for `thread_id`, `checkpoint_ns`, and `checkpoint_id` in
+  `MongoDBSaver` methods that read and write checkpoints. This prevents object-based
+  operator payloads from being passed into MongoDB query filters and ensures invalid
+  configurable values fail fast with explicit errors.
+
 ## 1.3.0
 
 ### Minor Changes
