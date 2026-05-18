@@ -1061,6 +1061,7 @@ export class Pregel<
       config.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
+      config.configurable?.[CONFIG_KEY_READ] === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns

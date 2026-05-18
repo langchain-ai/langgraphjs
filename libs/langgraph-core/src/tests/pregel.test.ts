@@ -8184,7 +8184,13 @@ graph TD;
             ],
             { grandchild1: { myKey: "hi my value here" } },
           ],
-          [[""], { [INTERRUPT]: [] }],
+          [
+            [
+              expect.stringMatching(/^child:/),
+              expect.stringMatching(/^child1:/),
+            ],
+            { [INTERRUPT]: [] },
+          ],
         ]);
       }
     });

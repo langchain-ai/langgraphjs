@@ -53,8 +53,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CONFIG_KEY_CHECKPOINT_ID,
   CONFIG_KEY_RESUME_MAP,
+  CONFIG_KEY_REPLAY_STATE,
   START,
 } from "../constants.js";
+import { ReplayState } from "./replay.js";
 import {
   _applyWrites,
   _prepareNextTasks,
@@ -140,6 +142,7 @@ type PregelLoopParams = {
   checkpointNamespace: string[];
   skipDoneTasks: boolean;
   isNested: boolean;
+  resumeAtHead: boolean;
   manager?: CallbackManagerForChainRun;
   stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
@@ -163,6 +166,24 @@ function createDuplexStream(...streams: IterableReadableWritableStream[]) {
     },
     modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
   });
+}
+
+function checkpointNamespaceFromNs(ns: string | undefined): string[] {
+  if (ns === undefined || ns === "") return [];
+  return ns.split(CHECKPOINT_NAMESPACE_SEPARATOR);
+}
+
+function deepestCheckpointMapNamespace(
+  map: Record<string, string> | undefined
+): string[] {
+  if (!map) return [];
+  let deepest = "";
+  for (const key of Object.keys(map)) {
+    if (key !== "" && key.length > deepest.length) {
+      deepest = key;
+    }
+  }
+  return checkpointNamespaceFromNs(deepest);
 }
 
 class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
@@ -281,6 +302,9 @@ export class PregelLoop {
 
   isNested: boolean;
 
+  /** True when an explicit checkpoint_id targets the latest saved checkpoint. */
+  protected resumeAtHead: boolean;
+
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
   /**
@@ -367,6 +391,10 @@ export class PregelLoop {
     );
   }
 
+  get isReplaying(): boolean {
+    return !this.skipDoneTasks;
+  }
+
   constructor(params: PregelLoopParams) {
     this.input = params.input;
     this.checkpointer = params.checkpointer;
@@ -389,6 +417,7 @@ export class PregelLoop {
     this.config = params.config;
     this.checkpointConfig = params.checkpointConfig;
     this.isNested = params.isNested;
+    this.resumeAtHead = params.resumeAtHead;
     this.manager = params.manager;
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
@@ -438,6 +467,10 @@ export class PregelLoop {
       scratchpad.subgraphCounter += 1;
     }
 
+    const requestedCheckpointId = config.configurable?.checkpoint_id as
+      | string
+      | undefined;
+
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -451,6 +484,7 @@ export class PregelLoop {
     }
     let checkpointConfig = config;
     if (
+      config.configurable?.checkpoint_id === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
         config.configurable?.checkpoint_ns
@@ -463,19 +497,38 @@ export class PregelLoop {
           ],
       });
     }
-    const checkpointNamespace =
-      config.configurable?.checkpoint_ns?.split(
-        CHECKPOINT_NAMESPACE_SEPARATOR
-      ) ?? [];
+    const checkpointNamespace = checkpointNamespaceFromNs(
+      config.configurable?.checkpoint_ns
+    );
 
-    const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
-      checkpointConfig
-    )) ?? {
-      config,
-      checkpoint: emptyCheckpoint(),
-      metadata: { source: "input", step: -2, parents: {} },
-      pendingWrites: [],
-    };
+    let saved: CheckpointTuple | undefined;
+    if (!params.checkpointer) {
+      saved = undefined;
+    } else if (checkpointConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID]) {
+      saved = await params.checkpointer.getTuple(checkpointConfig);
+    } else if (config.configurable?.[CONFIG_KEY_REPLAY_STATE]) {
+      const replayState = config.configurable[
+        CONFIG_KEY_REPLAY_STATE
+      ] as ReplayState;
+      saved = await replayState.getCheckpoint(
+        config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] ?? "",
+        params.checkpointer,
+        checkpointConfig
+      );
+      if (config.configurable) {
+        delete config.configurable[CONFIG_KEY_RESUMING];
+      }
+    } else {
+      saved = await params.checkpointer.getTuple(checkpointConfig);
+    }
+    if (!saved) {
+      saved = {
+        config,
+        checkpoint: emptyCheckpoint(),
+        metadata: { source: "input", step: -2, parents: {} },
+        pendingWrites: [],
+      };
+    }
     checkpointConfig = {
       ...config,
       ...saved.config,
@@ -488,7 +541,40 @@ export class PregelLoop {
     const prevCheckpointConfig = saved.parentConfig;
     const checkpoint = copyCheckpoint(saved.checkpoint);
     const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
-    const checkpointPendingWrites = saved.pendingWrites ?? [];
+    let checkpointPendingWrites = saved.pendingWrites ?? [];
+    const currentCheckpointNamespace = config.configurable?.checkpoint_ns;
+    const checkpointMap = config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP];
+    const isDirectSubgraphTimeTravel =
+      typeof currentCheckpointNamespace === "string" &&
+      currentCheckpointNamespace !== "" &&
+      typeof checkpointMap === "object" &&
+      checkpointMap !== null &&
+      currentCheckpointNamespace in checkpointMap;
+
+    if (isDirectSubgraphTimeTravel && checkpointPendingWrites.length > 0) {
+      // Direct subgraph time-travel should re-fire interrupts instead of
+      // consuming stale resume values that were written during the original run.
+      checkpointPendingWrites = checkpointPendingWrites.filter(
+        ([, channel]) => channel !== RESUME
+      );
+    }
+
+    let resumeAtHead = false;
+    const threadId = checkpointConfig.configurable?.thread_id;
+    const checkpointNs = checkpointConfig.configurable?.checkpoint_ns ?? "";
+    if (
+      params.checkpointer &&
+      requestedCheckpointId &&
+      typeof threadId === "string"
+    ) {
+      const latest = await params.checkpointer.getTuple({
+        configurable: { thread_id: threadId, checkpoint_ns: checkpointNs },
+      });
+      resumeAtHead =
+        latest?.config.configurable?.checkpoint_id === requestedCheckpointId &&
+        checkpointMetadata.source !== "update" &&
+        checkpointMetadata.source !== "fork";
+    }
 
     const channels = emptyChannels(params.channelSpecs, checkpoint);
 
@@ -515,6 +601,7 @@ export class PregelLoop {
       checkpointNamespace,
       channels,
       isNested,
+      resumeAtHead,
       manager: params.manager,
       skipDoneTasks,
       step,
@@ -954,10 +1041,13 @@ export class PregelLoop {
 
       // Emit INTERRUPT event (not a state snapshot — no checkpoint envelope)
       if (isGraphInterrupt(error) && !error.interrupts.length) {
-        this._emit([
-          ["updates", { [INTERRUPT]: [] }],
-          ["values", { [INTERRUPT]: [] }],
-        ]);
+        this._emit(
+          [
+            ["updates", { [INTERRUPT]: [] }],
+            ["values", { [INTERRUPT]: [] }],
+          ],
+          this.#interruptStreamNamespace()
+        );
       }
     }
     return suppress;
@@ -1096,8 +1186,32 @@ export class PregelLoop {
         this.triggerToNodes
       );
     }
-    const isCommandUpdateOrGoto =
-      isCommand(this.input) && nullWrites.length > 0;
+    const inputIsCommand = isCommand(this.input);
+    const isCommandUpdateOrGoto = inputIsCommand && nullWrites.length > 0;
+
+    const isTimeTraveling =
+      this.isReplaying &&
+      // Time-travel to a subgraph checkpoint: the parent sets RESUMING=True
+      // (it can't distinguish time-travel from resume), so we check if this
+      // subgraph's own ns is in checkpoint_map.
+      ((this.isNested &&
+        configurable?.[CONFIG_KEY_CHECKPOINT_NS] !== undefined &&
+        configurable?.[CONFIG_KEY_CHECKPOINT_NS] !== "" &&
+        configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
+        configurable[CONFIG_KEY_CHECKPOINT_NS] in
+          configurable[CONFIG_KEY_CHECKPOINT_MAP]) ||
+        !(
+          (inputIsCommand && (this.input as Command).resume != null) ||
+          configurable?.[CONFIG_KEY_RESUMING] === true ||
+          this.resumeAtHead
+        ));
+
+    if (isTimeTraveling) {
+      this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
+        (w) => w[1] !== RESUME
+      );
+    }
+
     if (this.isResuming || isCommandUpdateOrGoto) {
       for (const channelName in this.channels) {
         if (!Object.prototype.hasOwnProperty.call(this.channels, channelName))
@@ -1110,6 +1224,18 @@ export class PregelLoop {
           };
         }
       }
+
+      if (
+        isTimeTraveling &&
+        this.checkpointMetadata.source !== "update" &&
+        this.checkpointMetadata.source !== "fork"
+      ) {
+        this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
+          (w) => w[1] !== INTERRUPT
+        );
+        await this._putCheckpoint({ source: "fork" });
+      }
+
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -1176,16 +1302,53 @@ export class PregelLoop {
       }
     }
     if (!this.isNested) {
+      let replayState: ReplayState | undefined;
+      // Only pass ReplayState during time-travel, not when resuming from the
+      // current head with an explicit checkpoint_id (see Python _loop._first).
+      if (isTimeTraveling) {
+        let replayCheckpointId = this.checkpoint.id;
+        if (
+          (this.checkpointMetadata.source === "update" ||
+            this.checkpointMetadata.source === "fork") &&
+          this.prevCheckpointConfig
+        ) {
+          replayCheckpointId =
+            this.prevCheckpointConfig.configurable?.[
+              CONFIG_KEY_CHECKPOINT_ID
+            ] ?? replayCheckpointId;
+        }
+        replayState = new ReplayState(replayCheckpointId);
+      }
       this.config = patchConfigurable(this.config, {
         [CONFIG_KEY_RESUMING]: this.isResuming,
+        [CONFIG_KEY_REPLAY_STATE]: replayState,
       });
     }
+  }
+
+  #interruptStreamNamespace(): string[] {
+    const ns = this.checkpointNamespace;
+    const isRootNamespace =
+      ns.length === 0 || (ns.length === 1 && ns[0] === "");
+    if (
+      !isRootNamespace ||
+      this.config.configurable?.[CONFIG_KEY_STREAM] === undefined
+    ) {
+      return ns;
+    }
+    const deepest = deepestCheckpointMapNamespace(
+      this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] as
+        | Record<string, string>
+        | undefined
+    );
+    return deepest.length > 0 ? deepest : ns;
   }
 
   protected _emit(
     values: Array<
       [StreamMode, unknown] | [StreamMode, unknown, StreamChunkMeta | undefined]
-    >
+    >,
+    namespace: string[] = this.checkpointNamespace
   ) {
     for (const entry of values) {
       const [mode, payload, meta] = entry as [
@@ -1194,7 +1357,7 @@ export class PregelLoop {
         StreamChunkMeta | undefined,
       ];
       if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload, meta]);
+        this.stream.push([namespace, mode, payload, meta]);
       }
 
       // debug mode is a "checkpoints" or "tasks" wrapped in an object
@@ -1220,7 +1383,7 @@ export class PregelLoop {
         })();
 
         this.stream.push([
-          this.checkpointNamespace,
+          namespace,
           "debug",
           { step, type, timestamp, payload },
         ]);
