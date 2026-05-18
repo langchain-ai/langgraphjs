@@ -1,8 +1,13 @@
 import { Component, signal } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
+
+interface StreamState {
+  messages: BaseMessage[];
+}
 
 @Component({
   template: `
@@ -23,14 +28,14 @@ const serverUrl = inject("serverUrl");
 export class SubmitOnErrorComponent {
   submitError = signal<string | null>(null);
 
-  stream = injectStream({
+  stream = injectStream<StreamState>({
     assistantId: "errorAgent",
     apiUrl: serverUrl,
   });
 
   onSubmit() {
     void this.stream.submit(
-      { messages: [{ content: "Hello", type: "human" }] } as any,
+      { messages: [new HumanMessage("Hello")] },
       {
         onError: (err: unknown) => {
           this.submitError.set(

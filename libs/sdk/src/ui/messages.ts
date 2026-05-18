@@ -4,11 +4,14 @@ import {
   RemoveMessage,
   convertToChunk,
   coerceMessageLikeToMessage,
-  isBaseMessageChunk,
   HumanMessageChunk,
+  HumanMessage,
   SystemMessageChunk,
+  SystemMessage,
   AIMessageChunk,
+  AIMessage,
   ToolMessageChunk,
+  ToolMessage,
 } from "@langchain/core/messages";
 
 import type { Message } from "../types.messages.js";
@@ -35,7 +38,7 @@ export function tryConvertToChunk(
   message: BaseMessage | BaseMessageChunk
 ): BaseMessageChunk | null {
   try {
-    if (isBaseMessageChunk(message)) return message;
+    if (BaseMessageChunk.isInstance(message)) return message;
     return convertToChunk(message);
   } catch {
     return null;
@@ -46,11 +49,40 @@ export function tryCoerceMessageLikeToMessage(
   message: Omit<Message, "type"> & { type: string }
 ): BaseMessage | BaseMessageChunk {
   if (message.type === "human" || message.type === "user") {
+    return new HumanMessage(message);
+  }
+
+  if (message.type === "ai" || message.type === "assistant") {
+    return new AIMessage(normalizeAIMessageToolCalls(message));
+  }
+
+  if (message.type === "system") {
+    return new SystemMessage(message);
+  }
+
+  if (message.type === "tool" && "tool_call_id" in message) {
+    return new ToolMessage({
+      ...message,
+      tool_call_id: message.tool_call_id as string,
+    });
+  }
+
+  if (message.type === "remove" && message.id != null) {
+    return new RemoveMessage({ ...message, id: message.id });
+  }
+
+  return coerceMessageLikeToMessage(message);
+}
+
+function tryCoerceMessageLikeToChunk(
+  message: Omit<Message, "type"> & { type: string }
+): BaseMessage | BaseMessageChunk {
+  if (message.type === "human" || message.type === "user") {
     return new HumanMessageChunk(message);
   }
 
   if (message.type === "ai" || message.type === "assistant") {
-    return new AIMessageChunk(message);
+    return new AIMessageChunk(normalizeAIMessageToolCalls(message));
   }
 
   if (message.type === "system") {
@@ -64,11 +96,80 @@ export function tryCoerceMessageLikeToMessage(
     });
   }
 
-  if (message.type === "remove" && message.id != null) {
-    return new RemoveMessage({ ...message, id: message.id });
+  return tryCoerceMessageLikeToMessage(message);
+}
+
+type ToolCallLike = {
+  id?: string;
+  name?: string;
+  args?: unknown;
+  input?: unknown;
+};
+
+function normalizeAIMessageToolCalls<
+  T extends Omit<Message, "type"> & { type: string },
+>(message: T): T {
+  const record = message as T & {
+    content?: unknown;
+    tool_calls?: unknown;
+  };
+  if (Array.isArray(record.tool_calls) && record.tool_calls.length > 0) {
+    return message;
   }
 
-  return coerceMessageLikeToMessage(message);
+  const toolCalls = extractToolCallsFromContent(record.content);
+  if (toolCalls.length === 0) return message;
+  return {
+    ...message,
+    tool_calls: toolCalls,
+  };
+}
+
+function extractToolCallsFromContent(content: unknown) {
+  if (!Array.isArray(content)) return [];
+  return content.flatMap(
+    (
+      block
+    ): Array<{
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+      type: "tool_call";
+    }> => {
+      if (block == null || typeof block !== "object") return [];
+      const record = block as ToolCallLike & { type?: unknown };
+      if (record.type !== "tool_call" && record.type !== "tool_use") return [];
+      return [
+        {
+          id: record.id ?? "",
+          name: record.name ?? "",
+          args: normalizeToolCallArgs(record.args ?? record.input),
+          type: "tool_call",
+        },
+      ];
+    }
+  );
+}
+
+function normalizeToolCallArgs(value: unknown): Record<string, unknown> {
+  if (value != null && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string" && value.length > 0) {
+    try {
+      const parsed = JSON.parse(value);
+      if (
+        parsed != null &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      ) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Streaming input fragments are expected to be invalid until finalized.
+    }
+  }
+  return {};
 }
 
 export class MessageTupleManager {
@@ -98,7 +199,7 @@ export class MessageTupleManager {
         .toLowerCase() as Message["type"];
     }
 
-    const message = tryCoerceMessageLikeToMessage(serialized);
+    const message = tryCoerceMessageLikeToChunk(serialized);
     const chunk = tryConvertToChunk(message);
 
     const { id } = chunk ?? message;
@@ -115,7 +216,8 @@ export class MessageTupleManager {
     if (chunk) {
       const prev = this.chunks[id].chunk;
       this.chunks[id].chunk =
-        (isBaseMessageChunk(prev) ? prev : null)?.concat(chunk) ?? chunk;
+        (BaseMessageChunk.isInstance(prev) ? prev : null)?.concat(chunk) ??
+        chunk;
     } else {
       this.chunks[id].chunk = message;
     }

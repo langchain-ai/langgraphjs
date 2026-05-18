@@ -1,8 +1,10 @@
-import type { Message } from "@langchain/langgraph-sdk";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { StreamProvider, useStreamContext } from "../../index.js";
 
+type StreamState = { messages: BaseMessage[] };
+
 function MessageList() {
-  const { messages } = useStreamContext<{ messages: Message[] }>();
+  const { messages } = useStreamContext<StreamState>();
   return (
     <div data-testid="messages">
       {messages.map((msg, i) => (
@@ -17,7 +19,7 @@ function MessageList() {
 }
 
 function StatusBar() {
-  const { isLoading, error } = useStreamContext<{ messages: Message[] }>();
+  const { isLoading, error } = useStreamContext<StreamState>();
   return (
     <div>
       <div data-testid="loading">
@@ -28,15 +30,16 @@ function StatusBar() {
   );
 }
 
-function SubmitButton({
-  submitInput,
-}: {
-  submitInput: Record<string, unknown>;
-}) {
-  const { submit, stop } = useStreamContext<{ messages: Message[] }>();
+function SubmitButton() {
+  const { submit, stop } = useStreamContext<StreamState>();
   return (
     <div>
-      <button data-testid="submit" onClick={() => void submit(submitInput)}>
+      <button
+        data-testid="submit"
+        onClick={() =>
+          void submit({ messages: [new HumanMessage("Hello")] })
+        }
+      >
         Send
       </button>
       <button data-testid="stop" onClick={() => void stop()}>
@@ -49,19 +52,17 @@ function SubmitButton({
 interface Props {
   apiUrl: string;
   assistantId?: string;
-  submitInput?: Record<string, unknown>;
 }
 
 export function ContextProvider({
   apiUrl,
-  assistantId = "agent",
-  submitInput = { messages: [{ content: "Hello", type: "human" }] },
+  assistantId = "stategraph_text",
 }: Props) {
   return (
-    <StreamProvider assistantId={assistantId} apiUrl={apiUrl}>
+    <StreamProvider<StreamState> assistantId={assistantId} apiUrl={apiUrl}>
       <MessageList />
       <StatusBar />
-      <SubmitButton submitInput={submitInput} />
+      <SubmitButton />
     </StreamProvider>
   );
 }

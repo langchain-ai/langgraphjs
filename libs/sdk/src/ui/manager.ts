@@ -333,7 +333,11 @@ export class StreamManager<
       >;
     },
     threadId: string,
-    options?: { messagesKey?: string; signal?: AbortSignal }
+    options?: {
+      messagesKey?: string;
+      historyLimit?: number;
+      signal?: AbortSignal;
+    }
   ): Promise<void> {
     const messagesKey = options?.messagesKey ?? "messages";
     const signal = options?.signal;
@@ -381,7 +385,7 @@ export class StreamManager<
        */
       const mainHistory = await threads.getHistory<Record<string, unknown>>(
         threadId,
-        { limit: 20, signal }
+        { limit: options?.historyLimit ?? 20, signal }
       );
 
       for (const checkpoint of mainHistory) {
@@ -980,14 +984,19 @@ export class StreamManager<
           const [serialized, metadata] = data;
 
           // Check if this message is from a subagent namespace
+          const eventCheckpointNs =
+            namespace && isSubagentNamespace(namespace) ? namespace : undefined;
           const rawCheckpointNs =
             (metadata?.langgraph_checkpoint_ns as string | undefined) ||
             (metadata?.checkpoint_ns as string | undefined);
-          const checkpointNs: string | undefined =
-            typeof rawCheckpointNs === "string" ? rawCheckpointNs : undefined;
+          const checkpointNs: string[] | undefined =
+            eventCheckpointNs ??
+            (typeof rawCheckpointNs === "string"
+              ? rawCheckpointNs.split("|")
+              : undefined);
           const isFromSubagent = isSubagentNamespace(checkpointNs);
           const toolCallId = isFromSubagent
-            ? extractToolCallIdFromNamespace(checkpointNs?.split("|"))
+            ? extractToolCallIdFromNamespace(checkpointNs)
             : undefined;
 
           // If filtering is enabled and this is a subagent message,

@@ -6,5 +6,6 @@
     "types": ["vitest/globals", "node"]
   },
   "files": ["src/tests/setup.ts"],
-  "include": ["src/**/*.test.ts", "src/**/*.d.ts", "src/tests/components/**/*.ts"]
+  "include": ["src/**/*.test.ts", "src/**/*.d.ts", "src/tests/components/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
 }

@@ -1,9 +1,9 @@
 {
   "name": "@examples/ui-angular",
-  "version": "0.0.21",
+  "version": "0.0.28-rc.0",
   "scripts": {
     "dev": "turbo dev:client dev:server",
-    "dev:client": "ng serve",
+    "dev:client": "NG_CLI_ANALYTICS=false ng serve",
     "dev:server": "langgraphjs dev --no-browser",
     "ng": "ng",
     "start": "ng serve",
@@ -12,26 +12,27 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/common": "^21.2.7",
-    "@angular/compiler": "^21.2.7",
-    "@angular/core": "^21.2.7",
-    "@angular/forms": "^21.2.7",
-    "@angular/platform-browser": "^21.2.7",
-    "@angular/router": "^21.2.7",
+    "@angular/common": "^21.2.11",
+    "@angular/compiler": "^21.2.11",
+    "@angular/core": "^21.2.11",
+    "@angular/forms": "^21.2.11",
+    "@angular/platform-browser": "^21.2.11",
+    "@angular/router": "^21.2.11",
     "@langchain/angular": "workspace:*",
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^1.4.1",
+    "@langchain/openai": "^1.4.5",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zod": "^3.23.8",
     "zone.js": "~0.16.1"
   },
   "devDependencies": {
-    "@angular/build": "^21.2.6",
-    "@angular/cli": "^21.2.6",
-    "@angular/compiler-cli": "^21.2.7",
+    "@angular/build": "^21.2.9",
+    "@angular/cli": "^21.2.9",
+    "@angular/compiler-cli": "^21.2.11",
+    "@langchain/langgraph-cli": "workspace:*",
     "typescript": "~5.9.2"
   }
 }

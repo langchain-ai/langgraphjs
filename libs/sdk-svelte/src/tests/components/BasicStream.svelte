@@ -1,43 +1,41 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import type { Message } from "@langchain/langgraph-sdk";
 
   interface Props {
     apiUrl: string;
     assistantId?: string;
+    threadId?: string;
     submitInput?: Record<string, unknown>;
     submitOptions?: Record<string, unknown>;
-    onCheckpointEvent?: (...args: any[]) => void;
-    onTaskEvent?: (...args: any[]) => void;
-    onUpdateEvent?: (...args: any[]) => void;
-    onCustomEvent?: (...args: any[]) => void;
-    fetchStateHistory?: boolean | { limit: number };
+    transport?: "sse" | "websocket";
+    onThreadId?: (threadId: string) => void;
+    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
   }
 
   const {
     apiUrl,
     assistantId = "agent",
+    threadId,
     submitInput = { messages: [{ content: "Hello", type: "human" }] },
     submitOptions,
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    fetchStateHistory,
+    transport,
+    onThreadId,
+    onCreated,
   }: Props = $props();
 
+  // svelte-ignore state_referenced_locally
   const stream = useStream({
     assistantId,
     apiUrl,
-    onCheckpointEvent,
-    onTaskEvent,
-    onUpdateEvent,
-    onCustomEvent,
-    fetchStateHistory,
+    threadId,
+    transport,
+    onThreadId,
+    onCreated,
   });
 </script>
 
 <div>
+  <div data-testid="message-count">{stream.messages.length}</div>
   <div data-testid="messages">
     {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
@@ -50,6 +48,7 @@
   <div data-testid="loading">
     {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
+  <div data-testid="thread-id">{stream.threadId ?? "none"}</div>
   {#if stream.error}
     <div data-testid="error">{String(stream.error)}</div>
   {/if}

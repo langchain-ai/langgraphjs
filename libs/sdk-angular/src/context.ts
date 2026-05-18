@@ -4,17 +4,18 @@ import {
   type EnvironmentProviders,
   makeEnvironmentProviders,
 } from "@angular/core";
-import type { BagTemplate } from "@langchain/langgraph-sdk";
 import { Client } from "@langchain/langgraph-sdk";
-import type {
-  ResolveStreamOptions,
-  InferBag,
-  InferStateType,
-  UseStreamCustomOptions,
-} from "@langchain/langgraph-sdk/ui";
-import type { StreamServiceInstance } from "./stream-service-instance.js";
-import { useStreamLGP } from "./stream.lgp.js";
-import { injectStreamCustom } from "./stream.custom.js";
+import type { InferStateType } from "@langchain/langgraph-sdk/stream";
+import {
+  useStream,
+  type StreamApi,
+  type UseStreamOptions,
+} from "./use-stream.js";
+
+export type InferRecordState<T> =
+  InferStateType<T> extends object
+    ? { [K in keyof InferStateType<T>]: InferStateType<T>[K] }
+    : Record<string, unknown>;
 
 /**
  * Configuration defaults for `useStream` and `injectStream` calls.
@@ -40,7 +41,7 @@ export const STREAM_DEFAULTS = new InjectionToken<StreamDefaults>(
  * Injection token for a shared stream instance.
  * Provide via `provideStream()` at the component level.
  */
-export const STREAM_INSTANCE = new InjectionToken<StreamServiceInstance>(
+export const STREAM_INSTANCE = new InjectionToken<StreamApi>(
   "LANGCHAIN_STREAM_INSTANCE"
 );
 
@@ -106,30 +107,34 @@ export function provideStreamDefaults(
  * }
  * ```
  */
-export function provideStream<
-  T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
->(
-  options:
-    | ResolveStreamOptions<T, InferBag<T, Bag>>
-    | UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>>
+export function provideStream<T = Record<string, unknown>>(
+  options: UseStreamOptions<InferStateType<T>>
 ) {
   return {
     provide: STREAM_INSTANCE,
     useFactory: () => {
       const defaults = angularInject(STREAM_DEFAULTS, { optional: true });
-      const merged = {
-        ...(defaults ?? {}),
-        ...options,
-        apiUrl: (options as Record<string, unknown>).apiUrl ?? defaults?.apiUrl,
-        client: (options as Record<string, unknown>).client ?? defaults?.client,
-      };
-      if ("transport" in merged) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return injectStreamCustom(merged as any);
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return useStreamLGP(merged as any);
+      return useStream(mergeDefaults(options, defaults));
     },
   };
+}
+
+function mergeDefaults<S extends object>(
+  options: UseStreamOptions<S>,
+  defaults: StreamDefaults | null | undefined
+): UseStreamOptions<S> {
+  if (defaults == null) return options;
+  if (
+    (options as { transport?: unknown }).transport != null &&
+    typeof (options as { transport: unknown }).transport !== "string"
+  ) {
+    return options;
+  }
+  const bag = options as unknown as Record<string, unknown>;
+  return {
+    ...bag,
+    apiUrl: bag.apiUrl ?? defaults.apiUrl,
+    apiKey: bag.apiKey ?? defaults.apiKey,
+    client: bag.client ?? defaults.client,
+  } as unknown as UseStreamOptions<S>;
 }

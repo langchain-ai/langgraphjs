@@ -23,6 +23,10 @@ import type {
 } from "../types.js";
 import type { QueueInterface } from "../queue.js";
 
+export type StateRecord<T> = T extends object
+  ? T & Record<string, unknown>
+  : Record<string, unknown>;
+
 /**
  * Base stream interface shared by all stream types.
  *
@@ -49,7 +53,7 @@ import type { QueueInterface } from "../queue.js";
  * ```
  */
 export interface BaseStream<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
+  StateType extends object = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   Bag extends BagTemplate = BagTemplate,
 > {
@@ -112,8 +116,8 @@ export interface BaseStream<
    * @returns A promise that resolves when the stream completes
    */
   submit: (
-    values: GetUpdateType<Bag, StateType> | null | undefined,
-    options?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+    values: GetUpdateType<Bag, StateRecord<StateType>> | null | undefined,
+    options?: SubmitOptions<StateRecord<StateType>, GetConfigurableType<Bag>>
   ) => Promise<void>;
 
   /**
@@ -151,7 +155,7 @@ export interface BaseStream<
   getMessagesMetadata: (
     message: Message<ToolCall>,
     index?: number
-  ) => MessageMetadata<StateType> | undefined;
+  ) => MessageMetadata<StateRecord<StateType>> | undefined;
 
   /**
    * Progress of tool executions during streaming. Populated when stream mode includes "tools"
@@ -200,8 +204,8 @@ export interface BaseStream<
    * `multitaskStrategy: "enqueue"` when submitting while the agent is busy.
    */
   queue: QueueInterface<
-    StateType,
-    SubmitOptions<StateType, GetConfigurableType<Bag>>
+    StateRecord<StateType>,
+    SubmitOptions<StateRecord<StateType>, GetConfigurableType<Bag>>
   >;
 }
 

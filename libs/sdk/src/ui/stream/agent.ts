@@ -83,7 +83,7 @@ import type { UseStreamOptions } from "../types.js";
  * {@link UseDeepAgentStream} with `createDeepAgent`.
  */
 export interface UseAgentStream<
-  StateType extends Record<string, unknown> = Record<string, unknown>,
+  StateType extends object = Record<string, unknown>,
   ToolCall = DefaultToolCall,
   Bag extends BagTemplate = BagTemplate,
 > extends BaseStream<StateType, ToolCall, Bag> {

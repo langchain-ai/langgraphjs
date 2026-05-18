@@ -43,6 +43,7 @@ import {
   INTERRUPT,
   isCommand,
 } from "../constants.js";
+import { propagateConfigurableToMetadata } from "./utils/config.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
@@ -244,6 +245,44 @@ export class RemoteGraph<
         );
       }
     };
+
+    const propagateMetadataDefaults = (obj: unknown) => {
+      const seen = new WeakSet<object>();
+      const visit = (value: unknown) => {
+        if (typeof value !== "object" || value == null) {
+          return;
+        }
+        if (seen.has(value)) {
+          return;
+        }
+        seen.add(value);
+        const record = value as Record<string, unknown>;
+        const configurable = record.configurable;
+        if (
+          typeof configurable === "object" &&
+          configurable != null &&
+          !Array.isArray(configurable)
+        ) {
+          const metadata =
+            typeof record.metadata === "object" &&
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
+              ? (record.metadata as Record<string, unknown>)
+              : undefined;
+          record.metadata =
+            propagateConfigurableToMetadata(
+              configurable as Record<string, unknown>,
+              metadata
+            ) ?? record.metadata;
+        }
+        for (const nestedValue of Object.values(record)) {
+          visit(nestedValue);
+        }
+      };
+      visit(obj);
+    };
+
+    propagateMetadataDefaults(config);
 
     // Remove non-JSON serializable fields from the config
     const sanitizedConfig = sanitizeObj(config);

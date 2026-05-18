@@ -10,6 +10,7 @@ export {
 export {
   Graph,
   type CompiledGraph,
+  type CompiledGraphType,
   type NodeSpec,
   type AddNodeOptions,
 } from "./graph.js";

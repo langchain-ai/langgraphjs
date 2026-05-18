@@ -1,55 +1,51 @@
-import { StrictMode } from "react";
+import { StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 
-import { useStream, FetchStreamTransport } from "@langchain/react";
+import { HttpAgentServerAdapter, StreamProvider } from "@langchain/react";
 
-export function App() {
-  const stream = useStream({
-    transport: new FetchStreamTransport({ apiUrl: "/api/stream" }),
-  });
+import { A2AProjectionPanel } from "./components/A2AProjectionPanel";
+import { Chat } from "./components/Chat";
+import { HeroCard } from "./components/HeroCard";
+import { Prompt } from "./components/Prompt";
+
+import { ThemeProvider, ThemeToggle, useTheme } from "./provider/theme";
+
+import type { GraphType } from "./app";
+
+import "./styles.css";
+
+function App() {
+  const transport = useMemo(() => {
+    const threadId = "local";
+    const options = {
+      apiUrl: window.location.origin,
+      threadId,
+      paths: {
+        commands: `/api/threads/${threadId}/commands`,
+        stream: `/api/threads/${threadId}/stream`,
+      },
+    };
+    return new HttpAgentServerAdapter(options);
+  }, []);
+  const { theme } = useTheme();
 
   return (
-    <div className="max-w-xl mx-auto">
-      <div className="flex flex-col gap-2">
-        {stream.messages.map((message) => (
-          <div key={message.id} className="whitespace-pre-wrap">
-            {message.content as string}
-          </div>
-        ))}
-      </div>
-      <form
-        className="grid grid-cols-[1fr_auto] gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-
-          const form = e.target as HTMLFormElement;
-          const formData = new FormData(form);
-          const content = formData.get("content") as string;
-
-          form.reset();
-          stream.submit({ messages: [{ content, type: "human" }] });
-        }}
-      >
-        <textarea
-          name="content"
-          className="field-sizing-content"
-          onKeyDown={(e) => {
-            const target = e.target as HTMLTextAreaElement;
-
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              target.form?.requestSubmit();
-            }
-          }}
-        />
-        <button type="submit">Submit</button>
-      </form>
-    </div>
+    <main className={`chat-shell ${theme === "light" ? "light" : ""}`}>
+      <StreamProvider<GraphType> transport={transport}>
+        <ThemeToggle />
+        <HeroCard />
+        <Chat />
+        <A2AProjectionPanel />
+        <Prompt />
+      </StreamProvider>
+    </main>
   );
 }
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>
 );
