@@ -172,6 +172,22 @@ describe("AsyncCaller", () => {
         "HTTP 400: Invalid parameters"
       );
     });
+
+    it("should retry connection errors and throw ConnectionError when retries are exhausted", async () => {
+      const caller = new AsyncCaller({ maxRetries: 1 });
+
+      const failingCallable = vi.fn(() =>
+        Promise.reject(new Error("fetch failed: connect ECONNREFUSED"))
+      );
+
+      await expect(caller.call(failingCallable)).rejects.toMatchObject({
+        name: "ConnectionError",
+        message: expect.stringContaining(
+          "Unable to connect to LangGraph server"
+        ),
+      });
+      expect(failingCallable).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("onFailedResponseHook", () => {
