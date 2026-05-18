@@ -8,5 +8,6 @@
   },
   "devDependencies": {
     "typedoc": "patch:typedoc@npm:3.0.28.11#./patches/typedoc@3.0.28.11.patch"
-  }
+  },
+  "version": null
 }

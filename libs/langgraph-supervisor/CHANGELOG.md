@@ -1,5 +1,7 @@
 # @langchain/langgraph-supervisor
 
+## 1.0.2
+
 ## 1.0.2-rc.0
 
 ### Patch Changes

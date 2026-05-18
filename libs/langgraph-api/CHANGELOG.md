@@ -1,5 +1,14 @@
 # @langchain/langgraph-api
 
+## 1.2.2
+
+### Patch Changes
+
+- [#2396](https://github.com/langchain-ai/langgraphjs/pull/2396) [`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-cli): accept hyphenated prerelease tags in `api_version` values.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.2
+
 ## 1.2.2-rc.0
 
 ### Patch Changes
