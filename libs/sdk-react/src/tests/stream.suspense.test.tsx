@@ -90,6 +90,7 @@ function ErrorChat({
     assistantId: "error_graph",
     apiUrl,
     threadId,
+    callerOptions: { maxRetries: 0 },
   });
   return (
     <div>
@@ -129,8 +130,9 @@ it("routes non-streaming errors to the nearest Error Boundary", async () => {
     );
 
     try {
-      // The hydrate request fails (unreachable host). The rejection
-      // propagates through `hydrationPromise` into the Error Boundary.
+      // The hydrate request fails (unreachable host). Retries are
+      // disabled for this test so the failure reaches the boundary
+      // within the suite's 5s timeout.
       await expect
         .element(screen.getByTestId("boundary"), { timeout: 5_000 })
         .toBeInTheDocument();
