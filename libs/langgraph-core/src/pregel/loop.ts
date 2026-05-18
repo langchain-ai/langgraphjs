@@ -167,6 +167,24 @@ function createDuplexStream(...streams: IterableReadableWritableStream[]) {
   });
 }
 
+function checkpointNamespaceFromNs(ns: string | undefined): string[] {
+  if (ns === undefined || ns === "") return [];
+  return ns.split(CHECKPOINT_NAMESPACE_SEPARATOR);
+}
+
+function deepestCheckpointMapNamespace(
+  map: Record<string, string> | undefined
+): string[] {
+  if (!map) return [];
+  let deepest = "";
+  for (const key of Object.keys(map)) {
+    if (key !== "" && key.length > deepest.length) {
+      deepest = key;
+    }
+  }
+  return checkpointNamespaceFromNs(deepest);
+}
+
 class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
   protected cache: BaseCache<PendingWrite<string>[]>;
 
@@ -470,10 +488,9 @@ export class PregelLoop {
           ],
       });
     }
-    const checkpointNamespace =
-      config.configurable?.checkpoint_ns?.split(
-        CHECKPOINT_NAMESPACE_SEPARATOR
-      ) ?? [];
+    const checkpointNamespace = checkpointNamespaceFromNs(
+      config.configurable?.checkpoint_ns
+    );
 
     let saved: CheckpointTuple | undefined;
     if (!params.checkpointer) {
@@ -997,10 +1014,13 @@ export class PregelLoop {
 
       // Emit INTERRUPT event (not a state snapshot — no checkpoint envelope)
       if (isGraphInterrupt(error) && !error.interrupts.length) {
-        this._emit([
-          ["updates", { [INTERRUPT]: [] }],
-          ["values", { [INTERRUPT]: [] }],
-        ]);
+        this._emit(
+          [
+            ["updates", { [INTERRUPT]: [] }],
+            ["values", { [INTERRUPT]: [] }],
+          ],
+          this.#interruptStreamNamespace()
+        );
       }
     }
     return suppress;
@@ -1278,10 +1298,29 @@ export class PregelLoop {
     }
   }
 
+  #interruptStreamNamespace(): string[] {
+    const ns = this.checkpointNamespace;
+    const isRootNamespace =
+      ns.length === 0 || (ns.length === 1 && ns[0] === "");
+    if (
+      !isRootNamespace ||
+      this.config.configurable?.[CONFIG_KEY_STREAM] === undefined
+    ) {
+      return ns;
+    }
+    const deepest = deepestCheckpointMapNamespace(
+      this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] as
+        | Record<string, string>
+        | undefined
+    );
+    return deepest.length > 0 ? deepest : ns;
+  }
+
   protected _emit(
     values: Array<
       [StreamMode, unknown] | [StreamMode, unknown, StreamChunkMeta | undefined]
-    >
+    >,
+    namespace: string[] = this.checkpointNamespace
   ) {
     for (const entry of values) {
       const [mode, payload, meta] = entry as [
@@ -1290,7 +1329,7 @@ export class PregelLoop {
         StreamChunkMeta | undefined,
       ];
       if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload, meta]);
+        this.stream.push([namespace, mode, payload, meta]);
       }
 
       // debug mode is a "checkpoints" or "tasks" wrapped in an object
@@ -1316,7 +1355,7 @@ export class PregelLoop {
         })();
 
         this.stream.push([
-          this.checkpointNamespace,
+          namespace,
           "debug",
           { step, type, timestamp, payload },
         ]);
