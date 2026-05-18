@@ -43,6 +43,7 @@ import { Annotation } from "../graph/annotation.js";
 import { Messages, messagesStateReducer } from "../graph/messages_reducer.js";
 import { END, Send, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
+import type { AgentNameMode } from "./agentName.js";
 import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
 
 /**
@@ -583,9 +584,13 @@ export type CreateReactAgentParams<
 
       - undefined: Relies on the LLM provider {@link AIMessage#name}. Currently, only OpenAI supports this.
       - `"inline"`: Add the agent name directly into the content field of the {@link AIMessage} using XML-style tags.
-          Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`
+          Example: `"How can I help you"` -> `"<name>agent_name</name><content>How can I help you?</content>"`.
+          NOTE: This mutates past AIMessage history and will break with providers that disallow it
+          (e.g. OpenAI Responses API, Anthropic thinking blocks). Use `"system-prompt"` in those cases.
+      - `"system-prompt"`: Inject an instruction into the system prompt telling the model to format
+          its own output with XML tags. Does NOT modify past messages. Requires `name` to be set on the agent.
    */
-  includeAgentName?: "inline" | undefined;
+  includeAgentName?: AgentNameMode;
 
   /**
    * An optional node to add before the `agent` node (i.e., the node that calls the LLM).
@@ -730,10 +735,9 @@ export function createReactAgent<
     }
 
     const promptRunnable = _getPrompt(prompt, stateModifier, messageModifier);
-    const modelRunnable =
-      includeAgentName === "inline"
-        ? withAgentName(modelWithTools, includeAgentName)
-        : modelWithTools;
+    const modelRunnable = includeAgentName
+      ? withAgentName(modelWithTools, includeAgentName, name)
+      : modelWithTools;
 
     cachedStaticModel = promptRunnable.pipe(modelRunnable);
     return cachedStaticModel;
@@ -750,8 +754,8 @@ export function createReactAgent<
     const model = await llm(state, config);
 
     return _getPrompt(prompt, stateModifier, messageModifier).pipe(
-      includeAgentName === "inline"
-        ? withAgentName(model, includeAgentName)
+      includeAgentName
+        ? withAgentName(model, includeAgentName, name)
         : model
     );
   };

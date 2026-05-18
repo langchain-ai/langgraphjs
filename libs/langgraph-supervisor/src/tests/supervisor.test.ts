@@ -14,12 +14,19 @@ describe("Test supervisor basic workflow", () => {
   it.each([
     // [description, supervisorAgentName, individualAgentName]
     ["without agent name configuration", undefined, undefined],
-    ["with supervisor agent name", "inline" as const, undefined],
-    ["with individual agent names", undefined, "inline" as const],
+    ["with supervisor agent name (inline)", "inline" as AgentNameMode, undefined],
+    ["with individual agent names (inline)", undefined, "inline" as AgentNameMode],
     [
-      "with both supervisor and individual agent names",
-      "inline" as const,
-      "inline" as const,
+      "with both supervisor and individual agent names (inline)",
+      "inline" as AgentNameMode,
+      "inline" as AgentNameMode,
+    ],
+    ["with supervisor agent name (system-prompt)", "system-prompt" as AgentNameMode, undefined],
+    ["with individual agent names (system-prompt)", undefined, "system-prompt" as AgentNameMode],
+    [
+      "with both supervisor and individual agent names (system-prompt)",
+      "system-prompt" as AgentNameMode,
+      "system-prompt" as AgentNameMode,
     ],
   ])(
     "basic supervisor workflow %s",
@@ -182,7 +189,8 @@ describe("Test supervisor basic workflow", () => {
       if (includeIndividualAgentName) {
         mathLLM = withAgentName(
           mathModel.bindTools([add]),
-          includeIndividualAgentName
+          includeIndividualAgentName,
+          "math_expert"
         );
       }
 
@@ -190,7 +198,8 @@ describe("Test supervisor basic workflow", () => {
       if (includeIndividualAgentName) {
         researchLLM = withAgentName(
           researchModel.bindTools([webSearch]),
-          includeIndividualAgentName
+          includeIndividualAgentName,
+          "research_expert"
         );
       }
 

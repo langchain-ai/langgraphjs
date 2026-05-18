@@ -358,7 +358,7 @@ const createSupervisor = <
 
   // Apply agent name handling if specified
   if (includeAgentName) {
-    supervisorLLM = withAgentName(supervisorLLM, includeAgentName);
+    supervisorLLM = withAgentName(supervisorLLM, includeAgentName, supervisorName);
   }
 
   const schema = stateSchema ?? createReactAgentAnnotation();
