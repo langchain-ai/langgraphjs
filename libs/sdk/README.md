@@ -10,10 +10,13 @@ graph executions in real time.
 ## Install
 
 ```bash
-pnpm add @langchain/langgraph-sdk
-# or: npm install @langchain/langgraph-sdk
-# or: yarn add @langchain/langgraph-sdk
+pnpm add @langchain/langgraph-sdk @langchain/core
+# or: npm install @langchain/langgraph-sdk @langchain/core
+# or: yarn add @langchain/langgraph-sdk @langchain/core
 ```
+
+`@langchain/core` is a required peer dependency (message coercion and
+streaming). If you use `@langchain/langgraph`, you already have it.
 
 ## Quick start
 
