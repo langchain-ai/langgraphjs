@@ -183,4 +183,27 @@ describe("_deserializeCommandSendObjectGraph", () => {
     const command = new Command({ goto: [send] });
     expect((command.goto as Send[])[0].args.messages[0]).toBe(message);
   });
+
+  it("preserves non-plain objects in Send args", () => {
+    class TaskEnvelope {
+      constructor(readonly id: string) {}
+    }
+
+    const tags = new Set(["priority"]);
+    const metadata = new Map([["source", "queue"]]);
+    const createdAt = new Date("2025-09-26T00:00:00.000Z");
+    const task = new TaskEnvelope("task-1");
+
+    const send = new Send("worker", {
+      tags,
+      metadata,
+      createdAt,
+      task,
+    });
+
+    expect(send.args.tags).toBe(tags);
+    expect(send.args.metadata).toBe(metadata);
+    expect(send.args.createdAt).toBe(createdAt);
+    expect(send.args.task).toBe(task);
+  });
 });
