@@ -10,9 +10,9 @@ graph executions in real time.
 ## Install
 
 ```bash
-pnpm add @langchain/langgraph-sdk
-# or: npm install @langchain/langgraph-sdk
-# or: yarn add @langchain/langgraph-sdk
+pnpm add @langchain/langgraph-sdk @langchain/core
+# or: npm install @langchain/langgraph-sdk @langchain/core
+# or: yarn add @langchain/langgraph-sdk @langchain/core
 ```
 
 ## Quick start
@@ -44,13 +44,13 @@ default `langgraph dev` URL).
 
 ## What's in the SDK
 
-| Sub-client           | Purpose                                                      | Docs                                         |
-| -------------------- | ------------------------------------------------------------ | -------------------------------------------- |
-| `client.threads`     | Create threads, manage state, and **stream** runs.           | [Threads](./docs/threads.md) · [Streaming](./docs/streaming.md) |
-| `client.assistants`  | CRUD for assistants (schemas, graphs, versions).             | [Assistants](./docs/assistants.md)           |
-| `client.runs`        | Trigger / join / cancel runs without streaming.              | [Runs (legacy)](./docs/runs.md)              |
-| `client.crons`       | Schedule recurring runs.                                     | [Crons](./docs/crons.md)                     |
-| `client.store`       | Namespaced KV + semantic store.                              | [Store](./docs/store.md)                     |
+| Sub-client          | Purpose                                            | Docs                                                            |
+| ------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| `client.threads`    | Create threads, manage state, and **stream** runs. | [Threads](./docs/threads.md) · [Streaming](./docs/streaming.md) |
+| `client.assistants` | CRUD for assistants (schemas, graphs, versions).   | [Assistants](./docs/assistants.md)                              |
+| `client.runs`       | Trigger / join / cancel runs without streaming.    | [Runs (legacy)](./docs/runs.md)                                 |
+| `client.crons`      | Schedule recurring runs.                           | [Crons](./docs/crons.md)                                        |
+| `client.store`      | Namespaced KV + semantic store.                    | [Store](./docs/store.md)                                        |
 
 ### Streaming
 
@@ -106,16 +106,16 @@ adapter.
 The client code is organized into sub-client modules under
 `src/client/`:
 
-| Path                | Module                                                                            |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `client/assistants/`| `AssistantsClient`                                                                |
-| `client/threads/`   | `ThreadsClient` (includes the v2 `stream(...)` primitive)                         |
-| `client/runs/`      | `RunsClient` (legacy streaming + CRUD)                                            |
-| `client/crons/`     | `CronsClient`                                                                     |
-| `client/store/`     | `StoreClient`                                                                     |
-| `client/stream/`    | `ThreadStream`, assemblers, transports                                            |
-| `client/base.ts`    | `BaseClient`, shared config & helpers                                             |
-| `client/index.ts`   | Main `Client` class & re-exports                                                  |
+| Path                 | Module                                                    |
+| -------------------- | --------------------------------------------------------- |
+| `client/assistants/` | `AssistantsClient`                                        |
+| `client/threads/`    | `ThreadsClient` (includes the v2 `stream(...)` primitive) |
+| `client/runs/`       | `RunsClient` (legacy streaming + CRUD)                    |
+| `client/crons/`      | `CronsClient`                                             |
+| `client/store/`      | `StoreClient`                                             |
+| `client/stream/`     | `ThreadStream`, assemblers, transports                    |
+| `client/base.ts`     | `BaseClient`, shared config & helpers                     |
+| `client/index.ts`    | Main `Client` class & re-exports                          |
 
 ## Change log
 
