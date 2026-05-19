@@ -1473,7 +1473,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1)
       uuid:
         specifier: ^10.0.0
         version: 10.0.0
@@ -1510,7 +1510,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1)
       mongodb:
         specifier: ^6.21.0
         version: 6.21.0(socks@2.8.7)
@@ -1553,7 +1553,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1)
       pg:
         specifier: ^8.12.0
         version: 8.20.0
@@ -1596,7 +1596,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1)
       redis:
         specifier: ^4.7.0
         version: 4.7.1
@@ -1642,7 +1642,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1)
       better-sqlite3:
         specifier: ^12.6.0
         version: 12.6.2
@@ -1685,7 +1685,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1)
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.6.0)(@vitest/browser@3.2.4)(esbuild@0.27.7)(jiti@2.6.1)(msw@2.12.10(@types/node@25.6.0)(typescript@5.9.3))(sass@1.97.3)(tsx@4.21.0)(yaml@2.8.3)
@@ -1795,7 +1795,7 @@ importers:
     dependencies:
       '@langchain/core':
         specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1)
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
@@ -2284,9 +2284,6 @@ importers:
 
   libs/sdk:
     dependencies:
-      '@langchain/core':
-        specifier: ^1.1.44
-        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1)
       '@langchain/protocol':
         specifier: ^0.0.15
         version: 0.0.15
@@ -2303,6 +2300,9 @@ importers:
         specifier: ^13.0.0
         version: 13.0.0
     devDependencies:
+      '@langchain/core':
+        specifier: ^1.1.44
+        version: 1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1)
       '@langchain/scripts':
         specifier: ^0.1.4
         version: 0.1.4
@@ -12594,18 +12594,6 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.20.1:
     resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
     engines: {node: '>=10.0.0'}
@@ -14208,44 +14196,6 @@ snapshots:
       decamelize: 1.2.0
       js-tiktoken: 1.0.21
       langsmith: 0.6.0(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1)
-      mustache: 4.2.0
-      p-queue: 6.6.2
-      zod: 4.4.2
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - '@opentelemetry/exporter-trace-otlp-proto'
-      - '@opentelemetry/sdk-trace-base'
-      - openai
-      - ws
-
-  '@langchain/core@1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)':
-    dependencies:
-      '@cfworker/json-schema': 4.1.1
-      '@standard-schema/spec': 1.1.0
-      ansi-styles: 5.2.0
-      camelcase: 6.3.0
-      decamelize: 1.2.0
-      js-tiktoken: 1.0.21
-      langsmith: 0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0)
-      mustache: 4.2.0
-      p-queue: 6.6.2
-      zod: 4.4.2
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - '@opentelemetry/exporter-trace-otlp-proto'
-      - '@opentelemetry/sdk-trace-base'
-      - openai
-      - ws
-
-  '@langchain/core@1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)':
-    dependencies:
-      '@cfworker/json-schema': 4.1.1
-      '@standard-schema/spec': 1.1.0
-      ansi-styles: 5.2.0
-      camelcase: 6.3.0
-      decamelize: 1.2.0
-      js-tiktoken: 1.0.21
-      langsmith: 0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0)
       mustache: 4.2.0
       p-queue: 6.6.2
       zod: 4.4.2
@@ -20352,22 +20302,6 @@ snapshots:
       openai: 4.104.0(ws@8.20.1)(zod@4.3.6)
       ws: 8.20.1
 
-  langsmith@0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0):
-    dependencies:
-      p-queue: 6.6.2
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.0
-      openai: 6.35.0(ws@8.20.0)(zod@4.3.6)
-      ws: 8.20.0
-
-  langsmith@0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.0)(zod@4.4.2))(ws@8.20.0):
-    dependencies:
-      p-queue: 6.6.2
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.0
-      openai: 6.35.0(ws@8.20.0)(zod@4.4.2)
-      ws: 8.20.0
-
   langsmith@0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1):
     dependencies:
       p-queue: 6.6.2
@@ -20852,7 +20786,7 @@ snapshots:
       roughjs: 4.6.6
       stylis: 4.3.6
       ts-dedent: 2.2.0
-      uuid: 11.1.0
+      uuid: 13.0.0
 
   micromark-core-commonmark@2.0.3:
     dependencies:
@@ -21610,18 +21544,6 @@ snapshots:
       zod: 4.3.6
     transitivePeerDependencies:
       - encoding
-
-  openai@6.35.0(ws@8.20.0)(zod@4.3.6):
-    optionalDependencies:
-      ws: 8.20.0
-      zod: 4.3.6
-    optional: true
-
-  openai@6.35.0(ws@8.20.0)(zod@4.4.2):
-    optionalDependencies:
-      ws: 8.20.0
-      zod: 4.4.2
-    optional: true
 
   openai@6.35.0(ws@8.20.1)(zod@4.3.6):
     optionalDependencies:
@@ -24672,9 +24594,6 @@ snapshots:
       strip-ansi: 7.2.0
 
   wrappy@1.0.2: {}
-
-  ws@8.20.0:
-    optional: true
 
   ws@8.20.1: {}
 
