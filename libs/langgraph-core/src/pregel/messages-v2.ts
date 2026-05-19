@@ -1,9 +1,8 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
   BaseMessage,
-  isBaseMessage,
-  isBaseMessageChunk,
-  isToolMessage,
+  ToolMessage,
+  BaseMessageChunk,
 } from "@langchain/core/messages";
 import { Serialized } from "@langchain/core/load/serializable";
 import { ChatGeneration, LLMResult } from "@langchain/core/outputs";
@@ -132,7 +131,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     let messageId = message.id;
 
     if (runId != null) {
-      if (isToolMessage(message)) {
+      if (ToolMessage.isInstance(message)) {
         messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
       } else {
         if (messageId == null || messageId === `run-${runId}`) {
@@ -182,7 +181,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
             ? "tool"
             : "ai";
     const toolCallId =
-      role === "tool" && isToolMessage(message)
+      role === "tool" && ToolMessage.isInstance(message)
         ? message.tool_call_id
         : undefined;
 
@@ -296,7 +295,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     if (meta === undefined) return;
 
     const chatGeneration = output.generations?.[0]?.[0] as ChatGeneration;
-    const message = isBaseMessage(chatGeneration?.message)
+    const message = BaseMessage.isInstance(chatGeneration?.message)
       ? chatGeneration.message
       : undefined;
 
@@ -344,14 +343,16 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       if (typeof inputs === "object") {
         for (const value of Object.values(inputs)) {
           if (
-            (isBaseMessage(value) || isBaseMessageChunk(value)) &&
+            (BaseMessage.isInstance(value) ||
+              BaseMessageChunk.isInstance(value)) &&
             value.id !== undefined
           ) {
             this.seen[value.id] = value;
           } else if (Array.isArray(value)) {
             for (const item of value) {
               if (
-                (isBaseMessage(item) || isBaseMessageChunk(item)) &&
+                (BaseMessage.isInstance(item) ||
+                  BaseMessageChunk.isInstance(item)) &&
                 item.id !== undefined
               ) {
                 this.seen[item.id] = item;
@@ -369,12 +370,12 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     if (meta === undefined) return;
 
     const emitMessage = (value: unknown) => {
-      if (isBaseMessage(value)) {
+      if (BaseMessage.isInstance(value) && !ToolMessage.isInstance(value)) {
         this.emitFinalMessage(meta, value, runId, true);
       }
     };
 
-    if (isBaseMessage(outputs)) {
+    if (BaseMessage.isInstance(outputs)) {
       emitMessage(outputs);
     } else if (Array.isArray(outputs)) {
       for (const value of outputs) emitMessage(value);
