@@ -314,6 +314,38 @@ export class RemoteGraph<
     };
   }
 
+  protected _checkpointToConfig(
+    checkpoint?: Partial<Checkpoint> | null,
+    fallbackConfig?: RunnableConfig
+  ): RunnableConfig {
+    const resolvedCheckpoint =
+      checkpoint ?? this._getCheckpoint(fallbackConfig);
+    if (resolvedCheckpoint == null) {
+      return { configurable: {} };
+    }
+
+    const configurable: Record<string, unknown> = {};
+    if (resolvedCheckpoint.thread_id !== undefined) {
+      configurable.thread_id = resolvedCheckpoint.thread_id;
+    }
+    if (resolvedCheckpoint.checkpoint_ns !== undefined) {
+      configurable.checkpoint_ns = resolvedCheckpoint.checkpoint_ns;
+    }
+    if (resolvedCheckpoint.checkpoint_id !== undefined) {
+      configurable.checkpoint_id = resolvedCheckpoint.checkpoint_id;
+    }
+
+    const hasCheckpointFields =
+      resolvedCheckpoint.checkpoint_ns !== undefined ||
+      resolvedCheckpoint.checkpoint_id !== undefined ||
+      resolvedCheckpoint.checkpoint_map !== undefined;
+    if (hasCheckpointFields) {
+      configurable.checkpoint_map = resolvedCheckpoint.checkpoint_map ?? {};
+    }
+
+    return { configurable };
+  }
+
   protected _getCheckpoint(config?: RunnableConfig): Checkpoint | undefined {
     if (config?.configurable === undefined) {
       return undefined;
@@ -335,7 +367,10 @@ export class RemoteGraph<
     return Object.keys(checkpoint).length > 0 ? checkpoint : undefined;
   }
 
-  protected _createStateSnapshot(state: ThreadState): StateSnapshot {
+  protected _createStateSnapshot(
+    state: ThreadState,
+    fallbackConfig?: RunnableConfig
+  ): StateSnapshot {
     const tasks: PregelTaskDescription[] = state.tasks.map((task) => {
       return {
         id: task.id,
@@ -348,7 +383,12 @@ export class RemoteGraph<
         })),
         // eslint-disable-next-line no-nested-ternary
         state: task.state
-          ? this._createStateSnapshot(task.state)
+          ? this._createStateSnapshot(
+              task.state,
+              task.checkpoint
+                ? this._checkpointToConfig(task.checkpoint)
+                : fallbackConfig
+            )
           : task.checkpoint
             ? { configurable: task.checkpoint }
             : undefined,
@@ -360,27 +400,16 @@ export class RemoteGraph<
     return {
       values: state.values,
       next: state.next ? [...state.next] : [],
-      config: {
-        configurable: {
-          thread_id: state.checkpoint.thread_id,
-          checkpoint_ns: state.checkpoint.checkpoint_ns,
-          checkpoint_id: state.checkpoint.checkpoint_id,
-          checkpoint_map: state.checkpoint.checkpoint_map ?? {},
-        },
-      },
+      config: this._checkpointToConfig(
+        state.checkpoint as Checkpoint | null,
+        fallbackConfig
+      ),
       metadata: state.metadata
         ? (state.metadata as CheckpointMetadata)
         : undefined,
       createdAt: state.created_at ?? undefined,
       parentConfig: state.parent_checkpoint
-        ? {
-            configurable: {
-              thread_id: state.parent_checkpoint.thread_id,
-              checkpoint_ns: state.parent_checkpoint.checkpoint_ns,
-              checkpoint_id: state.parent_checkpoint.checkpoint_id,
-              checkpoint_map: state.parent_checkpoint.checkpoint_map ?? {},
-            },
-          }
+        ? this._checkpointToConfig(state.parent_checkpoint)
         : undefined,
       tasks,
     };
@@ -576,7 +605,7 @@ export class RemoteGraph<
       }
     );
     for (const state of states) {
-      yield this._createStateSnapshot(state);
+      yield this._createStateSnapshot(state, mergedConfig);
     }
   }
 
@@ -616,7 +645,7 @@ export class RemoteGraph<
       this._getCheckpoint(mergedConfig),
       options
     );
-    return this._createStateSnapshot(state);
+    return this._createStateSnapshot(state, mergedConfig);
   }
 
   /** @deprecated Use getGraphAsync instead. The async method will become the default in the next minor release. */
