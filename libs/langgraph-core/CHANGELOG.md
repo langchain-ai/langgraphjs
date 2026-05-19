@@ -1,5 +1,23 @@
 # @langchain/langgraph
 
+## 1.3.1
+
+### Patch Changes
+
+- [#2339](https://github.com/langchain-ai/langgraphjs/pull/2339) [`2b88da4`](https://github.com/langchain-ai/langgraphjs/commit/2b88da497b2c6f8fbf8f4d901578a198824eb32f) Thanks [@vigneshpatel14](https://github.com/vigneshpatel14)! - fix(langgraph): surface structuredResponse parse failures in createReactAgent
+
+- [#2406](https://github.com/langchain-ai/langgraphjs/pull/2406) [`e54ae90`](https://github.com/langchain-ai/langgraphjs/commit/e54ae901e119ccf81653b90d5a0db2485027a5a9) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-core): keep tool results out of v3 message streams
+
+- [#2376](https://github.com/langchain-ai/langgraphjs/pull/2376) [`4fd1e9f`](https://github.com/langchain-ai/langgraphjs/commit/4fd1e9f5720361a86a386a286ad8fcc824643280) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph): prefer configurable assistant and graph IDs for runtime server info
+
+  Update runtime `serverInfo` construction to read `assistant_id` and `graph_id` from
+  `config.configurable` first, with fallback to `config.metadata` for compatibility.
+  Also expands `execution_info` tests to cover configurable sourcing, precedence,
+  and metadata fallback behavior.
+
+- Updated dependencies [[`44746b1`](https://github.com/langchain-ai/langgraphjs/commit/44746b1a3b5b49737542b120b9e45d6f94181113), [`4cc6491`](https://github.com/langchain-ai/langgraphjs/commit/4cc6491844f21ed0fc737eaef8498133daa877f7), [`ae8af2d`](https://github.com/langchain-ai/langgraphjs/commit/ae8af2d75aef9a7bbd930d221d1ce03e7fbb90ad), [`01dd046`](https://github.com/langchain-ai/langgraphjs/commit/01dd0462ed300dee5a9a51f229e6c401315f070c), [`2ad1aa4`](https://github.com/langchain-ai/langgraphjs/commit/2ad1aa48c6a3f45340b4833e6de555fdc7348d15), [`75e651b`](https://github.com/langchain-ai/langgraphjs/commit/75e651b9cff1a1e39ad6513b8a5e9b565b9ad7fe), [`f1d651a`](https://github.com/langchain-ai/langgraphjs/commit/f1d651ae14ca178f4a915ac853ba9b439cd55ba3)]:
+  - @langchain/langgraph-sdk@1.9.3
+
 ## 1.3.1-rc.0
 
 ### Patch Changes

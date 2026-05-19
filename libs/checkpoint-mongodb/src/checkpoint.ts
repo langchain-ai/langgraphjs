@@ -23,6 +23,25 @@ export type MongoDBSaverParams = {
   enableTimestamps?: boolean;
 };
 
+function getStringConfigValue(
+  name: string,
+  value: unknown,
+  { required = false }: { required?: boolean } = {}
+): string | undefined {
+  if (value === undefined) {
+    if (required) {
+      throw new Error(`Invalid configurable.${name}: expected a string`);
+    }
+    return undefined;
+  }
+
+  if (value === null || typeof value !== "string") {
+    throw new Error(`Invalid configurable.${name}: expected a string`);
+  }
+
+  return value;
+}
+
 /**
  * A LangGraph checkpoint saver backed by a MongoDB database.
  */
@@ -73,11 +92,23 @@ export class MongoDBSaver extends BaseCheckpointSaver {
    * for the given thread ID is retrieved.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    const {
-      thread_id,
-      checkpoint_ns = "",
-      checkpoint_id,
-    } = config.configurable ?? {};
+    const thread_id = getStringConfigValue(
+      "thread_id",
+      config.configurable?.thread_id
+    );
+    if (thread_id === undefined) {
+      return undefined;
+    }
+    const checkpoint_ns =
+      getStringConfigValue(
+        "checkpoint_ns",
+        config.configurable?.checkpoint_ns
+      ) ?? "";
+    const checkpoint_id = getStringConfigValue(
+      "checkpoint_id",
+      config.configurable?.checkpoint_id
+    );
+
     let query;
     if (checkpoint_id) {
       query = {
@@ -155,16 +186,20 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const { limit, before, filter } = options ?? {};
     const query: Record<string, unknown> = {};
+    const thread_id = getStringConfigValue(
+      "thread_id",
+      config.configurable?.thread_id
+    );
+    const checkpoint_ns = getStringConfigValue(
+      "checkpoint_ns",
+      config.configurable?.checkpoint_ns
+    );
 
-    if (config?.configurable?.thread_id) {
-      query.thread_id = config.configurable.thread_id;
+    if (thread_id) {
+      query.thread_id = thread_id;
     }
-
-    if (
-      config?.configurable?.checkpoint_ns !== undefined &&
-      config?.configurable?.checkpoint_ns !== null
-    ) {
-      query.checkpoint_ns = config.configurable.checkpoint_ns;
+    if (checkpoint_ns !== undefined) {
+      query.checkpoint_ns = checkpoint_ns;
     }
 
     if (filter) {
@@ -179,8 +214,12 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       });
     }
 
-    if (before) {
-      query.checkpoint_id = { $lt: before.configurable?.checkpoint_id };
+    if (before?.configurable?.checkpoint_id !== undefined) {
+      const before_checkpoint_id = getStringConfigValue(
+        "checkpoint_id",
+        before.configurable?.checkpoint_id
+      );
+      query.checkpoint_id = { $lt: before_checkpoint_id };
     }
 
     let result = this.db
@@ -234,14 +273,22 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    const thread_id = config.configurable?.thread_id;
-    const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
+    const thread_id = getStringConfigValue(
+      "thread_id",
+      config.configurable?.thread_id,
+      { required: true }
+    );
+    const checkpoint_ns =
+      getStringConfigValue(
+        "checkpoint_ns",
+        config.configurable?.checkpoint_ns
+      ) ?? "";
+    const parent_checkpoint_id = getStringConfigValue(
+      "checkpoint_id",
+      config.configurable?.checkpoint_id
+    );
     const checkpoint_id = checkpoint.id;
-    if (thread_id === undefined) {
-      throw new Error(
-        `The provided config must contain a configurable field with a "thread_id" field.`
-      );
-    }
+
     const [
       [checkpointType, serializedCheckpoint],
       [metadataType, serializedMetadata],
@@ -254,7 +301,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       throw new Error("Mismatched checkpoint and metadata types.");
     }
     const doc = {
-      parent_checkpoint_id: config.configurable?.checkpoint_id,
+      parent_checkpoint_id,
       type: checkpointType,
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
@@ -289,18 +336,21 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void> {
-    const thread_id = config.configurable?.thread_id;
-    const checkpoint_ns = config.configurable?.checkpoint_ns;
-    const checkpoint_id = config.configurable?.checkpoint_id;
-    if (
-      thread_id === undefined ||
-      checkpoint_ns === undefined ||
-      checkpoint_id === undefined
-    ) {
-      throw new Error(
-        `The provided config must contain a configurable field with "thread_id", "checkpoint_ns" and "checkpoint_id" fields.`
-      );
-    }
+    const thread_id = getStringConfigValue(
+      "thread_id",
+      config.configurable?.thread_id,
+      { required: true }
+    );
+    const checkpoint_ns = getStringConfigValue(
+      "checkpoint_ns",
+      config.configurable?.checkpoint_ns,
+      { required: true }
+    );
+    const checkpoint_id = getStringConfigValue(
+      "checkpoint_id",
+      config.configurable?.checkpoint_id,
+      { required: true }
+    );
 
     const operations = await Promise.all(
       writes.map(async ([channel, value], idx) => {
@@ -333,6 +383,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string) {
+    if (typeof threadId !== "string") {
+      throw new Error("Invalid threadId: expected a string");
+    }
+
     await this.db
       .collection(this.checkpointCollectionName)
       .deleteMany({ thread_id: threadId });
