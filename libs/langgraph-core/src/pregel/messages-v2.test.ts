@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AIMessage } from "@langchain/core/messages";
+import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { LLMResult } from "@langchain/core/outputs";
 import { Serialized } from "@langchain/core/load/serializable";
 import { ChainValues } from "@langchain/core/utils/types";
@@ -297,5 +297,37 @@ describe("StreamProtocolMessagesHandler", () => {
         responseMetadata: { stop_reason: "tool_use" },
       },
     ]);
+  });
+
+  it("does not emit ToolMessage chain outputs as chat message streams", () => {
+    const streamFn = vi.fn();
+    const handler = new StreamProtocolMessagesHandler(streamFn);
+    const runId = "tool-chain-123";
+
+    handler.handleChainStart(
+      {} as Serialized,
+      {} as ChainValues,
+      runId,
+      undefined,
+      [],
+      {
+        langgraph_checkpoint_ns: "ns1",
+        langgraph_node: "ToolNode",
+      },
+      undefined,
+      "ToolNode"
+    );
+
+    handler.handleChainEnd(
+      new ToolMessage({
+        id: "tool-msg-1",
+        content: "[]",
+        tool_call_id: "call_1",
+        name: "list_items",
+      }),
+      runId
+    );
+
+    expect(streamFn).not.toHaveBeenCalled();
   });
 });

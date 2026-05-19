@@ -46,6 +46,7 @@ export function createMessagesTransformer(
 ): StreamTransformer<MessagesTransformerProjection> {
   const log = StreamChannel.local<ChatModelStream>();
   const active = new Map<string, ActiveMessageStream>();
+  const ignored = new Set<string>();
 
   return {
     init: () => ({
@@ -74,6 +75,13 @@ export function createMessagesTransformer(
       switch (data.event) {
         case "message-start": {
           const key = getMessageStreamKey(data);
+          const role = (data as unknown as Record<string, unknown>).role;
+          // Tool results belong on the tools stream and state snapshots, not
+          // the chat-token projection exposed as `run.messages`.
+          if (role === "tool") {
+            ignored.add(key);
+            break;
+          }
           const source = StreamChannel.local<ChatModelStreamEvent>();
           const stream = Object.assign(
             new CoreChatModelStream(source.toAsyncIterable()),
@@ -91,6 +99,7 @@ export function createMessagesTransformer(
         case "content-block-start":
         case "content-block-delta":
         case "content-block-finish":
+          if (ignored.has(getMessageStreamKey(data))) break;
           active
             .get(getMessageStreamKey(data))
             ?.source.push(data as unknown as ChatModelStreamEvent);
@@ -98,6 +107,7 @@ export function createMessagesTransformer(
 
         case "message-finish": {
           const key = getMessageStreamKey(data);
+          if (ignored.delete(key)) break;
           const stream = active.get(key);
           if (stream) {
             stream.source.push(data as unknown as ChatModelStreamEvent);
@@ -108,6 +118,7 @@ export function createMessagesTransformer(
         }
 
         case "error":
+          if (ignored.has(getMessageStreamKey(data))) break;
           active
             .get(getMessageStreamKey(data))
             ?.source.push(data as unknown as ChatModelStreamEvent);
@@ -123,6 +134,7 @@ export function createMessagesTransformer(
         stream.source.close();
         active.delete(key);
       }
+      ignored.clear();
       log.close();
     },
 
@@ -131,6 +143,7 @@ export function createMessagesTransformer(
         stream.source.fail(err);
         active.delete(key);
       }
+      ignored.clear();
       log.fail(err);
     },
   };

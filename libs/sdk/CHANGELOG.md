@@ -1,5 +1,23 @@
 # @langchain/langgraph-sdk
 
+## 1.9.3
+
+### Patch Changes
+
+- [#2387](https://github.com/langchain-ai/langgraphjs/pull/2387) [`44746b1`](https://github.com/langchain-ai/langgraphjs/commit/44746b1a3b5b49737542b120b9e45d6f94181113) Thanks [@nick-hollon-lc](https://github.com/nick-hollon-lc)! - Coalesce `RootMessageProjection` store writes through a single `setTimeout(0)` flush so long `messages`-channel replays (on refresh, mid-run join, or rapid subagent streaming) no longer drain as a per-event microtask chain that trips React's `Maximum update depth exceeded` guard. Replaces the previous `MessageChannel`-based batching, which deferred initial-submit events past the first render and left the UI looking frozen until refresh.
+
+- [#2372](https://github.com/langchain-ai/langgraphjs/pull/2372) [`4cc6491`](https://github.com/langchain-ai/langgraphjs/commit/4cc6491844f21ed0fc737eaef8498133daa877f7) Thanks [@ahmed-z0](https://github.com/ahmed-z0)! - Fix subagent message routing to prefer the stream event namespace over checkpoint metadata when filtering subagent messages.
+
+- [#2384](https://github.com/langchain-ai/langgraphjs/pull/2384) [`ae8af2d`](https://github.com/langchain-ai/langgraphjs/commit/ae8af2d75aef9a7bbd930d221d1ce03e7fbb90ad) Thanks [@nick-hollon-lc](https://github.com/nick-hollon-lc)! - batch RootMessageProjection store writes through a macrotask
+
+- [#2388](https://github.com/langchain-ai/langgraphjs/pull/2388) [`01dd046`](https://github.com/langchain-ai/langgraphjs/commit/01dd0462ed300dee5a9a51f229e6c401315f070c) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): retry connection failures before throwing ConnectionError
+
+- [#2381](https://github.com/langchain-ai/langgraphjs/pull/2381) [`2ad1aa4`](https://github.com/langchain-ai/langgraphjs/commit/2ad1aa48c6a3f45340b4833e6de555fdc7348d15) Thanks [@nick-hollon-lc](https://github.com/nick-hollon-lc)! - fix(sdk): forward config + metadata on respondInput for resume submits
+
+- [#2379](https://github.com/langchain-ai/langgraphjs/pull/2379) [`75e651b`](https://github.com/langchain-ai/langgraphjs/commit/75e651b9cff1a1e39ad6513b8a5e9b565b9ad7fe) Thanks [@nick-hollon-lc](https://github.com/nick-hollon-lc)! - filter SSE-replayed input.requested events through a hydrated interrupt allowlist
+
+- [#2390](https://github.com/langchain-ai/langgraphjs/pull/2390) [`f1d651a`](https://github.com/langchain-ai/langgraphjs/commit/f1d651ae14ca178f4a915ac853ba9b439cd55ba3) Thanks [@nick-hollon-lc](https://github.com/nick-hollon-lc)! - Bind deepagents subagent discovery to the execution namespace via taskInput so `useMessages(stream, subagent)` resolves the streaming scope instead of the trigger tool-call namespace.
+
 ## 1.9.3-rc.0
 
 ### Patch Changes
