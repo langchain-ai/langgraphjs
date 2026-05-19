@@ -575,16 +575,20 @@ export class PostgresSaver extends BaseCheckpointSaver {
         checkpoint_id: checkpoint.id,
       },
     };
-    const client = await this.pool.connect();
+
+    // Serialize before acquiring a connection so the transaction only contains
+    // INSERT statements.  Serializing inside BEGIN/COMMIT holds the connection
+    // idle while CPU-bound serde runs; under event-loop contention this can
+    // stretch transactions to minutes and starve the connection pool.
     const serializedCheckpoint = this._dumpCheckpoint(checkpoint);
+    const [serializedBlobs, serializedMetadata] = await Promise.all([
+      this._dumpBlobs(thread_id, checkpoint_ns, checkpoint.channel_values, newVersions),
+      this._dumpMetadata(metadata),
+    ]);
+
+    const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const serializedBlobs = await this._dumpBlobs(
-        thread_id,
-        checkpoint_ns,
-        checkpoint.channel_values,
-        newVersions
-      );
       for (const serializedBlob of serializedBlobs) {
         await client.query(
           this.SQL_STATEMENTS.UPSERT_CHECKPOINT_BLOBS_SQL,
@@ -597,7 +601,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
         checkpoint.id,
         checkpoint_id,
         serializedCheckpoint,
-        await this._dumpMetadata(metadata),
+        serializedMetadata,
       ]);
       await client.query("COMMIT");
     } catch (e) {
