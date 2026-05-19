@@ -3,12 +3,16 @@
 ## Install
 
 ```bash
-npm add @langchain/langgraph-sdk
+npm add @langchain/langgraph-sdk @langchain/core
 # or
-pnpm add @langchain/langgraph-sdk
+pnpm add @langchain/langgraph-sdk @langchain/core
 # or
-yarn add @langchain/langgraph-sdk
+yarn add @langchain/langgraph-sdk @langchain/core
 ```
+
+`@langchain/core` is a required peer dependency. Install it alongside
+the SDK unless you already depend on `@langchain/langgraph` (which
+peers the same package).
 
 The SDK targets modern runtimes (Node ≥ 18, evergreen browsers, Deno,
 Bun, Cloudflare Workers, Vercel Edge). No additional polyfills are
