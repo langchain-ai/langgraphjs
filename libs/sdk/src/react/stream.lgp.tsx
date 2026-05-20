@@ -732,7 +732,11 @@ export function useStreamLGP<
           }
           const newHistory = await history.mutate(threadId);
           const lastHead = newHistory?.at(0);
-          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+          if (lastHead) {
+            options.onFinish?.(lastHead, callbackMeta);
+            return null;
+          }
+          return undefined;
         },
         onError(error) {
           options.onError?.(error, callbackMeta);

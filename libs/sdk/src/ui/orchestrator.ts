@@ -895,7 +895,11 @@ export class StreamOrchestrator<
           }
           const newHistory = await this.#mutate(tid);
           const lastHead = newHistory?.at(0);
-          if (lastHead) this.#options.onFinish?.(lastHead, callbackMeta);
+          if (lastHead) {
+            this.#options.onFinish?.(lastHead, callbackMeta);
+            return null;
+          }
+          return undefined;
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);
