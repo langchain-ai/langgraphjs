@@ -143,7 +143,8 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
   abstract putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void>;
 
   /**
