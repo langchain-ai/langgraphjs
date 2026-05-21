@@ -328,4 +328,119 @@ describe("headless tool interrupt helpers", () => {
     expect(handled.has("py-headless")).toBe(true);
     expect(onTool).toHaveBeenCalledTimes(2);
   });
+
+  it("flushes each headless tool call only once when mirrored under different interrupt ids", async () => {
+    const handled = new Set<string>();
+    const onTool = vi.fn();
+    const resumeSubmit = vi.fn();
+
+    flushPendingHeadlessToolInterrupts(
+      {
+        __interrupt__: [
+          {
+            id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+                name: "memory_put",
+                args: { key: "user_name", value: "Alex" },
+              },
+            },
+          },
+          {
+            id: "4bce9f26f79f6a609d77589681d8813f",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+                name: "memory_put",
+                args: { key: "user_name", value: "Alex" },
+              },
+            },
+          },
+        ],
+      },
+      [
+        {
+          tool: { name: "memory_put" },
+          execute: async () => ({
+            success: true,
+            action: "updated",
+            key: "user_name",
+            message: 'Memory "user_name" updated',
+          }),
+        },
+      ],
+      handled,
+      { onTool, resumeSubmit }
+    );
+
+    await flushMicrotasks();
+
+    expect(resumeSubmit).toHaveBeenCalledTimes(1);
+    expect(resumeSubmit).toHaveBeenCalledWith({
+      resume: {
+        "toolu_01H47Bw9B8ut1dGRASjDpN1K": {
+          success: true,
+          action: "updated",
+          key: "user_name",
+          message: 'Memory "user_name" updated',
+        },
+      },
+    });
+    expect(onTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not re-flush the same tool call after resume clears a mirrored interrupt id", async () => {
+    const handled = new Set<string>();
+    const onTool = vi.fn();
+    const resumeSubmit = vi.fn();
+    const tool = {
+      tool: { name: "memory_put" },
+      execute: async () => ({
+        success: true,
+        action: "updated",
+        key: "user_name",
+        message: 'Memory "user_name" updated',
+      }),
+    };
+    const protocolInterrupt = {
+      id: "4bce9f26f79f6a609d77589681d8813f",
+      value: {
+        type: "tool",
+        toolCall: {
+          id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+          name: "memory_put",
+          args: { key: "user_name", value: "Alex" },
+        },
+      },
+    };
+    const valuesInterrupt = {
+      id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+      value: protocolInterrupt.value,
+    };
+
+    flushPendingHeadlessToolInterrupts(
+      { __interrupt__: [protocolInterrupt] },
+      [tool],
+      handled,
+      { onTool, resumeSubmit }
+    );
+    await flushMicrotasks();
+
+    resumeSubmit.mockClear();
+    onTool.mockClear();
+
+    flushPendingHeadlessToolInterrupts(
+      { __interrupt__: [valuesInterrupt] },
+      [tool],
+      handled,
+      { onTool, resumeSubmit }
+    );
+    await flushMicrotasks();
+
+    expect(resumeSubmit).not.toHaveBeenCalled();
+    expect(onTool).not.toHaveBeenCalled();
+  });
 });

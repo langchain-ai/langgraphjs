@@ -240,8 +240,18 @@ export function flushPendingHeadlessToolInterrupts(
     if (!headlessInterrupt) continue;
 
     const interruptId = interrupt.id ?? headlessInterrupt.toolCall.id ?? "";
+    const toolCallId = headlessInterrupt.toolCall.id ?? "";
     if (handledIds.has(interruptId)) continue;
+    // v2 protocol runs mirror the same headless-tool interrupt in both
+    // `values.__interrupt__` and `rootStore.interrupts` with different
+    // ids (graph/task id vs protocol interrupt_id). The headless-tool
+    // effect can also re-run after the first resume clears
+    // `rootStore.interrupts` while `values.__interrupt__` is still
+    // present — persist tool call ids in the caller-owned set so we
+    // only execute + resume once per pending tool call.
+    if (toolCallId && handledIds.has(toolCallId)) continue;
     handledIds.add(interruptId);
+    if (toolCallId) handledIds.add(toolCallId);
 
     defer(() => {
       void handleHeadlessToolInterrupt(
