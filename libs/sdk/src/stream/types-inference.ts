@@ -84,12 +84,19 @@ export type AssembledToolCallFromTool<T> = AssembledToolCallFromToolCall<
   InferToolOutput<T>
 >;
 
+/** @internal Resolve a tool definition's registered name. */
+type ToolNameOf<T> = T extends { name: infer N extends string }
+  ? N
+  : T extends { tool: { name: infer N extends string } }
+    ? N
+    : never;
+
 /** @internal Look up the return type of a tool in a tuple by its `name`. */
 type MatchedToolOutput<
   Tools extends readonly unknown[],
   N extends string,
 > = Tools extends readonly [infer First, ...infer Rest]
-  ? First extends { name: N }
+  ? ToolNameOf<First> extends N
     ? InferToolOutput<First>
     : MatchedToolOutput<Rest, N>
   : unknown;
