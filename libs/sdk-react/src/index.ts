@@ -57,6 +57,7 @@ export {
 export type {
   AnyMediaHandle,
   AssembledToolCall,
+  AssembledToolCallFromTool as ToolCallFromTool,
   AudioMedia,
   Channel,
   Event,
@@ -102,7 +103,6 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> =
 export type {
   ToolCallState,
   DefaultToolCall,
-  ToolCallFromTool,
   ToolCallsFromTools,
 } from "@langchain/langgraph-sdk";
 export type {

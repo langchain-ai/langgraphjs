@@ -56,8 +56,30 @@ type AssembledToolCallFromToolCall<
     : never
   : never;
 
-/** @internal Lift a single LangChain tool to its streaming handle type. */
-type AssembledToolCallFromTool<T> = AssembledToolCallFromToolCall<
+/**
+ * Infer the streaming {@link AssembledToolCall} handle for a single
+ * LangChain tool.
+ *
+ * Parallel to {@link ToolCallFromTool} for message-level tool calls —
+ * use this when a component receives one entry from `stream.toolCalls`
+ * and you know which tool definition it came from.
+ *
+ * @example
+ * ```ts
+ * const searchWeb = tool(/* ... *\/);
+ *
+ * function SearchWebCall({ toolCall }: {
+ *   toolCall: AssembledToolCallFromTool<typeof searchWeb>;
+ * }) {
+ *   // toolCall.name is "search_web", args/input are schema-inferred
+ * }
+ *
+ * v1 framework packages (`@langchain/react`, `@langchain/vue`, etc.) re-export
+ * this type as {@link ToolCallFromTool}. {@link AssembledToolCall.output} is
+ * `null` until the call succeeds; use {@link status} / {@link error} for UI.
+ * ```
+ */
+export type AssembledToolCallFromTool<T> = AssembledToolCallFromToolCall<
   ToolCallFromTool<T>,
   InferToolOutput<T>
 >;

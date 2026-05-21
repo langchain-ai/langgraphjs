@@ -259,6 +259,7 @@ describe("stream.toolCalls exposes assembled protocol tool calls", () => {
       "running" | "finished" | "error"
     >();
     expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
+    expectTypeOf(tc.output).toEqualTypeOf<string | null>();
   });
 
   test("multi-tool agent narrows input and output by tool name", () => {
@@ -273,14 +274,14 @@ describe("stream.toolCalls exposes assembled protocol tool calls", () => {
     for (const tc of stream.toolCalls) {
       if (tc.name === "get_weather") {
         expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
-        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
       }
       if (tc.name === "search_web") {
         expectTypeOf(tc.input).toMatchTypeOf<{
           query: string;
           maxResults?: number;
         }>();
-        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
       }
     }
   });
@@ -487,14 +488,14 @@ describe("realistic usage patterns with createAgent", () => {
     for (const tc of stream.toolCalls) {
       if (tc.name === "get_weather") {
         expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
-        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
       }
       if (tc.name === "search_web") {
         expectTypeOf(tc.input).toMatchTypeOf<{
           query: string;
           maxResults?: number;
         }>();
-        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
       }
     }
   });

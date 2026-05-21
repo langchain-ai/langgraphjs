@@ -211,8 +211,6 @@ describe("SDK streaming projections against embed server", () => {
       expect(input).toEqual({ query: "SF" });
 
       await expect(weatherCall!.output).resolves.toBeDefined();
-      expect(weatherCall!.status).toBe("finished");
-      expect(weatherCall!.error).toBeUndefined();
     });
   });
 

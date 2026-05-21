@@ -36,6 +36,7 @@ export type {
   InferSubagentState,
   InferSubagentStates,
   InferToolCalls,
+  AssembledToolCallFromTool,
   InferToolOutput,
   IsAgentLike,
   IsDeepAgentLike,

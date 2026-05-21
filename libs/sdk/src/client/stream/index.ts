@@ -21,17 +21,18 @@ import { MultiCursorBuffer } from "./multi-cursor-buffer.js";
 import { ensureMessageInstances } from "../../ui/messages.js";
 import {
   ToolCallAssembler,
+  toClientAssembledToolCall,
   SubgraphDiscoveryHandle,
   SubgraphHandle,
   SubagentDiscoveryHandle,
   SubagentHandle,
 } from "./handles/index.js";
+import type { ClientAssembledToolCall } from "./handles/tools.js";
 import {
   StreamingMessageAssembler,
   toStreamingMessageHandle,
 } from "./messages.js";
 import type { StreamingMessageHandle } from "./messages.js";
-import type { AssembledToolCall } from "./handles/tools.js";
 import { MediaAssembler } from "./media.js";
 import type {
   AnyMediaHandle,
@@ -584,7 +585,7 @@ export class ThreadStream<
 
   #messagesIterable?: AsyncIterable<StreamingMessageHandle>;
   #valuesProjection?: AsyncIterable<unknown> & PromiseLike<unknown>;
-  #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
+  #toolCallsIterable?: AsyncIterable<ClientAssembledToolCall>;
   #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
   #subagentsIterable?: AsyncIterable<SubagentHandle>;
   #outputPromise?: Promise<unknown>;
@@ -897,12 +898,12 @@ export class ThreadStream<
   }
 
   /**
-   * Tool calls with reactive status/error and a promise-based output.
+   * Tool calls with a promise-based {@link output} for script consumers.
    * Mirrors the in-process `run.toolCalls`.
    */
-  get toolCalls(): AsyncIterable<AssembledToolCall> {
+  get toolCalls(): AsyncIterable<ClientAssembledToolCall> {
     if (this.#toolCallsIterable) return this.#toolCallsIterable;
-    const buffer = new MultiCursorBuffer<AssembledToolCall>();
+    const buffer = new MultiCursorBuffer<ClientAssembledToolCall>();
     this.#toolCallsIterable = buffer;
     const assembler = new ToolCallAssembler();
     void this.#startProjection(
@@ -910,7 +911,7 @@ export class ThreadStream<
       (event) => {
         if (event.method !== "tools") return;
         const tc = assembler.consume(event as ToolsEvent);
-        if (tc) buffer.push(tc);
+        if (tc) buffer.push(toClientAssembledToolCall(tc));
       },
       () => buffer.close()
     );
@@ -2363,13 +2364,15 @@ export {
 export type { AssembledMessage, MessageAssemblyUpdate } from "./messages.js";
 export {
   ToolCallAssembler,
+  toClientAssembledToolCall,
   SubgraphDiscoveryHandle,
   SubgraphHandle,
   SubagentHandle,
   SubagentDiscoveryHandle,
 } from "./handles/index.js";
 export type {
-  AssembledToolCall,
+  ClientAssembledToolCall,
+  ClientAssembledToolCall as AssembledToolCall,
   ToolCallStatus,
   Subscribable,
 } from "./handles/index.js";
