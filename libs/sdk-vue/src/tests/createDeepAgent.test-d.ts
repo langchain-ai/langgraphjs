@@ -24,7 +24,7 @@ import {
 } from "langchain";
 import { createDeepAgent } from "deepagents";
 
-import { useStream } from "../index.js";
+import { useStream, type AssembledToolCall, type InferToolCalls } from "../index.js";
 
 const getWeather = tool(
   async ({ location }: { location: string }) => {
@@ -185,11 +185,12 @@ describe("deep agent", () => {
     });
 
     const tc = stream.toolCalls.value[0];
-    expectTypeOf(tc.name).toEqualTypeOf<string>();
+    expectTypeOf(tc).toExtend<AssembledToolCall>();
     expectTypeOf(tc.callId).toEqualTypeOf<string>();
     expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
-    expectTypeOf(tc.input).toEqualTypeOf<unknown>();
-    expectTypeOf(tc.output).toEqualTypeOf<Promise<unknown>>();
+    expectTypeOf(stream.toolCalls.value).toExtend<
+      InferToolCalls<typeof deepAgentTwoSubagents>[]
+    >();
   });
 
   test("toolCalls is available on deep agent streams", () => {

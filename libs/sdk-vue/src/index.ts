@@ -4,7 +4,6 @@ export {
   type AgentServerOptions,
   type AnyStream,
   type CustomAdapterOptions,
-  type StateOf,
   type ThreadStream,
   type UseStreamOptions,
   type UseStreamResult,

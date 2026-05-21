@@ -85,6 +85,7 @@ export type {
   InferSubagentStates,
   WidenUpdateMessages,
   AgentServerAdapter,
+  InferToolOutput,
 } from "@langchain/langgraph-sdk/stream";
 export { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
 export type { HttpAgentServerAdapterOptions } from "@langchain/langgraph-sdk";

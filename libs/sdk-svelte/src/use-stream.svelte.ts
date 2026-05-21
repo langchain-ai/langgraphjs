@@ -15,13 +15,12 @@ import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
-  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
+  type InferToolCalls,
   type InferSubagentStates,
   type RootSnapshot,
-  type StateOf as StreamStateOf,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -31,9 +30,6 @@ import {
   type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
-
-/** @deprecated Prefer {@link InferStateType}. */
-export type StateOf<T> = StreamStateOf<T>;
 
 /**
  * A value that may be either a plain `T` or a getter `() => T`. Used
@@ -98,7 +94,7 @@ export interface UseStreamReturn<
 > {
   readonly values: StateType;
   readonly messages: BaseMessage[];
-  readonly toolCalls: AssembledToolCall[];
+  readonly toolCalls: InferToolCalls<T>[];
   readonly interrupts: Interrupt<InterruptType>[];
   readonly interrupt: Interrupt<InterruptType> | undefined;
   readonly isLoading: boolean;
@@ -388,7 +384,7 @@ export function useStream<
       return rootSnapshot.messages;
     },
     get toolCalls() {
-      return rootSnapshot.toolCalls;
+      return rootSnapshot.toolCalls as InferToolCalls<T>[];
     },
     get interrupts() {
       return rootSnapshot.interrupts;

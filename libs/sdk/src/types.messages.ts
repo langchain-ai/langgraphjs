@@ -170,6 +170,37 @@ type InferToolInput<T> = T extends {
     ? InferSchemaInput<S>
     : never;
 
+type UnwrapToolFuncOutput<R> =
+  R extends Promise<infer Out>
+    ? Out
+    : R extends AsyncGenerator<unknown, infer Out, unknown>
+      ? Out
+      : R;
+
+/**
+ * Infer the successful return type of a LangChain tool.
+ *
+ * Resolution order mirrors {@link InferToolInput}: `func`, then
+ * `invoke`, then `_call`, so inference survives cross-package
+ * boundaries where `_call` is `protected`.
+ */
+export type InferToolOutput<T> = T extends {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  func: (...args: any[]) => infer R;
+}
+  ? UnwrapToolFuncOutput<R>
+  : T extends {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        invoke: (...args: any[]) => Promise<infer Out>;
+      }
+    ? Out
+    : T extends {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          _call: (...args: any[]) => infer R;
+        }
+      ? UnwrapToolFuncOutput<R>
+      : unknown;
+
 /**
  * Infer a tool call type from a single tool.
  * Works with tools created via `tool()` from `@langchain/core/tools`.

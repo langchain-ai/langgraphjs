@@ -897,7 +897,7 @@ export class ThreadStream<
   }
 
   /**
-   * Tool calls with promise-based output/status/error.
+   * Tool calls with reactive status/error and a promise-based output.
    * Mirrors the in-process `run.toolCalls`.
    */
   get toolCalls(): AsyncIterable<AssembledToolCall> {

@@ -36,7 +36,55 @@ import type {
   InferToolCalls as InferToolCallsFromUi,
   InferSubagentStates as InferSubagentStatesFromUi,
 } from "../ui/stream/index.js";
-import type { DefaultToolCall, ToolCallFromTool } from "../types.messages.js";
+import type {
+  DefaultToolCall,
+  InferToolOutput,
+  ToolCallFromTool,
+} from "../types.messages.js";
+import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+
+/** @internal Map a {@link ToolCallFromTool} message shape to {@link AssembledToolCall}. */
+type AssembledToolCallFromToolCall<
+  TCall extends { name: string; args: Record<string, unknown> },
+  TOutput = unknown,
+> = TCall extends { name: infer N; args: infer A }
+  ? N extends string
+    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      A extends Record<string, any>
+      ? AssembledToolCall<N, A, TOutput>
+      : never
+    : never
+  : never;
+
+/** @internal Lift a single LangChain tool to its streaming handle type. */
+type AssembledToolCallFromTool<T> = AssembledToolCallFromToolCall<
+  ToolCallFromTool<T>,
+  InferToolOutput<T>
+>;
+
+/** @internal Look up the return type of a tool in a tuple by its `name`. */
+type MatchedToolOutput<
+  Tools extends readonly unknown[],
+  N extends string,
+> = Tools extends readonly [infer First, ...infer Rest]
+  ? First extends { name: N }
+    ? InferToolOutput<First>
+    : MatchedToolOutput<Rest, N>
+  : unknown;
+
+/**
+ * @internal Bridge a message-level tool-call shape from {@link InferToolCallsFromUi}
+ * to a streaming {@link AssembledToolCall}, resolving `output` from the agent's
+ * declared tool list.
+ */
+type AssembledFromMessageToolCall<
+  TC extends { name: string; args: Record<string, unknown> },
+  Tools extends readonly unknown[],
+> = TC extends { name: infer N }
+  ? N extends string
+    ? AssembledToolCallFromToolCall<TC, MatchedToolOutput<Tools, N>>
+    : AssembledToolCall
+  : AssembledToolCall;
 
 /**
  * Unwrap the state shape from a compiled graph, a create-agent brand,
@@ -51,17 +99,23 @@ import type { DefaultToolCall, ToolCallFromTool } from "../types.messages.js";
 export type InferStateType<T> = InferStateTypeFromUi<T>;
 
 /**
- * Infer the discriminated union of tool call shapes from an input that
- * may be an agent brand, an array of LangGraph tools, or a direct
- * `DefaultToolCall` shape.
+ * Infer the discriminated union of {@link AssembledToolCall} handles
+ * from an agent brand, an array of LangChain tools, or fall back to the
+ * untyped default handle.
  *
- * See {@link InferToolCallsFromUi} for the full resolution table.
+ * Pass `typeof agent` or `typeof tools` and narrow on `name` / `args`
+ * (aliases for `input`) in tool-call UI components.
  */
-export type InferToolCalls<T> =
-  // Arrays of tools → discriminated union via ToolCallFromTool.
-  T extends readonly unknown[]
-    ? ToolCallFromTool<T[number]>
-    : InferToolCallsFromUi<T>;
+export type InferToolCalls<T> = T extends readonly unknown[]
+  ? AssembledToolCallFromTool<T[number]>
+  : ExtractAgentConfig<T>["Tools"] extends infer Tools extends
+        readonly unknown[]
+    ? InferToolCallsFromUi<T> extends infer TC
+      ? TC extends { name: string; args: Record<string, unknown> }
+        ? AssembledFromMessageToolCall<TC, Tools>
+        : AssembledToolCall
+      : AssembledToolCall
+    : AssembledToolCall;
 
 /**
  * Infer the subagent → state map from a DeepAgent brand. Non-brands
@@ -108,5 +162,6 @@ export type {
   SubAgentLike,
   SubagentStateMap,
   SubagentToolCall,
+  InferToolOutput,
   ToolCallFromTool,
 };

@@ -1,7 +1,9 @@
 import { z } from "zod/v4";
 import { describe, test, expectTypeOf } from "vitest";
 import { createAgent, tool, createMiddleware } from "langchain";
-import type { BaseMessage } from "@langchain/core/messages";
+import type {
+  BaseMessage,
+} from "@langchain/core/messages";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import {
@@ -229,9 +231,9 @@ describe("stream.messages contains BaseMessage class instances", () => {
     });
 
     const msg = stream.messages[0];
-    const metadata = useMessageMetadata(stream, () => msg.id);
-    if (metadata.current) {
-      expectTypeOf(metadata.current.parentCheckpointId).toEqualTypeOf<
+    const metadata = useMessageMetadata(stream, msg.id);
+    if (metadata) {
+      expectTypeOf(metadata.parentCheckpointId).toEqualTypeOf<
         string | undefined
       >();
     }
@@ -270,18 +272,17 @@ describe("stream.toolCalls exposes assembled protocol tool calls", () => {
       InferToolCalls<typeof multiToolAgent>[]
     >();
 
-    for (const tc of stream.toolCalls) {
-      if (tc.name === "get_weather") {
-        expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
-        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
-      }
-      if (tc.name === "search_web") {
-        expectTypeOf(tc.input).toMatchTypeOf<{
-          query: string;
-          maxResults?: number;
-        }>();
-        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
-      }
+    const tc = stream.toolCalls[0];
+    if (tc.name === "get_weather") {
+      expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+      expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+    }
+    if (tc.name === "search_web") {
+      expectTypeOf(tc.input).toMatchTypeOf<{
+        query: string;
+        maxResults?: number;
+      }>();
+      expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
     }
   });
 
@@ -301,9 +302,19 @@ describe("stream.toolCalls exposes assembled protocol tool calls", () => {
     });
     const toolCalls = useToolCalls<typeof multiToolAgent>(stream);
 
-    expectTypeOf(toolCalls.current).toEqualTypeOf<
+    expectTypeOf(toolCalls).toEqualTypeOf<
       InferToolCalls<typeof multiToolAgent>[]
     >();
+
+    const tc = toolCalls[0];
+    expectTypeOf(tc).toExtend<AssembledToolCall>();
+    expectTypeOf(tc.name).toEqualTypeOf<
+      "get_weather" | "search_web" | "send_email"
+    >();
+    expectTypeOf(tc.status).toEqualTypeOf<
+      "running" | "finished" | "error"
+    >();
+    expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
   });
 });
 

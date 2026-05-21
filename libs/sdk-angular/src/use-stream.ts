@@ -25,13 +25,12 @@ import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
-  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
+  type InferToolCalls,
   type InferSubagentStates,
   type RootSnapshot,
-  type StateOf as StreamStateOf,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -41,9 +40,6 @@ import {
   type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
-
-/** @deprecated Prefer {@link InferStateType}. */
-export type StateOf<T> = StreamStateOf<T>;
 
 type AngularThreadId = string | null | Signal<string | null | undefined>;
 
@@ -97,7 +93,7 @@ export interface UseStreamReturn<
 > {
   readonly values: Signal<StateType>;
   readonly messages: Signal<BaseMessage[]>;
-  readonly toolCalls: Signal<AssembledToolCall[]>;
+  readonly toolCalls: Signal<InferToolCalls<T>[]>;
   readonly interrupts: Signal<Interrupt<InterruptType>[]>;
   readonly interrupt: Signal<Interrupt<InterruptType> | undefined>;
   readonly isLoading: Signal<boolean>;
@@ -309,7 +305,9 @@ export function useStream<
 
   const values = computed(() => rootSignal().values);
   const messages = computed(() => rootSignal().messages);
-  const toolCalls = computed(() => rootSignal().toolCalls);
+  const toolCalls = computed(
+    () => rootSignal().toolCalls as InferToolCalls<T>[]
+  );
   const interrupts = computed(() =>
     filterOutHeadlessToolInterrupts(rootSignal().interrupts)
   );

@@ -22,20 +22,8 @@ import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
-import type { InferStateType } from "./types-inference.js";
 import type { Channel, Event } from "@langchain/protocol";
 import type { StreamStore } from "./store.js";
-
-/**
- * Legacy alias shared by the framework bindings.
- * Unwraps a compiled graph or agent brand into its state shape.
- *
- * @deprecated Prefer {@link InferStateType}.
- */
-export type StateOf<T> =
-  InferStateType<T> extends Record<string, unknown>
-    ? InferStateType<T>
-    : Record<string, unknown>;
 
 /** Options common to both transport branches of framework `useStream` APIs. */
 export interface UseStreamCommonOptions<

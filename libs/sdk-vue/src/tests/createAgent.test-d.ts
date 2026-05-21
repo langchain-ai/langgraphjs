@@ -1,18 +1,16 @@
 import { z } from "zod/v4";
 import { describe, test, expectTypeOf } from "vitest";
 import { createAgent, tool, createMiddleware } from "langchain";
-import type {
-  AIMessage as CoreAIMessage,
-  BaseMessage,
-  ToolMessage as CoreToolMessage,
-} from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import {
   useStream,
   useMessageMetadata,
+  useToolCalls,
   type AssembledToolCall,
-  type ToolCallWithResult,
+  type InferToolCalls,
+  type ToolCallFromTool,
 } from "../index.js";
 
 const getWeather = tool(
@@ -246,23 +244,66 @@ describe("stream.toolCalls exposes assembled protocol tool calls", () => {
       assistantId: "agent",
     });
 
+    expectTypeOf(stream.toolCalls.value).toExtend<
+      InferToolCalls<typeof simpleAgent>[]
+    >();
+
     const tc = stream.toolCalls.value[0];
     expectTypeOf(tc).toExtend<AssembledToolCall>();
-    expectTypeOf(tc.name).toEqualTypeOf<string>();
+    expectTypeOf(tc.name).toEqualTypeOf<"get_weather">();
     expectTypeOf(tc.callId).toEqualTypeOf<string>();
     expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
-    expectTypeOf(tc.input).toEqualTypeOf<unknown>();
-    expectTypeOf(tc.output).toEqualTypeOf<Promise<unknown>>();
-    expectTypeOf(tc.status).toExtend<Promise<unknown>>();
-    expectTypeOf(tc.error).toEqualTypeOf<Promise<string | undefined>>();
+    expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+    expectTypeOf(tc.args).toEqualTypeOf<{ location: string }>();
+    expectTypeOf(tc.status).toEqualTypeOf<
+      "running" | "finished" | "error"
+    >();
+    expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
   });
 
-  test("toolCalls is an assembled tool-call array", () => {
+  test("multi-tool agent narrows input and output by tool name", () => {
     const stream = useStream<typeof multiToolAgent>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.toolCalls.value).toExtend<AssembledToolCall[]>();
+    expectTypeOf(stream.toolCalls.value).toExtend<
+      InferToolCalls<typeof multiToolAgent>[]
+    >();
+
+    for (const tc of stream.toolCalls.value) {
+      if (tc.name === "get_weather") {
+        expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+      }
+      if (tc.name === "search_web") {
+        expectTypeOf(tc.input).toMatchTypeOf<{
+          query: string;
+          maxResults?: number;
+        }>();
+        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+      }
+    }
+  });
+
+  test("InferToolCalls aligns with ToolCallFromTool args", () => {
+    type WeatherToolCall = ToolCallFromTool<typeof getWeather>;
+    type WeatherStreamCall = InferToolCalls<
+      readonly [typeof getWeather]
+    >;
+    expectTypeOf<WeatherStreamCall["args"]>().toEqualTypeOf<
+      WeatherToolCall["args"]
+    >();
+  });
+
+  test("useToolCalls preserves InferToolCalls typing", () => {
+    const stream = useStream<typeof multiToolAgent>({
+      assistantId: "agent",
+    });
+    const toolCalls = useToolCalls<typeof multiToolAgent>(stream);
+
+    expectTypeOf(toolCalls.value).toEqualTypeOf<
+      InferToolCalls<typeof multiToolAgent>[]
+    >();
   });
 });
 
@@ -440,15 +481,23 @@ describe("core stream properties are correctly typed", () => {
 });
 
 describe("realistic usage patterns with createAgent", () => {
-  test("complete workflow: render tool calls by name", () => {
+  test("complete workflow: render assembled tool calls", () => {
     const stream = useStream<typeof multiToolAgent>({
       assistantId: "agent",
     });
 
     for (const tc of stream.toolCalls.value) {
-      expectTypeOf(tc.name).toEqualTypeOf<string>();
-      expectTypeOf(tc.input).toEqualTypeOf<unknown>();
-      expectTypeOf(tc.output).toEqualTypeOf<Promise<unknown>>();
+      if (tc.name === "get_weather") {
+        expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+      }
+      if (tc.name === "search_web") {
+        expectTypeOf(tc.input).toMatchTypeOf<{
+          query: string;
+          maxResults?: number;
+        }>();
+        expectTypeOf<Awaited<typeof tc.output>>().toEqualTypeOf<string>();
+      }
     }
   });
 
@@ -503,33 +552,6 @@ describe("realistic usage patterns with createAgent", () => {
       { messages: new HumanMessage("Hello") },
       undefined,
     );
-  });
-
-  test("exported ToolCallWithResult mirrors the SDK type defaults", () => {
-    type WeatherToolCall = {
-      name: "get_weather";
-      args: { location: string };
-      id?: string;
-    };
-
-    type DefaultResult = ToolCallWithResult<WeatherToolCall>;
-    expectTypeOf<DefaultResult["call"]["name"]>().toEqualTypeOf<"get_weather">();
-    expectTypeOf<DefaultResult["result"]>().toEqualTypeOf<
-      import("@langchain/langgraph-sdk").ToolMessage | undefined
-    >();
-    expectTypeOf<DefaultResult["aiMessage"]>().toEqualTypeOf<
-      import("@langchain/langgraph-sdk").AIMessage<WeatherToolCall>
-    >();
-
-    type ClassResult = ToolCallWithResult<
-      WeatherToolCall,
-      CoreToolMessage,
-      CoreAIMessage
-    >;
-    expectTypeOf<ClassResult["result"]>().toEqualTypeOf<
-      CoreToolMessage | undefined
-    >();
-    expectTypeOf<ClassResult["aiMessage"]>().toEqualTypeOf<CoreAIMessage>();
   });
 
   test("toolCalls[] exposes protocol fields", () => {

@@ -15,6 +15,8 @@
 
 import { describe, expectTypeOf, test } from "vitest";
 import { createRef } from "react";
+import { tool } from "langchain";
+import { z } from "zod/v4";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import type { Interrupt } from "@langchain/langgraph-sdk";
 import type {
@@ -27,6 +29,8 @@ import type {
   InferStateType,
   InferSubagentStates,
   InferToolCalls,
+  InferToolOutput,
+  ToolCallFromTool,
   MessageMetadata,
   StreamSubmitOptions,
   SubagentDiscoverySnapshot,
@@ -579,10 +583,8 @@ describe("InferStateType — unwraps agent brands, compiled graphs, plain types"
   });
 });
 
-describe("InferToolCalls — unwraps arrays of tools, agent brands, direct shapes", () => {
-  test("array of tools produces a discriminated union", async () => {
-    const { tool } = await import("langchain");
-    const { z } = await import("zod/v4");
+describe("InferToolCalls — typed streaming tool handles", () => {
+  test("array of tools produces a discriminated AssembledToolCall union", async () => {
     const searchTool = tool(async () => "ok", {
       name: "search",
       description: "s",
@@ -596,16 +598,20 @@ describe("InferToolCalls — unwraps arrays of tools, agent brands, direct shape
     type Calls = InferToolCalls<
       readonly [typeof searchTool, typeof lookupTool]
     >;
-    // Union should distinguish by `name` / `args`.
-    expectTypeOf<Calls>().not.toBeNever();
     expectTypeOf<Calls["name"]>().toEqualTypeOf<"search" | "lookup">();
+
+    type SearchCall = Extract<Calls, { name: "search" }>;
+    expectTypeOf<SearchCall["input"]>().toEqualTypeOf<{ query: string }>();
+    expectTypeOf<SearchCall["status"]>().toEqualTypeOf<
+      "running" | "finished" | "error"
+    >();
+
+    type LookupCall = Extract<Calls, { name: "lookup" }>;
+    expectTypeOf<LookupCall["input"]>().toEqualTypeOf<{ id: string }>();
   });
 
-  test("non-agent / non-array inputs fall back to DefaultToolCall", () => {
-    // `InferToolCalls` only narrows when given an agent brand or a
-    // readonly tool array; any other shape defers to the default
-    // untyped tool-call surface (see types-inference.ts).
-    expectTypeOf<InferToolCalls<BedtimeState>>().not.toBeNever();
+  test("non-agent inputs fall back to untyped AssembledToolCall", () => {
+    expectTypeOf<InferToolCalls<BedtimeState>>().toExtend<AssembledToolCall>();
   });
 });
 
@@ -615,6 +621,67 @@ describe("InferSubagentStates — DeepAgent maps", () => {
     // `BedtimeState` isn't a DeepAgent brand — the helper falls back
     // to the default (untyped) subagent state map.
     expectTypeOf<Map>().not.toBeNever();
+  });
+});
+
+describe("InferToolCalls — agent brands and ToolCallFromTool alignment", () => {
+  test("array of tools infers output types", async () => {
+    const searchTool = tool(
+      async ({ query }: { query: string }) => [`result:${query}`],
+      {
+        name: "search",
+        description: "s",
+        schema: z.object({ query: z.string() }),
+      }
+    );
+    const lookupTool = tool(
+      async ({ id }: { id: string }) => `found:${id}`,
+      {
+        name: "lookup",
+        description: "l",
+        schema: z.object({ id: z.string() }),
+      }
+    );
+    type Calls = InferToolCalls<
+      readonly [typeof searchTool, typeof lookupTool]
+    >;
+    expectTypeOf<InferToolOutput<typeof searchTool>>().toEqualTypeOf<string[]>();
+    expectTypeOf<InferToolOutput<typeof lookupTool>>().toEqualTypeOf<string>();
+    expectTypeOf<Calls>().toExtend<AssembledToolCall>();
+  });
+
+  test("InferToolCalls aligns with ToolCallFromTool args", async () => {
+    const weatherTool = tool(
+      async ({ location }: { location: string }) => `Weather in ${location}`,
+      {
+        name: "get_weather",
+        description: "weather",
+        schema: z.object({ location: z.string() }),
+      }
+    );
+
+    type WeatherToolCall = ToolCallFromTool<typeof weatherTool>;
+    type WeatherStreamCall = InferToolCalls<readonly [typeof weatherTool]>;
+
+    expectTypeOf<WeatherStreamCall["name"]>().toEqualTypeOf<"get_weather">();
+    expectTypeOf<WeatherStreamCall["args"]>().toEqualTypeOf<
+      WeatherToolCall["args"]
+    >();
+  });
+
+  test("InferToolCalls narrows input and output on agent brands", async () => {
+    const weatherTool = tool(
+      async ({ location }: { location: string }) => `Weather in ${location}`,
+      {
+        name: "get_weather",
+        description: "weather",
+        schema: z.object({ location: z.string() }),
+      }
+    );
+    type Call = InferToolCalls<readonly [typeof weatherTool]>;
+    expectTypeOf<Call["name"]>().toEqualTypeOf<"get_weather">();
+    expectTypeOf<Call["input"]>().toEqualTypeOf<{ location: string }>();
+    expectTypeOf<Call["args"]>().toEqualTypeOf<{ location: string }>();
   });
 });
 

@@ -18,11 +18,11 @@ import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
-  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
+  type InferToolCalls,
   type RootSnapshot,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
@@ -107,7 +107,7 @@ export interface UseStreamReturn<
    * Equivalent to calling `useMessages(stream)` with no target.
    */
   readonly messages: BaseMessage[];
-  readonly toolCalls: AssembledToolCall[];
+  readonly toolCalls: InferToolCalls<T>[];
   readonly interrupts: Interrupt<InterruptType>[];
   readonly interrupt: Interrupt<InterruptType> | undefined;
   readonly isLoading: boolean;
@@ -463,7 +463,7 @@ export function useStream<
     return {
       values: root.values,
       messages: root.messages,
-      toolCalls: root.toolCalls,
+      toolCalls: root.toolCalls as InferToolCalls<T>[],
       interrupts: userFacingInterrupts,
       interrupt: userFacingInterrupts[0],
       isLoading: root.isLoading,

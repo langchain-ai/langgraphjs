@@ -28,7 +28,7 @@ import {
   START,
   END,
 } from "@langchain/langgraph";
-import { useStream } from "../index.js";
+import { useStream, useMessageMetadata } from "../index.js";
 
 const SimpleGraphSchema = new StateSchema({
   messages: MessagesValue,
@@ -331,6 +331,66 @@ describe("direct state types work without StateGraph", () => {
   });
 });
 
+describe("graph streams expose v1 root projections and discovery", () => {
+  test("compiled graph has root toolCalls projection", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.toolCalls.value).toBeArray();
+  });
+
+  test("compiled graph does not have getToolCalls", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream).not.toHaveProperty("getToolCalls");
+  });
+
+  test("compiled graph exposes subagent discovery map", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.subagents.value).toExtend<ReadonlyMap<string, unknown>>();
+  });
+
+  test("compiled graph does not have getSubagentsByType", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
+  });
+
+  test("compiled graph does not have activeSubagents", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream).not.toHaveProperty("activeSubagents");
+  });
+
+  test("compiled graph does not have getSubagent", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream).not.toHaveProperty("getSubagent");
+  });
+
+  test("direct state type also does not have agent features", () => {
+    const stream = useStream<BasicDirectState>({
+      assistantId: "direct",
+    });
+
+    expectTypeOf(stream).toHaveProperty("toolCalls");
+    expectTypeOf(stream).toHaveProperty("subagents");
+    expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
+  });
+});
+
 describe("graph: core stream properties", () => {
   test("isLoading is boolean", () => {
     const stream = useStream<typeof researchGraph>({
@@ -380,6 +440,68 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
   });
 
+  test("threadId is nullable string", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.threadId.value).toEqualTypeOf<string | null>();
+  });
+
+  test("hydrationPromise resolves to void", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.hydrationPromise.value).toEqualTypeOf<Promise<void>>();
+  });
+
+  test("respond returns Promise<void>", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.respond("ok")).toEqualTypeOf<Promise<void>>();
+  });
+
+  test("getThread returns optional ThreadStream", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.getThread()).not.toBeNever();
+  });
+
+});
+
+describe("graph: useMessageMetadata accepts BaseMessage ids", () => {
+  test("useMessageMetadata works with compiled graph messages", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    const msg = stream.messages.value[0];
+    const metadata = useMessageMetadata(stream, () => msg.id);
+    if (metadata.value) {
+      expectTypeOf(metadata.value.parentCheckpointId).toEqualTypeOf<
+        string | undefined
+      >();
+    }
+  });
+
+  test("useMessageMetadata works with direct state type", () => {
+    const stream = useStream<BasicDirectState>({
+      assistantId: "direct",
+    });
+
+    const msg = stream.messages.value[0];
+    const metadata = useMessageMetadata(stream, () => msg.id);
+    if (metadata.value) {
+      expectTypeOf(metadata.value.parentCheckpointId).toEqualTypeOf<
+        string | undefined
+      >();
+    }
+  });
 });
 
 describe("graph: interrupt support", () => {

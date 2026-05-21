@@ -8,7 +8,10 @@ import {
   SubscriptionHandle,
   ThreadStream,
 } from "./index.js";
-import { ToolCallAssembler } from "./handles/tools.js";
+import {
+  ToolCallAssembler,
+  parseToolPayload,
+} from "./handles/tools.js";
 import type { ThreadExtension } from "./types.js";
 import {
   MockSseTransport,
@@ -535,6 +538,37 @@ describe("ProtocolError", () => {
 });
 
 describe("ToolCallAssembler", () => {
+  it("parses JSON string input and output from wire events", async () => {
+    const assembler = new ToolCallAssembler();
+    const started = assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "tc_json",
+          tool_name: "search",
+          input: '{"q":"hello"}',
+        },
+        { namespace: [], seq: 1 }
+      ) as never
+    );
+    expect(started?.input).toEqual({ q: "hello" });
+
+    assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "tc_json",
+          output: '{"result":"ok"}',
+        },
+        { namespace: [], seq: 2 }
+      ) as never
+    );
+
+    await expect(started!.output).resolves.toEqual({ result: "ok" });
+  });
+
   it("assembles tool-started into AssembledToolCall with promise lifecycle", async () => {
     const assembler = new ToolCallAssembler();
     const started = assembler.consume(
@@ -552,6 +586,10 @@ describe("ToolCallAssembler", () => {
     expect(started?.name).toBe("search");
     expect(started?.callId).toBe("tc_1");
     expect(started?.input).toEqual({ q: "hello" });
+    expect(started?.args).toEqual({ q: "hello" });
+    expect(started?.id).toBe("tc_1");
+    expect(started?.status).toBe("running");
+    expect(started?.error).toBeUndefined();
 
     assembler.consume(
       eventOf(
@@ -566,7 +604,8 @@ describe("ToolCallAssembler", () => {
     );
 
     await expect(started!.output).resolves.toEqual({ result: "ok" });
-    await expect(started!.status).resolves.toBe("finished");
+    expect(started!.status).toBe("finished");
+    expect(started!.error).toBeUndefined();
   });
 
   it("resolves error status on tool-error", async () => {
@@ -591,7 +630,8 @@ describe("ToolCallAssembler", () => {
       ) as never
     );
     await expect(started!.output).rejects.toThrow("boom");
-    await expect(started!.status).resolves.toBe("error");
+    expect(started!.status).toBe("error");
+    expect(started!.error).toBe("boom");
   });
 
   it("ignores tool-output-delta events (returns undefined)", () => {
@@ -647,7 +687,7 @@ describe("thread.toolCalls projection", () => {
     expect(tc.callId).toBe("tc_sub_1");
     expect(tc.input).toEqual({ a: 3, b: 4 });
     await expect(tc.output).resolves.toEqual({ result: 7 });
-    await expect(tc.status).resolves.toBe("finished");
+    expect(tc.status).toBe("finished");
   });
 });
 
