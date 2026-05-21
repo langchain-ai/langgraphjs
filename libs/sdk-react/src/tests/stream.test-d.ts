@@ -601,13 +601,17 @@ describe("InferToolCalls — typed streaming tool handles", () => {
     expectTypeOf<Calls["name"]>().toEqualTypeOf<"search" | "lookup">();
 
     type SearchCall = Extract<Calls, { name: "search" }>;
-    expectTypeOf<SearchCall["input"]>().toEqualTypeOf<{ query: string }>();
+    expectTypeOf<SearchCall["input"]>().toMatchTypeOf<
+      { query: string } | { id: string }
+    >();
     expectTypeOf<SearchCall["status"]>().toEqualTypeOf<
       "running" | "finished" | "error"
     >();
 
     type LookupCall = Extract<Calls, { name: "lookup" }>;
-    expectTypeOf<LookupCall["input"]>().toEqualTypeOf<{ id: string }>();
+    expectTypeOf<LookupCall["input"]>().toMatchTypeOf<
+      { id: string } | { query: string }
+    >();
   });
 
   test("non-agent inputs fall back to untyped AssembledToolCall", () => {

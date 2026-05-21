@@ -70,6 +70,20 @@ const createFile = tool(
   },
 );
 
+const headlessTool = tool({
+  name: "headless_tool",
+  description: "A headless tool",
+  schema: z.object({
+    foo: z.string(),
+  }),
+});
+
+const headlessToolImpl = headlessTool.implement(async ({ foo }) => {
+  return {
+    bar: foo,
+  };
+});
+
 const todoSchema = z.object({
   id: z.string(),
   content: z.string(),
@@ -106,7 +120,7 @@ const counterMiddleware = createMiddleware({
 
 const simpleAgent = createAgent({
   model: "gpt-4o-mini",
-  tools: [getWeather],
+  tools: [getWeather, headlessTool],
   systemPrompt: "You are a helpful weather assistant.",
 });
 
@@ -181,6 +195,28 @@ describe("ToolCallFromTool infers a streaming handle from a single tool", () => 
 
     expectTypeOf(searchWebCallRow).toBeFunction();
   });
+
+  test("tool call has assembled shape with headless tool", () => {
+    type HeadlessToolCall = ToolCallFromTool<typeof headlessToolImpl>;
+    function headlessToolCallRow({ toolCall }: { toolCall: HeadlessToolCall }) {
+      expectTypeOf(toolCall.name).toEqualTypeOf<"headless_tool">();
+      expectTypeOf(toolCall.args).toMatchTypeOf<{
+        foo: string;
+      }>();
+      expectTypeOf(toolCall.input).toMatchTypeOf<{
+        foo: string;
+      }>();
+      expectTypeOf(toolCall.id).toEqualTypeOf<string>();
+      expectTypeOf(toolCall.callId).toEqualTypeOf<string>();
+      expectTypeOf(toolCall.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(toolCall.error).toEqualTypeOf<string | undefined>();
+      expectTypeOf(toolCall.output).toEqualTypeOf<{ bar: string } | null>();
+    }
+
+    expectTypeOf(headlessToolCallRow).toBeFunction();
+  });
 });
 
 describe("stream.messages() contains BaseMessage class instances", () => {
@@ -246,8 +282,7 @@ describe("stream.messages() contains BaseMessage class instances", () => {
     const msg = stream.messages()[0];
     expectTypeOf(msg.text).toEqualTypeOf<string>();
     expectTypeOf(msg.id).toEqualTypeOf<string | undefined>();
-    expectTypeOf(msg.getType()).toBeString();
-    expectTypeOf(msg.toDict()).toHaveProperty("type");
+    expectTypeOf(msg.type).toBeString();
   });
 
   test("injectMessageMetadata accepts BaseMessage ids", () => {
@@ -266,9 +301,10 @@ describe("stream.messages() contains BaseMessage class instances", () => {
 });
 
 describe("stream.toolCalls() exposes assembled protocol tool calls", () => {
-  test("tool call has v2 assembled shape", () => {
+  test("tool call has assembled shape", () => {
     const stream = useStream<typeof simpleAgent>({
       assistantId: "agent",
+      tools: [headlessToolImpl],
     });
 
     expectTypeOf(stream.toolCalls()).toExtend<
@@ -276,17 +312,30 @@ describe("stream.toolCalls() exposes assembled protocol tool calls", () => {
     >();
 
     const tc = stream.toolCalls()[0];
-    expectTypeOf(tc).toExtend<AssembledToolCall>();
-    expectTypeOf(tc.name).toEqualTypeOf<"get_weather">();
-    expectTypeOf(tc.callId).toEqualTypeOf<string>();
-    expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
-    expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
-    expectTypeOf(tc.args).toEqualTypeOf<{ location: string }>();
-    expectTypeOf(tc.status).toEqualTypeOf<
-      "running" | "finished" | "error"
-    >();
-    expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
-    expectTypeOf(tc.output).toEqualTypeOf<string | null>();
+    if (tc.name === "headless_tool") {
+      expectTypeOf(tc).toExtend<AssembledToolCall>();
+      expectTypeOf(tc.name).toEqualTypeOf<"headless_tool">();
+      expectTypeOf(tc.callId).toEqualTypeOf<string>();
+      expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
+      expectTypeOf(tc.input).toEqualTypeOf<{ foo: string }>();
+      expectTypeOf(tc.args).toEqualTypeOf<{ foo: string }>();
+      expectTypeOf(tc.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
+    } else {
+      expectTypeOf(tc).toExtend<AssembledToolCall>();
+      expectTypeOf(tc.name).toEqualTypeOf<"get_weather">();
+      expectTypeOf(tc.callId).toEqualTypeOf<string>();
+      expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
+      expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+      expectTypeOf(tc.args).toEqualTypeOf<{ location: string }>();
+      expectTypeOf(tc.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
+      expectTypeOf(tc.output).toEqualTypeOf<string | null>();
+    }
   });
 
   test("multi-tool agent narrows input and output by tool name", () => {
