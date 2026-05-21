@@ -10,7 +10,6 @@ import {
 } from "./index.js";
 import {
   ToolCallAssembler,
-  parseToolPayload,
 } from "./handles/tools.js";
 import type { ThreadExtension } from "./types.js";
 import {
@@ -199,7 +198,7 @@ describe("SubscriptionHandle", () => {
     const handle = new SubscriptionHandle<Event>(
       "sub_1",
       { channels: ["messages"] },
-      async () => {}
+      async () => { }
     );
     handle.push(
       eventOf(
@@ -216,7 +215,7 @@ describe("SubscriptionHandle", () => {
     const handle = new SubscriptionHandle<Event>(
       "sub_2",
       { channels: ["messages"] },
-      async () => {}
+      async () => { }
     );
     const iterator = handle[Symbol.asyncIterator]();
     const pending = iterator.next();
@@ -229,7 +228,7 @@ describe("SubscriptionHandle", () => {
     const handle = new SubscriptionHandle<Event>(
       "sub_3",
       { channels: ["messages"] },
-      async () => {}
+      async () => { }
     );
     handle.close();
     handle.push(
