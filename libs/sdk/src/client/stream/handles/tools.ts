@@ -52,7 +52,8 @@ export interface ClientAssembledToolCall<
  * instead for script consumers that read tool results sequentially.
  *
  * {@link output} is `null` while the call is running or after it fails;
- * successful completion sets it to the parsed tool result.
+ * successful completion sets it to the parsed tool return value (objects
+ * and strings are unwrapped from ToolMessage wire envelopes when needed).
  */
 export interface AssembledToolCall<
   TName extends string = string,
@@ -115,6 +116,70 @@ export function parseToolPayload(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+function isToolMessageLike(
+  value: unknown
+): value is Record<string, unknown> & { content: unknown } {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (record.type === "tool") return true;
+  return typeof record.tool_call_id === "string" && "content" in record;
+}
+
+function textFromContentBlocks(content: unknown[]): string {
+  let out = "";
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const record = block as Record<string, unknown>;
+    if (record.type === "text" && typeof record.text === "string") {
+      out += record.text;
+    }
+  }
+  return out;
+}
+
+/**
+ * Normalise tool-result `content` from a wire ToolMessage into the value
+ * a tool implementation returned (object, string, etc.).
+ */
+function parseToolResultContent(content: unknown): unknown | null {
+  if (content == null) return null;
+
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    if (trimmed.length === 0) return null;
+    return parseToolPayload(content);
+  }
+
+  if (Array.isArray(content)) {
+    const text = textFromContentBlocks(content);
+    if (text.length === 0) return null;
+    return parseToolPayload(text);
+  }
+
+  if (typeof content === "object") {
+    return content;
+  }
+
+  return null;
+}
+
+/**
+ * Parse a `tool-finished` output payload into the tool's return value.
+ *
+ * Wire events often wrap structured tool results in a ToolMessage-shaped
+ * object (`{ type: "tool", content: "..." }`). This unwraps that envelope,
+ * JSON-decodes string content when possible, and leaves plain strings as-is.
+ * Returns `null` when a ToolMessage envelope is present but its content
+ * cannot be normalised.
+ */
+export function parseToolOutput(value: unknown): unknown | null {
+  const parsed = parseToolPayload(value);
+  if (isToolMessageLike(parsed)) {
+    return parseToolResultContent(parsed.content);
+  }
+  return parsed ?? null;
 }
 
 type ActiveToolCall = {
@@ -212,7 +277,7 @@ export class ToolCallAssembler {
     const entry = this.active.get(data.tool_call_id);
     if (!entry) return undefined;
     this.active.delete(data.tool_call_id);
-    const value = parseToolPayload(data.output);
+    const value = parseToolOutput(data.output);
     entry.resolveOutput(value);
     entry.handle.output = value;
     entry.handle.status = "finished";

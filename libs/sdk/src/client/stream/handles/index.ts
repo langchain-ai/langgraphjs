@@ -1,6 +1,7 @@
 export {
   ToolCallAssembler,
   parseToolPayload,
+  parseToolOutput,
   toClientAssembledToolCall,
 } from "./tools.js";
 export type {

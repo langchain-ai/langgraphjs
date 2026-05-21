@@ -10,6 +10,7 @@ import {
 } from "./index.js";
 import {
   ToolCallAssembler,
+  parseToolOutput,
 } from "./handles/tools.js";
 import type { ThreadExtension } from "./types.js";
 import {
@@ -566,6 +567,93 @@ describe("ToolCallAssembler", () => {
     );
 
     await expect(started!.outputPromise).resolves.toEqual({ result: "ok" });
+  });
+
+  it("unwraps ToolMessage wire output into the tool return value", async () => {
+    const assembler = new ToolCallAssembler();
+    const started = assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "tc_calc",
+          tool_name: "calculator",
+          input: '{"expression":"1 + 2"}',
+        },
+        { namespace: [], seq: 1 }
+      ) as never
+    );
+
+    assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "tc_calc",
+          output: {
+            type: "tool",
+            status: "success",
+            content:
+              '{"expression":"1 + 2","result":3}',
+            tool_call_id: "tc_calc",
+            name: "calculator",
+          },
+        },
+        { namespace: [], seq: 2 }
+      ) as never
+    );
+
+    expect(started!.output).toEqual({ expression: "1 + 2", result: 3 });
+    await expect(started!.outputPromise).resolves.toEqual({
+      expression: "1 + 2",
+      result: 3,
+    });
+  });
+
+  it("returns plain string tool output unchanged", async () => {
+    const assembler = new ToolCallAssembler();
+    const started = assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "tc_str",
+          tool_name: "echo",
+          input: {},
+        },
+        { namespace: [], seq: 1 }
+      ) as never
+    );
+
+    assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "tc_str",
+          output: {
+            type: "tool",
+            content: "Weather in SF: sunny",
+            tool_call_id: "tc_str",
+            name: "echo",
+          },
+        },
+        { namespace: [], seq: 2 }
+      ) as never
+    );
+
+    expect(started!.output).toBe("Weather in SF: sunny");
+    await expect(started!.outputPromise).resolves.toBe("Weather in SF: sunny");
+  });
+
+  it("parseToolOutput returns null for empty ToolMessage content", () => {
+    expect(
+      parseToolOutput({
+        type: "tool",
+        content: "",
+        tool_call_id: "tc",
+      })
+    ).toBeNull();
   });
 
   it("assembles tool-started into a mutable handle with dual views", async () => {
