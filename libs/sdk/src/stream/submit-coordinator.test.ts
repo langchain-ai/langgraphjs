@@ -185,7 +185,23 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
-    latestUnresolvedInterrupt: () => latestInterrupt,
+    buildResumeRunInput: (resume: unknown) => {
+      if (
+        resume != null &&
+        typeof resume === "object" &&
+        !Array.isArray(resume)
+      ) {
+        const keys = Object.keys(resume as Record<string, unknown>);
+        if (
+          keys.length > 0 &&
+          keys.every((key) => /^[0-9a-f]{32}$/i.test(key))
+        ) {
+          return resume as Record<string, unknown>;
+        }
+      }
+      if (latestInterrupt == null) return null;
+      return { [latestInterrupt.interruptId]: resume };
+    },
     markInterruptResolved,
     onRunStart,
     onRunCreated,
@@ -610,7 +626,7 @@ describe("SubmitCoordinator", () => {
   });
 
   describe("submit({ command: { resume } })", () => {
-    it("calls respondInput on the active interrupt and marks it resolved", async () => {
+    it("uses submitRun for a single resume and marks the interrupt resolved", async () => {
       const h = makeHarness();
       h.setLatestInterrupt({
         interruptId: "interrupt-1",
@@ -622,15 +638,15 @@ describe("SubmitCoordinator", () => {
       });
       await h.terminalRegistered();
 
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
+      expect(h.respondInput).not.toHaveBeenCalled();
+      expect(h.submitRun).toHaveBeenCalledWith({
+        input: { "interrupt-1": { value: 42 } },
         config: { configurable: { thread_id: "thread-1" } },
         metadata: undefined,
       });
       expect(h.markInterruptResolved).toHaveBeenCalledWith("interrupt-1");
 
+      h.resolveSubmit();
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await submitPromise;
@@ -638,7 +654,7 @@ describe("SubmitCoordinator", () => {
       expect(h.onRunCompleted).toHaveBeenCalledWith("success", undefined);
     });
 
-    it("forwards caller-supplied config and metadata through to respondInput", async () => {
+    it("forwards caller-supplied config and metadata through to submitRun", async () => {
       const h = makeHarness();
       h.setLatestInterrupt({
         interruptId: "interrupt-1",
@@ -654,12 +670,9 @@ describe("SubmitCoordinator", () => {
       });
       await h.terminalRegistered();
 
-      // bindThreadConfig merges the caller's configurable with the
-      // thread_id stamp — both must survive.
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
+      expect(h.respondInput).not.toHaveBeenCalled();
+      expect(h.submitRun).toHaveBeenCalledWith({
+        input: { "interrupt-1": { value: 42 } },
         config: {
           configurable: {
             thread_id: "thread-1",
@@ -669,6 +682,50 @@ describe("SubmitCoordinator", () => {
         metadata: { user_id: "u-1", trace_id: "t-9" },
       });
 
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+    });
+
+    it("uses submitRun for interrupt-id keyed batch resume commands", async () => {
+      const h = makeHarness();
+
+      const submitPromise = h.coordinator.submit(null, {
+        command: {
+          resume: {
+            "4b704fd4b473bfd68df40c9979bffe1b": {
+              toolu_01A: { success: true },
+            },
+            "c485a7b6c996d3ace440d2afd6f292a3": {
+              toolu_01B: { success: true },
+            },
+          },
+        },
+      });
+      await h.terminalRegistered();
+
+      expect(h.respondInput).not.toHaveBeenCalled();
+      expect(h.submitRun).toHaveBeenCalledWith({
+        input: {
+          "4b704fd4b473bfd68df40c9979bffe1b": {
+            toolu_01A: { success: true },
+          },
+          "c485a7b6c996d3ace440d2afd6f292a3": {
+            toolu_01B: { success: true },
+          },
+        },
+        config: { configurable: { thread_id: "thread-1" } },
+        metadata: undefined,
+      });
+      expect(h.markInterruptResolved).toHaveBeenCalledWith(
+        "4b704fd4b473bfd68df40c9979bffe1b"
+      );
+      expect(h.markInterruptResolved).toHaveBeenCalledWith(
+        "c485a7b6c996d3ace440d2afd6f292a3"
+      );
+
+      h.resolveSubmit();
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await submitPromise;

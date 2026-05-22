@@ -366,17 +366,16 @@ export function useStream<
     effect(() => {
       const snapshot = rootSignal();
       const bag = snapshot.values as unknown as Record<string, unknown>;
-      const existing = Array.isArray(bag?.__interrupt__)
+      const protocolInterrupts = snapshot.interrupts as unknown as Interrupt[];
+      const valuesInterrupts = Array.isArray(bag?.__interrupt__)
         ? (bag.__interrupt__ as Interrupt[])
         : [];
-      const combined: Interrupt[] = [
-        ...existing,
-        ...(snapshot.interrupts as unknown as Interrupt[]),
-      ];
-      if (combined.length === 0) return;
+      const headlessInterrupts =
+        protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+      if (headlessInterrupts.length === 0) return;
       untracked(() => {
         flushPendingHeadlessToolInterrupts(
-          { ...bag, __interrupt__: combined },
+          { ...bag, __interrupt__: headlessInterrupts },
           tools,
           handledTools,
           {

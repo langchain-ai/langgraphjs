@@ -395,10 +395,10 @@ export function useStream<
   // Subscribe to values + interrupt updates via the root store so the
   // effect re-runs whenever a protocol interrupt lands or the
   // `__interrupt__` key is projected into values, not only on hook
-  // re-render. We feed both sources to the flush helper because
-  // v2-native runs surface protocol interrupts via
-  // `rootStore.interrupts` (`input.requested` events), while legacy
-  // graphs may still emit `values.__interrupt__`.
+  // re-render. Prefer protocol interrupts from `rootStore.interrupts`
+  // (`input.requested` events) because their ids are accepted directly
+  // by `Command({ resume })`; fall back to `values.__interrupt__` for
+  // older streams that only expose interrupts through values.
   const rootValuesForTools = useSyncExternalStore<StateType>(
     controller.rootStore.subscribe,
     () => controller.rootStore.getSnapshot().values,
@@ -414,16 +414,15 @@ export function useStream<
   useEffect(() => {
     if (!tools?.length) return;
     const valuesBag = rootValuesForTools as unknown as Record<string, unknown>;
-    const existingInterrupts = Array.isArray(valuesBag?.__interrupt__)
+    const protocolInterrupts = rootInterruptsForTools as unknown as Interrupt[];
+    const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
       ? (valuesBag.__interrupt__ as Interrupt[])
       : [];
-    const combined: Interrupt[] = [
-      ...existingInterrupts,
-      ...(rootInterruptsForTools as unknown as Interrupt[]),
-    ];
-    if (combined.length === 0) return;
+    const headlessInterrupts =
+      protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+    if (headlessInterrupts.length === 0) return;
     flushPendingHeadlessToolInterrupts(
-      { ...valuesBag, __interrupt__: combined },
+      { ...valuesBag, __interrupt__: headlessInterrupts },
       tools,
       handledToolsRef.current,
       {

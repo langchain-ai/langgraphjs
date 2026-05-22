@@ -350,16 +350,16 @@ export function useStream<
         string,
         unknown
       >;
-      const existing = Array.isArray(valuesBag?.__interrupt__)
+      const protocolInterrupts =
+        rootSnapshot.interrupts as unknown as Interrupt[];
+      const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
         ? (valuesBag.__interrupt__ as Interrupt[])
         : [];
-      const combined: Interrupt[] = [
-        ...existing,
-        ...(rootSnapshot.interrupts as unknown as Interrupt[]),
-      ];
-      if (combined.length === 0) return;
+      const headlessInterrupts =
+        protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+      if (headlessInterrupts.length === 0) return;
       flushPendingHeadlessToolInterrupts(
-        { ...valuesBag, __interrupt__: combined },
+        { ...valuesBag, __interrupt__: headlessInterrupts },
         tools,
         handledTools,
         {

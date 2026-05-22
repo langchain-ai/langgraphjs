@@ -11,6 +11,7 @@ function lifecycleEvent(
   return {
     type: "event",
     method: "lifecycle",
+    seq,
     params: {
       namespace,
       timestamp: Date.now(),

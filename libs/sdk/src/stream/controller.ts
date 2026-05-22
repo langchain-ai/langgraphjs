@@ -63,7 +63,14 @@ import {
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
 } from "./submit-coordinator.js";
-import { upsertToolCall } from "./tool-calls.js";
+import {
+  reconcileToolCallsFromMessages,
+  upsertToolCall,
+} from "./tool-calls.js";
+import {
+  buildResumeRunInput,
+  resolveInterruptTargetForHeadlessResume,
+} from "../headless-tools.js";
 import type {
   RootEventBus,
   RootSnapshot,
@@ -284,7 +291,15 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
-      latestUnresolvedInterrupt: () => this.#latestUnresolvedInterrupt(),
+      buildResumeRunInput: (resume) => {
+        const thread = this.#thread;
+        if (thread == null) return null;
+        return buildResumeRunInput(
+          resume,
+          thread.interrupts,
+          this.#resolvedInterrupts
+        );
+      },
       markInterruptResolved: (interruptId) => {
         this.#resolvedInterrupts.add(interruptId);
       },
@@ -657,7 +672,7 @@ export class StreamController<
             interruptId: target.interruptId,
             namespace: target.namespace ?? [...ROOT_NAMESPACE],
           }
-        : this.#latestUnresolvedInterrupt();
+        : this.#resolveInterruptForResume();
     if (resolved == null) {
       throw new Error("No pending interrupt to respond to.");
     }
@@ -1327,6 +1342,16 @@ export class StreamController<
       nextMessages = [];
     }
     this.#rootMessages.applyValues(nextValues, nextMessages);
+    if (nextMessages.length > 0) {
+      this.rootStore.setState((s) => {
+        const toolCalls = reconcileToolCallsFromMessages(
+          s.toolCalls,
+          nextMessages
+        );
+        if (toolCalls === s.toolCalls) return s;
+        return { ...s, toolCalls };
+      });
+    }
   }
 
   /**
@@ -1434,21 +1459,19 @@ export class StreamController<
   }
 
   /**
-   * Find the newest unresolved interrupt recorded on the active thread.
+   * Resolve which protocol interrupt a resume command should target.
+   * Headless-tool resumes are keyed by tool-call id; without matching
+   * on that id, parallel tool handlers would respond to the wrong
+   * interrupt (always the newest).
    */
-  #latestUnresolvedInterrupt(): ResolvedInterrupt | null {
+  #resolveInterruptForResume(resume?: unknown): ResolvedInterrupt | null {
     const thread = this.#thread;
     if (thread == null) return null;
-    for (let i = thread.interrupts.length - 1; i >= 0; i -= 1) {
-      const entry = thread.interrupts[i];
-      if (entry == null) continue;
-      if (this.#resolvedInterrupts.has(entry.interruptId)) continue;
-      return {
-        interruptId: entry.interruptId,
-        namespace: entry.namespace,
-      };
-    }
-    return null;
+    return resolveInterruptTargetForHeadlessResume(
+      resume,
+      thread.interrupts,
+      this.#resolvedInterrupts
+    );
   }
 
   /**

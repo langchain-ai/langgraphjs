@@ -1295,6 +1295,62 @@ describe("interrupts", () => {
     expect(thread.interrupts[0].payload).toEqual({ action: "approve" });
   });
 
+  it("respondInput removes only the targeted interrupt when several are pending", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+
+    const sub = await thread.subscribe({ channels: ["input"] });
+
+    transport.pushEvent(
+      eventOf(
+        "input.requested" as never,
+        {
+          interrupt_id: "int_1",
+          payload: {
+            type: "tool",
+            toolCall: {
+              id: "toolu_01A",
+              name: "memory_put",
+              args: { key: "user_name" },
+            },
+          },
+        } as never,
+        { namespace: [], seq: 1 }
+      )
+    );
+    await nextValue(sub);
+
+    transport.pushEvent(
+      eventOf(
+        "input.requested" as never,
+        {
+          interrupt_id: "int_2",
+          payload: {
+            type: "tool",
+            toolCall: {
+              id: "toolu_01B",
+              name: "memory_put",
+              args: { key: "user_role" },
+            },
+          },
+        } as never,
+        { namespace: [], seq: 2 }
+      )
+    );
+    await nextValue(sub);
+
+    expect(thread.interrupts).toHaveLength(2);
+
+    await thread.respondInput({
+      namespace: [],
+      interrupt_id: "int_1",
+      response: { toolu_01A: { success: true } },
+    });
+
+    expect(thread.interrupts).toHaveLength(1);
+    expect(thread.interrupts[0].interruptId).toBe("int_2");
+  });
+
   it("run.start resets interrupted state", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

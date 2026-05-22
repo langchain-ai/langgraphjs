@@ -350,8 +350,6 @@ export class ProtocolService {
     await this.createOrResumeRun(record, {
       assistant_id: record.assistantId,
       input: { [params.interrupt_id]: params.response },
-      config: undefined,
-      metadata: undefined,
     });
 
     return {
