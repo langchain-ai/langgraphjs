@@ -124,6 +124,20 @@ function valuesEvent(messages: unknown[], seq: number): Event {
   } as Event;
 }
 
+function lifecycleEvent(event: string, seq: number): Event {
+  return {
+    type: "event",
+    event_id: `lifecycle-${event}-${seq}`,
+    seq,
+    method: "lifecycle",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: { event },
+    },
+  } as Event;
+}
+
 async function waitForExpectation(assertion: () => void): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
@@ -285,6 +299,48 @@ describe("StreamController", () => {
     });
 
     unsubscribe();
+    await controller.dispose();
+  });
+
+  it("fires onCompleted without runId for re-attached run terminals", async () => {
+    const rootSubscription = makePushableSubscription();
+    const onCompleted = vi.fn();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-1",
+      onCompleted,
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    await rootSubscription.started;
+
+    rootSubscription.push(lifecycleEvent("running", 1));
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    });
+
+    rootSubscription.push(lifecycleEvent("completed", 2));
+    await waitForExpectation(() => {
+      expect(onCompleted).toHaveBeenCalledWith({ reason: "success" });
+    });
+
     await controller.dispose();
   });
 

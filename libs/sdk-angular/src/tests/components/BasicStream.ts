@@ -1,6 +1,7 @@
 import { Component, input, signal } from "@angular/core";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import type {
+  RunExecutionInfo,
   StreamSubmitOptions,
   WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
@@ -46,7 +47,7 @@ export class BasicStreamComponent {
   onThreadIdCallback = input<((id: string) => void) | undefined>(undefined);
 
   onCreatedCallback = input<
-    ((meta: { run_id: string; thread_id: string }) => void) | undefined
+    ((info: RunExecutionInfo) => void) | undefined
   >(undefined);
 
   threadId = signal<string | null>(null);

@@ -144,7 +144,8 @@ These keep working without changes:
 | `threadId`, `onThreadId`          | Accept reactive inputs. Pass `null` to detach; passing a new string reloads the thread.         |
 | `initialValues`                   | Unchanged.                                                                                      |
 | `messagesKey`                     | Unchanged — defaults to `"messages"`.                                                           |
-| `onCreated`                       | Still fires with `{ run_id, thread_id }`.                                                       |
+| `onCreated`                       | Fires with `{ runId }`; read the current thread from `stream.threadId` when needed.             |
+| `onCompleted`                     | Convenience callback with `{ runId?, reason }` when active streaming ends.                      |
 | `tools`, `onTool`                 | Unchanged semantics; see §8.                                                                    |
 
 ### 3.2 New options
@@ -159,7 +160,7 @@ These keep working without changes:
 
 | Legacy option                                                                                                                              | v1 replacement                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onError`                                                                                                                                  | Read `stream.error.value` directly; `watch(() => stream.error.value, ...)` if you need a side effect.                                                                   |
+| `onError`                                                                                                                                  | Read `stream.error.value` directly, or pass a per-submit `onError` via `submit(input, { onError })` for a one-off side effect.                                          |
 | `onFinish`                                                                                                                                 | Derive from `isLoading` transitioning `true → false`, or observe the thread via `useValues(stream)`.                                                                    |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. The v2 protocol delivers these as structured store updates; read them via selector composables (`useChannel`, `useExtension`) when you genuinely need raw events. |
 | `onStop`                                                                                                                                   | Drop. `stop()` now abort-signals the in-flight run and `values` reverts to the server's authoritative state.                                                            |
@@ -313,8 +314,11 @@ await submit({ messages: new HumanMessage("hi") });
 | `command: { resume }`                                                                                                                               | Same. Additionally `{ goto, update }` are type-accepted for forward compatibility.                                                                       |
 | `interruptBefore`, `interruptAfter`                                                                                                                 | Drop — not supported in v2.                                                                                                                              |
 | `metadata`                                                                                                                                          | Unchanged.                                                                                                                                               |
-| `multitaskStrategy`                                                                                                                                 | Unchanged. `"rollback"` is honoured client-side today; `"reject"`, `"enqueue"`, `"interrupt"` compile but require the matching server release (see §13). |
-| `onCompletion`, `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. Most map to protocol-v2 defaults.                                                                                                                  |
+| `multitaskStrategy`                                                                                                                                 | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
+| `onCompletion`                                                                                                                                     | Use the composable-level `onCompleted` option for run-completion side effects.                                                                            |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring`                 | Drop. Most map to protocol-v2 defaults.                                                                                                                  |
+| **(new submit option)** `onError`                                                                                                                   | Per-submit fire-and-forget error callback. There is no composable-level `onError` option; transport-level `stream.error` updates still happen in parallel. |
+| **(new)** `threadId`                                                                                                                                | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the reactive `threadId` option changes again. |
 
 ```ts
 // Before
@@ -540,7 +544,8 @@ import { HttpAgentServerAdapter, useStream } from "@langchain/vue";
 
 const adapter = new HttpAgentServerAdapter({
   apiUrl: "/api/agent",
-  headers: () => ({ Authorization: `Bearer ${token.value}` }),
+  threadId: "thread-123",
+  defaultHeaders: { Authorization: `Bearer ${token.value}` },
 });
 
 const stream = useStream({
@@ -637,9 +642,9 @@ function renderMessages(stream: AnyStream) {
 
 ## 13. Known gaps & server-side prerequisites
 
-- `multitaskStrategy: "reject" | "enqueue" | "interrupt"` compile
-  today but require the matching server release. Only `"rollback"` is
-  fully honoured on older servers.
+- `multitaskStrategy: "rollback"`, `"reject"`, and `"enqueue"` are
+  honoured client-side. `"interrupt"` currently falls back to
+  `"rollback"` until server-side interrupt semantics land.
 - `forkFrom` + `submit()` requires a server release that supports
   protocol v2 checkpoints.
 

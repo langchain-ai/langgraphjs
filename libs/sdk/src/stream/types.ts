@@ -25,6 +25,30 @@ import type {
 import type { Channel, Event } from "@langchain/protocol";
 import type { StreamStore } from "./store.js";
 
+/** Why a run's active streaming phase ended. */
+export type RunExecutionReason =
+  /** The run reached the protocol `completed` lifecycle event. */
+  | "success"
+  /** The run reached the protocol `failed` lifecycle event. */
+  | "error"
+  /** The run paused on a protocol `interrupted` lifecycle event. */
+  | "interrupt"
+  /** The run was stopped by a client-side abort. */
+  | "stopped";
+
+/** Payload for run-start callbacks. */
+export interface RunExecutionInfo {
+  runId: string;
+}
+
+/** Payload for run-end callbacks. */
+export interface RunCompletedInfo extends Omit<RunExecutionInfo, "runId"> {
+  /** Omitted when re-attaching to an in-flight run without local dispatch. */
+  runId?: string;
+  /** Why the active streaming phase ended. */
+  reason: RunExecutionReason;
+}
+
 /** Options common to both transport branches of framework `useStream` APIs. */
 export interface UseStreamCommonOptions<
   StateType extends object,
@@ -32,7 +56,18 @@ export interface UseStreamCommonOptions<
 > {
   threadId?: ThreadIdType;
   onThreadId?: (threadId: string) => void;
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+  /**
+   * Convenience callback fired when this hook instance's run is accepted
+   * by the server. Prefer `stream.isLoading` for UI; use this for
+   * imperative run-execution side effects.
+   */
+  onCreated?: (info: RunExecutionInfo) => void;
+  /**
+   * Convenience callback fired when a run's active streaming phase ends.
+   * `runId` may be omitted for re-attached in-flight runs because no local
+   * dispatch response was observed.
+   */
+  onCompleted?: (info: RunCompletedInfo) => void;
   initialValues?: StateType;
   /** State key holding the message array. Defaults to `"messages"`. */
   messagesKey?: string;
@@ -172,9 +207,8 @@ export interface StreamControllerOptions<
   /**
    * How the controller talks to the agent server. Accepts either a
    * built-in transport string (`"sse"` / `"websocket"`) or a custom
-   * {@link import("../client/stream/transport.js").AgentServerAdapter}
-   * that bypasses the built-in factories entirely. Forwarded to
-   * `client.threads.stream({ transport })`.
+   * {@link AgentServerAdapter} that bypasses the built-in factories
+   * entirely. Forwarded to `client.threads.stream({ transport })`.
    */
   transport?: ThreadStreamOptions["transport"];
   /** Optional `fetch` override forwarded to the built-in SSE transport. */
@@ -183,8 +217,18 @@ export interface StreamControllerOptions<
   webSocketFactory?: (url: string) => WebSocket;
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
-  /** Called when a run starts (mirrors v1 `onCreated`). */
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+  /**
+   * Convenience callback fired when this hook instance's run is accepted
+   * by the server. Prefer `root.isLoading` for UI; use this for
+   * imperative run-execution side effects.
+   */
+  onCreated?: (info: RunExecutionInfo) => void;
+  /**
+   * Convenience callback fired when a run's active streaming phase ends.
+   * `runId` may be omitted for re-attached in-flight runs because no local
+   * dispatch response was observed.
+   */
+  onCompleted?: (info: RunCompletedInfo) => void;
   /** Initial state for `root.values` before hydration lands. */
   initialValues?: StateType;
   /** Key inside `values` that holds the message array. Defaults to `"messages"`. */

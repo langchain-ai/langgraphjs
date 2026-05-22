@@ -24,6 +24,8 @@ import {
   type InferSubagentStates,
   type InferToolCalls,
   type RootSnapshot,
+  type RunCompletedInfo,
+  type RunExecutionInfo,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -274,7 +276,8 @@ export function useStream<
     fetch?: typeof fetch;
     webSocketFactory?: (url: string) => WebSocket;
     onThreadId?: (threadId: string) => void;
-    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+    onCreated?: (info: RunExecutionInfo) => void;
+    onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
   }
@@ -331,6 +334,7 @@ export function useStream<
         webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
         onThreadId: options.onThreadId,
         onCreated: options.onCreated,
+        onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
       }),

@@ -54,7 +54,8 @@ errors.
 | `webSocketFactory` | `(url: string) => WebSocket` | Optional `WebSocket` factory for the built-in WS transport. |
 | `threadId` | `MaybeRefOrGetter<string \| null \| undefined>` | Thread to bind to. Accepts a plain value, `null` (start a new thread on first submit), or a reactive ref / getter — updating it re-hydrates against the new thread in place. |
 | `onThreadId` | `(id: string) => void` | Fires when a new thread is created server-side. |
-| `onCreated` | `({ run_id, thread_id }) => void` | Fires as soon as the server acknowledges a run. |
+| `onCreated` | `({ runId }) => void` | Convenience callback fired when this composable's run is accepted by the server. |
+| `onCompleted` | `({ runId?, reason }) => void` | Convenience callback fired when active streaming ends. `reason` is `"success"`, `"error"`, `"interrupt"`, or `"stopped"`; `runId` may be omitted for re-attached runs. |
 | `initialValues` | `StateType` | Seed state used until the first payload arrives. |
 | `messagesKey` | `string` | State key that carries the message array. Defaults to `"messages"`. |
 | `tools` | `AnyHeadlessToolImplementation[]` | Headless tool implementations. Interrupts that target a registered tool are auto-resumed. |

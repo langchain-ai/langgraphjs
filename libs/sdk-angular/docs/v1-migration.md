@@ -55,8 +55,8 @@ The v1 injector targets **protocol v2**. In practice that means:
   route navigations.
 - **Discriminated option bag.** The LangGraph Platform path and the
   custom-adapter path are two arms of a discriminated union; passing
-  both `assistantId` and a non-string `transport` is a compile-time
-  error.
+  LGP-only options like `apiUrl`, `client`, or `fetch` alongside a
+  non-string `transport` is a compile-time error.
 - **Signals end-to-end.** Every reactive field on the return handle is
   an Angular `Signal` that composes with `computed` / `effect` and
   plays nicely with zoneless / OnPush components.
@@ -95,8 +95,9 @@ are flagged in the later sections.
       rather than reading `subagent.messages` off the discovery
       snapshot.
 - [ ] **Swap `FetchStreamTransport`** for
-      `HttpAgentServerAdapter` from `@langchain/langgraph-sdk`
-      (see §9).
+      `HttpAgentServerAdapter` from `@langchain/angular` (or
+      `@langchain/langgraph-sdk`). The adapter is bound to a concrete
+      `threadId` (see §9).
 - [ ] **Re-run `tsc`**. The option bag and return type are now
       discriminated and strongly typed; most remaining issues will
       surface as type errors that map to one of the sections below.
@@ -117,7 +118,8 @@ are flagged in the later sections.
 | `threadId`, `onThreadId` | Unchanged. Pass `null` to detach; passing a new string reloads the thread. `threadId` now also accepts `Signal<string \| null>`. |
 | `initialValues` | Unchanged. |
 | `messagesKey` | Unchanged — defaults to `"messages"`. |
-| `onCreated` | Still fires with `{ run_id, thread_id }`. |
+| `onCreated` | Fires with `{ runId }`; read the current thread from `stream.threadId()` when needed. |
+| `onCompleted` | Convenience callback with `{ runId?, reason }` when active streaming ends. |
 | `tools`, `onTool` | Unchanged semantics — see §8. |
 
 ### 3.2 New options
@@ -132,7 +134,7 @@ are flagged in the later sections.
 
 | Legacy option | v1 replacement |
 |---|---|
-| `onError` | Read `stream.error()` directly, or drive a `computed` / `effect` off it. |
+| `onError` | Read `stream.error()` directly, drive a `computed` / `effect` off it, or pass a per-submit `onError` via `submit(input, { onError })`. |
 | `onFinish` | Derive from `stream.isLoading()` transitioning `true → false`. |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent` | Drop. Use `injectChannel` / `injectExtension` for raw events. |
 | `onStop` | Drop. `stop()` aborts the in-flight run; observe `isLoading()` for UI effects. |
@@ -263,8 +265,11 @@ await this.stream.submit({ messages: new HumanMessage("hi") });
 | `command: { resume }` | Same. `{ goto, update }` also accepted for forward compatibility. |
 | `interruptBefore`, `interruptAfter` | Drop — not supported in v2. |
 | `metadata` | Unchanged. |
-| `multitaskStrategy` | Unchanged. |
-| `onCompletion`, `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. These map to protocol-v2 defaults. |
+| `multitaskStrategy` | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support. |
+| `onCompletion` | Use the hook-level `onCompleted` option for run-completion side effects. |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. These map to protocol-v2 defaults. |
+| **(new submit option)** `onError` | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error()` updates still happen in parallel. |
+| **(new)** `threadId` | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the `threadId` option changes again. |
 
 ---
 
@@ -444,10 +449,13 @@ injectStream({
 v1:
 
 ```typescript
-import { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
+import { HttpAgentServerAdapter } from "@langchain/angular";
 
 injectStream({
-  transport: new HttpAgentServerAdapter({ apiUrl: "…" }),
+  transport: new HttpAgentServerAdapter({
+    apiUrl: "…",
+    threadId: "thread-123",
+  }),
 });
 ```
 
@@ -520,7 +528,7 @@ It returns the same `StreamApi` shape as `injectStream`.
 |---|---|
 | `UseStream<T>` | `StreamApi<T>` for Angular code. |
 | `UseStreamOptions<T>` | `UseStreamOptions<T>` — now a discriminated union of the LGP and custom-adapter branches. |
-| `UseStreamTransport` | `AgentServerAdapter` (re-exported from `@langchain/langgraph-sdk`). |
+| `UseStreamTransport` | `AgentServerAdapter` (re-exported from `@langchain/angular` and `@langchain/langgraph-sdk`). |
 | `CustomStreamTransport` | Dropped. |
 | `StreamOrchestrator` | Dropped. |
 
@@ -552,8 +560,9 @@ function readSharedMessages(stream: UseStreamResult<ChatState>) {
 
 ## 13. Known gaps
 
-- `multitaskStrategy: "reject"` / `"enqueue"` / `"interrupt"` compile
-  but require the matching server release to be fully honoured.
+- `multitaskStrategy: "rollback"`, `"reject"`, and `"enqueue"` are
+  honoured client-side. `"interrupt"` currently falls back to
+  `"rollback"` until server-side interrupt semantics land.
 - `fetchStateHistory`-style history lists are no longer surfaced on
   the injector. If you had custom history UI, call
   `client.threads.getHistory(threadId)` directly; most apps can delete
