@@ -909,6 +909,8 @@ export class StreamController<
     this.#rootMessages.reset();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
+    this.#subagents.reset();
+    this.#subgraphs.reset();
     this.#activeRunId = undefined;
     this.#localRunDepth = 0;
     this.#messageMetadata.reset();

@@ -27,6 +27,9 @@ import {
 
 export type SubagentMap = ReadonlyMap<string, SubagentDiscoverySnapshot>;
 
+/** Stable empty map — reused on {@link SubagentDiscovery.reset}. */
+const EMPTY_SUBAGENT_MAP: SubagentMap = new Map();
+
 interface MutableSubagent {
   id: string;
   name: string;
@@ -69,6 +72,18 @@ export class SubagentDiscovery {
   /** Current snapshot map. */
   get snapshot(): SubagentMap {
     return this.store.getSnapshot();
+  }
+
+  /**
+   * Drop all discovery state. Called on thread rebind / dispose so a
+   * new thread's subagents cannot bleed into the previous UI.
+   */
+  reset(): void {
+    this.#map.clear();
+    this.#taskIdByObservedNamespace.clear();
+    this.#observedOwnNamespaces.clear();
+    this.#toolCallIdByTaskInput.clear();
+    this.store.setValue(EMPTY_SUBAGENT_MAP);
   }
 
   discoverFromMessage(message: unknown, namespace: readonly string[]): void {
