@@ -43,6 +43,7 @@ import {
   INTERRUPT,
   isCommand,
 } from "../constants.js";
+import { propagateConfigurableToMetadata } from "./utils/config.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
@@ -158,11 +159,11 @@ const getStreamModes = (
  * ```
  */
 export class RemoteGraph<
-    Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ContextType extends Record<string, any> = StrRecord<string, any>
-  >
+  Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = StrRecord<string, any>,
+>
   extends Runnable<
     PregelInputType,
     PregelOutputType,
@@ -245,6 +246,44 @@ export class RemoteGraph<
       }
     };
 
+    const propagateMetadataDefaults = (obj: unknown) => {
+      const seen = new WeakSet<object>();
+      const visit = (value: unknown) => {
+        if (typeof value !== "object" || value == null) {
+          return;
+        }
+        if (seen.has(value)) {
+          return;
+        }
+        seen.add(value);
+        const record = value as Record<string, unknown>;
+        const configurable = record.configurable;
+        if (
+          typeof configurable === "object" &&
+          configurable != null &&
+          !Array.isArray(configurable)
+        ) {
+          const metadata =
+            typeof record.metadata === "object" &&
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
+              ? (record.metadata as Record<string, unknown>)
+              : undefined;
+          record.metadata =
+            propagateConfigurableToMetadata(
+              configurable as Record<string, unknown>,
+              metadata
+            ) ?? record.metadata;
+        }
+        for (const nestedValue of Object.values(record)) {
+          visit(nestedValue);
+        }
+      };
+      visit(obj);
+    };
+
+    propagateMetadataDefaults(config);
+
     // Remove non-JSON serializable fields from the config
     const sanitizedConfig = sanitizeObj(config);
 
@@ -311,8 +350,8 @@ export class RemoteGraph<
         state: task.state
           ? this._createStateSnapshot(task.state)
           : task.checkpoint
-          ? { configurable: task.checkpoint }
-          : undefined,
+            ? { configurable: task.checkpoint }
+            : undefined,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result: (task as any).result,
       };
@@ -555,11 +594,12 @@ export class RemoteGraph<
       const nodeId = node.id;
       nodesMap[nodeId] = {
         id: nodeId.toString(),
-        name: typeof node.data === "string" ? node.data : node.data?.name ?? "",
+        name:
+          typeof node.data === "string" ? node.data : (node.data?.name ?? ""),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
         metadata:
-          typeof node.data !== "string" ? node.data?.metadata ?? {} : {},
+          typeof node.data !== "string" ? (node.data?.metadata ?? {}) : {},
       };
     }
     return nodesMap;

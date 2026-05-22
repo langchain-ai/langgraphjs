@@ -128,7 +128,11 @@ export function runFuncTests(
           await new Promise((resolve) => {
             setTimeout(resolve, 150);
           });
-          expect(mapperCalls).toBe(9);
+          // Abort may be caught between the two mapper rounds (9 calls) or
+          // after the second round starts synchronously (12 calls), depending
+          // on scheduler timing.
+          expect(mapperCalls).toBeGreaterThanOrEqual(9);
+          expect(mapperCalls).toBeLessThanOrEqual(12);
         });
 
         it("streams in the correct order", async () => {

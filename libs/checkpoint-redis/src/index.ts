@@ -14,6 +14,7 @@ import {
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
 import { escapeRediSearchTagValue } from "./utils.js";
+import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 // Type for Redis client - supports both standalone and cluster
 export type RedisClientType =
@@ -163,9 +164,8 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
 
     // Load checkpoint with pending writes
-    const { checkpoint, pendingWrites } = await this.loadCheckpointWithWrites(
-      jsonDoc
-    );
+    const { checkpoint, pendingWrites } =
+      await this.loadCheckpointWithWrites(jsonDoc);
 
     return await this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
   }
@@ -213,6 +213,10 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
     // If newVersions is undefined, keep all channel_values as-is (for backward compatibility)
 
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writesExist = await this.client.exists(zsetKey);
+
     // Structure matching Python implementation
     const jsonDoc: CheckpointDocument = {
       thread_id: threadId,
@@ -223,7 +227,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       checkpoint: storedCheckpoint,
       metadata: metadata,
       checkpoint_ts: Date.now(),
-      has_writes: "false",
+      has_writes: writesExist ? "true" : "false",
     };
 
     // Store metadata fields at top-level for searching
@@ -264,9 +268,8 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       // Add thread_id constraint if provided
       if (config?.configurable?.thread_id) {
-        const threadId = config.configurable.thread_id.replace(
-          /[-.@]/g,
-          "\\$&"
+        const threadId = escapeRediSearchTagValue(
+          config.configurable.thread_id
         );
         queryParts.push(`(@thread_id:{${threadId}})`);
       }
@@ -279,7 +282,7 @@ export class RedisSaver extends BaseCheckpointSaver {
           // We'll store it as "__empty__" in the index
           queryParts.push(`(@checkpoint_ns:{__empty__})`);
         } else {
-          const escapedNs = checkpointNs.replace(/[-.@]/g, "\\$&");
+          const escapedNs = escapeRediSearchTagValue(checkpointNs);
           queryParts.push(`(@checkpoint_ns:{${escapedNs}})`);
         }
       }
@@ -325,15 +328,15 @@ export class RedisSaver extends BaseCheckpointSaver {
           options?.before && !config?.configurable?.thread_id
             ? 1000 // Fetch many results for global search with 'before' filtering
             : options?.before
-            ? limit * 10
-            : limit;
+              ? limit * 10
+              : limit;
 
         const results = await this.client.ft.search("checkpoints", query, {
           LIMIT: { from: 0, size: fetchLimit },
           SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
         });
 
-        let documents = results.documents;
+        const documents = results.documents;
 
         let yieldedCount = 0;
 
@@ -635,7 +638,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Register write keys in sorted set for efficient retrieval
     if (writeKeys.length > 0) {
-      const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+      const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
 
       // Use timestamp + idx for scoring to maintain correct order
       const zaddArgs: Record<string, number> = {};
@@ -670,24 +673,25 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
-    // Delete checkpoints
     const checkpointPattern = `checkpoint:${threadId}:*`;
-    // Use scan for better performance and cluster compatibility
-    // Use keys for simplicity - scan would be better for large datasets
     const checkpointKeys = await (this.client as any).keys(checkpointPattern);
 
     if (checkpointKeys.length > 0) {
       await this.client.del(checkpointKeys);
     }
 
-    // Delete writes
-    const writesPattern = `writes:${threadId}:*`;
-    // Use scan for better performance and cluster compatibility
-    // Use keys for simplicity - scan would be better for large datasets
+    const writesPattern = `checkpoint_write:${threadId}:*`;
     const writesKeys = await (this.client as any).keys(writesPattern);
 
     if (writesKeys.length > 0) {
       await this.client.del(writesKeys);
+    }
+
+    const zsetPattern = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:*`;
+    const zsetKeys = await (this.client as any).keys(zsetPattern);
+
+    if (zsetKeys.length > 0) {
+      await this.client.del(zsetKeys);
     }
   }
 

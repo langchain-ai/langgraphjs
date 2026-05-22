@@ -135,7 +135,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const client = await this.pool.connect();
     const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
-      await client.query(`CREATE SCHEMA IF NOT EXISTS ${this.options.schema}`);
+      await client.query(
+        `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
+      );
       let version = -1;
       const MIGRATIONS = getMigrations(this.options.schema);
 

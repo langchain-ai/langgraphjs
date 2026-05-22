@@ -30,7 +30,7 @@ export class TTLManager {
   async sweepExpiredItems(): Promise<number> {
     return this.core.withClient(async (client) => {
       const result = await client.query(`
-        DELETE FROM ${this.core.schema}.store 
+        DELETE FROM "${this.core.schema}".store 
         WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP
       `);
       return result.rowCount || 0;

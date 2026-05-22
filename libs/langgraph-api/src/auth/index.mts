@@ -187,7 +187,7 @@ export const handleAuthEvent = async <T extends keyof AuthEventValueMap>(
 
   return [result.filters, result.value] as [
     AuthFilters | undefined,
-    value: AuthEventValueMap[T]
+    value: AuthEventValueMap[T],
   ];
 };
 

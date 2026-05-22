@@ -41,7 +41,7 @@ const IS_WRITER = Symbol("IS_WRITER");
  */
 export class ChannelWrite<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RunInput = any
+  RunInput = any,
 > extends RunnableCallable<RunInput, RunInput> {
   writes: Array<ChannelWriteEntry | ChannelWriteTupleEntry | Send>;
 
@@ -61,6 +61,7 @@ export class ChannelWrite<
       .join(",")}>`;
     super({
       ...{ writes, name, tags },
+      trace: false,
       func: async (input: RunInput, config?: RunnableConfig) => {
         return this._write(input, config ?? {});
       },

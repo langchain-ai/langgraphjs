@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
-import { v4 as uuid4 } from "uuid";
+import { v7 as uuid7 } from "uuid";
 import { z } from "zod/v3";
 import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
@@ -29,13 +29,13 @@ const createValidRun = async (
 ): Promise<Run> => {
   const { assistant_id: assistantId, ...run } = payload;
   const { auth, headers } = kwargs ?? {};
-  const runId = uuid4();
+  const runId = uuid7();
 
   const streamMode = Array.isArray(payload.stream_mode)
     ? payload.stream_mode
     : payload.stream_mode != null
-    ? [payload.stream_mode]
-    : [];
+      ? [payload.stream_mode]
+      : [];
   if (streamMode.length === 0) streamMode.push("values");
 
   const multitaskStrategy = payload.multitask_strategy ?? "reject";
@@ -218,7 +218,8 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         run.run_id,
         undefined,
         {
-          cancelOnDisconnect,
+          signal: cancelOnDisconnect,
+          cancelOnDisconnect: cancelOnDisconnect != null,
           lastEventId: run.kwargs.resumable ? "-1" : undefined,
           ignore404: true,
         },
@@ -255,7 +256,12 @@ api.get(
         for await (const { id, event, data } of runs().stream.join(
           run_id,
           undefined,
-          { cancelOnDisconnect, lastEventId, ignore404: true },
+          {
+            signal: cancelOnDisconnect,
+            cancelOnDisconnect: cancelOnDisconnect != null,
+            lastEventId,
+            ignore404: true,
+          },
           c.var.auth
         )) {
           await stream.writeSSE({ id, data: serialiseAsDict(data), event });
@@ -377,7 +383,8 @@ api.post(
           run.run_id,
           thread_id,
           {
-            cancelOnDisconnect,
+            signal: cancelOnDisconnect,
+            cancelOnDisconnect: cancelOnDisconnect != null,
             lastEventId: run.kwargs.resumable ? "-1" : undefined,
           },
           c.var.auth
@@ -479,7 +486,11 @@ api.get(
       for await (const { id, event, data } of runs().stream.join(
         run_id,
         thread_id,
-        { cancelOnDisconnect: signal, lastEventId },
+        {
+          signal,
+          cancelOnDisconnect: signal != null,
+          lastEventId,
+        },
         c.var.auth
       )) {
         await stream.writeSSE({ id, data: serialiseAsDict(data), event });

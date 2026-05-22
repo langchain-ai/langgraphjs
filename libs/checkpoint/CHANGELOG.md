@@ -1,5 +1,24 @@
 # @langchain/langgraph-checkpoint
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2314](https://github.com/langchain-ai/langgraphjs/pull/2314) [`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Improve `MemorySaver` diagnostics when checkpoint writes are missing a
+  `thread_id`.
+
+  The in-memory checkpointer now explains why `configurable.thread_id` is
+  required and includes a concrete `graph.stream(..., { configurable: {
+thread_id } })` example in the error message. This makes the new
+  thread-oriented event streaming flows easier to debug when an application
+  forgets to provide durable thread configuration.
+
+## 1.0.1
+
+### Patch Changes
+
+- [#2190](https://github.com/langchain-ai/langgraphjs/pull/2190) [`b6cfe55`](https://github.com/langchain-ai/langgraphjs/commit/b6cfe555bfb498fe24fa85847f0fe5d1194dfa39) Thanks [@colifran](https://github.com/colifran)! - feat(langgraph): implement uint8array support for json plus serializer
+
 ## 1.0.0
 
 ### Major Changes

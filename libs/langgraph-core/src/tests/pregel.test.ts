@@ -32,6 +32,7 @@ import {
   BaseMessage,
   FunctionMessage,
   HumanMessage,
+  isAIMessage,
   ToolMessage,
 } from "@langchain/core/messages";
 import { ToolCall } from "@langchain/core/messages/tool";
@@ -77,6 +78,7 @@ import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { Channel, Pregel, PregelOptions } from "../pregel/index.js";
+import type { StreamToolsOutput } from "../pregel/types.js";
 import {
   _applyWrites,
   _localRead,
@@ -84,7 +86,11 @@ import {
   increment,
   shouldInterrupt,
 } from "../pregel/algo.js";
-import { ToolExecutor, createAgentExecutor } from "../prebuilt/index.js";
+import {
+  ToolExecutor,
+  ToolNode,
+  createAgentExecutor,
+} from "../prebuilt/index.js";
 import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
@@ -1115,6 +1121,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node1",
             langgraph_step: -1,
@@ -1124,6 +1136,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node1",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PUSH, 0],
         writers: expect.any(Array),
@@ -1137,6 +1152,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node1",
             langgraph_step: -1,
@@ -1146,6 +1167,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node1",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PULL, "node1"],
         writers: expect.any(Array),
@@ -1159,6 +1183,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node2",
             langgraph_step: -1,
@@ -1168,6 +1198,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node2",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PULL, "node2"],
         writers: expect.any(Array),
@@ -3515,7 +3548,7 @@ graph TD;
       ).rejects.toThrow(/No checkpointer set/);
 
       expect(toolTwoNodeCount).toBe(1); // interrupts aren't retried
-      expect(tracer.runs.length).toBe(2);
+      expect(tracer.runs.length).toBe(1);
 
       const run = tracer.runs.at(-1);
       expect(run?.end_time).toBeDefined();
@@ -5345,7 +5378,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5377,7 +5410,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5387,7 +5420,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5445,7 +5478,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5455,7 +5488,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5513,7 +5546,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5523,7 +5556,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5581,7 +5614,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5591,7 +5624,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -9155,7 +9188,7 @@ graph TD;
       graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
     );
 
-    expect(streamedEvents).toEqual([
+    expect(streamedEvents).toMatchObject([
       [
         new _AnyIdToolMessage({
           tool_call_id: "test",
@@ -9167,8 +9200,8 @@ graph TD;
           langgraph_triggers: ["branch:to:p_one"],
           langgraph_path: [PULL, "p_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_one:/),
+          ls_integration: "langgraph",
           name: "p_one",
           tags: ["graph:step:1"],
         },
@@ -9183,8 +9216,8 @@ graph TD;
           langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           name: "c_one",
           tags: ["graph:step:1"],
         },
@@ -9199,8 +9232,8 @@ graph TD;
           langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           name: "c_one",
           tags: ["graph:step:1"],
         },
@@ -9215,13 +9248,14 @@ graph TD;
           langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
           tags: ["c_two_chat_model"],
           name: "c_two_chat_model_stream",
+          versions: expect.objectContaining({}),
         },
       ],
       [
@@ -9234,12 +9268,14 @@ graph TD;
           langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
+          name: undefined,
           tags: ["c_two_chat_model"],
+          versions: expect.objectContaining({}),
         },
       ],
       [
@@ -9252,12 +9288,14 @@ graph TD;
           langgraph_triggers: ["branch:to:p_three"],
           langgraph_path: [PULL, "p_three"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_three/),
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
+          name: undefined,
           tags: [],
+          versions: expect.objectContaining({}),
         },
       ],
     ]);
@@ -9282,8 +9320,21 @@ graph TD;
       )
     );
 
-    expect(streamedCombinedEvents).toMatchObject([
+    // The relative ordering of "custom" and "messages" events for the same
+    // chunk is non-deterministic across Node.js versions, so sort by mode
+    // before asserting (custom < messages alphabetically).
+    const sortedCombinedEvents = [...streamedCombinedEvents].sort((a, b) => {
+      const aMode = a[0] as string;
+      const bMode = b[0] as string;
+      if (aMode !== bMode) return aMode < bMode ? -1 : 1;
+      // within same mode, preserve original order by index
+      return (
+        streamedCombinedEvents.indexOf(a) - streamedCombinedEvents.indexOf(b)
+      );
+    });
+    expect(sortedCombinedEvents).toMatchObject([
       ["custom", { from: "parent" }],
+      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -9294,8 +9345,8 @@ graph TD;
             langgraph_triggers: ["branch:to:p_one"],
             langgraph_path: [PULL, "p_one"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_one:/),
+            ls_integration: "langgraph",
             name: "p_one",
             tags: ["graph:step:1"],
           },
@@ -9312,8 +9363,8 @@ graph TD;
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langgraph",
             name: "c_one",
             tags: ["graph:step:1"],
           },
@@ -9330,8 +9381,8 @@ graph TD;
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langgraph",
             name: "c_one",
             tags: ["graph:step:1"],
           },
@@ -9348,8 +9399,8 @@ graph TD;
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -9358,7 +9409,6 @@ graph TD;
           },
         ],
       ],
-      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -9370,8 +9420,8 @@ graph TD;
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -9389,8 +9439,8 @@ graph TD;
             langgraph_triggers: ["branch:to:p_three"],
             langgraph_path: [PULL, "p_three"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_three/),
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -12487,6 +12537,184 @@ graph TD;
           values: { foo: "" },
         },
       ]);
+  });
+
+  it("streamMode tools emits on_tool_start and on_tool_end for ToolNode runs", async () => {
+    const AgentAnnotation = Annotation.Root({
+      messages: Annotation<BaseMessage[]>({
+        reducer: messagesStateReducer,
+        default: () => [],
+      }),
+    });
+
+    const weatherTool = tool(
+      async ({ query }: { query: string }) => {
+        if (
+          query.toLowerCase().includes("sf") ||
+          query.toLowerCase().includes("san francisco")
+        ) {
+          return "It's 60 degrees and foggy.";
+        }
+        return "It's 90 degrees and sunny.";
+      },
+      {
+        name: "weather",
+        description: "Call to get the current weather for a location.",
+        schema: z3.object({
+          query: z3.string().describe("The query to use in your search."),
+        }),
+      }
+    );
+
+    const aiMessage = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "call_1234",
+          args: { query: "SF" },
+          name: "weather",
+          type: "tool_call",
+        },
+      ],
+    });
+
+    const aiMessage2 = new AIMessage({ content: "Done." });
+
+    async function callModel(state: typeof AgentAnnotation.State) {
+      const last = state.messages[state.messages.length - 1];
+      if (last && isAIMessage(last) && last.tool_calls?.length) {
+        return { messages: [aiMessage2] };
+      }
+      return { messages: [aiMessage] };
+    }
+
+    function shouldContinue({
+      messages,
+    }: typeof AgentAnnotation.State): "tools" | "__end__" {
+      const lastMessage = messages[messages.length - 1];
+      if (!isAIMessage(lastMessage)) return "__end__";
+      if ((lastMessage.tool_calls?.length ?? 0) > 0) return "tools";
+      return "__end__";
+    }
+
+    const graph = new StateGraph(AgentAnnotation)
+      .addNode("agent", callModel)
+      .addNode("tools", new ToolNode([weatherTool]))
+      .addEdge("__start__", "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent")
+      .compile();
+
+    const streamChunks = await gatherIterator(
+      graph.stream({ messages: [] }, { streamMode: ["updates", "tools"] })
+    );
+
+    type ToolsStreamChunk = ["tools", StreamToolsOutput];
+    const toolsChunks = streamChunks.filter(
+      (chunk): chunk is ToolsStreamChunk =>
+        Array.isArray(chunk) &&
+        chunk.length >= 2 &&
+        chunk[0] === "tools" &&
+        typeof chunk[1] === "object" &&
+        chunk[1] != null &&
+        "event" in chunk[1]
+    );
+
+    expect(toolsChunks.length).toBeGreaterThanOrEqual(2);
+    expect(toolsChunks.some(([, p]) => p.event === "on_tool_start")).toBe(true);
+    expect(toolsChunks.some(([, p]) => p.event === "on_tool_end")).toBe(true);
+
+    const startPayload = toolsChunks.find(
+      ([, p]) => p.event === "on_tool_start"
+    )?.[1];
+    expect(startPayload).toBeDefined();
+    if (startPayload) {
+      expect(startPayload).toMatchObject({
+        event: "on_tool_start",
+        name: "weather",
+      });
+      if (startPayload.event === "on_tool_start" && startPayload.toolCallId) {
+        expect(startPayload.toolCallId).toBe("call_1234");
+      }
+    }
+
+    const endPayload = toolsChunks.find(
+      ([, p]) => p.event === "on_tool_end"
+    )?.[1];
+    expect(endPayload).toBeDefined();
+    if (endPayload) {
+      expect(endPayload).toMatchObject({
+        event: "on_tool_end",
+        name: "weather",
+      });
+      if (endPayload.event === "on_tool_end") {
+        if (endPayload.toolCallId) {
+          expect(endPayload.toolCallId).toBe("call_1234");
+        }
+        expect(endPayload.output).toBeDefined();
+      }
+    }
+  });
+
+  it("streamMode without tools does not emit tools chunks", async () => {
+    const AgentAnnotation = Annotation.Root({
+      messages: Annotation<BaseMessage[]>({
+        reducer: messagesStateReducer,
+        default: () => [],
+      }),
+    });
+
+    const weatherTool = tool(
+      async ({ query }: { query: string }) => String(query),
+      {
+        name: "weather",
+        schema: z3.object({ query: z3.string() }),
+      }
+    );
+
+    const aiMessage = new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          id: "call_1",
+          args: { query: "x" },
+          name: "weather",
+          type: "tool_call",
+        },
+      ],
+    });
+
+    async function callModel(state: typeof AgentAnnotation.State) {
+      if (state.messages.length === 0) return { messages: [aiMessage] };
+      return { messages: [new AIMessage({ content: "done" })] };
+    }
+
+    function shouldContinue({
+      messages,
+    }: typeof AgentAnnotation.State): "tools" | "__end__" {
+      const last = messages[messages.length - 1];
+      if (!isAIMessage(last) || (last.tool_calls?.length ?? 0) === 0)
+        return "__end__";
+      return "tools";
+    }
+
+    const graph = new StateGraph(AgentAnnotation)
+      .addNode("agent", callModel)
+      .addNode("tools", new ToolNode([weatherTool]))
+      .addEdge("__start__", "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent")
+      .compile();
+
+    const streamChunks = await gatherIterator(
+      graph.stream({ messages: [] }, { streamMode: ["updates"] })
+    );
+
+    const toolsChunks = streamChunks.filter(
+      (chunk) =>
+        Array.isArray(chunk) && (chunk as [string, unknown])[0] === "tools"
+    );
+    expect(toolsChunks.length).toBe(0);
   });
 }
 

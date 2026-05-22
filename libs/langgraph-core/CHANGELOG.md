@@ -1,5 +1,197 @@
 # @langchain/langgraph
 
+## 1.3.2
+
+### Patch Changes
+
+- [#2415](https://github.com/langchain-ai/langgraphjs/pull/2415) [`9d3c9dd`](https://github.com/langchain-ai/langgraphjs/commit/9d3c9dd3182059f9eca9fd9b14d8f7466b4338c4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Move `@langchain/core` from a runtime dependency back to a required peer dependency so installing the SDK alone no longer pulls in `@langchain/core` (and `js-tiktoken`, etc.). Consumers that use streaming or message coercion must install `@langchain/core` explicitly or via `@langchain/langgraph`.
+
+- Updated dependencies [[`9d3c9dd`](https://github.com/langchain-ai/langgraphjs/commit/9d3c9dd3182059f9eca9fd9b14d8f7466b4338c4)]:
+  - @langchain/langgraph-sdk@1.9.4
+
+## 1.3.1
+
+### Patch Changes
+
+- [#2339](https://github.com/langchain-ai/langgraphjs/pull/2339) [`2b88da4`](https://github.com/langchain-ai/langgraphjs/commit/2b88da497b2c6f8fbf8f4d901578a198824eb32f) Thanks [@vigneshpatel14](https://github.com/vigneshpatel14)! - fix(langgraph): surface structuredResponse parse failures in createReactAgent
+
+- [#2406](https://github.com/langchain-ai/langgraphjs/pull/2406) [`e54ae90`](https://github.com/langchain-ai/langgraphjs/commit/e54ae901e119ccf81653b90d5a0db2485027a5a9) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-core): keep tool results out of v3 message streams
+
+- [#2376](https://github.com/langchain-ai/langgraphjs/pull/2376) [`4fd1e9f`](https://github.com/langchain-ai/langgraphjs/commit/4fd1e9f5720361a86a386a286ad8fcc824643280) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph): prefer configurable assistant and graph IDs for runtime server info
+
+  Update runtime `serverInfo` construction to read `assistant_id` and `graph_id` from
+  `config.configurable` first, with fallback to `config.metadata` for compatibility.
+  Also expands `execution_info` tests to cover configurable sourcing, precedence,
+  and metadata fallback behavior.
+
+- Updated dependencies [[`44746b1`](https://github.com/langchain-ai/langgraphjs/commit/44746b1a3b5b49737542b120b9e45d6f94181113), [`4cc6491`](https://github.com/langchain-ai/langgraphjs/commit/4cc6491844f21ed0fc737eaef8498133daa877f7), [`ae8af2d`](https://github.com/langchain-ai/langgraphjs/commit/ae8af2d75aef9a7bbd930d221d1ce03e7fbb90ad), [`01dd046`](https://github.com/langchain-ai/langgraphjs/commit/01dd0462ed300dee5a9a51f229e6c401315f070c), [`2ad1aa4`](https://github.com/langchain-ai/langgraphjs/commit/2ad1aa48c6a3f45340b4833e6de555fdc7348d15), [`75e651b`](https://github.com/langchain-ai/langgraphjs/commit/75e651b9cff1a1e39ad6513b8a5e9b565b9ad7fe), [`f1d651a`](https://github.com/langchain-ai/langgraphjs/commit/f1d651ae14ca178f4a915ac853ba9b439cd55ba3)]:
+  - @langchain/langgraph-sdk@1.9.3
+
+## 1.3.1-rc.0
+
+### Patch Changes
+
+- [#2376](https://github.com/langchain-ai/langgraphjs/pull/2376) [`4fd1e9f`](https://github.com/langchain-ai/langgraphjs/commit/4fd1e9f5720361a86a386a286ad8fcc824643280) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph): prefer configurable assistant and graph IDs for runtime server info
+
+  Update runtime `serverInfo` construction to read `assistant_id` and `graph_id` from
+  `config.configurable` first, with fallback to `config.metadata` for compatibility.
+  Also expands `execution_info` tests to cover configurable sourcing, precedence,
+  and metadata fallback behavior.
+
+- Updated dependencies [[`44746b1`](https://github.com/langchain-ai/langgraphjs/commit/44746b1a3b5b49737542b120b9e45d6f94181113), [`4cc6491`](https://github.com/langchain-ai/langgraphjs/commit/4cc6491844f21ed0fc737eaef8498133daa877f7), [`ae8af2d`](https://github.com/langchain-ai/langgraphjs/commit/ae8af2d75aef9a7bbd930d221d1ce03e7fbb90ad), [`2ad1aa4`](https://github.com/langchain-ai/langgraphjs/commit/2ad1aa48c6a3f45340b4833e6de555fdc7348d15), [`75e651b`](https://github.com/langchain-ai/langgraphjs/commit/75e651b9cff1a1e39ad6513b8a5e9b565b9ad7fe), [`f1d651a`](https://github.com/langchain-ai/langgraphjs/commit/f1d651ae14ca178f4a915ac853ba9b439cd55ba3)]:
+  - @langchain/langgraph-sdk@1.9.3-rc.0
+
+## 1.3.0
+
+### Minor Changes
+
+- [#2314](https://github.com/langchain-ai/langgraphjs/pull/2314) [`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add the in-process event streaming runtime behind `streamEvents`.
+
+  LangGraph now exposes the core primitives for event-based streaming, including
+  `StreamChannel`, `StreamMux`, `GraphRunStream`, `SubgraphRunStream`, native
+  stream transformers, and protocol event conversion utilities. These APIs let
+  graphs emit ordered protocol events, derive additional projections, expose
+  custom stream channels, and bridge in-process runs to remote SDK clients.
+
+  The runtime includes built-in transformers for messages, values, lifecycle
+  events, and subgraph discovery. It also adds support for transformer
+  registration during graph execution, forwarding remote `StreamChannel` output,
+  subgraph-aware event routing, event log multiplexing, and checkpoint-aware
+  values streams.
+
+  This release also expands test coverage across Pregel streaming, event
+  conversion, stream muxing, stream channels, run streams, lifecycle
+  transformers, subgraph transformers, and type-level streaming behavior.
+
+### Patch Changes
+
+- Updated dependencies [[`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb), [`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb), [`d1e2fda`](https://github.com/langchain-ai/langgraphjs/commit/d1e2fda1b1165e122362780a62ab8d2ebff9f9b9)]:
+  - @langchain/langgraph-checkpoint@1.0.2
+  - @langchain/langgraph-sdk@1.9.0
+
+## 1.2.9
+
+### Patch Changes
+
+- [#2315](https://github.com/langchain-ai/langgraphjs/pull/2315) [`9102d52`](https://github.com/langchain-ai/langgraphjs/commit/9102d526c858a4cdbe9b47dcdd062b93da93e49f) Thanks [@hntrl](https://github.com/hntrl)! - propagate tracer metadata defaults from configurable
+
+- [#2311](https://github.com/langchain-ai/langgraphjs/pull/2311) [`b7c196b`](https://github.com/langchain-ai/langgraphjs/commit/b7c196b2142fb888dfcd9ceb1dfb4365d803c8b6) Thanks [@open-swe](https://github.com/apps/open-swe)! - fix: export missing types for typescript 6.0 declaration file compatibility
+
+- Updated dependencies [[`458d66b`](https://github.com/langchain-ai/langgraphjs/commit/458d66bf665468854abb8133594d4d4f966054ed)]:
+  - @langchain/langgraph-sdk@1.8.9
+
+## 1.2.8
+
+### Patch Changes
+
+- [#2275](https://github.com/langchain-ai/langgraphjs/pull/2275) [`e42c2c8`](https://github.com/langchain-ai/langgraphjs/commit/e42c2c8836e0b7e36067fea6cc51842e1eb2c60f) Thanks [@open-swe](https://github.com/apps/open-swe)! - enhance runtime with executionInfo and serverInfo
+
+## 1.2.7
+
+### Patch Changes
+
+- [#2281](https://github.com/langchain-ai/langgraphjs/pull/2281) [`2b62610`](https://github.com/langchain-ai/langgraphjs/commit/2b626107101bddb13cf662e1583ea1a828c6e0cd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(sdk): support for headless tools
+
+## 1.2.6
+
+### Patch Changes
+
+- [#2241](https://github.com/langchain-ai/langgraphjs/pull/2241) [`6ee23e8`](https://github.com/langchain-ai/langgraphjs/commit/6ee23e819b5da43a5a0c62560f85a9037a427630) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - feat: add browser support for interrupt, writer, and other Node-only exports
+
+  Export `interrupt`, `writer`, `pushMessage`, `getStore`, `getWriter`, `getConfig`, `getPreviousState`, `getCurrentTaskInput` from `web.ts` and add a `"browser"` condition to the `"."` package export so browser bundlers resolve to `web.js` instead of pulling in `node:async_hooks`.
+
+- [#2245](https://github.com/langchain-ai/langgraphjs/pull/2245) [`77af976`](https://github.com/langchain-ai/langgraphjs/commit/77af97650c0f1671338911994c2e355b29489528) Thanks [@hntrl](https://github.com/hntrl)! - revert abort signal change that was causing problematic errors
+
+- [#2242](https://github.com/langchain-ai/langgraphjs/pull/2242) [`bdcf290`](https://github.com/langchain-ai/langgraphjs/commit/bdcf290198ce5cea4367ee8c9f1cbbbcf14d05e4) Thanks [@hntrl](https://github.com/hntrl)! - clean up resolved checkpointer promises to reduce memory retention
+
+- Updated dependencies [[`88726df`](https://github.com/langchain-ai/langgraphjs/commit/88726dfe222aed64e5cd5dfa6f77f886b5a0d205), [`7dfcbff`](https://github.com/langchain-ai/langgraphjs/commit/7dfcbffd4805b2b4cc41f07f30be57ed732786b4)]:
+  - @langchain/langgraph-sdk@1.8.1
+
+## 1.2.5
+
+### Patch Changes
+
+- [#2213](https://github.com/langchain-ai/langgraphjs/pull/2213) [`a09932a`](https://github.com/langchain-ai/langgraphjs/commit/a09932a203062d52e98e6dc5fd80ab572b123700) Thanks [@hntrl](https://github.com/hntrl)! - fix(core): prevent AbortSignal listener leak in stream() and streamEvents()
+
+  `Pregel.stream()` and `streamEvents()` called `combineAbortSignals()` but discarded the `dispose` function, leaking one abort listener on the caller's signal per invocation. Over many invocations this caused unbounded memory growth as each leaked listener retained references to its associated graph execution state.
+
+  - Use `AbortSignal.any()` on Node 20+ which handles listener lifecycle automatically via GC
+  - Fall back to manual listener management on Node 18, with proper `dispose()` called when the stream completes or is cancelled
+
+- [#2210](https://github.com/langchain-ai/langgraphjs/pull/2210) [`4d2e948`](https://github.com/langchain-ai/langgraphjs/commit/4d2e9483208e105b7c45ab1cbc8ac8d540fbb23d) Thanks [@jackjin1997](https://github.com/jackjin1997)! - Fix `AnyValue.update()` returning `false` instead of `true` when values are received, aligning with all other channel implementations.
+
+- Updated dependencies [[`414a7ad`](https://github.com/langchain-ai/langgraphjs/commit/414a7adf908ba4f7ffef4985df3a95f14202591b)]:
+  - @langchain/langgraph-sdk@1.8.0
+
+## 1.2.4
+
+### Patch Changes
+
+- [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): fetch subagent history
+
+- Updated dependencies [[`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634), [`fe4dd5b`](https://github.com/langchain-ai/langgraphjs/commit/fe4dd5b85d285f78b6d499b1f1013927931ea634)]:
+  - @langchain/langgraph-sdk@1.7.5
+
+## 1.2.3
+
+### Patch Changes
+
+- [#2176](https://github.com/langchain-ai/langgraphjs/pull/2176) [`ad48dee`](https://github.com/langchain-ai/langgraphjs/commit/ad48dee9dcaf29c718c9f6b1c188756c14e85a0f) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - fix(state): merge jsonSchemaExtra in getInputJsonSchema()
+
+- Updated dependencies [[`8fec72a`](https://github.com/langchain-ai/langgraphjs/commit/8fec72ae98b117b79048403d0f7ad75d653c090b), [`a9ff2ef`](https://github.com/langchain-ai/langgraphjs/commit/a9ff2efdf0a2b6ff0301eedfff541e125c1e6300), [`a24bb55`](https://github.com/langchain-ai/langgraphjs/commit/a24bb550fb81271c505b9cab0295d8e599aaeb79), [`b80076c`](https://github.com/langchain-ai/langgraphjs/commit/b80076c5a7fc1b6985abc1fd9c367438ba6ca968), [`b6cfe55`](https://github.com/langchain-ai/langgraphjs/commit/b6cfe555bfb498fe24fa85847f0fe5d1194dfa39)]:
+  - @langchain/langgraph-sdk@1.7.3
+  - @langchain/langgraph-checkpoint@1.0.1
+
+## 1.2.2
+
+### Patch Changes
+
+- Updated dependencies [[`e051ef6`](https://github.com/langchain-ai/langgraphjs/commit/e051ef6aa8301f39badc9f496cbacef73bb4e2c4)]:
+  - @langchain/langgraph-sdk@1.7.0
+
+## 1.2.1
+
+### Patch Changes
+
+- [#2024](https://github.com/langchain-ai/langgraphjs/pull/2024) [`b1272bd`](https://github.com/langchain-ai/langgraphjs/commit/b1272bd43ab6fad2b162de13f62ceb1be234aa6f) Thanks [@hntrl](https://github.com/hntrl)! - fix: add explicit `: symbol` type annotations for cross-version compatibility
+
+  TypeScript infers `unique symbol` type when Symbol.for() is used without an explicit type annotation, causing type incompatibility when multiple versions of the same package are present in a dependency tree. By adding explicit `: symbol` annotations, all declarations now use the general symbol type, making them compatible across versions while maintaining identical runtime behavior.
+
+  Changes:
+
+  - Added `: symbol` to `COMMAND_SYMBOL` (used on CommandInstance class)
+  - Added `: symbol` to `REDUCED_VALUE_SYMBOL` (exported, used on ReducedValue class)
+  - Added `: symbol` to `UNTRACKED_VALUE_SYMBOL` (exported, used on UntrackedValue class)
+  - Fixed TypeScript indexing error by using `Record<symbol, unknown>` type assertion in ReducedValue.isInstance()
+
+## 1.2.0
+
+### Minor Changes
+
+- [#2002](https://github.com/langchain-ai/langgraphjs/pull/2002) [`fce9d38`](https://github.com/langchain-ai/langgraphjs/commit/fce9d38267e7d99029646cfcf7abb78c7b937e34) Thanks [@hntrl](https://github.com/hntrl)! - feat(langgraph): add Overwrite class for bypassing channel reducers
+
+  Adds an `Overwrite` class and `OverwriteValue` type that allow nodes to bypass reducers in `BinaryOperatorAggregate` channels, writing values directly instead of passing them through the reducer function. This is useful when a node needs to replace accumulated state rather than append to it.
+
+  - New `Overwrite` class exported from `@langchain/langgraph`
+  - `BinaryOperatorAggregate` channel detects `OverwriteValue` and sets the value directly
+  - `Annotation`, `StateSchema`, and zod schema type mappings updated to include `OverwriteValue` in update types
+
+### Patch Changes
+
+- [#1992](https://github.com/langchain-ai/langgraphjs/pull/1992) [`937f780`](https://github.com/langchain-ai/langgraphjs/commit/937f78030f1360251361c6096bbd0ff287662a2b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(core): don't trace channel read/writes
+
+- [#1984](https://github.com/langchain-ai/langgraphjs/pull/1984) [`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123) Thanks [@colifran](https://github.com/colifran)! - feat: add tools stream mode for tool lifecycle events
+
+- Updated dependencies [[`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123), [`1b088e5`](https://github.com/langchain-ai/langgraphjs/commit/1b088e578aaef7d231f37885b94bfd763f99a775)]:
+  - @langchain/langgraph-sdk@1.6.5
+
+## 1.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`242cfbb`](https://github.com/langchain-ai/langgraphjs/commit/242cfbbb6ab375c91bd021f64ec652840af591a9)]:
+  - @langchain/langgraph-sdk@2.0.0
+
 ## 1.1.4
 
 ### Patch Changes

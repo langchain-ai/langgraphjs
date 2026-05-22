@@ -48,7 +48,7 @@ it("stream events for a multi-node graph", async () => {
       name: "LangGraph",
       tags: [],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
     {
       event: "on_chain_start",
@@ -60,54 +60,6 @@ it("stream events for a multi-node graph", async () => {
       name: "__start__",
       tags: ["graph:step:0", "langsmith:hidden"],
       run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_start",
-      data: { input: { messages: [] } },
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
-      run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_end",
-      data: { output: { messages: [] }, input: { messages: [] } },
-      run_id: expect.any(String),
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_start",
-      data: { input: { messages: [] } },
-      name: "ChannelWrite<branch:to:testnode>",
-      tags: ["langsmith:hidden"],
-      run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_end",
-      data: { output: { messages: [] }, input: { messages: [] } },
-      run_id: expect.any(String),
-      name: "ChannelWrite<branch:to:testnode>",
-      tags: ["langsmith:hidden"],
       metadata: expect.objectContaining({
         langgraph_node: "__start__",
         langgraph_step: 0,
@@ -207,41 +159,8 @@ it("stream events for a multi-node graph", async () => {
           messages: [new _AnyIdAIMessage("hey!")],
         },
       },
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
       run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "testnode",
-        langgraph_step: 1,
-        langgraph_triggers: ["branch:to:testnode"],
-      }),
-    },
-    {
-      event: "on_chain_end",
-      data: {
-        output: { messages: [new _AnyIdAIMessage("hey!")] },
-        input: {
-          messages: [new _AnyIdAIMessage("hey!")],
-        },
-      },
-      run_id: expect.any(String),
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
-      metadata: expect.objectContaining({
-        langgraph_node: "testnode",
-        langgraph_step: 1,
-        langgraph_triggers: ["branch:to:testnode"],
-      }),
-    },
-    {
-      event: "on_chain_start",
-      data: {
-        input: {
-          messages: [new _AnyIdAIMessage("hey!")],
-        },
-      },
-      run_id: expect.any(String),
-      name: "Branch<testnode>",
+      name: "RunnableLambda",
       tags: [],
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
@@ -311,7 +230,7 @@ it("stream events for a multi-node graph", async () => {
         output: "__end__",
       },
       run_id: expect.any(String),
-      name: "Branch<testnode>",
+      name: "RunnableLambda",
       tags: [],
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
@@ -341,7 +260,7 @@ it("stream events for a multi-node graph", async () => {
       run_id: expect.any(String),
       name: "LangGraph",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
       data: {
         chunk: {
           testnode: {
@@ -360,7 +279,7 @@ it("stream events for a multi-node graph", async () => {
       run_id: expect.any(String),
       name: "LangGraph",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
   ]);
 });
@@ -472,7 +391,7 @@ it("Should respect .withConfig", async () => {
       name: "OVERRIDDEN_NAME",
       tags: [],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
     {
       event: "on_chain_start",
@@ -484,54 +403,6 @@ it("Should respect .withConfig", async () => {
       name: "__start__",
       tags: ["graph:step:0", "langsmith:hidden"],
       run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_start",
-      data: { input: { messages: [] } },
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
-      run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_end",
-      data: { output: { messages: [] }, input: { messages: [] } },
-      run_id: expect.any(String),
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_start",
-      data: { input: { messages: [] } },
-      name: "ChannelWrite<branch:to:testnode>",
-      tags: ["langsmith:hidden"],
-      run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "__start__",
-        langgraph_step: 0,
-        langgraph_triggers: ["__start__"],
-      }),
-    },
-    {
-      event: "on_chain_end",
-      data: { output: { messages: [] }, input: { messages: [] } },
-      run_id: expect.any(String),
-      name: "ChannelWrite<branch:to:testnode>",
-      tags: ["langsmith:hidden"],
       metadata: expect.objectContaining({
         langgraph_node: "__start__",
         langgraph_step: 0,
@@ -631,41 +502,8 @@ it("Should respect .withConfig", async () => {
           messages: [new _AnyIdAIMessage("hey!")],
         },
       },
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
       run_id: expect.any(String),
-      metadata: expect.objectContaining({
-        langgraph_node: "testnode",
-        langgraph_step: 1,
-        langgraph_triggers: ["branch:to:testnode"],
-      }),
-    },
-    {
-      event: "on_chain_end",
-      data: {
-        output: { messages: [new _AnyIdAIMessage("hey!")] },
-        input: {
-          messages: [new _AnyIdAIMessage("hey!")],
-        },
-      },
-      run_id: expect.any(String),
-      name: "ChannelWrite<...>",
-      tags: ["langsmith:hidden"],
-      metadata: expect.objectContaining({
-        langgraph_node: "testnode",
-        langgraph_step: 1,
-        langgraph_triggers: ["branch:to:testnode"],
-      }),
-    },
-    {
-      event: "on_chain_start",
-      data: {
-        input: {
-          messages: [new _AnyIdAIMessage("hey!")],
-        },
-      },
-      run_id: expect.any(String),
-      name: "Branch<testnode>",
+      name: "RunnableLambda",
       tags: [],
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
@@ -735,7 +573,7 @@ it("Should respect .withConfig", async () => {
         output: "__end__",
       },
       run_id: expect.any(String),
-      name: "Branch<testnode>",
+      name: "RunnableLambda",
       tags: [],
       metadata: expect.objectContaining({
         langgraph_node: "testnode",
@@ -765,7 +603,7 @@ it("Should respect .withConfig", async () => {
       run_id: expect.any(String),
       name: "OVERRIDDEN_NAME",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
       data: {
         chunk: {
           testnode: {
@@ -784,7 +622,7 @@ it("Should respect .withConfig", async () => {
       run_id: expect.any(String),
       name: "OVERRIDDEN_NAME",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
   ]);
 });

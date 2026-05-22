@@ -3,7 +3,7 @@ import type { Client } from "../client.js";
 
 import type { ThreadState } from "../schema.js";
 import type { Message } from "../types.messages.js";
-import type { StreamMode } from "../types.stream.js";
+import type { StreamMode, ToolProgress } from "../types.stream.js";
 import type { Sequence } from "../ui/branching.js";
 import type {
   GetUpdateType,
@@ -75,13 +75,13 @@ export type {
 export interface UseStream<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > extends StreamBase<
-    StateType,
-    GetToolCallsType<StateType>,
-    GetInterruptType<Bag>,
-    SubagentStates
-  > {
+  StateType,
+  GetToolCallsType<StateType>,
+  GetInterruptType<Bag>,
+  SubagentStates
+> {
   /**
    * Whether the thread is currently being loaded.
    */
@@ -135,6 +135,11 @@ export interface UseStream<
   ) => MessageMetadata<StateType> | undefined;
 
   /**
+   * Progress of tool executions during streaming.
+   */
+  toolProgress: ToolProgress[];
+
+  /**
    * LangGraph SDK client used to send request and receive responses.
    */
   client: Client;
@@ -164,7 +169,7 @@ export interface UseStream<
 export type UseStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-  SubagentStates extends Record<string, unknown> = DefaultSubagentStates
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
 > = Pick<
   UseStream<StateType, Bag, SubagentStates>,
   | "values"

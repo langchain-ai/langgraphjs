@@ -1,5 +1,14 @@
 # @langchain/langgraph-supervisor
 
+## 1.0.2
+
+## 1.0.2-rc.0
+
+### Patch Changes
+
+- Updated dependencies [[`4fd1e9f`](https://github.com/langchain-ai/langgraphjs/commit/4fd1e9f5720361a86a386a286ad8fcc824643280)]:
+  - @langchain/langgraph@1.3.1-rc.0
+
 ## 1.0.1
 
 ### Patch Changes

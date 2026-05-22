@@ -20,7 +20,7 @@ import type {
 } from "../pregel/runnable_types.js";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
-import type { PregelParams } from "../pregel/types.js";
+import type { PregelOptions, PregelParams } from "../pregel/types.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
@@ -45,11 +45,12 @@ import {
 } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
+import type { StreamTransformer } from "../stream/types.js";
 
 export interface BranchOptions<
   IO,
   N extends string,
-  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
+  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig,
 > {
   source: N;
   path: RunnableLike<IO, BranchPathReturnValue, CallOptions>;
@@ -62,6 +63,60 @@ export type BranchPathReturnValue =
   | (string | Send)[]
   | Promise<string | Send | (string | Send)[]>;
 
+type CompiledGraphTypeNode<Spec> = Spec extends { node: infer N extends string }
+  ? N
+  : any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+type CompiledGraphTypeContext<Spec> = Spec extends {
+  context: infer Context extends Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+  ? Context
+  : Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
+  streamTransformers: infer Transformers;
+}
+  ? Transformers extends ReadonlyArray<
+      () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+    >
+    ? Transformers
+    : Transformers extends ReadonlyArray<
+          StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        >
+      ? { readonly [K in keyof Transformers]: () => Transformers[K] }
+      : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        ? readonly [() => Transformers]
+        : []
+  : [];
+
+/**
+ * Convenience type for referencing a compiled graph by named type slots.
+ *
+ * @example
+ * ```ts
+ * type MyCompiledGraph = CompiledGraphType<{
+ *   state: State;
+ *   update: Update;
+ *   streamTransformers: [
+ *     StreamTransformer<Extensions>,
+ *     StreamTransformer<MoreExtensions>,
+ *   ];
+ * }>;
+ * ```
+ */
+export type CompiledGraphType<Spec extends object = object> = CompiledGraph<
+  CompiledGraphTypeNode<Spec>,
+  Spec extends { state: infer State } ? State : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { update: infer Update } ? Update : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  CompiledGraphTypeContext<Spec>,
+  Spec extends { input: infer Input } ? Input : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { output: infer Output } ? Output : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { nodeReturn: infer NodeReturn } ? NodeReturn : unknown,
+  Spec extends { command: infer Command } ? Command : unknown,
+  Spec extends { streamCustom: infer StreamCustom } ? StreamCustom : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  CompiledGraphTypeStreamTransformers<Spec>
+>;
+
 type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -71,33 +126,28 @@ type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
 export class Branch<
   IO,
   N extends string,
-  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig
+  CallOptions extends LangGraphRunnableConfig = LangGraphRunnableConfig,
 > {
-  path: Runnable<IO, BranchPathReturnValue, CallOptions>;
+  path: Runnable<IO, BranchPathReturnValue>;
 
   ends?: Record<string, N | typeof END>;
 
   constructor(options: Omit<BranchOptions<IO, N, CallOptions>, "source">) {
     if (Runnable.isRunnable(options.path)) {
-      this.path = options.path as Runnable<
-        IO,
-        BranchPathReturnValue,
-        CallOptions
-      >;
+      this.path = options.path as Runnable<IO, BranchPathReturnValue>;
     } else {
       this.path = _coerceToRunnable(
-        options.path as LangChainRunnableLike<
-          IO,
-          BranchPathReturnValue,
-          CallOptions
-        >
-      ).withConfig({ runName: `Branch` } as CallOptions);
+        options.path as LangChainRunnableLike<IO, BranchPathReturnValue>
+      );
     }
     this.ends = Array.isArray(options.pathMap)
-      ? options.pathMap.reduce((acc, n) => {
-          acc[n] = n;
-          return acc;
-        }, {} as Record<string, N | typeof END>)
+      ? options.pathMap.reduce(
+          (acc, n) => {
+            acc[n] = n;
+            return acc;
+          },
+          {} as Record<string, N | typeof END>
+        )
       : options.pathMap;
   }
 
@@ -193,7 +243,7 @@ export class Graph<
     RunInput,
     RunOutput
   >,
-  C extends StateDefinition = StateDefinition
+  C extends StateDefinition = StateDefinition,
 > {
   nodes: Record<N, NodeSpecType>;
 
@@ -228,7 +278,7 @@ export class Graph<
       | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions
+          options?: AddNodeOptions,
         ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
@@ -243,7 +293,7 @@ export class Graph<
       | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions
+          options?: AddNodeOptions,
         ]
       | [
           nodes:
@@ -251,8 +301,8 @@ export class Graph<
             | [
                 key: K,
                 action: NodeAction<NodeInput, NodeOutput, C>,
-                options?: AddNodeOptions
-              ][]
+                options?: AddNodeOptions,
+              ][],
         ]
   ): Graph<N | K, RunInput, RunOutput> {
     function isMutlipleNodes(
@@ -263,9 +313,9 @@ export class Graph<
         | [
             key: K,
             action: NodeAction<NodeInput, RunOutput, C>,
-            options?: AddNodeOptions
+            options?: AddNodeOptions,
           ][],
-      options?: AddNodeOptions
+      options?: AddNodeOptions,
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
     }
@@ -388,20 +438,9 @@ export class Graph<
       "Adding an edge to a graph that has already been compiled. This will not be reflected in the compiled graph."
     );
     if (!Runnable.isRunnable(options.path)) {
-      const pathDisplayValues = Array.isArray(options.pathMap)
-        ? options.pathMap.join(",")
-        : Object.keys(options.pathMap ?? {}).join(",");
       options.path = _coerceToRunnable(
-        options.path as LangChainRunnableLike<
-          RunInput,
-          BranchPathReturnValue,
-          LangGraphRunnableConfig<StateType<C>>
-        >
-      ).withConfig({
-        runName: `Branch<${options.source}${
-          pathDisplayValues !== "" ? `,${pathDisplayValues}` : ""
-        }>`.slice(0, 63),
-      });
+        options.path as LangChainRunnableLike<RunInput, BranchPathReturnValue>
+      );
     }
     // find a name for condition
     const name =
@@ -442,17 +481,40 @@ export class Graph<
     return this.addEdge(key, END);
   }
 
-  compile({
+  compile<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >({
     checkpointer,
     interruptBefore,
     interruptAfter,
     name,
+    transformers,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
-  } = {}): CompiledGraph<N> {
+    /**
+     * Stream transformer factories baked into the compiled graph.  These run
+     * automatically for every `streamEvents(..., { version: "v3" })` call,
+     * before any call-site transformers.
+     */
+    transformers?: TTransformers;
+  } = {}): CompiledGraph<
+    N,
+    RunInput,
+    RunOutput,
+    Record<string, any>,
+    any,
+    any,
+    unknown,
+    unknown,
+    any,
+    TTransformers
+  > {
+    // eslint-disable-line @typescript-eslint/no-explicit-any
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -476,6 +538,7 @@ export class Graph<
       streamChannels: [] as N[],
       streamMode: "values",
       name,
+      streamTransformers: transformers,
     });
 
     // attach nodes, edges and branches
@@ -578,7 +641,8 @@ export class CompiledGraph<
   OutputType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
   NodeReturnType = unknown,
   CommandType = unknown,
-  StreamCustomType = any // eslint-disable-line @typescript-eslint/no-explicit-any
+  StreamCustomType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [], // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
@@ -589,7 +653,8 @@ export class CompiledGraph<
   OutputType,
   NodeReturnType,
   CommandType,
-  StreamCustomType
+  StreamCustomType,
+  TStreamTransformers
 > {
   declare "~NodeType": N;
 
@@ -606,10 +671,59 @@ export class CompiledGraph<
     ...rest
   }: { builder: Graph<N, State, Update> } & PregelParams<
     Record<N | typeof START, PregelNode<State, Update>>,
-    Record<N | typeof START | typeof END | string, BaseChannel>
+    Record<N | typeof START | typeof END | string, BaseChannel>,
+    TStreamTransformers
   >) {
     super(rest);
     this.builder = builder;
+  }
+
+  override withConfig<
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers: TTransformers;
+    }
+  ): CompiledGraph<
+    N,
+    State,
+    Update,
+    ContextType,
+    InputType,
+    OutputType,
+    NodeReturnType,
+    CommandType,
+    StreamCustomType,
+    readonly [...TStreamTransformers, ...TTransformers]
+  >;
+
+  override withConfig(
+    config: PregelOptions<
+      Record<N | typeof START, PregelNode<State, Update>>,
+      Record<N | typeof START | typeof END | string, BaseChannel>,
+      ContextType & Record<string, any>
+    >
+  ): this;
+
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers?: ReadonlyArray<() => StreamTransformer<any>>;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any {
+    return (super.withConfig as any)(config) as unknown as CompiledGraph<
+      N,
+      State,
+      Update,
+      ContextType,
+      InputType,
+      OutputType,
+      NodeReturnType,
+      CommandType,
+      StreamCustomType,
+      ReadonlyArray<() => StreamTransformer<any>>
+    >;
   }
 
   attachNode(key: N, node: NodeSpec<State, Update>): void {
@@ -731,7 +845,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<State, Update>
+      NodeSpec<State, Update>,
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
@@ -789,7 +903,7 @@ export class CompiledGraph<
                   ? dataStr.slice("Runnable".length)
                   : dataStr;
                 return dataStr;
-              } catch (error) {
+              } catch {
                 return data.getName();
               }
             } else {
@@ -864,7 +978,7 @@ export class CompiledGraph<
     }
     for (const [key, node] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<State, Update>
+      NodeSpec<State, Update>,
     ][]) {
       if (node.ends !== undefined) {
         for (const end of node.ends) {
@@ -929,7 +1043,7 @@ export class CompiledGraph<
 
     for (const [key, nodeSpec] of Object.entries(this.builder.nodes) as [
       N,
-      NodeSpec<State, Update>
+      NodeSpec<State, Update>,
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
@@ -985,7 +1099,7 @@ export class CompiledGraph<
                   ? dataStr.slice("Runnable".length)
                   : dataStr;
                 return dataStr;
-              } catch (error) {
+              } catch {
                 return data.getName();
               }
             } else {

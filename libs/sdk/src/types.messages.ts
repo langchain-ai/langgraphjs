@@ -153,22 +153,68 @@ export type Message<ToolCall = DefaultToolCall> =
 type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
   ? Args
   : S extends { _input: infer Args }
-  ? Args
-  : never;
+    ? Args
+    : never;
 
 /**
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
  * This is more reliable than trying to infer from the schema directly because
  * DynamicStructuredTool has the input type baked into its _call signature.
+ *
+ * Headless tools returned by `tool({ ... }).implement(...)` expose `execute`
+ * instead and nest the registered name under `tool.name`.
  */
 type InferToolInput<T> = T extends {
+  tool: { name: string };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _call: (arg: infer Args, ...rest: any[]) => any;
+  execute: (args: infer Args) => any;
 }
   ? Args
-  : T extends { schema: infer S }
-  ? InferSchemaInput<S>
-  : never;
+  : T extends {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        _call: (arg: infer Args, ...rest: any[]) => any;
+      }
+    ? Args
+    : T extends { schema: infer S }
+      ? InferSchemaInput<S>
+      : never;
+
+type UnwrapToolFuncOutput<R> =
+  R extends Promise<infer Out>
+    ? Out
+    : R extends AsyncGenerator<unknown, infer Out, unknown>
+      ? Out
+      : R;
+
+/**
+ * Infer the successful return type of a LangChain tool.
+ *
+ * Resolution order mirrors {@link InferToolInput}: `func`, then
+ * `invoke`, then `_call`, so inference survives cross-package
+ * boundaries where `_call` is `protected`.
+ */
+export type InferToolOutput<T> = T extends {
+  tool: { name: string };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  execute: (...args: any[]) => Promise<infer Out>;
+}
+  ? Out
+  : T extends {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        func: (...args: any[]) => infer R;
+      }
+    ? UnwrapToolFuncOutput<R>
+    : T extends {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          invoke: (...args: any[]) => Promise<infer Out>;
+        }
+      ? Out
+      : T extends {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            _call: (...args: any[]) => infer R;
+          }
+        ? UnwrapToolFuncOutput<R>
+        : unknown;
 
 /**
  * Infer a tool call type from a single tool.
@@ -194,16 +240,26 @@ type InferToolInput<T> = T extends {
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ToolCallFromTool<T> = T extends { name: infer N }
+export type ToolCallFromTool<T> = T extends {
+  tool: { name: infer N extends string };
+}
   ? InferToolInput<T> extends infer Args
     ? Args extends never
       ? never
-      : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      Args extends Record<string, any>
-      ? { name: N; args: Args; id?: string; type?: "tool_call" }
-      : never
+      : Args extends Record<string, any>
+        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+        : never
     : never
-  : never;
+  : T extends { name: infer N }
+    ? InferToolInput<T> extends infer Args
+      ? Args extends never
+        ? never
+        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Args extends Record<string, any>
+          ? { name: N; args: Args; id?: string; type?: "tool_call" }
+          : never
+      : never
+    : never;
 
 /**
  * Infer a union of tool call types from an array of tools.
@@ -253,8 +309,14 @@ export type ToolCallState = "pending" | "completed" | "error";
  * Useful for rendering tool invocations and their outputs together.
  *
  * @template ToolCall The type of the tool call.
+ * @template TToolMessage The type of the tool result message. Defaults to the SDK's plain ToolMessage interface.
+ * @template TAIMessage The type of the AI message. Defaults to the SDK's plain AIMessage interface.
  */
-export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
+export type ToolCallWithResult<
+  ToolCall = DefaultToolCall,
+  TToolMessage = ToolMessage,
+  TAIMessage = AIMessage<ToolCall>,
+> = {
   /**
    * Unique identifier for this tool call.
    * Uses the tool call's id if available, otherwise generates one from aiMessage.id and index.
@@ -270,12 +332,12 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> = {
    * The result message from tool execution.
    * `undefined` if the tool is still being executed or no result was received.
    */
-  result: ToolMessage | undefined;
+  result: TToolMessage | undefined;
 
   /**
    * The AI message that initiated this tool call.
    */
-  aiMessage: AIMessage<ToolCall>;
+  aiMessage: TAIMessage;
 
   /**
    * Index of this tool call within the AI message's tool_calls array.

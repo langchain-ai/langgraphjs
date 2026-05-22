@@ -21,4 +21,3 @@ react-ui/server.js
 node_modules
 dist
 .yarn
-docs

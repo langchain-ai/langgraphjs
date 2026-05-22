@@ -1,5 +1,103 @@
 # @langchain/langgraph-api
 
+## 1.2.2
+
+### Patch Changes
+
+- [#2396](https://github.com/langchain-ai/langgraphjs/pull/2396) [`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-cli): accept hyphenated prerelease tags in `api_version` values.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.2
+
+## 1.2.2-rc.0
+
+### Patch Changes
+
+- [#2396](https://github.com/langchain-ai/langgraphjs/pull/2396) [`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-cli): accept hyphenated prerelease tags in `api_version` values.
+
+- Updated dependencies [[`44746b1`](https://github.com/langchain-ai/langgraphjs/commit/44746b1a3b5b49737542b120b9e45d6f94181113), [`4cc6491`](https://github.com/langchain-ai/langgraphjs/commit/4cc6491844f21ed0fc737eaef8498133daa877f7), [`ae8af2d`](https://github.com/langchain-ai/langgraphjs/commit/ae8af2d75aef9a7bbd930d221d1ce03e7fbb90ad), [`4fd1e9f`](https://github.com/langchain-ai/langgraphjs/commit/4fd1e9f5720361a86a386a286ad8fcc824643280), [`2ad1aa4`](https://github.com/langchain-ai/langgraphjs/commit/2ad1aa48c6a3f45340b4833e6de555fdc7348d15), [`75e651b`](https://github.com/langchain-ai/langgraphjs/commit/75e651b9cff1a1e39ad6513b8a5e9b565b9ad7fe), [`f1d651a`](https://github.com/langchain-ai/langgraphjs/commit/f1d651ae14ca178f4a915ac853ba9b439cd55ba3)]:
+  - @langchain/langgraph-sdk@1.9.3-rc.0
+  - @langchain/langgraph@1.3.1-rc.0
+  - @langchain/langgraph-ui@1.2.2-rc.0
+
+## 1.2.1
+
+### Patch Changes
+
+- [#2366](https://github.com/langchain-ai/langgraphjs/pull/2366) [`2bb66bf`](https://github.com/langchain-ai/langgraphjs/commit/2bb66bf816a8b18b2968ed885ef2df15f684cb4e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): update endpoints
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.1
+
+## 1.2.0
+
+### Minor Changes
+
+- [#2314](https://github.com/langchain-ai/langgraphjs/pull/2314) [`085a07f`](https://github.com/langchain-ai/langgraphjs/commit/085a07f569b6d7d79728eb7eb6eb3a0c67fcdefb) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add the thread-scoped event streaming protocol used by the new SDK streaming
+  clients.
+
+  This release adds protocol routes for WebSocket and SSE/HTTP streaming,
+  including thread-local command handling, filtered subscriptions, event replay,
+  state inspection, checkpoint listing/forking, interrupt input, agent tree
+  queries, and run start/resume commands. Stream events are normalized into the
+  canonical protocol shape with ordered sequence IDs so clients can safely
+  dedupe, resume subscriptions, and coordinate multiple projections from the same
+  run.
+
+  The experimental embed server now supports the same protocol flow, so embedded
+  graphs can serve the new SDK transports without standing up a separate
+  LangGraph API deployment. The server also gains protocol session tests and
+  fixture graphs covering deep agents, interrupts, subgraphs, and SDK transport
+  behavior.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.0
+
+## 1.1.17
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.17
+
+## 1.1.16
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.16
+
+## 1.1.15
+
+### Patch Changes
+
+- [#2032](https://github.com/langchain-ai/langgraphjs/pull/2032) [`730b82d`](https://github.com/langchain-ai/langgraphjs/commit/730b82d2309e65e6b2ed99ebff2aa052cff8ed35) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-api): use UUIDv7 instead of UUIDv4 in embed server
+
+  Switches thread and run ID generation from `uuidv4` to `uuidv7` in the experimental embed server. UUIDv7 is time-ordered, which improves sortability and database index performance for IDs.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.1.15
+
+## 1.1.14
+
+### Patch Changes
+
+- [#1984](https://github.com/langchain-ai/langgraphjs/pull/1984) [`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123) Thanks [@colifran](https://github.com/colifran)! - feat: add tools stream mode for tool lifecycle events
+
+- Updated dependencies [[`aa8e878`](https://github.com/langchain-ai/langgraphjs/commit/aa8e878e5b71128685ab7e7a79c96bd2519c0123), [`1b088e5`](https://github.com/langchain-ai/langgraphjs/commit/1b088e578aaef7d231f37885b94bfd763f99a775)]:
+  - @langchain/langgraph-sdk@1.6.5
+  - @langchain/langgraph-ui@1.1.14
+
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`242cfbb`](https://github.com/langchain-ai/langgraphjs/commit/242cfbbb6ab375c91bd021f64ec652840af591a9)]:
+  - @langchain/langgraph-sdk@2.0.0
+  - @langchain/langgraph-ui@2.0.0
+
 ## 1.1.13
 
 ### Patch Changes

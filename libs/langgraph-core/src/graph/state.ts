@@ -88,6 +88,7 @@ import {
   ToStateDefinition,
   type StateDefinitionInit,
 } from "./types.js";
+import type { StreamTransformer } from "../stream/types.js";
 
 const ROOT = "__root__";
 
@@ -123,7 +124,7 @@ export type StateGraphAddNodeOptions<
   Nodes extends string = string,
   InputSchema extends StateDefinitionInit | undefined =
     | StateDefinitionInit
-    | undefined
+    | undefined,
 > = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy | boolean;
@@ -133,7 +134,7 @@ export type StateGraphAddNodeOptions<
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
   I extends StateDefinition,
-  O extends StateDefinition
+  O extends StateDefinition,
 > = {
   stateSchema: AnnotationRoot<SD>;
   input?: AnnotationRoot<I>;
@@ -142,7 +143,7 @@ export type StateGraphArgsWithStateSchema<
 
 export type StateGraphArgsWithInputOutputSchemas<
   SD extends StateDefinition,
-  O extends StateDefinition = SD
+  O extends StateDefinition = SD,
 > = {
   input: AnnotationRoot<SD>;
   output: AnnotationRoot<O>;
@@ -151,15 +152,15 @@ export type StateGraphArgsWithInputOutputSchemas<
 type ExtractStateDefinition<T> = T extends AnyStateSchema
   ? T // Keep StateSchema as-is to preserve type information
   : T extends StateDefinitionInit
-  ? ToStateDefinition<T>
-  : StateDefinition;
+    ? ToStateDefinition<T>
+    : StateDefinition;
 
 type NodeAction<
   S,
   U,
   C extends StateDefinitionInit,
   InterruptType,
-  WriterType
+  WriterType,
 > = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -172,7 +173,7 @@ type StrictNodeAction<
   C extends StateDefinitionInit,
   Nodes extends string,
   InterruptType,
-  WriterType
+  WriterType,
 > = RunnableLike<
   Prettify<S>,
   | U
@@ -299,7 +300,7 @@ export class StateGraph<
   C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
@@ -686,7 +687,7 @@ export class StateGraph<
 
   override addNode<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -714,18 +715,11 @@ export class StateGraph<
   >;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
-    nodes:
-      | [
-          key: K,
-          action: NodeAction<
-            NodeInput,
-            NodeOutput,
-            C,
-            InterruptType,
-            WriterType
-          >,
-          options?: StateGraphAddNodeOptions
-        ][]
+    nodes: [
+      key: K,
+      action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
+      options?: StateGraphAddNodeOptions,
+    ][]
   ): StateGraph<
     SD,
     S,
@@ -740,7 +734,7 @@ export class StateGraph<
   override addNode<
     K extends string,
     InputSchema extends StateDefinitionInit,
-    NodeOutput extends U = U
+    NodeOutput extends U = U,
   >(
     key: K,
     action: NodeAction<
@@ -765,7 +759,7 @@ export class StateGraph<
   override addNode<
     K extends string,
     InputSchema extends StateDefinitionInit,
-    NodeOutput extends U = U
+    NodeOutput extends U = U,
   >(
     key: K,
     action: NodeAction<
@@ -819,7 +813,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions
+          options?: StateGraphAddNodeOptions,
         ]
       | [
           nodes:
@@ -827,8 +821,8 @@ export class StateGraph<
             | [
                 key: K,
                 action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-                options?: StateGraphAddNodeOptions
-              ][]
+                options?: StateGraphAddNodeOptions,
+              ][],
         ]
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     function isMultipleNodes(
@@ -839,8 +833,8 @@ export class StateGraph<
         | [
             key: K,
             action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-            options?: AddNodeOptions
-          ][]
+            options?: AddNodeOptions,
+          ][],
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
     }
@@ -854,7 +848,7 @@ export class StateGraph<
     ) as [
       K,
       NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-      StateGraphAddNodeOptions | undefined
+      StateGraphAddNodeOptions | undefined,
     ][];
 
     if (nodes.length === 0) {
@@ -972,7 +966,7 @@ export class StateGraph<
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptions
+      options?: StateGraphAddNodeOptions,
     ][]
   ): StateGraph<
     SD,
@@ -987,7 +981,7 @@ export class StateGraph<
 
   addSequence<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -1025,7 +1019,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions
+          options?: StateGraphAddNodeOptions,
         ][]
       | Record<
           K,
@@ -1080,7 +1074,11 @@ export class StateGraph<
     >;
   }
 
-  override compile({
+  override compile<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >({
     checkpointer,
     store,
     cache,
@@ -1088,6 +1086,7 @@ export class StateGraph<
     interruptAfter,
     name,
     description,
+    transformers,
   }: {
     checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
@@ -1096,6 +1095,12 @@ export class StateGraph<
     interruptAfter?: N[] | All;
     name?: string;
     description?: string;
+    /**
+     * Stream transformer factories baked into the compiled graph.  These run
+     * automatically for every `streamEvents(..., { version: "v3" })` call,
+     * before any call-site transformers.
+     */
+    transformers?: TTransformers;
   } = {}): CompiledStateGraph<
     Prettify<S>,
     Prettify<U>,
@@ -1105,7 +1110,8 @@ export class StateGraph<
     C,
     NodeReturnType,
     InterruptType,
-    WriterType
+    WriterType,
+    TTransformers
   > {
     // validate the graph
     this.validate([
@@ -1135,7 +1141,8 @@ export class StateGraph<
       C,
       NodeReturnType,
       InterruptType,
-      WriterType
+      WriterType,
+      TTransformers
     >({
       builder: this,
       checkpointer,
@@ -1156,6 +1163,7 @@ export class StateGraph<
       name,
       description,
       userInterrupt,
+      streamTransformers: transformers,
     });
 
     // attach nodes, edges and branches
@@ -1254,7 +1262,9 @@ export class CompiledStateGraph<
   C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 > extends CompiledGraph<
   N,
   S,
@@ -1264,7 +1274,8 @@ export class CompiledStateGraph<
   ExtractStateType<O>,
   NodeReturnType,
   CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
-  InferWriterType<WriterType>
+  InferWriterType<WriterType>,
+  TStreamTransformers
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
 
@@ -1290,7 +1301,8 @@ export class CompiledStateGraph<
       ExtractStateType<O>,
       NodeReturnType,
       CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
-      InferWriterType<WriterType>
+      InferWriterType<WriterType>,
+      TStreamTransformers
     >
   >[0]) {
     super(rest);

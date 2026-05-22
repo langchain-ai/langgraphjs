@@ -1,5 +1,17 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2181](https://github.com/langchain-ai/langgraphjs/pull/2181) [`a8f1b9d`](https://github.com/langchain-ai/langgraphjs/commit/a8f1b9d26bf25de2177ceb1e8d552ce036f5ade4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(checkpoint-redis): fix dependency
+
+## 1.0.3
+
+### Patch Changes
+
+- [#2026](https://github.com/langchain-ai/langgraphjs/pull/2026) [`c35c274`](https://github.com/langchain-ai/langgraphjs/commit/c35c274a5dffc702b355d4c32dbc3caed7c8b56a) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - fix(checkpoint-redis): detect existing writes in put to preserve has_writes flag
+
 ## 1.0.2
 
 ### Patch Changes
