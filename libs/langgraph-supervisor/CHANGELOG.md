@@ -1,5 +1,11 @@
 # @langchain/langgraph-supervisor
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2317](https://github.com/langchain-ai/langgraphjs/pull/2317) [`c088c76`](https://github.com/langchain-ai/langgraphjs/commit/c088c7659c18edf26091813ff384f48f5335bef6) Thanks [@fish895623](https://github.com/fish895623)! - feat(supervisor): widen agents type to accept createAgent graphs
+
 ## 1.0.2
 
 ## 1.0.2-rc.0
