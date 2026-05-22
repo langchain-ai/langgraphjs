@@ -26,13 +26,14 @@ import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
-  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
+  type InferToolCalls,
   type RootSnapshot,
-  type StateOf as StreamStateOf,
+  type RunCompletedInfo,
+  type RunExecutionInfo,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -44,9 +45,6 @@ import {
 } from "@langchain/langgraph-sdk/stream";
 import { inject } from "vue";
 import { LANGCHAIN_OPTIONS } from "./context.js";
-
-/** @deprecated Prefer {@link InferStateType}. */
-export type StateOf<T> = StreamStateOf<T>;
 
 type VueThreadId = MaybeRefOrGetter<string | null | undefined>;
 type VueApiString = MaybeRefOrGetter<string | undefined>;
@@ -100,7 +98,7 @@ export interface UseStreamReturn<
 > {
   readonly values: Readonly<ShallowRef<StateType>>;
   readonly messages: Readonly<ShallowRef<BaseMessage[]>>;
-  readonly toolCalls: Readonly<ShallowRef<AssembledToolCall[]>>;
+  readonly toolCalls: Readonly<ShallowRef<InferToolCalls<T>[]>>;
   readonly interrupts: Readonly<ShallowRef<Interrupt<InterruptType>[]>>;
   readonly interrupt: ComputedRef<Interrupt<InterruptType> | undefined>;
   readonly isLoading: ComputedRef<boolean>;
@@ -231,7 +229,8 @@ export function useStream<
     fetch?: typeof fetch;
     webSocketFactory?: (url: string) => WebSocket;
     onThreadId?: (threadId: string) => void;
-    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+    onCreated?: (info: RunExecutionInfo) => void;
+    onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
     tools?: AnyHeadlessToolImplementation[];
@@ -301,6 +300,7 @@ export function useStream<
     webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
     onThreadId: options.onThreadId,
     onCreated: options.onCreated,
+    onCompleted: options.onCompleted,
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
   });
@@ -348,7 +348,9 @@ export function useStream<
   // because `StreamStore` fans the whole snapshot out on every update.
   const values = computed(() => rootRef.value.values);
   const messages = computed(() => rootRef.value.messages);
-  const toolCalls = computed(() => rootRef.value.toolCalls);
+  const toolCalls = computed(
+    () => rootRef.value.toolCalls as InferToolCalls<T>[]
+  );
   const interrupts = computed(() =>
     filterOutHeadlessToolInterrupts(rootRef.value.interrupts)
   );

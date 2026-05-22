@@ -25,16 +25,17 @@ The option bag is a discriminated union on `transport`:
 
 ### Common options
 
-| Option          | Type                                    | Description                                                                                                                 |
-| --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `assistantId`   | `string`                                | Assistant/graph ID. Required on the Agent Server branch; optional (defaults to `"_"`) on the custom-adapter branch.         |
-| `threadId`      | `string \| null`                        | Bind to an existing thread. Pass `null` to start a new thread on next submit; changing the value hydrates and resubscribes. |
-| `initialValues` | `StateType`                             | Initial state values used until the first `values` event lands.                                                             |
-| `messagesKey`   | `string`                                | State key holding the message array. Defaults to `"messages"`.                                                              |
-| `onThreadId`    | `(id: string) => void`                  | Fires when the server mints a new thread id.                                                                                |
-| `onCreated`     | `(meta: { run_id, thread_id }) => void` | Fires when a run is accepted by the server.                                                                                 |
-| `tools`         | `HeadlessToolImplementation[]`          | Headless tools. Matching interrupts are auto-resolved with the handler's return value. See [Interrupts](./interrupts.md).   |
-| `onTool`        | `OnToolCallback`                        | Observe headless-tool lifecycle events (`start` / `success` / `error`).                                                     |
+| Option          | Type                                                                                      | Description                                                                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `assistantId`   | `string`                                                                                  | Assistant/graph ID. Required on the Agent Server branch; optional (defaults to `"_"`) on the custom-adapter branch.         |
+| `threadId`      | `string \| null`                                                                          | Bind to an existing thread. Pass `null` to start a new thread on next submit; changing the value hydrates and resubscribes. |
+| `initialValues` | `StateType`                                                                               | Initial state values used until the first `values` event lands.                                                             |
+| `messagesKey`   | `string`                                                                                  | State key holding the message array. Defaults to `"messages"`.                                                              |
+| `onThreadId`    | `(id: string) => void`                                                                    | Fires when the server mints a new thread id.                                                                                |
+| `onCreated`     | `(info: { runId: string }) => void`                                                       | Convenience callback fired when this hook's run is accepted by the server.                                                  |
+| `onCompleted`   | `(info: { runId?: string; reason: "success" \| "error" \| "interrupt" \| "stopped" }) => void` | Convenience callback fired when a run's active streaming phase ends. `runId` may be omitted for re-attached in-flight runs. |
+| `tools`         | `HeadlessToolImplementation[]`                                                            | Headless tools. Matching interrupts are auto-resolved with the handler's return value. See [Interrupts](./interrupts.md).   |
+| `onTool`        | `OnToolCallback`                                                                          | Observe headless-tool lifecycle events (`start` / `success` / `error`).                                                     |
 
 ### Agent Server branch (`AgentServerOptions`)
 

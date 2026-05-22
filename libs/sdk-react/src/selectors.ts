@@ -28,6 +28,7 @@ import {
   type Event,
   type FileMedia,
   type ImageMedia,
+  type InferToolCalls,
   type InferStateType,
   type SubagentDiscoverySnapshot,
   type SubgraphDiscoverySnapshot,
@@ -152,25 +153,23 @@ const EMPTY_MESSAGES: BaseMessage[] = [];
  * `stream.toolCalls`.
  *
  * The optional generic `T` can be passed to narrow the type of
- * `toolCall.args` on the returned array. Accepts either:
+ * assembled tool calls on the returned array. Accepts either:
  *  - an agent brand (`typeof agent`) — union is derived from the
- *    agent's declared tools;
+ *    agent's declared tools via {@link InferToolCalls};
  *  - an array of LangGraph tools (`typeof tools`) — union is derived
- *    from `ToolCallFromTool<T[number]>`;
- *  - any direct `DefaultToolCall` shape.
+ *    from {@link InferToolCalls} (parallel to {@link ToolCallsFromTools}).
  *
  * When omitted, returns the plain `AssembledToolCall[]` union used by
  * the controller.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function useToolCalls(
   stream: AnyStream,
   target?: SelectorTarget
 ): AssembledToolCall[];
-export function useToolCalls(
+export function useToolCalls<T>(
   stream: AnyStream,
   target?: SelectorTarget
-): AssembledToolCall[];
+): InferToolCalls<T>[];
 export function useToolCalls(
   stream: AnyStream,
   target?: SelectorTarget

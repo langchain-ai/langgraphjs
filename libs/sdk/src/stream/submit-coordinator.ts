@@ -59,6 +59,7 @@ import type { ThreadStream } from "../client/stream/index.js";
 import { StreamStore } from "./store.js";
 import type {
   RootSnapshot,
+  RunExecutionReason,
   StreamControllerOptions,
   StreamSubmitOptions,
 } from "./types.js";
@@ -74,13 +75,20 @@ interface ResolvedInterrupt {
 
 /**
  * Result of awaiting the next root terminal lifecycle event. Mirrors
- * the four terminal lifecycle states the protocol surfaces, plus a
+ * the three terminal lifecycle states the protocol surfaces, plus a
  * synthetic `"aborted"` for client-side cancellation.
  */
 type TerminalResult = {
   event: "completed" | "failed" | "interrupted" | "aborted";
   error?: string;
 };
+
+function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
+  if (event === "completed") return "success";
+  if (event === "failed") return "error";
+  if (event === "interrupted") return "interrupt";
+  return "stopped";
+}
 
 /**
  * Queued submission entry mirrored from the server-side run queue.
@@ -178,6 +186,17 @@ export class SubmitCoordinator<
   readonly #markInterruptResolved: (interruptId: string) => void;
   /** Called once at the start of every {@link submit} invocation. */
   readonly #onSubmitStart: () => void;
+  /** Marks that a local run dispatch is now active. */
+  readonly #onRunStart: () => void;
+  /** Records a server-accepted local run id and fires `onCreated`. */
+  readonly #onRunCreated: (runId: string) => void;
+  /** Fires `onCompleted` for the local run lifecycle. */
+  readonly #onRunCompleted: (
+    reason: RunExecutionReason,
+    runId?: string
+  ) => void;
+  /** Marks the local run dispatch lifecycle as settled. */
+  readonly #onRunEnd: () => void;
 
   /**
    * Active submission's abort controller. `undefined` between submits.
@@ -206,6 +225,10 @@ export class SubmitCoordinator<
     latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
     markInterruptResolved: (interruptId: string) => void;
     onSubmitStart?: () => void;
+    onRunStart?: () => void;
+    onRunCreated?: (runId: string) => void;
+    onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
+    onRunEnd?: () => void;
   }) {
     this.#options = params.options;
     this.#rootStore = params.rootStore;
@@ -224,6 +247,10 @@ export class SubmitCoordinator<
     this.#latestUnresolvedInterrupt = params.latestUnresolvedInterrupt;
     this.#markInterruptResolved = params.markInterruptResolved;
     this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
+    this.#onRunStart = params.onRunStart ?? (() => undefined);
+    this.#onRunCreated = params.onRunCreated ?? (() => undefined);
+    this.#onRunCompleted = params.onRunCompleted ?? (() => undefined);
+    this.#onRunEnd = params.onRunEnd ?? (() => undefined);
   }
 
   /**
@@ -344,8 +371,21 @@ export class SubmitCoordinator<
     // Subscribe to the next terminal *before* dispatching so a fast
     // run's terminal can't race us.
     const terminalPromise = this.#awaitNextTerminal(abort.signal);
+    this.#onRunStart();
 
     let terminalSettled = false;
+    let createdRunId: string | undefined;
+    let pendingCompletionReason: RunExecutionReason | undefined;
+    let completionNotified = false;
+    const notifyCompletion = (reason: RunExecutionReason): void => {
+      if (completionNotified) return;
+      if (!isResume && createdRunId == null) {
+        pendingCompletionReason = reason;
+        return;
+      }
+      completionNotified = true;
+      this.#onRunCompleted(reason, createdRunId);
+    };
     const reportError = (error: unknown): void => {
       if (abort.signal.aborted) return;
       this.#rootStore.setState((s) => ({ ...s, error }));
@@ -456,10 +496,12 @@ export class SubmitCoordinator<
           }
         );
         const notifyCreated = (result: { run_id?: unknown }) => {
-          this.#options.onCreated?.({
-            run_id: result.run_id as string,
-            thread_id: activeThreadId,
-          });
+          if (typeof result.run_id !== "string") return;
+          createdRunId = result.run_id;
+          this.#onRunCreated(createdRunId);
+          if (pendingCompletionReason != null) {
+            notifyCompletion(pendingCompletionReason);
+          }
         };
         const first = await Promise.race([
           terminalPromise.then((value) => ({
@@ -499,6 +541,7 @@ export class SubmitCoordinator<
           /* caller-supplied callback errors must not crash the submit */
         }
       }
+      notifyCompletion(terminalReason(terminal.event));
     } catch (error) {
       reportError(error);
     } finally {
@@ -507,6 +550,7 @@ export class SubmitCoordinator<
       // late state updates from this run finish flushing first.
       this.#rootStore.setState((s) => ({ ...s, isLoading: false }));
       if (this.#runAbort === abort) this.#runAbort = undefined;
+      this.#onRunEnd();
       setTimeout(() => this.#drainQueue(), 0);
     }
   }

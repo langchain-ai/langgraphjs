@@ -18,12 +18,14 @@ import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
-  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
+  type InferToolCalls,
   type RootSnapshot,
+  type RunCompletedInfo,
+  type RunExecutionInfo,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -107,7 +109,7 @@ export interface UseStreamReturn<
    * Equivalent to calling `useMessages(stream)` with no target.
    */
   readonly messages: BaseMessage[];
-  readonly toolCalls: AssembledToolCall[];
+  readonly toolCalls: InferToolCalls<T>[];
   readonly interrupts: Interrupt<InterruptType>[];
   readonly interrupt: Interrupt<InterruptType> | undefined;
   readonly isLoading: boolean;
@@ -274,7 +276,8 @@ export function useStream<
     fetch?: typeof fetch;
     webSocketFactory?: (url: string) => WebSocket;
     onThreadId?: (threadId: string) => void;
-    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+    onCreated?: (info: RunExecutionInfo) => void;
+    onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
   }
@@ -331,6 +334,7 @@ export function useStream<
         webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
         onThreadId: options.onThreadId,
         onCreated: options.onCreated,
+        onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
       }),
@@ -463,7 +467,7 @@ export function useStream<
     return {
       values: root.values,
       messages: root.messages,
-      toolCalls: root.toolCalls,
+      toolCalls: root.toolCalls as InferToolCalls<T>[],
       interrupts: userFacingInterrupts,
       interrupt: userFacingInterrupts[0],
       isLoading: root.isLoading,

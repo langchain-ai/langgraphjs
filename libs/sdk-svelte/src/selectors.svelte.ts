@@ -17,6 +17,7 @@ import {
   type Event,
   type FileMedia,
   type ImageMedia,
+  type InferToolCalls,
   type InferStateType,
   type MessageMetadata,
   type MessageMetadataMap,
@@ -188,6 +189,14 @@ export function useMessages(
  * lifecycle rules as {@link useMessages}; at the root this returns a
  * handle delegating to `stream.toolCalls`.
  */
+export function useToolCalls(
+  stream: AnyStream,
+  target?: ValueOrGetter<SelectorTarget>
+): ReactiveValue<AssembledToolCall[]>;
+export function useToolCalls<T>(
+  stream: AnyStream,
+  target?: ValueOrGetter<SelectorTarget>
+): ReactiveValue<InferToolCalls<T>[]>;
 export function useToolCalls(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>

@@ -108,7 +108,17 @@ export type RequestHook = (
   init: RequestInit
 ) => Promise<RequestInit> | RequestInit;
 
+/**
+ * Configuration for {@link BaseClient} and the exported LangGraph SDK
+ * {@link Client}.
+ */
 export interface ClientConfig {
+  /**
+   * Base URL of the LangGraph API server.
+   *
+   * Defaults to `http://localhost:8123`, unless the runtime provides a
+   * `langgraph_api:url` global override.
+   */
   apiUrl?: string;
   /**
    * API key for authentication.
@@ -117,10 +127,37 @@ export interface ClientConfig {
    * - If null, no API key will be set (skips auto-loading)
    */
   apiKey?: string | null;
+  /**
+   * Options forwarded to the internal {@link AsyncCaller}, such as retry,
+   * concurrency, or custom `fetch` behavior.
+   */
   callerOptions?: AsyncCallerParams;
+  /**
+   * Default timeout, in milliseconds, applied to client requests.
+   *
+   * Per-request `timeoutMs` values override this default. Passing `null`
+   * at the request level disables the configured timeout for that request.
+   */
   timeoutMs?: number;
+  /**
+   * Headers applied to every request.
+   *
+   * The configured API key, when present, is added as the `x-api-key`
+   * header after these defaults are initialized.
+   */
   defaultHeaders?: Record<string, HeaderValue>;
+  /**
+   * Hook for inspecting or mutating a request before it is sent.
+   *
+   * Receives the resolved URL and prepared `RequestInit`; return the
+   * original init or a replacement object to continue the request.
+   */
   onRequest?: RequestHook;
+  /**
+   * Streaming protocol used by stream-capable endpoints.
+   *
+   * Defaults to `"legacy"` for backwards compatibility.
+   */
   streamProtocol?: StreamProtocol;
 }
 

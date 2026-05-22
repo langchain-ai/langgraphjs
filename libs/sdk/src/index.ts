@@ -87,6 +87,7 @@ export type {
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
+  InferToolOutput,
 } from "./types.messages.js";
 export type {
   CustomStreamEvent,

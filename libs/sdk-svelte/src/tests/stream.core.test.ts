@@ -1,5 +1,6 @@
 import { it, expect, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
+import type { RunExecutionInfo } from "@langchain/langgraph-sdk/stream";
 
 import BasicStream from "./components/BasicStream.svelte";
 
@@ -50,13 +51,12 @@ it("cancels an in-flight run via stop()", async () => {
 
 it("assigns a thread id on first submit and surfaces it via onThreadId", async () => {
   const threadIds: string[] = [];
-  const created: Array<{ run_id: string; thread_id: string }> = [];
+  const created: RunExecutionInfo[] = [];
 
   const screen = render(BasicStream, {
     apiUrl: serverUrl,
     onThreadId: (id: string) => threadIds.push(id),
-    onCreated: (meta: { run_id: string; thread_id: string }) =>
-      created.push(meta),
+    onCreated: (info: RunExecutionInfo) => created.push(info),
   });
 
   await expect
@@ -78,7 +78,6 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
     .toHaveTextContent(threadIds[0]);
 
   await expect.poll(() => created.length).toBeGreaterThanOrEqual(1);
-  expect(typeof created[0].run_id).toBe("string");
-  expect(created[0].run_id.length).toBeGreaterThan(0);
-  expect(created[0].thread_id).toBe(threadIds[0]);
+  expect(typeof created[0].runId).toBe("string");
+  expect(created[0].runId.length).toBeGreaterThan(0);
 });

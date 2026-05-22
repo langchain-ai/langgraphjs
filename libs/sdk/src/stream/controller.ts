@@ -67,6 +67,7 @@ import { upsertToolCall } from "./tool-calls.js";
 import type {
   RootEventBus,
   RootSnapshot,
+  RunExecutionReason,
   StreamControllerOptions,
   StreamSubmitOptions,
 } from "./types.js";
@@ -79,6 +80,13 @@ function isAbortLikeError(error: unknown): boolean {
     (typeof maybeError.message === "string" &&
       maybeError.message.includes("aborted"))
   );
+}
+
+function lifecycleReason(event: string | undefined): RunExecutionReason | null {
+  if (event === "completed") return "success";
+  if (event === "failed") return "error";
+  if (event === "interrupted") return "interrupt";
+  return null;
 }
 
 const ROOT_NAMESPACE: readonly string[] = [];
@@ -188,6 +196,8 @@ export class StreamController<
   readonly #selfCreatedThreadIds = new Set<string>();
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
+  #activeRunId: string | undefined;
+  #localRunDepth = 0;
 
   /**
    * Single-shot hydration promise. Exposed via `hydrationPromise`
@@ -286,6 +296,10 @@ export class StreamController<
         this.#hydratedActiveInterruptIds = null;
         this.#submitGeneration += 1;
       },
+      onRunStart: () => this.#markLocalRunStart(),
+      onRunCreated: (runId) => this.#notifyCreated(runId),
+      onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
+      onRunEnd: () => this.#markLocalRunEnd(),
     });
     this.#hydrationPromise = this.#createHydrationPromise();
     /**
@@ -552,6 +566,55 @@ export class StreamController<
   async stop(): Promise<void> {
     await this.#submitter.stop();
   }
+
+  #markLocalRunStart(): void {
+    this.#localRunDepth += 1;
+  }
+
+  #markLocalRunEnd(): void {
+    this.#localRunDepth = Math.max(0, this.#localRunDepth - 1);
+  }
+
+  #notifyCreated(runId: string): void {
+    this.#activeRunId = runId;
+    try {
+      this.#options.onCreated?.({ runId });
+    } catch {
+      /* caller-supplied callback errors must not crash the stream */
+    }
+  }
+
+  #notifyCompleted(
+    reason: RunExecutionReason,
+    runId = this.#activeRunId
+  ): void {
+    if (runId != null && runId === this.#activeRunId) {
+      this.#activeRunId = undefined;
+    }
+    setTimeout(() => {
+      if (this.#disposed) return;
+      try {
+        this.#options.onCompleted?.(
+          runId == null ? { reason } : { runId, reason }
+        );
+      } catch {
+        /* caller-supplied callback errors must not crash the stream */
+      }
+    }, 0);
+  }
+
+  readonly #runLifecycleListener = (event: Event): void => {
+    if (this.#localRunDepth > 0) return;
+    if (event.method !== "lifecycle") return;
+    if (!isRootNamespace(event.params.namespace)) return;
+    if (!this.rootStore.getSnapshot().isLoading) return;
+    const lifecycle = (event as LifecycleEvent).params.data as {
+      event?: string;
+    };
+    const reason = lifecycleReason(lifecycle?.event);
+    if (reason == null) return;
+    this.#notifyCompleted(reason);
+  };
 
   /**
    * Cancel a queued submission by id. Returns `true` when the entry
@@ -823,6 +886,7 @@ export class StreamController<
      * listener set (a new one is installed in `#startRootPump`).
      */
     this.#rootEventListeners.delete(this.#lifecycleLoading.listener);
+    this.#rootEventListeners.delete(this.#runLifecycleListener);
     try {
       await this.#rootSubscription?.unsubscribe();
     } catch {
@@ -845,6 +909,8 @@ export class StreamController<
     this.#rootMessages.reset();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
+    this.#activeRunId = undefined;
+    this.#localRunDepth = 0;
     this.#messageMetadata.reset();
     // Drop the hydrate-window allowlist — the next thread's hydrate
     // will repopulate it from that thread's `state.tasks[].interrupts`.
@@ -906,6 +972,7 @@ export class StreamController<
      * that fires before any subscription event arrives.
      */
     this.#rootEventListeners.add(this.#lifecycleLoading.listener);
+    this.#rootEventListeners.add(this.#runLifecycleListener);
 
     this.#rootPump = (async () => {
       try {
