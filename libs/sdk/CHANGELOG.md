@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.9.5
+
+### Patch Changes
+
+- [#2421](https://github.com/langchain-ai/langgraphjs/pull/2421) [`3529e38`](https://github.com/langchain-ai/langgraphjs/commit/3529e3831a488134e7dfaefa4ed7fb1140cf8bb6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(stream): align AssembledToolCall typing with pre-v1 expectations
+
+  Make `InferToolCalls` resolve to generic `AssembledToolCall` unions, expose
+  sync `status`/`error` for reactive bindings, and align type tests across
+  React, Vue, Svelte, and Angular SDK packages.
+
 ## 1.9.4
 
 ### Patch Changes
