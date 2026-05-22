@@ -247,7 +247,9 @@ describe("headless tool interrupt helpers", () => {
 
     expect(resumeSubmit).toHaveBeenCalledWith({
       resume: {
-        "call-1": { latitude: 1, longitude: 2 },
+        "headless-1": {
+          "call-1": { latitude: 1, longitude: 2 },
+        },
       },
     });
 
@@ -322,7 +324,9 @@ describe("headless tool interrupt helpers", () => {
 
     expect(resumeSubmit).toHaveBeenCalledWith({
       resume: {
-        "call-1": { latitude: 1, longitude: 2 },
+        "py-headless": {
+          "call-1": { latitude: 1, longitude: 2 },
+        },
       },
     });
     expect(handled.has("py-headless")).toBe(true);
@@ -382,10 +386,12 @@ describe("headless tool interrupt helpers", () => {
     expect(resumeSubmit).toHaveBeenCalledWith({
       resume: {
         "toolu_01H47Bw9B8ut1dGRASjDpN1K": {
-          success: true,
-          action: "updated",
-          key: "user_name",
-          message: 'Memory "user_name" updated',
+          "toolu_01H47Bw9B8ut1dGRASjDpN1K": {
+            success: true,
+            action: "updated",
+            key: "user_name",
+            message: 'Memory "user_name" updated',
+          },
         },
       },
     });
