@@ -84,7 +84,8 @@
       "protobufjs@>=7 <8": ">=7.5.5 <8",
       "basic-ftp@>=5 <6": ">=5.3.0 <6",
       "vite@>=7 <8": ">=7.3.2",
-      "defu@>=6 <7": ">=6.1.5 <7"
+      "defu@>=6 <7": ">=6.1.5 <7",
+      "better-sqlite3": "^12.10.0"
     },
     "onlyBuiltDependencies": [
       "@swc/core",
