@@ -1,7 +1,7 @@
 import { ToolMessage } from "@langchain/core/messages";
 import { describe, expect, it } from "vitest";
 import type { AssembledToolCall } from "../client/stream/handles/tools.js";
-import { reconcileToolCallsFromMessages } from "./tool-calls.js";
+import { reconcileToolCallsFromMessages, upsertToolCall } from "./tool-calls.js";
 
 describe("reconcileToolCallsFromMessages", () => {
   const runningCall: AssembledToolCall = {
@@ -65,5 +65,33 @@ describe("reconcileToolCallsFromMessages", () => {
     );
 
     expect(result).toBe(current);
+  });
+});
+
+describe("upsertToolCall", () => {
+  it("replaces existing tool calls with a fresh object snapshot", () => {
+    const current: AssembledToolCall = {
+      name: "memory_put",
+      callId: "toolu_01",
+      id: "toolu_01",
+      namespace: ["tools:one"],
+      input: { key: "user_role" },
+      args: { key: "user_role" },
+      output: null,
+      status: "running",
+      error: undefined,
+    };
+    const next: AssembledToolCall = {
+      ...current,
+      output: { success: true },
+      status: "finished",
+    };
+
+    const result = upsertToolCall([current], next);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(next);
+    expect(result[0]).not.toBe(next);
+    expect(result[0]).not.toBe(current);
   });
 });

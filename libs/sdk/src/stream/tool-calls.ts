@@ -5,15 +5,21 @@ import { parseToolOutput } from "../client/stream/handles/tools.js";
 
 /**
  * Insert or replace an assembled tool call by call id.
+ *
+ * ToolCallAssembler mutates its active handle in place as `tool-finished` /
+ * `tool-error` events arrive. Publish a fresh object here so framework
+ * adapters that pass individual tool calls as props (notably Vue's shallow
+ * prop tracking) observe status/output changes.
  */
 export function upsertToolCall(
   current: readonly AssembledToolCall[],
   next: AssembledToolCall
 ): AssembledToolCall[] {
+  const snapshot = { ...next };
   const idx = current.findIndex((toolCall) => toolCall.callId === next.callId);
-  if (idx < 0) return [...current, next];
+  if (idx < 0) return [...current, snapshot];
   const updated = current.slice();
-  updated[idx] = next;
+  updated[idx] = snapshot;
   return updated;
 }
 

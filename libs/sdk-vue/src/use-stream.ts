@@ -547,7 +547,9 @@ export function useStream<
             ? (bag.__interrupt__ as Interrupt[])
             : [];
           const headlessInterrupts =
-            protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+            protocolInterrupts.length > 0
+              ? protocolInterrupts
+              : valuesInterrupts;
           if (headlessInterrupts.length === 0) return;
           flushPendingHeadlessToolInterrupts(
             { ...bag, __interrupt__: headlessInterrupts },
