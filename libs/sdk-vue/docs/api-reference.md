@@ -74,7 +74,7 @@ replacements — see [`v1-migration.md`](./v1-migration.md) §3.
 | `messages` | `ShallowRef<BaseMessage[]>` | Messages assembled from the message channel. Always `BaseMessage` instances from `@langchain/core/messages`. |
 | `toolCalls` | `ShallowRef<AssembledToolCall[]>` | Tool calls assembled with live status + args + results. |
 | `interrupts` | `ShallowRef<Interrupt[]>` | All pending root interrupts. |
-| `interrupt` | `ComputedRef<Interrupt \| undefined>` | Convenience: `interrupts.value[0]`. |
+| `interrupt` | `ComputedRef<Interrupt \| undefined>` | Convenience: `interrupts.value[0]`. In `<script setup>`, read the payload with `stream.interrupt.value?.value` (Vue ref unwrap + SDK `Interrupt.value`). In `<template>`, `stream.interrupt.value` is enough — see [Interrupts](./interrupts.md#script-vs-template-access). |
 | `isLoading` | `ComputedRef<boolean>` | `true` while a run is in flight or hydration hasn't finished. |
 | `isThreadLoading` | `ComputedRef<boolean>` | `true` only during initial thread hydration. |
 | `error` | `ComputedRef<unknown>` | Last error surfaced by the controller. |
