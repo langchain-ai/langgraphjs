@@ -353,6 +353,36 @@ export interface FlushPendingHeadlessToolInterruptsOptions {
   defer?: (run: () => void) => void;
 }
 
+const coalescedHeadlessFlushes = new WeakMap<
+  Set<string>,
+  { scheduled: boolean; run: () => void }
+>();
+
+/**
+ * Coalesce rapid headless-tool flush triggers into one microtask so parallel
+ * `input.requested` events observed back-to-back batch into a single resume.
+ * Vue/Svelte/Angular watchers run synchronously per event; without this,
+ * the first interrupt can be claimed before the second arrives and resume
+ * splits into staggered single-tool commands.
+ */
+export function scheduleCoalescedHeadlessToolFlush(
+  handledIds: Set<string>,
+  run: () => void
+): void {
+  let state = coalescedHeadlessFlushes.get(handledIds);
+  if (state == null) {
+    state = { scheduled: false, run: () => {} };
+    coalescedHeadlessFlushes.set(handledIds, state);
+  }
+  state.run = run;
+  if (state.scheduled) return;
+  state.scheduled = true;
+  void Promise.resolve().then(() => {
+    state!.scheduled = false;
+    state!.run();
+  });
+}
+
 /**
  * Execute and resume all newly seen headless-tool interrupts from a values
  * payload. Callers own `handledIds` and should clear it when the thread changes.

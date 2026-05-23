@@ -5,6 +5,7 @@ import {
   headlessToolsBatchResumeCommand,
   isInterruptIdKeyedResume,
   resolveInterruptTargetForHeadlessResume,
+  scheduleCoalescedHeadlessToolFlush,
 } from "./headless-tools.js";
 
 async function flushMicrotasks(count = 4) {
@@ -191,6 +192,89 @@ describe("headless tool resume helpers", () => {
       handled,
       { resumeSubmit }
     );
+
+    await flushMicrotasks(8);
+
+    expect(resumeSubmit).toHaveBeenCalledTimes(1);
+    expect(resumeSubmit).toHaveBeenCalledWith({
+      resume: {
+        "4b704fd4b473bfd68df40c9979bffe1b": {
+          toolu_01A: { success: true },
+        },
+        "c485a7b6c996d3ace440d2afd6f292a3": {
+          toolu_01B: { success: true },
+        },
+      },
+    });
+  });
+
+  it("coalesces staggered flush triggers into one batch resume", async () => {
+    const handled = new Set<string>();
+    const resumeSubmit = vi.fn().mockResolvedValue(undefined);
+    const tool = {
+      tool: { name: "memory_put" },
+      execute: async () => ({ success: true }),
+    };
+
+    const flushFirstInterrupt = () => {
+      flushPendingHeadlessToolInterrupts(
+        {
+          __interrupt__: [
+            {
+              id: "4b704fd4b473bfd68df40c9979bffe1b",
+              value: {
+                type: "tool",
+                toolCall: {
+                  id: "toolu_01A",
+                  name: "memory_put",
+                  args: { key: "user_name", value: "Alex" },
+                },
+              },
+            },
+          ],
+        },
+        [tool],
+        handled,
+        { resumeSubmit }
+      );
+    };
+
+    const flushBothInterrupts = () => {
+      flushPendingHeadlessToolInterrupts(
+        {
+          __interrupt__: [
+            {
+              id: "4b704fd4b473bfd68df40c9979bffe1b",
+              value: {
+                type: "tool",
+                toolCall: {
+                  id: "toolu_01A",
+                  name: "memory_put",
+                  args: { key: "user_name", value: "Alex" },
+                },
+              },
+            },
+            {
+              id: "c485a7b6c996d3ace440d2afd6f292a3",
+              value: {
+                type: "tool",
+                toolCall: {
+                  id: "toolu_01B",
+                  name: "memory_put",
+                  args: { key: "user_role", value: "developer" },
+                },
+              },
+            },
+          ],
+        },
+        [tool],
+        handled,
+        { resumeSubmit }
+      );
+    };
+
+    scheduleCoalescedHeadlessToolFlush(handled, flushFirstInterrupt);
+    scheduleCoalescedHeadlessToolFlush(handled, flushBothInterrupts);
 
     await flushMicrotasks(8);
 

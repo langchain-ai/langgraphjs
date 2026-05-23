@@ -3,6 +3,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
   flushPendingHeadlessToolInterrupts,
+  scheduleCoalescedHeadlessToolFlush,
   type AnyHeadlessToolImplementation,
   type OnToolCallback,
 } from "@langchain/langgraph-sdk";
@@ -479,33 +480,35 @@ export function useStream<
         handledForThreadId = currentThreadId;
       }
 
-      const valuesBag = rootSnapshot.values as unknown as Record<
-        string,
-        unknown
-      >;
-      const protocolInterrupts =
-        rootSnapshot.interrupts as unknown as Interrupt[];
-      const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
-        ? (valuesBag.__interrupt__ as Interrupt[])
-        : [];
-      const headlessInterrupts =
-        protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
-      if (headlessInterrupts.length === 0) return;
-      flushPendingHeadlessToolInterrupts(
-        { ...valuesBag, __interrupt__: headlessInterrupts },
-        tools,
-        handledTools,
-        {
-          onTool,
-          defer: (run) => {
-            void Promise.resolve().then(run);
-          },
-          resumeSubmit: (command) =>
-            controller.submit(null, {
-              command,
-            } as StreamSubmitOptions<StateType, ConfigurableType>),
-        }
-      );
+      scheduleCoalescedHeadlessToolFlush(handledTools, () => {
+        const valuesBag = rootSnapshot.values as unknown as Record<
+          string,
+          unknown
+        >;
+        const protocolInterrupts =
+          rootSnapshot.interrupts as unknown as Interrupt[];
+        const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
+          ? (valuesBag.__interrupt__ as Interrupt[])
+          : [];
+        const headlessInterrupts =
+          protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+        if (headlessInterrupts.length === 0) return;
+        flushPendingHeadlessToolInterrupts(
+          { ...valuesBag, __interrupt__: headlessInterrupts },
+          tools,
+          handledTools,
+          {
+            onTool,
+            defer: (run) => {
+              void Promise.resolve().then(run);
+            },
+            resumeSubmit: (command) =>
+              controller.submit(null, {
+                command,
+              } as StreamSubmitOptions<StateType, ConfigurableType>),
+          }
+        );
+      });
     });
   }
 
