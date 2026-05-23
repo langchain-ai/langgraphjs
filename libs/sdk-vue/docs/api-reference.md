@@ -87,7 +87,7 @@ replacements — see [`v1-migration.md`](./v1-migration.md) §3.
 | `respond(response, target?)` | `(…) => Promise<void>` | Reply to a specific interrupt by id. |
 | `client` | `Client` | Built-in `Client` when using the LGP branch. |
 | `assistantId` | `string` | Resolved assistant id (defaults to `"_"` when using a custom adapter). |
-| `getThread()` | `() => ThreadStream \| undefined` | Escape hatch returning the bound v2 `ThreadStream`. |
+| `getThread()` | `() => ThreadStream \| undefined` | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 
 ## See also
 

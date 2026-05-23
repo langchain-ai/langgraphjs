@@ -70,7 +70,7 @@ shape (`assistantId` + `apiUrl`/`client`) or the **custom-adapter** shape
 | `submit(input, options?)`    | `Promise<void>`             | Submit new input; supports `multitaskStrategy: "enqueue"`. |
 | `stop()`                     | `Promise<void>`             | Cancel the active run.                                     |
 | `respond(response, target?)` | `Promise<void>`             | Reply to an [interrupt](./interrupts.md).                  |
-| `getThread()`                | `ThreadStream \| undefined` | v2 escape hatch.                                           |
+| `getThread()`                | `ThreadStream \| undefined` | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 | `client`, `assistantId`      | —                           | Pass-through.                                              |
 
 ---

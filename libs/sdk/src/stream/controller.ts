@@ -740,10 +740,12 @@ export class StreamController<
     }
   }
 
-  // ---------- escape hatches ----------
+  // ---------- thread access ----------
 
   /**
-   * Current underlying {@link ThreadStream} (v2 escape hatch).
+   * Returns the bound {@link ThreadStream}, if one exists. Prefer
+   * {@link StreamController.rootStore} and selector projections for
+   * UI work; use this for low-level protocol access.
    */
   getThread(): ThreadStream | undefined {
     return this.#thread;
