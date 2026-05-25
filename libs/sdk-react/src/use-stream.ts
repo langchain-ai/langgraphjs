@@ -109,10 +109,44 @@ export interface UseStreamReturn<
    * Equivalent to calling `useMessages(stream)` with no target.
    */
   readonly messages: BaseMessage[];
+  /**
+   * Root-namespace tool calls assembled from the `tools` channel.
+   * Each entry is a fully parsed {@link AssembledToolCall} with
+   * name, args, and id — suitable for rendering approval UIs or
+   * forwarding to headless tool handlers.
+   *
+   * When the stream is typed with an agent brand or tool list,
+   * entries are narrowed via {@link InferToolCalls}. Equivalent to
+   * calling `useToolCalls(stream)` with no target.
+   */
   readonly toolCalls: InferToolCalls<T>[];
+  /**
+   * All unresolved protocol interrupts observed on the root
+   * namespace during the active thread. Populated from lifecycle /
+   * input events and seeded on hydration from `thread.getState()`.
+   * Cleared optimistically when a new run starts or an interrupt is
+   * resolved via {@link respond} / `submit({ command: { resume } })`.
+   */
   readonly interrupts: Interrupt<InterruptType>[];
+  /**
+   * Convenience alias for {@link interrupts}[0] — the primary
+   * interrupt most UIs should act on when only one is pending.
+   * `undefined` when no interrupt is active.
+   */
   readonly interrupt: Interrupt<InterruptType> | undefined;
+  /**
+   * `true` while a run is active or being started on the current
+   * thread. Driven by root-namespace lifecycle events (`running` →
+   * `true`, terminal phases → `false`). Use this to disable submit
+   * buttons and show in-flight spinners.
+   */
   readonly isLoading: boolean;
+  /**
+   * `true` while the initial `thread.getState()` hydration for the
+   * active thread is in flight. Distinct from {@link isLoading} —
+   * thread loading covers the one-time fetch that seeds
+   * {@link values} / {@link messages} before any user submit.
+   */
   readonly isThreadLoading: boolean;
   /**
    * Promise that settles when the current thread's initial hydration
@@ -122,7 +156,17 @@ export interface UseStreamReturn<
    * `switchThread`/`threadId` change.
    */
   readonly hydrationPromise: Promise<void>;
+  /**
+   * The last error observed on the active run or hydration attempt.
+   * `undefined` when no error has occurred. Cleared optimistically
+   * when a new {@link submit} starts.
+   */
   readonly error: unknown;
+  /**
+   * Id of the thread the controller is bound to. `null` until the
+   * first {@link submit} creates or selects a thread (or until an
+   * explicit `threadId` option is provided and hydrated).
+   */
   readonly threadId: string | null;
 
   // ----- always-on discovery -----
@@ -174,17 +218,38 @@ export interface UseStreamReturn<
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
+  /**
+   * Abort the in-flight run on the current thread without clearing
+   * accumulated state. Sets {@link isLoading} to `false` immediately;
+   * {@link values} and {@link messages} are preserved.
+   */
   stop(): Promise<void>;
+  /**
+   * Resume a pending protocol interrupt by sending a response payload
+   * back to the interrupted namespace.
+   *
+   * When `target` is omitted, responds to the latest unresolved
+   * interrupt in {@link interrupts}. Pass an explicit
+   * `{ interruptId, namespace? }` when multiple interrupts are
+   * pending or the interrupt lives in a subgraph namespace.
+   */
   respond(
     response: unknown,
     target?: { interruptId: string; namespace?: string[] }
   ): Promise<void>;
 
   // ----- identity -----
+  /** LangGraph SDK client used to construct thread streams. */
   readonly client: Client;
+  /** Assistant id the thread is bound to for its lifetime. */
   readonly assistantId: string;
 
-  /** v2 escape hatch — returns the bound {@link ThreadStream}. */
+  /**
+   * Returns the bound {@link ThreadStream}, if one exists (`undefined`
+   * until the thread is hydrated or the first submit completes). Prefer
+   * the projections and selector hooks for UI work; use this for
+   * low-level protocol access (raw subscriptions, state commands, etc.).
+   */
   getThread(): ThreadStream | undefined;
 
   /** @internal Used by selector hooks (`useMessages`, `useToolCalls`, …). */
@@ -395,10 +460,10 @@ export function useStream<
   // Subscribe to values + interrupt updates via the root store so the
   // effect re-runs whenever a protocol interrupt lands or the
   // `__interrupt__` key is projected into values, not only on hook
-  // re-render. We feed both sources to the flush helper because
-  // v2-native runs surface protocol interrupts via
-  // `rootStore.interrupts` (`input.requested` events), while legacy
-  // graphs may still emit `values.__interrupt__`.
+  // re-render. Prefer protocol interrupts from `rootStore.interrupts`
+  // (`input.requested` events) because their ids are accepted directly
+  // by `Command({ resume })`; fall back to `values.__interrupt__` for
+  // older streams that only expose interrupts through values.
   const rootValuesForTools = useSyncExternalStore<StateType>(
     controller.rootStore.subscribe,
     () => controller.rootStore.getSnapshot().values,
@@ -414,16 +479,15 @@ export function useStream<
   useEffect(() => {
     if (!tools?.length) return;
     const valuesBag = rootValuesForTools as unknown as Record<string, unknown>;
-    const existingInterrupts = Array.isArray(valuesBag?.__interrupt__)
+    const protocolInterrupts = rootInterruptsForTools as unknown as Interrupt[];
+    const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
       ? (valuesBag.__interrupt__ as Interrupt[])
       : [];
-    const combined: Interrupt[] = [
-      ...existingInterrupts,
-      ...(rootInterruptsForTools as unknown as Interrupt[]),
-    ];
-    if (combined.length === 0) return;
+    const headlessInterrupts =
+      protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+    if (headlessInterrupts.length === 0) return;
     flushPendingHeadlessToolInterrupts(
-      { ...valuesBag, __interrupt__: combined },
+      { ...valuesBag, __interrupt__: headlessInterrupts },
       tools,
       handledToolsRef.current,
       {

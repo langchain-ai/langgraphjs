@@ -249,8 +249,8 @@ export interface StreamSubmitOptions<
   /**
    * Command shape widened to the v1 surface + protocol-v2 additions.
    *
-   * - `resume` — dispatches to `thread.input.respond` targeting the most
-   *   recent root-namespace interrupt (honoured today).
+   * - `resume` — dispatches to `thread.submitRun` with interrupt-id keyed
+   *   `input` (single or batched `Command({ resume })`).
    * - `goto` — routes execution to a specific node (planned, forwarded
    *   via `/run.start` metadata).
    * - `update` — merges a partial state update into the thread's

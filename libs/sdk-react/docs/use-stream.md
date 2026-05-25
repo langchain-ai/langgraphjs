@@ -76,7 +76,7 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 | `submit(input, options?)`    | function                                                    | Dispatch a new run on the bound thread.                                                         |
 | `stop()`                     | `() => Promise<void>`                                       | Abort the in-flight run.                                                                        |
 | `respond(response, target?)` | function                                                    | Resume an interrupt with a response payload.                                                    |
-| `getThread()`                | `() => ThreadStream \| undefined`                           | Escape hatch to the underlying v2 `ThreadStream`.                                               |
+| `getThread()`                | `() => ThreadStream \| undefined`                           | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 | `client`                     | `Client`                                                    | The bound client (`HttpAgentServerAdapter`'s client on the custom branch).                      |
 | `assistantId`                | `string`                                                    | Resolved assistant id (including the `"_"` fallback on custom adapters).                        |
 

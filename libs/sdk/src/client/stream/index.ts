@@ -815,10 +815,24 @@ export class ThreadStream<
    * Reset interrupt state and resume all paused user subscriptions.
    * Called before `run.start()` and `input.respond()` so that
    * iterators on the same handle pick up the next run's events.
+   *
+   * @param respondedInterruptId - When responding to one of several
+   *   pending interrupts, only that entry is removed. Clearing the
+   *   full list here would drop other headless-tool interrupts that
+   *   are still awaiting client execution.
    */
-  #prepareForNextRun(): void {
+  #prepareForNextRun(respondedInterruptId?: string): void {
     this.interrupted = false;
-    this.interrupts.length = 0;
+    if (respondedInterruptId != null) {
+      const index = this.interrupts.findIndex(
+        (entry) => entry.interruptId === respondedInterruptId
+      );
+      if (index >= 0) {
+        this.interrupts.splice(index, 1);
+      }
+    } else {
+      this.interrupts.length = 0;
+    }
     if (this.#terminalPauseTimer != null) {
       clearTimeout(this.#terminalPauseTimer);
       this.#terminalPauseTimer = undefined;
@@ -1321,7 +1335,7 @@ export class ThreadStream<
     config?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
-    this.#prepareForNextRun();
+    this.#prepareForNextRun(params.interrupt_id);
     this.#startLifecycleWatcher();
     await this.#send(
       "input.respond",

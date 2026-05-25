@@ -20,7 +20,7 @@
  *   4. Apply the {@link StreamSubmitOptions.multitaskStrategy} to
  *      decide whether to abort, enqueue, reject, or proceed.
  *   5. Race the dispatch promise (`thread.submitRun()` or
- *      `thread.respondInput()` for resumes) against the next root
+ *      `thread.submitRun()` for resumes) against the next root
  *      terminal lifecycle event.
  *   6. Settle the resulting state (loading flag, error slot) and
  *      drain the next queued submission, if any.
@@ -63,15 +63,6 @@ import type {
   StreamControllerOptions,
   StreamSubmitOptions,
 } from "./types.js";
-
-/**
- * Pointer to a pending root protocol interrupt. Used to target
- * `respondInput` for resume submissions.
- */
-interface ResolvedInterrupt {
-  interruptId: string;
-  namespace: string[];
-}
 
 /**
  * Result of awaiting the next root terminal lifecycle event. Mirrors
@@ -180,8 +171,10 @@ export class SubmitCoordinator<
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
   readonly #awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-  /** Returns the most recent unresolved root interrupt, for resumes. */
-  readonly #latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
+  /** Builds interrupt-id keyed `run.start` input from `command.resume`. */
+  readonly #buildResumeRunInput: (
+    resume: unknown
+  ) => Record<string, unknown> | null;
   /** Marks an interrupt id as resolved so it isn't re-targeted. */
   readonly #markInterruptResolved: (interruptId: string) => void;
   /** Called once at the start of every {@link submit} invocation. */
@@ -222,7 +215,7 @@ export class SubmitCoordinator<
     abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-    latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
+    buildResumeRunInput: (resume: unknown) => Record<string, unknown> | null;
     markInterruptResolved: (interruptId: string) => void;
     onSubmitStart?: () => void;
     onRunStart?: () => void;
@@ -244,7 +237,7 @@ export class SubmitCoordinator<
     this.#abandonDeferredRootPump = params.abandonDeferredRootPump;
     this.#waitForRootPumpReady = params.waitForRootPumpReady;
     this.#awaitNextTerminal = params.awaitNextTerminal;
-    this.#latestUnresolvedInterrupt = params.latestUnresolvedInterrupt;
+    this.#buildResumeRunInput = params.buildResumeRunInput;
     this.#markInterruptResolved = params.markInterruptResolved;
     this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
     this.#onRunStart = params.onRunStart ?? (() => undefined);
@@ -400,24 +393,22 @@ export class SubmitCoordinator<
       let terminal: TerminalResult | undefined;
 
       if (isResume) {
-        const target = this.#latestUnresolvedInterrupt();
-        if (target == null) {
+        const resumeInput = this.#buildResumeRunInput(resumeCommand);
+        if (resumeInput == null) {
           throw new Error(
             "submit({ command: { resume } }) called but no pending protocol interrupt is available."
           );
         }
-        const commandPromise = thread.respondInput({
-          namespace: target.namespace,
-          interrupt_id: target.interruptId,
-          response: resumeCommand,
+        const commandPromise = thread.submitRun({
+          input: resumeInput,
           config: boundConfig,
-          metadata: options?.metadata,
+          metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
         });
         // Defer the pump start until the dispatch HTTP response
         // lands — see the analogous block in the non-resume path
         // below for the rationale (thread row not committed
         // synchronously). For a resume the thread exists already
-        // (it must, since `latestUnresolvedInterrupt()` was non-null),
+        // (it must, since `buildResumeRunInput()` was non-null),
         // so `#startDeferredRootPump` is typically a no-op here, but
         // we keep the same shape to avoid a future regression.
         //
@@ -432,8 +423,10 @@ export class SubmitCoordinator<
         );
         // Mark resolved synchronously: even if the response races and
         // the command settles after the terminal, we don't want to
-        // re-target this same interrupt on the next submit.
-        this.#markInterruptResolved(target.interruptId);
+        // re-target these interrupts on the next submit.
+        for (const interruptId of Object.keys(resumeInput)) {
+          this.#markInterruptResolved(interruptId);
+        }
         const first = await Promise.race([
           terminalPromise.then((value) => ({
             type: "terminal" as const,

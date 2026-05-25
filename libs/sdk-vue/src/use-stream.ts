@@ -14,6 +14,7 @@ import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
+  scheduleCoalescedHeadlessToolFlush,
   type AnyHeadlessToolImplementation,
   type OnToolCallback,
 } from "@langchain/langgraph-sdk";
@@ -96,24 +97,106 @@ export interface UseStreamReturn<
   StateType extends object = InferStateType<T>,
   SubagentStates = InferSubagentStates<T>,
 > {
+  // ----- always-on root projections -----
+  /**
+   * The most recent `values`-channel snapshot emitted at the root
+   * namespace — i.e. the thread-level state as the server sees it
+   * after each superstep. Updated on every root `values` event, not
+   * on token-level deltas: if you render `stream.values.value.messages`
+   * directly you'll see full turns appear at once instead of
+   * streaming token-by-token. Use {@link messages} (or
+   * `useMessages`) for the token-streamed view.
+   *
+   * Equivalent to calling `useValues(stream)`.
+   */
   readonly values: Readonly<ShallowRef<StateType>>;
+  /**
+   * The root message projection. Assembled from two sources and
+   * merged in real time:
+   *
+   *  1. `messages`-channel deltas — token-level streaming events
+   *     (`message-start`, `content-block-delta`, `message-finish`)
+   *     emitted by the runtime. These drive live, token-by-token
+   *     updates.
+   *  2. `values.messages` snapshots — the authoritative ordering
+   *     and any messages the agent produces without token streaming
+   *     (human turns, tool results, echoes from subagents).
+   *
+   * If the backend only emits `values` events (no `messages`
+   * channel), every message will appear fully-formed on each
+   * values update rather than streaming. This is a backend/runtime
+   * concern — the Vue layer faithfully renders whatever the
+   * server sends.
+   *
+   * Equivalent to calling `useMessages(stream)` with no target.
+   */
   readonly messages: Readonly<ShallowRef<BaseMessage[]>>;
+  /**
+   * Root-namespace tool calls assembled from the `tools` channel.
+   * Each entry is a fully parsed {@link AssembledToolCall} with
+   * name, args, and id — suitable for rendering approval UIs or
+   * forwarding to headless tool handlers.
+   *
+   * When the stream is typed with an agent brand or tool list,
+   * entries are narrowed via {@link InferToolCalls}. Equivalent to
+   * calling `useToolCalls(stream)` with no target.
+   */
   readonly toolCalls: Readonly<ShallowRef<InferToolCalls<T>[]>>;
+  /**
+   * All unresolved protocol interrupts observed on the root
+   * namespace during the active thread. Populated from lifecycle /
+   * input events and seeded on hydration from `thread.getState()`.
+   * Cleared optimistically when a new run starts or an interrupt is
+   * resolved via {@link respond} / `submit({ command: { resume } })`.
+   */
   readonly interrupts: Readonly<ShallowRef<Interrupt<InterruptType>[]>>;
+  /**
+   * Convenience alias for {@link interrupts}[0] — the primary
+   * interrupt most UIs should act on when only one is pending.
+   * `undefined` when no interrupt is active.
+   */
   readonly interrupt: ComputedRef<Interrupt<InterruptType> | undefined>;
+  /**
+   * `true` while a run is active or being started on the current
+   * thread. Driven by root-namespace lifecycle events (`running` →
+   * `true`, terminal phases → `false`). Use this to disable submit
+   * buttons and show in-flight spinners.
+   */
   readonly isLoading: ComputedRef<boolean>;
+  /**
+   * `true` while the initial `thread.getState()` hydration for the
+   * active thread is in flight. Distinct from {@link isLoading} —
+   * thread loading covers the one-time fetch that seeds
+   * {@link values} / {@link messages} before any user submit.
+   */
   readonly isThreadLoading: ComputedRef<boolean>;
+  /**
+   * The last error observed on the active run or hydration attempt.
+   * `undefined` when no error has occurred. Cleared optimistically
+   * when a new {@link submit} starts.
+   */
   readonly error: ComputedRef<unknown>;
+  /**
+   * Id of the thread the controller is bound to. `null` until the
+   * first {@link submit} creates or selects a thread (or until an
+   * explicit `threadId` option is provided and hydrated).
+   */
   readonly threadId: ComputedRef<string | null>;
-
   /**
    * Promise that settles when the active thread's initial hydration
    * completes. Exposed so `async setup()` sites can
-   * `await stream.hydrationPromise` to implement a Suspense-like
-   * boundary.
+   * `await stream.hydrationPromise.value` to implement a
+   * Suspense-like boundary. A fresh promise is installed on every
+   * `threadId` change.
    */
   readonly hydrationPromise: ComputedRef<Promise<void>>;
 
+  // ----- always-on discovery -----
+  /**
+   * Subagents discovered on the root run. For DeepAgent-typed
+   * streams the key set is narrowed to the subagent names declared
+   * on the agent brand (`keyof InferSubagentStates<T>`).
+   */
   readonly subagents: Readonly<
     ShallowRef<
       ReadonlyMap<
@@ -124,27 +207,77 @@ export interface UseStreamReturn<
       >
     >
   >;
+  /**
+   * Subgraphs discovered on the root run.
+   *
+   * A namespace is classified as a subgraph iff at least one
+   * strictly-deeper namespace has been observed with it as a prefix.
+   * This is inferred from the lifecycle event stream — plain function
+   * nodes (`orchestrator`, `writer` in the nested-stategraph example)
+   * never appear here even though the server emits namespaced
+   * lifecycle events for them. Promotion is monotonic and retroactive;
+   * an entry appears as soon as the first descendant event lands.
+   */
   readonly subgraphs: Readonly<
     ShallowRef<ReadonlyMap<string, SubgraphDiscoverySnapshot>>
   >;
+  /**
+   * Subgraphs indexed by the graph node that produced them
+   * (`addNode("visualizer_0", …)`). Each value is an array because
+   * parallel fan-outs and loops can spawn multiple invocations of
+   * the same node; arrays preserve insertion order. Updates in
+   * lock-step with {@link subgraphs}.
+   */
   readonly subgraphsByNode: Readonly<
     ShallowRef<ReadonlyMap<string, readonly SubgraphDiscoverySnapshot[]>>
   >;
 
+  // ----- imperatives -----
+  /**
+   * Dispatch a new run on the bound thread.
+   *
+   * `input` is typed as `Partial<StateType>` so IDE autocompletion
+   * surfaces the state keys declared on the root composable. Pass
+   * `null` (or omit fields) when resuming an interrupt via
+   * `options.command.resume` — the server accepts a null payload
+   * in that case.
+   */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
+  /**
+   * Abort the in-flight run on the current thread without clearing
+   * accumulated state. Sets {@link isLoading} to `false` immediately;
+   * {@link values} and {@link messages} are preserved.
+   */
   stop(): Promise<void>;
+  /**
+   * Resume a pending protocol interrupt by sending a response payload
+   * back to the interrupted namespace.
+   *
+   * When `target` is omitted, responds to the latest unresolved
+   * interrupt in {@link interrupts}. Pass an explicit
+   * `{ interruptId, namespace? }` when multiple interrupts are
+   * pending or the interrupt lives in a subgraph namespace.
+   */
   respond(
     response: unknown,
     target?: { interruptId: string; namespace?: string[] }
   ): Promise<void>;
 
+  // ----- identity -----
+  /** LangGraph SDK client used to construct thread streams. */
   readonly client: Client;
+  /** Assistant id the thread is bound to for its lifetime. */
   readonly assistantId: string;
 
-  /** v2 escape hatch — returns the bound {@link ThreadStream}. */
+  /**
+   * Returns the bound {@link ThreadStream}, if one exists (`undefined`
+   * until the thread is hydrated or the first submit completes). Prefer
+   * the projections and selector composables for UI work; use this for
+   * low-level protocol access (raw subscriptions, state commands, etc.).
+   */
   getThread(): ThreadStream | undefined;
 
   /** @internal Used by selector composables. */
@@ -404,33 +537,38 @@ export function useStream<
   if (tools?.length) {
     watch(
       () => [rootRef.value.values, rootRef.value.interrupts] as const,
-      ([rootValues, rootInterrupts]) => {
-        const bag = rootValues as unknown as Record<string, unknown>;
-        const existing = Array.isArray(bag?.__interrupt__)
-          ? (bag.__interrupt__ as Interrupt[])
-          : [];
-        const combined: Interrupt[] = [
-          ...existing,
-          ...(rootInterrupts as unknown as Interrupt[]),
-        ];
-        if (combined.length === 0) return;
-        flushPendingHeadlessToolInterrupts(
-          { ...bag, __interrupt__: combined },
-          tools,
-          handledTools,
-          {
-            onTool,
-            defer: (run) => {
-              void Promise.resolve().then(run);
-            },
-            resumeSubmit: (command) =>
-              controller.submit(null, {
-                command,
-              } as StreamSubmitOptions<StateType, ConfigurableType>),
-          }
-        );
+      () => {
+        scheduleCoalescedHeadlessToolFlush(handledTools, () => {
+          const rootValues = rootRef.value.values;
+          const rootInterrupts = rootRef.value.interrupts;
+          const bag = rootValues as unknown as Record<string, unknown>;
+          const protocolInterrupts = rootInterrupts as unknown as Interrupt[];
+          const valuesInterrupts = Array.isArray(bag?.__interrupt__)
+            ? (bag.__interrupt__ as Interrupt[])
+            : [];
+          const headlessInterrupts =
+            protocolInterrupts.length > 0
+              ? protocolInterrupts
+              : valuesInterrupts;
+          if (headlessInterrupts.length === 0) return;
+          flushPendingHeadlessToolInterrupts(
+            { ...bag, __interrupt__: headlessInterrupts },
+            tools,
+            handledTools,
+            {
+              onTool,
+              defer: (run) => {
+                void Promise.resolve().then(run);
+              },
+              resumeSubmit: (command) =>
+                controller.submit(null, {
+                  command,
+                } as StreamSubmitOptions<StateType, ConfigurableType>),
+            }
+          );
+        });
       },
-      { immediate: true, flush: "sync" }
+      { immediate: true }
     );
   }
 
