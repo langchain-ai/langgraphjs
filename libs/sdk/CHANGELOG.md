@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.9.6
+
+### Patch Changes
+
+- [#2430](https://github.com/langchain-ai/langgraphjs/pull/2430) [`f99941f`](https://github.com/langchain-ai/langgraphjs/commit/f99941f5fe8671ddcb6a78e93e5e05f4028d4af4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear subgraph and subagent discovery on thread swap
+
+  Reset discovery stores in `StreamController.#teardownThread()` so starting a
+  new thread does not leave stale subgraph cards or subagent entries from the
+  previous run.
+
 ## 1.9.5
 
 ### Patch Changes
