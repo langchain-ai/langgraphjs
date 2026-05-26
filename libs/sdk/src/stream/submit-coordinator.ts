@@ -418,7 +418,7 @@ export class SubmitCoordinator<
         // don't call `#abandonDeferredRootPump` on failure here.
         void commandPromise.then(
           () => this.#startDeferredRootPump(),
-          () => { }
+          () => {}
         );
         // Mark resolved synchronously: even if the response races and
         // the command settles after the terminal, we don't want to
