@@ -1,5 +1,18 @@
 # @langchain/svelte
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2435](https://github.com/langchain-ai/langgraphjs/pull/2435) [`cfc8d27`](https://github.com/langchain-ai/langgraphjs/commit/cfc8d274e4dc99cb73ebd9abc4f971622105f08e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): unwrap Command tool outputs and hide scoped task tools
+
+  Filter wrapper `task` dispatch events from subagent-scoped tool-call
+  projections and parse embedded ToolMessage results from LangGraph
+  `Command` payloads on `tool-finished`.
+
+- Updated dependencies [[`cfc8d27`](https://github.com/langchain-ai/langgraphjs/commit/cfc8d274e4dc99cb73ebd9abc4f971622105f08e), [`6b188e8`](https://github.com/langchain-ai/langgraphjs/commit/6b188e80ab989fc8396e1926f729d93b786ca671)]:
+  - @langchain/langgraph-sdk@1.9.7
+
 ## 1.0.6
 
 ### Patch Changes
