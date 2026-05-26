@@ -57,6 +57,7 @@ export {
 export type {
   AnyMediaHandle,
   AssembledToolCall,
+  AssembledToolCallFromTool as ToolCallFromTool,
   AudioMedia,
   Channel,
   Event,
@@ -85,6 +86,7 @@ export type {
   InferSubagentStates,
   WidenUpdateMessages,
   AgentServerAdapter,
+  InferToolOutput,
 } from "@langchain/langgraph-sdk/stream";
 export { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
 export type { HttpAgentServerAdapterOptions } from "@langchain/langgraph-sdk";
@@ -101,7 +103,6 @@ export type ToolCallWithResult<ToolCall = DefaultToolCall> =
 export type {
   ToolCallState,
   DefaultToolCall,
-  ToolCallFromTool,
   ToolCallsFromTools,
 } from "@langchain/langgraph-sdk";
 export type {

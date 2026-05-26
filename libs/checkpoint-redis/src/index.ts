@@ -673,24 +673,25 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
-    // Delete checkpoints
     const checkpointPattern = `checkpoint:${threadId}:*`;
-    // Use scan for better performance and cluster compatibility
-    // Use keys for simplicity - scan would be better for large datasets
     const checkpointKeys = await (this.client as any).keys(checkpointPattern);
 
     if (checkpointKeys.length > 0) {
       await this.client.del(checkpointKeys);
     }
 
-    // Delete writes
-    const writesPattern = `writes:${threadId}:*`;
-    // Use scan for better performance and cluster compatibility
-    // Use keys for simplicity - scan would be better for large datasets
+    const writesPattern = `checkpoint_write:${threadId}:*`;
     const writesKeys = await (this.client as any).keys(writesPattern);
 
     if (writesKeys.length > 0) {
       await this.client.del(writesKeys);
+    }
+
+    const zsetPattern = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:*`;
+    const zsetKeys = await (this.client as any).keys(zsetPattern);
+
+    if (zsetKeys.length > 0) {
+      await this.client.del(zsetKeys);
     }
   }
 

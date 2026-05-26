@@ -124,6 +124,38 @@ function valuesEvent(messages: unknown[], seq: number): Event {
   } as Event;
 }
 
+function lifecycleEvent(event: string, seq: number): Event {
+  return {
+    type: "event",
+    event_id: `lifecycle-${event}-${seq}`,
+    seq,
+    method: "lifecycle",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: { event },
+    },
+  } as Event;
+}
+
+function namespacedLifecycleEvent(
+  namespace: readonly string[],
+  event: "started" | "completed",
+  seq: number
+): Event {
+  return {
+    type: "event",
+    event_id: `lifecycle-${namespace.join("/")}-${event}-${seq}`,
+    seq,
+    method: "lifecycle",
+    params: {
+      namespace,
+      timestamp: 0,
+      data: { event },
+    },
+  } as Event;
+}
+
 async function waitForExpectation(assertion: () => void): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
@@ -285,6 +317,48 @@ describe("StreamController", () => {
     });
 
     unsubscribe();
+    await controller.dispose();
+  });
+
+  it("fires onCompleted without runId for re-attached run terminals", async () => {
+    const rootSubscription = makePushableSubscription();
+    const onCompleted = vi.fn();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-1",
+      onCompleted,
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    await rootSubscription.started;
+
+    rootSubscription.push(lifecycleEvent("running", 1));
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    });
+
+    rootSubscription.push(lifecycleEvent("completed", 2));
+    await waitForExpectation(() => {
+      expect(onCompleted).toHaveBeenCalledWith({ reason: "success" });
+    });
+
     await controller.dispose();
   });
 
@@ -507,6 +581,48 @@ describe("StreamController", () => {
     await controller.hydrationPromise;
 
     expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    await controller.dispose();
+  });
+
+  it("hydrate(null) clears subgraph discovery from the previous thread", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "graph-execution-cards",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    onEvent?.(namespacedLifecycleEvent(["classify:u1"], "started", 1));
+    onEvent?.(
+      namespacedLifecycleEvent(["classify:u1", "inner:u2"], "started", 2)
+    );
+    await waitForExpectation(() => {
+      expect(controller.subgraphStore.getSnapshot().size).toBeGreaterThan(0);
+    });
+
+    await controller.hydrate(null);
+
+    expect(controller.subgraphStore.getSnapshot().size).toBe(0);
+    expect(controller.subgraphByNodeStore.getSnapshot().size).toBe(0);
     await controller.dispose();
   });
 

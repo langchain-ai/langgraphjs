@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { render } from "vitest-browser-vue";
+import type { RunExecutionInfo } from "@langchain/langgraph-sdk/stream";
 
 import { BasicStream } from "./components/BasicStream.js";
 import { SwitchThreadStream } from "./components/SwitchThreadStream.js";
@@ -7,8 +8,7 @@ import { apiUrl } from "./test-utils.js";
 
 it("assigns a thread id on first submit and surfaces it via onThreadId", async () => {
   const onThreadId = vi.fn<(threadId: string) => void>();
-  const onCreated =
-    vi.fn<(meta: { run_id: string; thread_id: string }) => void>();
+  const onCreated = vi.fn<(info: RunExecutionInfo) => void>();
 
   const screen = await render(BasicStream, {
     props: { apiUrl, onThreadId, onCreated },
@@ -40,8 +40,8 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
       .poll(() => onCreated.mock.calls.length)
       .toBeGreaterThanOrEqual(1);
     const created = onCreated.mock.calls[0][0];
-    expect(typeof created.run_id).toBe("string");
-    expect(created.thread_id).toBe(threadId);
+    expect(typeof created.runId).toBe("string");
+    expect(created.runId.length).toBeGreaterThan(0);
   } finally {
     await screen.unmount();
   }

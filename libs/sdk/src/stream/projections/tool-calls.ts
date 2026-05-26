@@ -4,9 +4,9 @@
  * Opens `thread.subscribe({ channels: ["tools"], namespaces: [ns] })`,
  * feeds events through {@link ToolCallAssembler}, and surfaces an
  * array of {@link AssembledToolCall}s that grows as calls are
- * discovered. Each assembled call carries `output`/`status`/`error`
- * promises for consumers that want to await completion without
- * re-subscribing.
+ * discovered. Each handle exposes reactive {@link AssembledToolCall.status},
+ * {@link AssembledToolCall.error}, and {@link AssembledToolCall.output}
+ * (`null` until the call succeeds).
  */
 import type { ToolsEvent } from "@langchain/protocol";
 import { ToolCallAssembler } from "../../client/stream/handles/tools.js";

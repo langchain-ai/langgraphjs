@@ -7,7 +7,11 @@ import {
 } from "./submit-coordinator.js";
 import { StreamStore } from "./store.js";
 import type { ThreadStream } from "../client/stream/index.js";
-import type { RootSnapshot, StreamControllerOptions } from "./types.js";
+import type {
+  RootSnapshot,
+  RunExecutionReason,
+  StreamControllerOptions,
+} from "./types.js";
 
 interface State {
   count?: number;
@@ -52,6 +56,10 @@ interface Harness {
   abandonDeferredRootPump: ReturnType<typeof vi.fn>;
   forgetSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   markInterruptResolved: ReturnType<typeof vi.fn>;
+  onRunStart: ReturnType<typeof vi.fn>;
+  onRunCreated: ReturnType<typeof vi.fn>;
+  onRunCompleted: ReturnType<typeof vi.fn>;
+  onRunEnd: ReturnType<typeof vi.fn>;
   rememberSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   setCurrentThreadId: ReturnType<typeof vi.fn>;
   threadIds: string[];
@@ -144,6 +152,12 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   const rememberSelfCreatedThreadId = vi.fn(() => undefined);
   const forgetSelfCreatedThreadId = vi.fn(() => undefined);
   const markInterruptResolved = vi.fn(() => undefined);
+  const onRunStart = vi.fn(() => undefined);
+  const onRunCreated = vi.fn(() => undefined);
+  const onRunCompleted = vi.fn(
+    (_reason: RunExecutionReason, _runId?: string) => undefined
+  );
+  const onRunEnd = vi.fn(() => undefined);
 
   const onCreated = vi.fn();
   const onThreadId = vi.fn();
@@ -171,8 +185,28 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
-    latestUnresolvedInterrupt: () => latestInterrupt,
+    buildResumeRunInput: (resume: unknown) => {
+      if (
+        resume != null &&
+        typeof resume === "object" &&
+        !Array.isArray(resume)
+      ) {
+        const keys = Object.keys(resume as Record<string, unknown>);
+        if (
+          keys.length > 0 &&
+          keys.every((key) => /^[0-9a-f]{32}$/i.test(key))
+        ) {
+          return resume as Record<string, unknown>;
+        }
+      }
+      if (latestInterrupt == null) return null;
+      return { [latestInterrupt.interruptId]: resume };
+    },
     markInterruptResolved,
+    onRunStart,
+    onRunCreated,
+    onRunCompleted,
+    onRunEnd,
   });
 
   return {
@@ -213,6 +247,10 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     forgetSelfCreatedThreadId,
     markInterruptResolved,
+    onRunStart,
+    onRunCreated,
+    onRunCompleted,
+    onRunEnd,
     rememberSelfCreatedThreadId,
     setCurrentThreadId,
     threadIds: [],
@@ -271,7 +309,7 @@ describe("SubmitCoordinator", () => {
       expect(h.rootStore.getSnapshot().isLoading).toBe(false);
     });
 
-    it("invokes onCreated with the dispatch result", async () => {
+    it("notifies when a run is created with the dispatch result", async () => {
       const h = makeHarness();
       const submitPromise = h.coordinator.submit({ count: 1 });
       await h.terminalRegistered();
@@ -280,10 +318,43 @@ describe("SubmitCoordinator", () => {
       await vi.runAllTimersAsync();
       await submitPromise;
 
-      expect(h.options.onCreated).toHaveBeenCalledWith({
-        run_id: "run-42",
-        thread_id: "thread-1",
-      });
+      expect(h.onRunCreated).toHaveBeenCalledWith("run-42");
+    });
+
+    it.each([
+      ["completed", "success"],
+      ["failed", "error"],
+      ["interrupted", "interrupt"],
+    ] as const)(
+      "notifies onCompleted with reason %s -> %s",
+      async (event, reason) => {
+        const h = makeHarness();
+        const submitPromise = h.coordinator.submit({ count: 1 });
+        await h.terminalRegistered();
+        h.resolveSubmit({ run_id: "run-42" });
+        h.resolveTerminal({ event });
+        await vi.runAllTimersAsync();
+        await submitPromise;
+
+        expect(h.onRunCompleted).toHaveBeenCalledWith(reason, "run-42");
+      }
+    );
+
+    it("keeps onCreated before onCompleted for very fast runs", async () => {
+      const h = makeHarness();
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(h.onRunCompleted).not.toHaveBeenCalled();
+
+      h.resolveSubmit({ run_id: "run-fast" });
+      await flush();
+
+      expect(h.onRunCreated).toHaveBeenCalledWith("run-fast");
+      expect(h.onRunCompleted).toHaveBeenCalledWith("success", "run-fast");
     });
 
     it("merges thread_id into config.configurable without losing user fields", async () => {
@@ -326,6 +397,8 @@ describe("SubmitCoordinator", () => {
       expect(h.rootStore.getSnapshot().error).toBe(err);
       expect(onError).toHaveBeenCalledWith(err);
       expect(h.rootStore.getSnapshot().isLoading).toBe(false);
+      expect(h.onRunCreated).not.toHaveBeenCalled();
+      expect(h.onRunCompleted).not.toHaveBeenCalled();
     });
 
     it("captures `failed` terminal events into an Error", async () => {
@@ -534,6 +607,8 @@ describe("SubmitCoordinator", () => {
       h.resolveSubmit();
       await vi.runAllTimersAsync();
       await submitPromise;
+
+      expect(h.onRunCompleted).toHaveBeenCalledWith("stopped", "run-1");
     });
 
     it("abortActiveRun() aborts without forcing isLoading=false", async () => {
@@ -551,7 +626,7 @@ describe("SubmitCoordinator", () => {
   });
 
   describe("submit({ command: { resume } })", () => {
-    it("calls respondInput on the active interrupt and marks it resolved", async () => {
+    it("uses submitRun for a single resume and marks the interrupt resolved", async () => {
       const h = makeHarness();
       h.setLatestInterrupt({
         interruptId: "interrupt-1",
@@ -563,21 +638,23 @@ describe("SubmitCoordinator", () => {
       });
       await h.terminalRegistered();
 
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
+      expect(h.respondInput).not.toHaveBeenCalled();
+      expect(h.submitRun).toHaveBeenCalledWith({
+        input: { "interrupt-1": { value: 42 } },
         config: { configurable: { thread_id: "thread-1" } },
         metadata: undefined,
       });
       expect(h.markInterruptResolved).toHaveBeenCalledWith("interrupt-1");
 
+      h.resolveSubmit();
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await submitPromise;
+
+      expect(h.onRunCompleted).toHaveBeenCalledWith("success", undefined);
     });
 
-    it("forwards caller-supplied config and metadata through to respondInput", async () => {
+    it("forwards caller-supplied config and metadata through to submitRun", async () => {
       const h = makeHarness();
       h.setLatestInterrupt({
         interruptId: "interrupt-1",
@@ -593,12 +670,9 @@ describe("SubmitCoordinator", () => {
       });
       await h.terminalRegistered();
 
-      // bindThreadConfig merges the caller's configurable with the
-      // thread_id stamp — both must survive.
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
+      expect(h.respondInput).not.toHaveBeenCalled();
+      expect(h.submitRun).toHaveBeenCalledWith({
+        input: { "interrupt-1": { value: 42 } },
         config: {
           configurable: {
             thread_id: "thread-1",
@@ -608,6 +682,50 @@ describe("SubmitCoordinator", () => {
         metadata: { user_id: "u-1", trace_id: "t-9" },
       });
 
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+    });
+
+    it("uses submitRun for interrupt-id keyed batch resume commands", async () => {
+      const h = makeHarness();
+
+      const submitPromise = h.coordinator.submit(null, {
+        command: {
+          resume: {
+            "4b704fd4b473bfd68df40c9979bffe1b": {
+              toolu_01A: { success: true },
+            },
+            "c485a7b6c996d3ace440d2afd6f292a3": {
+              toolu_01B: { success: true },
+            },
+          },
+        },
+      });
+      await h.terminalRegistered();
+
+      expect(h.respondInput).not.toHaveBeenCalled();
+      expect(h.submitRun).toHaveBeenCalledWith({
+        input: {
+          "4b704fd4b473bfd68df40c9979bffe1b": {
+            toolu_01A: { success: true },
+          },
+          "c485a7b6c996d3ace440d2afd6f292a3": {
+            toolu_01B: { success: true },
+          },
+        },
+        config: { configurable: { thread_id: "thread-1" } },
+        metadata: undefined,
+      });
+      expect(h.markInterruptResolved).toHaveBeenCalledWith(
+        "4b704fd4b473bfd68df40c9979bffe1b"
+      );
+      expect(h.markInterruptResolved).toHaveBeenCalledWith(
+        "c485a7b6c996d3ace440d2afd6f292a3"
+      );
+
+      h.resolveSubmit();
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await submitPromise;

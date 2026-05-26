@@ -145,6 +145,26 @@ export function registerProtocolRoutes(
     return protocolSession;
   }
 
+  async function hasPendingInterruptsForThread(
+    thread: EmbedThread
+  ): Promise<boolean> {
+    const assistantId = thread.assistantId;
+    if (assistantId == null) return false;
+    try {
+      const graph = await context.getGraph(assistantId);
+      const snapshot = await graph.getState(
+        { configurable: { thread_id: thread.threadId } },
+        { subgraphs: true }
+      );
+      return (snapshot.tasks ?? []).some(
+        (task: { interrupts?: unknown[] }) =>
+          Array.isArray(task.interrupts) && task.interrupts.length > 0
+      );
+    } catch {
+      return false;
+    }
+  }
+
   async function handleRunStart(thread: EmbedThread, command: ProtocolCommand) {
     const params: Record<string, unknown> = isRecord(command.params)
       ? command.params
@@ -213,10 +233,28 @@ export function registerProtocolRoutes(
       return typeof id === "string" && id.length > 0 ? id : undefined;
     })();
 
+    const currentRun = thread.currentRun;
+    const currentStatus = currentRun?.status;
+    const hasPendingInterrupts =
+      params.input != null
+        ? await hasPendingInterruptsForThread(thread)
+        : false;
+    const isResume =
+      params.input != null &&
+      ((currentRun != null && currentStatus === "interrupted") ||
+        hasPendingInterrupts);
+
+    if (isResume) {
+      // Drop stale lifecycle events from the paused run so late-attaching
+      // sinks do not replay `lifecycle.interrupted` after resume.
+      thread.queuedEvents.length = 0;
+    }
+
     const run = createStubRun(thread.threadId, {
       assistant_id: assistantId,
       on_disconnect: "cancel",
-      input: params.input ?? null,
+      input: isResume ? null : (params.input ?? null),
+      command: isResume ? { resume: params.input } : undefined,
       config: {
         configurable: {
           ...(isRecord(params.config) && isRecord(params.config.configurable)
@@ -229,7 +267,9 @@ export function registerProtocolRoutes(
       // fact, *replaces* any inline configurable the caller passed),
       // so this is the only reliable way to reach the engine with a
       // fork target.
-      ...(forkCheckpointId != null ? { checkpoint_id: forkCheckpointId } : {}),
+      ...(forkCheckpointId != null && !isResume
+        ? { checkpoint_id: forkCheckpointId }
+        : {}),
       metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,

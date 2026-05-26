@@ -8,7 +8,10 @@ import {
   SubscriptionHandle,
   ThreadStream,
 } from "./index.js";
-import { ToolCallAssembler } from "./handles/tools.js";
+import {
+  ToolCallAssembler,
+  parseToolOutput,
+} from "./handles/tools.js";
 import type { ThreadExtension } from "./types.js";
 import {
   MockSseTransport,
@@ -196,7 +199,7 @@ describe("SubscriptionHandle", () => {
     const handle = new SubscriptionHandle<Event>(
       "sub_1",
       { channels: ["messages"] },
-      async () => {}
+      async () => { }
     );
     handle.push(
       eventOf(
@@ -213,7 +216,7 @@ describe("SubscriptionHandle", () => {
     const handle = new SubscriptionHandle<Event>(
       "sub_2",
       { channels: ["messages"] },
-      async () => {}
+      async () => { }
     );
     const iterator = handle[Symbol.asyncIterator]();
     const pending = iterator.next();
@@ -226,7 +229,7 @@ describe("SubscriptionHandle", () => {
     const handle = new SubscriptionHandle<Event>(
       "sub_3",
       { channels: ["messages"] },
-      async () => {}
+      async () => { }
     );
     handle.close();
     handle.push(
@@ -535,7 +538,125 @@ describe("ProtocolError", () => {
 });
 
 describe("ToolCallAssembler", () => {
-  it("assembles tool-started into AssembledToolCall with promise lifecycle", async () => {
+  it("parses JSON string input and output from wire events", async () => {
+    const assembler = new ToolCallAssembler();
+    const started = assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "tc_json",
+          tool_name: "search",
+          input: '{"q":"hello"}',
+        },
+        { namespace: [], seq: 1 }
+      ) as never
+    );
+    expect(started?.input).toEqual({ q: "hello" });
+
+    assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "tc_json",
+          output: '{"result":"ok"}',
+        },
+        { namespace: [], seq: 2 }
+      ) as never
+    );
+
+    await expect(started!.outputPromise).resolves.toEqual({ result: "ok" });
+  });
+
+  it("unwraps ToolMessage wire output into the tool return value", async () => {
+    const assembler = new ToolCallAssembler();
+    const started = assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "tc_calc",
+          tool_name: "calculator",
+          input: '{"expression":"1 + 2"}',
+        },
+        { namespace: [], seq: 1 }
+      ) as never
+    );
+
+    assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "tc_calc",
+          output: {
+            type: "tool",
+            status: "success",
+            content:
+              '{"expression":"1 + 2","result":3}',
+            tool_call_id: "tc_calc",
+            name: "calculator",
+          },
+        },
+        { namespace: [], seq: 2 }
+      ) as never
+    );
+
+    expect(started!.output).toEqual({ expression: "1 + 2", result: 3 });
+    await expect(started!.outputPromise).resolves.toEqual({
+      expression: "1 + 2",
+      result: 3,
+    });
+  });
+
+  it("returns plain string tool output unchanged", async () => {
+    const assembler = new ToolCallAssembler();
+    const started = assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "tc_str",
+          tool_name: "echo",
+          input: {},
+        },
+        { namespace: [], seq: 1 }
+      ) as never
+    );
+
+    assembler.consume(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "tc_str",
+          output: {
+            type: "tool",
+            content: "Weather in SF: sunny",
+            tool_call_id: "tc_str",
+            name: "echo",
+          },
+        },
+        { namespace: [], seq: 2 }
+      ) as never
+    );
+
+    expect(started!.output).toBe("Weather in SF: sunny");
+    await expect(started!.outputPromise).resolves.toBe("Weather in SF: sunny");
+  });
+
+  it("parseToolOutput returns null for empty ToolMessage content", () => {
+    expect(
+      parseToolOutput({
+        type: "tool",
+        content: "",
+        tool_call_id: "tc",
+      })
+    ).toBeNull();
+  });
+
+  it("assembles tool-started into a mutable handle with dual views", async () => {
     const assembler = new ToolCallAssembler();
     const started = assembler.consume(
       eventOf(
@@ -552,6 +673,11 @@ describe("ToolCallAssembler", () => {
     expect(started?.name).toBe("search");
     expect(started?.callId).toBe("tc_1");
     expect(started?.input).toEqual({ q: "hello" });
+    expect(started?.args).toEqual({ q: "hello" });
+    expect(started?.id).toBe("tc_1");
+    expect(started?.status).toBe("running");
+    expect(started?.output).toBeNull();
+    expect(started?.error).toBeUndefined();
 
     assembler.consume(
       eventOf(
@@ -565,8 +691,10 @@ describe("ToolCallAssembler", () => {
       ) as never
     );
 
-    await expect(started!.output).resolves.toEqual({ result: "ok" });
-    await expect(started!.status).resolves.toBe("finished");
+    await expect(started!.outputPromise).resolves.toEqual({ result: "ok" });
+    expect(started!.output).toEqual({ result: "ok" });
+    expect(started!.status).toBe("finished");
+    expect(started!.error).toBeUndefined();
   });
 
   it("resolves error status on tool-error", async () => {
@@ -590,8 +718,10 @@ describe("ToolCallAssembler", () => {
         { namespace: [], seq: 2 }
       ) as never
     );
-    await expect(started!.output).rejects.toThrow("boom");
-    await expect(started!.status).resolves.toBe("error");
+    await expect(started!.outputPromise).rejects.toThrow("boom");
+    expect(started!.output).toBeNull();
+    expect(started!.status).toBe("error");
+    expect(started!.error).toBe("boom");
   });
 
   it("ignores tool-output-delta events (returns undefined)", () => {
@@ -647,7 +777,6 @@ describe("thread.toolCalls projection", () => {
     expect(tc.callId).toBe("tc_sub_1");
     expect(tc.input).toEqual({ a: 3, b: 4 });
     await expect(tc.output).resolves.toEqual({ result: 7 });
-    await expect(tc.status).resolves.toBe("finished");
   });
 });
 
@@ -1164,6 +1293,62 @@ describe("interrupts", () => {
     expect(thread.interrupts).toHaveLength(1);
     expect(thread.interrupts[0].interruptId).toBe("int_1");
     expect(thread.interrupts[0].payload).toEqual({ action: "approve" });
+  });
+
+  it("respondInput removes only the targeted interrupt when several are pending", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+
+    const sub = await thread.subscribe({ channels: ["input"] });
+
+    transport.pushEvent(
+      eventOf(
+        "input.requested" as never,
+        {
+          interrupt_id: "int_1",
+          payload: {
+            type: "tool",
+            toolCall: {
+              id: "toolu_01A",
+              name: "memory_put",
+              args: { key: "user_name" },
+            },
+          },
+        } as never,
+        { namespace: [], seq: 1 }
+      )
+    );
+    await nextValue(sub);
+
+    transport.pushEvent(
+      eventOf(
+        "input.requested" as never,
+        {
+          interrupt_id: "int_2",
+          payload: {
+            type: "tool",
+            toolCall: {
+              id: "toolu_01B",
+              name: "memory_put",
+              args: { key: "user_role" },
+            },
+          },
+        } as never,
+        { namespace: [], seq: 2 }
+      )
+    );
+    await nextValue(sub);
+
+    expect(thread.interrupts).toHaveLength(2);
+
+    await thread.respondInput({
+      namespace: [],
+      interrupt_id: "int_1",
+      response: { toolu_01A: { success: true } },
+    });
+
+    expect(thread.interrupts).toHaveLength(1);
+    expect(thread.interrupts[0].interruptId).toBe("int_2");
   });
 
   it("run.start resets interrupted state", async () => {

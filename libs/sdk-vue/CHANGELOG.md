@@ -1,5 +1,31 @@
 # @langchain/vue
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2430](https://github.com/langchain-ai/langgraphjs/pull/2430) [`f99941f`](https://github.com/langchain-ai/langgraphjs/commit/f99941f5fe8671ddcb6a78e93e5e05f4028d4af4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear subgraph and subagent discovery on thread swap
+
+  Reset discovery stores in `StreamController.#teardownThread()` so starting a
+  new thread does not leave stale subgraph cards or subagent entries from the
+  previous run.
+
+- Updated dependencies [[`f99941f`](https://github.com/langchain-ai/langgraphjs/commit/f99941f5fe8671ddcb6a78e93e5e05f4028d4af4)]:
+  - @langchain/langgraph-sdk@1.9.6
+
+## 1.0.5
+
+### Patch Changes
+
+- [#2421](https://github.com/langchain-ai/langgraphjs/pull/2421) [`3529e38`](https://github.com/langchain-ai/langgraphjs/commit/3529e3831a488134e7dfaefa4ed7fb1140cf8bb6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(stream): align AssembledToolCall typing with pre-v1 expectations
+
+  Make `InferToolCalls` resolve to generic `AssembledToolCall` unions, expose
+  sync `status`/`error` for reactive bindings, and align type tests across
+  React, Vue, Svelte, and Angular SDK packages.
+
+- Updated dependencies [[`3529e38`](https://github.com/langchain-ai/langgraphjs/commit/3529e3831a488134e7dfaefa4ed7fb1140cf8bb6)]:
+  - @langchain/langgraph-sdk@1.9.5
+
 ## 1.0.4
 
 ### Patch Changes

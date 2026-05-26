@@ -63,10 +63,18 @@ import {
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
 } from "./submit-coordinator.js";
-import { upsertToolCall } from "./tool-calls.js";
+import {
+  reconcileToolCallsFromMessages,
+  upsertToolCall,
+} from "./tool-calls.js";
+import {
+  buildResumeRunInput,
+  resolveInterruptTargetForHeadlessResume,
+} from "../headless-tools.js";
 import type {
   RootEventBus,
   RootSnapshot,
+  RunExecutionReason,
   StreamControllerOptions,
   StreamSubmitOptions,
 } from "./types.js";
@@ -79,6 +87,13 @@ function isAbortLikeError(error: unknown): boolean {
     (typeof maybeError.message === "string" &&
       maybeError.message.includes("aborted"))
   );
+}
+
+function lifecycleReason(event: string | undefined): RunExecutionReason | null {
+  if (event === "completed") return "success";
+  if (event === "failed") return "error";
+  if (event === "interrupted") return "interrupt";
+  return null;
 }
 
 const ROOT_NAMESPACE: readonly string[] = [];
@@ -188,6 +203,8 @@ export class StreamController<
   readonly #selfCreatedThreadIds = new Set<string>();
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
+  #activeRunId: string | undefined;
+  #localRunDepth = 0;
 
   /**
    * Single-shot hydration promise. Exposed via `hydrationPromise`
@@ -274,7 +291,15 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
-      latestUnresolvedInterrupt: () => this.#latestUnresolvedInterrupt(),
+      buildResumeRunInput: (resume) => {
+        const thread = this.#thread;
+        if (thread == null) return null;
+        return buildResumeRunInput(
+          resume,
+          thread.interrupts,
+          this.#resolvedInterrupts
+        );
+      },
       markInterruptResolved: (interruptId) => {
         this.#resolvedInterrupts.add(interruptId);
       },
@@ -286,6 +311,10 @@ export class StreamController<
         this.#hydratedActiveInterruptIds = null;
         this.#submitGeneration += 1;
       },
+      onRunStart: () => this.#markLocalRunStart(),
+      onRunCreated: (runId) => this.#notifyCreated(runId),
+      onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
+      onRunEnd: () => this.#markLocalRunEnd(),
     });
     this.#hydrationPromise = this.#createHydrationPromise();
     /**
@@ -553,6 +582,55 @@ export class StreamController<
     await this.#submitter.stop();
   }
 
+  #markLocalRunStart(): void {
+    this.#localRunDepth += 1;
+  }
+
+  #markLocalRunEnd(): void {
+    this.#localRunDepth = Math.max(0, this.#localRunDepth - 1);
+  }
+
+  #notifyCreated(runId: string): void {
+    this.#activeRunId = runId;
+    try {
+      this.#options.onCreated?.({ runId });
+    } catch {
+      /* caller-supplied callback errors must not crash the stream */
+    }
+  }
+
+  #notifyCompleted(
+    reason: RunExecutionReason,
+    runId = this.#activeRunId
+  ): void {
+    if (runId != null && runId === this.#activeRunId) {
+      this.#activeRunId = undefined;
+    }
+    setTimeout(() => {
+      if (this.#disposed) return;
+      try {
+        this.#options.onCompleted?.(
+          runId == null ? { reason } : { runId, reason }
+        );
+      } catch {
+        /* caller-supplied callback errors must not crash the stream */
+      }
+    }, 0);
+  }
+
+  readonly #runLifecycleListener = (event: Event): void => {
+    if (this.#localRunDepth > 0) return;
+    if (event.method !== "lifecycle") return;
+    if (!isRootNamespace(event.params.namespace)) return;
+    if (!this.rootStore.getSnapshot().isLoading) return;
+    const lifecycle = (event as LifecycleEvent).params.data as {
+      event?: string;
+    };
+    const reason = lifecycleReason(lifecycle?.event);
+    if (reason == null) return;
+    this.#notifyCompleted(reason);
+  };
+
   /**
    * Cancel a queued submission by id. Returns `true` when the entry
    * was found and removed, `false` otherwise.
@@ -594,7 +672,7 @@ export class StreamController<
             interruptId: target.interruptId,
             namespace: target.namespace ?? [...ROOT_NAMESPACE],
           }
-        : this.#latestUnresolvedInterrupt();
+        : this.#resolveInterruptForResume();
     if (resolved == null) {
       throw new Error("No pending interrupt to respond to.");
     }
@@ -662,10 +740,12 @@ export class StreamController<
     }
   }
 
-  // ---------- escape hatches ----------
+  // ---------- thread access ----------
 
   /**
-   * Current underlying {@link ThreadStream} (v2 escape hatch).
+   * Returns the bound {@link ThreadStream}, if one exists. Prefer
+   * {@link StreamController.rootStore} and selector projections for
+   * UI work; use this for low-level protocol access.
    */
   getThread(): ThreadStream | undefined {
     return this.#thread;
@@ -823,6 +903,7 @@ export class StreamController<
      * listener set (a new one is installed in `#startRootPump`).
      */
     this.#rootEventListeners.delete(this.#lifecycleLoading.listener);
+    this.#rootEventListeners.delete(this.#runLifecycleListener);
     try {
       await this.#rootSubscription?.unsubscribe();
     } catch {
@@ -845,6 +926,10 @@ export class StreamController<
     this.#rootMessages.reset();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
+    this.#subagents.reset();
+    this.#subgraphs.reset();
+    this.#activeRunId = undefined;
+    this.#localRunDepth = 0;
     this.#messageMetadata.reset();
     // Drop the hydrate-window allowlist — the next thread's hydrate
     // will repopulate it from that thread's `state.tasks[].interrupts`.
@@ -906,6 +991,7 @@ export class StreamController<
      * that fires before any subscription event arrives.
      */
     this.#rootEventListeners.add(this.#lifecycleLoading.listener);
+    this.#rootEventListeners.add(this.#runLifecycleListener);
 
     this.#rootPump = (async () => {
       try {
@@ -1258,6 +1344,16 @@ export class StreamController<
       nextMessages = [];
     }
     this.#rootMessages.applyValues(nextValues, nextMessages);
+    if (nextMessages.length > 0) {
+      this.rootStore.setState((s) => {
+        const toolCalls = reconcileToolCallsFromMessages(
+          s.toolCalls,
+          nextMessages
+        );
+        if (toolCalls === s.toolCalls) return s;
+        return { ...s, toolCalls };
+      });
+    }
   }
 
   /**
@@ -1365,21 +1461,19 @@ export class StreamController<
   }
 
   /**
-   * Find the newest unresolved interrupt recorded on the active thread.
+   * Resolve which protocol interrupt a resume command should target.
+   * Headless-tool resumes are keyed by tool-call id; without matching
+   * on that id, parallel tool handlers would respond to the wrong
+   * interrupt (always the newest).
    */
-  #latestUnresolvedInterrupt(): ResolvedInterrupt | null {
+  #resolveInterruptForResume(resume?: unknown): ResolvedInterrupt | null {
     const thread = this.#thread;
     if (thread == null) return null;
-    for (let i = thread.interrupts.length - 1; i >= 0; i -= 1) {
-      const entry = thread.interrupts[i];
-      if (entry == null) continue;
-      if (this.#resolvedInterrupts.has(entry.interruptId)) continue;
-      return {
-        interruptId: entry.interruptId,
-        namespace: entry.namespace,
-      };
-    }
-    return null;
+    return resolveInterruptTargetForHeadlessResume(
+      resume,
+      thread.interrupts,
+      this.#resolvedInterrupts
+    );
   }
 
   /**

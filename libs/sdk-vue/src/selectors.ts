@@ -27,6 +27,7 @@ import {
   type Event,
   type FileMedia,
   type ImageMedia,
+  type InferToolCalls,
   type InferStateType,
   type MessageMetadata,
   type MessageMetadataMap,
@@ -130,6 +131,14 @@ const EMPTY_MESSAGES: BaseMessage[] = [];
  * lifecycle rules as {@link useMessages}; at the root this returns
  * `stream.toolCalls` directly.
  */
+export function useToolCalls(
+  stream: AnyStream,
+  target?: MaybeRefOrGetter<SelectorTarget>
+): Readonly<ShallowRef<AssembledToolCall[]>>;
+export function useToolCalls<T>(
+  stream: AnyStream,
+  target?: MaybeRefOrGetter<SelectorTarget>
+): Readonly<ShallowRef<InferToolCalls<T>[]>>;
 export function useToolCalls(
   stream: AnyStream,
   target?: MaybeRefOrGetter<SelectorTarget>

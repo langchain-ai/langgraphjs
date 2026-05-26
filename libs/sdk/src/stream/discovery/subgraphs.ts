@@ -56,6 +56,10 @@ export type SubgraphByNodeMap = ReadonlyMap<
   readonly SubgraphDiscoverySnapshot[]
 >;
 
+/** Stable empty maps — reused on {@link SubgraphDiscovery.reset}. */
+const EMPTY_SUBGRAPH_MAP: SubgraphMap = new Map();
+const EMPTY_SUBGRAPH_BY_NODE_MAP: SubgraphByNodeMap = new Map();
+
 interface MutableSubgraph {
   id: string;
   namespace: readonly string[];
@@ -210,6 +214,17 @@ export class SubgraphDiscovery {
 
   get byNodeSnapshot(): SubgraphByNodeMap {
     return this.byNodeStore.getSnapshot();
+  }
+
+  /**
+   * Drop all discovery state. Called on thread rebind / dispose so a
+   * new thread's subgraphs cannot bleed into the previous UI.
+   */
+  reset(): void {
+    this.#shadow.clear();
+    this.#promoted.clear();
+    this.store.setValue(EMPTY_SUBGRAPH_MAP);
+    this.byNodeStore.setValue(EMPTY_SUBGRAPH_BY_NODE_MAP);
   }
 
   #ensureShadow(

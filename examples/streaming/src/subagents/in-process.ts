@@ -52,7 +52,7 @@ for await (const sub of run.subagents) {
           console.log(
             `  [tool] ${tc.name}(${JSON.stringify(tc.input).slice(0, 80)})`
           );
-          const status = await tc.status;
+          const status = tc.status;
           console.log(`  [tool] ${tc.name} → ${status}`);
         }
       })();

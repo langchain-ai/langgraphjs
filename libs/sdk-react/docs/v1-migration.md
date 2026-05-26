@@ -129,7 +129,7 @@ These keep working without changes:
 | `threadId`, `onThreadId`                              | Unchanged. Pass `null` to detach; passing a new string reloads the thread and resubscribes. |
 | `initialValues`                                       | Unchanged.                                                                                  |
 | `messagesKey`                                         | Unchanged — defaults to `"messages"`.                                                       |
-| `onCreated`                                           | Still fires with `{ run_id, thread_id }`.                                                   |
+| `onCreated`                                           | Fires with `{ runId }`. Read the current thread from `stream.threadId` when needed.         |
 | `tools`, `onTool`                                     | Unchanged semantics; see §8.                                                                |
 
 ### 3.2 New option
@@ -139,13 +139,14 @@ These keep working without changes:
 | `transport`        | Two meanings: `"sse"` / `"websocket"` selects the built-in wire transport (LGP branch, default `"sse"`); an `AgentServerAdapter` instance flips the hook into the custom-adapter branch. |
 | `fetch`            | LGP branch only. Forwarded to the built-in SSE transport.                                                                                                                                |
 | `webSocketFactory` | LGP branch only. Forwarded to the built-in WebSocket transport.                                                                                                                          |
+| `onCompleted`      | Convenience callback for run-execution side effects. Fires with `{ runId?, reason }` when active streaming ends; `runId` may be absent for re-attached in-flight runs.                   |
 
 ### 3.3 Removed — with replacements
 
 | Legacy option                                                                                                                              | v1 replacement                                                                                                                                                                                                                                      |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `onError` (hook-level)                                                                                                                     | Read `stream.error` directly, or pass a per-submit `onError` via `submit(input, { onError })` — the v1 per-submit callback is fire-and-forget and scoped to the one submission it was passed to.                                                    |
-| `onFinish`                                                                                                                                 | Derive from `isLoading` transitioning `true → false`, or observe the thread via `useValues(stream)`.                                                                                                                                                |
+| `onFinish`                                                                                                                                 | Use `onCompleted` for imperative side effects, or derive render state from `isLoading` / `useValues(stream)`.                                                                                                                                       |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. The v2 protocol delivers these as structured store updates; read them via selector hooks (`useChannel`, `useExtension`) when you genuinely need raw events.                                                                                   |
 | `onStop`                                                                                                                                   | Drop. `stop()` now abort-signals the in-flight run and `values` reverts to the server's authoritative state. If you previously used `mutate` to optimistically tag UI, call `stream.submit(null, { command: { update: ... } })` after stop instead. |
 | `fetchStateHistory`                                                                                                                        | Drop. Fork/edit flows use `useMessageMetadata` + `submit({}, { forkFrom })` instead (§5).                                                                                                                                                           |
@@ -163,10 +164,11 @@ effects that watch the relevant projection:
 useStream({ onFinish: (state) => analytics.track("turn_finished", state) });
 
 // After
-const stream = useStream({ assistantId });
-useEffect(() => {
-  if (!stream.isLoading) analytics.track("turn_finished", stream.values);
-}, [stream.isLoading, stream.values]);
+useStream({
+  assistantId,
+  onCompleted: ({ runId, reason }) =>
+    analytics.track("turn_finished", { runId, reason }),
+});
 ```
 
 ---
@@ -281,8 +283,9 @@ reach for it unless you're typing an intermediate variable.
 | `interruptBefore`, `interruptAfter`                                                                                                                 | Drop — not supported in v2.                                                                                                                                               |
 | `metadata`                                                                                                                                          | Unchanged.                                                                                                                                                                |
 | `multitaskStrategy`                                                                                                                                 | Unchanged. `"rollback"` (default), `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
-| `onCompletion`, `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. Most of these map to protocol-v2 defaults; `optimisticValues` has no client-side analogue — reconcile via `values` after the run settles.                           |
-| **(new)** `onError`                                                                                                                                 | Per-submit fire-and-forget error callback. Fires only for the submission it was attached to. Transport-level `stream.error` updates still happen in parallel.             |
+| `onCompletion`                                                                                                                                     | Use the hook-level `onCompleted` option for run-completion side effects.                                                                                                  |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring`                 | Drop. Most of these map to protocol-v2 defaults; `optimisticValues` has no client-side analogue — reconcile via `values` after the run settles.                           |
+| **(new submit option)** `onError`                                                                                                                   | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error` updates still happen in parallel.                      |
 | **(new)** `threadId`                                                                                                                                | Per-submit thread override — rebinds the controller to the given thread before dispatching, then keeps it bound until the hook's `threadId` prop changes again.           |
 
 ```tsx
@@ -557,17 +560,22 @@ If you hand-rolled a `UseStreamTransport`, migrate to
 interface AgentServerAdapter {
   readonly threadId: string;
   open(): Promise<void>;
-  send(command: Command, options: { signal?: AbortSignal }): Promise<void>;
-  subscribe(options: {
-    onEvent: (event: ProtocolEvent) => void;
-    signal?: AbortSignal;
-  }): Promise<void>;
+  send(command: Command): Promise<CommandResponse | ErrorResponse | void>;
+  events(): AsyncIterable<Message>;
+  openEventStream?(params: SubscribeParams): EventStreamHandle;
   close(): Promise<void>;
 
   // Optional — implement if your server supports them:
-  getState?(): Promise<ThreadState>;
-  getHistory?(options?): Promise<ThreadState[]>;
-  openEventStream?(options?): Promise<ReadableStream<Uint8Array>>;
+  getState?(): Promise<{
+    values: unknown;
+    checkpoint?: { checkpoint_id?: string } | null;
+  } | null>;
+  getHistory?(options?: { limit?: number }): Promise<
+    Array<{
+      values: unknown;
+      checkpoint?: { checkpoint_id?: string } | null;
+    }>
+  >;
 }
 ```
 

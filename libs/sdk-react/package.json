@@ -1,6 +1,6 @@
 {
   "name": "@langchain/react",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "description": "React integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {

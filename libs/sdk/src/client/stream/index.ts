@@ -21,17 +21,18 @@ import { MultiCursorBuffer } from "./multi-cursor-buffer.js";
 import { ensureMessageInstances } from "../../ui/messages.js";
 import {
   ToolCallAssembler,
+  toClientAssembledToolCall,
   SubgraphDiscoveryHandle,
   SubgraphHandle,
   SubagentDiscoveryHandle,
   SubagentHandle,
 } from "./handles/index.js";
+import type { ClientAssembledToolCall } from "./handles/tools.js";
 import {
   StreamingMessageAssembler,
   toStreamingMessageHandle,
 } from "./messages.js";
 import type { StreamingMessageHandle } from "./messages.js";
-import type { AssembledToolCall } from "./handles/tools.js";
 import { MediaAssembler } from "./media.js";
 import type {
   AnyMediaHandle,
@@ -584,7 +585,7 @@ export class ThreadStream<
 
   #messagesIterable?: AsyncIterable<StreamingMessageHandle>;
   #valuesProjection?: AsyncIterable<unknown> & PromiseLike<unknown>;
-  #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
+  #toolCallsIterable?: AsyncIterable<ClientAssembledToolCall>;
   #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
   #subagentsIterable?: AsyncIterable<SubagentHandle>;
   #outputPromise?: Promise<unknown>;
@@ -814,10 +815,24 @@ export class ThreadStream<
    * Reset interrupt state and resume all paused user subscriptions.
    * Called before `run.start()` and `input.respond()` so that
    * iterators on the same handle pick up the next run's events.
+   *
+   * @param respondedInterruptId - When responding to one of several
+   *   pending interrupts, only that entry is removed. Clearing the
+   *   full list here would drop other headless-tool interrupts that
+   *   are still awaiting client execution.
    */
-  #prepareForNextRun(): void {
+  #prepareForNextRun(respondedInterruptId?: string): void {
     this.interrupted = false;
-    this.interrupts.length = 0;
+    if (respondedInterruptId != null) {
+      const index = this.interrupts.findIndex(
+        (entry) => entry.interruptId === respondedInterruptId
+      );
+      if (index >= 0) {
+        this.interrupts.splice(index, 1);
+      }
+    } else {
+      this.interrupts.length = 0;
+    }
     if (this.#terminalPauseTimer != null) {
       clearTimeout(this.#terminalPauseTimer);
       this.#terminalPauseTimer = undefined;
@@ -897,12 +912,12 @@ export class ThreadStream<
   }
 
   /**
-   * Tool calls with promise-based output/status/error.
+   * Tool calls with a promise-based {@link output} for script consumers.
    * Mirrors the in-process `run.toolCalls`.
    */
-  get toolCalls(): AsyncIterable<AssembledToolCall> {
+  get toolCalls(): AsyncIterable<ClientAssembledToolCall> {
     if (this.#toolCallsIterable) return this.#toolCallsIterable;
-    const buffer = new MultiCursorBuffer<AssembledToolCall>();
+    const buffer = new MultiCursorBuffer<ClientAssembledToolCall>();
     this.#toolCallsIterable = buffer;
     const assembler = new ToolCallAssembler();
     void this.#startProjection(
@@ -910,7 +925,7 @@ export class ThreadStream<
       (event) => {
         if (event.method !== "tools") return;
         const tc = assembler.consume(event as ToolsEvent);
-        if (tc) buffer.push(tc);
+        if (tc) buffer.push(toClientAssembledToolCall(tc));
       },
       () => buffer.close()
     );
@@ -1320,7 +1335,7 @@ export class ThreadStream<
     config?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
-    this.#prepareForNextRun();
+    this.#prepareForNextRun(params.interrupt_id);
     this.#startLifecycleWatcher();
     await this.#send(
       "input.respond",
@@ -2363,13 +2378,15 @@ export {
 export type { AssembledMessage, MessageAssemblyUpdate } from "./messages.js";
 export {
   ToolCallAssembler,
+  toClientAssembledToolCall,
   SubgraphDiscoveryHandle,
   SubgraphHandle,
   SubagentHandle,
   SubagentDiscoveryHandle,
 } from "./handles/index.js";
 export type {
-  AssembledToolCall,
+  ClientAssembledToolCall,
+  ClientAssembledToolCall as AssembledToolCall,
   ToolCallStatus,
   Subscribable,
 } from "./handles/index.js";

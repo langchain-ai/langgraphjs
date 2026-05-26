@@ -50,7 +50,8 @@ declare module "vitest" {
   }
 }
 
-type AnyPregel = Pregel<unknown, unknown, unknown, unknown, unknown>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPregel = Pregel<any, any, any, any, any>;
 
 const threads: ThreadSaver = (() => {
   const THREADS: Record<
@@ -471,16 +472,16 @@ class FakeHeadlessToolModel extends BaseChatModel {
   async _generate(messages?: BaseMessage[]): Promise<ChatResult> {
     const msg = this._needsToolCall(messages)
       ? new AIMessage({
-          content: "",
-          tool_calls: [
-            {
-              name: "get_location",
-              args: { highAccuracy: false },
-              id: "tool-call-browser-1",
-              type: "tool_call",
-            },
-          ],
-        })
+        content: "",
+        tool_calls: [
+          {
+            name: "get_location",
+            args: { highAccuracy: false },
+            id: "tool-call-browser-1",
+            type: "tool_call",
+          },
+        ],
+      })
       : new AIMessage("Location received!");
     return {
       generations: [{ text: (msg.content as string) || "", message: msg }],
