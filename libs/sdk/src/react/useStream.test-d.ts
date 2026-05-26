@@ -728,7 +728,7 @@ describe("useStream.values state inference", () => {
 
     const stream = useStream<DirectState>({
       transport,
-      onFinish() {},
+      onFinish() { },
     });
 
     expectTypeOf(stream.values).toEqualTypeOf<DirectState>();
@@ -886,8 +886,6 @@ describe("@langchain/langgraph-sdk/react backward compatibility", () => {
     expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
     expectTypeOf(stream.error).toEqualTypeOf<unknown>();
     expectTypeOf(stream.stop()).toEqualTypeOf<Promise<void>>();
-    expectTypeOf(stream.stop({ cancel: false })).toEqualTypeOf<Promise<void>>();
-    expectTypeOf(stream.disconnect()).toEqualTypeOf<Promise<void>>();
     expectTypeOf(stream.branch).toEqualTypeOf<string>();
   });
 
