@@ -9,7 +9,10 @@
  * (`null` until the call succeeds).
  */
 import type { ToolsEvent } from "@langchain/protocol";
-import { ToolCallAssembler } from "../../client/stream/handles/tools.js";
+import {
+  shouldIgnoreScopedTaskToolEvent,
+  ToolCallAssembler,
+} from "../../client/stream/handles/tools.js";
 import type { AssembledToolCall } from "../../client/stream/handles/tools.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";
@@ -30,14 +33,7 @@ export function toolCallsProjection(
       const assembler = new ToolCallAssembler();
 
       const applyToolsEvent = (event: ToolsEvent): void => {
-        const data = event.params.data;
-        if (
-          ns.length > 0 &&
-          event.params.namespace.length === ns.length &&
-          data.tool_name === "task"
-        ) {
-          return;
-        }
+        if (shouldIgnoreScopedTaskToolEvent(ns, event)) return;
         const tc = assembler.consume(event);
         if (tc == null) return;
         const next = upsertToolCall(store.getSnapshot(), tc);

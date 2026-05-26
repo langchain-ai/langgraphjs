@@ -1181,6 +1181,94 @@ describe("thread.subagents projection", () => {
 
     await expect(sub.output).rejects.toThrow("Subagent crashed");
   });
+
+  it("does not surface wrapper task tools on sub.toolCalls", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const iter = thread.subagents[Symbol.asyncIterator]();
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "task_1",
+          tool_name: "task",
+          input: { description: "Research", subagent_type: "researcher" },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 1 }
+      )
+    );
+
+    const sub = (await iter.next()).value as SubagentHandle;
+    const toolCalls = sub.toolCalls;
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "task_1",
+          output: {
+            lg_name: "Command",
+            update: {
+              messages: [
+                {
+                  type: "ai",
+                  content: [{ type: "text", text: "Done" }],
+                },
+              ],
+            },
+          },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 2 }
+      )
+    );
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "search-1",
+          tool_name: "search_web",
+          input: { query: "AI trends" },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 3 }
+      )
+    );
+
+    const tc = await nextValue(toolCalls);
+    expect(tc.name).toBe("search_web");
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "search-1",
+          output: {
+            lg_name: "Command",
+            update: {
+              messages: [
+                {
+                  type: "tool",
+                  tool_call_id: "search-1",
+                  name: "search_web",
+                  content: JSON.stringify({ results: ["one"] }),
+                },
+              ],
+            },
+          },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 4 }
+      )
+    );
+
+    await expect(tc.output).resolves.toEqual({ results: ["one"] });
+  });
 });
 
 describe("SSE transport: per-stream delivery", () => {
