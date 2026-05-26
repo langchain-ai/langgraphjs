@@ -1,9 +1,9 @@
 ---
-"@langchain/langgraph-sdk": minor
-"@langchain/react": minor
-"@langchain/vue": minor
-"@langchain/svelte": minor
-"@langchain/angular": minor
+"@langchain/langgraph-sdk": patch
+"@langchain/react": patch
+"@langchain/vue": patch
+"@langchain/svelte": patch
+"@langchain/angular": patch
 ---
 
 feat(stream): cancel runs on stop by default and add disconnect()

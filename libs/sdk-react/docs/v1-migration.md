@@ -109,6 +109,9 @@ flagged in the later sections.
       `hydrationPromise`, plus `isStreaming`). Remove any
       `suspenseCache`, `createSuspenseCache`, or `fetchStateHistory`
       props (see §11).
+- [ ] **Replace `submit(..., { onDisconnect, streamResumable })`** with
+      `stream.stop()` (cancel, default) or `stream.disconnect()`
+      (join/rejoin) on the stream handle (see §5.3).
 - [ ] **Re-run `tsc`**. The option bag and return type are now
       discriminated and strongly typed; most remaining issues will
       surface as type errors that map to one of the sections below.
@@ -148,7 +151,7 @@ These keep working without changes:
 | `onError` (hook-level)                                                                                                                     | Read `stream.error` directly, or pass a per-submit `onError` via `submit(input, { onError })` — the v1 per-submit callback is fire-and-forget and scoped to the one submission it was passed to.                                                    |
 | `onFinish`                                                                                                                                 | Use `onCompleted` for imperative side effects, or derive render state from `isLoading` / `useValues(stream)`.                                                                                                                                       |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. The v2 protocol delivers these as structured store updates; read them via selector hooks (`useChannel`, `useExtension`) when you genuinely need raw events.                                                                                   |
-| `onStop`                                                                                                                                   | Drop. `stop()` now abort-signals the in-flight run and `values` reverts to the server's authoritative state. If you previously used `mutate` to optimistically tag UI, call `stream.submit(null, { command: { update: ... } })` after stop instead. |
+| `onStop`                                                                                                                                   | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` to leave the agent running server-side. See §5.3. If you previously used `mutate` to optimistically tag UI, call `stream.submit(null, { command: { update: ... } })` after stop instead. |
 | `fetchStateHistory`                                                                                                                        | Drop. Fork/edit flows use `useMessageMetadata` + `submit({}, { forkFrom })` instead (§5).                                                                                                                                                           |
 | `reconnectOnMount`                                                                                                                         | Drop. Re-attach is automatic: remounting the hook with the same `threadId` attaches to the in-flight run.                                                                                                                                           |
 | `throttle`                                                                                                                                 | Drop. The hook batches state updates natively; call sites that need render throttling can memoize at the selector site.                                                                                                                             |
@@ -188,7 +191,7 @@ useStream({
 | `threadId`                  | Unchanged.                                                                                             |
 | `client`                    | LGP `Client` when the built-in transport is in use.                                                    |
 | `assistantId`               | Resolved value including the `"_"` fallback used by custom adapters.                                   |
-| `submit`, `stop`, `respond` | Same high-level semantics; `submit`'s argument types are wider, see §5.                                |
+| `submit`, `stop`, `respond`, `disconnect` | `submit` argument types are wider (§5). `stop(options?)` cancels server-side by default; `disconnect()` is join/rejoin client-only (§5.3). |
 
 ### 4.2 Still there — different meaning
 
@@ -284,7 +287,7 @@ reach for it unless you're typing an intermediate variable.
 | `metadata`                                                                                                                          | Unchanged.                                                                                                                                                                |
 | `multitaskStrategy`                                                                                                                 | Unchanged. `"rollback"` (default), `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
 | `onCompletion`                                                                                                                      | Use the hook-level `onCompleted` option for run-completion side effects.                                                                                                  |
-| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. Most of these map to protocol-v2 defaults; `optimisticValues` has no client-side analogue — reconcile via `values` after the run settles.                           |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). `optimisticValues` has no client-side analogue — reconcile via `values` after the run settles. |
 | **(new submit option)** `onError`                                                                                                   | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error` updates still happen in parallel.                      |
 | **(new)** `threadId`                                                                                                                | Per-submit thread override — rebinds the controller to the given thread before dispatching, then keeps it bound until the hook's `threadId` prop changes again.           |
 
@@ -305,6 +308,38 @@ await submit(
   { forkFrom: { checkpointId: "cp_123" }, multitaskStrategy: "rollback" },
 );
 ```
+
+### 5.3 Stop / disconnect
+
+Legacy `stop()` only aborted the client transport. Per-submit
+`onDisconnect: "continue" | "cancel"` (often paired with
+`streamResumable: true`) decided whether the agent kept running when
+that transport dropped.
+
+v1 makes the split explicit on the stream handle:
+
+| Legacy pattern | v1 replacement |
+| --- | --- |
+| Stop button in a normal chat (cancel the agent) | `await stream.stop()` — default `{ cancel: true }` calls `client.runs.cancel`, then disconnects the client |
+| Join/rejoin — leave the agent running | `await stream.disconnect()` or `await stream.stop({ cancel: false })` |
+| `submit(..., { onDisconnect: "cancel" })` | Drop from submit — call `stream.stop()` when the user cancels |
+| `submit(..., { onDisconnect: "continue", streamResumable: true })` | Drop from submit — call `stream.disconnect()` when navigating away; reattach by remounting with the same `threadId` |
+
+```tsx
+// Before — disconnect policy lived on submit
+await submit(input, { onDisconnect: "continue", streamResumable: true });
+// stream.stop() only aborted the client; the server kept running only
+// when onDisconnect was "continue"
+
+// After — explicit stop vs disconnect
+await submit(input);
+await stream.stop();        // chat cancel (server + client)
+await stream.disconnect();  // join/rejoin (client only)
+```
+
+`runs.cancel` is issued only once `onCreated` has provided a `runId`.
+Stopping before the run is accepted still disconnects the client
+immediately.
 
 ---
 
@@ -871,4 +906,4 @@ multitaskStrategy: "enqueue" }` while another run is in flight are
 recorded in the controller's `queueStore`, exposed via
 `useSubmissionQueue(stream)` (with `cancel(id)` / `clear()`
 affordances), and drained sequentially once the active run settles.
-Switching threads clears the queue..
+Switching threads clears the queue.
