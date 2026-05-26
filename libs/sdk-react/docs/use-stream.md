@@ -74,7 +74,8 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 | `subgraphs`                  | `ReadonlyMap<string, SubgraphDiscoverySnapshot>`            | Subgraphs discovered on the run.                                                                |
 | `subgraphsByNode`            | `ReadonlyMap<string, readonly SubgraphDiscoverySnapshot[]>` | Same snapshots keyed by the graph node that produced them.                                      |
 | `submit(input, options?)`    | function                                                    | Dispatch a new run on the bound thread.                                                         |
-| `stop()`                     | `() => Promise<void>`                                       | Abort the in-flight run.                                                                        |
+| `stop(options?)`             | `(options?: { cancel?: boolean }) => Promise<void>`       | Cancel the active run (default) and disconnect the client. Pass `{ cancel: false }` to disconnect only. |
+| `disconnect()`               | `() => Promise<void>`                                     | Disconnect the client without cancelling the run (`stop({ cancel: false })`).                          |
 | `respond(response, target?)` | function                                                    | Resume an interrupt with a response payload.                                                    |
 | `getThread()`                | `() => ThreadStream \| undefined`                           | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 | `client`                     | `Client`                                                    | The bound client (`HttpAgentServerAdapter`'s client on the custom branch).                      |
@@ -103,11 +104,23 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 
 ### `stop()`
 
-`stream.stop()` aborts the in-flight run. The transport `AbortController` fires, the `messages` / `toolCalls` projections stop receiving deltas, and `values` reverts to the server's authoritative snapshot after reconciliation. Safe to call unconditionally — when no run is active it is a no-op.
+`stream.stop()` cancels the active run by default: it disconnects the client transport, calls `client.runs.cancel` on the server, and sets `isLoading` to `false`. Messages and values received so far are preserved. Safe to call unconditionally — when no run is active it is a no-op.
 
 ```tsx
 <button onClick={() => void stream.stop()} disabled={!stream.isLoading}>
   Stop
+</button>
+```
+
+Pass `{ cancel: false }` to disconnect without cancelling server-side execution, or use `stream.disconnect()` (see below).
+
+### `disconnect()`
+
+`stream.disconnect()` is an alias for `stop({ cancel: false })`. Use it in join/rejoin UIs where the agent should keep running after the client leaves the stream.
+
+```tsx
+<button onClick={() => void stream.disconnect()} disabled={!stream.isLoading}>
+  Disconnect
 </button>
 ```
 

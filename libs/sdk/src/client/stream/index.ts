@@ -329,8 +329,7 @@ function normalizeSubscribeParams(
  * event envelope.
  */
 export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
-  implements AsyncIterable<TYield>, EventSubscription<TYield>
-{
+  implements AsyncIterable<TYield>, EventSubscription<TYield> {
   // Mutated by `#subscribeViaCommand` on WS once the server-assigned
   // subscription id arrives — see the placeholder→resolved transition
   // there. SSE paths set this once at construction and never change it.
@@ -1179,9 +1178,9 @@ export class ThreadStream<
     const handleEvent = (event: Event) => {
       const data = event.params.data as
         | {
-            name?: string;
-            payload?: unknown;
-          }
+          name?: string;
+          payload?: unknown;
+        }
         | undefined;
       if (data?.name !== name) return;
       lastValue = data.payload;
@@ -1297,14 +1296,12 @@ export class ThreadStream<
      * thread's latest. Forwarded verbatim on the `/run.start` protocol
      * message; the API layer picks it up and routes it to
      * `graph.streamEvents(input, { version: "v3", forkFrom })`
-     * (see plan-roadmap.md R2.4 / A0.1).
      */
     forkFrom?: { checkpointId: string };
     /**
      * Controls how concurrent submissions on the same thread are
      * handled by the server (`reject` | `rollback` | `interrupt` |
-     * `enqueue`). Forwarded to the server; the SDK does not interpret
-     * it locally (see plan-roadmap.md S1.3 / A0.3).
+     * `enqueue`).
      */
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
@@ -1693,11 +1690,11 @@ export class ThreadStream<
     const transform =
       unwrapNamedCustom && hasOnlyNamedCustom
         ? (event: Event) =>
-            (
-              (event.params as Record<string, unknown>).data as {
-                payload?: unknown;
-              }
-            )?.payload ?? event
+          (
+            (event.params as Record<string, unknown>).data as {
+              payload?: unknown;
+            }
+          )?.payload ?? event
         : undefined;
 
     if (this.#transportAdapter.openEventStream != null) {

@@ -76,6 +76,7 @@ import type {
   RootSnapshot,
   RunExecutionReason,
   StreamControllerOptions,
+  StreamStopOptions,
   StreamSubmitOptions,
 } from "./types.js";
 
@@ -576,10 +577,33 @@ export class StreamController<
   }
 
   /**
-   * Abort the currently tracked run and mark the controller idle.
+   * Disconnect the client from the active run and mark the controller
+   * idle. By default also cancels the run server-side; pass
+   * `{ cancel: false }` or call {@link disconnect} to keep the agent
+   * running (join/rejoin).
    */
-  async stop(): Promise<void> {
+  async stop(options?: StreamStopOptions): Promise<void> {
+    const shouldCancel = options?.cancel ?? true;
+    if (shouldCancel) {
+      const threadId = this.#currentThreadId;
+      const runId = this.#activeRunId;
+      if (threadId != null && runId != null) {
+        try {
+          await this.#options.client.runs.cancel(threadId, runId);
+        } catch {
+          /* server cancel failures must not block client disconnect */
+        }
+      }
+    }
     await this.#submitter.stop();
+  }
+
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  async disconnect(): Promise<void> {
+    return this.stop({ cancel: false });
   }
 
   #markLocalRunStart(): void {

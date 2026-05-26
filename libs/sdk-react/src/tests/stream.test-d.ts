@@ -225,8 +225,10 @@ describe("useStream — submit() input typing", () => {
     >();
   });
 
-  test("respond / stop keep their signatures", () => {
+  test("respond / stop / disconnect keep their signatures", () => {
     expectTypeOf(stream.stop()).toEqualTypeOf<Promise<void>>();
+    expectTypeOf(stream.stop({ cancel: false })).toEqualTypeOf<Promise<void>>();
+    expectTypeOf(stream.disconnect()).toEqualTypeOf<Promise<void>>();
     expectTypeOf(stream.respond).toBeCallableWith({ approved: true });
     expectTypeOf(stream.respond).toBeCallableWith(
       { approved: true },

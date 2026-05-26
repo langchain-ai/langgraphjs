@@ -415,10 +415,6 @@ export function useMessageMetadata(
  * "enqueue"` while another run is in flight. The returned object is
  * stable per snapshot so consumers can pass `entries` straight into a
  * `<Fragment key={e.id}>` list without extra memoisation.
- *
- * Today the queue is maintained client-side; once the server starts
- * emitting a dedicated queue channel (roadmap A0.3) the controller
- * will mirror that state directly — the hook surface will not change.
  */
 export interface UseSubmissionQueueReturn<
   StateType extends object = Record<string, unknown>,
