@@ -125,16 +125,24 @@ Pass `{ cancel: false }` to disconnect without cancelling server-side execution,
 
 ### `respond(response, target?)`
 
-Resume a specific interrupt from anywhere in the tree. The target selects which pending interrupt to resolve — useful when multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs). When `target` is omitted, the most recent root interrupt is resumed.
+Resume a pending interrupt. When `target` is omitted, `respond()` walks `stream.getThread()?.interrupts` from newest to oldest and resumes the first entry not yet resolved by a prior `respond()` call. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending; otherwise pass `{ interruptId, namespace? }`.
+
+The server validates `namespace` against the pending interrupt. Root interrupts use `namespace: []` (default when omitted). For subgraph interrupts, copy `namespace` from `getThread()?.interrupts` — see [Interrupts](./interrupts.md#subgraph-interrupts-and-namespace).
 
 ```tsx
-// Resolve the latest root interrupt:
+// Single pending interrupt — omit target:
 await stream.respond({ approved: true });
 
-// Resolve a specific interrupt by id:
+// Multiple root interrupts — target by id:
+await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
+
+// Subgraph interrupt — namespace from getThread():
+const entry = stream.getThread()?.interrupts.find(
+  (e) => e.interruptId === myInterruptId,
+);
 await stream.respond(
   { approved: true },
-  { interruptId: myInterrupt.id, namespace: ["subagent"] },
+  { interruptId: entry!.interruptId, namespace: entry!.namespace },
 );
 ```
 

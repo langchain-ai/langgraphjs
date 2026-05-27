@@ -302,6 +302,11 @@ export function extractHeadlessToolCallIdFromResumeCommand(
   return keys[0];
 }
 
+/**
+ * Protocol interrupt entry tracked on {@link ThreadStream.interrupts}.
+ * Used by {@link resolveInterruptTargetForHeadlessResume} when `respond()`
+ * omits an explicit target.
+ */
 export interface ProtocolInterruptEntry {
   interruptId: string;
   namespace: string[];

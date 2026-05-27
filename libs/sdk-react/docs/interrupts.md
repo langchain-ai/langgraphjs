@@ -6,6 +6,8 @@ Interrupts pause graph execution and wait for input. `@langchain/react` surfaces
 
 - [Reading interrupts](#reading-interrupts)
 - [Resuming an interrupt](#resuming-an-interrupt)
+- [Multiple pending interrupts](#multiple-pending-interrupts)
+- [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)
 - [`respond(response, target?)`](#respondresponse-target)
 - [Headless tools](#headless-tools)
 - [Lower-level helpers](#lower-level-helpers)
@@ -15,7 +17,7 @@ Interrupts pause graph execution and wait for input. `@langchain/react` surfaces
 The root hook exposes the latest interrupt and the full list:
 
 ```tsx
-const { messages, interrupt, submit } = useStream<
+const stream = useStream<
   { messages: BaseMessage[] },
   { question: string } // InterruptType
 >({
@@ -25,13 +27,13 @@ const { messages, interrupt, submit } = useStream<
 
 return (
   <>
-    {messages.map((msg, i) => (
+    {stream.messages.map((msg, i) => (
       <div key={msg.id ?? i}>{String(msg.content)}</div>
     ))}
 
-    {interrupt && (
+    {stream.interrupt && (
       <div>
-        <p>{interrupt.value.question}</p>
+        <p>{stream.interrupt.value.question}</p>
         <button onClick={() => void stream.respond("Approved")}>
           Approve
         </button>
@@ -41,32 +43,111 @@ return (
 );
 ```
 
+`stream.interrupt` is `stream.interrupts[0]` — the most recent **root** interrupt mirrored for UI convenience. It is not always the interrupt `respond()` would pick when `target` is omitted (see below).
+
 ## Resuming an interrupt
 
-Call `stream.respond(value)` to resume the most-recent root interrupt:
+Call `stream.respond(value)` when exactly one interrupt is pending:
 
 ```tsx
 void stream.respond({ approved: true });
 ```
 
-When multiple concurrent interrupts are in flight, pass an explicit target (see below).
+When more than one interrupt can be active, pass an explicit target (see [Multiple pending interrupts](#multiple-pending-interrupts) and [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)).
 
-## `respond(response, target?)`
+## Multiple pending interrupts
 
-When multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs), call `stream.respond()` with an explicit target:
+When `target` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved by a prior `respond()` call.
+
+That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
+
+| Surface | What it contains | Use for |
+| ------- | ---------------- | ------- |
+| `stream.interrupts` | Root-namespace interrupts (`{ id, value }`) | Rendering root HITL UI |
+| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting + namespace for `respond()` |
+
+When several root interrupts are pending, target by id:
 
 ```tsx
-// Latest root interrupt:
-await stream.respond({ approved: true });
+stream.interrupts.map((intr) => (
+  <button
+    key={intr.id}
+    onClick={() =>
+      void stream.respond({ approved: true }, { interruptId: intr.id! })
+    }
+  >
+    Approve {intr.id}
+  </button>
+));
+```
 
-// Specific interrupt by id, on a subagent namespace:
-await stream.respond(
-  { approved: true },
-  { interruptId: myInterrupt.id, namespace: ["subagent"] },
+Root interrupts use `namespace: []`. You can omit `namespace` in the target — it defaults to the root tuple.
+
+## Subgraph interrupts and namespace
+
+Interrupts raised inside a subagent or nested graph carry a **non-empty** protocol `namespace` tuple (for example `["task:research"]`). The server validates that tuple when you resume.
+
+Those entries appear on `stream.getThread()?.interrupts` but may **not** appear on `stream.interrupts`. Read `namespace` from the thread stream entry — do not guess it from UI state:
+
+```tsx
+const thread = stream.getThread();
+
+return (
+  <>
+    {thread?.interrupts.map((entry) => (
+      <div key={entry.interruptId}>
+        <p>{JSON.stringify(entry.payload)}</p>
+        <p>
+          namespace: {entry.namespace.length === 0 ? "(root)" : entry.namespace.join(" › ")}
+        </p>
+        <button
+          onClick={() =>
+            void stream.respond(buildResponse(entry.payload), {
+              interruptId: entry.interruptId,
+              namespace: entry.namespace,
+            })
+          }
+        >
+          Resume
+        </button>
+      </div>
+    ))}
+  </>
 );
 ```
 
-The target object accepts `{ interruptId, namespace? }`. `namespace` scopes the resolution to a subagent or subgraph.
+Each entry mirrors an `input.requested` event: `{ interruptId, payload, namespace }`. Pass both `interruptId` and `namespace` for subgraph interrupts; omitting `namespace` assumes root (`[]`) and the server will reject the resume if the pending interrupt lives in a subgraph.
+
+## `respond(response, target?)`
+
+Signature:
+
+```tsx
+stream.respond(
+  response: unknown,
+  target?: { interruptId: string; namespace?: string[] },
+): Promise<void>
+```
+
+| `target` | Behavior |
+| -------- | -------- |
+| Omitted | Newest unresolved entry in `getThread()?.interrupts`. Safe when one interrupt is pending. |
+| `{ interruptId }` | Resume that id at root (`namespace: []`). |
+| `{ interruptId, namespace }` | Resume that id in the given subgraph namespace. Required when the interrupt is not at root. |
+
+```tsx
+// Single pending interrupt — omit target:
+await stream.respond({ approved: true });
+
+// Specific root interrupt:
+await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
+
+// Subgraph interrupt — namespace from getThread():
+await stream.respond(
+  { approved: true },
+  { interruptId: entry.interruptId, namespace: entry.namespace },
+);
+```
 
 ## Headless tools
 

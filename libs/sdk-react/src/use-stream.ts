@@ -178,8 +178,8 @@ export interface UseStreamReturn<
    */
   readonly subagents: ReadonlyMap<
     keyof SubagentStates & string extends never
-      ? string
-      : keyof SubagentStates & string,
+    ? string
+    : keyof SubagentStates & string,
     SubagentDiscoverySnapshot
   >;
   /**
@@ -233,10 +233,52 @@ export interface UseStreamReturn<
    * Resume a pending protocol interrupt by sending a response payload
    * back to the interrupted namespace.
    *
-   * When `target` is omitted, responds to the latest unresolved
-   * interrupt in {@link interrupts}. Pass an explicit
-   * `{ interruptId, namespace? }` when multiple interrupts are
-   * pending or the interrupt lives in a subgraph namespace.
+   * When `target` is omitted, walks `getThread()?.interrupts` from newest
+   * to oldest and resumes the first not yet resolved by a prior `respond()`
+   * call. That may be a root or subgraph interrupt and is **not**
+   * necessarily {@link interrupt} (`interrupts[0]`, root-only). Safe when
+   * exactly one interrupt is pending; otherwise pass an explicit
+   * `{ interruptId, namespace? }`.
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (default when omitted). For subgraph
+   * interrupts, copy `namespace` from `getThread()?.interrupts`.
+   *
+   * @example
+   * ```tsx
+   * // Single pending interrupt
+   * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Multiple root interrupts
+   * stream.interrupts.map((intr) => (
+   *   <button
+   *     key={intr.id}
+   *     onClick={() =>
+   *       void stream.respond({ approved: true }, { interruptId: intr.id! })
+   *     }
+   *   />
+   * ));
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Subgraph interrupt — namespace from `getThread()`
+   * const thread = stream.getThread();
+   * thread?.interrupts.map((entry) => (
+   *   <button
+   *     key={entry.interruptId}
+   *     onClick={() =>
+   *       void stream.respond(buildResponse(entry.payload), {
+   *         interruptId: entry.interruptId,
+   *         namespace: entry.namespace,
+   *       })
+   *     }
+   *   />
+   * ));
+   * ```
    */
   respond(
     response: unknown,

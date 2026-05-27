@@ -54,14 +54,26 @@ export class ChatComponent {
 
 ## Responding to a specific interrupt
 
-When multiple interrupts are pending, pass the target interrupt (or
-its id) to `respond`:
+When multiple interrupts are pending, pass `{ interruptId, namespace? }`.
+Root interrupts can omit `namespace` (defaults to `[]`). Subgraph
+interrupts need the exact tuple from `getThread()?.interrupts`:
 
 ```typescript
-for (const pending of stream.interrupts()) {
-  await stream.respond(decide(pending), pending);
+for (const intr of stream.interrupts()) {
+  await stream.respond(decide(intr.value), { interruptId: intr.id! });
+}
+
+const thread = stream.getThread();
+for (const entry of thread?.interrupts ?? []) {
+  await stream.respond(buildResponse(entry.payload), {
+    interruptId: entry.interruptId,
+    namespace: entry.namespace,
+  });
 }
 ```
+
+When `target` is omitted, `respond()` walks `getThread()?.interrupts`
+from newest to oldest — not necessarily `stream.interrupt()` (root-only).
 
 ## Auto-resumed tool interrupts
 
