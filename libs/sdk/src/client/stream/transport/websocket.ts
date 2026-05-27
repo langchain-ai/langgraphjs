@@ -6,7 +6,13 @@ import type {
   ErrorResponse,
 } from "@langchain/protocol";
 
-import { toWebSocketUrl, isRecord, hasHeaders, toError } from "./utils.js";
+import {
+  toAbsoluteUrl,
+  toWebSocketUrl,
+  isRecord,
+  hasHeaders,
+  toError,
+} from "./utils.js";
 import type {
   HeaderValue,
   ProtocolRequestHook,
@@ -59,10 +65,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     this.assertBrowserSafeTransportConfig();
 
     const wsUrl = toWebSocketUrl(
-      new URL(
-        this.streamUrl,
-        this.apiUrl.endsWith("/") ? this.apiUrl : `${this.apiUrl}/`
-      ).toString()
+      toAbsoluteUrl(this.apiUrl, this.streamUrl).toString()
     );
     const socket = this.webSocketFactory(wsUrl);
     this.socket = socket;

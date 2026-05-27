@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { Client } from "./index.js";
 import { ThreadStream } from "./stream/index.js";
 import { ProtocolSseTransportAdapter } from "./stream/transport/http.js";
+import {
+  PROXIED_API_URL,
+  THREAD_ID,
+  createFetchRecorder,
+  createWebSocketUrlRecorder,
+} from "./stream/transport/test-helpers.js";
 
 describe("Client", () => {
   it("exposes sub-clients on main Client", () => {
@@ -98,25 +104,7 @@ describe("Client", () => {
   });
 
   it("uses the protocol commands path for sse commands", async () => {
-    const calls: URL[] = [];
-    const customFetch = ((input: URL | RequestInfo) => {
-      calls.push(
-        // oxlint-disable-next-line no-instanceof/no-instanceof
-        input instanceof URL
-          ? input
-          : new URL(typeof input === "string" ? input : input.url)
-      );
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            type: "success",
-            id: 1,
-            result: {},
-          }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        )
-      );
-    }) as typeof fetch;
+    const { calls, fetch: customFetch } = createFetchRecorder();
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:9999",
@@ -128,5 +116,46 @@ describe("Client", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].pathname).toBe("/threads/my-thread/commands");
+  });
+
+  it("threads.stream preserves proxied apiUrl path prefix for sse subscriptions", async () => {
+    const sentinel = new Error("sentinel-fetch");
+    const { calls, fetch: customFetch } = createFetchRecorder({ error: sentinel });
+    const client = new Client({
+      apiUrl: PROXIED_API_URL,
+      apiKey: null,
+    });
+
+    const thread = client.threads.stream(THREAD_ID, {
+      assistantId: "docs_agent",
+      transport: "sse",
+      fetch: customFetch,
+    });
+
+    await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].href).toBe(
+      `${PROXIED_API_URL}/threads/${THREAD_ID}/stream/events`
+    );
+  });
+
+  it("threads.stream preserves proxied apiUrl path prefix for websocket subscriptions", async () => {
+    const { calls, webSocketFactory, sentinel } = createWebSocketUrlRecorder();
+    const client = new Client({
+      apiUrl: PROXIED_API_URL,
+      apiKey: null,
+    });
+
+    const thread = client.threads.stream(THREAD_ID, {
+      assistantId: "docs_agent",
+      transport: "websocket",
+      webSocketFactory,
+    });
+
+    await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toBe(
+      `ws://localhost:4100/api/chat-langchain/threads/${THREAD_ID}/stream/events`
+    );
   });
 });
