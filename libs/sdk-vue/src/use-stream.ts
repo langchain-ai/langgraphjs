@@ -202,8 +202,8 @@ export interface UseStreamReturn<
     ShallowRef<
       ReadonlyMap<
         keyof SubagentStates & string extends never
-        ? string
-        : keyof SubagentStates & string,
+          ? string
+          : keyof SubagentStates & string,
         SubagentDiscoverySnapshot
       >
     >
@@ -432,12 +432,12 @@ export function useStream<
 
   const clientRef = shallowRef<Client>(
     explicitClient ??
-    (new ClientCtor({
-      apiUrl: resolveApiUrl(),
-      apiKey: resolveApiKey(),
-      callerOptions: asBag.callerOptions,
-      defaultHeaders: asBag.defaultHeaders,
-    }) as unknown as Client)
+      (new ClientCtor({
+        apiUrl: resolveApiUrl(),
+        apiKey: resolveApiKey(),
+        callerOptions: asBag.callerOptions,
+        defaultHeaders: asBag.defaultHeaders,
+      }) as unknown as Client)
   );
 
   // Note: we intentionally bind the controller to the *initial* client

@@ -197,8 +197,8 @@ export interface UseStreamReturn<
   readonly subagents: Signal<
     ReadonlyMap<
       keyof SubagentStates & string extends never
-      ? string
-      : keyof SubagentStates & string,
+        ? string
+        : keyof SubagentStates & string,
       SubagentDiscoverySnapshot
     >
   >;

@@ -178,8 +178,8 @@ export interface UseStreamReturn<
    */
   readonly subagents: ReadonlyMap<
     keyof SubagentStates & string extends never
-    ? string
-    : keyof SubagentStates & string,
+      ? string
+      : keyof SubagentStates & string,
     SubagentDiscoverySnapshot
   >;
   /**

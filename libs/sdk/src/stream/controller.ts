@@ -67,9 +67,7 @@ import {
   reconcileToolCallsFromMessages,
   upsertToolCall,
 } from "./tool-calls.js";
-import {
-  resolveInterruptTargetForHeadlessResume,
-} from "../headless-tools.js";
+import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
 import type {
   RootEventBus,
   RootSnapshot,
