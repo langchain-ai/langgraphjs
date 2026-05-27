@@ -1297,14 +1297,12 @@ export class ThreadStream<
      * thread's latest. Forwarded verbatim on the `/run.start` protocol
      * message; the API layer picks it up and routes it to
      * `graph.streamEvents(input, { version: "v3", forkFrom })`
-     * (see plan-roadmap.md R2.4 / A0.1).
      */
     forkFrom?: { checkpointId: string };
     /**
      * Controls how concurrent submissions on the same thread are
      * handled by the server (`reject` | `rollback` | `interrupt` |
-     * `enqueue`). Forwarded to the server; the SDK does not interpret
-     * it locally (see plan-roadmap.md S1.3 / A0.3).
+     * `enqueue`).
      */
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {

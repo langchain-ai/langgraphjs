@@ -98,6 +98,9 @@ are flagged in the later sections.
       `HttpAgentServerAdapter` from `@langchain/angular` (or
       `@langchain/langgraph-sdk`). The adapter is bound to a concrete
       `threadId` (see §9).
+- [ ] **Replace `submit(..., { onDisconnect, streamResumable })`** with
+      `stream.stop()` (cancel, default) or `stream.disconnect()`
+      (join/rejoin) on the stream handle (see §5.3).
 - [ ] **Re-run `tsc`**. The option bag and return type are now
       discriminated and strongly typed; most remaining issues will
       surface as type errors that map to one of the sections below.
@@ -137,7 +140,7 @@ are flagged in the later sections.
 | `onError` | Read `stream.error()` directly, drive a `computed` / `effect` off it, or pass a per-submit `onError` via `submit(input, { onError })`. |
 | `onFinish` | Derive from `stream.isLoading()` transitioning `true → false`. |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent` | Drop. Use `injectChannel` / `injectExtension` for raw events. |
-| `onStop` | Drop. `stop()` aborts the in-flight run; observe `isLoading()` for UI effects. |
+| `onStop` | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` for join/rejoin. See §5.3. |
 | `fetchStateHistory` | Drop. Fork flows use `injectMessageMetadata` + `submit({}, { forkFrom })` (see §5 / §6). |
 | `reconnectOnMount` | Drop. Re-attach is automatic. |
 | `throttle` | Drop. The injector batches state updates natively. |
@@ -173,7 +176,7 @@ effect(() => {
 | `isLoading()` / `isThreadLoading()` | `isLoading` is `true` while a run is in flight or hydration hasn't completed; `isThreadLoading` tracks only initial hydration. |
 | `error()` | Unchanged. |
 | `threadId()` | `Signal<string \| null>`. |
-| `submit()`, `stop()` | Same high-level semantics; `submit`'s argument types are wider (§5). A new `respond(response, target)` is available for targeted interrupt replies. |
+| `submit()`, `stop()`, `disconnect()` | `submit` argument types are wider (§5). `stop(options?)` cancels server-side by default; `disconnect()` is join/rejoin client-only (§5.3). `respond(response, target)` is available for targeted interrupt replies. |
 | `client` | Resolved `Client` when the LGP branch is in use. |
 
 ### 4.2 Still there — different shape
@@ -267,9 +270,37 @@ await this.stream.submit({ messages: new HumanMessage("hi") });
 | `metadata` | Unchanged. |
 | `multitaskStrategy` | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support. |
 | `onCompletion` | Use the hook-level `onCompleted` option for run-completion side effects. |
-| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. These map to protocol-v2 defaults. |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Other fields map to protocol-v2 defaults. |
 | **(new submit option)** `onError` | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error()` updates still happen in parallel. |
 | **(new)** `threadId` | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the `threadId` option changes again. |
+
+### 5.3 Stop / disconnect
+
+Legacy `stop()` only aborted the client transport. Per-submit
+`onDisconnect: "continue" | "cancel"` (often paired with
+`streamResumable: true`) decided whether the agent kept running when
+that transport dropped.
+
+v1 makes the split explicit on the stream handle:
+
+| Legacy pattern | v1 replacement |
+| --- | --- |
+| Stop button in a normal chat (cancel the agent) | `await stream.stop()` — default `{ cancel: true }` calls `client.runs.cancel`, then disconnects the client |
+| Join/rejoin — leave the agent running | `await stream.disconnect()` or `await stream.stop({ cancel: false })` |
+| `submit(..., { onDisconnect: "cancel" })` | Drop from submit — call `stream.stop()` when the user cancels |
+| `submit(..., { onDisconnect: "continue", streamResumable: true })` | Drop from submit — call `stream.disconnect()` when navigating away; reattach by reconstructing the injector with the same `threadId` |
+
+```typescript
+// Before
+await stream.submit(input, { onDisconnect: "continue", streamResumable: true });
+
+// After
+await stream.submit(input);
+await stream.stop();        // chat cancel (server + client)
+await stream.disconnect();  // join/rejoin (client only)
+```
+
+`runs.cancel` is issued only once `onCreated` has provided a `runId`.
 
 ---
 

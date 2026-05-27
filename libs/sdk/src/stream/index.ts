@@ -104,6 +104,7 @@ export type {
   RunExecutionInfo,
   RunExecutionReason,
   StreamControllerOptions,
+  StreamStopOptions,
   StreamSubmitOptions,
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,

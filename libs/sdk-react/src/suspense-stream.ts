@@ -222,6 +222,7 @@ export function useSuspenseStream<T = Record<string, unknown>>(
     },
     submit: stream.submit as UseSuspenseStreamReturn<T>["submit"],
     stop: stream.stop,
+    disconnect: stream.disconnect,
     respond: stream.respond as UseSuspenseStreamReturn<T>["respond"],
     getThread: stream.getThread,
     get client() {

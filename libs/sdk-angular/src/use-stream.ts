@@ -34,6 +34,7 @@ import {
   type RootSnapshot,
   type RunCompletedInfo,
   type RunExecutionInfo,
+  type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -239,11 +240,17 @@ export interface UseStreamReturn<
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
   /**
-   * Abort the in-flight run on the current thread without clearing
-   * accumulated state. Sets {@link isLoading} to `false` immediately;
-   * {@link values} and {@link messages} are preserved.
+   * Stop the active run on the current thread. By default cancels the
+   * run server-side and disconnects the client; pass `{ cancel: false }`
+   * or use {@link disconnect} for join/rejoin. Sets {@link isLoading} to
+   * `false` immediately; {@link values} and {@link messages} are preserved.
    */
-  stop(): Promise<void>;
+  stop(options?: StreamStopOptions): Promise<void>;
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  disconnect(): Promise<void>;
   /**
    * Resume a pending protocol interrupt by sending a response payload
    * back to the interrupted namespace.
@@ -555,7 +562,8 @@ export function useStream<
     subgraphs: subgraphSignal,
     subgraphsByNode: subgraphByNodeSignal,
     submit: (input, submitOptions) => controller.submit(input, submitOptions),
-    stop: () => controller.stop(),
+    stop: (options) => controller.stop(options),
+    disconnect: () => controller.disconnect(),
     respond: (response, target) => controller.respond(response, target),
     getThread: () => controller.getThread(),
     client,

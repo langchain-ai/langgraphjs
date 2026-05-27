@@ -258,7 +258,6 @@ export class SubmitCoordinator<
    *   - `"enqueue"`             — defers via {@link #enqueueSubmission};
    *     the call returns without dispatching.
    *   - `"interrupt"`           — falls through to the default path
-   *     (server-side cancellation lands with roadmap A0.3).
    *
    * Errors are routed through both the per-submit `onError` callback
    * and `rootStore.error`. Aborts (controller dispose / rollback) are
@@ -551,11 +550,8 @@ export class SubmitCoordinator<
   /**
    * Abort the current run (if any) and force `isLoading=false`.
    *
-   * Does NOT issue a server-side cancel — that lands with roadmap
-   * A0.3. Today this is a client-side stop only: subsequent events
-   * for the aborted run are ignored by the controller's pump because
-   * the abort signal is the same one `#awaitNextTerminal` is wired
-   * to.
+   * Client-side only — server-side cancel is handled by
+   * {@link StreamController.stop} before this is invoked.
    */
   async stop(): Promise<void> {
     this.abortActiveRun();

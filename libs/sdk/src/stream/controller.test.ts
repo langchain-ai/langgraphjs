@@ -655,4 +655,104 @@ describe("StreamController", () => {
     expect(startLifecycleWatcher).not.toHaveBeenCalled();
     await controller.dispose();
   });
+
+  it("stop() cancels the active run on the server by default", async () => {
+    let submitRunResolve!: (value: { run_id: string }) => void;
+    const submitRunPromise = new Promise<{ run_id: string }>((resolve) => {
+      submitRunResolve = resolve;
+    });
+    const onCreated = vi.fn();
+
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(() => submitRunPromise),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const cancel = vi.fn(async () => undefined);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+      runs: { cancel },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "assistant",
+      client: client as never,
+      threadId: "thread-1",
+      onCreated,
+    });
+    await controller.hydrationPromise;
+
+    const submitPromise = controller.submit({ messages: [] });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+    });
+
+    submitRunResolve({ run_id: "run-abc" });
+    await waitForExpectation(() => {
+      expect(onCreated).toHaveBeenCalledWith({ runId: "run-abc" });
+    });
+
+    await controller.stop();
+    expect(cancel).toHaveBeenCalledWith("thread-1", "run-abc");
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+
+    await controller.dispose();
+    await submitPromise.catch(() => undefined);
+  });
+
+  it("disconnect() does not call runs.cancel", async () => {
+    let submitRunResolve!: (value: { run_id: string }) => void;
+    const submitRunPromise = new Promise<{ run_id: string }>((resolve) => {
+      submitRunResolve = resolve;
+    });
+    const onCreated = vi.fn();
+
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(() => submitRunPromise),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const cancel = vi.fn(async () => undefined);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+      runs: { cancel },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "assistant",
+      client: client as never,
+      threadId: "thread-1",
+      onCreated,
+    });
+    await controller.hydrationPromise;
+
+    const submitPromise = controller.submit({ messages: [] });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+    });
+
+    submitRunResolve({ run_id: "run-abc" });
+    await waitForExpectation(() => {
+      expect(onCreated).toHaveBeenCalledWith({ runId: "run-abc" });
+    });
+
+    await controller.disconnect();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+
+    await controller.dispose();
+    await submitPromise.catch(() => undefined);
+  });
 });

@@ -41,6 +41,17 @@ export interface RunExecutionInfo {
   runId: string;
 }
 
+/** Options for {@link StreamController.stop} / framework `stop()`. */
+export interface StreamStopOptions {
+  /**
+   * When `true` (default), issue a server-side cancel via
+   * `client.runs.cancel` for the active run before disconnecting the
+   * client transport. Set to `false` for join/rejoin flows where the
+   * agent should keep running after the client disconnects.
+   */
+  cancel?: boolean;
+}
+
 /** Payload for run-end callbacks. */
 export interface RunCompletedInfo extends Omit<RunExecutionInfo, "runId"> {
   /** Omitted when re-attaching to an in-flight run without local dispatch. */
@@ -271,8 +282,6 @@ export interface StreamSubmitOptions<
    * latest. Emits a `forkFrom` field on the `/run.start` request that
    * the API layer forwards to
    * `graph.streamEvents(input, { version: "v3", forkFrom })`.
-   *
-   * See plan-roadmap.md §5.3 R2.4.
    */
   forkFrom?: { checkpointId: string };
   /**
@@ -281,7 +290,7 @@ export interface StreamSubmitOptions<
    * - `"rollback"` (default) — abort the active run client-side and
    *   start the new one immediately.
    * - `"interrupt"` — server-side cancel of the in-flight run, then
-   *   start the new one (requires API support, roadmap A0.3).
+   *   start the new one.
    * - `"enqueue"` — do NOT abort the active run; the new submission
    *   lands in {@link StreamController.queueStore} and is forwarded
    *   once the current run terminates.
