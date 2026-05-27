@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.9.9
+
+### Patch Changes
+
+- [#2441](https://github.com/langchain-ai/langgraphjs/pull/2441) [`dbbcb63`](https://github.com/langchain-ai/langgraphjs/commit/dbbcb636e742c38e89854a8ae7ef4e1566d44343) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): preserve apiUrl path prefix in stream transport URLs
+
+  Use BaseClient-style URL concatenation in `toAbsoluteUrl` so SSE and WebSocket
+  subscriptions work when the SDK is pointed at a proxied apiUrl with a path
+  prefix (e.g. `/api/chat-langchain`).
+
 ## 1.9.8
 
 ### Patch Changes
