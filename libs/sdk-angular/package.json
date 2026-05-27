@@ -1,6 +1,6 @@
 {
   "name": "@langchain/angular",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Angular integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
