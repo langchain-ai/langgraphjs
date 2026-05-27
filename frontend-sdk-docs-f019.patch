@@ -1,0 +1,356 @@
+From 3f0b6c584c33fa6f5989ec4fd2595041eb1c6ba4 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Wed, 27 May 2026 16:28:21 +0000
+Subject: [PATCH] docs: highlight frontend sdk agent ux strengths
+
+---
+ src/oss/deepagents/frontend/overview.mdx      | 29 ++++++++++-
+ .../frontend/subagent-streaming.mdx           | 17 ++++++-
+ .../langchain/frontend/human-in-the-loop.mdx  | 10 ++++
+ src/oss/langchain/frontend/message-queues.mdx |  9 +++-
+ src/oss/langchain/frontend/overview.mdx       | 48 ++++++++++++++++++-
+ .../langgraph/frontend/graph-execution.mdx    | 18 +++++++
+ src/oss/langgraph/frontend/overview.md        | 34 ++++++++++++-
+ 7 files changed, 157 insertions(+), 8 deletions(-)
+
+diff --git a/src/oss/deepagents/frontend/overview.mdx b/src/oss/deepagents/frontend/overview.mdx
+index 88778b8c5..a540554af 100644
+--- a/src/oss/deepagents/frontend/overview.mdx
++++ b/src/oss/deepagents/frontend/overview.mdx
+@@ -3,7 +3,14 @@ title: Overview
+ description: Build UIs that display real-time subagent streams, task progress, and sandbox for Deep Agents
+ ---
+ 
+-Build frontends that visualize deep agent workflows in real time. These patterns show how to render subagent progress, task planning, streaming content, and IDE-like sandbox experiences from agents created with `createDeepAgent`.
++Build frontends that visualize deep agent workflows in real time. These patterns
++show how to render subagent progress, task planning, streaming content, and
++IDE-like sandbox experiences from agents created with `createDeepAgent`.
++
++Deep agents are most useful when the UI makes delegation visible. Instead of
++showing a single opaque assistant bubble, the LangChain SDKs expose the
++coordinator, subagent discovery, custom state, and sandbox-backed artifacts so
++users can inspect how a long-running task is being decomposed and completed.
+ 
+ ## Architecture
+ 
+@@ -95,6 +102,22 @@ function App() {
+ }
+ ```
+ 
++## What the SDK exposes
++
++Deep agent UIs usually need more than the final answer. The frontend SDK gives
++you structured projections for the parts of the run users care about:
++
++| Projection | Use it for |
++| --- | --- |
++| `stream.messages` | The coordinator conversation and final synthesis. |
++| `stream.subagents` | Live discovery of specialist workers, including status and task metadata. |
++| `stream.values` | Shared state such as todos, plans, report sections, sandbox metadata, or any custom key your agent writes. |
++| Tool-call state | Rendering filesystem, search, browser, or domain tools as cards with progress and results. |
++| Interrupts | Pausing delegated work for user approval or missing input without losing the run state. |
++
++This lets you build interfaces that feel closer to an IDE, task board, or
++workflow monitor than a plain chat transcript.
++
+ ## Patterns
+ 
+ <CardGroup cols={3}>
+@@ -115,3 +138,7 @@ The [LangChain frontend patterns](/oss/langchain/frontend/overview), including
+ markdown messages, tool calling, and human-in-the-loop, all work with deep
+ agents too. Deep Agents are built on the same LangGraph runtime, so
+ `useStream` provides the same core API.
++
++For lower-level graph visualizations, see the
++[LangGraph frontend patterns](/oss/langgraph/frontend/overview). They show how
++to map graph nodes and state keys directly to UI components.
+diff --git a/src/oss/deepagents/frontend/subagent-streaming.mdx b/src/oss/deepagents/frontend/subagent-streaming.mdx
+index 348601515..ab04418d7 100644
+--- a/src/oss/deepagents/frontend/subagent-streaming.mdx
++++ b/src/oss/deepagents/frontend/subagent-streaming.mdx
+@@ -10,6 +10,12 @@ from each subagent's streaming output. Set `filterSubagentMessages: true` in
+ `getSubagentsByMessage` to attach each subagent's progress card to the
+ coordinator message that triggered it.
+ 
++This is where the LangChain frontend SDKs go beyond a flat chat transcript:
++subagents are first-class stream entities with their own status, messages,
++tool-call metadata, and results. Your UI can show delegation, progress, errors,
++and final synthesis without asking users to read interleaved tokens from every
++worker.
++
+ import { PatternEmbed } from "/snippets/pattern-embed.jsx"
+ 
+ <PatternEmbed pattern="deep-agent-subagent-cards" />
+@@ -30,6 +36,10 @@ This separation lets you render the orchestrator's messages in one place and
+ attach each subagent's progress card exactly where it belongs: beneath the
+ coordinator message that spawned it.
+ 
++For large tasks, this also keeps the UI scalable. Users can skim the
++coordinator's high-level plan, expand only the specialist work they care about,
++and still retain the full subagent trace for debugging, audit, or replay.
++
+ ## Setting up useStream
+ 
+ Always set `filterSubagentMessages: true`. This removes subagent tokens from
+@@ -166,7 +176,7 @@ export class DeepAgentChatComponent {
+ 
+ When submitting a message, enable subgraph streaming and set an appropriate
+ recursion limit. Deep agent workflows often involve multiple layers of nested
+-subagraphs, so a higher recursion limit prevents premature termination:
++subgraphs, so a higher recursion limit prevents premature termination:
+ 
+ ```ts
+ stream.submit(
+@@ -487,6 +497,11 @@ This is useful for building global progress indicators or dashboards that
+ summarize all subagent activity regardless of which coordinator message spawned
+ them.
+ 
++You can combine the global map with per-message lookup: use
++`getSubagentsByMessage` for inline cards in the transcript, and
++`stream.subagents` for a persistent sidebar that summarizes all active workers.
++That gives users both local context and a bird's-eye view of the whole run.
++
+ ## Best practices
+ 
+ - **Always set `filterSubagentMessages: true`**. Unfiltered streams produce an
+diff --git a/src/oss/langchain/frontend/human-in-the-loop.mdx b/src/oss/langchain/frontend/human-in-the-loop.mdx
+index 3acf133ec..076764629 100644
+--- a/src/oss/langchain/frontend/human-in-the-loop.mdx
++++ b/src/oss/langchain/frontend/human-in-the-loop.mdx
+@@ -9,6 +9,11 @@ irreversible operation, you need a human to review and approve the action first.
+ The Human-in-the-Loop (HITL) pattern lets your agent pause execution, present
+ the pending action to the user, and resume only after explicit approval.
+ 
++Because HITL is built on LangGraph interrupts and checkpoints, the pause is
++durable. A user can refresh the page, a reviewer can answer from a different
++component, and the agent still resumes from the exact point where execution
++stopped instead of replaying the whole run.
++
+ import { PatternEmbed } from "/snippets/pattern-embed.jsx"
+ 
+ <PatternEmbed pattern="human-in-the-loop" />
+@@ -25,6 +30,11 @@ yields control back to the client. When the agent hits an interrupt:
+ 5. Your code calls `stream.submit()` with a resume command
+ 6. The agent picks up where it left off
+ 
++The frontend SDK keeps the interrupt alongside the rest of the thread state, so
++your UI can render it wherever it makes sense: inline in the transcript, in a
++review queue, in an admin dashboard, or in a modal that blocks the next user
++action until the decision is made.
++
+ ## Setting up useStream for HITL
+ 
+ :::python
+diff --git a/src/oss/langchain/frontend/message-queues.mdx b/src/oss/langchain/frontend/message-queues.mdx
+index a44144404..211702120 100644
+--- a/src/oss/langchain/frontend/message-queues.mdx
++++ b/src/oss/langchain/frontend/message-queues.mdx
+@@ -3,7 +3,7 @@ title: Message queues
+ description: Queue multiple messages and manage them while the agent processes sequentially
+ ---
+ 
+-Message queuing lets users send multiple messages in rapid succession without waiting for the agent to finish processing the current one. Each message is enqueued server-side and processed sequentially, giving you full visibility and control over the pending queue.
++Message queuing lets users send multiple messages in rapid succession without waiting for the agent to finish processing the current one. Each message is accepted immediately, queued for the active thread, and processed sequentially, giving you full visibility and control over the pending work.
+ 
+ import { PatternEmbed } from "/snippets/pattern-embed.jsx"
+ 
+@@ -24,9 +24,14 @@ In a typical chat interface, users must wait for the agent to finish responding
+ 
+ Message queuing solves this by accepting all submissions immediately and processing them in order.
+ 
++This is an agent UX primitive rather than a cosmetic chat feature. The SDK keeps
++track of the queue as part of the stream controller, so your UI can show pending
++work, cancel stale requests, and keep the composer active while the current run
++continues.
++
+ ## How it works
+ 
+-Under the hood, LangGraph uses `multitaskStrategy: "enqueue"` to manage concurrent submissions. When a message is submitted while the agent is already processing, it gets added to a server-side queue. Once the current run completes, the next queued message is picked up automatically.
++Under the hood, LangGraph uses `multitaskStrategy: "enqueue"` to manage concurrent submissions. When a message is submitted while the agent is already processing, it gets added to the active thread's queue. Once the current run completes, the next queued message is picked up automatically.
+ 
+ The `useStream` hook exposes a `queue` property that provides real-time visibility into pending messages:
+ 
+diff --git a/src/oss/langchain/frontend/overview.mdx b/src/oss/langchain/frontend/overview.mdx
+index e3a08a6aa..21567e686 100644
+--- a/src/oss/langchain/frontend/overview.mdx
++++ b/src/oss/langchain/frontend/overview.mdx
+@@ -3,7 +3,16 @@ title: Overview
+ description: Build generative UIs with real-time streaming from LangChain agents
+ ---
+ 
+-Build rich, interactive frontends for agents created with `createAgent`. These patterns cover everything from basic message rendering to advanced workflows like human-in-the-loop approval and time travel debugging.
++Build rich, interactive frontends for agents created with `createAgent`. These
++patterns cover everything from basic message rendering to advanced workflows
++like human-in-the-loop approval, queued submissions, durable stream rejoin, and
++time travel debugging.
++
++LangChain frontend SDKs are built for **agent applications**, not only
++token-streaming chatbots. The same hook that renders messages also exposes the
++agent's durable thread state, tool-call lifecycle, interrupts, checkpoint
++history, and custom state values, so your UI can become a control plane for
++long-running agent work.
+ 
+ ## Architecture
+ 
+@@ -33,6 +42,25 @@ graph LR
+ 
+ On the backend, `createAgent` produces a compiled LangGraph graph that exposes a streaming API. On the frontend, the `useStream` hook connects to that API and provides reactive state — messages, tool calls, interrupts, history, and more — that you render with any framework.
+ 
++## Why use the LangChain frontend SDKs?
++
++Most AI UI libraries help you append streamed text to a chat transcript.
++LangChain's SDKs expose the richer runtime semantics that production agents
++need:
++
++| Capability | What it enables in your UI |
++| --- | --- |
++| **Durable threads** | Reload a page, switch devices, or rejoin a run without losing the conversation state. |
++| **Typed agent state** | Render any state key, not just messages: todos, pipeline outputs, citations, sandbox files, metrics, or custom business objects. |
++| **Tool-call lifecycle** | Show pending, completed, and failed tool calls as purpose-built UI cards instead of raw JSON. |
++| **Interrupts** | Pause execution for human approval, edits, or missing information, then resume from the exact point where the agent stopped. |
++| **Checkpoints** | Build edit, retry, branch, audit, and time-travel flows from persisted state snapshots. |
++| **Nested execution** | Visualize deep agents, subagents, and graph nodes without flattening everything into one unreadable stream. |
++| **Framework-native reactivity** | Use the same protocol from React, Vue, Svelte, or Angular while keeping idiomatic hooks, composables, stores, or signals. |
++
++These primitives let you design UIs where users can inspect, steer, pause,
++resume, and fork agent work while it is happening.
++
+ <CodeGroup>
+ 
+ :::python
+@@ -171,9 +199,25 @@ import { useStream } from "@langchain/angular";  // Angular
+   </Card>
+ </CardGroup>
+ 
++## Choosing a frontend pattern
++
++Start from the UX question your application needs to answer:
++
++| If users need to... | Start with |
++| --- | --- |
++| Understand what the agent is doing | [Tool calling](/oss/langchain/frontend/tool-calling) and [reasoning tokens](/oss/langchain/frontend/reasoning-tokens) |
++| Safely approve sensitive actions | [Human-in-the-loop](/oss/langchain/frontend/human-in-the-loop) |
++| Send work while a run is active | [Message queues](/oss/langchain/frontend/message-queues) |
++| Leave and come back to long-running work | [Join & rejoin streams](/oss/langchain/frontend/join-rejoin) |
++| Edit or retry from an earlier turn | [Branching chat](/oss/langchain/frontend/branching-chat) and [time travel](/oss/langchain/frontend/time-travel) |
++| Render state as an application, not a chat | [Structured output](/oss/langchain/frontend/structured-output), [generative UI](/oss/langchain/frontend/generative-ui), and [Deep Agents frontend patterns](/oss/deepagents/frontend/overview) |
++
+ ## Integrations
+ 
+-`useStream` is UI-agnostic. Use it to any component library or generative UI framework.
++`useStream` is UI-agnostic. Use it with any component library or generative UI
++framework. Component libraries can own the presentation layer while LangChain's
++SDK owns the agent runtime state, resumability, interrupts, and checkpoint
++semantics underneath.
+ 
+ <CardGroup cols={3}>
+   <Card title="AI Elements" icon="package" href="/oss/langchain/frontend/integrations/ai-elements">
+diff --git a/src/oss/langgraph/frontend/graph-execution.mdx b/src/oss/langgraph/frontend/graph-execution.mdx
+index f781f333e..76611057b 100644
+--- a/src/oss/langgraph/frontend/graph-execution.mdx
++++ b/src/oss/langgraph/frontend/graph-execution.mdx
+@@ -10,6 +10,11 @@ for each node, showing its status, streaming its content in real time, and
+ tracking completion across the entire workflow. Users see exactly what the agent
+ is doing, which step it's on, and what each step produced.
+ 
++This pattern is especially useful for production agents because it turns graph
++structure into product UX. Instead of treating the run as a single assistant
++response, you can expose the same checkpoints, node names, state keys, and
++stream metadata that LangGraph uses internally.
++
+ import { PatternEmbed } from "/snippets/pattern-embed.jsx"
+ 
+ <PatternEmbed pattern="graph-execution-cards" />
+@@ -39,6 +44,11 @@ const PIPELINE_NODES = [
+ const PIPELINE_NODE_NAMES = new Set(PIPELINE_NODES.map((n) => n.name));
+ ```
+ 
++This mapping becomes the contract between your graph and your UI. Backend
++authors can add, rename, or reorder nodes intentionally, while frontend authors
++decide how each state key should be visualized: a status badge, markdown panel,
++table, chart, trace view, or approval card.
++
+ ## Setting up useStream
+ 
+ Wire up `useStream` as usual. The key properties you'll use are `messages`
+@@ -220,6 +230,11 @@ You don't need any special configuration on the backend. Just stream messages
+ as usual, and the metadata is included.
+ </Note>
+ 
++Because message metadata includes the producing node, the UI can support
++parallel graph paths without guessing from message order. Each card updates from
++the stream events that belong to its node, and completed values remain available
++through `stream.values`.
++
+ ## Determining node status
+ 
+ Each node can be in one of four states: not started, streaming, complete, or
+@@ -471,6 +486,9 @@ hiding skipped steps.
+ 
+ - **Define nodes declaratively**. Keep your `PIPELINE_NODES` array as a single
+   source of truth that maps node names, state keys, and display labels.
++- **Treat state keys as UI contracts**. Decide which graph outputs should be
++  stable enough for the frontend to render, and keep those keys documented next
++  to the graph definition.
+ - **Prefer streaming content for active nodes**. It gives users immediate
+   feedback. Only fall back to committed state values after the node completes.
+ - **Auto-collapse completed nodes**. In long pipelines, auto-collapse finished
+diff --git a/src/oss/langgraph/frontend/overview.md b/src/oss/langgraph/frontend/overview.md
+index 144013cd6..f21d2287c 100644
+--- a/src/oss/langgraph/frontend/overview.md
++++ b/src/oss/langgraph/frontend/overview.md
+@@ -3,7 +3,15 @@ title: Overview
+ description: Render LangGraph agents to the frontend
+ ---
+ 
+-Build frontends that visualize LangGraph pipelines in real time. These patterns show how to render multi-step graph execution with per-node status and streaming content from custom `StateGraph` workflows.
++Build frontends that visualize LangGraph pipelines in real time. These patterns
++show how to render multi-step graph execution with per-node status and streaming
++content from custom `StateGraph` workflows.
++
++LangGraph's frontend advantage is that the UI can follow the same structure as
++the graph. Nodes, state keys, checkpoints, interrupts, subgraphs, and streamed
++messages are all visible runtime concepts, so you can build interfaces that
++explain what the system is doing instead of hiding execution behind one
++assistant message.
+ 
+ ## Architecture
+ 
+@@ -106,6 +114,24 @@ function Pipeline() {
+ }
+ ```
+ 
++## What makes this different from a chat stream
++
++Custom graphs often power product workflows: research pipelines, approval flows,
++ETL jobs, data enrichment, code review, planning, and multi-step analysis. The
++frontend SDK lets you render these workflows using graph-native signals:
++
++| Runtime concept | Frontend UX |
++| --- | --- |
++| **Named nodes** | One card, timeline step, or status badge per graph node. |
++| **State keys** | Dedicated UI regions for typed outputs such as classification, sources, analysis, and final synthesis. |
++| **Streaming metadata** | Route partial messages to the node that produced them. |
++| **Checkpoints** | Inspect or resume from prior graph states for debugging and auditability. |
++| **Interrupts** | Pause a node for human input, approval, or correction, then continue. |
++| **Subgraphs** | Reveal nested execution only when the user needs more detail. |
++
++Because the SDK exposes these concepts directly, you can scale from a simple
++chat panel to a full workflow debugger without changing the backend protocol.
++
+ ## Patterns
+ 
+ <CardGroup cols={2}>
+@@ -116,4 +142,8 @@ function Pipeline() {
+ 
+ ## Related patterns
+ 
+-The [LangChain frontend patterns](/oss/langchain/frontend/overview)—markdown messages, tool calling, optimistic updates, and more—work with any LangGraph graph. The `useStream` hook provides the same core API whether you use `createAgent`, `createDeepAgent`, or a custom `StateGraph`.
++The [LangChain frontend patterns](/oss/langchain/frontend/overview)—markdown
++messages, tool calling, human-in-the-loop, resumable streams, and time
++travel—work with any LangGraph graph. The `useStream` hook provides the same
++core API whether you use `createAgent`, `createDeepAgent`, or a custom
++`StateGraph`.
+-- 
+2.43.0
+
