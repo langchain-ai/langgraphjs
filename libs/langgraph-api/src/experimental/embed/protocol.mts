@@ -222,15 +222,15 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Promote SDK-side `forkFrom: { checkpointId }` into
+    // Promote SDK-side `forkFrom` into
     // `configurable.checkpoint_id` so the engine replays from the
     // requested fork target. This mirrors the promotion performed by
     // `ProtocolService.createOrResumeRun` in the non-embed path and
     // closes the "client sends forkFrom, server drops it" gap.
     const forkCheckpointId = (() => {
-      if (!isRecord(params.forkFrom)) return undefined;
-      const id = params.forkFrom.checkpointId;
-      return typeof id === "string" && id.length > 0 ? id : undefined;
+      return typeof params.forkFrom === "string" && params.forkFrom.length > 0
+        ? params.forkFrom
+        : undefined;
     })();
 
     const currentRun = thread.currentRun;

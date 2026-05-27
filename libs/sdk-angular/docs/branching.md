@@ -34,11 +34,11 @@ export class EditButtonComponent {
   );
 
   editFromHere() {
-    const checkpointId = this.metadata()?.parentCheckpointId;
-    if (!checkpointId) return;
+    const forkFrom = this.metadata()?.parentCheckpointId;
+    if (!forkFrom) return;
     void this.stream.submit(
       { messages: [{ type: "human", content: "…revised prompt…" }] },
-      { forkFrom: { checkpointId } },
+      { forkFrom },
     );
   }
 }

@@ -68,7 +68,6 @@ import {
   upsertToolCall,
 } from "./tool-calls.js";
 import {
-  buildResumeRunInput,
   resolveInterruptTargetForHeadlessResume,
 } from "../headless-tools.js";
 import type {
@@ -292,18 +291,6 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
-      buildResumeRunInput: (resume) => {
-        const thread = this.#thread;
-        if (thread == null) return null;
-        return buildResumeRunInput(
-          resume,
-          thread.interrupts,
-          this.#resolvedInterrupts
-        );
-      },
-      markInterruptResolved: (interruptId) => {
-        this.#resolvedInterrupts.add(interruptId);
-      },
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
         // interrupts on the just-started run aren't filtered. Bump
@@ -564,9 +551,11 @@ export class StreamController<
   }
 
   /**
-   * Submit input or a resume command to the active thread.
+   * Submit input to the active thread.
    *
-   * @param input - Input payload for a new run; `null`/`undefined` submits no input.
+   * To resume a pending interrupt, use {@link respond} instead.
+   *
+   * @param input - Input payload for a new run.
    * @param options - Per-run config, metadata, multitask behavior, and callbacks.
    */
   async submit(

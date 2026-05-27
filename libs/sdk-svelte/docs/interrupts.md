@@ -1,6 +1,6 @@
 ## Interrupts
 
-When a graph pauses on an interrupt, `stream.interrupt` (and the full list in `stream.interrupts`) becomes reactive. Respond with `stream.respond(value)` to resume, or `stream.submit(null, { command: { resume: value } })` for the common "approve / reject" shortcut.
+When a graph pauses on an interrupt, `stream.interrupt` (and the full list in `stream.interrupts`) becomes reactive. Resume with `stream.respond(value)`.
 
 ```svelte
 <script lang="ts">

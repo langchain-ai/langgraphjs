@@ -19,26 +19,6 @@ it("surfaces the first interrupt on submit()", async () => {
     .not.toHaveTextContent("");
 });
 
-it("resumes an interrupt via submit({ command: { resume } })", async () => {
-  const screen = await render(InterruptStreamComponent);
-
-  await screen.getByTestId("submit").click();
-
-  await expect
-    .element(screen.getByTestId("interrupt-count"), { timeout: 5_000 })
-    .toHaveTextContent("1");
-
-  await screen.getByTestId("resume").click();
-
-  await expect
-    .element(screen.getByTestId("loading"), { timeout: 5_000 })
-    .toHaveTextContent("Not loading");
-
-  await expect
-    .element(screen.getByTestId("last-message"))
-    .toHaveTextContent("After interrupt");
-});
-
 it("resumes an interrupt via respond()", async () => {
   const screen = await render(InterruptStreamComponent);
 
@@ -48,7 +28,7 @@ it("resumes an interrupt via respond()", async () => {
     .element(screen.getByTestId("interrupt-count"), { timeout: 5_000 })
     .toHaveTextContent("1");
 
-  await screen.getByTestId("respond").click();
+  await screen.getByTestId("resume").click();
 
   await expect
     .element(screen.getByTestId("loading"), { timeout: 5_000 })

@@ -346,7 +346,7 @@ describe("SDK streaming projections against embed server", () => {
         forked.run.start as (params: unknown) => Promise<unknown>
       )({
         input: { messages: [{ role: "user", content: "What is the weather in SF?" }] },
-        forkFrom: { checkpointId: rootCheckpointId },
+        forkFrom: rootCheckpointId,
       });
       await collectWithTimeout(forked.values, 15000);
       await forked.close();

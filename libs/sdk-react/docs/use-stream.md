@@ -83,15 +83,14 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 
 ## `submit()` options
 
-`submit()` accepts `Partial<StateType>` as input (`messages` is widened to also accept `BaseMessage` class instances, or a single message). Pass `null` / `undefined` when resuming an interrupt via `options.command.resume`.
+`submit()` accepts `Partial<StateType>` as input (`messages` is widened to also accept `BaseMessage` class instances, or a single message). To resume a pending interrupt, use `stream.respond()` instead.
 
 | Option                              | Type                                                 | Description                                                                                                                                                               |
 | ----------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config`                            | `{ configurable?, tags?, recursion_limit?, ... }`    | Run config forwarded to the server.                                                                                                                                       |
 | `metadata`                          | `Record<string, unknown>`                            | Run metadata.                                                                                                                                                             |
-| `command`                           | `{ resume?, goto?, update? }`                        | Resume / steer an interrupted run.                                                                                                                                        |
 | `multitaskStrategy`                 | `"rollback" \| "interrupt" \| "reject" \| "enqueue"` | How to handle a submit while a run is active. See [Submission queue](./submission-queue.md).                                                                              |
-| `forkFrom`                          | `{ checkpointId: string }`                           | Fork the new run from a specific checkpoint (edit / retry flows). See [Fork / edit from a checkpoint](./fork-from-checkpoint.md).                                         |
+| `forkFrom`                          | `string`                                             | Fork the new run from a specific checkpoint id (edit / retry flows). See [Fork / edit from a checkpoint](./fork-from-checkpoint.md).                                      |
 | `interruptBefore`, `interruptAfter` | `string[]`                                           | Breakpoint debugging.                                                                                                                                                     |
 | `runId`                             | `string`                                             | Pre-generate a run id (for optimistic UI / telemetry).                                                                                                                    |
 | `durability`                        | `"async" \| "sync" \| "exit"`                        | Checkpoint policy.                                                                                                                                                        |
@@ -139,7 +138,7 @@ await stream.respond(
 );
 ```
 
-For the common "user approves / rejects a pending interrupt" flow at the root, `submit(null, { command: { resume: value } })` is equivalent and slightly more ergonomic. See [Interrupts](./interrupts.md).
+See [Interrupts](./interrupts.md) for HITL resume patterns.
 
 ### `hydrationPromise`
 

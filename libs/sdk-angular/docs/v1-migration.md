@@ -189,7 +189,7 @@ effect(() => {
 
 | Legacy field | v1 replacement |
 |---|---|
-| `branch`, `setBranch`, `experimental_branchTree` | Fork from a checkpoint: `injectMessageMetadata(stream, msg.id)` → `submit(input, { forkFrom: { checkpointId } })`. |
+| `branch`, `setBranch`, `experimental_branchTree` | Fork from a checkpoint: `injectMessageMetadata(stream, msg.id)` → `submit(input, { forkFrom })`. |
 | `history`, `fetchStateHistory` | Dropped. Fetch explicitly with `client.threads.getHistory(threadId)` if required. |
 | `getMessagesMetadata(msg, i)` | `injectMessageMetadata(stream, msg.id)` returns `Signal<{ parentCheckpointId } \| undefined>` (§6). |
 | `toolProgress` | Dropped. Each `AssembledToolCall` carries its own `status`. |
@@ -264,8 +264,8 @@ await this.stream.submit({ messages: new HumanMessage("hi") });
 |---|---|
 | `config.configurable` | `config.configurable` (unchanged) |
 | `context` | Fold into `config.configurable`. |
-| `checkpoint: { checkpoint_id }` | `forkFrom: { checkpointId }`. |
-| `command: { resume }` | Same. `{ goto, update }` also accepted for forward compatibility. |
+| `checkpoint: { checkpoint_id }` | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed. |
+| `command: { resume }` | Use `stream.respond()` instead. |
 | `interruptBefore`, `interruptAfter` | Drop — not supported in v2. |
 | `metadata` | Unchanged. |
 | `multitaskStrategy` | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support. |
@@ -354,7 +354,7 @@ export class EditButton {
     if (!checkpointId) return;
     void this.stream.submit(
       { messages: [new HumanMessage("…revised prompt…")] },
-      { forkFrom: { checkpointId } },
+      { forkFrom: checkpointId },
     );
   }
 }

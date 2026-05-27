@@ -258,32 +258,11 @@ export interface StreamSubmitOptions<
   };
   metadata?: Record<string, unknown>;
   /**
-   * Command shape widened to the v1 surface + protocol-v2 additions.
-   *
-   * - `resume` — dispatches to `thread.submitRun` with interrupt-id keyed
-   *   `input` (single or batched `Command({ resume })`).
-   * - `goto` — routes execution to a specific node (planned, forwarded
-   *   via `/run.start` metadata).
-   * - `update` — merges a partial state update into the thread's
-   *   values before resuming (planned, forwarded via `/run.start`).
-   *
-   * Only `resume` is currently executed by the controller; `goto` /
-   * `update` are accepted by the type surface so callers can migrate
-   * without breakage once the server work lands (plan-roadmap.md §5.3
-   * R2.4).
-   */
-  command?: {
-    resume?: unknown;
-    goto?: string | { node: string; input?: unknown };
-    update?: Partial<StateType>;
-  };
-  /**
    * Fork the run from an explicit checkpoint instead of the thread's
-   * latest. Emits a `forkFrom` field on the `/run.start` request that
-   * the API layer forwards to
-   * `graph.streamEvents(input, { version: "v3", forkFrom })`.
+   * latest. This SDK/API extension is promoted by the LangGraph API
+   * into `config.configurable.checkpoint_id`.
    */
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
   /**
    * Behaviour when a run is already in-flight on the thread.
    *

@@ -1294,11 +1294,11 @@ export class ThreadStream<
     metadata?: Record<string, unknown>;
     /**
      * Fork the new run from an explicit checkpoint instead of the
-     * thread's latest. Forwarded verbatim on the `/run.start` protocol
-     * message; the API layer picks it up and routes it to
-     * `graph.streamEvents(input, { version: "v3", forkFrom })`
+     * thread's latest. This SDK/API extension is promoted by the
+     * LangGraph API into `config.configurable.checkpoint_id`; it is
+     * not part of the stock agent protocol `RunStartParams`.
      */
-    forkFrom?: { checkpointId: string };
+    forkFrom?: string;
     /**
      * Controls how concurrent submissions on the same thread are
      * handled by the server (`reject` | `rollback` | `interrupt` |

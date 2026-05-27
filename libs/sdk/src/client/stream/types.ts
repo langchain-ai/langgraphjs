@@ -19,7 +19,7 @@ import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
 
 export interface ExtendedRunStartParams extends RunStartParams {
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
   multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
 }
 

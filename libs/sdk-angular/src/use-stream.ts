@@ -145,7 +145,7 @@ export interface UseStreamReturn<
    * namespace during the active thread. Populated from lifecycle /
    * input events and seeded on hydration from `thread.getState()`.
    * Cleared optimistically when a new run starts or an interrupt is
-   * resolved via {@link respond} / `submit({ command: { resume } })`.
+   * resolved via {@link respond}.
    */
   readonly interrupts: Signal<Interrupt<InterruptType>[]>;
   /**
@@ -230,10 +230,7 @@ export interface UseStreamReturn<
    * Dispatch a new run on the bound thread.
    *
    * `input` is typed as `Partial<StateType>` so IDE autocompletion
-   * surfaces the state keys declared on the root primitive. Pass
-   * `null` (or omit fields) when resuming an interrupt via
-   * `options.command.resume` — the server accepts a null payload
-   * in that case.
+   * surfaces the state keys declared on the root primitive.
    */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,

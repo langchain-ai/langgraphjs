@@ -386,7 +386,7 @@ const EMPTY_EVENTS: Event[] = [];
  * ```tsx
  * const { parentCheckpointId } = useMessageMetadata(stream, msg.id) ?? {};
  * if (parentCheckpointId) {
- *   await stream.submit(input, { forkFrom: { checkpointId: parentCheckpointId } });
+ *   await stream.submit(input, { forkFrom: parentCheckpointId });
  * }
  * ```
  *

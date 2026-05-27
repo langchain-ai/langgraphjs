@@ -3,8 +3,7 @@
 Interrupts pause graph execution and wait for user input (or an
 in-browser tool handler). `@langchain/vue` surfaces them on
 `stream.interrupt` / `stream.interrupts` and lets you resume them with
-`submit(null, { command: { resume } })` or the more explicit
-`respond()`.
+`stream.respond()`.
 
 ## Table of contents
 
@@ -48,7 +47,7 @@ function onSubmit() {
 }
 
 function onResume() {
-  void stream.submit(null, { command: { resume: "Approved" } });
+  void stream.respond("Approved");
 }
 </script>
 
@@ -148,7 +147,7 @@ async function onApprove() {
     const resume: HITLResponse = {
       decisions: actionRequests.value.map(() => ({ type: "approve" })),
     };
-    await stream.submit(null, { command: { resume } });
+    await stream.respond(resume);
   } finally {
     isProcessing.value = false;
   }
@@ -175,26 +174,22 @@ is pending.
 
 ## Resuming an interrupt
 
-The most common resume path is `submit(null, { command: { resume } })`:
+Call `stream.respond(value)` to resume the most-recent root interrupt:
 
 ```ts
-void stream.submit(null, { command: { resume: "Approved" } });
+void stream.respond("Approved");
 
-void stream.submit(null, {
-  command: {
-    resume: { decisions: [{ type: "approve" }] },
-  },
+void stream.respond({
+  decisions: [{ type: "approve" }],
 });
 ```
 
-This reuses the active transport session and is equivalent to
-`respond(value)` for root-scoped interrupts.
+When multiple interrupts are active, pass an explicit target (see below).
 
 ## `respond(response, target?)`
 
 When multiple interrupts are active (subagents, fan-out, nested
-graphs), use `respond(value, { interruptId })` instead of
-`submit(null, { command })`:
+graphs), use `respond(value, { interruptId })`:
 
 ```ts
 await stream.respond({ approved: true });

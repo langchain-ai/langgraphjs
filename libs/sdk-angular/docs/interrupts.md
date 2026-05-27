@@ -1,9 +1,9 @@
 # Handling interrupts
 
 `stream.interrupts()` exposes all pending root interrupts.
-`stream.interrupt()` is a convenience for the first one. Respond by
-calling `stream.submit(null, { command: { resume: … } })` — or target
-a specific pending interrupt with `stream.respond(response, target?)`.
+`stream.interrupt()` is a convenience for the first one. Resume with
+`stream.respond(response)` — or target a specific pending interrupt with
+`stream.respond(response, target?)`.
 
 ```typescript
 import { Component } from "@angular/core";
@@ -47,7 +47,7 @@ export class ChatComponent {
   }
 
   onResume() {
-    void this.stream.submit(null, { command: { resume: "Approved" } });
+    void this.stream.respond("Approved");
   }
 }
 ```

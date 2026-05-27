@@ -151,7 +151,7 @@ These keep working without changes:
 | `onError` (hook-level)                                                                                                                     | Read `stream.error` directly, or pass a per-submit `onError` via `submit(input, { onError })` — the v1 per-submit callback is fire-and-forget and scoped to the one submission it was passed to.                                                    |
 | `onFinish`                                                                                                                                 | Use `onCompleted` for imperative side effects, or derive render state from `isLoading` / `useValues(stream)`.                                                                                                                                       |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. The v2 protocol delivers these as structured store updates; read them via selector hooks (`useChannel`, `useExtension`) when you genuinely need raw events.                                                                                   |
-| `onStop`                                                                                                                                   | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` to leave the agent running server-side. See §5.3. If you previously used `mutate` to optimistically tag UI, call `stream.submit(null, { command: { update: ... } })` after stop instead. |
+| `onStop`                                                                                                                                   | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` to leave the agent running server-side. See §5.3. |
 | `fetchStateHistory`                                                                                                                        | Drop. Fork/edit flows use `useMessageMetadata` + `submit({}, { forkFrom })` instead (§5).                                                                                                                                                           |
 | `reconnectOnMount`                                                                                                                         | Drop. Re-attach is automatic: remounting the hook with the same `threadId` attaches to the in-flight run.                                                                                                                                           |
 | `throttle`                                                                                                                                 | Drop. The hook batches state updates natively; call sites that need render throttling can memoize at the selector site.                                                                                                                             |
@@ -204,7 +204,7 @@ useStream({
 
 | Legacy field                                                                    | v1 replacement                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `branch`, `setBranch`, `experimental_branchTree`                                | Branching is expressed as fork-from-checkpoint: call `useMessageMetadata(stream, msg.id)` to read the message's parent checkpoint and `submit(input, { forkFrom: { checkpointId } })` to fork. |
+| `branch`, `setBranch`, `experimental_branchTree`                                | Branching is expressed as fork-from-checkpoint: call `useMessageMetadata(stream, msg.id)` to read the message's parent checkpoint and `submit(input, { forkFrom })` to fork.                 |
 | `history`, `fetchStateHistory`                                                  | Dropped from the hook. Fetch history explicitly with `client.threads.getHistory(threadId)` if you need it; most apps do not.                                                                   |
 | `getMessagesMetadata(msg, i)`                                                   | `useMessageMetadata(stream, msg.id)` returns `{ parentCheckpointId }` (see §6).                                                                                                                |
 | `toolProgress`                                                                  | Dropped. Tool progress is now observable via `useToolCalls(stream)` — each `AssembledToolCall` carries its own `status`.                                                                       |
@@ -281,8 +281,8 @@ reach for it unless you're typing an intermediate variable.
 | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config.configurable`                                                                                                               | `config.configurable` (unchanged)                                                                                                                                         |
 | `context`                                                                                                                           | Drop — fold into `config.configurable`.                                                                                                                                   |
-| `checkpoint: { checkpoint_id }`                                                                                                     | `forkFrom: { checkpointId }` (new, cleaner shape).                                                                                                                        |
-| `command: { resume }`                                                                                                               | Same. Additionally `{ goto, update }` are type-accepted for forward compatibility.                                                                                        |
+| `checkpoint: { checkpoint_id }`                                                                                                     | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed.                                      |
+| `command: { resume }`                                                                                                               | Use `stream.respond()` instead.                                                                                                                                           |
 | `interruptBefore`, `interruptAfter`                                                                                                 | Drop — not supported in v2.                                                                                                                                               |
 | `metadata`                                                                                                                          | Unchanged.                                                                                                                                                                |
 | `multitaskStrategy`                                                                                                                 | Unchanged. `"rollback"` (default), `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
@@ -305,7 +305,7 @@ await submit(
 // After
 await submit(
   { messages: [new HumanMessage("retry")] },
-  { forkFrom: { checkpointId: "cp_123" }, multitaskStrategy: "rollback" },
+  { forkFrom: "cp_123", multitaskStrategy: "rollback" },
 );
 ```
 
@@ -393,12 +393,14 @@ function EditButton({
   return (
     <button
       disabled={!metadata?.parentCheckpointId}
-      onClick={() =>
-        stream.submit(
+      onClick={() => {
+        const forkFrom = metadata?.parentCheckpointId;
+        if (!forkFrom) return;
+        void stream.submit(
           { messages: [new HumanMessage("...revised prompt...")] },
-          { forkFrom: { checkpointId: metadata!.parentCheckpointId } },
-        )
-      }
+          { forkFrom },
+        );
+      }}
     >
       Edit from here
     </button>
@@ -817,8 +819,7 @@ self-hosted LangGraph or a pinned server version.
 
 | Feature                                         | Status today                                                                                                                                                                                                                               |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `submit(input, { forkFrom: { checkpointId } })` | Type-accepted; forwarded on `/run.input`.                                                                                                                                                                                                  |
-| `submit(null, { command: { goto, update } })`   | Type-accepted; forwarded on `/run.input`. Only `command.resume` is executed client-side today.                                                                                                                                             |
+| `submit(input, { forkFrom })`                   | Type-accepted; forwarded on `run.start`.                                                                                                                                                                                                  |
 | `multitaskStrategy: "enqueue"`                  | **Fully honoured client-side.** The controller records the submission in `queueStore`, exposes it via `useSubmissionQueue(stream)`, and drains queued entries sequentially after each run settles. Server-native queueing lands with A0.3. |
 | `multitaskStrategy: "reject"`                   | Fully honoured client-side — `submit()` throws when a run is already in flight.                                                                                                                                                            |
 | `multitaskStrategy: "rollback"` (default)       | Fully honoured client-side — the in-flight run is aborted and the new submission dispatches immediately.                                                                                                                                   |

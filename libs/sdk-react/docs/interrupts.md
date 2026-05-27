@@ -32,9 +32,7 @@ return (
     {interrupt && (
       <div>
         <p>{interrupt.value.question}</p>
-        <button
-          onClick={() => void submit(null, { command: { resume: "Approved" } })}
-        >
+        <button onClick={() => void stream.respond("Approved")}>
           Approve
         </button>
       </div>
@@ -45,13 +43,13 @@ return (
 
 ## Resuming an interrupt
 
-The most ergonomic way to resume the most-recent root interrupt is `submit(null, { command: { resume: value } })`:
+Call `stream.respond(value)` to resume the most-recent root interrupt:
 
 ```tsx
-void submit(null, { command: { resume: { approved: true } } });
+void stream.respond({ approved: true });
 ```
 
-This re-uses the active transport session and is equivalent to `respond(value)` for root-scoped interrupts.
+When multiple concurrent interrupts are in flight, pass an explicit target (see below).
 
 ## `respond(response, target?)`
 
