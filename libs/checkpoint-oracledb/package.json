@@ -1,0 +1,89 @@
+{
+  "name": "@oracle/langgraph-oracledb",
+  "version": "0.0.0",
+  "description": "Oracle Database integrations for LangGraph checkpointing and store memory.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/checkpoint-oracledb"
+  },
+  "scripts": {
+    "build": "pnpm turbo build:internal --filter=@oracle/langgraph-oracledb",
+    "build:internal": "pnpm --filter @langchain/build compile @oracle/langgraph-oracledb",
+    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "demo:mentor": "tsx examples/mentor-demo.ts",
+    "demo:mentor:reset": "tsx examples/mentor-demo.ts --reset",
+    "demo:mentor:vector": "tsx examples/mentor-vector-demo.ts",
+    "example:agent": "tsx examples/checkpoint-agent.ts",
+    "example:graph": "tsx examples/oracle-graph-demo.ts",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+    "prepublish": "pnpm build",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:int": "vitest run --mode int"
+  },
+  "author": "Oracle",
+  "license": "MIT",
+  "dependencies": {
+    "oracledb": "^6.9.0"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.1.44",
+    "@langchain/langgraph-checkpoint": "^1.0.0"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint-validation": "workspace:*",
+    "@langchain/langgraph": "workspace:*",
+    "@langchain/scripts": ">=0.1.2 <0.2.0",
+    "@tsconfig/recommended": "^1.0.3",
+    "@types/uuid": "^10",
+    "dotenv": "^16.3.1",
+    "dpdm": "^3.12.0",
+    "rollup": "^4.37.0",
+    "tsx": "^4.19.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "exports": {
+    ".": {
+      "typedoc": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
+    },
+    "./store": {
+      "typedoc": "./src/store.ts",
+      "import": {
+        "types": "./dist/store.d.ts",
+        "default": "./dist/store.js"
+      },
+      "require": {
+        "types": "./dist/store.d.cts",
+        "default": "./dist/store.cjs"
+      },
+      "input": "./src/store.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/"
+  ]
+}

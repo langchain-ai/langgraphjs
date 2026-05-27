@@ -4,6 +4,7 @@ index.js
 index.d.ts
 *.d.ts
 !vite-env.d.ts
+!libs/checkpoint-oracledb/src/oracledb.d.ts
 *.d.ts.map
 *.d.cts
 *.d.cts.map
@@ -44,3 +45,4 @@ tsconfig.vitest-temp.json
 agent-os/
 __screenshots__
 *_*.md
+oracle-notes/
