@@ -1,6 +1,7 @@
 import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
 import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
+import { runAttemptWithTimeout } from "./timeout.js";
 import { PregelExecutableTask } from "./types.js";
 import { getParentCheckpointNamespace } from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
@@ -111,7 +112,19 @@ export async function _runWithRetry<
     pregelTask.writes.splice(0, pregelTask.writes.length);
     error = undefined;
     try {
-      result = await pregelTask.proc.invoke(pregelTask.input, config);
+      if (pregelTask.timeout !== undefined) {
+        // Enforce a per-attempt timeout. The timer resets on each retry since
+        // a fresh attempt scope is created here per iteration.
+        result = await runAttemptWithTimeout(
+          pregelTask as PregelExecutableTask<string, string>,
+          config,
+          pregelTask.timeout,
+          (scopedConfig) =>
+            pregelTask.proc.invoke(pregelTask.input, scopedConfig)
+        );
+      } else {
+        result = await pregelTask.proc.invoke(pregelTask.input, config);
+      }
       break;
     } catch (e: unknown) {
       error = e;

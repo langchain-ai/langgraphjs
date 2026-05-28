@@ -15,7 +15,12 @@ import {
 } from "../constants.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { call, getRunnableForEntrypoint } from "../pregel/call.js";
-import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
+import type {
+  CachePolicy,
+  RetryPolicy,
+  TimeoutPolicy,
+} from "../pregel/utils/index.js";
+import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { LastValue } from "../channels/last_value.js";
 import {
   EntrypointFinal,
@@ -50,6 +55,14 @@ export interface TaskOptions {
    * The cache policy for the task. Configures how the task should be cached.
    */
   cachePolicy?: CachePolicy;
+
+  /**
+   * Maximum duration for a single attempt of this task. Accepts a number of
+   * milliseconds (a hard wall-clock cap) or a {@link TimeoutPolicy} for finer
+   * control. When exceeded, a {@link NodeTimeoutError} is raised and the task's
+   * retry policy (if any) decides whether to retry.
+   */
+  timeout?: number | TimeoutPolicy;
 }
 
 /**
@@ -105,10 +118,16 @@ export function task<ArgsT extends unknown[], OutputT>(
 ): (...args: ArgsT) => Promise<OutputT> {
   const options =
     typeof optionsOrName === "string"
-      ? { name: optionsOrName, retry: undefined, cachePolicy: undefined }
+      ? {
+          name: optionsOrName,
+          retry: undefined,
+          cachePolicy: undefined,
+          timeout: undefined,
+        }
       : optionsOrName;
 
   const { name, retry } = options;
+  const timeout = coerceTimeoutPolicy(options.timeout);
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as tasks. For streaming responses, use config.write."
@@ -129,7 +148,7 @@ export function task<ArgsT extends unknown[], OutputT>(
   }
 
   return (...args: ArgsT) => {
-    return call({ func, name, retry, cache }, ...args);
+    return call({ func, name, retry, cache, timeout }, ...args);
   };
 }
 
@@ -156,6 +175,13 @@ export type EntrypointOptions = {
    * The cache for the {@link entrypoint}. Used to cache values between workflow runs.
    */
   cache?: BaseCache;
+
+  /**
+   * Maximum duration for a single attempt of this entrypoint. Accepts a number
+   * of milliseconds (a hard wall-clock cap) or a {@link TimeoutPolicy} for finer
+   * control. When exceeded, a {@link NodeTimeoutError} is raised.
+   */
+  timeout?: number | TimeoutPolicy;
 };
 
 /**
@@ -347,6 +373,9 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     typeof optionsOrName === "string"
       ? { name: optionsOrName, checkpointer: undefined, store: undefined }
       : optionsOrName;
+  const timeout = coerceTimeoutPolicy(
+    typeof optionsOrName === "string" ? undefined : optionsOrName.timeout
+  );
   if (isAsyncGeneratorFunction(func) || isGeneratorFunction(func)) {
     throw new Error(
       "Generators are disallowed as entrypoints. For streaming responses, use config.write."
@@ -387,6 +416,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     bound,
     triggers: [START],
     channels: [START],
+    timeout,
     writers: [
       new ChannelWrite(
         [

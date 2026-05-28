@@ -775,6 +775,7 @@ export function _prepareSingleTask<
         id,
         path: outputTaskPath,
         writers: [],
+        timeout: call.timeout,
       } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       return task;
     } else {
@@ -802,7 +803,7 @@ export function _prepareSingleTask<
 
     const packet =
       _isSendInterface(sends[index]) && !_isSend(sends[index])
-        ? new Send(sends[index].node, sends[index].args)
+        ? new Send(sends[index].node, sends[index].args, sends[index].timeout)
         : sends[index];
 
     if (!_isSendInterface(packet)) {
@@ -935,6 +936,8 @@ export function _prepareSingleTask<
           id: taskId,
           path: taskPath,
           writers: proc.getWriters(),
+          // a per-Send timeout overrides the target node's configured timeout
+          timeout: (packet as Send).timeout ?? proc.timeout,
         } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       }
     } else {
@@ -1119,6 +1122,7 @@ export function _prepareSingleTask<
             id: taskId,
             path: taskPath,
             writers: proc.getWriters(),
+            timeout: proc.timeout,
           } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
         }
       } else {

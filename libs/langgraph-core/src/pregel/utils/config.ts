@@ -30,6 +30,7 @@ const CONFIG_KEYS = [
   "checkpointDuring",
   "durability",
   "signal",
+  "heartbeat",
   "executionInfo",
   "serverInfo",
 ];

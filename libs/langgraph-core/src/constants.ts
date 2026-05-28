@@ -1,4 +1,8 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
+import {
+  coerceTimeoutPolicy,
+  type TimeoutPolicy,
+} from "./pregel/utils/timeout.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -119,6 +123,11 @@ export class CommandInstance<
 export interface SendInterface<Node extends string = string, Args = any> {
   node: Node;
   args: Args;
+  /**
+   * Optional per-task timeout policy that overrides the target node's timeout
+   * for this specific pushed task.
+   */
+  timeout?: TimeoutPolicy;
 }
 
 export function _isSendInterface(x: unknown): x is SendInterface {
@@ -162,6 +171,14 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  *   });
  * };
  *
+ * @remarks
+ * A per-task timeout can be supplied as the third argument to override the
+ * target node's configured timeout for this specific pushed task:
+ *
+ * ```typescript
+ * new Send("generate_joke", { subjects: [subject] }, { idleTimeout: 5000 });
+ * ```
+ *
  * const graph = new StateGraph(ChainState)
  *   .addNode("generate_joke", (state) => ({
  *     jokes: [`Joke about ${state.subjects}`],
@@ -188,13 +205,26 @@ export class Send<
 
   public args: Args;
 
-  constructor(node: Node, args: Args) {
+  /**
+   * Optional per-task timeout policy that overrides the target node's timeout
+   * for this specific pushed task. A bare number is treated as a hard
+   * `runTimeout` (in milliseconds).
+   */
+  public timeout?: TimeoutPolicy;
+
+  constructor(node: Node, args: Args, timeout?: number | TimeoutPolicy) {
     this.node = node;
     this.args = _deserializeCommandSendObjectGraph(args) as Args;
+    this.timeout = coerceTimeoutPolicy(timeout);
   }
 
   toJSON() {
-    return { lg_name: this.lg_name, node: this.node, args: this.args };
+    return {
+      lg_name: this.lg_name,
+      node: this.node,
+      args: this.args,
+      timeout: this.timeout,
+    };
   }
 }
 
@@ -377,9 +407,9 @@ export type CommandParams<
    *   - sequence of `Send` objects
    */
   goto?:
-    | Nodes
-    | SendInterface<Nodes> // eslint-disable-line @typescript-eslint/no-explicit-any
-    | (Nodes | SendInterface<Nodes>)[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+  | Nodes
+  | SendInterface<Nodes> // eslint-disable-line @typescript-eslint/no-explicit-any
+  | (Nodes | SendInterface<Nodes>)[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
 /**
@@ -620,9 +650,8 @@ export function _deserializeCommandSendObjectGraph(
     } else if (isCommand(x)) {
       result = new Command(x);
       seen.set(x, result);
-      // eslint-disable-next-line no-instanceof/no-instanceof
     } else if (_isSendInterface(x)) {
-      result = new Send(x.node, x.args);
+      result = new Send(x.node, x.args, x.timeout);
       seen.set(x, result);
     } else if ("lc_serializable" in x && x.lc_serializable) {
       result = x;
