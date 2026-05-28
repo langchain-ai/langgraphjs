@@ -146,8 +146,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     deseriablizableCheckpoint.channel_versions[TASKS] =
       Object.keys(deseriablizableCheckpoint.channel_versions).length > 0
         ? maxChannelVersion(
-          ...Object.values(deseriablizableCheckpoint.channel_versions)
-        )
+            ...Object.values(deseriablizableCheckpoint.channel_versions)
+          )
         : this.getNextVersion(undefined);
   }
 
@@ -435,8 +435,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (threadId === undefined) {
       throw new Error(
         `Failed to put checkpoint. The passed RunnableConfig is missing a required "thread_id" field in its "configurable" property. ` +
-        `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
-        `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
+          `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
+          `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
       );
     }
 
@@ -485,8 +485,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (threadId === undefined) {
       throw new Error(
         `Failed to put writes. The passed RunnableConfig is missing a required "thread_id" field in its "configurable" property. ` +
-        `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
-        `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
+          `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
+          `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
       );
     }
     if (checkpointId === undefined) {
