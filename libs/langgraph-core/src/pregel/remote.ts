@@ -204,7 +204,8 @@ export class RemoteGraph<
     PregelOutputType,
     PregelOptions<Nn, Cc, ContextType>
   >
-  implements PregelInterface<Nn, Cc, ContextType> {
+  implements PregelInterface<Nn, Cc, ContextType>
+{
   static lc_name() {
     return "RemoteGraph";
   }
@@ -299,8 +300,8 @@ export class RemoteGraph<
         ) {
           const metadata =
             typeof record.metadata === "object" &&
-              record.metadata != null &&
-              !Array.isArray(record.metadata)
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
               ? (record.metadata as Record<string, unknown>)
               : undefined;
           record.metadata =
@@ -539,8 +540,9 @@ export class RemoteGraph<
     | Promise<RemoteGraphRunStream<PregelOutputType>>
     | Promise<IterableReadableStream<Uint8Array>>
     | Promise<
-      RemoteGraphRunStream<PregelOutputType> | IterableReadableStream<Uint8Array>
-    > {
+        | RemoteGraphRunStream<PregelOutputType>
+        | IterableReadableStream<Uint8Array>
+      > {
     if (options.version === "v3") {
       return this._streamEventsV3(
         input,
