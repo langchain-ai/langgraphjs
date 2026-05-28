@@ -371,7 +371,8 @@ function foldForkFromIntoConfig<
  * event envelope.
  */
 export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
-  implements AsyncIterable<TYield>, EventSubscription<TYield> {
+  implements AsyncIterable<TYield>, EventSubscription<TYield>
+{
   // Mutated by `#subscribeViaCommand` on WS once the server-assigned
   // subscription id arrives — see the placeholder→resolved transition
   // there. SSE paths set this once at construction and never change it.
@@ -862,9 +863,7 @@ export class ThreadStream<
    *   full list here would drop other headless-tool interrupts that
    *   are still awaiting client execution.
    */
-  #prepareForNextRun(
-    respondedInterruptId?: string | readonly string[]
-  ): void {
+  #prepareForNextRun(respondedInterruptId?: string | readonly string[]): void {
     this.interrupted = false;
     if (respondedInterruptId != null) {
       const respondedIds = new Set(
@@ -1226,9 +1225,9 @@ export class ThreadStream<
     const handleEvent = (event: Event) => {
       const data = event.params.data as
         | {
-          name?: string;
-          payload?: unknown;
-        }
+            name?: string;
+            payload?: unknown;
+          }
         | undefined;
       if (data?.name !== name) return;
       lastValue = data.payload;
@@ -1754,11 +1753,11 @@ export class ThreadStream<
     const transform =
       unwrapNamedCustom && hasOnlyNamedCustom
         ? (event: Event) =>
-          (
-            (event.params as Record<string, unknown>).data as {
-              payload?: unknown;
-            }
-          )?.payload ?? event
+            (
+              (event.params as Record<string, unknown>).data as {
+                payload?: unknown;
+              }
+            )?.payload ?? event
         : undefined;
 
     if (this.#transportAdapter.openEventStream != null) {

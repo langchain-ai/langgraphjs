@@ -325,8 +325,7 @@ export function registerProtocolRoutes(
             type: "error",
             id: command.id,
             error: "invalid_argument",
-            message:
-              "input.respond responses entries require an interrupt_id.",
+            message: "input.respond responses entries require an interrupt_id.",
           });
         }
         resumeInput[entry.interrupt_id] = entry.response;

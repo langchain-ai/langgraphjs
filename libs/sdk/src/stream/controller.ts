@@ -825,9 +825,8 @@ export class StreamController<
     const responses = entries.map(([interruptId, response]) => ({
       interrupt_id: interruptId,
       response,
-      namespace:
-        pending.find((entry) => entry.interruptId === interruptId)?.namespace ??
-        [...ROOT_NAMESPACE],
+      namespace: pending.find((entry) => entry.interruptId === interruptId)
+        ?.namespace ?? [...ROOT_NAMESPACE],
     }));
     try {
       await this.#thread.respondInput({
