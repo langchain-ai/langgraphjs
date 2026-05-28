@@ -176,7 +176,7 @@ effect(() => {
 | `isLoading()` / `isThreadLoading()` | `isLoading` is `true` while a run is in flight or hydration hasn't completed; `isThreadLoading` tracks only initial hydration. |
 | `error()` | Unchanged. |
 | `threadId()` | `Signal<string \| null>`. |
-| `submit()`, `stop()`, `disconnect()` | `submit` argument types are wider (§5). `stop(options?)` cancels server-side by default; `disconnect()` is join/rejoin client-only (§5.3). `respond(response, target)` is available for targeted interrupt replies. |
+| `submit()`, `stop()`, `disconnect()` | `submit` argument types are wider (§5). `stop(options?)` cancels server-side by default; `disconnect()` is join/rejoin client-only (§5.3). `respond(response, options?)` is available for targeted interrupt replies, and `respondAll(responsesById, options?)` resumes several interrupts pending at the same checkpoint. |
 | `client` | Resolved `Client` when the LGP branch is in use. |
 
 ### 4.2 Still there — different shape
@@ -205,7 +205,8 @@ effect(() => {
 | `subgraphs()` | `Signal<ReadonlyMap<string, SubgraphDiscoverySnapshot>>` — subgraphs discovered on the thread. |
 | `subgraphsByNode()` | Same data keyed by graph node. |
 | `hydrationPromise()` | Resolves once initial thread load finishes. Useful for SSR / `await`-before-render pipelines. |
-| `respond(response, target)` | Reply to a specific interrupt id. |
+| `respond(response, options?)` | Reply to a single interrupt (target via `options.interruptId` / `namespace`). |
+| `respondAll(responsesById, options?)` | Resume several interrupts pending at the same checkpoint in one command. |
 
 ### 4.5 Worked example — minimal diff
 

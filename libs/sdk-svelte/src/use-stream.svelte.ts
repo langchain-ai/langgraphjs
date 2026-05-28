@@ -24,6 +24,8 @@ import {
   type RootSnapshot,
   type RunCompletedInfo,
   type RunExecutionInfo,
+  type StreamRespondAllOptions,
+  type StreamRespondOptions,
   type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
@@ -253,12 +255,13 @@ export interface UseStreamReturn<
    * Resume a pending protocol interrupt by sending a response payload
    * back to the interrupted namespace.
    *
-   * When `target` is omitted, walks `getThread()?.interrupts` from newest
-   * to oldest and resumes the first not yet resolved by a prior `respond()`
-   * call. That may be a root or subgraph interrupt and is **not**
-   * necessarily {@link interrupt} (`interrupts[0]`, root-only). Safe when
-   * exactly one interrupt is pending; otherwise pass an explicit
-   * `{ interruptId, namespace? }`.
+   * When `options.interruptId` is omitted, walks `getThread()?.interrupts`
+   * from newest to oldest and resumes the first not yet resolved by a prior
+   * `respond()` call. That may be a root or subgraph interrupt and is
+   * **not** necessarily {@link interrupt} (`interrupts[0]`, root-only).
+   * Safe when exactly one interrupt is pending; otherwise pass an explicit
+   * `options.interruptId` (and `options.namespace` for subgraph
+   * interrupts).
    *
    * The server validates `namespace` against the pending interrupt. Root
    * interrupts use `namespace: []` (default when omitted). For subgraph
@@ -291,10 +294,36 @@ export interface UseStreamReturn<
    *   });
    * }
    * ```
+   *
+   * To resume several interrupts pending at the same checkpoint in one
+   * command, use {@link respondAll}.
    */
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
+  ): Promise<void>;
+
+  /**
+   * Resume several pending interrupts at the same checkpoint in a single
+   * command — required when a run pauses on multiple interrupts at once
+   * (e.g. parallel tool-authorization prompts), which sequential
+   * {@link respond} calls cannot handle. `responsesById` maps each pending
+   * `interruptId` to its response, so different interrupts can receive
+   * different payloads. Pass `options.config` / `options.metadata` to fold
+   * run-level config and metadata into the resumed run, mirroring
+   * `submit()`.
+   *
+   * @example
+   * ```ts
+   * await stream.respondAll({
+   *   [interruptA.id]: { approved: true },
+   *   [interruptB.id]: { approved: false },
+   * });
+   * ```
+   */
+  respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
   ): Promise<void>;
 
   // ----- identity -----
@@ -601,7 +630,9 @@ export function useStream<
     submit: (input, submitOptions) => controller.submit(input, submitOptions),
     stop: (options) => controller.stop(options),
     disconnect: () => controller.disconnect(),
-    respond: (response, target) => controller.respond(response, target),
+    respond: (response, options) => controller.respond(response, options),
+    respondAll: (responsesById, options) =>
+      controller.respondAll(responsesById, options),
     getThread: () => controller.getThread(),
     client,
     assistantId,

@@ -27,7 +27,7 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-api": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
-    "@langchain/protocol": "^0.0.15",
+    "@langchain/protocol": "^0.0.16",
     "@types/node": "^25.4.0",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vitejs/plugin-vue-jsx": "^5.1.5",

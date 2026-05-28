@@ -52,6 +52,58 @@ export interface StreamStopOptions {
   cancel?: boolean;
 }
 
+/**
+ * Options for {@link StreamController.respondAll} / framework
+ * `respondAll()`.
+ *
+ * Carries run-level `config` / `metadata` onto the single run that
+ * services the batched resume — the same fields as
+ * {@link StreamRespondOptions}, minus the per-interrupt target (each
+ * response in the map carries its own `interruptId` as the key).
+ */
+export interface StreamRespondAllOptions<
+  ConfigurableType extends object = Record<string, unknown>,
+> {
+  config?: {
+    configurable?: ConfigurableType;
+    recursion_limit?: number;
+    tags?: string[];
+    [key: string]: unknown;
+  };
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Options for {@link StreamController.respond} / framework `respond()`.
+ *
+ * Targets a single pending interrupt (`interruptId` / `namespace`) and
+ * carries run-level `config` and `metadata` onto the resume so the
+ * resumed run applies the same configurable values (model, user context,
+ * timezone, …) and metadata (trigger source, test flags, …) a fresh
+ * {@link StreamSubmitOptions} would. The server folds these into the run
+ * it starts to service the `input.respond` command.
+ *
+ * To resume several interrupts pending at the same checkpoint, use
+ * {@link StreamController.respondAll} instead.
+ */
+export interface StreamRespondOptions<
+  ConfigurableType extends object = Record<string, unknown>,
+> extends StreamRespondAllOptions<ConfigurableType> {
+  /**
+   * Target a specific pending interrupt. Omit when exactly one
+   * interrupt is pending to resume the newest unresolved one; pass it
+   * when several can be active (parallel subagents, fan-out, nested
+   * graphs) so you resume the interrupt the user acted on.
+   */
+  interruptId?: string;
+  /**
+   * Namespace of the targeted interrupt. Root interrupts use `[]` (the
+   * default when omitted). Subgraph interrupts require the exact tuple
+   * from `getThread()?.interrupts`.
+   */
+  namespace?: string[];
+}
+
 /** Payload for run-end callbacks. */
 export interface RunCompletedInfo extends Omit<RunExecutionInfo, "runId"> {
   /** Omitted when re-attaching to an in-flight run without local dispatch. */

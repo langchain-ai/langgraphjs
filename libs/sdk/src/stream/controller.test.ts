@@ -864,4 +864,109 @@ describe("StreamController", () => {
 
     await controller.dispose();
   });
+
+  it("respondAll() resumes several interrupts at once with distinct payloads", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "First?" }, namespace: [] },
+        { interruptId: "int-2", payload: { prompt: "Second?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "First?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "Second?" }));
+
+    await controller.respondAll({
+      "int-1": { approved: true },
+      "int-2": { approved: false },
+    });
+
+    expect(respondInput).toHaveBeenCalledTimes(1);
+    expect(respondInput).toHaveBeenCalledWith({
+      responses: [
+        { interrupt_id: "int-1", response: { approved: true }, namespace: [] },
+        { interrupt_id: "int-2", response: { approved: false }, namespace: [] },
+      ],
+      config: undefined,
+      metadata: undefined,
+    });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+    expect(controller.rootStore.getSnapshot().interrupt).toBeUndefined();
+
+    await controller.dispose();
+  });
+
+  it("respond() forwards config and metadata to respondInput", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "Approve?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond({ approved: true }, {
+      config: { configurable: { model: "gpt-4o" } },
+      metadata: { source: "ui" },
+    });
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: [],
+      interrupt_id: "int-1",
+      response: { approved: true },
+      config: { configurable: { model: "gpt-4o" } },
+      metadata: { source: "ui" },
+    });
+
+    await controller.dispose();
+  });
 });

@@ -3,6 +3,7 @@ import type {
   Command,
   CommandResponse,
   Event,
+  InputRespondParams,
   LifecycleEvent,
   ListCheckpointsResult,
   Message,
@@ -82,7 +83,7 @@ type CommandParamsMap = {
   "subscription.subscribe": SubscribeParams;
   "subscription.unsubscribe": { subscription_id: string };
   "agent.getTree": { run_id?: string };
-  "input.respond": Record<string, unknown>;
+  "input.respond": InputRespondParams;
   "input.inject": Record<string, unknown>;
   "state.get": Record<string, unknown>;
   "state.listCheckpoints": Record<string, unknown>;
@@ -731,10 +732,7 @@ export class ThreadStream<
         // See note in `run.start` — keep `thread.output` working
         // across resumes regardless of access order.
         void this.values;
-        await this.#send(
-          "input.respond",
-          params as unknown as CommandParamsMap["input.respond"]
-        );
+        await this.#send("input.respond", params);
       },
       inject: async (params) => {
         await this.#send(
@@ -863,14 +861,18 @@ export class ThreadStream<
    *   full list here would drop other headless-tool interrupts that
    *   are still awaiting client execution.
    */
-  #prepareForNextRun(respondedInterruptId?: string): void {
+  #prepareForNextRun(respondedInterruptId?: string | readonly string[]): void {
     this.interrupted = false;
     if (respondedInterruptId != null) {
-      const index = this.interrupts.findIndex(
-        (entry) => entry.interruptId === respondedInterruptId
+      const respondedIds = new Set(
+        Array.isArray(respondedInterruptId)
+          ? respondedInterruptId
+          : [respondedInterruptId as string]
       );
-      if (index >= 0) {
-        this.interrupts.splice(index, 1);
+      for (let index = this.interrupts.length - 1; index >= 0; index -= 1) {
+        if (respondedIds.has(this.interrupts[index].interruptId)) {
+          this.interrupts.splice(index, 1);
+        }
       }
     } else {
       this.interrupts.length = 0;
@@ -1369,19 +1371,18 @@ export class ThreadStream<
    * See {@link submitRun} for why this exists alongside
    * {@link input.respond}.
    */
-  async respondInput(params: {
-    namespace: readonly string[];
-    interrupt_id: string;
-    response: unknown;
-    config?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-  }): Promise<void> {
-    this.#prepareForNextRun(params.interrupt_id);
+  async respondInput(params: InputRespondParams): Promise<void> {
+    // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
+    // batch variant (`responses`) resolves several interrupts pending at
+    // the same checkpoint in one command; the single variant carries a
+    // top-level `interrupt_id`.
+    const respondedIds =
+      "responses" in params
+        ? params.responses.map((entry) => entry.interrupt_id)
+        : params.interrupt_id;
+    this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
-    await this.#send(
-      "input.respond",
-      params as unknown as CommandParamsMap["input.respond"]
-    );
+    await this.#send("input.respond", params);
   }
 
   /**
