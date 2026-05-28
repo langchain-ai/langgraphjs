@@ -1380,8 +1380,8 @@ export class ThreadStream<
     /**
      * Batched resume: respond to several pending interrupts at the same
      * checkpoint in one command. Mutually exclusive with the single
-     * `interrupt_id` / `response` fields. Not yet on the formal
-     * `input.respond` wire type — read leniently by the server.
+     * `interrupt_id` / `response` fields. Maps to the protocol's
+     * `InputRespondMany` variant of `input.respond`.
      */
     responses?: ReadonlyArray<{
       interrupt_id: string;

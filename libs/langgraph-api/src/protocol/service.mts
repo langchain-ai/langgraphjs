@@ -331,8 +331,9 @@ export class ProtocolService {
     // Build the resume input map (`{ [interrupt_id]: response }`). The
     // SDK sends either a single `interrupt_id` / `response` or a
     // `responses` batch (several interrupts at the same checkpoint, which
-    // must be resumed in one command). `responses` is not yet on the
-    // formal `InputRespondParams` wire type — read it leniently.
+    // must be resumed in one command) — the `InputRespondOne` /
+    // `InputRespondMany` variants of `InputRespondParams`. Read leniently
+    // to tolerate clients pinned to older bindings.
     const rawParams: Record<string, unknown> = isRecord(command.params)
       ? command.params
       : {};

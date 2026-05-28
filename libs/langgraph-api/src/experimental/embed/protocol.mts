@@ -315,8 +315,9 @@ export function registerProtocolRoutes(
 
     // Build the resume input map. The SDK sends either a single
     // `interrupt_id` / `response` or a `responses` batch (several
-    // interrupts at the same checkpoint, resumed in one command).
-    // `responses` is not yet on the formal wire type — read leniently.
+    // interrupts at the same checkpoint, resumed in one command) — the
+    // protocol's `InputRespondOne` / `InputRespondMany` variants. Read
+    // leniently to tolerate clients pinned to older bindings.
     const resumeInput: Record<string, unknown> = {};
     if (Array.isArray(params.responses)) {
       for (const entry of params.responses) {
@@ -366,7 +367,7 @@ export function registerProtocolRoutes(
       command: { resume: resumeInput },
       // Carry the SDK's `respond({ config, metadata })` onto the resumed
       // run so it applies the same run config / metadata a fresh
-      // `run.start` would. Read leniently — not yet on the formal wire type.
+      // `run.start` would (both are part of the `input.respond` params).
       config: isRecord(params.config) ? params.config : undefined,
       metadata: isRecord(params.metadata) ? params.metadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
