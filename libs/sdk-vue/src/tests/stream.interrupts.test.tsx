@@ -24,7 +24,7 @@ it("surfaces the first interrupt on submit()", async () => {
   }
 });
 
-it("resumes an interrupt via submit({ command: { resume } })", async () => {
+it("resumes an interrupt via respond()", async () => {
   const screen = await render(InterruptStream, { props: { apiUrl } });
 
   try {
@@ -46,32 +46,6 @@ it("resumes an interrupt via submit({ command: { resume } })", async () => {
     await expect
       .element(screen.getByTestId("interrupt-count"))
       .toHaveTextContent("0");
-  } finally {
-    await screen.unmount();
-  }
-});
-
-it("resumes an interrupt via respond()", async () => {
-  const screen = await render(InterruptStream, {
-    props: { apiUrl, useRespondMethod: true },
-  });
-
-  try {
-    await screen.getByTestId("submit").click();
-
-    await expect
-      .element(screen.getByTestId("interrupt-count"), { timeout: 5_000 })
-      .toHaveTextContent("1");
-
-    await screen.getByTestId("resume").click();
-
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 5_000 })
-      .toHaveTextContent("Not loading");
-
-    await expect
-      .element(screen.getByTestId("last-message"))
-      .toHaveTextContent("After interrupt");
   } finally {
     await screen.unmount();
   }

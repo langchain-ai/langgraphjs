@@ -54,7 +54,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * `run.start` params as accepted by the service. Wider than the
  * stock `RunStartParams` from `@langchain/protocol` to carry the
- * SDK-side `forkFrom: { checkpointId }` convenience field, which
+ * SDK-side `forkFrom` checkpoint id convenience field, which
  * `createOrResumeRun` promotes to `config.configurable.checkpoint_id`
  * so the engine replays from the requested fork target. Callers that
  * prefer to set `config.configurable.checkpoint_id` directly remain
@@ -62,18 +62,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * it takes precedence when both are provided.
  */
 type ExtendedRunStartParams = RunStartParams & {
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
 };
 
-const normalizeForkFrom = (
-  value: unknown
-): { checkpointId: string } | undefined => {
-  if (!isRecord(value)) return undefined;
-  const checkpointId = value.checkpointId;
-  if (typeof checkpointId !== "string" || checkpointId.length === 0) {
-    return undefined;
-  }
-  return { checkpointId };
+const normalizeForkFrom = (value: unknown): string | undefined => {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  return value;
 };
 
 const normalizeRunStart = (value: unknown): ExtendedRunStartParams => {
@@ -389,7 +383,7 @@ export class ProtocolService {
         hasPendingInterrupts);
 
     /**
-     * When `forkFrom: { checkpointId }` is present, promote it to
+     * When `forkFrom` is present, promote it to
      * `configurable.checkpoint_id` so the engine replays from the
      * requested fork target. `forkFrom` is merged last so it wins over
      * any `checkpoint_id` the caller may have pre-baked into
@@ -402,8 +396,8 @@ export class ProtocolService {
       configurable: {
         ...params.config?.configurable,
         thread_id: record.threadId,
-        ...(!isResume && params.forkFrom?.checkpointId != null
-          ? { checkpoint_id: params.forkFrom.checkpointId }
+        ...(!isResume && params.forkFrom != null
+          ? { checkpoint_id: params.forkFrom }
           : {}),
       },
     };

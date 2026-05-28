@@ -19,8 +19,7 @@
  *      otherwise we could miss replayed events).
  *   4. Apply the {@link StreamSubmitOptions.multitaskStrategy} to
  *      decide whether to abort, enqueue, reject, or proceed.
- *   5. Race the dispatch promise (`thread.submitRun()` or
- *      `thread.submitRun()` for resumes) against the next root
+ *   5. Race the dispatch promise (`thread.submitRun()`) against the next root
  *      terminal lifecycle event.
  *   6. Settle the resulting state (loading flag, error slot) and
  *      drain the next queued submission, if any.
@@ -171,12 +170,6 @@ export class SubmitCoordinator<
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
   readonly #awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-  /** Builds interrupt-id keyed `run.start` input from `command.resume`. */
-  readonly #buildResumeRunInput: (
-    resume: unknown
-  ) => Record<string, unknown> | null;
-  /** Marks an interrupt id as resolved so it isn't re-targeted. */
-  readonly #markInterruptResolved: (interruptId: string) => void;
   /** Called once at the start of every {@link submit} invocation. */
   readonly #onSubmitStart: () => void;
   /** Marks that a local run dispatch is now active. */
@@ -215,8 +208,6 @@ export class SubmitCoordinator<
     abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-    buildResumeRunInput: (resume: unknown) => Record<string, unknown> | null;
-    markInterruptResolved: (interruptId: string) => void;
     onSubmitStart?: () => void;
     onRunStart?: () => void;
     onRunCreated?: (runId: string) => void;
@@ -237,8 +228,6 @@ export class SubmitCoordinator<
     this.#abandonDeferredRootPump = params.abandonDeferredRootPump;
     this.#waitForRootPumpReady = params.waitForRootPumpReady;
     this.#awaitNextTerminal = params.awaitNextTerminal;
-    this.#buildResumeRunInput = params.buildResumeRunInput;
-    this.#markInterruptResolved = params.markInterruptResolved;
     this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
     this.#onRunStart = params.onRunStart ?? (() => undefined);
     this.#onRunCreated = params.onRunCreated ?? (() => undefined);
@@ -247,7 +236,7 @@ export class SubmitCoordinator<
   }
 
   /**
-   * Submit input or a resume command to the active thread.
+   * Submit input to the active thread.
    *
    * Honours {@link StreamSubmitOptions.multitaskStrategy}:
    *
@@ -263,8 +252,10 @@ export class SubmitCoordinator<
    * and `rootStore.error`. Aborts (controller dispose / rollback) are
    * silently dropped.
    *
-   * @param input   - Input payload, or `null`/`undefined` for no input
-   *   (typical for resume commands).
+   * To resume a pending interrupt, use {@link StreamController.respond}
+   * instead of `submit()`.
+   *
+   * @param input   - Input payload for the run.
    * @param options - Per-submit options (config, metadata, callbacks,
    *   strategy, etc).
    */
@@ -345,9 +336,6 @@ export class SubmitCoordinator<
     const abort = new AbortController();
     this.#runAbort = abort;
 
-    const resumeCommand = options?.command?.resume;
-    const isResume = resumeCommand !== undefined;
-
     // Optimistically clear interrupts/error and flip loading. The
     // root pump's lifecycle listener will re-flip these as the run
     // terminates.
@@ -371,7 +359,7 @@ export class SubmitCoordinator<
     let completionNotified = false;
     const notifyCompletion = (reason: RunExecutionReason): void => {
       if (completionNotified) return;
-      if (!isResume && createdRunId == null) {
+      if (createdRunId == null) {
         pendingCompletionReason = reason;
         return;
       }
@@ -391,133 +379,76 @@ export class SubmitCoordinator<
     try {
       let terminal: TerminalResult | undefined;
 
-      if (isResume) {
-        const resumeInput = this.#buildResumeRunInput(resumeCommand);
-        if (resumeInput == null) {
-          throw new Error(
-            "submit({ command: { resume } }) called but no pending protocol interrupt is available."
-          );
-        }
-        const commandPromise = thread.submitRun({
-          input: resumeInput,
-          config: boundConfig,
-          metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
-        });
-        // Defer the pump start until the dispatch HTTP response
-        // lands — see the analogous block in the non-resume path
-        // below for the rationale (thread row not committed
-        // synchronously). For a resume the thread exists already
-        // (it must, since `buildResumeRunInput()` was non-null),
-        // so `#startDeferredRootPump` is typically a no-op here, but
-        // we keep the same shape to avoid a future regression.
-        //
-        // Asymmetry with the non-resume path: we don't call
-        // `#forgetSelfCreatedThreadId` because a resume implies the
-        // thread already committed, so the self-created marker was
-        // already cleared on the original submit. Same reason we
-        // don't call `#abandonDeferredRootPump` on failure here.
-        void commandPromise.then(
-          () => this.#startDeferredRootPump(),
-          () => {}
-        );
-        // Mark resolved synchronously: even if the response races and
-        // the command settles after the terminal, we don't want to
-        // re-target these interrupts on the next submit.
-        for (const interruptId of Object.keys(resumeInput)) {
-          this.#markInterruptResolved(interruptId);
-        }
-        const first = await Promise.race([
-          terminalPromise.then((value) => ({
-            type: "terminal" as const,
-            value,
-          })),
-          commandPromise.then(
-            () => ({ type: "command" as const }),
-            (error) => ({ type: "error" as const, error })
-          ),
-        ]);
-        if (first.type === "error") throw first.error;
-        if (first.type === "terminal") {
-          terminal = first.value;
-          terminalSettled = true;
-          // Stale command response — surface as error only if it
-          // arrives with a real failure (not just our own abort).
-          void commandPromise.catch((error) => {
-            if (!terminalSettled) reportError(error);
-          });
-        }
-      } else {
-        const commandPromise = thread.submitRun({
-          input: input ?? null,
-          config: boundConfig,
-          metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
-          forkFrom: options?.forkFrom,
-          multitaskStrategy:
-            options?.multitaskStrategy === "enqueue"
-              ? "enqueue"
-              : options?.multitaskStrategy,
-        });
-        // Start the deferred root pump *after* the dispatch HTTP
-        // response lands — that's when the thread row exists server-
-        // side. Doing it synchronously here would race the response
-        // and the pump's `subscription.subscribe` would 404. Same
-        // reason we drop the self-created flag only after dispatch:
-        // future hydrates need the thread to exist before they fetch
-        // state.
-        //
-        // Fire-and-forget: we don't want to gate Promise.race on this,
-        // and `commandPromise.catch` is already handled below. A
-        // dispatch failure means there's no thread to pump anyway.
-        void commandPromise.then(
-          () => {
-            this.#startDeferredRootPump();
+      const commandPromise = thread.submitRun({
+        input: input ?? null,
+        config: boundConfig,
+        metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
+        forkFrom: options?.forkFrom,
+        multitaskStrategy:
+          options?.multitaskStrategy === "enqueue"
+            ? "enqueue"
+            : options?.multitaskStrategy,
+      });
+      // Start the deferred root pump *after* the dispatch HTTP
+      // response lands — that's when the thread row exists server-
+      // side. Doing it synchronously here would race the response
+      // and the pump's `subscription.subscribe` would 404. Same
+      // reason we drop the self-created flag only after dispatch:
+      // future hydrates need the thread to exist before they fetch
+      // state.
+      //
+      // Fire-and-forget: we don't want to gate Promise.race on this,
+      // and `commandPromise.catch` is already handled below. A
+      // dispatch failure means there's no thread to pump anyway.
+      void commandPromise.then(
+        () => {
+          this.#startDeferredRootPump();
+          this.#forgetSelfCreatedThreadId(activeThreadId);
+        },
+        () => {
+          // Dispatch failed. Without abandoning, `#rootPumpDeferred`
+          // stays armed and `selfCreatedThreadIds` still holds this
+          // id — a retry submit would see `wasSelfCreated=false`
+          // (currentThreadId is no longer null), `#ensureThread`
+          // would early-return because `#thread != null`, and the
+          // root pump would never start. Tear down so the next
+          // submit re-runs `#ensureThread` from scratch.
+          if (wasSelfCreated) {
+            this.#abandonDeferredRootPump();
             this.#forgetSelfCreatedThreadId(activeThreadId);
-          },
-          () => {
-            // Dispatch failed. Without abandoning, `#rootPumpDeferred`
-            // stays armed and `selfCreatedThreadIds` still holds this
-            // id — a retry submit would see `wasSelfCreated=false`
-            // (currentThreadId is no longer null), `#ensureThread`
-            // would early-return because `#thread != null`, and the
-            // root pump would never start. Tear down so the next
-            // submit re-runs `#ensureThread` from scratch.
-            if (wasSelfCreated) {
-              this.#abandonDeferredRootPump();
-              this.#forgetSelfCreatedThreadId(activeThreadId);
-            }
           }
-        );
-        const notifyCreated = (result: { run_id?: unknown }) => {
-          if (typeof result.run_id !== "string") return;
-          createdRunId = result.run_id;
-          this.#onRunCreated(createdRunId);
-          if (pendingCompletionReason != null) {
-            notifyCompletion(pendingCompletionReason);
-          }
-        };
-        const first = await Promise.race([
-          terminalPromise.then((value) => ({
-            type: "terminal" as const,
-            value,
-          })),
-          commandPromise.then(
-            (result) => ({ type: "command" as const, result }),
-            (error) => ({ type: "error" as const, error })
-          ),
-        ]);
-        if (first.type === "error") throw first.error;
-        if (first.type === "command") {
-          notifyCreated(first.result);
-        } else {
-          // Terminal landed first (very fast runs). Wait for the
-          // dispatch response in the background so onCreated fires
-          // and dispatch errors still surface.
-          terminal = first.value;
-          terminalSettled = true;
-          void commandPromise.then(notifyCreated).catch((error) => {
-            if (!terminalSettled) reportError(error);
-          });
         }
+      );
+      const notifyCreated = (result: { run_id?: unknown }) => {
+        if (typeof result.run_id !== "string") return;
+        createdRunId = result.run_id;
+        this.#onRunCreated(createdRunId);
+        if (pendingCompletionReason != null) {
+          notifyCompletion(pendingCompletionReason);
+        }
+      };
+      const first = await Promise.race([
+        terminalPromise.then((value) => ({
+          type: "terminal" as const,
+          value,
+        })),
+        commandPromise.then(
+          (result) => ({ type: "command" as const, result }),
+          (error) => ({ type: "error" as const, error })
+        ),
+      ]);
+      if (first.type === "error") throw first.error;
+      if (first.type === "command") {
+        notifyCreated(first.result);
+      } else {
+        // Terminal landed first (very fast runs). Wait for the
+        // dispatch response in the background so onCreated fires
+        // and dispatch errors still surface.
+        terminal = first.value;
+        terminalSettled = true;
+        void commandPromise.then(notifyCreated).catch((error) => {
+          if (!terminalSettled) reportError(error);
+        });
       }
 
       terminal ??= await terminalPromise;

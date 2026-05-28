@@ -21,11 +21,11 @@ const messageId = computed(() => props.message.id);
 const metadata = useMessageMetadata(stream, messageId);
 
 function editFromHere() {
-  const checkpointId = metadata.value?.parentCheckpointId;
-  if (!checkpointId) return;
+  const forkFrom = metadata.value?.parentCheckpointId;
+  if (!forkFrom) return;
   void stream.submit(
     { messages: [{ type: "human", content: "…revised prompt…" }] },
-    { forkFrom: { checkpointId } },
+    { forkFrom },
   );
 }
 </script>

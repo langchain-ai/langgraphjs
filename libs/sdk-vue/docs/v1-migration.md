@@ -225,7 +225,7 @@ All reactive fields are now `Readonly<ShallowRef<T>>` or
 
 | Legacy field                                                                    | v1 replacement                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `branch`, `setBranch`, `experimental_branchTree`                                | Branching is expressed as fork-from-checkpoint: call `useMessageMetadata(stream, () => msg.id)` to read the message's parent checkpoint and `submit(input, { forkFrom: { checkpointId } })` to fork. |
+| `branch`, `setBranch`, `experimental_branchTree`                                | Branching is expressed as fork-from-checkpoint: call `useMessageMetadata(stream, () => msg.id)` to read the message's parent checkpoint and `submit(input, { forkFrom })` to fork.                 |
 | `history`, `fetchStateHistory`                                                  | Dropped from the composable. Fetch history explicitly with `client.threads.getHistory(threadId)` if you need it; most apps do not.                                                                   |
 | `getMessagesMetadata(msg, i)`                                                   | `useMessageMetadata(stream, () => msg.id).value?.parentCheckpointId` (see §6).                                                                                                                       |
 | `toolProgress`                                                                  | Dropped. Tool progress is now observable via `useToolCalls(stream)` — each `AssembledToolCall` carries its own `status`.                                                                             |
@@ -314,8 +314,8 @@ await submit({ messages: new HumanMessage("hi") });
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config.configurable`                                                                                                                               | `config.configurable` (unchanged)                                                                                                                        |
 | `context`                                                                                                                                           | Drop — fold into `config.configurable`.                                                                                                                  |
-| `checkpoint: { checkpoint_id }`                                                                                                                     | `forkFrom: { checkpointId }` (new, cleaner shape).                                                                                                       |
-| `command: { resume }`                                                                                                                               | Same. Additionally `{ goto, update }` are type-accepted for forward compatibility.                                                                       |
+| `checkpoint: { checkpoint_id }`                                                                                                                     | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed.                     |
+| `command: { resume }`                                                                                                                               | Use `stream.respond()` instead.                                                                                                                          |
 | `interruptBefore`, `interruptAfter`                                                                                                                 | Drop — not supported in v2.                                                                                                                              |
 | `metadata`                                                                                                                                          | Unchanged.                                                                                                                                               |
 | `multitaskStrategy`                                                                                                                                 | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
@@ -334,7 +334,7 @@ await submit({ messages: [new HumanMessage("retry")] }, {
 // After
 await submit(
   { messages: [new HumanMessage("retry")] },
-  { forkFrom: { checkpointId: "cp_123" }, multitaskStrategy: "rollback" },
+  { forkFrom: "cp_123", multitaskStrategy: "rollback" },
 );
 ```
 
@@ -410,11 +410,11 @@ const props = defineProps<{ stream: AnyStream; message: BaseMessage }>();
 const metadata = useMessageMetadata(props.stream, () => props.message.id);
 
 async function edit() {
-  const checkpointId = metadata.value?.parentCheckpointId;
-  if (!checkpointId) return;
+  const forkFrom = metadata.value?.parentCheckpointId;
+  if (!forkFrom) return;
   await props.stream.submit(
     { messages: [new HumanMessage("...revised prompt...")] },
-    { forkFrom: { checkpointId } },
+    { forkFrom },
   );
 }
 </script>

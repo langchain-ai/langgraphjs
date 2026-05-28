@@ -1,9 +1,9 @@
 # Handling interrupts
 
 `stream.interrupts()` exposes all pending root interrupts.
-`stream.interrupt()` is a convenience for the first one. Respond by
-calling `stream.submit(null, { command: { resume: … } })` — or target
-a specific pending interrupt with `stream.respond(response, target?)`.
+`stream.interrupt()` is a convenience for the first one. Resume with
+`stream.respond(response)` — or target a specific pending interrupt with
+`stream.respond(response, target?)`.
 
 ```typescript
 import { Component } from "@angular/core";
@@ -47,21 +47,33 @@ export class ChatComponent {
   }
 
   onResume() {
-    void this.stream.submit(null, { command: { resume: "Approved" } });
+    void this.stream.respond("Approved");
   }
 }
 ```
 
 ## Responding to a specific interrupt
 
-When multiple interrupts are pending, pass the target interrupt (or
-its id) to `respond`:
+When multiple interrupts are pending, pass `{ interruptId, namespace? }`.
+Root interrupts can omit `namespace` (defaults to `[]`). Subgraph
+interrupts need the exact tuple from `getThread()?.interrupts`:
 
 ```typescript
-for (const pending of stream.interrupts()) {
-  await stream.respond(decide(pending), pending);
+for (const intr of stream.interrupts()) {
+  await stream.respond(decide(intr.value), { interruptId: intr.id! });
+}
+
+const thread = stream.getThread();
+for (const entry of thread?.interrupts ?? []) {
+  await stream.respond(buildResponse(entry.payload), {
+    interruptId: entry.interruptId,
+    namespace: entry.namespace,
+  });
 }
 ```
+
+When `target` is omitted, `respond()` walks `getThread()?.interrupts`
+from newest to oldest — not necessarily `stream.interrupt()` (root-only).
 
 ## Auto-resumed tool interrupts
 

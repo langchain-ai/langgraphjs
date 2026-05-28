@@ -27,36 +27,8 @@ it("surfaces the first interrupt on submit()", async () => {
   }
 });
 
-it("resumes an interrupt via submit({ command: { resume } })", async () => {
-  const screen = await render(<InterruptStream apiUrl={apiUrl} />);
-
-  try {
-    await screen.getByTestId("submit").click();
-
-    await expect
-      .element(screen.getByTestId("interrupt-count"))
-      .toHaveTextContent("1");
-
-    await screen.getByTestId("resume").click();
-
-    await expect
-      .element(screen.getByTestId("completed"))
-      .toHaveTextContent("true");
-    await expect
-      .element(screen.getByTestId("decision"))
-      .toHaveTextContent('"approved":true');
-    await expect
-      .element(screen.getByTestId("interrupt-count"))
-      .toHaveTextContent("0");
-  } finally {
-    await cleanupRender(screen);
-  }
-});
-
 it("resumes an interrupt via respond()", async () => {
-  const screen = await render(
-    <InterruptStream apiUrl={apiUrl} useRespondMethod />,
-  );
+  const screen = await render(<InterruptStream apiUrl={apiUrl} />);
 
   try {
     await screen.getByTestId("submit").click();
@@ -73,6 +45,9 @@ it("resumes an interrupt via respond()", async () => {
     await expect
       .element(screen.getByTestId("decision"))
       .toHaveTextContent('"approved":true');
+    await expect
+      .element(screen.getByTestId("interrupt-count"))
+      .toHaveTextContent("0");
   } finally {
     await cleanupRender(screen);
   }

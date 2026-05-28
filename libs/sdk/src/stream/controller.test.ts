@@ -755,4 +755,113 @@ describe("StreamController", () => {
     await controller.dispose();
     await submitPromise.catch(() => undefined);
   });
+
+  it("respond() removes the targeted interrupt from rootStore", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "Approve?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-1"]);
+
+    await controller.respond({ approved: true });
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: [],
+      interrupt_id: "int-1",
+      response: { approved: true },
+    });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+    expect(controller.rootStore.getSnapshot().interrupt).toBeUndefined();
+
+    await controller.dispose();
+  });
+
+  it("respond() removes only the targeted interrupt when several are pending", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "First?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "Second?" }));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-1", "int-2"]);
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+    expect(controller.rootStore.getSnapshot().interrupt?.id).toBe("int-2");
+
+    await controller.dispose();
+  });
 });

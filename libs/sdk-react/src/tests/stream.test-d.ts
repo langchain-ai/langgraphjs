@@ -200,9 +200,6 @@ describe("useStream — submit() input typing", () => {
   });
 
   test("options are typed against StateType + ConfigurableType", () => {
-    expectTypeOf(stream.submit).toBeCallableWith(null, {
-      command: { resume: { approved: true } },
-    });
     expectTypeOf(stream.submit).toBeCallableWith(
       { paragraphs: ["…"] },
       {
@@ -725,25 +722,10 @@ describe("WidenUpdateMessages — submit() input widening", () => {
 // ============================================================================
 
 describe("submit() options — v1 widening", () => {
-  test("command.resume / goto / update all typecheck", () => {
-    expectTypeOf(stream.submit).toBeCallableWith(null, {
-      command: { resume: "approved" },
-    });
-    expectTypeOf(stream.submit).toBeCallableWith(null, {
-      command: { goto: "agent" },
-    });
-    expectTypeOf(stream.submit).toBeCallableWith(null, {
-      command: { goto: { node: "agent", input: { foo: 1 } } },
-    });
-    expectTypeOf(stream.submit).toBeCallableWith(null, {
-      command: { update: { paragraphs: ["…"] } },
-    });
-  });
-
   test("forkFrom checkpointId typechecks", () => {
     expectTypeOf(stream.submit).toBeCallableWith(
       { theme: "dark" },
-      { forkFrom: { checkpointId: "cp_1" } }
+      { forkFrom: "cp_1" }
     );
   });
 

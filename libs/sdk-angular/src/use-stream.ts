@@ -145,7 +145,7 @@ export interface UseStreamReturn<
    * namespace during the active thread. Populated from lifecycle /
    * input events and seeded on hydration from `thread.getState()`.
    * Cleared optimistically when a new run starts or an interrupt is
-   * resolved via {@link respond} / `submit({ command: { resume } })`.
+   * resolved via {@link respond}.
    */
   readonly interrupts: Signal<Interrupt<InterruptType>[]>;
   /**
@@ -230,10 +230,7 @@ export interface UseStreamReturn<
    * Dispatch a new run on the bound thread.
    *
    * `input` is typed as `Partial<StateType>` so IDE autocompletion
-   * surfaces the state keys declared on the root primitive. Pass
-   * `null` (or omit fields) when resuming an interrupt via
-   * `options.command.resume` — the server accepts a null payload
-   * in that case.
+   * surfaces the state keys declared on the root primitive.
    */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
@@ -255,10 +252,42 @@ export interface UseStreamReturn<
    * Resume a pending protocol interrupt by sending a response payload
    * back to the interrupted namespace.
    *
-   * When `target` is omitted, responds to the latest unresolved
-   * interrupt in {@link interrupts}. Pass an explicit
-   * `{ interruptId, namespace? }` when multiple interrupts are
-   * pending or the interrupt lives in a subgraph namespace.
+   * When `target` is omitted, walks `getThread()?.interrupts` from newest
+   * to oldest and resumes the first not yet resolved by a prior `respond()`
+   * call. That may be a root or subgraph interrupt and is **not**
+   * necessarily {@link interrupt} (`interrupts()[0]`, root-only). Safe when
+   * exactly one interrupt is pending; otherwise pass an explicit
+   * `{ interruptId, namespace? }`.
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (default when omitted). For subgraph
+   * interrupts, copy `namespace` from `getThread()?.interrupts`.
+   *
+   * @example
+   * ```ts
+   * // Single pending interrupt
+   * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Multiple root interrupts
+   * for (const intr of stream.interrupts()) {
+   *   await stream.respond(decide(intr.value), { interruptId: intr.id! });
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Subgraph interrupt — namespace from `getThread()`
+   * const thread = stream.getThread();
+   * for (const entry of thread?.interrupts ?? []) {
+   *   await stream.respond(buildResponse(entry.payload), {
+   *     interruptId: entry.interruptId,
+   *     namespace: entry.namespace,
+   *   });
+   * }
+   * ```
    */
   respond(
     response: unknown,

@@ -1,6 +1,6 @@
 ## Interrupts
 
-When a graph pauses on an interrupt, `stream.interrupt` (and the full list in `stream.interrupts`) becomes reactive. Respond with `stream.respond(value)` to resume, or `stream.submit(null, { command: { resume: value } })` for the common "approve / reject" shortcut.
+When a graph pauses on an interrupt, `stream.interrupt` (and the full list in `stream.interrupts`) becomes reactive. Resume with `stream.respond(value)`.
 
 ```svelte
 <script lang="ts">
@@ -22,16 +22,24 @@ When a graph pauses on an interrupt, `stream.interrupt` (and the full list in `s
 
 ### Targeting a specific interrupt
 
-When multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs), pass a `target` to resolve a specific one. The target can be an explicit `{ interruptId, namespace? }`, a discovery snapshot from `stream.subagents`, or a raw `namespace` array.
+When multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs), pass `{ interruptId, namespace? }`. Root interrupts can omit `namespace` (defaults to `[]`). Subgraph interrupts need the exact tuple from `getThread()?.interrupts`:
 
 ```ts
 await stream.respond(
   { approved: true },
-  { interruptId: myInterrupt.id, namespace: ["subagent"] },
+  { interruptId: myInterrupt.id! },
 );
+
+const thread = stream.getThread();
+for (const entry of thread?.interrupts ?? []) {
+  await stream.respond(buildResponse(entry.payload), {
+    interruptId: entry.interruptId,
+    namespace: entry.namespace,
+  });
+}
 ```
 
-Without a target, `respond` resolves the most-recent root interrupt.
+When `target` is omitted, `respond()` walks `getThread()?.interrupts` from newest to oldest and resumes the first not yet resolved entry. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending.
 
 ### Stopping a run
 

@@ -3,8 +3,7 @@
 Interrupts pause graph execution and wait for user input (or an
 in-browser tool handler). `@langchain/vue` surfaces them on
 `stream.interrupt` / `stream.interrupts` and lets you resume them with
-`submit(null, { command: { resume } })` or the more explicit
-`respond()`.
+`stream.respond()`.
 
 ## Table of contents
 
@@ -48,7 +47,7 @@ function onSubmit() {
 }
 
 function onResume() {
-  void stream.submit(null, { command: { resume: "Approved" } });
+  void stream.respond("Approved");
 }
 </script>
 
@@ -148,7 +147,7 @@ async function onApprove() {
     const resume: HITLResponse = {
       decisions: actionRequests.value.map(() => ({ type: "approve" })),
     };
-    await stream.submit(null, { command: { resume } });
+    await stream.respond(resume);
   } finally {
     isProcessing.value = false;
   }
@@ -175,37 +174,61 @@ is pending.
 
 ## Resuming an interrupt
 
-The most common resume path is `submit(null, { command: { resume } })`:
+Call `stream.respond(value)` when exactly one interrupt is pending:
 
 ```ts
-void stream.submit(null, { command: { resume: "Approved" } });
+void stream.respond("Approved");
 
-void stream.submit(null, {
-  command: {
-    resume: { decisions: [{ type: "approve" }] },
-  },
+void stream.respond({
+  decisions: [{ type: "approve" }],
 });
 ```
 
-This reuses the active transport session and is equivalent to
-`respond(value)` for root-scoped interrupts.
+When multiple interrupts can be active, pass an explicit target — see [Multiple pending interrupts](#multiple-pending-interrupts) and [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace).
+
+## Multiple pending interrupts
+
+When `target` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved. That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
+
+| Surface | What it contains | Use for |
+| ------- | ---------------- | ------- |
+| `stream.interrupts` | Root-namespace interrupts (`{ id, value }`) | Rendering root HITL UI |
+| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting + namespace for `respond()` |
+
+```ts
+for (const intr of stream.interrupts.value) {
+  await stream.respond(decide(intr.value), { interruptId: intr.id! });
+}
+```
+
+## Subgraph interrupts and namespace
+
+Subgraph interrupts carry a non-empty protocol `namespace` tuple (for example `["task:research"]`). The server validates it on resume. Read it from `getThread()?.interrupts` — nested entries may not appear on `stream.interrupts`:
+
+```ts
+const thread = stream.getThread();
+for (const entry of thread?.interrupts ?? []) {
+  await stream.respond(buildResponse(entry.payload), {
+    interruptId: entry.interruptId,
+    namespace: entry.namespace,
+  });
+}
+```
 
 ## `respond(response, target?)`
 
-When multiple interrupts are active (subagents, fan-out, nested
-graphs), use `respond(value, { interruptId })` instead of
-`submit(null, { command })`:
+When multiple interrupts are active (subagents, fan-out, nested graphs), pass `{ interruptId, namespace? }`:
 
 ```ts
 await stream.respond({ approved: true });
 
 await stream.respond(
   { approved: true },
-  { interruptId: myInterrupt.id, namespace: ["subagent"] },
+  { interruptId: myInterrupt.id!, namespace: entry.namespace },
 );
 ```
 
-When `target` is omitted, the most recent root interrupt is resumed.
+When `target` is omitted, the newest unresolved entry in `getThread()?.interrupts` is resumed — not necessarily the most recent root interrupt on `stream.interrupt`.
 
 ## Stopping a run
 

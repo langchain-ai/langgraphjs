@@ -67,10 +67,7 @@ import {
   reconcileToolCallsFromMessages,
   upsertToolCall,
 } from "./tool-calls.js";
-import {
-  buildResumeRunInput,
-  resolveInterruptTargetForHeadlessResume,
-} from "../headless-tools.js";
+import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
 import type {
   RootEventBus,
   RootSnapshot,
@@ -292,18 +289,6 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
-      buildResumeRunInput: (resume) => {
-        const thread = this.#thread;
-        if (thread == null) return null;
-        return buildResumeRunInput(
-          resume,
-          thread.interrupts,
-          this.#resolvedInterrupts
-        );
-      },
-      markInterruptResolved: (interruptId) => {
-        this.#resolvedInterrupts.add(interruptId);
-      },
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
         // interrupts on the just-started run aren't filtered. Bump
@@ -564,9 +549,11 @@ export class StreamController<
   }
 
   /**
-   * Submit input or a resume command to the active thread.
+   * Submit input to the active thread.
    *
-   * @param input - Input payload for a new run; `null`/`undefined` submits no input.
+   * To resume a pending interrupt, use {@link respond} instead.
+   *
+   * @param input - Input payload for a new run.
    * @param options - Per-run config, metadata, multitask behavior, and callbacks.
    */
   async submit(
@@ -680,8 +667,54 @@ export class StreamController<
   /**
    * Respond to a pending protocol interrupt.
    *
+   * When `target` is omitted, resolution walks
+   * {@link ThreadStream.interrupts `thread.interrupts`} from newest to
+   * oldest and picks the first entry whose `interruptId` has not already
+   * been resolved by a prior `respond()` call. That entry may be at the
+   * root (`namespace: []`) or inside a subgraph (non-empty `namespace`).
+   * This is **not** the same as {@link RootSnapshot.interrupts
+   * `rootStore.interrupts[0]`} / framework `stream.interrupt`, which only
+   * mirrors root-namespace interrupts for UI convenience.
+   *
+   * Omitting `target` is fine when exactly one interrupt is pending. When
+   * several can be active (parallel subagents, fan-out, nested graphs),
+   * pass an explicit `{ interruptId, namespace? }` so you resume the
+   * interrupt the user acted on.
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (the default when `target.namespace` is
+   * omitted). Subgraph interrupts require the exact tuple from
+   * `getThread()?.interrupts` — see the example below.
+   *
    * @param response - Payload to send back to the interrupted namespace.
-   * @param target - Optional explicit interrupt id and namespace; defaults to the latest unresolved interrupt.
+   * @param target - Optional explicit interrupt id and namespace.
+   *
+   * @example Single pending interrupt (safe to omit `target`)
+   * ```ts
+   * await controller.respond({ approved: true });
+   * ```
+   *
+   * @example Multiple root interrupts — target by id
+   * ```tsx
+   * for (const intr of stream.interrupts) {
+   *   await stream.respond(decide(intr.value), { interruptId: intr.id! });
+   * }
+   * ```
+   *
+   * @example Subgraph interrupt — read `namespace` from the thread stream
+   * ```tsx
+   * const thread = stream.getThread();
+   * for (const entry of thread?.interrupts ?? []) {
+   *   await stream.respond(buildResponse(entry.payload), {
+   *     interruptId: entry.interruptId,
+   *     namespace: entry.namespace,
+   *   });
+   * }
+   * ```
+   *
+   * Each {@link InterruptPayload} on `thread.interrupts` mirrors an
+   * `input.requested` event: `{ interruptId, payload, namespace }`.
+   * Nested interrupts may appear here but not on `stream.interrupts`.
    */
   async respond(
     response: unknown,
@@ -706,7 +739,7 @@ export class StreamController<
         interrupt_id: resolved.interruptId,
         response,
       });
-      this.#resolvedInterrupts.add(resolved.interruptId);
+      this.#markInterruptResolvedInRootStore(resolved.interruptId);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1421,6 +1454,30 @@ export class StreamController<
       if (s.interrupts.some((entry) => entry.id === interruptId)) return s;
       const interrupts = [...s.interrupts, interrupt];
       return { ...s, interrupts, interrupt: interrupts[0] };
+    });
+  }
+
+  /**
+   * Mark an interrupt resolved for replay filtering and mirror the
+   * removal into the root snapshot the framework hooks read.
+   */
+  #markInterruptResolvedInRootStore(interruptId: string): void {
+    this.#resolvedInterrupts.add(interruptId);
+    this.rootStore.setState((s) => {
+      const interrupts = s.interrupts.filter(
+        (entry) => entry.id !== interruptId
+      );
+      if (
+        interrupts.length === s.interrupts.length &&
+        s.interrupt?.id !== interruptId
+      ) {
+        return s;
+      }
+      return {
+        ...s,
+        interrupts,
+        interrupt: interrupts[0],
+      };
     });
   }
 

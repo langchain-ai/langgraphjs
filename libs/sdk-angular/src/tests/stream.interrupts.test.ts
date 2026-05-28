@@ -19,7 +19,7 @@ it("surfaces the first interrupt on submit()", async () => {
     .not.toHaveTextContent("");
 });
 
-it("resumes an interrupt via submit({ command: { resume } })", async () => {
+it("resumes an interrupt via respond()", async () => {
   const screen = await render(InterruptStreamComponent);
 
   await screen.getByTestId("submit").click();
@@ -37,9 +37,12 @@ it("resumes an interrupt via submit({ command: { resume } })", async () => {
   await expect
     .element(screen.getByTestId("last-message"))
     .toHaveTextContent("After interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt-count"))
+    .toHaveTextContent("0");
 });
 
-it("resumes an interrupt via respond()", async () => {
+it("responds via the dedicated respond button", async () => {
   const screen = await render(InterruptStreamComponent);
 
   await screen.getByTestId("submit").click();
@@ -57,4 +60,7 @@ it("resumes an interrupt via respond()", async () => {
   await expect
     .element(screen.getByTestId("last-message"))
     .toHaveTextContent("After interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt-count"))
+    .toHaveTextContent("0");
 });
