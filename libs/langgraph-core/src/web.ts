@@ -15,6 +15,7 @@ export {
   type StateDefinition,
   type SingleReducer,
   type CompiledGraph,
+  type CompiledGraphType,
   type GraphNode,
   type GraphNodeTypes,
   type GraphNodeReturnValue,
@@ -46,6 +47,49 @@ export type {
 } from "./pregel/types.js";
 export type { PregelNode } from "./pregel/read.js";
 export type { Pregel } from "./pregel/index.js";
+export {
+  ChatModelStreamImpl,
+  EventLog,
+  StreamChannel,
+  GraphRunStream,
+  SubgraphRunStream,
+  STREAM_EVENTS_V3_MODES,
+  convertToProtocolEvent,
+  isNativeTransformer,
+  createGraphRunStream,
+  createMessagesTransformer,
+  createValuesTransformer,
+  createLifecycleTransformer,
+  createSubgraphDiscoveryTransformer,
+  filterLifecycleEntries,
+  filterSubgraphHandles,
+} from "./stream/index.js";
+export type {
+  ProtocolEvent,
+  Namespace,
+  UsageInfo,
+  MessagesEventData,
+  ToolsEventData,
+  UpdatesEventData,
+  StreamTransformer,
+  StreamEmitter,
+  NativeStreamTransformer,
+  ChatModelStream,
+  ToolCallStatus,
+  ToolCallStream,
+  InterruptPayload,
+  InferExtensions,
+  AgentStatus,
+  LifecycleData,
+  LifecycleCause,
+  LifecycleEntry,
+  LifecycleProjection,
+  LifecycleTransformerOptions,
+  SubgraphDiscoveryProjection,
+  SubgraphDiscoveryTransformerOptions,
+  CreateGraphRunStreamOptions,
+  ConvertToProtocolEventOptions,
+} from "./stream/index.js";
 export * from "./errors.js";
 export {
   BaseChannel,

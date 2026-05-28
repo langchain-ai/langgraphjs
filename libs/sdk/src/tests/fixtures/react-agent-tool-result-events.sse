@@ -1,0 +1,236 @@
+event: lifecycle
+data: {"type":"event","event_id":"1","seq":1,"method":"lifecycle","params":{"namespace":[],"timestamp":1777587969651,"data":{"event":"running","graph_name":"react-agent"}}}
+id: 1
+
+event: checkpoints
+data: {"type":"event","event_id":"2","seq":2,"method":"checkpoints","params":{"namespace":[],"timestamp":1777587969676,"data":{"id":"1f144e39-6660-6790-8000-2cd8f3c503b4","parent_id":"1f144e39-6659-6261-ffff-7cbab0102476","step":0,"source":"loop"}}}
+id: 2
+
+event: values
+data: {"type":"event","event_id":"3","seq":3,"method":"values","params":{"namespace":[],"timestamp":1777587969679,"data":{"messages":[{"type":"human","content":"Use the calculator to add 12345 and 67890, then explain when you'd use this in code.","id":"e89e07da-9da0-4ff7-9e25-5aec13f0a2f2"}]}}}
+id: 3
+
+event: lifecycle
+data: {"type":"event","event_id":"5","seq":5,"method":"lifecycle","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970607,"data":{"event":"started","graph_name":"model_request"}}}
+id: 5
+
+event: messages
+data: {"type":"event","event_id":"6","seq":6,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970607,"data":{"event":"message-start","id":"msg_01U6vGrPqjfRQ8DbeuebcCxY","usage":{"input_tokens":1003,"output_tokens":58,"total_tokens":1061,"input_token_details":{"cache_creation":0,"cache_read":0}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 6
+
+event: messages
+data: {"type":"event","event_id":"7","seq":7,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970608,"data":{"event":"content-block-start","index":0,"content":{"index":0,"type":"tool_use","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","input":"","caller":{"type":"direct"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 7
+
+event: messages
+data: {"type":"event","event_id":"8","seq":8,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970608,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":""}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 8
+
+event: messages
+data: {"type":"event","event_id":"9","seq":9,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970609,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":"","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 9
+
+event: messages
+data: {"type":"event","event_id":"10","seq":10,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970609,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":""}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 10
+
+event: messages
+data: {"type":"event","event_id":"11","seq":11,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970722,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":"{\"expre","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 11
+
+event: messages
+data: {"type":"event","event_id":"12","seq":12,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970722,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":"{\"expre"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 12
+
+event: messages
+data: {"type":"event","event_id":"13","seq":13,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970724,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":"ssion\": \"","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 13
+
+event: messages
+data: {"type":"event","event_id":"14","seq":14,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970724,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":"{\"expression\": \""}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 14
+
+event: messages
+data: {"type":"event","event_id":"15","seq":15,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970727,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":"12","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 15
+
+event: messages
+data: {"type":"event","event_id":"16","seq":16,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970728,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":"{\"expression\": \"12"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 16
+
+event: messages
+data: {"type":"event","event_id":"17","seq":17,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970728,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":"345","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 17
+
+event: messages
+data: {"type":"event","event_id":"18","seq":18,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970728,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":"{\"expression\": \"12345"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 18
+
+event: messages
+data: {"type":"event","event_id":"19","seq":19,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970730,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":" + 67890","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 19
+
+event: messages
+data: {"type":"event","event_id":"20","seq":20,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970730,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":"{\"expression\": \"12345 + 67890"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 20
+
+event: messages
+data: {"type":"event","event_id":"21","seq":21,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970731,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"index":0,"input":"\"}","type":"input_json_delta"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 21
+
+event: messages
+data: {"type":"event","event_id":"22","seq":22,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970732,"data":{"event":"content-block-delta","index":0,"delta":{"type":"block-delta","fields":{"type":"tool_call_chunk","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":"{\"expression\": \"12345 + 67890\"}"}},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 22
+
+event: messages
+data: {"type":"event","event_id":"23","seq":23,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970733,"data":{"event":"usage","usage":{"input_tokens":1003,"output_tokens":116,"total_tokens":1119},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 23
+
+event: messages
+data: {"type":"event","event_id":"24","seq":24,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970739,"data":{"event":"content-block-finish","index":0,"content":{"index":0,"type":"input_json_delta","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","input":"\"}","caller":{"type":"direct"},"args":"{\"expression\": \"12345 + 67890\"}"},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 24
+
+event: messages
+data: {"type":"event","event_id":"25","seq":25,"method":"messages","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970741,"data":{"event":"message-finish","reason":"stop","usage":{"input_tokens":1003,"output_tokens":116,"total_tokens":1119},"run_id":"019de07f-de8b-737f-a872-e81aabb47645"}}}
+id: 25
+
+event: lifecycle
+data: {"type":"event","event_id":"28","seq":28,"method":"lifecycle","params":{"namespace":["model_request:db60c136-bbdc-5c76-a665-4bd487797692"],"timestamp":1777587970748,"data":{"event":"completed","graph_name":"model_request"}}}
+id: 28
+
+event: checkpoints
+data: {"type":"event","event_id":"29","seq":29,"method":"checkpoints","params":{"namespace":[],"timestamp":1777587970748,"data":{"id":"1f144e39-709c-61a0-8001-b475789629ca","parent_id":"1f144e39-6660-6790-8000-2cd8f3c503b4","step":1,"source":"loop"}}}
+id: 29
+
+event: values
+data: {"type":"event","event_id":"30","seq":30,"method":"values","params":{"namespace":[],"timestamp":1777587970748,"data":{"messages":[{"type":"human","content":"Use the calculator to add 12345 and 67890, then explain when you'd use this in code.","id":"e89e07da-9da0-4ff7-9e25-5aec13f0a2f2"},{"type":"ai","content":[{"index":0,"type":"tool_call","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","input":"\"}","caller":{"type":"direct"},"args":{"expression":"12345 + 67890"}}],"id":"msg_01U6vGrPqjfRQ8DbeuebcCxY","name":"model","tool_calls":[{"id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":{"expression":"12345 + 67890"},"type":"tool_call"}]}]}}}
+id: 30
+
+event: lifecycle
+data: {"type":"event","event_id":"32","seq":32,"method":"lifecycle","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970748,"data":{"event":"started","graph_name":"tools"}}}
+id: 32
+
+event: tools
+data: {"type":"event","event_id":"33","seq":33,"method":"tools","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970748,"data":{"event":"tool-started","tool_call_id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","tool_name":"calculator","input":"{\"expression\":\"12345 + 67890\"}"}}}
+id: 33
+
+event: tools
+data: {"type":"event","event_id":"34","seq":34,"method":"tools","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970831,"data":{"event":"tool-finished","tool_call_id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","output":{"status":"success","content":"{\"expression\":\"12345 + 67890\",\"value\":80235}","tool_call_id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","metadata":{"versions":{"@langchain/core":"1.1.40-dev-1777587649451"}},"additional_kwargs":{},"response_metadata":{},"type":"tool"}}}}
+id: 34
+
+event: messages
+data: {"type":"event","event_id":"35","seq":35,"method":"messages","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970835,"data":{"event":"message-start","id":"run-019de07f-e2ba-761f-8ead-103bab194544-tool-toolu_01RYpmgSmXeKZcyJWFNzNEt4","role":"tool","tool_call_id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","run_id":"019de07f-e2ba-761f-8ead-103bab194544"}}}
+id: 35
+
+event: messages
+data: {"type":"event","event_id":"36","seq":36,"method":"messages","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970843,"data":{"event":"content-block-start","index":0,"content":{"type":"text","text":""},"run_id":"019de07f-e2ba-761f-8ead-103bab194544"}}}
+id: 36
+
+event: messages
+data: {"type":"event","event_id":"37","seq":37,"method":"messages","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970845,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":"{\"expression\":\"12345 + 67890\",\"value\":80235}"},"run_id":"019de07f-e2ba-761f-8ead-103bab194544"}}}
+id: 37
+
+event: messages
+data: {"type":"event","event_id":"38","seq":38,"method":"messages","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970846,"data":{"event":"content-block-finish","index":0,"content":{"type":"text","text":"{\"expression\":\"12345 + 67890\",\"value\":80235}"},"run_id":"019de07f-e2ba-761f-8ead-103bab194544"}}}
+id: 38
+
+event: messages
+data: {"type":"event","event_id":"39","seq":39,"method":"messages","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970846,"data":{"event":"message-finish","responseMetadata":{},"run_id":"019de07f-e2ba-761f-8ead-103bab194544"}}}
+id: 39
+
+event: lifecycle
+data: {"type":"event","event_id":"42","seq":42,"method":"lifecycle","params":{"namespace":["tools:dd864e2c-ffd0-5630-8613-603347e3a46e"],"timestamp":1777587970846,"data":{"event":"completed","graph_name":"tools"}}}
+id: 42
+
+event: checkpoints
+data: {"type":"event","event_id":"43","seq":43,"method":"checkpoints","params":{"namespace":[],"timestamp":1777587970847,"data":{"id":"1f144e39-7170-6810-8002-bcf30fc9de65","parent_id":"1f144e39-709c-61a0-8001-b475789629ca","step":2,"source":"loop"}}}
+id: 43
+
+event: values
+data: {"type":"event","event_id":"44","seq":44,"method":"values","params":{"namespace":[],"timestamp":1777587970847,"data":{"messages":[{"type":"human","content":"Use the calculator to add 12345 and 67890, then explain when you'd use this in code.","id":"e89e07da-9da0-4ff7-9e25-5aec13f0a2f2"},{"type":"ai","content":[{"index":0,"type":"tool_call","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","input":"\"}","caller":{"type":"direct"},"args":{"expression":"12345 + 67890"}}],"id":"msg_01U6vGrPqjfRQ8DbeuebcCxY","name":"model","tool_calls":[{"id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":{"expression":"12345 + 67890"},"type":"tool_call"}]},{"type":"tool","content":"{\"expression\":\"12345 + 67890\",\"value\":80235}","id":"run-019de07f-e2ba-761f-8ead-103bab194544-tool-toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","tool_call_id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","status":"success"}]}}}
+id: 44
+
+event: lifecycle
+data: {"type":"event","event_id":"46","seq":46,"method":"lifecycle","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587971389,"data":{"event":"started","graph_name":"model_request"}}}
+id: 46
+
+event: messages
+data: {"type":"event","event_id":"47","seq":47,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587971389,"data":{"event":"message-start","id":"msg_01M6YsZj7Wn3ivDWCFZFrmt7","usage":{"input_tokens":1088,"output_tokens":2,"total_tokens":1090,"input_token_details":{"cache_creation":0,"cache_read":0}},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 47
+
+event: messages
+data: {"type":"event","event_id":"48","seq":48,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587971400,"data":{"event":"content-block-start","index":0,"content":{"index":0,"type":"text","text":""},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 48
+
+event: messages
+data: {"type":"event","event_id":"49","seq":49,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587971401,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":"The result"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 49
+
+event: messages
+data: {"type":"event","event_id":"50","seq":50,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587971605,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" is **80,235**.\n\n## When You'd Use This in Code\n\nYou'd use addition"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 50
+
+event: messages
+data: {"type":"event","event_id":"51","seq":51,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587971817,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" like this in many practical scenarios:\n\n1. **Financial calculations** - Summing transaction"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 51
+
+event: messages
+data: {"type":"event","event_id":"52","seq":52,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587972065,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" amounts, calculating totals, or aggregating expenses\n2. **Data aggregation** - Combining counts, metrics"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 52
+
+event: messages
+data: {"type":"event","event_id":"53","seq":53,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587972232,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":", or measurements from different sources\n3. **Game development** - Calculating scores, health points, or resource totals\n4. **Analytics"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 53
+
+event: messages
+data: {"type":"event","event_id":"54","seq":54,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587972445,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":"** - Summing page views, user counts, or performance metrics\n5. **Inventory management** - Adding quantities of items in"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 54
+
+event: messages
+data: {"type":"event","event_id":"55","seq":55,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587972689,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" stock\n6. **Form processing** - Totaling prices in a shopping cart or invoice\n\nIn actual"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 55
+
+event: messages
+data: {"type":"event","event_id":"56","seq":56,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587972895,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" code, you'd typically do this with variables rather than hardcoded numbers:\n```python\namount1"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 56
+
+event: messages
+data: {"type":"event","event_id":"57","seq":57,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973100,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" = 12345\namount2 = 67890\ntotal = amount1 + amount2\nprint(total)  # Output: 80235\n```\n\nThis makes it"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 57
+
+event: messages
+data: {"type":"event","event_id":"58","seq":58,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973333,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" reusable and dynamic based on real data from users,"},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 58
+
+event: messages
+data: {"type":"event","event_id":"59","seq":59,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973390,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" databases, or APIs."},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 59
+
+event: messages
+data: {"type":"event","event_id":"60","seq":60,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973407,"data":{"event":"usage","usage":{"input_tokens":1088,"output_tokens":229,"total_tokens":1317},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 60
+
+event: messages
+data: {"type":"event","event_id":"61","seq":61,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973419,"data":{"event":"content-block-finish","index":0,"content":{"index":0,"type":"text","text":"The result is **80,235**.\n\n## When You'd Use This in Code\n\nYou'd use addition like this in many practical scenarios:\n\n1. **Financial calculations** - Summing transaction amounts, calculating totals, or aggregating expenses\n2. **Data aggregation** - Combining counts, metrics, or measurements from different sources\n3. **Game development** - Calculating scores, health points, or resource totals\n4. **Analytics** - Summing page views, user counts, or performance metrics\n5. **Inventory management** - Adding quantities of items in stock\n6. **Form processing** - Totaling prices in a shopping cart or invoice\n\nIn actual code, you'd typically do this with variables rather than hardcoded numbers:\n```python\namount1 = 12345\namount2 = 67890\ntotal = amount1 + amount2\nprint(total)  # Output: 80235\n```\n\nThis makes it reusable and dynamic based on real data from users, databases, or APIs."},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 61
+
+event: messages
+data: {"type":"event","event_id":"62","seq":62,"method":"messages","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973421,"data":{"event":"message-finish","reason":"stop","usage":{"input_tokens":1088,"output_tokens":229,"total_tokens":1317},"run_id":"019de07f-e315-7348-93bc-2faa974b52e6"}}}
+id: 62
+
+event: lifecycle
+data: {"type":"event","event_id":"65","seq":65,"method":"lifecycle","params":{"namespace":["model_request:03dd88a7-d731-50f4-9502-0c40616d3b07"],"timestamp":1777587973429,"data":{"event":"completed","graph_name":"model_request"}}}
+id: 65
+
+event: checkpoints
+data: {"type":"event","event_id":"66","seq":66,"method":"checkpoints","params":{"namespace":[],"timestamp":1777587973429,"data":{"id":"1f144e39-8a2d-6830-8003-49138094ecfa","parent_id":"1f144e39-7170-6810-8002-bcf30fc9de65","step":3,"source":"loop"}}}
+id: 66
+
+event: values
+data: {"type":"event","event_id":"67","seq":67,"method":"values","params":{"namespace":[],"timestamp":1777587973429,"data":{"messages":[{"type":"human","content":"Use the calculator to add 12345 and 67890, then explain when you'd use this in code.","id":"e89e07da-9da0-4ff7-9e25-5aec13f0a2f2"},{"type":"ai","content":[{"index":0,"type":"tool_call","id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","input":"\"}","caller":{"type":"direct"},"args":{"expression":"12345 + 67890"}}],"id":"msg_01U6vGrPqjfRQ8DbeuebcCxY","name":"model","tool_calls":[{"id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","args":{"expression":"12345 + 67890"},"type":"tool_call"}]},{"type":"tool","content":"{\"expression\":\"12345 + 67890\",\"value\":80235}","id":"run-019de07f-e2ba-761f-8ead-103bab194544-tool-toolu_01RYpmgSmXeKZcyJWFNzNEt4","name":"calculator","tool_call_id":"toolu_01RYpmgSmXeKZcyJWFNzNEt4","status":"success"},{"type":"ai","content":[{"index":0,"type":"text","text":"The result is **80,235**.\n\n## When You'd Use This in Code\n\nYou'd use addition like this in many practical scenarios:\n\n1. **Financial calculations** - Summing transaction amounts, calculating totals, or aggregating expenses\n2. **Data aggregation** - Combining counts, metrics, or measurements from different sources\n3. **Game development** - Calculating scores, health points, or resource totals\n4. **Analytics** - Summing page views, user counts, or performance metrics\n5. **Inventory management** - Adding quantities of items in stock\n6. **Form processing** - Totaling prices in a shopping cart or invoice\n\nIn actual code, you'd typically do this with variables rather than hardcoded numbers:\n```python\namount1 = 12345\namount2 = 67890\ntotal = amount1 + amount2\nprint(total)  # Output: 80235\n```\n\nThis makes it reusable and dynamic based on real data from users, databases, or APIs."}],"id":"msg_01M6YsZj7Wn3ivDWCFZFrmt7","name":"model"}]}}}
+id: 67
+
+event: lifecycle
+data: {"type":"event","event_id":"68","seq":68,"method":"lifecycle","params":{"namespace":[],"timestamp":1777587973937,"data":{"event":"completed","graph_name":"react-agent"}}}
+id: 68
+

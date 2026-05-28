@@ -10,11 +10,11 @@ export function useThreadIdParam() {
     );
   });
 
-  const updateThreadId = useCallback((newThreadId?: string) => {
-    setThreadId(newThreadId);
+  const updateThreadId = useCallback((newThreadId?: string | null) => {
+    setThreadId(newThreadId ?? undefined);
 
     const url = new URL(window.location.href);
-    if (newThreadId === undefined) {
+    if (newThreadId == null) {
       url.searchParams.delete("threadId");
     } else {
       url.searchParams.set("threadId", newThreadId);

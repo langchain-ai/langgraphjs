@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.0.5
+
+### Patch Changes
+
+- [#2208](https://github.com/langchain-ai/langgraphjs/pull/2208) [`ebeb145`](https://github.com/langchain-ai/langgraphjs/commit/ebeb1452d27fcca100cd63bdfd4a7f020949412c) Thanks [@jackjin1997](https://github.com/jackjin1997)! - Fix `deleteThread()` using wrong key pattern (`writes:` instead of `checkpoint_write:`) and add missing cleanup of `write_keys_zset:` entries.
+
 ## 1.0.4
 
 ### Patch Changes

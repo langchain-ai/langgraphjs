@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { ToolEvent } from "@langchain/langgraph-sdk";
 import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
+
 import { useStream } from "../../index.js";
-import { getLocationTool } from "../fixtures/browser-fixtures.js";
+import { getLocationTool } from "./browser-fixtures.js";
 
 interface Props {
   apiUrl: string;
@@ -21,8 +22,10 @@ export function HeadlessToolStream({ apiUrl, execute }: Props) {
       })),
   );
 
-  const { messages, isLoading, submit } = useStream<{ messages: BaseMessage[] }>({
-    assistantId: "headlessToolAgent",
+  const { messages, isLoading, submit } = useStream<{
+    messages: BaseMessage[];
+  }>({
+    assistantId: "headless_tool_graph",
     apiUrl,
     tools: [tool],
     onTool: (event) => {

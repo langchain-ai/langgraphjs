@@ -811,6 +811,18 @@ export function createReactAgent<
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
+
+    // Some `withStructuredOutput` parsers return null/undefined instead of
+    // throwing when the model output does not satisfy the schema. Surface
+    // this as an explicit error so it does not silently propagate as
+    // `structuredResponse: undefined`.
+    if (response == null) {
+      throw new Error(
+        "Failed to parse structured response against the provided `responseFormat` schema: " +
+          "the structured-output parser returned null/undefined, which usually means the model output did not satisfy the schema."
+      );
+    }
+
     return { structuredResponse: response };
   };
 
