@@ -3,6 +3,7 @@ import type {
   Command,
   CommandResponse,
   Event,
+  InputRespondParams,
   LifecycleEvent,
   ListCheckpointsResult,
   Message,
@@ -82,7 +83,7 @@ type CommandParamsMap = {
   "subscription.subscribe": SubscribeParams;
   "subscription.unsubscribe": { subscription_id: string };
   "agent.getTree": { run_id?: string };
-  "input.respond": Record<string, unknown>;
+  "input.respond": InputRespondParams;
   "input.inject": Record<string, unknown>;
   "state.get": Record<string, unknown>;
   "state.listCheckpoints": Record<string, unknown>;
@@ -731,10 +732,7 @@ export class ThreadStream<
         // See note in `run.start` — keep `thread.output` working
         // across resumes regardless of access order.
         void this.values;
-        await this.#send(
-          "input.respond",
-          params as unknown as CommandParamsMap["input.respond"]
-        );
+        await this.#send("input.respond", params);
       },
       inject: async (params) => {
         await this.#send(
@@ -1373,34 +1371,18 @@ export class ThreadStream<
    * See {@link submitRun} for why this exists alongside
    * {@link input.respond}.
    */
-  async respondInput(params: {
-    namespace?: readonly string[];
-    interrupt_id?: string;
-    response?: unknown;
-    /**
-     * Batched resume: respond to several pending interrupts at the same
-     * checkpoint in one command. Mutually exclusive with the single
-     * `interrupt_id` / `response` fields. Maps to the protocol's
-     * `InputRespondMany` variant of `input.respond`.
-     */
-    responses?: ReadonlyArray<{
-      interrupt_id: string;
-      response: unknown;
-      namespace?: readonly string[];
-    }>;
-    config?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-  }): Promise<void> {
+  async respondInput(params: InputRespondParams): Promise<void> {
+    // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
+    // batch variant (`responses`) resolves several interrupts pending at
+    // the same checkpoint in one command; the single variant carries a
+    // top-level `interrupt_id`.
     const respondedIds =
-      params.responses != null
+      "responses" in params
         ? params.responses.map((entry) => entry.interrupt_id)
         : params.interrupt_id;
     this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
-    await this.#send(
-      "input.respond",
-      params as CommandParamsMap["input.respond"]
-    );
+    await this.#send("input.respond", params);
   }
 
   /**

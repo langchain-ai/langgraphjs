@@ -15,7 +15,7 @@
     "@langchain/core": "^1.1.44",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.4.5",
-    "@langchain/protocol": "^0.0.15",
+    "@langchain/protocol": "^0.0.16",
     "@langchain/react": "workspace:*",
     "hono": "^4.12.18",
     "react": "^19.0.0",

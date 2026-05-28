@@ -322,12 +322,6 @@ export class ProtocolService {
     record: ThreadRecord,
     command: ProtocolCommandByMethod<"input.respond">
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<
-          ProtocolCommandByMethod<"input.respond">["params"]
-        >)
-      : {};
-
     // Build the resume input map (`{ [interrupt_id]: response }`). The
     // SDK sends either a single `interrupt_id` / `response` or a
     // `responses` batch (several interrupts at the same checkpoint, which
@@ -356,8 +350,8 @@ export class ProtocolService {
           "input.respond requires at least one response."
         );
       }
-    } else if (typeof params.interrupt_id === "string") {
-      resumeInput[params.interrupt_id] = params.response;
+    } else if (typeof rawParams.interrupt_id === "string") {
+      resumeInput[rawParams.interrupt_id] = rawParams.response;
     } else {
       return this.error(
         command.id,
@@ -397,12 +391,13 @@ export class ProtocolService {
       );
     }
 
-    // `config` / `metadata` are not part of the formal `InputRespondParams`
-    // wire type yet, but the SDK's `respond({ config, metadata })` forwards
-    // them on the `input.respond` command so a resumed run can carry the
-    // same run config (model, user context, …) and metadata (trigger
-    // source, test flags, …) a fresh `run.start` would. Read them leniently
-    // — same posture as `normalizeRunStart`.
+    // `config` / `metadata` are part of `InputRespondParams` (both the
+    // `InputRespondOne` and `InputRespondMany` variants). The SDK's
+    // `respond({ config, metadata })` forwards them on the `input.respond`
+    // command so a resumed run can carry the same run config (model, user
+    // context, …) and metadata (trigger source, test flags, …) a fresh
+    // `run.start` would. Read them leniently — same posture as
+    // `normalizeRunStart`.
     await this.createOrResumeRun(record, {
       assistant_id: record.assistantId,
       input: resumeInput,
