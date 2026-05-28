@@ -131,14 +131,25 @@ describe("assertSafeKeyComponent", () => {
     ).toThrow(/Redis pattern meta-character/);
   });
 
-  it("rejects the `:` delimiter to prevent key-structure collisions", () => {
-    // Without this rule, `thread_id` of `"a:b"` would write into the
-    // namespace `b`, breaking the colon-delimited key parse.
+  it("accepts a colon in checkpoint_ns (LangGraph subgraph namespace)", () => {
+    // LangGraph builds subgraph / nested-graph namespaces as
+    // `${name}${CHECKPOINT_NAMESPACE_END}${taskId}` joined by `|`, where
+    // CHECKPOINT_NAMESPACE_END === ":". A real namespace therefore looks
+    // like "agent:01HZX...|tool:01HZY...". The colon is only ever a literal
+    // in the Redis key, so it must be accepted; rejecting it would throw on
+    // every subgraph checkpoint.
     expect(() =>
-      assertSafeKeyComponent("checkpoint_ns", "ns:injected", {
+      assertSafeKeyComponent("checkpoint_ns", "agent:01HZX9V7EKJ1B0PNMY7MX3X3KB", {
         allowEmpty: true,
       })
-    ).toThrow(/Redis pattern meta-character/);
+    ).not.toThrow();
+    expect(() =>
+      assertSafeKeyComponent(
+        "checkpoint_ns",
+        "agent:01HZX9V7EKJ1B0PNMY7MX3X3KB|tool:01HZX9V7EKJ1B0PNMY7MX3X3KC",
+        { allowEmpty: true }
+      )
+    ).not.toThrow();
   });
 
   it("rejects an object value (NoSQL-style operator injection attempt)", () => {

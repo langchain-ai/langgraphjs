@@ -28,11 +28,14 @@ export function escapeRediSearchTagValue(value: string): string {
  * `"*"` causes `KEYS "checkpoint:*:..."` to enumerate every tenant, and
  * inside `deleteThread` deletes them.
  *
- * The `:` delimiter is also rejected because every Redis key in this package
- * is colon-delimited; a value containing `:` would corrupt the parse / write
- * paths and can collide with another tenant's namespace.
+ * The `:` delimiter is intentionally NOT rejected. LangGraph emits it as a
+ * legitimate part of `checkpoint_ns` for subgraphs / nested graphs, where the
+ * namespace is built as `${name}${CHECKPOINT_NAMESPACE_END}${taskId}` with
+ * `CHECKPOINT_NAMESPACE_END === ":"` (joined by `|`). Rejecting `:` would
+ * throw on every subgraph checkpoint. The colon is only ever a literal in the
+ * key, so it does not enable glob/pattern injection.
  */
-const REDIS_KEY_FORBIDDEN = /[*?[\]\\:]/;
+const REDIS_KEY_FORBIDDEN = /[*?[\]\\]/;
 
 /**
  * Asserts that a value sourced from {@link RunnableConfig.configurable} (or
@@ -84,7 +87,7 @@ export function assertSafeKeyComponent(
   }
   if (REDIS_KEY_FORBIDDEN.test(value)) {
     throw new Error(
-      `Invalid configurable value for key "${field}": value contains a Redis pattern meta-character (one of * ? [ ] \\ :). This guard protects Redis keys and KEYS/SCAN patterns from glob and command injection.`
+      `Invalid configurable value for key "${field}": value contains a Redis pattern meta-character (one of * ? [ ] \\). This guard protects Redis keys and KEYS/SCAN patterns from glob and command injection.`
     );
   }
 }

@@ -23,6 +23,8 @@ Adds a single `assertSafeKeyComponent` helper exported from
 `./utils.js` and applies it at every key-building site. The guard
 asserts the value is a non-empty string (the empty `checkpoint_ns`
 default is opt-in via `{ allowEmpty: true }`) and rejects the Redis
-pattern meta-characters `* ? [ ] \` plus the colon delimiter that
-would otherwise corrupt the colon-delimited key structure. Behavior
-for valid string identifiers is unchanged.
+pattern meta-characters `* ? [ ] \`. The `:` delimiter is intentionally
+permitted because LangGraph emits it as a legitimate part of
+`checkpoint_ns` for subgraphs / nested graphs, where it only ever
+appears as a literal in the key. Behavior for valid string identifiers
+is unchanged.
