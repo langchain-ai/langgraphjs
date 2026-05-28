@@ -32,6 +32,7 @@ const CONFIG_KEYS = [
   "signal",
   "executionInfo",
   "serverInfo",
+  "control",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;

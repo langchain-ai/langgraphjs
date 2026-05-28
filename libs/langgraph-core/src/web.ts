@@ -162,6 +162,7 @@ export {
   type Runtime,
   type ServerInfo,
 } from "./pregel/runnable_types.js";
+export { RunControl } from "./pregel/runtime.js";
 
 export * from "./state/index.js";
 

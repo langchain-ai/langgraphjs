@@ -55,14 +55,17 @@ import {
   PUSH,
   CONFIG_KEY_DURABILITY,
   CONFIG_KEY_CHECKPOINT_NS,
+  CONFIG_KEY_RUN_CONTROL,
   type CommandInstance,
   TASKS,
 } from "../constants.js";
 import {
+  GraphDrained,
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
+import { RunControl } from "./runtime.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
   _applyWrites,
@@ -2338,6 +2341,23 @@ export class Pregel<
       config.serverInfo = _buildServerInfo(config);
     }
 
+    // Resolve the run-scoped control surface for cooperative draining.
+    // Precedence: an explicit `control` option, then a control propagated
+    // from a parent run (via `configurable`, so subgraphs share the same
+    // instance), then a fresh `RunControl` so `runtime.control` is always
+    // available to nodes.
+    const runControl: RunControl =
+      config.control ??
+      (config.configurable?.[CONFIG_KEY_RUN_CONTROL] as
+        | RunControl
+        | undefined) ??
+      new RunControl();
+    // Surface as the top-level `control` key (the `Runtime` view), which is
+    // carried into task/subgraph configs via `mergeConfigs`/`patchConfig`.
+    // Avoid writing it into `configurable`, which would leak the control
+    // object into persisted/emitted checkpoint configs.
+    config.control = runControl;
+
     const callbackManagerOptions: Parameters<
       typeof CallbackManager._configureSync
     >[6] & {
@@ -2580,6 +2600,12 @@ export class Pregel<
           maxConcurrency: config.maxConcurrency,
           signal: config.signal,
         });
+      }
+      if (loop.status === "draining") {
+        if (loop.control == null) {
+          throw new Error("Draining status requires run control");
+        }
+        throw new GraphDrained(loop.control.drainReason ?? "shutdown");
       }
       if (loop.status === "out_of_steps") {
         throw new GraphRecursionError(

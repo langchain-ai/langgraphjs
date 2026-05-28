@@ -22,7 +22,12 @@ import {
   CONFIG_KEY_CALL,
   CONFIG_KEY_ABORT_SIGNALS,
 } from "../constants.js";
-import { GraphBubbleUp, isGraphBubbleUp, isGraphInterrupt } from "../errors.js";
+import {
+  GraphBubbleUp,
+  isGraphBubbleUp,
+  isGraphDrained,
+  isGraphInterrupt,
+} from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
 
@@ -180,6 +185,13 @@ export class PregelRunner {
     }
 
     if (isGraphInterrupt(graphBubbleUp)) {
+      throw graphBubbleUp;
+    }
+
+    // A cooperative drain raised by a subgraph bubbles up through the parent
+    // loop (even when the parent is the top graph) so the parent stops at this
+    // boundary and its checkpoint can be resumed later.
+    if (isGraphDrained(graphBubbleUp)) {
       throw graphBubbleUp;
     }
 
@@ -368,6 +380,13 @@ export class PregelRunner {
             interrupts.push(...resumes);
           }
           this.loop.putWrites(task.id, interrupts);
+        }
+      } else if (isGraphDrained(error)) {
+        // Cooperative drain bubbled up from a subgraph. Leave the task
+        // uncommitted (unless it already produced writes) so it is
+        // re-executed when the parent run resumes.
+        if (task.writes.length) {
+          this.loop.putWrites(task.id, task.writes);
         }
       } else if (isGraphBubbleUp(error) && task.writes.length) {
         this.loop.putWrites(task.id, task.writes);

@@ -90,6 +90,7 @@ import {
 } from "./debug.js";
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import type { RunControl } from "./runtime.js";
 import {
   IterableReadableWritableStream,
   StreamChunk,
@@ -269,7 +270,15 @@ export class PregelLoop {
     | "done"
     | "interrupt_before"
     | "interrupt_after"
-    | "out_of_steps" = "pending";
+    | "out_of_steps"
+    | "draining" = "pending";
+
+  /**
+   * Run-scoped control surface for cooperative draining. Populated from the
+   * run config. When `control.drainRequested` is true, the loop stops at the
+   * next superstep boundary instead of dispatching more tasks.
+   */
+  control?: RunControl;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tasks: Record<string, PregelExecutableTask<any, any>> = {};
@@ -404,6 +413,7 @@ export class PregelLoop {
     this.durability = params.durability;
     this.debug = params.debug;
     this.triggerToNodes = params.triggerToNodes;
+    this.control = (this.config as LangGraphRunnableConfig).control;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -857,6 +867,14 @@ export class PregelLoop {
 
     if (Object.values(this.tasks).length === 0) {
       this.status = "done";
+      return false;
+    }
+    // Cooperative drain: the previous superstep's writes have been applied
+    // and checkpointed above, and the next tasks have been prepared. If a
+    // drain was requested and tasks remain, stop here (without dispatching
+    // them) so the run can be resumed later from the saved checkpoint.
+    if (this.control != null && this.control.drainRequested) {
+      this.status = "draining";
       return false;
     }
     // if there are pending writes from a previous loop, apply them

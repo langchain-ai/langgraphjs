@@ -55,6 +55,33 @@ export class GraphValueError extends BaseLangGraphError {
   }
 }
 
+/**
+ * Raised when a graph run exits early due to a drain request.
+ *
+ * This indicates the graph stopped cooperatively at a superstep boundary
+ * because {@link RunControl#requestDrain} was called (e.g., in response to
+ * SIGTERM). The checkpoint is saved and the run can be resumed later.
+ */
+export class GraphDrained extends GraphBubbleUp {
+  reason: string;
+
+  constructor(reason: string = "shutdown", fields?: BaseLangGraphErrorFields) {
+    super(`Graph drained: ${reason}`, fields);
+    this.name = "GraphDrained";
+    this.reason = reason;
+  }
+
+  static get unminifiable_name() {
+    return "GraphDrained";
+  }
+}
+
+export function isGraphDrained(e?: unknown): e is GraphDrained {
+  return (
+    e !== undefined && (e as Error).name === GraphDrained.unminifiable_name
+  );
+}
+
 export class GraphInterrupt extends GraphBubbleUp {
   interrupts: Interrupt[];
 
