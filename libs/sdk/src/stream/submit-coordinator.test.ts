@@ -46,16 +46,12 @@ interface Harness {
   /** Probe the most recent terminal control object. */
   currentTerminal: () => TerminalControl | undefined;
   setDisposed: (value: boolean) => void;
-  setLatestInterrupt: (
-    value: { interruptId: string; namespace: string[] } | null
-  ) => void;
   options: StreamControllerOptions<State>;
   hydrate: ReturnType<typeof vi.fn>;
   ensureThread: ReturnType<typeof vi.fn>;
   startDeferredRootPump: ReturnType<typeof vi.fn>;
   abandonDeferredRootPump: ReturnType<typeof vi.fn>;
   forgetSelfCreatedThreadId: ReturnType<typeof vi.fn>;
-  markInterruptResolved: ReturnType<typeof vi.fn>;
   onRunStart: ReturnType<typeof vi.fn>;
   onRunCreated: ReturnType<typeof vi.fn>;
   onRunCompleted: ReturnType<typeof vi.fn>;
@@ -112,7 +108,6 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   let disposed = false;
   let currentThreadId: string | null =
     "threadId" in initial ? initial.threadId ?? null : "thread-1";
-  let latestInterrupt: { interruptId: string; namespace: string[] } | null = null;
 
   let terminalControl: TerminalControl | undefined;
   let terminalRegisteredDeferred = deferred<TerminalControl>();
@@ -217,9 +212,6 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     currentTerminal: () => terminalControl,
     setDisposed: (value) => {
       disposed = value;
-    },
-    setLatestInterrupt: (value) => {
-      latestInterrupt = value;
     },
     options,
     hydrate,
