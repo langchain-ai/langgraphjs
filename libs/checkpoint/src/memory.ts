@@ -102,12 +102,19 @@ function _parseKey(key: string) {
 
 export class MemorySaver extends BaseCheckpointSaver {
   // thread ID ->  checkpoint namespace -> checkpoint ID -> checkpoint mapping
+  //
+  // Defense in depth against prototype pollution: the backing
+  // objects (and every nested level created below) use a null prototype, so
+  // even if a malicious key bypassed `assertSafeStorageKey` it could not reach
+  // `Object.prototype`. The guard remains the primary control; this is the
+  // structural safety net.
   storage: Record<
     string,
     Record<string, Record<string, [Uint8Array, Uint8Array, string | undefined]>>
-  > = {};
+  > = Object.create(null);
 
-  writes: Record<string, Record<string, [string, string, Uint8Array]>> = {};
+  writes: Record<string, Record<string, [string, string, Uint8Array]>> =
+    Object.create(null);
 
   constructor(serde?: SerializerProtocol) {
     super(serde);
@@ -139,8 +146,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     deseriablizableCheckpoint.channel_versions[TASKS] =
       Object.keys(deseriablizableCheckpoint.channel_versions).length > 0
         ? maxChannelVersion(
-            ...Object.values(deseriablizableCheckpoint.channel_versions)
-          )
+          ...Object.values(deseriablizableCheckpoint.channel_versions)
+        )
         : this.getNextVersion(undefined);
   }
 
@@ -428,8 +435,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (threadId === undefined) {
       throw new Error(
         `Failed to put checkpoint. The passed RunnableConfig is missing a required "thread_id" field in its "configurable" property. ` +
-          `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
-          `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
+        `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
+        `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
       );
     }
 
@@ -440,10 +447,10 @@ export class MemorySaver extends BaseCheckpointSaver {
     assertSafeStorageKey("checkpoint_id", checkpoint.id);
 
     if (!this.storage[threadId]) {
-      this.storage[threadId] = {};
+      this.storage[threadId] = Object.create(null);
     }
     if (!this.storage[threadId][checkpointNamespace]) {
-      this.storage[threadId][checkpointNamespace] = {};
+      this.storage[threadId][checkpointNamespace] = Object.create(null);
     }
 
     const [[, serializedCheckpoint], [, serializedMetadata]] =
@@ -478,8 +485,8 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (threadId === undefined) {
       throw new Error(
         `Failed to put writes. The passed RunnableConfig is missing a required "thread_id" field in its "configurable" property. ` +
-          `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
-          `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
+        `When using a checkpointer, you must pass a "thread_id" so the checkpointer knows which conversation thread to persist state for. ` +
+        `Example: graph.stream(input, { configurable: { thread_id: "my-thread-id" } })`
       );
     }
     if (checkpointId === undefined) {
@@ -496,7 +503,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     const outerKey = _generateKey(threadId, checkpointNamespace, checkpointId);
     const outerWrites_ = this.writes[outerKey];
     if (this.writes[outerKey] === undefined) {
-      this.writes[outerKey] = {};
+      this.writes[outerKey] = Object.create(null);
     }
 
     await Promise.all(
