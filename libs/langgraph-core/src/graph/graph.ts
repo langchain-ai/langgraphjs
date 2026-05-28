@@ -40,6 +40,7 @@ import {
 } from "../utils.js";
 import {
   InvalidUpdateError,
+  NodeError,
   NodeInterrupt,
   UnreachableNodeError,
 } from "../errors.js";
@@ -223,7 +224,27 @@ export type NodeSpec<RunInput, RunOutput> = {
   subgraphs?: Pregel<any, any>[];
   ends?: string[];
   defer?: boolean;
+  /** Whether this node is an auto-generated node-level error handler. */
+  isErrorHandler?: boolean;
+  /** Name of the auto-generated error handler node to run on failure. */
+  errorHandlerNode?: string;
 };
+
+/**
+ * A node-level error handler callable.
+ *
+ * Invoked with the node input state, a {@link NodeError} describing the failed
+ * node and thrown error, and the runnable config. The handler runs ONLY after
+ * the failing node's {@link RetryPolicy} is exhausted. It may return a state
+ * update or a `Command` (to route via `goto`).
+ */
+export type NodeErrorHandler = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  state: any,
+  error: NodeError,
+  config?: LangGraphRunnableConfig
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => any;
 
 export type AddNodeOptions<Nodes extends string = string> = {
   metadata?: Record<string, unknown>;
@@ -231,6 +252,12 @@ export type AddNodeOptions<Nodes extends string = string> = {
   subgraphs?: Pregel<any, any>[];
   ends?: Nodes[];
   defer?: boolean;
+  /**
+   * Optional node-level error handler. Runs only after this node's
+   * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
+   * failed node name and error, and may return a state update or `Command`.
+   */
+  errorHandler?: NodeErrorHandler;
 };
 
 export class Graph<
@@ -596,8 +623,26 @@ export class Graph<
         allTargets.add(target);
       }
     }
+    // Node-level error handlers can route to any node via `Command({ goto })`
+    // (saga / compensation flows), so treat them like an open-ended branch:
+    // any node may be a recovery target reachable from a handler.
+    const hasErrorHandler = Object.values<NodeSpecType>(this.nodes).some(
+      (node) => (node as NodeSpec<unknown, unknown>).isErrorHandler
+    );
+    if (hasErrorHandler) {
+      for (const node of Object.keys(this.nodes)) {
+        allTargets.add(node);
+      }
+    }
     // validate targets
     for (const node of Object.keys(this.nodes)) {
+      // auto-generated error handler nodes are reachable only on failure of
+      // their source node, so they are exempt from the reachability check.
+      if (
+        (this.nodes[node as N] as NodeSpec<unknown, unknown>).isErrorHandler
+      ) {
+        continue;
+      }
       if (!allTargets.has(node)) {
         throw new UnreachableNodeError(
           [

@@ -82,6 +82,58 @@ export class NodeInterrupt extends GraphInterrupt {
   }
 }
 
+/**
+ * Failure context passed to a node-level error handler.
+ *
+ * A node-level error handler is registered via
+ * `StateGraph.addNode(name, fn, { errorHandler })`. The handler runs ONLY after
+ * the failing node's {@link RetryPolicy} is exhausted, so retry and handling
+ * stay decoupled. The handler receives the failed node's name and the thrown
+ * error via a `NodeError` instance, can return a state update, and can route to
+ * a recovery branch via `new Command({ goto })` (saga / compensation flows).
+ *
+ * @example
+ * ```ts
+ * import { NodeError } from "@langchain/langgraph";
+ *
+ * function handler(state: State, error: NodeError) {
+ *   return new Command({
+ *     update: { status: `recovered from ${error.node}: ${error.error.message}` },
+ *     goto: "finalize",
+ *   });
+ * }
+ * ```
+ */
+export class NodeError {
+  /** Name of the node whose execution failed. */
+  node: string;
+
+  /** Error thrown by the failed node. */
+  error: Error;
+
+  constructor(node: string, error: Error) {
+    this.node = node;
+    this.error = error;
+  }
+
+  static get unminifiable_name() {
+    return "NodeError";
+  }
+}
+
+/**
+ * Type guard that checks whether a value is a {@link NodeError}.
+ */
+export function isNodeError(e?: unknown): e is NodeError {
+  return (
+    e != null &&
+    typeof e === "object" &&
+    e.constructor != null &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (e.constructor as any).unminifiable_name === NodeError.unminifiable_name
+  );
+}
+
 export class ParentCommand extends GraphBubbleUp {
   command: Command;
 

@@ -15,6 +15,7 @@ import {
 import {
   CONFIG_KEY_SCRATCHPAD,
   ERROR,
+  ERROR_SOURCE_NODE,
   INTERRUPT,
   RESUME,
   NO_WRITES,
@@ -134,8 +135,18 @@ export class PregelRunner {
       maxConcurrency,
     });
 
-    for await (const { task, error, signalAborted } of taskStream) {
-      this._commit(task, error);
+    for await (const {
+      task,
+      error,
+      signalAborted,
+      errorHandled,
+    } of taskStream) {
+      this._commit(task, error, errorHandled);
+      if (errorHandled) {
+        // Error was routed to a node-level error handler (scheduled within this
+        // same tick). Provenance has been checkpointed; the error is not fatal.
+        continue;
+      }
       if (isGraphInterrupt(error)) {
         graphBubbleUp = error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
@@ -331,7 +342,43 @@ export class PregelRunner {
         continue;
       }
 
-      yield settledTask as SettledPregelTask;
+      const settled = settledTask as SettledPregelTask;
+      const { task: settledPregelTask, error: settledError } = settled;
+
+      // If the task failed (after exhausting its retry policy) and the node has
+      // a registered error handler, schedule that handler to run within this
+      // same tick instead of aborting the run. GraphBubbleUp errors (e.g.
+      // interrupts / parent commands) are never routed to error handlers.
+      if (
+        settledError !== undefined &&
+        !isGraphBubbleUp(settledError) &&
+        !this.loop.isErrorHandlerNode(String(settledPregelTask.name)) &&
+        this.loop.getErrorHandlerNode(String(settledPregelTask.name)) !==
+          undefined
+      ) {
+        const handlerTask = this.loop.scheduleErrorHandler(
+          settledPregelTask,
+          settledError
+        );
+        if (handlerTask !== undefined) {
+          settled.errorHandled = true;
+          executingTasksMap[handlerTask.id] = _runWithRetry(
+            handlerTask,
+            retryPolicy,
+            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, handlerTask) },
+            signals?.composedAbortSignal
+          ).catch((error) => {
+            return {
+              task: handlerTask,
+              error,
+              signalAborted: signals?.composedAbortSignal?.aborted,
+            };
+          });
+          barrier.next();
+        }
+      }
+
+      yield settled;
 
       if (listener != null) {
         timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
@@ -350,7 +397,11 @@ export class PregelRunner {
    * @param task - The task to commit.
    * @param error - The error that occurred, if any.
    */
-  private _commit(task: PregelExecutableTask<string, string>, error?: Error) {
+  private _commit(
+    task: PregelExecutableTask<string, string>,
+    error?: Error,
+    errorHandled = false
+  ) {
     if (error !== undefined) {
       if (isGraphInterrupt(error)) {
         if (error.interrupts.length) {
@@ -364,6 +415,18 @@ export class PregelRunner {
           this.loop.putWrites(task.id, interrupts);
         }
       } else if (isGraphBubbleUp(error) && task.writes.length) {
+        this.loop.putWrites(task.id, task.writes);
+      } else if (errorHandled) {
+        // The error was routed to a node-level error handler. Record failure
+        // provenance (ERROR + ERROR_SOURCE_NODE) so the originating task counts
+        // as "done" for this superstep and handlers see the same context after
+        // a checkpoint resume. The handler task (scheduled separately) carries
+        // the recovery state update / routing.
+        task.writes.splice(0, task.writes.length);
+        task.writes.push(
+          [ERROR, { message: error.message, name: error.name }],
+          [ERROR_SOURCE_NODE, String(task.name)]
+        );
         this.loop.putWrites(task.id, task.writes);
       } else {
         this.loop.putWrites(task.id, [

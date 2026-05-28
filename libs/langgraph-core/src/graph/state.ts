@@ -53,9 +53,11 @@ import {
   isInterrupted,
   Interrupt,
   INTERRUPT,
+  CONFIG_KEY_NODE_ERROR,
 } from "../constants.js";
 import {
   InvalidUpdateError,
+  NodeError,
   ParentCommand,
   StateGraphInputError,
 } from "../errors.js";
@@ -1036,6 +1038,40 @@ export class StateGraph<
             : rawCachePolicy;
       }
 
+      // If an error handler is provided, register an auto-generated handler
+      // node that runs only after this node's retry policy is exhausted.
+      let errorHandlerNode: string | undefined;
+      if (options?.errorHandler !== undefined) {
+        errorHandlerNode = `__error_handler__${key}`;
+        if (errorHandlerNode in this.nodes) {
+          throw new Error(
+            `Auto-generated error handler node \`${errorHandlerNode}\` already exists.`
+          );
+        }
+        const userHandler = options.errorHandler;
+        const handlerRunnable = new RunnableCallable({
+          func: (state: unknown, config: LangGraphRunnableConfig) => {
+            // Per-task failure context, injected when the handler task is
+            // prepared (see _prepareNodeErrorHandlerTask).
+            const nodeError = config?.configurable?.[CONFIG_KEY_NODE_ERROR] as
+              | NodeError
+              | undefined;
+            return userHandler(state, nodeError as NodeError, config);
+          },
+          name: errorHandlerNode,
+          trace: false,
+        });
+        const handlerSpec: StateGraphNodeSpec<S, U> = {
+          runnable: handlerRunnable as unknown as Runnable<S, U>,
+          metadata: undefined,
+          input: inputSpec ?? this._schemaDefinition,
+          retryPolicy: undefined,
+          cachePolicy: undefined,
+          isErrorHandler: true,
+        };
+        this.nodes[errorHandlerNode as unknown as N] = handlerSpec;
+      }
+
       const nodeSpec: StateGraphNodeSpec<S, U> = {
         runnable: runnable as unknown as Runnable<S, U>,
         retryPolicy: options?.retryPolicy,
@@ -1049,6 +1085,7 @@ export class StateGraph<
           : options?.subgraphs,
         ends: options?.ends,
         defer: options?.defer,
+        errorHandlerNode,
       };
 
       this.nodes[key as unknown as N] = nodeSpec;
@@ -1613,6 +1650,8 @@ export class CompiledStateGraph<
         timeout: node?.timeout,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
+        isErrorHandler: node?.isErrorHandler,
+        errorHandlerNode: node?.errorHandlerNode,
       });
     }
   }
