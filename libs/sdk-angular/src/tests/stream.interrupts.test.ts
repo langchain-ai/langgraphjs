@@ -37,4 +37,30 @@ it("resumes an interrupt via respond()", async () => {
   await expect
     .element(screen.getByTestId("last-message"))
     .toHaveTextContent("After interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt-count"))
+    .toHaveTextContent("0");
+});
+
+it("responds via the dedicated respond button", async () => {
+  const screen = await render(InterruptStreamComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("interrupt-count"), { timeout: 5_000 })
+    .toHaveTextContent("1");
+
+  await screen.getByTestId("respond").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 5_000 })
+    .toHaveTextContent("Not loading");
+
+  await expect
+    .element(screen.getByTestId("last-message"))
+    .toHaveTextContent("After interrupt");
+  await expect
+    .element(screen.getByTestId("interrupt-count"))
+    .toHaveTextContent("0");
 });

@@ -739,7 +739,7 @@ export class StreamController<
         interrupt_id: resolved.interruptId,
         response,
       });
-      this.#resolvedInterrupts.add(resolved.interruptId);
+      this.#markInterruptResolvedInRootStore(resolved.interruptId);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1454,6 +1454,28 @@ export class StreamController<
       if (s.interrupts.some((entry) => entry.id === interruptId)) return s;
       const interrupts = [...s.interrupts, interrupt];
       return { ...s, interrupts, interrupt: interrupts[0] };
+    });
+  }
+
+  /**
+   * Mark an interrupt resolved for replay filtering and mirror the
+   * removal into the root snapshot the framework hooks read.
+   */
+  #markInterruptResolvedInRootStore(interruptId: string): void {
+    this.#resolvedInterrupts.add(interruptId);
+    this.rootStore.setState((s) => {
+      const interrupts = s.interrupts.filter((entry) => entry.id !== interruptId);
+      if (
+        interrupts.length === s.interrupts.length &&
+        s.interrupt?.id !== interruptId
+      ) {
+        return s;
+      }
+      return {
+        ...s,
+        interrupts,
+        interrupt: interrupts[0],
+      };
     });
   }
 
