@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { useStreamCustom } from "../../stream.custom.js";
-  import type { Message } from "@langchain/langgraph-sdk";
+  import { useStream } from "../../index.js";
+  import { formatMessage } from "./format.js";
 
   interface Props {
     apiUrl: string;
@@ -8,51 +8,22 @@
 
   const { apiUrl }: Props = $props();
 
-  const transport = {
-    async stream(payload: any) {
-      const threadId =
-        payload.config?.configurable?.thread_id ?? "unknown";
-      async function* generate(): AsyncGenerator<{
-        event: string;
-        data: unknown;
-      }> {
-        yield {
-          event: "values",
-          data: {
-            messages: [
-              {
-                id: `${threadId}-human`,
-                type: "human",
-                content: `Hello from ${threadId.slice(0, 8)}`,
-              },
-              {
-                id: `${threadId}-ai`,
-                type: "ai",
-                content: `Reply on ${threadId.slice(0, 8)}`,
-              },
-            ],
-          },
-        };
-      }
-      return generate();
-    },
-  };
+  let threadId = $state<string | null>(null);
 
-  const stream = useStreamCustom<{ messages: Message[] }>({
-    transport: transport as any,
-    threadId: null,
-    onThreadId: () => {},
+  const stream = useStream({
+    assistantId: "agent",
+    apiUrl,
+    threadId: () => threadId,
+    onThreadId: (id) => {
+      threadId = id;
+    },
   });
 </script>
 
 <div>
   <div data-testid="messages">
     {#each stream.messages as msg, i (msg.id ?? i)}
-      <div data-testid={`message-${i}`}>
-        {typeof msg.content === "string"
-          ? msg.content
-          : JSON.stringify(msg.content)}
-      </div>
+      <div data-testid={`message-${i}`}>{formatMessage(msg)}</div>
     {/each}
   </div>
   <div data-testid="loading">
@@ -68,13 +39,17 @@
   </button>
   <button
     data-testid="switch-thread"
-    onclick={() => stream.switchThread(crypto.randomUUID())}
+    onclick={() => {
+      threadId = crypto.randomUUID();
+    }}
   >
     Switch Thread
   </button>
   <button
     data-testid="switch-thread-null"
-    onclick={() => stream.switchThread(null)}
+    onclick={() => {
+      threadId = null;
+    }}
   >
     Switch to Null Thread
   </button>

@@ -19,7 +19,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Path rules:
+  # - libs/sdk/** → all framework browser jobs (sdk output)
+  # - libs/sdk-{react,angular,vue,svelte}/** → that package only
+  # - edits to this workflow → full matrix
+  # - workflow_dispatch → full matrix
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      sdk: ${{ steps.changes.outputs.sdk }}
+      sdk-react: ${{ steps.changes.outputs.sdk-react }}
+      sdk-angular: ${{ steps.changes.outputs.sdk-angular }}
+      sdk-vue: ${{ steps.changes.outputs.sdk-vue }}
+      sdk-svelte: ${{ steps.changes.outputs.sdk-svelte }}
+      workflow: ${{ steps.changes.outputs.workflow }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: changes
+        with:
+          filters: |
+            sdk:
+              - 'libs/sdk/**'
+              - '!libs/sdk-*/**'
+            sdk-react:
+              - 'libs/sdk-react/**'
+            sdk-angular:
+              - 'libs/sdk-angular/**'
+            sdk-vue:
+              - 'libs/sdk-vue/**'
+            sdk-svelte:
+              - 'libs/sdk-svelte/**'
+            workflow:
+              - '.github/workflows/test-browser.yml'
+
   sdk-react:
+    needs: detect-changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.workflow == 'true' ||
+      needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.sdk-react == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -30,6 +70,12 @@ jobs:
         run: pnpm --filter @langchain/react run test
 
   sdk-angular:
+    needs: detect-changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.workflow == 'true' ||
+      needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.sdk-angular == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -40,6 +86,12 @@ jobs:
         run: pnpm --filter @langchain/angular run test
 
   sdk-vue:
+    needs: detect-changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.workflow == 'true' ||
+      needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.sdk-vue == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -50,6 +102,12 @@ jobs:
         run: pnpm --filter @langchain/vue run test
 
   sdk-svelte:
+    needs: detect-changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.workflow == 'true' ||
+      needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.sdk-svelte == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

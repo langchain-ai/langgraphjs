@@ -1,10 +1,21 @@
 import { Component, signal } from "@angular/core";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
 import type { ToolEvent } from "@langchain/langgraph-sdk";
 import { injectStream } from "../../index.js";
 import { getLocationTool } from "../fixtures/browser-fixtures.js";
 
 const serverUrl = inject("serverUrl");
+
+interface StreamState {
+  messages: BaseMessage[];
+}
+
+type ExecuteFn = Parameters<typeof getLocationTool.implement>[0];
+let pendingExecute: ExecuteFn | null = null;
+export function setHeadlessToolExecute(fn: ExecuteFn | null): void {
+  pendingExecute = fn;
+}
 
 const TEMPLATE = `
   <div>
@@ -24,6 +35,7 @@ const TEMPLATE = `
     <div data-testid="loading">
       {{ stream.isLoading() ? "loading" : "idle" }}
     </div>
+    <div data-testid="interrupt-count">{{ stream.interrupts().length }}</div>
 
     <div data-testid="tool-events">
       @for (event of toolEvents(); track $index) {
@@ -41,14 +53,17 @@ const TEMPLATE = `
 export class HeadlessToolComponent {
   toolEvents = signal<ToolEvent[]>([]);
 
-  stream = injectStream({
+  stream = injectStream<StreamState>({
     assistantId: "headlessToolAgent",
     apiUrl: serverUrl,
     tools: [
-      getLocationTool.implement(async () => ({
-        latitude: 37.7749,
-        longitude: -122.4194,
-      })),
+      getLocationTool.implement(
+        pendingExecute ??
+          (async () => ({
+            latitude: 37.7749,
+            longitude: -122.4194,
+          }))
+      ),
     ],
     onTool: (event) => {
       this.toolEvents.update((prev) => [...prev, event]);
@@ -61,16 +76,18 @@ export class HeadlessToolComponent {
 
   onSubmit() {
     void this.stream.submit({
-      messages: [{ type: "human", content: "Where am I?" }],
-    } as any);
+      messages: [new HumanMessage("Where am I?")],
+    });
   }
 }
+
+export const HeadlessToolStreamComponent = HeadlessToolComponent;
 
 @Component({ template: TEMPLATE })
 export class HeadlessToolErrorComponent {
   toolEvents = signal<ToolEvent[]>([]);
 
-  stream = injectStream({
+  stream = injectStream<StreamState>({
     assistantId: "headlessToolAgent",
     apiUrl: serverUrl,
     tools: [
@@ -89,7 +106,7 @@ export class HeadlessToolErrorComponent {
 
   onSubmit() {
     void this.stream.submit({
-      messages: [{ type: "human", content: "Where am I?" }],
-    } as any);
+      messages: [new HumanMessage("Where am I?")],
+    });
   }
 }

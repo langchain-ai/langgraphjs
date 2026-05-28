@@ -656,16 +656,16 @@ describe("threads copy", () => {
           },
           parent_checkpoint: original.parent_checkpoint
             ? {
-                ...original.parent_checkpoint,
-                thread_id: copiedThread.thread_id,
-              }
+              ...original.parent_checkpoint,
+              thread_id: copiedThread.thread_id,
+            }
             : null,
         });
       }
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
-          "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
+        "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
       );
 
       // check checkpoints in DB
@@ -912,7 +912,7 @@ describe("runs", () => {
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
-          "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
+        "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
       );
 
       let cur = await sql`SELECT * FROM checkpoints WHERE run_id is null`;
@@ -1737,11 +1737,13 @@ describe("subgraphs", () => {
     expect(continueMessages.length).toBe(2);
     expect(continueMessages[0].content).toBe("SF");
     expect(continueMessages[1].content).toBe("It's sunny in San Francisco!");
-    expect(chunksSubgraph).toEqual([
+    const chunksSubgraphWithoutCheckpoints = chunksSubgraph
+      .filter((chunk) => !chunk.event.startsWith("checkpoints"))
+      .map(({ id: _id, ...chunk }) => chunk);
+    expect(chunksSubgraphWithoutCheckpoints).toEqual([
       {
         event: "metadata",
         data: { run_id: expect.any(String), attempt: 1 },
-        id: "0",
       },
       {
         event: "values",
@@ -1757,7 +1759,6 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
-        id: "1",
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -1773,7 +1774,6 @@ describe("subgraphs", () => {
           ],
           city: "San Francisco",
         },
-        id: "2",
       },
       {
         event: expect.stringMatching(/^updates\|weather_graph:/),
@@ -1792,7 +1792,6 @@ describe("subgraphs", () => {
             ],
           },
         },
-        id: "3",
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -1817,7 +1816,6 @@ describe("subgraphs", () => {
           ],
           city: "San Francisco",
         },
-        id: "4",
       },
       {
         event: "updates",
@@ -1843,7 +1841,6 @@ describe("subgraphs", () => {
             ],
           },
         },
-        id: "5",
       },
       {
         event: "values",
@@ -1868,7 +1865,6 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
-        id: "6",
       },
     ]);
 

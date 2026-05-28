@@ -32,7 +32,7 @@
     "zod": "^3.25.76 || ^4"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
@@ -49,7 +49,7 @@
     "@tsconfig/recommended": "^1.0.3",
     "@types/uuid": "^10",
     "@types/yargs": "^17.0.33",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.10.0",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
     "mongodb": "^6.21.0",

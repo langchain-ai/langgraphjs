@@ -3,44 +3,45 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { BagTemplate } from "@langchain/langgraph-sdk";
-import type {
-  ResolveStreamOptions,
-  InferBag,
-  InferStateType,
-  UseStreamCustomOptions,
-} from "@langchain/langgraph-sdk/ui";
-import { useStream } from "./stream.js";
+import {
+  useStream,
+  type UseStreamOptions,
+  type UseStreamReturn,
+  type AgentServerOptions,
+  type CustomAdapterOptions,
+} from "./use-stream.js";
+import type { InferStateType } from "@langchain/langgraph-sdk/stream";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const StreamContext = createContext<any | null>(null);
 
 /**
- * Props for the StreamProvider component.
- * Accepts all `useStream` options plus `children`.
+ * Props for {@link StreamProvider} when talking to the default
+ * LangGraph Platform agent server. Mirrors {@link AgentServerOptions}
+ * plus `children`.
  */
-export type StreamProviderProps<
-  T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
-> = ResolveStreamOptions<T, InferBag<T, Bag>> & { children: ReactNode };
+export type StreamProviderProps<T = Record<string, unknown>> =
+  AgentServerOptions<InferStateType<T>> & {
+    children: ReactNode;
+  };
 
 /**
- * Props for the StreamProvider component when using a custom transport.
- * Accepts all `useStream` custom options plus `children`.
+ * Props for {@link StreamProvider} when wiring a custom
+ * {@link AgentServerAdapter}. Mirrors {@link CustomAdapterOptions}
+ * plus `children`.
  */
-export type StreamProviderCustomProps<
-  T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
-> = UseStreamCustomOptions<InferStateType<T>, InferBag<T, Bag>> & {
-  children: ReactNode;
-};
+export type StreamProviderCustomProps<T = Record<string, unknown>> =
+  CustomAdapterOptions<InferStateType<T>> & {
+    children: ReactNode;
+  };
 
 /**
- * Provides a shared `useStream` instance to all descendants via React Context.
+ * Provides a shared {@link useStream} instance to all descendants via
+ * React Context.
  *
- * Use `StreamProvider` when multiple components in a subtree need access to the
- * same stream state (messages, loading status, errors, interrupts, etc.) without
- * prop drilling.
+ * Use `StreamProvider` when multiple components in a subtree need
+ * access to the same stream state (messages, loading status, errors,
+ * interrupts, …) without prop drilling.
  *
  * @example
  * ```tsx
@@ -65,20 +66,6 @@ export type StreamProviderCustomProps<
  *     </header>
  *   );
  * }
- *
- * function MessageList() {
- *   const { messages } = useStreamContext();
- *   return messages.map((msg, i) => <div key={msg.id ?? i}>{msg.content}</div>);
- * }
- *
- * function MessageInput() {
- *   const { submit } = useStreamContext();
- *   return (
- *     <button onClick={() => submit({ messages: [{ type: "human", content: "Hi" }] })}>
- *       Send
- *     </button>
- *   );
- * }
  * ```
  *
  * Multiple providers can be nested for multi-agent scenarios:
@@ -93,15 +80,11 @@ export type StreamProviderCustomProps<
  * </StreamProvider>
  * ```
  */
-export function StreamProvider<
-  T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
->(
-  props: StreamProviderProps<T, Bag> | StreamProviderCustomProps<T, Bag>
+export function StreamProvider<T = Record<string, unknown>>(
+  props: StreamProviderProps<T> | StreamProviderCustomProps<T>
 ): ReactNode {
   const { children, ...options } = props;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const stream = useStream<T, Bag>(options as any);
+  const stream = useStream<T>(options as UseStreamOptions<InferStateType<T>>);
 
   return (
     <StreamContext.Provider value={stream}>{children}</StreamContext.Provider>
@@ -109,35 +92,29 @@ export function StreamProvider<
 }
 
 /**
- * Accesses the shared stream instance from the nearest `StreamProvider`.
- *
- * Throws if called outside of a `StreamProvider`.
+ * Accesses the shared stream instance from the nearest
+ * {@link StreamProvider}. Throws if called outside of one.
  *
  * @example
  * ```tsx
  * function MessageList() {
- *   const { messages, getMessagesMetadata } = useStreamContext();
- *   return messages.map((msg, i) => {
- *     const metadata = getMessagesMetadata(msg, i);
- *     return <div key={msg.id ?? i}>{msg.content}</div>;
- *   });
+ *   const { messages } = useStreamContext();
+ *   return messages.map((m, i) => <div key={m.id ?? i}>{String(m.content)}</div>);
  * }
  * ```
  *
- * @example With type parameters for full type safety:
+ * @example With a type parameter for full type safety:
  * ```tsx
  * import type { agent } from "./agent";
  *
  * function Chat() {
  *   const { toolCalls } = useStreamContext<typeof agent>();
- *   // toolCalls are fully typed from the agent's tools
  * }
  * ```
  */
 export function useStreamContext<
   T = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate,
->(): ReturnType<typeof useStream<T, Bag>> {
+>(): UseStreamReturn<T> {
   const context = useContext(StreamContext);
   if (context === null) {
     throw new Error(
@@ -145,5 +122,5 @@ export function useStreamContext<
         "Wrap your component tree with <StreamProvider> or use useStream() directly."
     );
   }
-  return context;
+  return context as UseStreamReturn<T>;
 }

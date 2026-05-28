@@ -78,6 +78,7 @@ jobs:
             internal
             infra
             deps
+            deps-dev
           requireScope: false
           disallowScopes: |
             release

@@ -20,7 +20,7 @@ import type {
 } from "../pregel/runnable_types.js";
 import { PregelNode } from "../pregel/read.js";
 import { Channel, Pregel } from "../pregel/index.js";
-import type { PregelParams } from "../pregel/types.js";
+import type { PregelOptions, PregelParams } from "../pregel/types.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { ChannelWrite, PASSTHROUGH } from "../pregel/write.js";
@@ -45,6 +45,7 @@ import {
 } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
+import type { StreamTransformer } from "../stream/types.js";
 
 export interface BranchOptions<
   IO,
@@ -61,6 +62,60 @@ export type BranchPathReturnValue =
   | Send
   | (string | Send)[]
   | Promise<string | Send | (string | Send)[]>;
+
+type CompiledGraphTypeNode<Spec> = Spec extends { node: infer N extends string }
+  ? N
+  : any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+type CompiledGraphTypeContext<Spec> = Spec extends {
+  context: infer Context extends Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+  ? Context
+  : Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
+  streamTransformers: infer Transformers;
+}
+  ? Transformers extends ReadonlyArray<
+      () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+    >
+    ? Transformers
+    : Transformers extends ReadonlyArray<
+          StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        >
+      ? { readonly [K in keyof Transformers]: () => Transformers[K] }
+      : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+        ? readonly [() => Transformers]
+        : []
+  : [];
+
+/**
+ * Convenience type for referencing a compiled graph by named type slots.
+ *
+ * @example
+ * ```ts
+ * type MyCompiledGraph = CompiledGraphType<{
+ *   state: State;
+ *   update: Update;
+ *   streamTransformers: [
+ *     StreamTransformer<Extensions>,
+ *     StreamTransformer<MoreExtensions>,
+ *   ];
+ * }>;
+ * ```
+ */
+export type CompiledGraphType<Spec extends object = object> = CompiledGraph<
+  CompiledGraphTypeNode<Spec>,
+  Spec extends { state: infer State } ? State : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { update: infer Update } ? Update : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  CompiledGraphTypeContext<Spec>,
+  Spec extends { input: infer Input } ? Input : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { output: infer Output } ? Output : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  Spec extends { nodeReturn: infer NodeReturn } ? NodeReturn : unknown,
+  Spec extends { command: infer Command } ? Command : unknown,
+  Spec extends { streamCustom: infer StreamCustom } ? StreamCustom : any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  CompiledGraphTypeStreamTransformers<Spec>
+>;
 
 type NodeAction<S, U, C extends StateDefinition> = RunnableLike<
   S,
@@ -426,17 +481,40 @@ export class Graph<
     return this.addEdge(key, END);
   }
 
-  compile({
+  compile<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >({
     checkpointer,
     interruptBefore,
     interruptAfter,
     name,
+    transformers,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
-  } = {}): CompiledGraph<N> {
+    /**
+     * Stream transformer factories baked into the compiled graph.  These run
+     * automatically for every `streamEvents(..., { version: "v3" })` call,
+     * before any call-site transformers.
+     */
+    transformers?: TTransformers;
+  } = {}): CompiledGraph<
+    N,
+    RunInput,
+    RunOutput,
+    Record<string, any>,
+    any,
+    any,
+    unknown,
+    unknown,
+    any,
+    TTransformers
+  > {
+    // eslint-disable-line @typescript-eslint/no-explicit-any
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -460,6 +538,7 @@ export class Graph<
       streamChannels: [] as N[],
       streamMode: "values",
       name,
+      streamTransformers: transformers,
     });
 
     // attach nodes, edges and branches
@@ -563,6 +642,7 @@ export class CompiledGraph<
   NodeReturnType = unknown,
   CommandType = unknown,
   StreamCustomType = any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [], // eslint-disable-line @typescript-eslint/no-explicit-any
 > extends Pregel<
   Record<N | typeof START, PregelNode<State, Update>>,
   Record<N | typeof START | typeof END | string, BaseChannel>,
@@ -573,7 +653,8 @@ export class CompiledGraph<
   OutputType,
   NodeReturnType,
   CommandType,
-  StreamCustomType
+  StreamCustomType,
+  TStreamTransformers
 > {
   declare "~NodeType": N;
 
@@ -590,10 +671,59 @@ export class CompiledGraph<
     ...rest
   }: { builder: Graph<N, State, Update> } & PregelParams<
     Record<N | typeof START, PregelNode<State, Update>>,
-    Record<N | typeof START | typeof END | string, BaseChannel>
+    Record<N | typeof START | typeof END | string, BaseChannel>,
+    TStreamTransformers
   >) {
     super(rest);
     this.builder = builder;
+  }
+
+  override withConfig<
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers: TTransformers;
+    }
+  ): CompiledGraph<
+    N,
+    State,
+    Update,
+    ContextType,
+    InputType,
+    OutputType,
+    NodeReturnType,
+    CommandType,
+    StreamCustomType,
+    readonly [...TStreamTransformers, ...TTransformers]
+  >;
+
+  override withConfig(
+    config: PregelOptions<
+      Record<N | typeof START, PregelNode<State, Update>>,
+      Record<N | typeof START | typeof END | string, BaseChannel>,
+      ContextType & Record<string, any>
+    >
+  ): this;
+
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers?: ReadonlyArray<() => StreamTransformer<any>>;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any {
+    return (super.withConfig as any)(config) as unknown as CompiledGraph<
+      N,
+      State,
+      Update,
+      ContextType,
+      InputType,
+      OutputType,
+      NodeReturnType,
+      CommandType,
+      StreamCustomType,
+      ReadonlyArray<() => StreamTransformer<any>>
+    >;
   }
 
   attachNode(key: N, node: NodeSpec<State, Update>): void {

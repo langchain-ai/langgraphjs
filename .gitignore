@@ -4,8 +4,11 @@ index.js
 index.d.ts
 *.d.ts
 !vite-env.d.ts
+*.d.ts.map
 *.d.cts
+*.d.cts.map
 *.d.mts
+*.d.mts.map
 node_modules
 dist
 coverage/
@@ -34,3 +37,4 @@ tsconfig.vitest-temp.json
 .vitest-attachments
 agent-os/
 __screenshots__
+*_*.md
