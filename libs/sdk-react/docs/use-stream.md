@@ -12,7 +12,8 @@ The root hook of `@langchain/react` v1. Mount it once per thread. It owns the th
 - [`submit()` options](#submit-options)
 - [Stopping a run and responding to interrupts](#stopping-a-run-and-responding-to-interrupts)
   - [`stop()`](#stop)
-  - [`respond(response, target?)`](#respondresponse-target)
+  - [`respond(response, options?)`](#respondresponse-options)
+  - [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
   - [`hydrationPromise`](#hydrationpromise)
 - [Related](#related)
 
@@ -76,7 +77,8 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 | `submit(input, options?)`    | function                                                    | Dispatch a new run on the bound thread.                                                         |
 | `stop(options?)`             | `(options?: { cancel?: boolean }) => Promise<void>`       | Cancel the active run (default) and disconnect the client. Pass `{ cancel: false }` to disconnect only. |
 | `disconnect()`               | `() => Promise<void>`                                     | Disconnect the client without cancelling the run (`stop({ cancel: false })`).                          |
-| `respond(response, target?)` | function                                                    | Resume an interrupt with a response payload.                                                    |
+| `respond(response, options?)` | function                                                    | Resume a single interrupt with a response payload (target via `options.interruptId` / `namespace`). |
+| `respondAll(responsesById, options?)` | function                                            | Resume several interrupts pending at the same checkpoint in one command (`interruptId` → response map). |
 | `getThread()`                | `() => ThreadStream \| undefined`                           | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 | `client`                     | `Client`                                                    | The bound client (`HttpAgentServerAdapter`'s client on the custom branch).                      |
 | `assistantId`                | `string`                                                    | Resolved assistant id (including the `"_"` fallback on custom adapters).                        |
@@ -123,11 +125,13 @@ Pass `{ cancel: false }` to disconnect without cancelling server-side execution,
 </button>
 ```
 
-### `respond(response, target?)`
+### `respond(response, options?)`
 
-Resume a pending interrupt. When `target` is omitted, `respond()` walks `stream.getThread()?.interrupts` from newest to oldest and resumes the first entry not yet resolved by a prior `respond()` call. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending; otherwise pass `{ interruptId, namespace? }`.
+Resume a single pending interrupt. When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from newest to oldest and resumes the first entry not yet resolved by a prior `respond()` call. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending; otherwise pass `options.interruptId` (and `options.namespace` for subgraph interrupts).
 
 The server validates `namespace` against the pending interrupt. Root interrupts use `namespace: []` (default when omitted). For subgraph interrupts, copy `namespace` from `getThread()?.interrupts` — see [Interrupts](./interrupts.md#subgraph-interrupts-and-namespace).
+
+Pass `options.config` / `options.metadata` to fold run-level config (model, user context, …) and metadata (trigger source, test flags, …) into the resumed run, mirroring `submit()`.
 
 ```tsx
 // Single pending interrupt — omit target:
@@ -144,9 +148,32 @@ await stream.respond(
   { approved: true },
   { interruptId: entry!.interruptId, namespace: entry!.namespace },
 );
+
+// Carry run config + metadata onto the resume:
+await stream.respond({ approved: true }, {
+  config: { configurable: { model: "gpt-4o" } },
+  metadata: { source: "ui" },
+});
 ```
 
 See [Interrupts](./interrupts.md) for HITL resume patterns.
+
+### `respondAll(responsesById, options?)`
+
+Resume several interrupts pending at the same checkpoint (e.g. parallel tool-authorization prompts) in a single command. Sequential `respond()` calls would fail because the first resume starts a run, leaving the rest with no interrupted run to respond to. `responsesById` maps each pending `interruptId` to its response, so different interrupts can receive different payloads; namespaces are resolved internally from `getThread()?.interrupts`. `options.config` / `options.metadata` fold run-level config and metadata into the single run that services the resume.
+
+```tsx
+// Distinct payloads per interrupt:
+await stream.respondAll({
+  [interruptA.id]: { approved: true },
+  [interruptB.id]: { approved: false },
+});
+
+// Same payload to every pending interrupt:
+await stream.respondAll(
+  Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
+);
+```
 
 ### `hydrationPromise`
 

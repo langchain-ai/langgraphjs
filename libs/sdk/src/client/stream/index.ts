@@ -371,8 +371,7 @@ function foldForkFromIntoConfig<
  * event envelope.
  */
 export class SubscriptionHandle<TEvent extends Event = Event, TYield = TEvent>
-  implements AsyncIterable<TYield>, EventSubscription<TYield>
-{
+  implements AsyncIterable<TYield>, EventSubscription<TYield> {
   // Mutated by `#subscribeViaCommand` on WS once the server-assigned
   // subscription id arrives — see the placeholder→resolved transition
   // there. SSE paths set this once at construction and never change it.
@@ -863,14 +862,20 @@ export class ThreadStream<
    *   full list here would drop other headless-tool interrupts that
    *   are still awaiting client execution.
    */
-  #prepareForNextRun(respondedInterruptId?: string): void {
+  #prepareForNextRun(
+    respondedInterruptId?: string | readonly string[]
+  ): void {
     this.interrupted = false;
     if (respondedInterruptId != null) {
-      const index = this.interrupts.findIndex(
-        (entry) => entry.interruptId === respondedInterruptId
+      const respondedIds = new Set(
+        Array.isArray(respondedInterruptId)
+          ? respondedInterruptId
+          : [respondedInterruptId as string]
       );
-      if (index >= 0) {
-        this.interrupts.splice(index, 1);
+      for (let index = this.interrupts.length - 1; index >= 0; index -= 1) {
+        if (respondedIds.has(this.interrupts[index].interruptId)) {
+          this.interrupts.splice(index, 1);
+        }
       }
     } else {
       this.interrupts.length = 0;
@@ -1221,9 +1226,9 @@ export class ThreadStream<
     const handleEvent = (event: Event) => {
       const data = event.params.data as
         | {
-            name?: string;
-            payload?: unknown;
-          }
+          name?: string;
+          payload?: unknown;
+        }
         | undefined;
       if (data?.name !== name) return;
       lastValue = data.payload;
@@ -1370,17 +1375,32 @@ export class ThreadStream<
    * {@link input.respond}.
    */
   async respondInput(params: {
-    namespace: readonly string[];
-    interrupt_id: string;
-    response: unknown;
+    namespace?: readonly string[];
+    interrupt_id?: string;
+    response?: unknown;
+    /**
+     * Batched resume: respond to several pending interrupts at the same
+     * checkpoint in one command. Mutually exclusive with the single
+     * `interrupt_id` / `response` fields. Not yet on the formal
+     * `input.respond` wire type — read leniently by the server.
+     */
+    responses?: ReadonlyArray<{
+      interrupt_id: string;
+      response: unknown;
+      namespace?: readonly string[];
+    }>;
     config?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
-    this.#prepareForNextRun(params.interrupt_id);
+    const respondedIds =
+      params.responses != null
+        ? params.responses.map((entry) => entry.interrupt_id)
+        : params.interrupt_id;
+    this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
     await this.#send(
       "input.respond",
-      params as unknown as CommandParamsMap["input.respond"]
+      params as CommandParamsMap["input.respond"]
     );
   }
 
@@ -1734,11 +1754,11 @@ export class ThreadStream<
     const transform =
       unwrapNamedCustom && hasOnlyNamedCustom
         ? (event: Event) =>
-            (
-              (event.params as Record<string, unknown>).data as {
-                payload?: unknown;
-              }
-            )?.payload ?? event
+          (
+            (event.params as Record<string, unknown>).data as {
+              payload?: unknown;
+            }
+          )?.payload ?? event
         : undefined;
 
     if (this.#transportAdapter.openEventStream != null) {

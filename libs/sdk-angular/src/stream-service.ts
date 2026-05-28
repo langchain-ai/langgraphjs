@@ -11,6 +11,8 @@ import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import type {
   AssembledToolCall,
   InferStateType,
+  StreamRespondAllOptions,
+  StreamRespondOptions,
   StreamStopOptions,
   StreamSubmitOptions,
   SubgraphDiscoverySnapshot,
@@ -161,9 +163,16 @@ export class StreamService<
 
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
   ): Promise<void> {
-    return this.stream.respond(response, target);
+    return this.stream.respond(response, options);
+  }
+
+  respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
+  ): Promise<void> {
+    return this.stream.respondAll(responsesById, options);
   }
 
   getThread(): ThreadStream | undefined {

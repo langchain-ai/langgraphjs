@@ -312,9 +312,36 @@ export function registerProtocolRoutes(
     const params: Record<string, unknown> = isRecord(command.params)
       ? command.params
       : {};
-    const interruptId = params.interrupt_id;
 
-    if (typeof interruptId !== "string") {
+    // Build the resume input map. The SDK sends either a single
+    // `interrupt_id` / `response` or a `responses` batch (several
+    // interrupts at the same checkpoint, resumed in one command).
+    // `responses` is not yet on the formal wire type — read leniently.
+    const resumeInput: Record<string, unknown> = {};
+    if (Array.isArray(params.responses)) {
+      for (const entry of params.responses) {
+        if (!isRecord(entry) || typeof entry.interrupt_id !== "string") {
+          return jsonResponse({
+            type: "error",
+            id: command.id,
+            error: "invalid_argument",
+            message:
+              "input.respond responses entries require an interrupt_id.",
+          });
+        }
+        resumeInput[entry.interrupt_id] = entry.response;
+      }
+      if (Object.keys(resumeInput).length === 0) {
+        return jsonResponse({
+          type: "error",
+          id: command.id,
+          error: "invalid_argument",
+          message: "input.respond requires at least one response.",
+        });
+      }
+    } else if (typeof params.interrupt_id === "string") {
+      resumeInput[params.interrupt_id] = params.response;
+    } else {
       return jsonResponse({
         type: "error",
         id: command.id,
@@ -337,7 +364,12 @@ export function registerProtocolRoutes(
       assistant_id: assistantId,
       on_disconnect: "cancel",
       input: null,
-      command: { resume: { [interruptId]: params.response } },
+      command: { resume: resumeInput },
+      // Carry the SDK's `respond({ config, metadata })` onto the resumed
+      // run so it applies the same run config / metadata a fresh
+      // `run.start` would. Read leniently — not yet on the formal wire type.
+      config: isRecord(params.config) ? params.config : undefined,
+      metadata: isRecord(params.metadata) ? params.metadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
     } as unknown as z.infer<typeof schemas.RunCreate>);

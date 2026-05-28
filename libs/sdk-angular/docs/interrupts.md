@@ -3,7 +3,7 @@
 `stream.interrupts()` exposes all pending root interrupts.
 `stream.interrupt()` is a convenience for the first one. Resume with
 `stream.respond(response)` — or target a specific pending interrupt with
-`stream.respond(response, target?)`.
+`stream.respond(response, options?)`.
 
 ```typescript
 import { Component } from "@angular/core";
@@ -72,8 +72,46 @@ for (const entry of thread?.interrupts ?? []) {
 }
 ```
 
-When `target` is omitted, `respond()` walks `getThread()?.interrupts`
-from newest to oldest — not necessarily `stream.interrupt()` (root-only).
+When `options.interruptId` is omitted, `respond()` walks
+`getThread()?.interrupts` from newest to oldest — not necessarily
+`stream.interrupt()` (root-only).
+
+Pass `options.config` / `options.metadata` to fold run-level config
+(model, user context, …) and metadata (trigger source, test flags, …)
+into the run that services the resume, mirroring `submit()`:
+
+```typescript
+await stream.respond({ approved: true }, {
+  config: { configurable: { model: "gpt-4o" } },
+  metadata: { source: "ui" },
+});
+```
+
+## Responding to several interrupts at once
+
+When a run pauses on **several interrupts at the same checkpoint** (e.g.
+parallel tool-authorization prompts), resume them in one command with
+`respondAll`. Sequential `respond()` calls would fail — the first resume
+starts a run, leaving the rest with no interrupted run to respond to.
+
+`responsesById` maps each pending `interruptId` to its response, so
+different interrupts can receive different payloads. Namespaces are
+resolved internally from `getThread()?.interrupts`, so you only supply
+ids. `options.config` / `options.metadata` are folded into the single run
+that services the batched resume.
+
+```typescript
+// Distinct payloads per interrupt:
+await stream.respondAll({
+  [interruptA.id]: { approved: true },
+  [interruptB.id]: { approved: false },
+});
+
+// Same payload to every pending interrupt:
+await stream.respondAll(
+  Object.fromEntries(stream.interrupts().map((i) => [i.id!, { approved: true }])),
+);
+```
 
 ## Auto-resumed tool interrupts
 

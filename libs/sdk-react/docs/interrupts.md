@@ -8,7 +8,8 @@ Interrupts pause graph execution and wait for input. `@langchain/react` surfaces
 - [Resuming an interrupt](#resuming-an-interrupt)
 - [Multiple pending interrupts](#multiple-pending-interrupts)
 - [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)
-- [`respond(response, target?)`](#respondresponse-target)
+- [`respond(response, options?)`](#respondresponse-options)
+- [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
 - [Headless tools](#headless-tools)
 - [Lower-level helpers](#lower-level-helpers)
 
@@ -57,7 +58,7 @@ When more than one interrupt can be active, pass an explicit target (see [Multip
 
 ## Multiple pending interrupts
 
-When `target` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved by a prior `respond()` call.
+When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved by a prior `respond()` call.
 
 That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
 
@@ -118,22 +119,29 @@ return (
 
 Each entry mirrors an `input.requested` event: `{ interruptId, payload, namespace }`. Pass both `interruptId` and `namespace` for subgraph interrupts; omitting `namespace` assumes root (`[]`) and the server will reject the resume if the pending interrupt lives in a subgraph.
 
-## `respond(response, target?)`
+## `respond(response, options?)`
 
 Signature:
 
 ```tsx
 stream.respond(
   response: unknown,
-  target?: { interruptId: string; namespace?: string[] },
+  options?: {
+    interruptId?: string;
+    namespace?: string[];
+    config?: { configurable?: Record<string, unknown>; [key: string]: unknown };
+    metadata?: Record<string, unknown>;
+  },
 ): Promise<void>
 ```
 
-| `target` | Behavior |
-| -------- | -------- |
+| `options.interruptId` | Behavior |
+| --------------------- | -------- |
 | Omitted | Newest unresolved entry in `getThread()?.interrupts`. Safe when one interrupt is pending. |
-| `{ interruptId }` | Resume that id at root (`namespace: []`). |
-| `{ interruptId, namespace }` | Resume that id in the given subgraph namespace. Required when the interrupt is not at root. |
+| `interruptId` set | Resume that id at root (`namespace: []`). |
+| `interruptId` + `namespace` | Resume that id in the given subgraph namespace. Required when the interrupt is not at root. |
+
+`options.config` / `options.metadata` are folded into the run that services the resume — the same `config` / `metadata` you'd pass to `submit()`. Use them to carry model/user config or run metadata (e.g. trigger source) onto a HITL resume.
 
 ```tsx
 // Single pending interrupt — omit target:
@@ -146,6 +154,41 @@ await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
 await stream.respond(
   { approved: true },
   { interruptId: entry.interruptId, namespace: entry.namespace },
+);
+
+// Resume carrying run config + metadata:
+await stream.respond({ approved: true }, {
+  config: { configurable: { model: "gpt-4o" } },
+  metadata: { source: "ui" },
+});
+```
+
+### `respondAll(responsesById, options?)`
+
+When a run pauses on **several interrupts at the same checkpoint** (e.g. parallel tool-authorization prompts), resume them in one command with `respondAll`. Sequential `respond()` calls would fail — the first resume starts a run, leaving the rest with no interrupted run to respond to.
+
+```tsx
+stream.respondAll(
+  responsesById: Record<string, unknown>, // interruptId -> response payload
+  options?: {
+    config?: { configurable?: Record<string, unknown>; [key: string]: unknown };
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void>
+```
+
+`responsesById` maps each pending `interruptId` to its response, so different interrupts can receive different payloads. Namespaces are resolved internally from `getThread()?.interrupts`, so you only supply ids. `options.config` / `options.metadata` are folded into the single run that services the batched resume.
+
+```tsx
+// Distinct payloads per interrupt:
+await stream.respondAll({
+  [interruptA.id]: { approved: true },
+  [interruptB.id]: { approved: false },
+});
+
+// Same payload to every pending interrupt:
+await stream.respondAll(
+  Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
 );
 ```
 

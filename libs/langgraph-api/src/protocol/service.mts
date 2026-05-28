@@ -328,7 +328,36 @@ export class ProtocolService {
         >)
       : {};
 
-    if (typeof params.interrupt_id !== "string") {
+    // Build the resume input map (`{ [interrupt_id]: response }`). The
+    // SDK sends either a single `interrupt_id` / `response` or a
+    // `responses` batch (several interrupts at the same checkpoint, which
+    // must be resumed in one command). `responses` is not yet on the
+    // formal `InputRespondParams` wire type — read it leniently.
+    const rawParams: Record<string, unknown> = isRecord(command.params)
+      ? command.params
+      : {};
+    const resumeInput: Record<string, unknown> = {};
+    if (Array.isArray(rawParams.responses)) {
+      for (const entry of rawParams.responses) {
+        if (!isRecord(entry) || typeof entry.interrupt_id !== "string") {
+          return this.error(
+            command.id,
+            "invalid_argument",
+            "input.respond responses entries require an interrupt_id."
+          );
+        }
+        resumeInput[entry.interrupt_id] = entry.response;
+      }
+      if (Object.keys(resumeInput).length === 0) {
+        return this.error(
+          command.id,
+          "invalid_argument",
+          "input.respond requires at least one response."
+        );
+      }
+    } else if (typeof params.interrupt_id === "string") {
+      resumeInput[params.interrupt_id] = params.response;
+    } else {
       return this.error(
         command.id,
         "invalid_argument",
@@ -367,11 +396,17 @@ export class ProtocolService {
       );
     }
 
+    // `config` / `metadata` are not part of the formal `InputRespondParams`
+    // wire type yet, but the SDK's `respond({ config, metadata })` forwards
+    // them on the `input.respond` command so a resumed run can carry the
+    // same run config (model, user context, …) and metadata (trigger
+    // source, test flags, …) a fresh `run.start` would. Read them leniently
+    // — same posture as `normalizeRunStart`.
     await this.createOrResumeRun(record, {
       assistant_id: record.assistantId,
-      input: { [params.interrupt_id]: params.response },
-      config: undefined,
-      metadata: undefined,
+      input: resumeInput,
+      config: isRecord(rawParams.config) ? rawParams.config : undefined,
+      metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
     });
 
     return {

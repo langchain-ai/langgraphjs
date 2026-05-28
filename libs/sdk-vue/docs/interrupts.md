@@ -11,7 +11,8 @@ in-browser tool handler). `@langchain/vue` surfaces them on
 - [Script vs template access](#script-vs-template-access)
 - [Human-in-the-loop (HITL)](#human-in-the-loop-hitl)
 - [Resuming an interrupt](#resuming-an-interrupt)
-- [`respond(response, target?)`](#respondresponse-target)
+- [`respond(response, options?)`](#respondresponse-options)
+- [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
 - [Stopping a run](#stopping-a-run)
 - [Headless tools](#headless-tools)
 
@@ -188,7 +189,7 @@ When multiple interrupts can be active, pass an explicit target — see [Multipl
 
 ## Multiple pending interrupts
 
-When `target` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved. That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
+When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved. That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
 
 | Surface | What it contains | Use for |
 | ------- | ---------------- | ------- |
@@ -215,9 +216,9 @@ for (const entry of thread?.interrupts ?? []) {
 }
 ```
 
-## `respond(response, target?)`
+## `respond(response, options?)`
 
-When multiple interrupts are active (subagents, fan-out, nested graphs), pass `{ interruptId, namespace? }`:
+When multiple interrupts are active (subagents, fan-out, nested graphs), pass `options.interruptId` (and `options.namespace` for subgraph interrupts):
 
 ```ts
 await stream.respond({ approved: true });
@@ -228,7 +229,35 @@ await stream.respond(
 );
 ```
 
-When `target` is omitted, the newest unresolved entry in `getThread()?.interrupts` is resumed — not necessarily the most recent root interrupt on `stream.interrupt`.
+When `options.interruptId` is omitted, the newest unresolved entry in `getThread()?.interrupts` is resumed — not necessarily the most recent root interrupt on `stream.interrupt`.
+
+Pass `options.config` / `options.metadata` to fold run-level config (model, user context, …) and metadata (trigger source, test flags, …) into the run that services the resume, mirroring `submit()`:
+
+```ts
+await stream.respond({ approved: true }, {
+  config: { configurable: { model: "gpt-4o" } },
+  metadata: { source: "ui" },
+});
+```
+
+## `respondAll(responsesById, options?)`
+
+When a run pauses on **several interrupts at the same checkpoint** (e.g. parallel tool-authorization prompts), resume them in one command with `respondAll`. Sequential `respond()` calls would fail — the first resume starts a run, leaving the rest with no interrupted run to respond to.
+
+`responsesById` maps each pending `interruptId` to its response, so different interrupts can receive different payloads. Namespaces are resolved internally from `getThread()?.interrupts`, so you only supply ids. `options.config` / `options.metadata` are folded into the single run that services the batched resume.
+
+```ts
+// Distinct payloads per interrupt:
+await stream.respondAll({
+  [interruptA.id]: { approved: true },
+  [interruptB.id]: { approved: false },
+});
+
+// Same payload to every pending interrupt:
+await stream.respondAll(
+  Object.fromEntries(stream.interrupts.value.map((i) => [i.id!, { approved: true }])),
+);
+```
 
 ## Stopping a run
 
