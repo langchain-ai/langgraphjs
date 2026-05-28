@@ -1464,7 +1464,9 @@ export class StreamController<
   #markInterruptResolvedInRootStore(interruptId: string): void {
     this.#resolvedInterrupts.add(interruptId);
     this.rootStore.setState((s) => {
-      const interrupts = s.interrupts.filter((entry) => entry.id !== interruptId);
+      const interrupts = s.interrupts.filter(
+        (entry) => entry.id !== interruptId
+      );
       if (
         interrupts.length === s.interrupts.length &&
         s.interrupt?.id !== interruptId
