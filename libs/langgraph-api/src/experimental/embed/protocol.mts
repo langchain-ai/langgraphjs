@@ -12,7 +12,11 @@ import { serialiseAsDict } from "../../utils/serde.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
-import { matchesSinkFilter } from "../../protocol/service.mjs";
+import {
+  matchesSinkFilter,
+  normalizeMultitaskStrategy,
+  DEFAULT_MULTITASK_STRATEGY,
+} from "../../protocol/service.mjs";
 import type {
   EventSinkFilter,
   ProtocolCommand,
@@ -222,14 +226,20 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Promote SDK-side `forkFrom` into
-    // `configurable.checkpoint_id` so the engine replays from the
-    // requested fork target. This mirrors the promotion performed by
-    // `ProtocolService.createOrResumeRun` in the non-embed path and
-    // closes the "client sends forkFrom, server drops it" gap.
+    // Fork/time-travel replays from `config.configurable.checkpoint_id`
+    // — the single legacy-compliant fork field. The SDK folds its
+    // `forkFrom` convenience option into this field client-side, so the
+    // server reads it from there rather than a top-level `forkFrom`.
+    // `createStubRun` only reliably forwards a fork target via the
+    // top-level `checkpoint_id`, so lift it out of `configurable` below.
     const forkCheckpointId = (() => {
-      return typeof params.forkFrom === "string" && params.forkFrom.length > 0
-        ? params.forkFrom
+      const configurable =
+        isRecord(params.config) && isRecord(params.config.configurable)
+          ? params.config.configurable
+          : undefined;
+      const checkpointId = configurable?.checkpoint_id;
+      return typeof checkpointId === "string" && checkpointId.length > 0
+        ? checkpointId
         : undefined;
     })();
 
@@ -270,6 +280,11 @@ export function registerProtocolRoutes(
       ...(forkCheckpointId != null && !isResume
         ? { checkpoint_id: forkCheckpointId }
         : {}),
+      // Honor the caller's `multitaskStrategy`, falling back to `enqueue`
+      // to match the non-embed protocol-v2 server and the Python default.
+      multitask_strategy:
+        normalizeMultitaskStrategy(params.multitaskStrategy) ??
+        DEFAULT_MULTITASK_STRATEGY,
       metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,

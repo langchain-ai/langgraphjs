@@ -165,6 +165,50 @@ describe("ThreadStream", () => {
     expect(thread.assistantId).toBe("my-agent");
   });
 
+  it("folds forkFrom into config.configurable.checkpoint_id on the wire", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+    await thread.run.start({
+      input: { step: 1 },
+      forkFrom: "cp-123",
+      config: { configurable: { foo: "bar" } },
+    });
+
+    const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+    const params = cmd?.params as {
+      forkFrom?: unknown;
+      config?: { configurable?: Record<string, unknown> };
+    };
+    // The ergonomic top-level field never reaches the server...
+    expect(params.forkFrom).toBeUndefined();
+    // ...it is folded into the single legacy-compliant field, preserving
+    // any other configurable values the caller passed.
+    expect(params.config?.configurable).toMatchObject({
+      foo: "bar",
+      checkpoint_id: "cp-123",
+    });
+  });
+
+  it("leaves config untouched when forkFrom is absent", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+    await thread.run.start({
+      input: { step: 1 },
+      config: { configurable: { foo: "bar" } },
+    });
+
+    const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+    const params = cmd?.params as {
+      forkFrom?: unknown;
+      config?: { configurable?: Record<string, unknown> };
+    };
+    expect(params.forkFrom).toBeUndefined();
+    expect(params.config?.configurable).toEqual({ foo: "bar" });
+    expect(params.config?.configurable).not.toHaveProperty("checkpoint_id");
+  });
+
   it("closes thread cleanly", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

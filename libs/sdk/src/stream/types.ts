@@ -259,8 +259,10 @@ export interface StreamSubmitOptions<
   metadata?: Record<string, unknown>;
   /**
    * Fork the run from an explicit checkpoint instead of the thread's
-   * latest. This SDK/API extension is promoted by the LangGraph API
-   * into `config.configurable.checkpoint_id`.
+   * latest. Ergonomic alias the SDK folds into
+   * `config.configurable.checkpoint_id` before dispatching the run, so
+   * the server receives the fork target via the single legacy-compliant
+   * field (never a top-level `forkFrom`).
    */
   forkFrom?: string;
   /**

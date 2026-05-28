@@ -320,6 +320,48 @@ function normalizeSubscribeParams(
 }
 
 /**
+ * Fold the ergonomic top-level `forkFrom` checkpoint id into
+ * `config.configurable.checkpoint_id` and strip `forkFrom` from the
+ * outgoing params.
+ *
+ * `forkFrom` is purely an SDK-side convenience: callers say
+ * `submit(input, { forkFrom })` instead of hand-building a nested
+ * RunnableConfig. The agent server only ever accepts the fork target via
+ * `config.configurable.checkpoint_id` (the same field the legacy run
+ * endpoints use), so we translate here — before the `run.start` message
+ * hits the wire — keeping a single, legacy-compliant way to provide it.
+ *
+ * `forkFrom` takes precedence over any `checkpoint_id` the caller already
+ * placed in `config.configurable`, matching the prior server-side merge.
+ */
+function foldForkFromIntoConfig<
+  T extends { forkFrom?: string; config?: unknown },
+>(params: T): Omit<T, "forkFrom"> {
+  const { forkFrom, ...rest } = params;
+  if (typeof forkFrom !== "string" || forkFrom.length === 0) {
+    return rest;
+  }
+  const config =
+    rest.config != null && typeof rest.config === "object"
+      ? (rest.config as Record<string, unknown>)
+      : {};
+  const configurable =
+    config.configurable != null && typeof config.configurable === "object"
+      ? (config.configurable as Record<string, unknown>)
+      : {};
+  return {
+    ...rest,
+    config: {
+      ...config,
+      configurable: {
+        ...configurable,
+        checkpoint_id: forkFrom,
+      },
+    },
+  } as Omit<T, "forkFrom">;
+}
+
+/**
  * Async iterable handle for raw event subscriptions.
  *
  * An optional `transform` maps each incoming event before it is queued
@@ -670,7 +712,7 @@ export class ThreadStream<
           // subscription landed. This keeps the zero-extensions hot path
           // free of an unused `custom` subscription per run.
           return this.#send("run.start", {
-            ...params,
+            ...foldForkFromIntoConfig(params),
             assistant_id: this.assistantId,
           });
         });
@@ -1294,9 +1336,10 @@ export class ThreadStream<
     metadata?: Record<string, unknown>;
     /**
      * Fork the new run from an explicit checkpoint instead of the
-     * thread's latest. This SDK/API extension is promoted by the
-     * LangGraph API into `config.configurable.checkpoint_id`; it is
-     * not part of the stock agent protocol `RunStartParams`.
+     * thread's latest. This is an SDK-side convenience: it is folded into
+     * `config.configurable.checkpoint_id` before the `run.start` message
+     * is sent, so the agent server only ever sees the single
+     * legacy-compliant fork field (`forkFrom` never hits the wire).
      */
     forkFrom?: string;
     /**
@@ -1315,7 +1358,7 @@ export class ThreadStream<
     return await this.#withRunStartGate(() => {
       this.#startLifecycleWatcher();
       return this.#send("run.start", {
-        ...(params as Record<string, unknown>),
+        ...(foldForkFromIntoConfig(params) as Record<string, unknown>),
         assistant_id: this.assistantId,
       });
     });

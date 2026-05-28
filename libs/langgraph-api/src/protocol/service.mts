@@ -5,6 +5,7 @@ import type {
   RunsRepo,
   ThreadsRepo,
   StreamMode,
+  MultitaskStrategy,
 } from "../storage/types.mjs";
 import type { RunCommand } from "../command.mjs";
 import type {
@@ -51,26 +52,51 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+// Concurrency strategies accepted on `run.start`, matching the four values
+// the SDK's `multitaskStrategy` option can take.
+const VALID_MULTITASK_STRATEGIES: readonly MultitaskStrategy[] = [
+  "reject",
+  "rollback",
+  "interrupt",
+  "enqueue",
+];
+
+// Legacy stream-endpoint default: queue new runs behind active ones instead
+// of interrupting. Used when the caller omits `multitaskStrategy`.
+export const DEFAULT_MULTITASK_STRATEGY: MultitaskStrategy = "enqueue";
+
 /**
- * `run.start` params as accepted by the service. Wider than the
- * stock `RunStartParams` from `@langchain/protocol` to carry the
- * SDK-side `forkFrom` checkpoint id convenience field, which
- * `createOrResumeRun` promotes to `config.configurable.checkpoint_id`
- * so the engine replays from the requested fork target. Callers that
- * prefer to set `config.configurable.checkpoint_id` directly remain
- * fully supported — `forkFrom` is merged after the caller's config so
- * it takes precedence when both are provided.
+ * Resolve the per-run `multitaskStrategy`. Honor it when it is one of the
+ * recognized strategies, otherwise return `undefined` so the caller falls
+ * back to {@link DEFAULT_MULTITASK_STRATEGY}. Lenient by design (matches
+ * the rest of `normalizeRunStart` and the Python reference server).
  */
-type ExtendedRunStartParams = RunStartParams & {
-  forkFrom?: string;
+export const normalizeMultitaskStrategy = (
+  value: unknown
+): MultitaskStrategy | undefined => {
+  return typeof value === "string" &&
+    (VALID_MULTITASK_STRATEGIES as readonly string[]).includes(value)
+    ? (value as MultitaskStrategy)
+    : undefined;
 };
 
-const normalizeForkFrom = (value: unknown): string | undefined => {
-  if (typeof value !== "string" || value.length === 0) return undefined;
-  return value;
+/**
+ * `run.start` params after normalization. Extends the stock protocol
+ * `RunStartParams` with the SDK's `multitaskStrategy` option, which the
+ * server honors per-run (see {@link normalizeMultitaskStrategy}).
+ *
+ * Fork/time-travel targets are NOT carried here: they are provided
+ * exclusively via `config.configurable.checkpoint_id` — the same field the
+ * legacy run endpoints accept. The SDK folds its ergonomic `forkFrom`
+ * option into that field client-side before sending `run.start`, so the
+ * server only ever understands a single, legacy-compliant way to select
+ * the checkpoint to replay from.
+ */
+type NormalizedRunStart = RunStartParams & {
+  multitaskStrategy?: MultitaskStrategy;
 };
 
-const normalizeRunStart = (value: unknown): ExtendedRunStartParams => {
+const normalizeRunStart = (value: unknown): NormalizedRunStart => {
   if (isRecord(value)) {
     return {
       assistant_id:
@@ -78,7 +104,7 @@ const normalizeRunStart = (value: unknown): ExtendedRunStartParams => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
-      forkFrom: normalizeForkFrom(value.forkFrom),
+      multitaskStrategy: normalizeMultitaskStrategy(value.multitaskStrategy),
     };
   }
   return {
@@ -361,7 +387,7 @@ export class ProtocolService {
 
   private async createOrResumeRun(
     record: ThreadRecord,
-    params: ExtendedRunStartParams
+    params: NormalizedRunStart
   ) {
     const assistantId = getAssistantId(params.assistant_id);
     const currentRun =
@@ -383,22 +409,17 @@ export class ProtocolService {
         hasPendingInterrupts);
 
     /**
-     * When `forkFrom` is present, promote it to
-     * `configurable.checkpoint_id` so the engine replays from the
-     * requested fork target. `forkFrom` is merged last so it wins over
-     * any `checkpoint_id` the caller may have pre-baked into
-     * `config.configurable`; in resume flows we intentionally skip the
-     * promotion because a resume must follow the thread's active
-     * checkpoint, not a historical fork.
+     * Fork/time-travel replays from `config.configurable.checkpoint_id`
+     * when the caller supplies it (the SDK folds its `forkFrom`
+     * convenience option into this field client-side). Forwarded as-is so
+     * the engine starts from the requested checkpoint instead of the
+     * thread's latest state.
      */
     const runConfig = {
       ...params.config,
       configurable: {
         ...params.config?.configurable,
         thread_id: record.threadId,
-        ...(!isResume && params.forkFrom != null
-          ? { checkpoint_id: params.forkFrom }
-          : {}),
       },
     };
 
@@ -414,7 +435,11 @@ export class ProtocolService {
       stream_subgraphs: true,
       stream_resumable: true,
       if_not_exists: "create" as const,
-      multitask_strategy: "interrupt" as const,
+      // Honor the caller's `multitaskStrategy` (the SDK sends it on every
+      // run.start), falling back to `enqueue` — the legacy stream-endpoint
+      // default — when omitted. Matches the Python protocol-v2 server.
+      multitask_strategy:
+        params.multitaskStrategy ?? DEFAULT_MULTITASK_STRATEGY,
     };
 
     const [run] = await this.bindings.runs.put(
