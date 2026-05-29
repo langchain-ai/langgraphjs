@@ -31,7 +31,7 @@ import {
 import {
   BaseChannel,
   createCheckpoint,
-  emptyChannels,
+  channelsFromCheckpoint,
   getOnlyChannels,
 } from "../channels/base.js";
 import {
@@ -885,10 +885,16 @@ export class Pregel<
       };
     }
 
-    // Create all channels
-    const channels = emptyChannels(
+    // Create all channels, reconstructing any DeltaChannel from ancestor
+    // writes via the checkpointer.
+    const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
-      saved.checkpoint
+      saved.checkpoint,
+      {
+        saver:
+          typeof this.checkpointer === "object" ? this.checkpointer : undefined,
+        config: saved.config ?? config,
+      }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -1292,10 +1298,11 @@ export class Pregel<
         );
       }
 
-      // update channels
-      const channels = emptyChannels(
+      // update channels, reconstructing any DeltaChannel from ancestor writes
+      const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
-        checkpoint
+        checkpoint,
+        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
       );
 
       if (values === null && asNode === END) {
