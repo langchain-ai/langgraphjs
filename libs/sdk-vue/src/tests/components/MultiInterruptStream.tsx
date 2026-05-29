@@ -1,4 +1,4 @@
-import { computed, defineComponent, ref, watchEffect } from "vue";
+import { computed, defineComponent, ref, watch } from "vue";
 
 import { useStream } from "../../index.js";
 
@@ -21,14 +21,17 @@ export const MultiInterruptStream = defineComponent({
     });
 
     const threadInterruptCount = ref(0);
-    watchEffect(() => {
-      // `getThread()?.interrupts` is not a reactive ref — re-sync whenever
-      // the binding's root projection updates (loading, values, interrupts).
-      stream.isLoading.value;
-      stream.interrupts.value;
-      stream.values.value;
-      threadInterruptCount.value = stream.getThread()?.interrupts.length ?? 0;
-    });
+    watch(
+      [
+        () => stream.isLoading.value,
+        () => stream.interrupts.value,
+        () => stream.values.value,
+      ],
+      () => {
+        threadInterruptCount.value = stream.getThread()?.interrupts.length ?? 0;
+      },
+      { immediate: true }
+    );
 
     const pendingInterruptCount = computed(() => threadInterruptCount.value);
 

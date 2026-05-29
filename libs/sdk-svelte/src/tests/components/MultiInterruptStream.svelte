@@ -18,12 +18,13 @@
   });
 
   const pendingInterruptCount = $derived.by(() => {
-    // `getThread()?.interrupts` is not reactive — depend on root projection
-    // updates so parallel protocol interrupts re-render the count.
-    stream.isLoading;
-    stream.interrupts.length;
-    stream.values;
-    return stream.getThread()?.interrupts.length ?? 0;
+    const loading = stream.isLoading;
+    const rootInterruptCount = stream.interrupts.length;
+    const values = stream.values;
+    if (loading || rootInterruptCount >= 0 || values != null) {
+      return stream.getThread()?.interrupts.length ?? 0;
+    }
+    return 0;
   });
 
   const decisionsJson = $derived(
