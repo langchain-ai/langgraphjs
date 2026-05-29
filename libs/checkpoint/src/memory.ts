@@ -13,9 +13,10 @@ import { SerializerProtocol } from "./serde/base.js";
 import {
   CheckpointMetadata,
   CheckpointPendingWrite,
+  DeltaChannelHistory,
   PendingWrite,
 } from "./types.js";
-import { TASKS } from "./serde/types.js";
+import { isDeltaSnapshot, TASKS } from "./serde/types.js";
 
 /**
  * Keys that, when written into a plain JavaScript object via bracket
@@ -528,5 +529,115 @@ export class MemorySaver extends BaseCheckpointSaver {
     for (const key of Object.keys(this.writes)) {
       if (_parseKey(key).threadId === threadId) delete this.writes[key];
     }
+  }
+
+  /**
+   * Override: walk the parent chain ONCE for all requested channels using
+   * direct storage access.
+   *
+   * Each channel terminates independently at the nearest ancestor whose
+   * stored `channel_values[ch]` is populated. Other channels keep walking
+   * until they find their own terminator or hit the root.
+   *
+   * Pre-delta plain-value blobs subsume their ancestor's pending writes (the
+   * value already includes them); `DeltaSnapshot` blobs do not (the snapshot
+   * is the value AT that ancestor, prior to its own pending writes that
+   * produce the child).
+   *
+   * @remarks Beta. See {@link BaseCheckpointSaver.getDeltaChannelHistory}.
+   */
+  async getDeltaChannelHistory(options: {
+    config: RunnableConfig;
+    channels: string[];
+  }): Promise<Record<string, DeltaChannelHistory>> {
+    const { config, channels } = options;
+    if (channels.length === 0) return {};
+
+    const threadId = config.configurable?.thread_id;
+    const checkpointNs = config.configurable?.checkpoint_ns ?? "";
+    const checkpointId = getCheckpointId(config);
+
+    if (threadId !== undefined) assertSafeStorageKey("thread_id", threadId);
+    assertSafeStorageKey("checkpoint_ns", checkpointNs, { allowEmpty: true });
+
+    const nsStorage = this.storage[threadId]?.[checkpointNs] ?? {};
+
+    // Build the parent chain starting at the target's parent (the target's
+    // own pending writes are for the next super-step and excluded).
+    const chain: string[] = [];
+    const targetEntry = checkpointId ? nsStorage[checkpointId] : undefined;
+    let current: string | undefined = targetEntry?.[2];
+    while (current !== undefined) {
+      const entry = nsStorage[current];
+      if (entry === undefined) break;
+      chain.push(current);
+      current = entry[2];
+    }
+
+    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
+    const seedByCh: Record<string, unknown> = {};
+    const remaining = new Set(channels);
+    for (const ch of channels) collectedByCh[ch] = [];
+
+    for (const cpId of chain) {
+      if (remaining.size === 0) break;
+      const entry = nsStorage[cpId];
+      const ckpt: Checkpoint | undefined =
+        entry !== undefined
+          ? await this.serde.loadsTyped("json", entry[0])
+          : undefined;
+
+      const blobValueByCh: Record<string, unknown> = {};
+      const terminatedHere = new Set<string>();
+      if (ckpt !== undefined) {
+        for (const ch of remaining) {
+          if (
+            Object.prototype.hasOwnProperty.call(ckpt.channel_values, ch) &&
+            ckpt.channel_values[ch] !== undefined
+          ) {
+            blobValueByCh[ch] = ckpt.channel_values[ch];
+            terminatedHere.add(ch);
+          }
+        }
+      }
+
+      const stepWritesKey = _generateKey(threadId, checkpointNs, cpId);
+      const stepWrites = Object.entries(this.writes[stepWritesKey] ?? {});
+      // Sort by [taskId, idx] descending to mirror the Python walk order;
+      // the full list is reversed once at the end to get oldest→newest.
+      stepWrites.sort(([a], [b]) => {
+        const [aTask, aIdx] = a.split(",");
+        const [bTask, bIdx] = b.split(",");
+        if (aTask !== bTask) return aTask < bTask ? 1 : -1;
+        return Number(bIdx) - Number(aIdx);
+      });
+      for (const [, [tid, ch, serialized]] of stepWrites) {
+        if (!remaining.has(ch)) continue;
+        const blobValue = blobValueByCh[ch];
+        if (blobValue !== undefined && !isDeltaSnapshot(blobValue)) continue;
+        collectedByCh[ch].push([
+          tid,
+          ch,
+          await this.serde.loadsTyped("json", serialized),
+        ]);
+      }
+
+      for (const ch of terminatedHere) {
+        seedByCh[ch] = blobValueByCh[ch];
+        remaining.delete(ch);
+      }
+    }
+
+    const result: Record<string, DeltaChannelHistory> = {};
+    for (const ch of channels) {
+      const entryH: DeltaChannelHistory = {
+        writes: collectedByCh[ch].slice().reverse(),
+      };
+      if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
+        entryH.seed = seedByCh[ch];
+      }
+      result[ch] = entryH;
+    }
+    return result;
   }
 }

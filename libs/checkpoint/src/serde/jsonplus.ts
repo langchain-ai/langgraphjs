@@ -3,6 +3,7 @@
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
 import { stringify } from "./utils/fast-safe-stringify/index.js";
+import { DeltaSnapshot } from "./types.js";
 
 function isLangChainSerializedObject(value: Record<string, unknown>) {
   return (
@@ -36,6 +37,9 @@ async function _reviver(value: any): Promise<any> {
 
       if (revivedObj.lc === 2 && revivedObj.type === "undefined") {
         return undefined;
+      } else if (revivedObj.lc === 2 && revivedObj.type === "delta_snapshot") {
+        // Wrapped value is already revived (bottom-up traversal).
+        return new DeltaSnapshot(revivedObj.value);
       } else if (
         revivedObj.lc === 2 &&
         revivedObj.type === "constructor" &&
@@ -106,6 +110,14 @@ function _default(obj: any): any {
     return {
       lc: 2,
       type: "undefined",
+    };
+  } else if (obj instanceof DeltaSnapshot) {
+    return {
+      lc: 2,
+      type: "delta_snapshot",
+      // `value` continues to be walked by `stringify`, so nested
+      // serializable types (messages, Maps, etc.) are encoded normally.
+      value: obj.value,
     };
   } else if (obj instanceof Set || obj instanceof Map) {
     return _encodeConstructorArgs(obj.constructor, undefined, [
