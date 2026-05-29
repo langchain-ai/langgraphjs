@@ -22,6 +22,31 @@ export const ERROR_SOURCE_NODE = "__error_source_node__";
 /** Special reserved cache namespaces */
 export const CACHE_NS_WRITES = "__pregel_ns_writes";
 
+/**
+ * System-wide upper bound on how many supersteps a {@link DeltaChannel} may go
+ * without writing a {@link DeltaSnapshot} blob. Once a channel's
+ * supersteps-since-snapshot counter reaches this value, a snapshot is forced
+ * even if the channel's own `snapshotFrequency` has not been reached — this
+ * prevents unbounded ancestor walks on threads where a delta channel exists
+ * but is no longer being updated.
+ *
+ * Overridable via the `LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`
+ * environment variable. Read lazily so test/runtime overrides take effect.
+ *
+ * @remarks Beta.
+ */
+export function getDeltaMaxSuperstepsSinceSnapshot(): number {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT
+      : undefined;
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 5000;
+}
+
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */
 export const CONFIG_KEY_CALL = "__pregel_call";
