@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars - needed to resolve below link
 import type { GraphDrained } from "../errors.js";
 
 /**
