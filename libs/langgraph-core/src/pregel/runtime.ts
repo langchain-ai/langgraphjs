@@ -1,3 +1,5 @@
+import type { GraphDrained } from "../errors.js";
+
 /**
  * Run-scoped control surface for cooperative draining.
  *

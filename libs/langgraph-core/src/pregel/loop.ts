@@ -413,7 +413,7 @@ export class PregelLoop {
     this.durability = params.durability;
     this.debug = params.debug;
     this.triggerToNodes = params.triggerToNodes;
-    this.control = (this.config as LangGraphRunnableConfig).control;
+    this.control = this.config.control;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -756,7 +756,8 @@ export class PregelLoop {
   /**
    * Execute a single iteration of the Pregel loop.
    * Returns true if more iterations are needed.
-   * @param params
+   * @param params - The input keys to use for the tick.
+   * @returns True if more iterations are needed, false otherwise.
    */
   async tick(params: { inputKeys?: string | string[] }): Promise<boolean> {
     if (this.store && !this.store.isRunning) {

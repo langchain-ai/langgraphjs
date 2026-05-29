@@ -35,9 +35,6 @@ export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
 
 export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
 
-/** config key carrying the run-scoped {@link RunControl} down into subgraphs */
-export const CONFIG_KEY_RUN_CONTROL = "__pregel_run_control";
-
 /** Special channel reserved for graph interrupts */
 export const INTERRUPT = "__interrupt__";
 /** Special channel reserved for graph resume */

@@ -55,7 +55,6 @@ import {
   PUSH,
   CONFIG_KEY_DURABILITY,
   CONFIG_KEY_CHECKPOINT_NS,
-  CONFIG_KEY_RUN_CONTROL,
   type CommandInstance,
   TASKS,
 } from "../constants.js";
@@ -2343,20 +2342,11 @@ export class Pregel<
 
     // Resolve the run-scoped control surface for cooperative draining.
     // Precedence: an explicit `control` option, then a control propagated
-    // from a parent run (via `configurable`, so subgraphs share the same
-    // instance), then a fresh `RunControl` so `runtime.control` is always
-    // available to nodes.
-    const runControl: RunControl =
-      config.control ??
-      (config.configurable?.[CONFIG_KEY_RUN_CONTROL] as
-        | RunControl
-        | undefined) ??
-      new RunControl();
-    // Surface as the top-level `control` key (the `Runtime` view), which is
-    // carried into task/subgraph configs via `mergeConfigs`/`patchConfig`.
-    // Avoid writing it into `configurable`, which would leak the control
-    // object into persisted/emitted checkpoint configs.
-    config.control = runControl;
+    // from a parent run (via `mergeConfigs` on task/subgraph configs), then a
+    // fresh `RunControl` so `runtime.control` is always available to nodes.
+    // Keep `control` on the top-level config only — not in `configurable` —
+    // so it is not persisted or emitted in checkpoint configs.
+    config.control ??= new RunControl();
 
     const callbackManagerOptions: Parameters<
       typeof CallbackManager._configureSync
