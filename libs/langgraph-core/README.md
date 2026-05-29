@@ -1,9 +1,23 @@
-# 🦜🕸️LangGraph.js
+<div align="center">
+  <a href="https://www.langchain.com/langgraph">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/images/logo-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset=".github/images/logo-light.svg">
+      <img alt="LangGraph Logo" src=".github/images/logo-dark.svg" width="50%">
+    </picture>
+  </a>
+</div>
 
-[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://docs.langchain.com/oss/javascript/langgraph/overview)
-![Version](https://img.shields.io/npm/v/@langchain/langgraph?logo=npm)  
-[![Downloads](https://img.shields.io/npm/dm/@langchain/langgraph)](https://www.npmjs.com/package/@langchain/langgraph)
-[![Open Issues](https://img.shields.io/github/issues-raw/langchain-ai/langgraphjs)](https://github.com/langchain-ai/langgraphjs/issues)
+<div align="center">
+  <h3>Low-level orchestration framework for building stateful agents.</h3>
+</div>
+
+<div align="center">
+  <a href="https://docs.langchain.com/oss/javascript/langgraph/overview" target="_blank"><img src="https://img.shields.io/badge/docs-latest-blue" alt="Docs"></a>
+  <a href="https://www.npmjs.com/package/@langchain/langgraph" target="_blank"><img src="https://img.shields.io/npm/v/@langchain/langgraph?logo=npm" alt="Version"></a>
+  <a href="https://www.npmjs.com/package/@langchain/langgraph" target="_blank"><img src="https://img.shields.io/npm/dm/@langchain/langgraph" alt="npm - Downloads"></a>
+  <a href="https://github.com/langchain-ai/langgraphjs/issues" target="_blank"><img src="https://img.shields.io/github/issues-raw/langchain-ai/langgraphjs" alt="Open Issues"></a>
+</div>
 
 LangGraph — used by Replit, Uber, LinkedIn, GitLab and more — is a low-level orchestration framework for building controllable agents. While langchain provides integrations and composable components to streamline LLM application development, the LangGraph library enables agent orchestration — offering customizable architectures, long-term memory, and human-in-the-loop to reliably handle complex tasks.
 
@@ -17,73 +31,46 @@ npm install @langchain/langgraph @langchain/core
 To learn more about how to use LangGraph, check out [the docs](https://langchain-ai.github.io/langgraphjs/). We show a simple example below of how to create a ReAct agent.
 
 ```ts
-// npm install @langchain-anthropic
-import { createReactAgent, tool } from "langchain";
-import { ChatAnthropic } from "@langchain/anthropic";
+import {
+  StateSchema,
+  MessagesValue,
+  StateGraph,
+  START,
+  END,
+  type GraphNode
+} from "@langchain/langgraph";
 
-import { z } from "zod";
-
-const search = tool(
-  async ({ query }) => {
-    if (
-      query.toLowerCase().includes("sf") ||
-      query.toLowerCase().includes("san francisco")
-    ) {
-      return "It's 60 degrees and foggy.";
-    }
-    return "It's 90 degrees and sunny.";
-  },
-  {
-    name: "search",
-    description: "Call to surf the web.",
-    schema: z.object({
-      query: z.string().describe("The query to use in your search."),
-    }),
-  }
-);
-
-const model = new ChatAnthropic({
-  model: "claude-3-7-sonnet-latest",
+const State = new StateSchema({
+  messages: MessagesValue,
 });
 
-const agent = createReactAgent({
-  llm: model,
-  tools: [search],
-});
+const mockLlm: GraphNode<typeof State> = (state) => {
+  return { messages: [{ role: "ai", content: "hello world" }] };
+};
 
-const result = await agent.invoke({
-  messages: [
-    {
-      role: "user",
-      content: "what is the weather in sf",
-    },
-  ],
-});
+const graph = new StateGraph(State)
+  .addNode("mock_llm", mockLlm)
+  .addEdge(START, "mock_llm")
+  .addEdge("mock_llm", END)
+  .compile();
+
+await graph.invoke({ messages: [{ role: "user", content: "hi!" }] });
 ```
 
 For an equivalent Python library, check out [LangGraph](https://github.com/langchain-ai/langgraph) and the [Python docs](https://docs.langchain.com/oss/python/langgraph/overview).
 
-## Full-stack Quickstart
-
-Get started quickly by building a full-stack LangGraph application using the [`create-agent-chat-app`](https://www.npmjs.com/package/create-agent-chat-app) CLI:
-
-```bash
-npx create-agent-chat-app@latest
-```
-
-The CLI sets up a chat interface and helps you configure your application, including:
-
-- 🧠 Choice of 4 prebuilt agents (ReAct, Memory, Research, Retrieval)
-- 🌐 Frontend framework (Next.js or Vite)
-- 📦 Package manager (`npm`, `yarn`, `pnpm`, or `bun`)
-
 ## Why use LangGraph?
 
-LangGraph is built for developers who want to build powerful, adaptable AI agents. Developers choose LangGraph for:
+LangGraph provides low-level supporting infrastructure for *any* long-running, stateful workflow or agent:
 
-- **Reliability and controllability.** Steer agent actions with moderation checks and human-in-the-loop approvals. LangGraph persists context for long-running workflows, keeping your agents on course.
-- **Low-level and extensible.** Build custom agents with fully descriptive, low-level primitives – free from rigid abstractions that limit customization. Design scalable multi-agent systems, with each agent serving a specific role tailored to your use case.
-- **First-class streaming support.** With token-by-token streaming and streaming of intermediate steps, LangGraph gives users clear visibility into agent reasoning and actions as they unfold in real time.
+- **[Durable execution](https://docs.langchain.com/oss/javascript/langgraph/durable-execution)** — Build agents that persist through failures and can run for extended periods, automatically resuming from exactly where they left off.
+- **[Human-in-the-loop](https://docs.langchain.com/oss/javascript/langgraph/interrupts)** — Seamlessly incorporate human oversight by inspecting and modifying agent state at any point during execution.
+- **[Comprehensive memory](https://docs.langchain.com/oss/javascript/langgraph/memory)** — Create truly stateful agents with both short-term working memory for ongoing reasoning and long-term persistent memory across sessions.
+- **[Debugging with LangSmith](https://www.langchain.com/langsmith)** — Gain deep visibility into complex agent behavior with visualization tools that trace execution paths, capture state transitions, and provide detailed runtime metrics.
+- **[Production-ready deployment](https://docs.langchain.com/langsmith/deployments)** — Deploy sophisticated agent systems confidently with scalable infrastructure designed to handle the unique challenges of stateful, long-running workflows.
+
+> [!TIP]
+> For developing, debugging, and deploying AI agents and LLM applications, see [LangSmith](https://docs.langchain.com/langsmith/home).
 
 LangGraph is trusted in production and powering agents for companies like:
 
