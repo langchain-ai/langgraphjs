@@ -33,7 +33,7 @@
     "@langchain/langgraph-sdk": "workspace:~",
     "@langchain/protocol": "^0.0.16",
     "@standard-schema/spec": "1.1.0",
-    "uuid": "^10.0.0"
+    "uuid": "^14.0.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.44",
