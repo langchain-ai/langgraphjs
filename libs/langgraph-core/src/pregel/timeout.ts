@@ -69,48 +69,48 @@ class IdleProgressCallbackHandler extends BaseCallbackHandler {
 
   awaitHandlers = false;
 
-  private scope: TimedAttemptScope;
+  #scope: TimedAttemptScope;
 
   constructor(scope: TimedAttemptScope) {
     super();
-    this.scope = scope;
+    this.#scope = scope;
   }
 
-  private touch = () => {
-    this.scope.autoTouch();
+  #touch = () => {
+    this.#scope.autoTouch();
   };
 
-  handleLLMStart = this.touch;
+  handleLLMStart = this.#touch;
 
-  handleChatModelStart = this.touch;
+  handleChatModelStart = this.#touch;
 
-  handleLLMNewToken = this.touch;
+  handleLLMNewToken = this.#touch;
 
-  handleLLMEnd = this.touch;
+  handleLLMEnd = this.#touch;
 
-  handleLLMError = this.touch;
+  handleLLMError = this.#touch;
 
-  handleChainStart = this.touch;
+  handleChainStart = this.#touch;
 
-  handleChainEnd = this.touch;
+  handleChainEnd = this.#touch;
 
-  handleChainError = this.touch;
+  handleChainError = this.#touch;
 
-  handleToolStart = this.touch;
+  handleToolStart = this.#touch;
 
-  handleToolEnd = this.touch;
+  handleToolEnd = this.#touch;
 
-  handleToolError = this.touch;
+  handleToolError = this.#touch;
 
-  handleText = this.touch;
+  handleText = this.#touch;
 
-  handleRetrieverStart = this.touch;
+  handleRetrieverStart = this.#touch;
 
-  handleRetrieverEnd = this.touch;
+  handleRetrieverEnd = this.#touch;
 
-  handleRetrieverError = this.touch;
+  handleRetrieverError = this.#touch;
 
-  handleCustomEvent = this.touch;
+  handleCustomEvent = this.#touch;
 }
 
 /**
