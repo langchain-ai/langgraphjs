@@ -24,6 +24,7 @@ import {
   Branch,
   AddNodeOptions,
   NodeSpec,
+  NodeErrorHandler,
 } from "./graph.js";
 import {
   ChannelWrite,
@@ -96,6 +97,7 @@ import {
   type StateDefinitionInit,
 } from "./types.js";
 import type { StreamTransformer } from "../stream/types.js";
+import type { Pregel } from "../pregel/index.js";
 
 const ROOT = "__root__";
 
@@ -187,6 +189,12 @@ export type StateGraphAddNodeOptions<
     | undefined,
 > = {
   input?: InputSchema;
+  /**
+   * Optional node-level error handler. Runs only after this node's
+   * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
+   * failed node name and error, and may return a state update or `Command`.
+   */
+  errorHandler?: NodeErrorHandler;
 } & NodePolicyOptions &
   AddNodeOptions<Nodes>;
 
@@ -958,7 +966,7 @@ export class StateGraph<
         | [
             key: K,
             action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-            options?: AddNodeOptions,
+            options?: StateGraphAddNodeOptions,
           ][],
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
@@ -1069,7 +1077,7 @@ export class StateGraph<
           cachePolicy: undefined,
           isErrorHandler: true,
         };
-        this.nodes[errorHandlerNode as unknown as N] = handlerSpec;
+        this.nodes[errorHandlerNode as N] = handlerSpec;
       }
 
       const nodeSpec: StateGraphNodeSpec<S, U> = {
@@ -1081,7 +1089,7 @@ export class StateGraph<
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
           ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            [runnable as any]
+            [runnable as Pregel<any, any>]
           : options?.subgraphs,
         ends: options?.ends,
         defer: options?.defer,

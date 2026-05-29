@@ -238,13 +238,11 @@ export type NodeSpec<RunInput, RunOutput> = {
  * the failing node's {@link RetryPolicy} is exhausted. It may return a state
  * update or a `Command` (to route via `goto`).
  */
-export type NodeErrorHandler = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  state: any,
+export type NodeErrorHandler<TState = unknown> = (
+  state: TState,
   error: NodeError,
   config?: LangGraphRunnableConfig
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => any;
+) => unknown;
 
 export type AddNodeOptions<Nodes extends string = string> = {
   metadata?: Record<string, unknown>;
@@ -252,12 +250,6 @@ export type AddNodeOptions<Nodes extends string = string> = {
   subgraphs?: Pregel<any, any>[];
   ends?: Nodes[];
   defer?: boolean;
-  /**
-   * Optional node-level error handler. Runs only after this node's
-   * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
-   * failed node name and error, and may return a state update or `Command`.
-   */
-  errorHandler?: NodeErrorHandler;
 };
 
 export class Graph<
