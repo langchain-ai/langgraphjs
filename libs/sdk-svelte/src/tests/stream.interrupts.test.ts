@@ -2,6 +2,7 @@ import { expect, it, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 
 import InterruptStream from "./components/InterruptStream.svelte";
+import MultiInterruptStream from "./components/MultiInterruptStream.svelte";
 
 const serverUrl = inject("serverUrl");
 
@@ -41,5 +42,32 @@ it("resumes an interrupt via respond()", async () => {
     .toHaveTextContent("After interrupt");
   await expect
     .element(screen.getByTestId("interrupt-count"))
+    .toHaveTextContent("0");
+});
+
+it("resumes several parallel interrupts via respondAll()", { timeout: 15_000 }, async () => {
+  const screen = render(MultiInterruptStream, { apiUrl: serverUrl });
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("thread-interrupt-count"), {
+      timeout: 10_000,
+    })
+    .toHaveTextContent("2");
+
+  await screen.getByTestId("resume-all").click();
+
+  await expect
+    .element(screen.getByTestId("completed"), { timeout: 10_000 })
+    .toHaveTextContent("true");
+  await expect
+    .element(screen.getByTestId("decisions"))
+    .toHaveTextContent('"A":{"approved":true}');
+  await expect
+    .element(screen.getByTestId("decisions"))
+    .toHaveTextContent('"B":{"approved":false}');
+  await expect
+    .element(screen.getByTestId("thread-interrupt-count"))
     .toHaveTextContent("0");
 });
