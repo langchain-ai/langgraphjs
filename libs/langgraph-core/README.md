@@ -28,35 +28,6 @@ npm install @langchain/langgraph @langchain/core
 > [!TIP]
 > If you're looking to quickly build agents, check out **[Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview)** — a higher-level package built on LangGraph for agents that can plan, use subagents, and leverage file systems for complex tasks.
 
-To learn more about how to use LangGraph, check out [the docs](https://langchain-ai.github.io/langgraphjs/). We show a simple example below of how to create a ReAct agent.
-
-```ts
-import {
-  StateSchema,
-  MessagesValue,
-  StateGraph,
-  START,
-  END,
-  type GraphNode
-} from "@langchain/langgraph";
-
-const State = new StateSchema({
-  messages: MessagesValue,
-});
-
-const mockLlm: GraphNode<typeof State> = (state) => {
-  return { messages: [{ role: "ai", content: "hello world" }] };
-};
-
-const graph = new StateGraph(State)
-  .addNode("mock_llm", mockLlm)
-  .addEdge(START, "mock_llm")
-  .addEdge("mock_llm", END)
-  .compile();
-
-await graph.invoke({ messages: [{ role: "user", content: "hi!" }] });
-```
-
 For an equivalent Python library, check out [LangGraph](https://github.com/langchain-ai/langgraph) and the [Python docs](https://docs.langchain.com/oss/python/langgraph/overview).
 
 ## Why use LangGraph?
@@ -72,14 +43,6 @@ LangGraph provides low-level supporting infrastructure for *any* long-running, s
 > [!TIP]
 > For developing, debugging, and deploying AI agents and LLM applications, see [LangSmith](https://docs.langchain.com/langsmith/home).
 
-LangGraph is trusted in production and powering agents for companies like:
-
-- [Klarna](https://blog.langchain.dev/customers-klarna/): Customer support bot for 85 million active users
-- [Elastic](https://www.elastic.co/blog/elastic-security-generative-ai-features): Security AI assistant for threat detection
-- [Uber](https://dpe.org/sessions/ty-smith-adam-huda/this-year-in-ubers-ai-driven-developer-productivity-revolution/): Automated unit test generation
-- [Replit](https://www.langchain.com/breakoutagents/replit): Code generation
-- And many more ([see list here](https://www.langchain.com/built-with-langgraph))
-
 ## LangGraph’s ecosystem
 
 While LangGraph can be used standalone, it also integrates seamlessly with any LangChain product, giving developers a full suite of tools for building agents. To improve your LLM application development, pair LangGraph with:
@@ -87,16 +50,6 @@ While LangGraph can be used standalone, it also integrates seamlessly with any L
 - [Deep Agents (JS)](https://docs.langchain.com/oss/javascript/deepagents/overview) — Build agents that can plan, use subagents, and leverage file systems for complex tasks. A higher-level package built on top of LangGraph.
 - [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) – Provides integrations and composable components to streamline LLM application development.
 - [LangSmith](http://www.langchain.com/langsmith) — Helpful for agent evals and observability. Debug poor-performing LLM app runs, evaluate agent trajectories, gain visibility in production, and improve performance over time.
-
-## Pairing with LangGraph Platform
-
-While LangGraph is our open-source agent orchestration framework, enterprises that need scalable agent deployment can benefit from [LangGraph Platform](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_platform/).
-
-LangGraph Platform can help engineering teams:
-
-- **Accelerate agent development**: Quickly create agent UXs with configurable templates and [LangGraph Studio](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_studio/) for visualizing and debugging agent interactions.
-- **Deploy seamlessly**: We handle the complexity of deploying your agent. LangGraph Platform includes robust APIs for memory, threads, and cron jobs plus auto-scaling task queues & servers.
-- **Centralize agent management & reusability**: Discover, reuse, and manage agents across the organization. Business users can also modify agents without coding.
 
 ## Additional resources
 
