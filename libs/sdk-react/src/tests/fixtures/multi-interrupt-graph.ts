@@ -10,6 +10,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 
 const GraphState = Annotation.Root({
   prompts: Annotation<string[]>({
+    reducer: (_, next) => next,
     default: () => [],
   }),
   decisions: Annotation<Record<string, unknown>>({
