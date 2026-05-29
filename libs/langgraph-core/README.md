@@ -1,6 +1,6 @@
 # 🦜🕸️LangGraph.js
 
-[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://langchain-ai.github.io/langgraphjs/)
+[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://docs.langchain.com/oss/javascript/langgraph/overview)
 ![Version](https://img.shields.io/npm/v/@langchain/langgraph?logo=npm)  
 [![Downloads](https://img.shields.io/npm/dm/@langchain/langgraph)](https://www.npmjs.com/package/@langchain/langgraph)
 [![Open Issues](https://img.shields.io/github/issues-raw/langchain-ai/langgraphjs)](https://github.com/langchain-ai/langgraphjs/issues)
@@ -75,7 +75,7 @@ The CLI sets up a chat interface and helps you configure your application, inclu
 
 - 🧠 Choice of 4 prebuilt agents (ReAct, Memory, Research, Retrieval)
 - 🌐 Frontend framework (Next.js or Vite)
-- 📦 Package manager (`npm`, `yarn`, or `pnpm`)
+- 📦 Package manager (`npm`, `yarn`, `pnpm`, or `bun`)
 
 ## Why use LangGraph?
 
@@ -100,7 +100,6 @@ While LangGraph can be used standalone, it also integrates seamlessly with any L
 - [Deep Agents (JS)](https://docs.langchain.com/oss/javascript/deepagents/overview) — Build agents that can plan, use subagents, and leverage file systems for complex tasks. A higher-level package built on top of LangGraph.
 - [LangChain](https://docs.langchain.com/oss/javascript/langchain/overview) – Provides integrations and composable components to streamline LLM application development.
 - [LangSmith](http://www.langchain.com/langsmith) — Helpful for agent evals and observability. Debug poor-performing LLM app runs, evaluate agent trajectories, gain visibility in production, and improve performance over time.
-- [LangGraph Platform](https://langchain-ai.github.io/langgraphjs/concepts/#langgraph-platform) — Deploy and scale agents effortlessly with a purpose-built deployment platform for long running, stateful workflows. Discover, reuse, configure, and share agents across teams — and iterate quickly with visual prototyping in [LangGraph Studio](https://langchain-ai.github.io/langgraphjs/concepts/langgraph_studio/).
 
 ## Pairing with LangGraph Platform
 
@@ -116,10 +115,8 @@ LangGraph Platform can help engineering teams:
 
 - [LangChain Forum](https://forum.langchain.com/): Connect with the community and share all of your technical questions, ideas, and feedback.
 - [LangChain Academy](https://academy.langchain.com/courses/intro-to-langgraph): Learn the basics of LangGraph in our free, structured course.
-- [Tutorials](https://langchain-ai.github.io/langgraphjs/tutorials/): Simple walkthroughs with guided examples on getting started with LangGraph.
-- [Templates](https://langchain-ai.github.io/langgraphjs/concepts/template_applications/): Pre-built reference apps for common agentic workflows (e.g. ReAct agent, memory, retrieval etc.) that can be cloned and adapted.
-- [How-to Guides](https://langchain-ai.github.io/langgraphjs/how-tos/): Quick, actionable code snippets for topics such as streaming, adding memory & persistence, and design patterns (e.g. branching, subgraphs, etc.).
-- [API Reference](https://langchain-ai.github.io/langgraphjs/reference/): Detailed reference on core classes, methods, how to use the graph and checkpointing APIs, and higher-level prebuilt components.
+- [Streaming Cookbook](https://github.com/langchain-ai/streaming-cookbook): Documentation and examples around LangGraphs's streaming capabilities.
+- [API Reference](https://reference.langchain.com/javascript/langchain-langgraph): Detailed reference on core classes, methods, how to use the graph and checkpointing APIs, and higher-level prebuilt components.
 - [Built with LangGraph](https://www.langchain.com/built-with-langgraph): Hear how industry leaders use LangGraph to ship powerful, production-ready AI applications.
 
 ## Acknowledgements
