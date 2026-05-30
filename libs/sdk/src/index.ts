@@ -128,4 +128,5 @@ export {
   handleHeadlessToolInterrupt,
   headlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
+  scheduleCoalescedHeadlessToolFlush,
 } from "./headless-tools.js";

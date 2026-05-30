@@ -564,4 +564,31 @@ describe("SubagentDiscovery", () => {
       namespace: ["tools:exec-uuid-123"],
     });
   });
+
+  it("reset clears committed subagent maps", () => {
+    const discovery = new SubagentDiscovery();
+    discovery.push(
+      valuesEvent([
+        new AIMessage({
+          id: "orchestrator",
+          content: "",
+          tool_calls: [
+            {
+              id: "task-1",
+              name: "task",
+              args: {
+                description: "Search for protocol risks",
+                subagent_type: "researcher",
+              },
+            },
+          ],
+        }),
+      ])
+    );
+    expect(discovery.snapshot.size).toBeGreaterThan(0);
+
+    discovery.reset();
+
+    expect(discovery.snapshot.size).toBe(0);
+  });
 });

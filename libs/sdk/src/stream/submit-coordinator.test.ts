@@ -46,16 +46,12 @@ interface Harness {
   /** Probe the most recent terminal control object. */
   currentTerminal: () => TerminalControl | undefined;
   setDisposed: (value: boolean) => void;
-  setLatestInterrupt: (
-    value: { interruptId: string; namespace: string[] } | null
-  ) => void;
   options: StreamControllerOptions<State>;
   hydrate: ReturnType<typeof vi.fn>;
   ensureThread: ReturnType<typeof vi.fn>;
   startDeferredRootPump: ReturnType<typeof vi.fn>;
   abandonDeferredRootPump: ReturnType<typeof vi.fn>;
   forgetSelfCreatedThreadId: ReturnType<typeof vi.fn>;
-  markInterruptResolved: ReturnType<typeof vi.fn>;
   onRunStart: ReturnType<typeof vi.fn>;
   onRunCreated: ReturnType<typeof vi.fn>;
   onRunCompleted: ReturnType<typeof vi.fn>;
@@ -112,7 +108,6 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   let disposed = false;
   let currentThreadId: string | null =
     "threadId" in initial ? initial.threadId ?? null : "thread-1";
-  let latestInterrupt: { interruptId: string; namespace: string[] } | null = null;
 
   let terminalControl: TerminalControl | undefined;
   let terminalRegisteredDeferred = deferred<TerminalControl>();
@@ -151,7 +146,6 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   });
   const rememberSelfCreatedThreadId = vi.fn(() => undefined);
   const forgetSelfCreatedThreadId = vi.fn(() => undefined);
-  const markInterruptResolved = vi.fn(() => undefined);
   const onRunStart = vi.fn(() => undefined);
   const onRunCreated = vi.fn(() => undefined);
   const onRunCompleted = vi.fn(
@@ -185,8 +179,6 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
-    latestUnresolvedInterrupt: () => latestInterrupt,
-    markInterruptResolved,
     onRunStart,
     onRunCreated,
     onRunCompleted,
@@ -221,16 +213,12 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     setDisposed: (value) => {
       disposed = value;
     },
-    setLatestInterrupt: (value) => {
-      latestInterrupt = value;
-    },
     options,
     hydrate,
     ensureThread,
     startDeferredRootPump,
     abandonDeferredRootPump,
     forgetSelfCreatedThreadId,
-    markInterruptResolved,
     onRunStart,
     onRunCreated,
     onRunCompleted,
@@ -606,93 +594,6 @@ describe("SubmitCoordinator", () => {
       h.resolveSubmit();
       await vi.runAllTimersAsync();
       await submitPromise;
-    });
-  });
-
-  describe("submit({ command: { resume } })", () => {
-    it("calls respondInput on the active interrupt and marks it resolved", async () => {
-      const h = makeHarness();
-      h.setLatestInterrupt({
-        interruptId: "interrupt-1",
-        namespace: ["task:1"],
-      });
-
-      const submitPromise = h.coordinator.submit(null, {
-        command: { resume: { value: 42 } },
-      });
-      await h.terminalRegistered();
-
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
-        config: { configurable: { thread_id: "thread-1" } },
-        metadata: undefined,
-      });
-      expect(h.markInterruptResolved).toHaveBeenCalledWith("interrupt-1");
-
-      h.resolveTerminal({ event: "completed" });
-      await vi.runAllTimersAsync();
-      await submitPromise;
-
-      expect(h.onRunCompleted).toHaveBeenCalledWith("success", undefined);
-    });
-
-    it("forwards caller-supplied config and metadata through to respondInput", async () => {
-      const h = makeHarness();
-      h.setLatestInterrupt({
-        interruptId: "interrupt-1",
-        namespace: ["task:1"],
-      });
-
-      const submitPromise = h.coordinator.submit(null, {
-        command: { resume: { value: 42 } },
-        config: {
-          configurable: { llm_model_config: { model: "claude-opus-4-7" } },
-        },
-        metadata: { user_id: "u-1", trace_id: "t-9" },
-      });
-      await h.terminalRegistered();
-
-      // bindThreadConfig merges the caller's configurable with the
-      // thread_id stamp — both must survive.
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
-        config: {
-          configurable: {
-            thread_id: "thread-1",
-            llm_model_config: { model: "claude-opus-4-7" },
-          },
-        },
-        metadata: { user_id: "u-1", trace_id: "t-9" },
-      });
-
-      h.resolveTerminal({ event: "completed" });
-      await vi.runAllTimersAsync();
-      await submitPromise;
-    });
-
-    it("rejects when no pending interrupt is available", async () => {
-      const h = makeHarness();
-      h.setLatestInterrupt(null);
-
-      const submitPromise = h.coordinator.submit(null, {
-        command: { resume: "anything" },
-        onError: () => undefined,
-      });
-      await h.terminalRegistered();
-      // Resolve the terminal so the submit's finally can run.
-      // Since no submitRun is dispatched (resume path), we still get
-      // here from the throw before the race.
-      await vi.runAllTimersAsync();
-      await submitPromise;
-
-      expect(h.rootStore.getSnapshot().error).toBeInstanceOf(Error);
-      expect(
-        (h.rootStore.getSnapshot().error as Error).message
-      ).toMatch(/no pending protocol interrupt/);
     });
   });
 

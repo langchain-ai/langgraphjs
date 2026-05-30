@@ -73,6 +73,7 @@ export type {
   MessageMetadata,
   MessageMetadataMap,
   StreamSubmitOptions,
+  StreamStopOptions,
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,
   ToolCallStatus,

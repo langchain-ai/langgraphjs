@@ -26,6 +26,9 @@ import {
   type RootSnapshot,
   type RunCompletedInfo,
   type RunExecutionInfo,
+  type StreamRespondAllOptions,
+  type StreamRespondOptions,
+  type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -109,10 +112,44 @@ export interface UseStreamReturn<
    * Equivalent to calling `useMessages(stream)` with no target.
    */
   readonly messages: BaseMessage[];
+  /**
+   * Root-namespace tool calls assembled from the `tools` channel.
+   * Each entry is a fully parsed {@link AssembledToolCall} with
+   * name, args, and id — suitable for rendering approval UIs or
+   * forwarding to headless tool handlers.
+   *
+   * When the stream is typed with an agent brand or tool list,
+   * entries are narrowed via {@link InferToolCalls}. Equivalent to
+   * calling `useToolCalls(stream)` with no target.
+   */
   readonly toolCalls: InferToolCalls<T>[];
+  /**
+   * All unresolved protocol interrupts observed on the root
+   * namespace during the active thread. Populated from lifecycle /
+   * input events and seeded on hydration from `thread.getState()`.
+   * Cleared optimistically when a new run starts or an interrupt is
+   * resolved via {@link respond}.
+   */
   readonly interrupts: Interrupt<InterruptType>[];
+  /**
+   * Convenience alias for {@link interrupts}[0] — the primary
+   * interrupt most UIs should act on when only one is pending.
+   * `undefined` when no interrupt is active.
+   */
   readonly interrupt: Interrupt<InterruptType> | undefined;
+  /**
+   * `true` while a run is active or being started on the current
+   * thread. Driven by root-namespace lifecycle events (`running` →
+   * `true`, terminal phases → `false`). Use this to disable submit
+   * buttons and show in-flight spinners.
+   */
   readonly isLoading: boolean;
+  /**
+   * `true` while the initial `thread.getState()` hydration for the
+   * active thread is in flight. Distinct from {@link isLoading} —
+   * thread loading covers the one-time fetch that seeds
+   * {@link values} / {@link messages} before any user submit.
+   */
   readonly isThreadLoading: boolean;
   /**
    * Promise that settles when the current thread's initial hydration
@@ -122,7 +159,17 @@ export interface UseStreamReturn<
    * `switchThread`/`threadId` change.
    */
   readonly hydrationPromise: Promise<void>;
+  /**
+   * The last error observed on the active run or hydration attempt.
+   * `undefined` when no error has occurred. Cleared optimistically
+   * when a new {@link submit} starts.
+   */
   readonly error: unknown;
+  /**
+   * Id of the thread the controller is bound to. `null` until the
+   * first {@link submit} creates or selects a thread (or until an
+   * explicit `threadId` option is provided and hydrated).
+   */
   readonly threadId: string | null;
 
   // ----- always-on discovery -----
@@ -166,25 +213,147 @@ export interface UseStreamReturn<
    * Dispatch a new run on the bound thread.
    *
    * `input` is typed as `Partial<StateType>` so IDE autocompletion
-   * surfaces the state keys declared on the root hook. Pass `null`
-   * (or omit fields) when resuming an interrupt via `options.command.resume`
-   * — the server accepts a null payload in that case.
+   * surfaces the state keys declared on the root hook.
    */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
-  stop(): Promise<void>;
+  /**
+   * Stop the active run on the current thread. By default cancels the
+   * run server-side and disconnects the client; pass `{ cancel: false }`
+   * or use {@link disconnect} for join/rejoin. Sets {@link isLoading} to
+   * `false` immediately; {@link values} and {@link messages} are preserved.
+   */
+  stop(options?: StreamStopOptions): Promise<void>;
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  disconnect(): Promise<void>;
+  /**
+   * Resume a pending protocol interrupt by sending a response payload
+   * back to the interrupted namespace.
+   *
+   * When `options.interruptId` is omitted, walks `getThread()?.interrupts`
+   * from newest to oldest and resumes the first not yet resolved by a prior
+   * `respond()` call. That may be a root or subgraph interrupt and is
+   * **not** necessarily {@link interrupt} (`interrupts[0]`, root-only).
+   * Safe when exactly one interrupt is pending; otherwise pass an explicit
+   * `options.interruptId` (and `options.namespace` for subgraph
+   * interrupts).
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (default when omitted). For subgraph
+   * interrupts, copy `namespace` from `getThread()?.interrupts`.
+   *
+   * Pass `options.config` / `options.metadata` to fold run-level config
+   * (model, user context, …) and metadata (trigger source, test flags,
+   * …) into the resumed run, mirroring `submit()`.
+   *
+   * @example
+   * ```tsx
+   * // Single pending interrupt
+   * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Resume carrying run config + metadata
+   * await stream.respond({ approved: true }, {
+   *   config: { configurable: { model: "gpt-4o" } },
+   *   metadata: { source: "ui" },
+   * });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Multiple root interrupts — one at a time
+   * stream.interrupts.map((intr) => (
+   *   <button
+   *     key={intr.id}
+   *     onClick={() =>
+   *       void stream.respond({ approved: true }, { interruptId: intr.id! })
+   *     }
+   *   />
+   * ));
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Subgraph interrupt — namespace from `getThread()`
+   * const thread = stream.getThread();
+   * thread?.interrupts.map((entry) => (
+   *   <button
+   *     key={entry.interruptId}
+   *     onClick={() =>
+   *       void stream.respond(buildResponse(entry.payload), {
+   *         interruptId: entry.interruptId,
+   *         namespace: entry.namespace,
+   *       })
+   *     }
+   *   />
+   * ));
+   * ```
+   *
+   * To resume several interrupts pending at the same checkpoint in one
+   * command, use {@link respondAll}.
+   */
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
+  ): Promise<void>;
+
+  /**
+   * Resume several pending interrupts at the same checkpoint in a single
+   * command — required when a run pauses on multiple interrupts at once
+   * (e.g. parallel tool-authorization prompts), which sequential
+   * {@link respond} calls cannot handle (the first resume starts a run,
+   * leaving the rest with no interrupted run to respond to).
+   *
+   * `responsesById` maps each pending `interruptId` to its response, so
+   * different interrupts can receive different payloads. To send the same
+   * payload to several interrupts, build the map with that value for each
+   * id, e.g. `Object.fromEntries(ids.map((id) => [id, response]))`.
+   *
+   * Pass `options.config` / `options.metadata` to fold run-level config
+   * and metadata into the single run that services the batched resume,
+   * mirroring `submit()`.
+   *
+   * @example
+   * ```tsx
+   * // Distinct payloads per interrupt
+   * await stream.respondAll({
+   *   [interruptA.id]: { approved: true },
+   *   [interruptB.id]: { approved: false },
+   * });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Same payload to every pending interrupt
+   * await stream.respondAll(
+   *   Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
+   * );
+   * ```
+   */
+  respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
   ): Promise<void>;
 
   // ----- identity -----
+  /** LangGraph SDK client used to construct thread streams. */
   readonly client: Client;
+  /** Assistant id the thread is bound to for its lifetime. */
   readonly assistantId: string;
 
-  /** v2 escape hatch — returns the bound {@link ThreadStream}. */
+  /**
+   * Returns the bound {@link ThreadStream}, if one exists (`undefined`
+   * until the thread is hydrated or the first submit completes). Prefer
+   * the projections and selector hooks for UI work; use this for
+   * low-level protocol access (raw subscriptions, state commands, etc.).
+   */
   getThread(): ThreadStream | undefined;
 
   /** @internal Used by selector hooks (`useMessages`, `useToolCalls`, …). */
@@ -395,10 +564,10 @@ export function useStream<
   // Subscribe to values + interrupt updates via the root store so the
   // effect re-runs whenever a protocol interrupt lands or the
   // `__interrupt__` key is projected into values, not only on hook
-  // re-render. We feed both sources to the flush helper because
-  // v2-native runs surface protocol interrupts via
-  // `rootStore.interrupts` (`input.requested` events), while legacy
-  // graphs may still emit `values.__interrupt__`.
+  // re-render. Prefer protocol interrupts from `rootStore.interrupts`
+  // (`input.requested` events) because their ids are accepted directly
+  // by `Command({ resume })`; fall back to `values.__interrupt__` for
+  // older streams that only expose interrupts through values.
   const rootValuesForTools = useSyncExternalStore<StateType>(
     controller.rootStore.subscribe,
     () => controller.rootStore.getSnapshot().values,
@@ -414,16 +583,15 @@ export function useStream<
   useEffect(() => {
     if (!tools?.length) return;
     const valuesBag = rootValuesForTools as unknown as Record<string, unknown>;
-    const existingInterrupts = Array.isArray(valuesBag?.__interrupt__)
+    const protocolInterrupts = rootInterruptsForTools as unknown as Interrupt[];
+    const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
       ? (valuesBag.__interrupt__ as Interrupt[])
       : [];
-    const combined: Interrupt[] = [
-      ...existingInterrupts,
-      ...(rootInterruptsForTools as unknown as Interrupt[]),
-    ];
-    if (combined.length === 0) return;
+    const headlessInterrupts =
+      protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+    if (headlessInterrupts.length === 0) return;
     flushPendingHeadlessToolInterrupts(
-      { ...valuesBag, __interrupt__: combined },
+      { ...valuesBag, __interrupt__: headlessInterrupts },
       tools,
       handledToolsRef.current,
       {
@@ -483,8 +651,11 @@ export function useStream<
       subgraphs,
       subgraphsByNode,
       submit: (input, submitOptions) => controller.submit(input, submitOptions),
-      stop: () => controller.stop(),
-      respond: (response, target) => controller.respond(response, target),
+      stop: (options) => controller.stop(options),
+      disconnect: () => controller.disconnect(),
+      respond: (response, options) => controller.respond(response, options),
+      respondAll: (responsesById, options) =>
+        controller.respondAll(responsesById, options),
       getThread: () => controller.getThread(),
       client,
       assistantId,

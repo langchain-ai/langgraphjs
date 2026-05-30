@@ -36,6 +36,7 @@ refs instead of React hooks).
   - [5. `submit()` signature changes](#5-submit-signature-changes)
     - [5.1 Input widening](#51-input-widening)
     - [5.2 Option changes](#52-option-changes)
+    - [5.3 Stop / disconnect](#53-stop--disconnect)
   - [6. Companion selector composables — the new mental model](#6-companion-selector-composables--the-new-mental-model)
     - [6.1 Naming conflicts with your own composables](#61-naming-conflicts-with-your-own-composables)
     - [6.2 Fork from message (the old `branch` flow)](#62-fork-from-message-the-old-branch-flow)
@@ -123,6 +124,9 @@ flagged in the later sections.
       new selector composables (`useMessages(stream, subagent)` etc.)
       rather than reading `subagent.messages` / `subagent.toolCalls`
       off the discovery snapshot (see §7).
+- [ ] **Replace `submit(..., { onDisconnect, streamResumable })`** with
+      `stream.stop()` (cancel, default) or `stream.disconnect()`
+      (join/rejoin) on the stream handle (see §5.3).
 - [ ] **Re-run `tsc`**. The option bag and return type are now
       discriminated and strongly typed; most remaining issues surface
       as type errors that map to one of the sections below.
@@ -163,7 +167,7 @@ These keep working without changes:
 | `onError`                                                                                                                                  | Read `stream.error.value` directly, or pass a per-submit `onError` via `submit(input, { onError })` for a one-off side effect.                                          |
 | `onFinish`                                                                                                                                 | Derive from `isLoading` transitioning `true → false`, or observe the thread via `useValues(stream)`.                                                                    |
 | `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. The v2 protocol delivers these as structured store updates; read them via selector composables (`useChannel`, `useExtension`) when you genuinely need raw events. |
-| `onStop`                                                                                                                                   | Drop. `stop()` now abort-signals the in-flight run and `values` reverts to the server's authoritative state.                                                            |
+| `onStop`                                                                                                                                   | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` for join/rejoin. See §5.3.                                                            |
 | `fetchStateHistory`                                                                                                                        | Drop. Fork/edit flows use `useMessageMetadata` + `submit({}, { forkFrom })` instead (§5).                                                                               |
 | `reconnectOnMount`                                                                                                                         | Drop. Re-attach is automatic: remounting the composable with the same `threadId` attaches to the in-flight run.                                                         |
 | `throttle`                                                                                                                                 | Drop. The composable batches state updates natively; call sites that need render throttling can memoize at the selector site.                                           |
@@ -208,7 +212,7 @@ All reactive fields are now `Readonly<ShallowRef<T>>` or
 | `threadId`                  | Unchanged.                                                                                         |
 | `client`                    | LGP `Client` when the built-in transport is in use. Plain value — captured at setup.               |
 | `assistantId`               | Resolved value including the `"_"` fallback used by custom adapters. Plain value.                  |
-| `submit`, `stop`, `respond` | Same high-level semantics; `submit`'s argument types are wider, see §5.                            |
+| `submit`, `stop`, `respond`, `disconnect` | `submit` argument types are wider (§5). `stop(options?)` cancels server-side by default; `disconnect()` is join/rejoin client-only (§5.3). |
 
 ### 4.2 Still there — different meaning
 
@@ -221,7 +225,7 @@ All reactive fields are now `Readonly<ShallowRef<T>>` or
 
 | Legacy field                                                                    | v1 replacement                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `branch`, `setBranch`, `experimental_branchTree`                                | Branching is expressed as fork-from-checkpoint: call `useMessageMetadata(stream, () => msg.id)` to read the message's parent checkpoint and `submit(input, { forkFrom: { checkpointId } })` to fork. |
+| `branch`, `setBranch`, `experimental_branchTree`                                | Branching is expressed as fork-from-checkpoint: call `useMessageMetadata(stream, () => msg.id)` to read the message's parent checkpoint and `submit(input, { forkFrom })` to fork.                 |
 | `history`, `fetchStateHistory`                                                  | Dropped from the composable. Fetch history explicitly with `client.threads.getHistory(threadId)` if you need it; most apps do not.                                                                   |
 | `getMessagesMetadata(msg, i)`                                                   | `useMessageMetadata(stream, () => msg.id).value?.parentCheckpointId` (see §6).                                                                                                                       |
 | `toolProgress`                                                                  | Dropped. Tool progress is now observable via `useToolCalls(stream)` — each `AssembledToolCall` carries its own `status`.                                                                             |
@@ -310,13 +314,13 @@ await submit({ messages: new HumanMessage("hi") });
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config.configurable`                                                                                                                               | `config.configurable` (unchanged)                                                                                                                        |
 | `context`                                                                                                                                           | Drop — fold into `config.configurable`.                                                                                                                  |
-| `checkpoint: { checkpoint_id }`                                                                                                                     | `forkFrom: { checkpointId }` (new, cleaner shape).                                                                                                       |
-| `command: { resume }`                                                                                                                               | Same. Additionally `{ goto, update }` are type-accepted for forward compatibility.                                                                       |
+| `checkpoint: { checkpoint_id }`                                                                                                                     | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed.                     |
+| `command: { resume }`                                                                                                                               | Use `stream.respond()` instead.                                                                                                                          |
 | `interruptBefore`, `interruptAfter`                                                                                                                 | Drop — not supported in v2.                                                                                                                              |
 | `metadata`                                                                                                                                          | Unchanged.                                                                                                                                               |
 | `multitaskStrategy`                                                                                                                                 | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
 | `onCompletion`                                                                                                                                     | Use the composable-level `onCompleted` option for run-completion side effects.                                                                            |
-| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring`                 | Drop. Most map to protocol-v2 defaults.                                                                                                                  |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring`                 | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Most other fields map to protocol-v2 defaults.                                                                                                                  |
 | **(new submit option)** `onError`                                                                                                                   | Per-submit fire-and-forget error callback. There is no composable-level `onError` option; transport-level `stream.error` updates still happen in parallel. |
 | **(new)** `threadId`                                                                                                                                | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the reactive `threadId` option changes again. |
 
@@ -330,9 +334,37 @@ await submit({ messages: [new HumanMessage("retry")] }, {
 // After
 await submit(
   { messages: [new HumanMessage("retry")] },
-  { forkFrom: { checkpointId: "cp_123" }, multitaskStrategy: "rollback" },
+  { forkFrom: "cp_123", multitaskStrategy: "rollback" },
 );
 ```
+
+### 5.3 Stop / disconnect
+
+Legacy `stop()` only aborted the client transport. Per-submit
+`onDisconnect: "continue" | "cancel"` (often paired with
+`streamResumable: true`) decided whether the agent kept running when
+that transport dropped.
+
+v1 makes the split explicit on the stream handle:
+
+| Legacy pattern | v1 replacement |
+| --- | --- |
+| Stop button in a normal chat (cancel the agent) | `await stream.stop()` — default `{ cancel: true }` calls `client.runs.cancel`, then disconnects the client |
+| Join/rejoin — leave the agent running | `await stream.disconnect()` or `await stream.stop({ cancel: false })` |
+| `submit(..., { onDisconnect: "cancel" })` | Drop from submit — call `stream.stop()` when the user cancels |
+| `submit(..., { onDisconnect: "continue", streamResumable: true })` | Drop from submit — call `stream.disconnect()` when navigating away; reattach by remounting with the same `threadId` |
+
+```ts
+// Before
+await submit(input, { onDisconnect: "continue", streamResumable: true });
+
+// After
+await submit(input);
+await stream.stop();        // chat cancel (server + client)
+await stream.disconnect();  // join/rejoin (client only)
+```
+
+`runs.cancel` is issued only once `onCreated` has provided a `runId`.
 
 ---
 
@@ -378,11 +410,11 @@ const props = defineProps<{ stream: AnyStream; message: BaseMessage }>();
 const metadata = useMessageMetadata(props.stream, () => props.message.id);
 
 async function edit() {
-  const checkpointId = metadata.value?.parentCheckpointId;
-  if (!checkpointId) return;
+  const forkFrom = metadata.value?.parentCheckpointId;
+  if (!forkFrom) return;
   await props.stream.submit(
     { messages: [new HumanMessage("...revised prompt...")] },
-    { forkFrom: { checkpointId } },
+    { forkFrom },
   );
 }
 </script>

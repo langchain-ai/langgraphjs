@@ -24,6 +24,7 @@ v1 flips that around:
 - [ ] Read the submission queue via `useSubmissionQueue(stream)` instead of `stream.queue`.
 - [ ] Drive thread swaps by passing `threadId: () => active` instead of calling `stream.switchThread(id)`.
 - [ ] Read per-subagent data with `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` / `useValues(stream, subagent)` instead of `subagent.messages` / `subagent.toolCalls`.
+- [ ] Remove per-submit disconnect options — `onDisconnect` and `streamResumable` are gone from `submit()`. Use `stream.stop()` (cancel, default) or `stream.disconnect()` (join/rejoin) instead (see recipe below).
 - [ ] Re-run `svelte-check` / `tsc`. The option bag and return shape are now strongly discriminated, so most remaining issues surface as type errors mapped to the tables below.
 
 ## Option bag
@@ -42,7 +43,8 @@ v1 flips that around:
 | `transport`                                                                                                                 | now `"sse"` \| `"websocket"` \| an `AgentServerAdapter` instance. `HttpAgentServerAdapter` requires `apiUrl` and `threadId`.      |
 | `fetch` / `webSocketFactory`                                                                                                | **same** on the LGP branch only                                                                                                   |
 | `tools` + `onTool`                                                                                                          | **new** headless-tool channel (see [Headless tools](./headless-tools.md))                                                         |
-| `onFinish`, `onError`, `onStop`                                                                                             | hook-level callbacks removed — observe `stream.isLoading` / `stream.error` reactively, or pass per-submit `onError` to `submit()` |
+| `onFinish`, `onError`, `onStop`                                                                                             | hook-level callbacks removed — observe `stream.isLoading` / `stream.error` reactively, or pass per-submit `onError` to `submit()`. Use `stream.stop()` / `stream.disconnect()` instead of `onStop` (see recipe below). |
+| `onDisconnect`, `streamResumable` (on `submit`)                                                                             | removed from submit — use `stream.stop()` (cancel, default) or `stream.disconnect()` (join/rejoin) on the stream handle                                                                                               |
 | `onUpdateEvent`, `onCustomEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onMetadataEvent`, `onLangChainEvent` | removed — use `useChannel` for raw events or the dedicated [selector composables](./selector-composables.md)                      |
 | `fetchStateHistory`                                                                                                         | removed — fork / branch flows are driven by `useMessageMetadata`                                                                  |
 | `throttle`                                                                                                                  | removed — the controller batches its own notifications                                                                            |
@@ -56,13 +58,14 @@ v1 flips that around:
 | `threadId`                                                                      | **same**                                                                                                                                                              |
 | `isThreadLoading`                                                               | **same** — plus `hydrationPromise` for SvelteKit `load()` handlers                                                                                                    |
 | `submit(values, options?)`                                                      | **same** — returns `Promise<void>`; options now include `forkFrom`, per-submit `threadId`, per-submit `onError`, and `multitaskStrategy`                              |
-| `stop()`                                                                        | **same**                                                                                                                                                              |
+| `stop(options?)`                                                                | cancels the active run server-side by default (`{ cancel: true }`); pass `{ cancel: false }` or call `disconnect()` for join/rejoin                                                  |
+| `disconnect()`                                                                  | **new** — alias for `stop({ cancel: false })`; agent keeps running server-side                                                                                                      |
 | `client`, `assistantId`                                                         | **same**                                                                                                                                                              |
 | `toolCalls`                                                                     | **same** — assembled tool-call rows at the root                                                                                                                       |
 | `subagents`, `subgraphs`, `subgraphsByNode`                                     | **new** — discovery snapshots (namespaces). Use them as the `target` argument to selector composables                                                                 |
-| `respond(response, target?)`                                                    | **new** — resume the agent after an interrupt                                                                                                                         |
-| `getThread()`                                                                   | **new** — v2 escape hatch returning the bound `ThreadStream`                                                                                                          |
-| `branch`, `setBranch`                                                           | removed — there is no global branch pointer in v2. Fork flows use `submit(input, { forkFrom: { checkpointId } })` and `parentCheckpointId` from `useMessageMetadata`. |
+| `respond(response, options?)` / `respondAll(responsesById, options?)`           | **new** — resume the agent after an interrupt (`respondAll` resumes several at the same checkpoint)                                                                    |
+| `getThread()`                                                                   | **new** — returns the bound `ThreadStream` for low-level protocol access                                                                                              |
+| `branch`, `setBranch`                                                           | removed — there is no global branch pointer in v2. Fork flows use `submit(input, { forkFrom })` and `parentCheckpointId` from `useMessageMetadata`. |
 | `history`, `experimental_branchTree`                                            | removed — pull history via the `Client` directly when needed                                                                                                          |
 | `getMessagesMetadata(msg)`                                                      | `useMessageMetadata(stream, () => msg.id)` → `{ parentCheckpointId }`                                                                                                 |
 | `joinStream(...)`                                                               | removed — `useStream` attaches automatically on mount                                                                                                                 |
@@ -119,6 +122,25 @@ Parent: {meta.current?.parentCheckpointId ?? "root"}
 ```
 
 Passing `null` clears the thread; the next `submit()` creates a fresh one.
+
+### Replace `onDisconnect` / join-rejoin stop
+
+```svelte
+<!-- v0 — disconnect policy on submit -->
+<script lang="ts">
+  await stream.submit(input, { onDisconnect: "continue", streamResumable: true });
+  // stream.stop() only aborted the client
+</script>
+
+<!-- v1 — explicit stop vs disconnect -->
+<script lang="ts">
+  await stream.submit(input);
+  await stream.stop();        // chat cancel (server + client)
+  await stream.disconnect();  // join/rejoin (client only)
+</script>
+```
+
+`runs.cancel` is issued only once `onCreated` has provided a `runId`.
 
 ### Replace custom transports
 

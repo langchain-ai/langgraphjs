@@ -69,8 +69,9 @@ shape (`assistantId` + `apiUrl`/`client`) or the **custom-adapter** shape
 | `subgraphsByNode`            | `ReadonlyMap<string, …>`    | Subgraph snapshots bucketed by node name.                  |
 | `submit(input, options?)`    | `Promise<void>`             | Submit new input; supports `multitaskStrategy: "enqueue"`. |
 | `stop()`                     | `Promise<void>`             | Cancel the active run.                                     |
-| `respond(response, target?)` | `Promise<void>`             | Reply to an [interrupt](./interrupts.md).                  |
-| `getThread()`                | `ThreadStream \| undefined` | v2 escape hatch.                                           |
+| `respond(response, options?)` | `Promise<void>`             | Reply to a single [interrupt](./interrupts.md) (target via `options.interruptId` / `namespace`; carry `config` / `metadata`). |
+| `respondAll(responsesById, options?)` | `Promise<void>`             | Resume several interrupts pending at the same checkpoint in one command. |
+| `getThread()`                | `ThreadStream \| undefined` | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 | `client`, `assistantId`      | —                           | Pass-through.                                              |
 
 ---

@@ -6,8 +6,7 @@
  * - Drops `isLoading`, `isThreadLoading`, `hydrationPromise`.
  * - Keeps `messages`, `submit`, `stop`, `respond`, `getThread`, …
  * - Drops `switchThread`, `SuspenseCache`, `createSuspenseCache`,
- *   `invalidateSuspenseCache`, and the `suspenseCache` option (see
- *   `plan-roadmap.md` / `_useSuspenseStream.md`).
+ *   `invalidateSuspenseCache`, and the `suspenseCache` option.
  *
  * These tests are type-only; Vitest compiles them but does not run
  * them.

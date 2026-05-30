@@ -104,7 +104,8 @@ In Angular app and library code, prefer `StreamApi<T>`.
 | `subgraphs` / `subgraphsByNode` | `Signal<ReadonlyMap<…>>`                             | Subgraph discovery, keyed by id or by node.                                                 |
 | `submit(input, options?)`       | `(…) => Promise<void>`                               | Start / resume / fork a run.                                                                |
 | `stop()`                        | `() => Promise<void>`                                | Abort the in-flight run.                                                                    |
-| `respond(response, target?)`    | `(…) => Promise<void>`                               | Reply to a specific interrupt by id.                                                        |
+| `respond(response, options?)`    | `(…) => Promise<void>`                               | Reply to a single interrupt (target via `options.interruptId` / `namespace`; carry `config` / `metadata`). |
+| `respondAll(responsesById, options?)` | `(…) => Promise<void>`                          | Resume several interrupts pending at the same checkpoint in one command (`interruptId` → response map). |
 | `client`                        | `Client`                                             | Built-in `Client` when using the LGP branch.                                                |
 | `assistantId`                   | `string`                                             | Resolved assistant id (defaults to `"_"` when using a custom adapter).                      |
 

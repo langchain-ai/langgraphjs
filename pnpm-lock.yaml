@@ -1019,8 +1019,8 @@ importers:
         specifier: workspace:*
         version: link:../../libs/sdk
       '@langchain/protocol':
-        specifier: ^0.0.15
-        version: 0.0.15
+        specifier: ^0.0.16
+        version: 0.0.16
       deepagents:
         specifier: https://pkg.pr.new/deepagents@9eaa3ac
         version: https://pkg.pr.new/deepagents@9eaa3ac(@opentelemetry/api@1.9.0)(langsmith@0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1))(openai@6.35.0(ws@8.20.1)(zod@4.4.2))(ws@8.20.1)(zod-to-json-schema@3.25.2(zod@4.4.2))
@@ -1256,8 +1256,8 @@ importers:
         specifier: ^1.4.5
         version: 1.4.5(@langchain/core@1.1.44(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1))(ws@8.20.1)
       '@langchain/protocol':
-        specifier: ^0.0.15
-        version: 0.0.15
+        specifier: ^0.0.16
+        version: 0.0.16
       '@langchain/react':
         specifier: workspace:*
         version: link:../../libs/sdk-react
@@ -1838,8 +1838,8 @@ importers:
         specifier: workspace:*
         version: link:../langgraph-ui
       '@langchain/protocol':
-        specifier: ^0.0.15
-        version: 0.0.15
+        specifier: ^0.0.16
+        version: 0.0.16
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2029,8 +2029,8 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       '@langchain/protocol':
-        specifier: ^0.0.15
-        version: 0.0.15
+        specifier: ^0.0.16
+        version: 0.0.16
       '@standard-schema/spec':
         specifier: 1.1.0
         version: 1.1.0
@@ -2286,8 +2286,8 @@ importers:
   libs/sdk:
     dependencies:
       '@langchain/protocol':
-        specifier: ^0.0.15
-        version: 0.0.15
+        specifier: ^0.0.16
+        version: 0.0.16
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2594,8 +2594,8 @@ importers:
         specifier: workspace:*
         version: link:../checkpoint
       '@langchain/protocol':
-        specifier: ^0.0.15
-        version: 0.0.15
+        specifier: ^0.0.16
+        version: 0.0.16
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0
@@ -4094,6 +4094,9 @@ packages:
 
   '@langchain/protocol@0.0.15':
     resolution: {integrity: sha512-MllvbpMjqHevUm+v94M422mH7XKN+wGCvJRBVROTWBotEDOATYB4Ktk2UheYP859y9o2LlhtPek5t1T9eyfAbQ==}
+
+  '@langchain/protocol@0.0.16':
+    resolution: {integrity: sha512-ws+J7MaHyhO5dG7f0vdyHQiUn9hoCnki0f3crJPa4MCTGzcRC39jYSCghyrGtBPYQnZbUQiGyRVpW3z3M8IpJg==}
 
   '@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@7493df1':
     resolution: {tarball: https://pkg.pr.new/@langchain/quickjs@7493df1}
@@ -14358,6 +14361,8 @@ snapshots:
       - ws
 
   '@langchain/protocol@0.0.15': {}
+
+  '@langchain/protocol@0.0.16': {}
 
   '@langchain/quickjs@https://pkg.pr.new/@langchain/quickjs@7493df1(deepagents@https://pkg.pr.new/deepagents@9a528ec(@opentelemetry/api@1.9.0)(langsmith@0.6.0(@opentelemetry/api@1.9.0)(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1))(openai@6.35.0(ws@8.20.1)(zod@4.3.6))(ws@8.20.1)(zod-to-json-schema@3.25.2(zod@4.3.6)))':
     dependencies:

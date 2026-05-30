@@ -41,6 +41,69 @@ export interface RunExecutionInfo {
   runId: string;
 }
 
+/** Options for {@link StreamController.stop} / framework `stop()`. */
+export interface StreamStopOptions {
+  /**
+   * When `true` (default), issue a server-side cancel via
+   * `client.runs.cancel` for the active run before disconnecting the
+   * client transport. Set to `false` for join/rejoin flows where the
+   * agent should keep running after the client disconnects.
+   */
+  cancel?: boolean;
+}
+
+/**
+ * Options for {@link StreamController.respondAll} / framework
+ * `respondAll()`.
+ *
+ * Carries run-level `config` / `metadata` onto the single run that
+ * services the batched resume — the same fields as
+ * {@link StreamRespondOptions}, minus the per-interrupt target (each
+ * response in the map carries its own `interruptId` as the key).
+ */
+export interface StreamRespondAllOptions<
+  ConfigurableType extends object = Record<string, unknown>,
+> {
+  config?: {
+    configurable?: ConfigurableType;
+    recursion_limit?: number;
+    tags?: string[];
+    [key: string]: unknown;
+  };
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Options for {@link StreamController.respond} / framework `respond()`.
+ *
+ * Targets a single pending interrupt (`interruptId` / `namespace`) and
+ * carries run-level `config` and `metadata` onto the resume so the
+ * resumed run applies the same configurable values (model, user context,
+ * timezone, …) and metadata (trigger source, test flags, …) a fresh
+ * {@link StreamSubmitOptions} would. The server folds these into the run
+ * it starts to service the `input.respond` command.
+ *
+ * To resume several interrupts pending at the same checkpoint, use
+ * {@link StreamController.respondAll} instead.
+ */
+export interface StreamRespondOptions<
+  ConfigurableType extends object = Record<string, unknown>,
+> extends StreamRespondAllOptions<ConfigurableType> {
+  /**
+   * Target a specific pending interrupt. Omit when exactly one
+   * interrupt is pending to resume the newest unresolved one; pass it
+   * when several can be active (parallel subagents, fan-out, nested
+   * graphs) so you resume the interrupt the user acted on.
+   */
+  interruptId?: string;
+  /**
+   * Namespace of the targeted interrupt. Root interrupts use `[]` (the
+   * default when omitted). Subgraph interrupts require the exact tuple
+   * from `getThread()?.interrupts`.
+   */
+  namespace?: string[];
+}
+
 /** Payload for run-end callbacks. */
 export interface RunCompletedInfo extends Omit<RunExecutionInfo, "runId"> {
   /** Omitted when re-attaching to an in-flight run without local dispatch. */
@@ -247,41 +310,20 @@ export interface StreamSubmitOptions<
   };
   metadata?: Record<string, unknown>;
   /**
-   * Command shape widened to the v1 surface + protocol-v2 additions.
-   *
-   * - `resume` — dispatches to `thread.input.respond` targeting the most
-   *   recent root-namespace interrupt (honoured today).
-   * - `goto` — routes execution to a specific node (planned, forwarded
-   *   via `/run.start` metadata).
-   * - `update` — merges a partial state update into the thread's
-   *   values before resuming (planned, forwarded via `/run.start`).
-   *
-   * Only `resume` is currently executed by the controller; `goto` /
-   * `update` are accepted by the type surface so callers can migrate
-   * without breakage once the server work lands (plan-roadmap.md §5.3
-   * R2.4).
-   */
-  command?: {
-    resume?: unknown;
-    goto?: string | { node: string; input?: unknown };
-    update?: Partial<StateType>;
-  };
-  /**
    * Fork the run from an explicit checkpoint instead of the thread's
-   * latest. Emits a `forkFrom` field on the `/run.start` request that
-   * the API layer forwards to
-   * `graph.streamEvents(input, { version: "v3", forkFrom })`.
-   *
-   * See plan-roadmap.md §5.3 R2.4.
+   * latest. Ergonomic alias the SDK folds into
+   * `config.configurable.checkpoint_id` before dispatching the run, so
+   * the server receives the fork target via the single legacy-compliant
+   * field (never a top-level `forkFrom`).
    */
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
   /**
    * Behaviour when a run is already in-flight on the thread.
    *
    * - `"rollback"` (default) — abort the active run client-side and
    *   start the new one immediately.
    * - `"interrupt"` — server-side cancel of the in-flight run, then
-   *   start the new one (requires API support, roadmap A0.3).
+   *   start the new one.
    * - `"enqueue"` — do NOT abort the active run; the new submission
    *   lands in {@link StreamController.queueStore} and is forwarded
    *   once the current run terminates.

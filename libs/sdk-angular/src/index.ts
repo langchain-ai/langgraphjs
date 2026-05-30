@@ -68,6 +68,7 @@ export type {
   MediaBase,
   MediaBlockType,
   StreamSubmitOptions,
+  StreamStopOptions,
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,
   ToolCallStatus,
