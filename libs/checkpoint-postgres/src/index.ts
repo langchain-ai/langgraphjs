@@ -582,7 +582,12 @@ export class PostgresSaver extends BaseCheckpointSaver {
     // stretch transactions to minutes and starve the connection pool.
     const serializedCheckpoint = this._dumpCheckpoint(checkpoint);
     const [serializedBlobs, serializedMetadata] = await Promise.all([
-      this._dumpBlobs(thread_id, checkpoint_ns, checkpoint.channel_values, newVersions),
+      this._dumpBlobs(
+        thread_id,
+        checkpoint_ns,
+        checkpoint.channel_values,
+        newVersions
+      ),
       this._dumpMetadata(metadata),
     ]);
 
