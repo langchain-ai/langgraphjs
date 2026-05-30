@@ -67,15 +67,15 @@ import {
   reconcileToolCallsFromMessages,
   upsertToolCall,
 } from "./tool-calls.js";
-import {
-  buildResumeRunInput,
-  resolveInterruptTargetForHeadlessResume,
-} from "../headless-tools.js";
+import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
 import type {
   RootEventBus,
   RootSnapshot,
   RunExecutionReason,
   StreamControllerOptions,
+  StreamRespondAllOptions,
+  StreamRespondOptions,
+  StreamStopOptions,
   StreamSubmitOptions,
 } from "./types.js";
 
@@ -291,18 +291,6 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
-      buildResumeRunInput: (resume) => {
-        const thread = this.#thread;
-        if (thread == null) return null;
-        return buildResumeRunInput(
-          resume,
-          thread.interrupts,
-          this.#resolvedInterrupts
-        );
-      },
-      markInterruptResolved: (interruptId) => {
-        this.#resolvedInterrupts.add(interruptId);
-      },
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
         // interrupts on the just-started run aren't filtered. Bump
@@ -563,9 +551,11 @@ export class StreamController<
   }
 
   /**
-   * Submit input or a resume command to the active thread.
+   * Submit input to the active thread.
    *
-   * @param input - Input payload for a new run; `null`/`undefined` submits no input.
+   * To resume a pending interrupt, use {@link respond} instead.
+   *
+   * @param input - Input payload for a new run.
    * @param options - Per-run config, metadata, multitask behavior, and callbacks.
    */
   async submit(
@@ -576,10 +566,33 @@ export class StreamController<
   }
 
   /**
-   * Abort the currently tracked run and mark the controller idle.
+   * Disconnect the client from the active run and mark the controller
+   * idle. By default also cancels the run server-side; pass
+   * `{ cancel: false }` or call {@link disconnect} to keep the agent
+   * running (join/rejoin).
    */
-  async stop(): Promise<void> {
+  async stop(options?: StreamStopOptions): Promise<void> {
+    const shouldCancel = options?.cancel ?? true;
+    if (shouldCancel) {
+      const threadId = this.#currentThreadId;
+      const runId = this.#activeRunId;
+      if (threadId != null && runId != null) {
+        try {
+          await this.#options.client.runs.cancel(threadId, runId);
+        } catch {
+          /* server cancel failures must not block client disconnect */
+        }
+      }
+    }
     await this.#submitter.stop();
+  }
+
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  async disconnect(): Promise<void> {
+    return this.stop({ cancel: false });
   }
 
   #markLocalRunStart(): void {
@@ -654,23 +667,86 @@ export class StreamController<
   }
 
   /**
-   * Respond to a pending protocol interrupt.
+   * Respond to a single pending protocol interrupt.
    *
-   * @param response - Payload to send back to the interrupted namespace.
-   * @param target - Optional explicit interrupt id and namespace; defaults to the latest unresolved interrupt.
+   * When `options.interruptId` is omitted, resolution walks
+   * {@link ThreadStream.interrupts `thread.interrupts`} from newest to
+   * oldest and picks the first entry whose `interruptId` has not already
+   * been resolved by a prior `respond()` call. That entry may be at the
+   * root (`namespace: []`) or inside a subgraph (non-empty `namespace`).
+   * This is **not** the same as {@link RootSnapshot.interrupts
+   * `rootStore.interrupts[0]`} / framework `stream.interrupt`, which only
+   * mirrors root-namespace interrupts for UI convenience.
+   *
+   * Omitting `interruptId` is fine when exactly one interrupt is pending.
+   * When several can be active (parallel subagents, fan-out, nested
+   * graphs), pass an explicit `interruptId` (and `namespace` for subgraph
+   * interrupts) so you resume the interrupt the user acted on.
+   *
+   * To resume several interrupts pending at the same checkpoint in one
+   * command, use {@link respondAll} — sequential single `respond()` calls
+   * would not work, since the first resume starts a run, leaving the
+   * others with no interrupted run to respond to.
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (the default when `namespace` is
+   * omitted). Subgraph interrupts require the exact tuple from
+   * `getThread()?.interrupts` — see the example below.
+   *
+   * @param response - Payload sent back to the interrupted namespace.
+   * @param options - Optional target (`interruptId` / `namespace`) and
+   *   run-level `config` / `metadata` folded into the run that services
+   *   the resume (model/user config, trigger source, test flags, …).
+   *   Equivalent to the same fields on {@link StreamSubmitOptions}.
+   *
+   * @example Single pending interrupt (safe to omit a target)
+   * ```ts
+   * await controller.respond({ approved: true });
+   * ```
+   *
+   * @example Carry run config / metadata onto the resume
+   * ```ts
+   * await controller.respond(
+   *   { approved: true },
+   *   { config: { configurable: { model: "gpt-4o" } }, metadata: { source: "ui" } },
+   * );
+   * ```
+   *
+   * @example Multiple root interrupts — target by id
+   * ```tsx
+   * for (const intr of stream.interrupts) {
+   *   await stream.respond(decide(intr.value), { interruptId: intr.id! });
+   * }
+   * ```
+   *
+   * @example Subgraph interrupt — read `namespace` from the thread stream
+   * ```tsx
+   * const thread = stream.getThread();
+   * for (const entry of thread?.interrupts ?? []) {
+   *   await stream.respond(buildResponse(entry.payload), {
+   *     interruptId: entry.interruptId,
+   *     namespace: entry.namespace,
+   *   });
+   * }
+   * ```
+   *
+   * Each {@link InterruptPayload} on `thread.interrupts` mirrors an
+   * `input.requested` event: `{ interruptId, payload, namespace }`.
+   * Nested interrupts may appear here but not on `stream.interrupts`.
    */
   async respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
   ): Promise<void> {
     if (this.#disposed || this.#thread == null) {
       throw new Error("No active thread to respond to.");
     }
+
     const resolved =
-      target != null
+      options?.interruptId != null
         ? {
-            interruptId: target.interruptId,
-            namespace: target.namespace ?? [...ROOT_NAMESPACE],
+            interruptId: options.interruptId,
+            namespace: options.namespace ?? [...ROOT_NAMESPACE],
           }
         : this.#resolveInterruptForResume();
     if (resolved == null) {
@@ -681,8 +757,86 @@ export class StreamController<
         namespace: resolved.namespace,
         interrupt_id: resolved.interruptId,
         response,
+        config: options?.config,
+        metadata: options?.metadata,
       });
-      this.#resolvedInterrupts.add(resolved.interruptId);
+      this.#markInterruptResolvedInRootStore(resolved.interruptId);
+    } catch (error) {
+      if (this.#disposed && isAbortLikeError(error)) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Resume several pending interrupts at the same checkpoint in a single
+   * command.
+   *
+   * Required when a run pauses on multiple interrupts simultaneously
+   * (e.g. parallel tool-authorization prompts): a single
+   * `Command({ resume })` carrying every interrupt's payload resumes them
+   * together. Sequential {@link respond} calls would fail because the
+   * first resume starts a run, leaving the rest with no interrupted run to
+   * respond to.
+   *
+   * `responsesById` maps each pending `interruptId` to the payload sent
+   * back to it, so different interrupts can receive different responses
+   * (approve one, deny another). To send the *same* payload to several
+   * interrupts, build the map with that value for each id, e.g.
+   * `Object.fromEntries(ids.map((id) => [id, response]))`.
+   *
+   * The server resumes by `interruptId`, so namespaces are resolved
+   * internally from `getThread()?.interrupts` and need not be supplied.
+   *
+   * @param responsesById - Map of pending `interruptId` to its response
+   *   payload. Must contain at least one entry.
+   * @param options - Optional run-level `config` / `metadata` folded into
+   *   the single run that services the batched resume. Equivalent to the
+   *   same fields on {@link StreamSubmitOptions}.
+   *
+   * @example Distinct payloads per interrupt
+   * ```tsx
+   * await stream.respondAll({
+   *   [interruptA.id]: { approved: true },
+   *   [interruptB.id]: { approved: false },
+   * });
+   * ```
+   *
+   * @example Same payload to every pending interrupt
+   * ```tsx
+   * await stream.respondAll(
+   *   Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
+   * );
+   * ```
+   */
+  async respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
+  ): Promise<void> {
+    if (this.#disposed || this.#thread == null) {
+      throw new Error("No active thread to respond to.");
+    }
+    const entries = Object.entries(responsesById);
+    if (entries.length === 0) {
+      throw new Error("respondAll() requires at least one response.");
+    }
+    const pending = this.#thread.interrupts;
+    const responses = entries.map(([interruptId, response]) => ({
+      interrupt_id: interruptId,
+      response,
+      namespace: pending.find((entry) => entry.interruptId === interruptId)
+        ?.namespace ?? [...ROOT_NAMESPACE],
+    }));
+    try {
+      await this.#thread.respondInput({
+        responses,
+        config: options?.config,
+        metadata: options?.metadata,
+      });
+      for (const { interrupt_id: interruptId } of responses) {
+        this.#markInterruptResolvedInRootStore(interruptId);
+      }
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1397,6 +1551,30 @@ export class StreamController<
       if (s.interrupts.some((entry) => entry.id === interruptId)) return s;
       const interrupts = [...s.interrupts, interrupt];
       return { ...s, interrupts, interrupt: interrupts[0] };
+    });
+  }
+
+  /**
+   * Mark an interrupt resolved for replay filtering and mirror the
+   * removal into the root snapshot the framework hooks read.
+   */
+  #markInterruptResolvedInRootStore(interruptId: string): void {
+    this.#resolvedInterrupts.add(interruptId);
+    this.rootStore.setState((s) => {
+      const interrupts = s.interrupts.filter(
+        (entry) => entry.id !== interruptId
+      );
+      if (
+        interrupts.length === s.interrupts.length &&
+        s.interrupt?.id !== interruptId
+      ) {
+        return s;
+      }
+      return {
+        ...s,
+        interrupts,
+        interrupt: interrupts[0],
+      };
     });
   }
 

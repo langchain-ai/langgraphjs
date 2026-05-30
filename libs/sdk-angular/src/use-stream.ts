@@ -34,6 +34,9 @@ import {
   type RootSnapshot,
   type RunCompletedInfo,
   type RunExecutionInfo,
+  type StreamRespondAllOptions,
+  type StreamRespondOptions,
+  type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -144,7 +147,7 @@ export interface UseStreamReturn<
    * namespace during the active thread. Populated from lifecycle /
    * input events and seeded on hydration from `thread.getState()`.
    * Cleared optimistically when a new run starts or an interrupt is
-   * resolved via {@link respond} / `submit({ command: { resume } })`.
+   * resolved via {@link respond}.
    */
   readonly interrupts: Signal<Interrupt<InterruptType>[]>;
   /**
@@ -229,33 +232,95 @@ export interface UseStreamReturn<
    * Dispatch a new run on the bound thread.
    *
    * `input` is typed as `Partial<StateType>` so IDE autocompletion
-   * surfaces the state keys declared on the root primitive. Pass
-   * `null` (or omit fields) when resuming an interrupt via
-   * `options.command.resume` — the server accepts a null payload
-   * in that case.
+   * surfaces the state keys declared on the root primitive.
    */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
   /**
-   * Abort the in-flight run on the current thread without clearing
-   * accumulated state. Sets {@link isLoading} to `false` immediately;
-   * {@link values} and {@link messages} are preserved.
+   * Stop the active run on the current thread. By default cancels the
+   * run server-side and disconnects the client; pass `{ cancel: false }`
+   * or use {@link disconnect} for join/rejoin. Sets {@link isLoading} to
+   * `false` immediately; {@link values} and {@link messages} are preserved.
    */
-  stop(): Promise<void>;
+  stop(options?: StreamStopOptions): Promise<void>;
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  disconnect(): Promise<void>;
   /**
    * Resume a pending protocol interrupt by sending a response payload
    * back to the interrupted namespace.
    *
-   * When `target` is omitted, responds to the latest unresolved
-   * interrupt in {@link interrupts}. Pass an explicit
-   * `{ interruptId, namespace? }` when multiple interrupts are
-   * pending or the interrupt lives in a subgraph namespace.
+   * When `options.interruptId` is omitted, walks `getThread()?.interrupts`
+   * from newest to oldest and resumes the first not yet resolved by a prior
+   * `respond()` call. That may be a root or subgraph interrupt and is
+   * **not** necessarily {@link interrupt} (`interrupts()[0]`, root-only).
+   * Safe when exactly one interrupt is pending; otherwise pass an explicit
+   * `options.interruptId` (and `options.namespace` for subgraph
+   * interrupts).
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (default when omitted). For subgraph
+   * interrupts, copy `namespace` from `getThread()?.interrupts`.
+   *
+   * @example
+   * ```ts
+   * // Single pending interrupt
+   * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Multiple root interrupts
+   * for (const intr of stream.interrupts()) {
+   *   await stream.respond(decide(intr.value), { interruptId: intr.id! });
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Subgraph interrupt — namespace from `getThread()`
+   * const thread = stream.getThread();
+   * for (const entry of thread?.interrupts ?? []) {
+   *   await stream.respond(buildResponse(entry.payload), {
+   *     interruptId: entry.interruptId,
+   *     namespace: entry.namespace,
+   *   });
+   * }
+   * ```
+   *
+   * To resume several interrupts pending at the same checkpoint in one
+   * command, use {@link respondAll}.
    */
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
+  ): Promise<void>;
+
+  /**
+   * Resume several pending interrupts at the same checkpoint in a single
+   * command — required when a run pauses on multiple interrupts at once
+   * (e.g. parallel tool-authorization prompts), which sequential
+   * {@link respond} calls cannot handle. `responsesById` maps each pending
+   * `interruptId` to its response, so different interrupts can receive
+   * different payloads. Pass `options.config` / `options.metadata` to fold
+   * run-level config and metadata into the resumed run, mirroring
+   * `submit()`.
+   *
+   * @example
+   * ```ts
+   * await stream.respondAll({
+   *   [interruptA.id]: { approved: true },
+   *   [interruptB.id]: { approved: false },
+   * });
+   * ```
+   */
+  respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
   ): Promise<void>;
 
   // ----- identity -----
@@ -555,8 +620,11 @@ export function useStream<
     subgraphs: subgraphSignal,
     subgraphsByNode: subgraphByNodeSignal,
     submit: (input, submitOptions) => controller.submit(input, submitOptions),
-    stop: () => controller.stop(),
-    respond: (response, target) => controller.respond(response, target),
+    stop: (options) => controller.stop(options),
+    disconnect: () => controller.disconnect(),
+    respond: (response, options) => controller.respond(response, options),
+    respondAll: (responsesById, options) =>
+      controller.respondAll(responsesById, options),
     getThread: () => controller.getThread(),
     client,
     assistantId,

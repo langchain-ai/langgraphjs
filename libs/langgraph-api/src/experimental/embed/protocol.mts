@@ -12,7 +12,11 @@ import { serialiseAsDict } from "../../utils/serde.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
-import { matchesSinkFilter } from "../../protocol/service.mjs";
+import {
+  matchesSinkFilter,
+  normalizeMultitaskStrategy,
+  DEFAULT_MULTITASK_STRATEGY,
+} from "../../protocol/service.mjs";
 import type {
   EventSinkFilter,
   ProtocolCommand,
@@ -222,15 +226,21 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Promote SDK-side `forkFrom: { checkpointId }` into
-    // `configurable.checkpoint_id` so the engine replays from the
-    // requested fork target. This mirrors the promotion performed by
-    // `ProtocolService.createOrResumeRun` in the non-embed path and
-    // closes the "client sends forkFrom, server drops it" gap.
+    // Fork/time-travel replays from `config.configurable.checkpoint_id`
+    // — the single legacy-compliant fork field. The SDK folds its
+    // `forkFrom` convenience option into this field client-side, so the
+    // server reads it from there rather than a top-level `forkFrom`.
+    // `createStubRun` only reliably forwards a fork target via the
+    // top-level `checkpoint_id`, so lift it out of `configurable` below.
     const forkCheckpointId = (() => {
-      if (!isRecord(params.forkFrom)) return undefined;
-      const id = params.forkFrom.checkpointId;
-      return typeof id === "string" && id.length > 0 ? id : undefined;
+      const configurable =
+        isRecord(params.config) && isRecord(params.config.configurable)
+          ? params.config.configurable
+          : undefined;
+      const checkpointId = configurable?.checkpoint_id;
+      return typeof checkpointId === "string" && checkpointId.length > 0
+        ? checkpointId
+        : undefined;
     })();
 
     const currentRun = thread.currentRun;
@@ -270,6 +280,11 @@ export function registerProtocolRoutes(
       ...(forkCheckpointId != null && !isResume
         ? { checkpoint_id: forkCheckpointId }
         : {}),
+      // Honor the caller's `multitaskStrategy`, falling back to `enqueue`
+      // to match the non-embed protocol-v2 server and the Python default.
+      multitask_strategy:
+        normalizeMultitaskStrategy(params.multitaskStrategy) ??
+        DEFAULT_MULTITASK_STRATEGY,
       metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
@@ -297,9 +312,36 @@ export function registerProtocolRoutes(
     const params: Record<string, unknown> = isRecord(command.params)
       ? command.params
       : {};
-    const interruptId = params.interrupt_id;
 
-    if (typeof interruptId !== "string") {
+    // Build the resume input map. The SDK sends either a single
+    // `interrupt_id` / `response` or a `responses` batch (several
+    // interrupts at the same checkpoint, resumed in one command) — the
+    // protocol's `InputRespondOne` / `InputRespondMany` variants. Read
+    // leniently to tolerate clients pinned to older bindings.
+    const resumeInput: Record<string, unknown> = {};
+    if (Array.isArray(params.responses)) {
+      for (const entry of params.responses) {
+        if (!isRecord(entry) || typeof entry.interrupt_id !== "string") {
+          return jsonResponse({
+            type: "error",
+            id: command.id,
+            error: "invalid_argument",
+            message: "input.respond responses entries require an interrupt_id.",
+          });
+        }
+        resumeInput[entry.interrupt_id] = entry.response;
+      }
+      if (Object.keys(resumeInput).length === 0) {
+        return jsonResponse({
+          type: "error",
+          id: command.id,
+          error: "invalid_argument",
+          message: "input.respond requires at least one response.",
+        });
+      }
+    } else if (typeof params.interrupt_id === "string") {
+      resumeInput[params.interrupt_id] = params.response;
+    } else {
       return jsonResponse({
         type: "error",
         id: command.id,
@@ -322,7 +364,12 @@ export function registerProtocolRoutes(
       assistant_id: assistantId,
       on_disconnect: "cancel",
       input: null,
-      command: { resume: { [interruptId]: params.response } },
+      command: { resume: resumeInput },
+      // Carry the SDK's `respond({ config, metadata })` onto the resumed
+      // run so it applies the same run config / metadata a fresh
+      // `run.start` would (both are part of the `input.respond` params).
+      config: isRecord(params.config) ? params.config : undefined,
+      metadata: isRecord(params.metadata) ? params.metadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
     } as unknown as z.infer<typeof schemas.RunCreate>);

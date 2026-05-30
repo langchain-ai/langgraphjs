@@ -3,6 +3,7 @@ import type {
   Command,
   CommandResponse,
   Event,
+  InputRespondParams,
   LifecycleEvent,
   ListCheckpointsResult,
   Message,
@@ -82,7 +83,7 @@ type CommandParamsMap = {
   "subscription.subscribe": SubscribeParams;
   "subscription.unsubscribe": { subscription_id: string };
   "agent.getTree": { run_id?: string };
-  "input.respond": Record<string, unknown>;
+  "input.respond": InputRespondParams;
   "input.inject": Record<string, unknown>;
   "state.get": Record<string, unknown>;
   "state.listCheckpoints": Record<string, unknown>;
@@ -317,6 +318,48 @@ function normalizeSubscribeParams(
     ...options,
     channels,
   };
+}
+
+/**
+ * Fold the ergonomic top-level `forkFrom` checkpoint id into
+ * `config.configurable.checkpoint_id` and strip `forkFrom` from the
+ * outgoing params.
+ *
+ * `forkFrom` is purely an SDK-side convenience: callers say
+ * `submit(input, { forkFrom })` instead of hand-building a nested
+ * RunnableConfig. The agent server only ever accepts the fork target via
+ * `config.configurable.checkpoint_id` (the same field the legacy run
+ * endpoints use), so we translate here — before the `run.start` message
+ * hits the wire — keeping a single, legacy-compliant way to provide it.
+ *
+ * `forkFrom` takes precedence over any `checkpoint_id` the caller already
+ * placed in `config.configurable`, matching the prior server-side merge.
+ */
+function foldForkFromIntoConfig<
+  T extends { forkFrom?: string; config?: unknown },
+>(params: T): Omit<T, "forkFrom"> {
+  const { forkFrom, ...rest } = params;
+  if (typeof forkFrom !== "string" || forkFrom.length === 0) {
+    return rest;
+  }
+  const config =
+    rest.config != null && typeof rest.config === "object"
+      ? (rest.config as Record<string, unknown>)
+      : {};
+  const configurable =
+    config.configurable != null && typeof config.configurable === "object"
+      ? (config.configurable as Record<string, unknown>)
+      : {};
+  return {
+    ...rest,
+    config: {
+      ...config,
+      configurable: {
+        ...configurable,
+        checkpoint_id: forkFrom,
+      },
+    },
+  } as Omit<T, "forkFrom">;
 }
 
 /**
@@ -670,7 +713,7 @@ export class ThreadStream<
           // subscription landed. This keeps the zero-extensions hot path
           // free of an unused `custom` subscription per run.
           return this.#send("run.start", {
-            ...params,
+            ...foldForkFromIntoConfig(params),
             assistant_id: this.assistantId,
           });
         });
@@ -689,10 +732,7 @@ export class ThreadStream<
         // See note in `run.start` — keep `thread.output` working
         // across resumes regardless of access order.
         void this.values;
-        await this.#send(
-          "input.respond",
-          params as unknown as CommandParamsMap["input.respond"]
-        );
+        await this.#send("input.respond", params);
       },
       inject: async (params) => {
         await this.#send(
@@ -821,14 +861,18 @@ export class ThreadStream<
    *   full list here would drop other headless-tool interrupts that
    *   are still awaiting client execution.
    */
-  #prepareForNextRun(respondedInterruptId?: string): void {
+  #prepareForNextRun(respondedInterruptId?: string | readonly string[]): void {
     this.interrupted = false;
     if (respondedInterruptId != null) {
-      const index = this.interrupts.findIndex(
-        (entry) => entry.interruptId === respondedInterruptId
+      const respondedIds = new Set(
+        Array.isArray(respondedInterruptId)
+          ? respondedInterruptId
+          : [respondedInterruptId as string]
       );
-      if (index >= 0) {
-        this.interrupts.splice(index, 1);
+      for (let index = this.interrupts.length - 1; index >= 0; index -= 1) {
+        if (respondedIds.has(this.interrupts[index].interruptId)) {
+          this.interrupts.splice(index, 1);
+        }
       }
     } else {
       this.interrupts.length = 0;
@@ -1294,17 +1338,16 @@ export class ThreadStream<
     metadata?: Record<string, unknown>;
     /**
      * Fork the new run from an explicit checkpoint instead of the
-     * thread's latest. Forwarded verbatim on the `/run.start` protocol
-     * message; the API layer picks it up and routes it to
-     * `graph.streamEvents(input, { version: "v3", forkFrom })`
-     * (see plan-roadmap.md R2.4 / A0.1).
+     * thread's latest. This is an SDK-side convenience: it is folded into
+     * `config.configurable.checkpoint_id` before the `run.start` message
+     * is sent, so the agent server only ever sees the single
+     * legacy-compliant fork field (`forkFrom` never hits the wire).
      */
-    forkFrom?: { checkpointId: string };
+    forkFrom?: string;
     /**
      * Controls how concurrent submissions on the same thread are
      * handled by the server (`reject` | `rollback` | `interrupt` |
-     * `enqueue`). Forwarded to the server; the SDK does not interpret
-     * it locally (see plan-roadmap.md S1.3 / A0.3).
+     * `enqueue`).
      */
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
@@ -1317,7 +1360,7 @@ export class ThreadStream<
     return await this.#withRunStartGate(() => {
       this.#startLifecycleWatcher();
       return this.#send("run.start", {
-        ...(params as Record<string, unknown>),
+        ...(foldForkFromIntoConfig(params) as Record<string, unknown>),
         assistant_id: this.assistantId,
       });
     });
@@ -1328,19 +1371,18 @@ export class ThreadStream<
    * See {@link submitRun} for why this exists alongside
    * {@link input.respond}.
    */
-  async respondInput(params: {
-    namespace: readonly string[];
-    interrupt_id: string;
-    response: unknown;
-    config?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-  }): Promise<void> {
-    this.#prepareForNextRun(params.interrupt_id);
+  async respondInput(params: InputRespondParams): Promise<void> {
+    // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
+    // batch variant (`responses`) resolves several interrupts pending at
+    // the same checkpoint in one command; the single variant carries a
+    // top-level `interrupt_id`.
+    const respondedIds =
+      "responses" in params
+        ? params.responses.map((entry) => entry.interrupt_id)
+        : params.interrupt_id;
+    this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
-    await this.#send(
-      "input.respond",
-      params as unknown as CommandParamsMap["input.respond"]
-    );
+    await this.#send("input.respond", params);
   }
 
   /**

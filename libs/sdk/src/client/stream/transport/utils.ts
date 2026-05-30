@@ -4,8 +4,9 @@ import type { CommandResponse, ErrorResponse } from "@langchain/protocol";
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+/** Match {@link BaseClient.prepareFetchOptions}: preserve any apiUrl path prefix. */
 export const toAbsoluteUrl = (apiUrl: string, path: string) =>
-  new URL(path, apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`);
+  new URL(`${apiUrl.replace(/\/$/, "")}${path}`);
 
 export const toError = (error: unknown) =>
   // oxlint-disable-next-line no-instanceof/no-instanceof

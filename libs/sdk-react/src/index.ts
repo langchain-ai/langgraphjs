@@ -69,6 +69,7 @@ export type {
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,
   StreamSubmitOptions,
+  StreamStopOptions,
   ToolCallStatus,
   VideoMedia,
   MessageMetadata,

@@ -165,6 +165,50 @@ describe("ThreadStream", () => {
     expect(thread.assistantId).toBe("my-agent");
   });
 
+  it("folds forkFrom into config.configurable.checkpoint_id on the wire", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+    await thread.run.start({
+      input: { step: 1 },
+      forkFrom: "cp-123",
+      config: { configurable: { foo: "bar" } },
+    });
+
+    const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+    const params = cmd?.params as {
+      forkFrom?: unknown;
+      config?: { configurable?: Record<string, unknown> };
+    };
+    // The ergonomic top-level field never reaches the server...
+    expect(params.forkFrom).toBeUndefined();
+    // ...it is folded into the single legacy-compliant field, preserving
+    // any other configurable values the caller passed.
+    expect(params.config?.configurable).toMatchObject({
+      foo: "bar",
+      checkpoint_id: "cp-123",
+    });
+  });
+
+  it("leaves config untouched when forkFrom is absent", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+    await thread.run.start({
+      input: { step: 1 },
+      config: { configurable: { foo: "bar" } },
+    });
+
+    const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+    const params = cmd?.params as {
+      forkFrom?: unknown;
+      config?: { configurable?: Record<string, unknown> };
+    };
+    expect(params.forkFrom).toBeUndefined();
+    expect(params.config?.configurable).toEqual({ foo: "bar" });
+    expect(params.config?.configurable).not.toHaveProperty("checkpoint_id");
+  });
+
   it("closes thread cleanly", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
@@ -1180,6 +1224,94 @@ describe("thread.subagents projection", () => {
     );
 
     await expect(sub.output).rejects.toThrow("Subagent crashed");
+  });
+
+  it("does not surface wrapper task tools on sub.toolCalls", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const iter = thread.subagents[Symbol.asyncIterator]();
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "task_1",
+          tool_name: "task",
+          input: { description: "Research", subagent_type: "researcher" },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 1 }
+      )
+    );
+
+    const sub = (await iter.next()).value as SubagentHandle;
+    const toolCalls = sub.toolCalls;
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "task_1",
+          output: {
+            lg_name: "Command",
+            update: {
+              messages: [
+                {
+                  type: "ai",
+                  content: [{ type: "text", text: "Done" }],
+                },
+              ],
+            },
+          },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 2 }
+      )
+    );
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "search-1",
+          tool_name: "search_web",
+          input: { query: "AI trends" },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 3 }
+      )
+    );
+
+    const tc = await nextValue(toolCalls);
+    expect(tc.name).toBe("search_web");
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-finished",
+          tool_call_id: "search-1",
+          output: {
+            lg_name: "Command",
+            update: {
+              messages: [
+                {
+                  type: "tool",
+                  tool_call_id: "search-1",
+                  name: "search_web",
+                  content: JSON.stringify({ results: ["one"] }),
+                },
+              ],
+            },
+          },
+        } as Event["params"]["data"],
+        { namespace: ["tools:worker"], seq: 4 }
+      )
+    );
+
+    await expect(tc.output).resolves.toEqual({ results: ["one"] });
   });
 });
 

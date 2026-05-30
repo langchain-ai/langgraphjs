@@ -118,13 +118,64 @@ export function parseToolPayload(value: unknown): unknown {
   }
 }
 
+/**
+ * Skip wrapper `task` tool events scoped to a subagent namespace.
+ *
+ * Deep-agent subagents are discovered from root-level `task` tool calls;
+ * replaying the same dispatch tool inside the worker namespace would
+ * otherwise surface as a spurious entry in `sub.toolCalls`.
+ */
+export function shouldIgnoreScopedTaskToolEvent(
+  scopeNamespace: readonly string[],
+  event: ToolsEvent
+): boolean {
+  const data = event.params.data;
+  return (
+    scopeNamespace.length > 0 &&
+    event.params.namespace.length === scopeNamespace.length &&
+    event.params.namespace.every(
+      (segment, index) => segment === scopeNamespace[index]
+    ) &&
+    "tool_name" in data &&
+    data.tool_name === "task"
+  );
+}
+
+function getWireMessageField(message: unknown, field: string): unknown {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    return undefined;
+  }
+  const record = message as Record<string, unknown>;
+  if (field in record) return record[field];
+  const kwargs = record.kwargs as Record<string, unknown> | undefined;
+  if (kwargs != null && field in kwargs) return kwargs[field];
+  const lcKwargs = record.lc_kwargs as Record<string, unknown> | undefined;
+  if (lcKwargs != null && field in lcKwargs) return lcKwargs[field];
+  return undefined;
+}
+
 function isToolMessageLike(
   value: unknown
 ): value is Record<string, unknown> & { content: unknown } {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   if (record.type === "tool") return true;
-  return typeof record.tool_call_id === "string" && "content" in record;
+  const type = getWireMessageField(value, "type");
+  if (type === "tool") return true;
+  return (
+    typeof getWireMessageField(value, "tool_call_id") === "string" &&
+    getWireMessageField(value, "content") !== undefined
+  );
+}
+
+function isCommandLike(
+  value: unknown
+): value is Record<string, unknown> & { update?: unknown } {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as Record<string, unknown>).lg_name === "Command"
+  );
 }
 
 function textFromContentBlocks(content: unknown[]): string {
@@ -165,19 +216,72 @@ function parseToolResultContent(content: unknown): unknown | null {
   return null;
 }
 
+function parseToolMessageRecord(message: unknown): unknown | null {
+  const content = getWireMessageField(message, "content");
+  return parseToolResultContent(content);
+}
+
+type ParsedCommandToolOutput =
+  | { found: true; value: unknown | null }
+  | { found: false };
+
+function parseCommandToolOutput(
+  command: Record<string, unknown> & { update?: unknown },
+  toolCallId?: string
+): ParsedCommandToolOutput {
+  const update = command.update;
+  if (update == null || typeof update !== "object" || Array.isArray(update)) {
+    return { found: false };
+  }
+
+  const messages = (update as Record<string, unknown>).messages;
+  if (!Array.isArray(messages)) return { found: false };
+
+  const toolMessages = messages.filter((message) => isToolMessageLike(message));
+  if (toolMessages.length === 0) return { found: false };
+
+  if (toolCallId != null) {
+    for (const message of toolMessages) {
+      const callId = getWireMessageField(message, "tool_call_id");
+      if (callId !== toolCallId) continue;
+      return { found: true, value: parseToolMessageRecord(message) };
+    }
+    return { found: false };
+  }
+
+  if (toolMessages.length === 1) {
+    return { found: true, value: parseToolMessageRecord(toolMessages[0]) };
+  }
+
+  for (let i = toolMessages.length - 1; i >= 0; i -= 1) {
+    const parsed = parseToolMessageRecord(toolMessages[i]);
+    if (parsed != null) return { found: true, value: parsed };
+  }
+
+  return { found: true, value: null };
+}
+
 /**
  * Parse a `tool-finished` output payload into the tool's return value.
  *
  * Wire events often wrap structured tool results in a ToolMessage-shaped
- * object (`{ type: "tool", content: "..." }`). This unwraps that envelope,
- * JSON-decodes string content when possible, and leaves plain strings as-is.
- * Returns `null` when a ToolMessage envelope is present but its content
- * cannot be normalised.
+ * object (`{ type: "tool", content: "..." }`) or a LangGraph
+ * {@link Command} whose `update.messages` carries the ToolMessage.
+ * This unwraps those envelopes, JSON-decodes string content when possible,
+ * and leaves plain strings as-is. Returns `null` when a ToolMessage envelope
+ * is present but its content cannot be normalised.
  */
-export function parseToolOutput(value: unknown): unknown | null {
+export function parseToolOutput(
+  value: unknown,
+  toolCallId?: string
+): unknown | null {
   const parsed = parseToolPayload(value);
+  if (isCommandLike(parsed)) {
+    const commandOutput = parseCommandToolOutput(parsed, toolCallId);
+    return commandOutput.found ? commandOutput.value : parsed;
+  }
   if (isToolMessageLike(parsed)) {
-    return parseToolResultContent(parsed.content);
+    return parseToolResultContent(getWireMessageField(parsed, "content"));
   }
   return parsed ?? null;
 }
@@ -277,7 +381,7 @@ export class ToolCallAssembler {
     const entry = this.active.get(data.tool_call_id);
     if (!entry) return undefined;
     this.active.delete(data.tool_call_id);
-    const value = parseToolOutput(data.output);
+    const value = parseToolOutput(data.output, data.tool_call_id);
     entry.resolveOutput(value);
     entry.handle.output = value;
     entry.handle.status = "finished";

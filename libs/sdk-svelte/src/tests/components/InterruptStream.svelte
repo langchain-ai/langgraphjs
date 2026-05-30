@@ -6,13 +6,11 @@
   interface Props {
     apiUrl: string;
     assistantId?: string;
-    useRespondMethod?: boolean;
   }
 
   const {
     apiUrl,
     assistantId = "interruptAgent",
-    useRespondMethod = false,
   }: Props = $props();
 
   const stream = useStream<
@@ -54,13 +52,7 @@
       <button
         data-testid="resume"
         onclick={() => {
-          if (useRespondMethod) {
-            void stream.respond("approved");
-          } else {
-            void stream.submit(undefined, {
-              command: { resume: "approved" },
-            });
-          }
+          void stream.respond("approved");
         }}
       >
         Resume

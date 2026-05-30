@@ -9,7 +9,11 @@ import type { SubscriptionHandle } from "../index.js";
 import { MultiCursorBuffer } from "../multi-cursor-buffer.js";
 import { StreamingMessageAssembler } from "../messages.js";
 import type { StreamingMessage, StreamingMessageHandle } from "../messages.js";
-import { ToolCallAssembler, toClientAssembledToolCall } from "./tools.js";
+import {
+  shouldIgnoreScopedTaskToolEvent,
+  ToolCallAssembler,
+  toClientAssembledToolCall,
+} from "./tools.js";
 import type { ClientAssembledToolCall } from "./tools.js";
 import { MediaAssembler } from "../media.js";
 import type {
@@ -102,7 +106,9 @@ export class SubagentHandle {
       ["tools"],
       (event) => {
         if (event.method !== "tools") return;
-        const tc = assembler.consume(event as ToolsEvent);
+        const toolsEvent = event as ToolsEvent;
+        if (shouldIgnoreScopedTaskToolEvent(this.namespace, toolsEvent)) return;
+        const tc = assembler.consume(toolsEvent);
         if (tc) buffer.push(toClientAssembledToolCall(tc));
       },
       () => buffer.close()

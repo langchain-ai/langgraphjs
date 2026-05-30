@@ -339,14 +339,12 @@ describe("SDK streaming projections against embed server", () => {
         { assistantId: "agent_with_tools" }
       );
 
-      // `forkFrom` is not part of the protocol's stock `RunStartParams`
-      // type yet (it's an SDK-side convenience consumed by the service
-      // layer), so we cast to reach the wider shape the server accepts.
-      await (
-        forked.run.start as (params: unknown) => Promise<unknown>
-      )({
+      // `forkFrom` is an SDK-side convenience: `run.start` folds it into
+      // `config.configurable.checkpoint_id` before sending, so the server
+      // only ever sees the single legacy-compliant fork field.
+      await forked.run.start({
         input: { messages: [{ role: "user", content: "What is the weather in SF?" }] },
-        forkFrom: { checkpointId: rootCheckpointId },
+        forkFrom: rootCheckpointId,
       });
       await collectWithTimeout(forked.values, 15000);
       await forked.close();

@@ -21,7 +21,7 @@
  *
  * Surfacing `parentCheckpointId` per-message lets UI flows like
  * "edit a message and re-run" call
- * `submit(input, { forkFrom: { checkpointId } })` without making the
+ * `submit(input, { forkFrom: checkpointId })` without making the
  * caller juggle thread state. Each message remembers the checkpoint
  * it was first observed at, so a "fork from this message" UI can read
  * `useMessageMetadata(stream, msg.id)` directly.
@@ -55,7 +55,7 @@ export interface MessageMetadata {
   /**
    * Checkpoint id the message's *parent* was at when this message was
    * observed. Drives fork / edit flows
-   * (`submit(input, { forkFrom: { checkpointId } })`).
+   * (`submit(input, { forkFrom: checkpointId })`).
    *
    * `undefined` when the message was observed without a paired
    * checkpoint envelope (e.g. before checkpoints rolled out, or when
