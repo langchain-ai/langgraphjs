@@ -1,5 +1,33 @@
 # @langchain/react
 
+## 1.0.10
+
+### Patch Changes
+
+- [#2443](https://github.com/langchain-ai/langgraphjs/pull/2443) [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532) Thanks [@christian-bromann](https://github.com/christian-bromann)! - refactor(sdk): drop StreamSubmitOptions.command and simplify forkFrom
+
+  Remove the misleading submit({ command }) surface from protocol-v2
+  StreamController; HITL resume is respond() only. Accept forkFrom as a
+  plain checkpoint id string and align protocol-v2 servers and docs.
+
+- [#2448](https://github.com/langchain-ai/langgraphjs/pull/2448) [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - protocol-v2: add `respondAll()` and run config/metadata on interrupt resume
+
+  The stream controller (and the React/Angular/Svelte/Vue wrappers) gain a
+  `respondAll(responsesById, options)` method to resume several interrupts
+  pending at the same checkpoint in a single command — required for runs that
+  pause on multiple interrupts at once (e.g. parallel tool-authorization
+  prompts), which sequential `respond()` calls cannot handle.
+
+  `respond()` now takes an options object (`{ interruptId?, namespace?,
+config?, metadata? }`) so a resumed run can carry the same run-level config
+  (model, user context, …) and metadata (trigger source, test flags, …) a
+  fresh `submit()` would. The protocol-v2 reference servers read the new
+  `responses` batch and `config` / `metadata` fields leniently and fold them
+  onto the run that services the `input.respond` command.
+
+- Updated dependencies [[`80c2806`](https://github.com/langchain-ai/langgraphjs/commit/80c2806cb2da93745a640664bd0cf603c2361da9), [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532), [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d)]:
+  - @langchain/langgraph-sdk@1.9.10
+
 ## 1.0.9
 
 ### Patch Changes
