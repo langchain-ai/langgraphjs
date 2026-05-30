@@ -235,7 +235,7 @@ export interface PregelOptions<
   TSubgraphs extends boolean = boolean,
   TEncoding extends "text/event-stream" | undefined =
     | "text/event-stream"
-    | undefined
+    | undefined,
 > extends RunnableConfig {
   /**
    * Controls what information is streamed during graph execution.

@@ -12,7 +12,7 @@ import { z } from "zod/v4";
 import { Annotation, StateGraph } from "../index.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
-describe("Issue #10270 — StateGraph with contextSchema", () => {
+describe("StateGraph with contextSchema", () => {
   const contextSchema = z.object({
     userName: z.string(),
     userId: z.string(),
@@ -24,7 +24,7 @@ describe("Issue #10270 — StateGraph with contextSchema", () => {
     output: Annotation<string>(),
   });
 
-  it("BUG 1: no TS2589 on StateGraph constructor with Zod contextSchema", () => {
+  it("no TS2589 on StateGraph constructor with Zod contextSchema", () => {
     // This should compile without "Type instantiation is excessively deep"
     const graph = new StateGraph({
       state: GraphAnnotation,
@@ -47,7 +47,7 @@ describe("Issue #10270 — StateGraph with contextSchema", () => {
     expect(graph).toBeDefined();
   });
 
-  it("BUG 2: invoke() accepts context as top-level key, not in configurable", async () => {
+  it("invoke() accepts context as top-level key, not in configurable", async () => {
     const graph = new StateGraph({
       state: GraphAnnotation,
       context: contextSchema,
