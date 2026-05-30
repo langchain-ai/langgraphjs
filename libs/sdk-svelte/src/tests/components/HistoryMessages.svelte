@@ -3,48 +3,40 @@
 
   interface Props {
     apiUrl: string;
+    threadId?: string | null;
   }
 
-  const { apiUrl }: Props = $props();
+  const {
+    apiUrl,
+    threadId,
+  }: Props = $props();
 
-  const { history, isLoading, submit } = useStream({
+  const stream = useStream({
     assistantId: "agent",
     apiUrl,
-    fetchStateHistory: true,
+    threadId,
   });
 
-  const historyMessages = $derived(
-    $history.flatMap(
-      (state: any) => (state.values.messages ?? []) as Record<string, unknown>[],
-    ),
-  );
-
   const allAreBaseMessage = $derived(
-    historyMessages.length > 0 &&
-    historyMessages.every(
-      (msg: any) => typeof msg.getType === "function",
-    ),
+    stream.messages.length > 0 &&
+    stream.messages.every((msg) => typeof msg.getType === "function"),
   );
 
   const messageTypes = $derived(
-    historyMessages
-      .map((msg: any) => {
-        return typeof msg.getType === "function" ? msg.getType() : "plain";
-      })
-      .join(","),
+    stream.messages.map((msg) => msg.getType()).join(","),
   );
 </script>
 
 <div>
-  <div data-testid="history-count">{$history.length}</div>
+  <div data-testid="history-count">{stream.messages.length}</div>
   <div data-testid="history-all-base-message">{String(allAreBaseMessage)}</div>
   <div data-testid="history-message-types">{messageTypes}</div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <button
     data-testid="submit"
-    onclick={() => void submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
+    onclick={() => void stream.submit({ messages: [{ content: "Hello", type: "human" }] } as any)}
   >
     Send
   </button>

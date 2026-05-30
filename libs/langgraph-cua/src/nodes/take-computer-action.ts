@@ -175,9 +175,8 @@ export async function takeComputerAction(
       const uploadScreenshotRunnable = RunnableLambda.from(
         uploadScreenshot
       ).withConfig({ runName: "upload-screenshot" });
-      screenshotContent = await uploadScreenshotRunnable.invoke(
-        screenshotContent
-      );
+      screenshotContent =
+        await uploadScreenshotRunnable.invoke(screenshotContent);
     }
 
     computerCallToolMsg = new ToolMessage({

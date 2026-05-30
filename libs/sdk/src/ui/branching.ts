@@ -188,7 +188,7 @@ export function getBranchView<StateType extends Record<string, unknown>>(
       branchByCheckpoint[checkpointId] = {
         branch: item.path.join(PATH_SEP),
         branchOptions: (item.path.length > 0
-          ? pathMap[item.path.at(-2) ?? ROOT_ID] ?? []
+          ? (pathMap[item.path.at(-2) ?? ROOT_ID] ?? [])
           : []
         ).map((p) => p.join(PATH_SEP)),
       };
@@ -232,7 +232,7 @@ export function getBranchContext<StateType extends Record<string, unknown>>(
 }
 
 export function getMessagesMetadataMap<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 >(options: {
   initialValues: StateType | null | undefined;
   history: ThreadState<StateType>[] | null | undefined;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useStream } from "../../index.js";
+  import { useMessageMetadata, useStream } from "../../index.js";
 
   interface Props {
     apiUrl: string;
@@ -8,69 +8,39 @@
 
   const { apiUrl, assistantId = "agent" }: Props = $props();
 
-  const { submit, messages, getMessagesMetadata, setBranch } = useStream({
+  const stream = useStream({
     assistantId,
     apiUrl,
-    fetchStateHistory: true,
   });
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
-      {@const metadata = getMessagesMetadata(msg, i)}
-      {@const checkpoint =
-        metadata?.firstSeenState?.parent_checkpoint ?? undefined}
+    {#each stream.messages as msg, i (msg.id ?? i)}
+      {@const metadata = useMessageMetadata(stream, () => msg.id)}
+      {@const checkpoint = metadata.current?.parentCheckpointId}
       {@const text =
         typeof msg.content === "string"
           ? msg.content
           : JSON.stringify(msg.content)}
-      {@const branchOptions = metadata?.branchOptions}
-      {@const branch = metadata?.branch}
-      {@const branchIndex =
-        branchOptions && branch ? branchOptions.indexOf(branch) : -1}
 
       <div data-testid={`message-${i}`}>
         <div data-testid={`content-${i}`}>{text}</div>
 
-        {#if branchOptions && branch}
-          <div data-testid={`branch-nav-${i}`}>
-            <button
-              data-testid={`prev-${i}`}
-              onclick={() => {
-                const prevBranch = branchOptions[branchIndex - 1];
-                if (prevBranch) setBranch(prevBranch);
-              }}
-            >
-              Previous
-            </button>
-            <span data-testid={`branch-info-${i}`}>
-              {branchIndex + 1} / {branchOptions.length}
-            </span>
-            <button
-              data-testid={`next-${i}`}
-              onclick={() => {
-                const nextBranch = branchOptions[branchIndex + 1];
-                if (nextBranch) setBranch(nextBranch);
-              }}
-            >
-              Next
-            </button>
-          </div>
-        {/if}
-
         {#if msg.type === "human"}
           <button
             data-testid={`fork-${i}`}
-            onclick={() =>
-              void submit(
+            onclick={() => {
+              if (!checkpoint) return;
+              void stream.submit(
                 {
                   messages: [
                     { type: "human", content: `Fork: ${text}` },
                   ],
                 } as any,
-                { checkpoint },
-              )}
+                { forkFrom: checkpoint },
+              );
+            }}
           >
             Fork
           </button>
@@ -79,7 +49,13 @@
         {#if msg.type === "ai"}
           <button
             data-testid={`regenerate-${i}`}
-            onclick={() => void submit(undefined as any, { checkpoint })}
+            onclick={() => {
+              if (!checkpoint) return;
+              void stream.submit(
+                undefined,
+                { forkFrom: checkpoint },
+              );
+            }}
           >
             Regenerate
           </button>
@@ -90,7 +66,7 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit({
+      void stream.submit({
         messages: [{ content: "Hello", type: "human" }],
       } as any)}
   >

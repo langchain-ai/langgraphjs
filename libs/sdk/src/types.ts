@@ -1,4 +1,4 @@
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
+import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
 
@@ -7,6 +7,7 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
+export type StreamProtocol = "legacy" | "v2" | "v2-websocket";
 export type StreamEvent =
   | "events"
   | "metadata"
@@ -168,7 +169,7 @@ export interface RunsInvokePayload {
 
 export interface RunsStreamPayload<
   TStreamMode extends StreamMode | StreamMode[] = [],
-  TSubgraphs extends boolean = false
+  TSubgraphs extends boolean = false,
 > extends RunsInvokePayload {
   /**
    * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.

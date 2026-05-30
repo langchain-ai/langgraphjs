@@ -216,6 +216,94 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("subagent message namespace routing", () => {
+    it("prefers the stream event namespace over checkpoint metadata", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+      const onError = vi.fn();
+
+      const events = [
+        {
+          event: "messages" as const,
+          data: [
+            {
+              id: "ai-1",
+              type: "ai",
+              content: "",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: {
+                    subagent_type: "researcher",
+                    description: "Research AI trends",
+                  },
+                },
+              ],
+            },
+            {},
+          ],
+        },
+        {
+          event: "values|tools:stream-task-id" as const,
+          data: {
+            messages: [
+              {
+                id: "sub-human-1",
+                type: "human",
+                content: "Research AI trends",
+              },
+            ],
+          },
+        },
+        {
+          event: "messages|tools:stream-task-id" as const,
+          data: [
+            {
+              id: "sub-ai-1",
+              type: "ai",
+              content: "",
+              tool_calls: [
+                {
+                  id: "search-1",
+                  name: "search_web",
+                  args: { query: "AI trends" },
+                },
+              ],
+            },
+            { checkpoint_ns: "tools:metadata-task-id" },
+          ],
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(manager.values?.messages).toHaveLength(1);
+      expect(manager.values?.messages[0]?.id).toBe("ai-1");
+
+      const subagent = manager.getSubagentsByMessage("ai-1")[0];
+      expect(subagent).toBeDefined();
+      expect(subagent?.messages).toHaveLength(1);
+      expect(subagent?.toolCalls).toHaveLength(1);
+      expect(subagent?.toolCalls[0]?.call.name).toBe("search_web");
+    });
+  });
+
   describe("tools stream events", () => {
     it("calls onToolEvent when tools event is received", async () => {
       const onToolEvent = vi.fn();
@@ -363,6 +451,363 @@ describe("StreamManager", () => {
       };
       expect(values.__interrupt__).toHaveLength(1);
       expect(values.__interrupt__[0].id).toBe("int-1");
+    });
+  });
+
+  describe("parallel interrupt accumulation", () => {
+    it("should accumulate interrupts from separate values events", async () => {
+      // Simulates parallel branches each raising an interrupt in separate
+      // values events during a single stream.
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-A", value: "approve A?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-B", value: "approve B?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(2);
+      expect(values.__interrupt__[0].id).toBe("int-A");
+      expect(values.__interrupt__[1].id).toBe("int-B");
+    });
+
+    it("should not duplicate interrupts when the same id arrives twice", async () => {
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-A", value: "approve A?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-A", value: "approve A?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(1);
+    });
+
+    it("should accumulate interrupts that have no id field", async () => {
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ value: "approve A?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ value: "approve B?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+      expect(onError).not.toHaveBeenCalled();
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(2);
+    });
+
+    it("should preserve __interrupt__ across non-interrupt values events", async () => {
+      // A non-interrupt values event arrives after an interrupt values event.
+      // The __interrupt__ field must not be wiped.
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-A", value: "approve?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: { messages: [{ id: "1", content: "hi", type: "ai" }] },
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+        messages: Array<{ id: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(1);
+      expect(values.__interrupt__[0].id).toBe("int-A");
+    });
+
+    it("should not overwrite existing messages with interrupt-only values payloads", async () => {
+      const events = [
+        {
+          event: "values" as const,
+          data: {
+            messages: [{ id: "m-1", content: "hello", type: "human" }],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-A", value: "approve?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action = async () => createMockStream(events);
+      const onError = vi.fn();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action, {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      const values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+        messages: Array<{ id: string; content: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(1);
+      expect(values.__interrupt__[0].id).toBe("int-A");
+      expect(values.messages).toHaveLength(1);
+      expect(values.messages[0].id).toBe("m-1");
+      expect(values.messages[0].content).toBe("hello");
+    });
+
+    it("should clear stale __interrupt__ on new stream and show only remaining", async () => {
+      // First stream: two parallel interrupts
+      const firstStreamEvents = [
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-A", value: "approve A?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-B", value: "approve B?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+      ];
+
+      const action1 = async () => createMockStream(firstStreamEvents);
+      const onError = vi.fn();
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action1, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      // Verify both interrupts are present
+      let values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(2);
+
+      // Second stream (resume): backend re-raises only the remaining interrupt
+      const secondStreamEvents = [
+        {
+          event: "values" as const,
+          data: { messages: [] },
+        },
+        {
+          event: "values" as const,
+          data: {
+            __interrupt__: [{ id: "int-B", value: "approve B?" }],
+            messages: [],
+          } as unknown as TestState,
+        },
+        {
+          event: "values" as const,
+          data: { messages: [] },
+        },
+      ];
+
+      const action2 = async () => createMockStream(secondStreamEvents);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action2, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+
+      values = streamManager.values as unknown as {
+        __interrupt__: Array<{ id: string; value: string }>;
+      };
+      expect(values.__interrupt__).toHaveLength(1);
+      expect(values.__interrupt__[0].id).toBe("int-B");
+    });
+
+    it("should clear accumulated interrupts when a values event sends an empty array", async () => {
+      const action1 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [{ id: "int-A", value: "approve A?" }],
+              messages: [],
+            } as unknown as TestState,
+          },
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [{ id: "int-B", value: "approve B?" }],
+              messages: [],
+            } as unknown as TestState,
+          },
+        ]);
+      const onError = vi.fn();
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action1, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      const action2 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [],
+              messages: [],
+            } as unknown as TestState,
+          },
+        ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action2, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(
+        (streamManager.values as unknown as { __interrupt__: unknown[] })
+          .__interrupt__
+      ).toEqual([]);
     });
   });
 
@@ -630,6 +1075,57 @@ describe("StreamManager", () => {
   });
 
   describe("onError callback", () => {
+    it("should keep prior interrupts visible when the next stream fails before values", async () => {
+      const onError = vi.fn();
+      const baseOptions = {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] } as TestState,
+        callbacks: {},
+        onError,
+      };
+
+      const action1 = async () =>
+        createMockStream([
+          {
+            event: "values" as const,
+            data: {
+              __interrupt__: [{ id: "int-A", value: "approve?" }],
+              messages: [],
+            } as unknown as TestState,
+          },
+        ]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action1, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      const streamError = new Error("Stream failed before values");
+      const action2 = async () => {
+        throw streamError;
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(action2, {
+        ...baseOptions,
+        onSuccess: () => undefined,
+      });
+
+      expect(onError).toHaveBeenCalledWith(streamError);
+      expect(
+        (
+          streamManager.values as unknown as {
+            __interrupt__: Array<{ id: string; value: string }>;
+          }
+        ).__interrupt__
+      ).toEqual([{ id: "int-A", value: "approve?" }]);
+    });
+
     it("should call onError when the stream action throws", async () => {
       const streamError = new Error("Stream failed");
       const action = async () => {
@@ -811,6 +1307,86 @@ describe("StreamManager", () => {
         expect(typeof (msg as CoreBaseMessage).getType).toBe("undefined");
         expect(msg.type).toBeDefined();
       }
+    });
+  });
+
+  describe("pending subagent visibility", () => {
+    const toolCalls = [
+      {
+        id: "call_1",
+        name: "task",
+        args: {
+          subagent_type: "researcher",
+          description: "Research AI trends",
+        },
+      },
+    ];
+
+    it("exposes pending subagents immediately after tool-call registration", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      const subagent = mgr.getSubagents().get("call_1");
+      expect(subagent).toBeDefined();
+      expect(subagent?.status).toBe("pending");
+      expect(subagent?.startedAt).toBeNull();
+      expect(mgr.getActiveSubagents()).toEqual([]);
+    });
+
+    it("returns pending subagents from getSubagentsByMessage before they start running", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      const subagents = mgr.getSubagentsByMessage("msg-1");
+      expect(subagents).toHaveLength(1);
+      expect(subagents[0]?.status).toBe("pending");
+    });
+
+    it("replays buffered subagent messages after namespace matching", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      mgr.addMessageToSubagent(
+        "pregel-task-1",
+        {
+          id: "sub-ai-1",
+          type: "ai",
+          content: "",
+          tool_calls: [
+            {
+              id: "search-1",
+              name: "search_web",
+              args: { query: "AI trends" },
+            },
+          ],
+        },
+        undefined
+      );
+
+      expect(mgr.getSubagent("call_1")?.toolCalls).toHaveLength(0);
+
+      mgr.addMessageToSubagent(
+        "pregel-task-1",
+        {
+          id: "sub-human-1",
+          type: "human",
+          content: "Research AI trends",
+        },
+        undefined
+      );
+
+      const subagent = mgr.getSubagent("call_1");
+      expect(subagent?.toolCalls).toHaveLength(1);
+      expect(subagent?.toolCalls[0]?.call.name).toBe("search_web");
     });
   });
 

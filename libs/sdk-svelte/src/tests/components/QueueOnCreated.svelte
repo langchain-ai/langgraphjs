@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useStream } from "../../index.js";
+  import { useStream, useSubmissionQueue } from "../../index.js";
 
   interface Props {
     apiUrl: string;
@@ -11,33 +11,26 @@
 
   let pending: string[] = [];
 
-  const {
-    messages,
-    isLoading,
-    queue,
-    submit,
-  } = useStream({
+  const stream = useStream({
     assistantId: "agent",
     apiUrl,
-    fetchStateHistory: false,
     onCreated: () => {
       if (pending.length > 0) {
         const followUps = pending;
         pending = [];
         for (const text of followUps) {
-          void submit({
+          void stream.submit({
             messages: [{ content: text, type: "human" }],
           } as any);
         }
       }
     },
   });
-
-  const queueSize = queue.size;
+  const queue = useSubmissionQueue(stream);
 
   function onSubmitPresets() {
     pending = PRESETS.slice(1);
-    void submit({
+    void stream.submit({
       messages: [{ content: PRESETS[0], type: "human" }],
     } as any);
   }
@@ -45,7 +38,7 @@
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={"message-" + i}>
         {typeof msg.content === "string"
           ? msg.content
@@ -54,10 +47,10 @@
     {/each}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
-  <div data-testid="message-count">{$messages.length}</div>
-  <div data-testid="queue-size">{$queueSize}</div>
+  <div data-testid="message-count">{stream.messages.length}</div>
+  <div data-testid="queue-size">{queue.size}</div>
   <button data-testid="submit-presets" onclick={onSubmitPresets}>
     Submit Presets
   </button>

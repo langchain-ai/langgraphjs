@@ -1,18 +1,28 @@
 import { useEffect, useRef } from "react";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+
 import { useStream } from "../../index.js";
+import type { StreamSubmitOptions } from "@langchain/langgraph-sdk/stream";
+
+interface StreamState {
+  messages: BaseMessage[];
+  [key: string]: unknown;
+}
 
 interface Props {
   apiUrl: string;
   assistantId?: string;
   onRender?: (messages: string[]) => void;
+  submitOptions?: StreamSubmitOptions<StreamState>;
 }
 
 export function MultiSubmit({
   apiUrl,
-  assistantId = "agent",
+  assistantId = "stategraph_text",
   onRender,
+  submitOptions,
 }: Props) {
-  const { messages, isLoading, submit } = useStream({
+  const { messages, isLoading, submit } = useStream<StreamState>({
     assistantId,
     apiUrl,
   });
@@ -23,7 +33,7 @@ export function MultiSubmit({
   useEffect(() => {
     const rawMessages = messages.map(
       (msg) =>
-        `${msg.type}: ${
+        `${msg.getType()}: ${
           typeof msg.content === "string"
             ? msg.content
             : JSON.stringify(msg.content)
@@ -39,7 +49,7 @@ export function MultiSubmit({
       </div>
       <div data-testid="messages">
         {messages.map((msg, i) => {
-          const content = `${msg.type}: ${
+          const content = `${msg.getType()}: ${
             typeof msg.content === "string"
               ? msg.content
               : JSON.stringify(msg.content)
@@ -54,9 +64,10 @@ export function MultiSubmit({
       <button
         data-testid="submit-first"
         onClick={() =>
-          void submit({
-            messages: [{ content: "Hello (1)", type: "human" }],
-          })
+          void submit(
+            { messages: [new HumanMessage("Hello (1)")] },
+            submitOptions,
+          )
         }
       >
         Send First
@@ -64,9 +75,10 @@ export function MultiSubmit({
       <button
         data-testid="submit-second"
         onClick={() =>
-          void submit({
-            messages: [{ content: "Hello (2)", type: "human" }],
-          })
+          void submit(
+            { messages: [new HumanMessage("Hello (2)")] },
+            submitOptions,
+          )
         }
       >
         Send Second

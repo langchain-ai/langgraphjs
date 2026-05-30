@@ -1,6 +1,46 @@
 export { Client, getApiKey } from "./client.js";
 export type { ClientConfig, RequestHook } from "./client.js";
 
+export {
+  ProtocolError,
+  ThreadStream,
+  SubscriptionHandle,
+  MessageAssembler,
+  MediaAssembler,
+  MediaAssemblyError,
+  ProtocolSseTransportAdapter,
+  ProtocolWebSocketTransportAdapter,
+  HttpAgentServerAdapter,
+} from "./client.js";
+export type { HttpAgentServerAdapterOptions } from "./client.js";
+
+export type {
+  TransportAdapter,
+  AgentServerAdapter,
+  AssembledMessage,
+  ThreadStreamOptions,
+  SessionOrderingState,
+  EventSubscription,
+  MessageSubscription,
+  ThreadExtension,
+  ThreadExtensions,
+  UnwrapExtension,
+  ProtocolRequestHook,
+  ProtocolSseTransportOptions,
+  ProtocolWebSocketTransportOptions,
+  ProtocolTransportPaths,
+  AnyMediaHandle,
+  AudioMedia,
+  FileMedia,
+  ImageMedia,
+  MediaAssemblerCallbacks,
+  MediaAssemblerOptions,
+  MediaAssemblyErrorKind,
+  MediaBase,
+  MediaBlockType,
+  VideoMedia,
+} from "./client.js";
+
 export type {
   Assistant,
   AssistantBase,
@@ -47,6 +87,7 @@ export type {
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
+  InferToolOutput,
 } from "./types.messages.js";
 export type {
   CustomStreamEvent,
@@ -63,8 +104,29 @@ export type {
   UpdatesStreamEvent,
   ValuesStreamEvent,
 } from "./types.stream.js";
+export { NAMESPACE_SEPARATOR } from "./stream/index.js";
 
 export type { BagTemplate } from "./types.template.js";
 export type * from "./ui/stream/index.js";
 
 export { StreamError } from "./ui/errors.js";
+
+export type {
+  HeadlessToolImplementation,
+  AnyHeadlessToolImplementation,
+  ToolEvent,
+  HeadlessToolInterrupt,
+  OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
+} from "./headless-tools.js";
+export {
+  isHeadlessToolInterrupt,
+  parseHeadlessToolInterruptPayload,
+  filterOutHeadlessToolInterrupts,
+  findHeadlessTool,
+  executeHeadlessTool,
+  handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
+  scheduleCoalescedHeadlessToolFlush,
+} from "./headless-tools.js";

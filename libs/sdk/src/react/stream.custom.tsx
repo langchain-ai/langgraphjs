@@ -18,12 +18,14 @@ import type { UseStreamCustom } from "./types.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
-import { Interrupt } from "../schema.js";
+import { userFacingInterruptsFromValuesArray } from "../ui/interrupts.js";
+import { Interrupt, type ThreadState } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
 import type { BagTemplate } from "../types.template.js";
+import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -52,9 +54,8 @@ interface FetchStreamTransportOptions {
 
 export class FetchStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> implements UseStreamTransport<StateType, Bag>
-{
+  Bag extends BagTemplate = BagTemplate,
+> implements UseStreamTransport<StateType, Bag> {
   constructor(private readonly options: FetchStreamTransportOptions) {}
 
   async stream(payload: {
@@ -98,9 +99,28 @@ export class FetchStreamTransport<
   }
 }
 
+function createCustomTransportThreadState<
+  StateType extends Record<string, unknown>,
+>(values: StateType, threadId: string): ThreadState<StateType> {
+  return {
+    values,
+    next: [],
+    tasks: [],
+    metadata: undefined,
+    created_at: null,
+    checkpoint: {
+      thread_id: threadId,
+      checkpoint_id: null,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    },
+    parent_checkpoint: null,
+  };
+}
+
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
   options: AnyStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {
@@ -229,13 +249,46 @@ export function useStreamCustom<
         initialValues: {} as StateType,
         callbacks: options,
 
-        onSuccess: () => undefined,
+        onSuccess: () => {
+          if (!usableThreadId) return undefined;
+
+          const finalValues = stream.values ?? historyValues;
+          options.onFinish?.(
+            createCustomTransportThreadState(finalValues, usableThreadId),
+            undefined
+          );
+
+          return undefined;
+        },
         onError(error) {
           options.onError?.(error, undefined);
         },
       }
     );
   };
+
+  const handledToolsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    handledToolsRef.current.clear();
+  }, [threadId]);
+
+  useEffect(() => {
+    flushPendingHeadlessToolInterrupts(
+      stream.values as Record<string, unknown> | null,
+      options.tools,
+      handledToolsRef.current,
+      {
+        onTool: options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          submit(null, {
+            command,
+          }),
+      }
+    );
+  }, [options.onTool, options.tools, stream.values, submit]);
 
   return {
     get values() {
@@ -254,9 +307,9 @@ export function useStreamCustom<
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return [{ when: "breakpoint" }];
-        return valueInterrupts;
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          stream.values.__interrupt__ as Interrupt<InterruptType>[]
+        );
       }
 
       return [];

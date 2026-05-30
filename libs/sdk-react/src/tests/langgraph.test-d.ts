@@ -2,8 +2,8 @@
  * Type tests for `useStream` with `StateGraph` from `@langchain/langgraph`.
  *
  * Validates that:
- * - stream.messages is BaseMessage[] (React-specific class instances)
- * - stream.values contains the expected graph state
+ * - stream.messages is BaseMessage[] (React class instances)
+ * - stream.values is StateType containing the expected graph state
  * - Compiled graph streams use BaseStream (no toolCalls, no subagents)
  * - Direct state types work as fallback
  *
@@ -28,7 +28,7 @@ import {
   START,
   END,
 } from "@langchain/langgraph";
-import { useStream } from "../index.js";
+import { useMessageMetadata, useStream } from "../index.js";
 
 const SimpleGraphSchema = new StateSchema({
   messages: MessagesValue,
@@ -321,17 +321,17 @@ describe("direct state types work without StateGraph", () => {
       assistantId: "direct",
     });
 
-    expectTypeOf(stream.messages).toEqualTypeOf<BaseMessage[]>();
+    expectTypeOf(stream.messages).toExtend<BaseMessage[]>();
   });
 });
 
-describe("graph streams do not have agent-specific features", () => {
-  test("compiled graph does not have toolCalls", () => {
+describe("graph streams expose v1 root projections and discovery", () => {
+  test("compiled graph has root toolCalls projection", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("toolCalls");
+    expectTypeOf(stream.toolCalls).toBeArray();
   });
 
   test("compiled graph does not have getToolCalls", () => {
@@ -342,24 +342,45 @@ describe("graph streams do not have agent-specific features", () => {
     expectTypeOf(stream).not.toHaveProperty("getToolCalls");
   });
 
-  test("compiled graph does not have subagents", () => {
+  test("compiled graph exposes subagent discovery map", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("subagents");
+    expectTypeOf(stream.subagents).toExtend<ReadonlyMap<string, unknown>>();
+  });
+
+  test("compiled graph does not have getSubagentsByType", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
     expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
+  });
+
+  test("compiled graph does not have activeSubagents", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
     expectTypeOf(stream).not.toHaveProperty("activeSubagents");
+  });
+
+  test("compiled graph does not have getSubagent", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
     expectTypeOf(stream).not.toHaveProperty("getSubagent");
   });
 
-  test("direct state type does not have agent features", () => {
+  test("direct state type also does not have agent features", () => {
     const stream = useStream<BasicDirectState>({
       assistantId: "direct",
     });
 
-    expectTypeOf(stream).not.toHaveProperty("toolCalls");
-    expectTypeOf(stream).not.toHaveProperty("subagents");
+    expectTypeOf(stream).toHaveProperty("toolCalls");
+    expectTypeOf(stream).toHaveProperty("subagents");
     expectTypeOf(stream).not.toHaveProperty("getSubagentsByType");
   });
 });
@@ -405,20 +426,20 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.submit(null)).toEqualTypeOf<Promise<void>>();
   });
 
-  test("branch is string", () => {
+  test("threadId is nullable string", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.branch).toEqualTypeOf<string>();
+    expectTypeOf(stream.threadId).toEqualTypeOf<string | null>();
   });
 
-  test("setBranch accepts string", () => {
+  test("hydrationPromise resolves to void", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.setBranch).toBeCallableWith("main");
+    expectTypeOf(stream.hydrationPromise).toEqualTypeOf<Promise<void>>();
   });
 
   test("assistantId is string", () => {
@@ -429,41 +450,49 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.assistantId).toEqualTypeOf<string>();
   });
 
-  test("joinStream is a function", () => {
+  test("respond returns Promise<void>", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
-    expectTypeOf(stream.joinStream).toBeFunction();
+    expectTypeOf(stream.respond("ok")).toEqualTypeOf<Promise<void>>();
+  });
+
+  test("getThread returns optional ThreadStream", () => {
+    const stream = useStream<typeof researchGraph>({
+      assistantId: "graph",
+    });
+
+    expectTypeOf(stream.getThread()).not.toBeNever();
   });
 });
 
-describe("graph: getMessagesMetadata accepts BaseMessage", () => {
-  test("getMessagesMetadata works with compiled graph messages", () => {
+describe("graph: useMessageMetadata accepts BaseMessage ids", () => {
+  test("useMessageMetadata works with compiled graph messages", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });
 
     const msg = stream.messages[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
+    const metadata = useMessageMetadata(stream, msg.id);
     if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
-      expectTypeOf(metadata.branch).toEqualTypeOf<string | undefined>();
-      expectTypeOf(metadata.branchOptions).toEqualTypeOf<
-        string[] | undefined
+      expectTypeOf(metadata.parentCheckpointId).toEqualTypeOf<
+        string | undefined
       >();
     }
   });
 
-  test("getMessagesMetadata works with direct state type", () => {
+  test("useMessageMetadata works with direct state type", () => {
     const stream = useStream<BasicDirectState>({
       assistantId: "direct",
     });
 
     const msg = stream.messages[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
+    const metadata = useMessageMetadata(stream, msg.id);
     if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
+      expectTypeOf(metadata.parentCheckpointId).toEqualTypeOf<
+        string | undefined
+      >();
     }
   });
 });
@@ -483,9 +512,10 @@ describe("graph: interrupt support", () => {
       assistantId: "graph",
     });
 
-    if (stream.interrupt) {
-      expectTypeOf(stream.interrupt).toHaveProperty("id");
-      expectTypeOf(stream.interrupt).toHaveProperty("value");
+    const interruptValue = stream.interrupt;
+    if (interruptValue) {
+      expectTypeOf(interruptValue).toHaveProperty("id");
+      expectTypeOf(interruptValue).toHaveProperty("value");
     }
   });
 

@@ -12,16 +12,18 @@
 
   let stopped = $state(false);
 
-  const { messages, isLoading, submit, stop } = useStream<{
+  const stream = useStream<{
     messages: Message[];
   }>({
     assistantId,
     apiUrl,
-    onStop: ({ mutate }: any) => {
-      stopped = true;
-      mutate(onStopMutate);
-    },
   });
+
+  function stop() {
+    stopped = true;
+    onStopMutate(stream.values);
+    void stream.stop();
+  }
 </script>
 
 <div>
@@ -29,10 +31,10 @@
     {stopped ? "Stopped" : "Not stopped"}
   </div>
   <div data-testid="loading">
-    {$isLoading ? "Loading..." : "Not loading"}
+    {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -43,11 +45,11 @@
   <button
     data-testid="submit"
     onclick={() =>
-      void submit({
+      void stream.submit({
         messages: [{ content: "Hello", type: "human" }],
       } as any)}
   >
     Send
   </button>
-  <button data-testid="stop" onclick={() => void stop()}>Stop</button>
+  <button data-testid="stop" onclick={stop}>Stop</button>
 </div>

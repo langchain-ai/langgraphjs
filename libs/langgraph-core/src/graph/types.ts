@@ -29,15 +29,16 @@ export { END };
  *
  * @internal
  */
-export type ToStateDefinition<T> = T extends StateSchema<infer TInit>
-  ? StateSchemaFieldsToStateDefinition<TInit>
-  : T extends AnnotationRoot<infer SD>
-  ? SD
-  : T extends InteropZodObject
-  ? InteropZodToStateDefinition<T>
-  : T extends StateDefinition
-  ? T
-  : never;
+export type ToStateDefinition<T> =
+  T extends StateSchema<infer TInit>
+    ? StateSchemaFieldsToStateDefinition<TInit>
+    : T extends AnnotationRoot<infer SD>
+      ? SD
+      : T extends InteropZodObject
+        ? InteropZodToStateDefinition<T>
+        : T extends StateDefinition
+          ? T
+          : never;
 
 /**
  * Type for schema types that can be used to initialize state.
@@ -125,7 +126,7 @@ export type StateGraphInit<
   C extends StateDefinitionInit | undefined = undefined,
   N extends string = string,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > = {
   /** Primary key for state schema */
   state?: SD;
@@ -158,7 +159,7 @@ export type StateGraphOptions<
   C extends StateDefinitionInit | undefined = undefined,
   N extends string = string,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > = Omit<
   StateGraphInit<StateDefinitionInit, I, O, C, N, InterruptType, WriterType>,
   "state" | "stateSchema"
@@ -209,16 +210,14 @@ export function isStateGraphInit(
  * @template Schema - The schema type to extract state from
  * @template Fallback - Type to return if schema doesn't match (default: never)
  */
-export type ExtractStateType<
-  Schema,
-  Fallback = Schema
-> = Schema extends AnnotationRoot<infer SD>
-  ? StateType<SD>
-  : StateType<ToStateDefinition<Schema>> extends infer S
-  ? [S] extends [never]
-    ? Fallback
-    : S
-  : Fallback;
+export type ExtractStateType<Schema, Fallback = Schema> =
+  Schema extends AnnotationRoot<infer SD>
+    ? StateType<SD>
+    : StateType<ToStateDefinition<Schema>> extends infer S
+      ? [S] extends [never]
+        ? Fallback
+        : S
+      : Fallback;
 
 /**
  * Extract the Update type from any supported schema type.
@@ -235,16 +234,14 @@ export type ExtractStateType<
  * @template Schema - The schema type to extract update type from
  * @template FallbackBase - Base type for fallback (will be partialized), defaults to Schema
  */
-export type ExtractUpdateType<
-  Schema,
-  FallbackBase = Schema
-> = Schema extends AnnotationRoot<infer SD>
-  ? AnnotationUpdateType<SD>
-  : AnnotationUpdateType<ToStateDefinition<Schema>> extends infer U
-  ? [U] extends [never]
-    ? Partial<FallbackBase>
-    : U
-  : Partial<FallbackBase>;
+export type ExtractUpdateType<Schema, FallbackBase = Schema> =
+  Schema extends AnnotationRoot<infer SD>
+    ? AnnotationUpdateType<SD>
+    : AnnotationUpdateType<ToStateDefinition<Schema>> extends infer U
+      ? [U] extends [never]
+        ? Partial<FallbackBase>
+        : U
+      : Partial<FallbackBase>;
 
 /**
  * Extract the input type from a type bag, using ExtractStateType on the InputSchema.
@@ -276,7 +273,7 @@ type ExtractBagOutput<Bag, Default> = Bag extends {
  */
 type ExtractBagContext<
   Bag,
-  Default extends Record<string, unknown>
+  Default extends Record<string, unknown>,
 > = Bag extends {
   ContextSchema: infer C;
 }
@@ -321,7 +318,7 @@ export interface GraphNodeTypes<
   InputSchema = unknown,
   OutputSchema = unknown,
   ContextSchema = unknown,
-  Nodes extends string = string
+  Nodes extends string = string,
 > {
   /** Schema for node input state (uses ExtractStateType) */
   InputSchema?: InputSchema;
@@ -340,8 +337,8 @@ export interface GraphNodeTypes<
 type IsGraphNodeTypeBag<T> = T extends { InputSchema: unknown }
   ? true
   : T extends { OutputSchema: unknown }
-  ? true
-  : false;
+    ? true
+    : false;
 
 /**
  * Return value type for GraphNode functions.
@@ -440,23 +437,24 @@ export type GraphNodeReturnValue<Update, Nodes extends string = string> =
 export type GraphNode<
   Schema,
   Context extends Record<string, any> = Record<string, any>,
-  Nodes extends string = string
-> = IsGraphNodeTypeBag<Schema> extends true
-  ? // Type bag pattern - extract types from schemas
-    (
-      state: ExtractBagInput<Schema, unknown>,
-      config: LangGraphRunnableConfig<
-        ExtractBagContext<Schema, Record<string, unknown>>
+  Nodes extends string = string,
+> =
+  IsGraphNodeTypeBag<Schema> extends true
+    ? // Type bag pattern - extract types from schemas
+      (
+        state: ExtractBagInput<Schema, unknown>,
+        config: LangGraphRunnableConfig<
+          ExtractBagContext<Schema, Record<string, unknown>>
+        >
+      ) => GraphNodeReturnValue<
+        ExtractBagOutput<Schema, Partial<ExtractBagInput<Schema, unknown>>>,
+        ExtractBagNodes<Schema, string>
       >
-    ) => GraphNodeReturnValue<
-      ExtractBagOutput<Schema, Partial<ExtractBagInput<Schema, unknown>>>,
-      ExtractBagNodes<Schema, string>
-    >
-  : // Single schema pattern (backward compatible)
-    (
-      state: ExtractStateType<Schema>,
-      config: LangGraphRunnableConfig<Context>
-    ) => GraphNodeReturnValue<ExtractUpdateType<Schema>, Nodes>;
+    : // Single schema pattern (backward compatible)
+      (
+        state: ExtractStateType<Schema>,
+        config: LangGraphRunnableConfig<Context>
+      ) => GraphNodeReturnValue<ExtractUpdateType<Schema>, Nodes>;
 
 /**
  * Type bag for ConditionalEdgeRouter that accepts schema types.
@@ -477,7 +475,7 @@ export type GraphNode<
 export interface ConditionalEdgeRouterTypes<
   InputSchema = unknown,
   ContextSchema = unknown,
-  Nodes extends string = string
+  Nodes extends string = string,
 > {
   /** Schema for router state (uses ExtractStateType) */
   InputSchema?: InputSchema;
@@ -494,8 +492,8 @@ export interface ConditionalEdgeRouterTypes<
 type IsConditionalEdgeRouterTypeBag<T> = T extends { InputSchema: unknown }
   ? true
   : T extends { ContextSchema: unknown }
-  ? true
-  : false;
+    ? true
+    : false;
 
 /**
  * Return type for conditional edge routing functions.
@@ -552,31 +550,32 @@ type ConditionalEdgeRouterReturnValue<Nodes extends string, State> =
 export type ConditionalEdgeRouter<
   Schema,
   Context extends Record<string, any> = Record<string, any>,
-  Nodes extends string = string
-> = IsConditionalEdgeRouterTypeBag<Schema> extends true
-  ? // Type bag pattern - extract types from schemas
-    (
-      state: ExtractBagInput<Schema, unknown>,
-      config: LangGraphRunnableConfig<
-        ExtractBagContext<Schema, Record<string, unknown>>
-      >
-    ) =>
-      | ConditionalEdgeRouterReturnValue<
-          ExtractBagNodes<Schema, string>,
-          ExtractBagInput<Schema, unknown>
+  Nodes extends string = string,
+> =
+  IsConditionalEdgeRouterTypeBag<Schema> extends true
+    ? // Type bag pattern - extract types from schemas
+      (
+        state: ExtractBagInput<Schema, unknown>,
+        config: LangGraphRunnableConfig<
+          ExtractBagContext<Schema, Record<string, unknown>>
         >
-      | Promise<
-          ConditionalEdgeRouterReturnValue<
+      ) =>
+        | ConditionalEdgeRouterReturnValue<
             ExtractBagNodes<Schema, string>,
             ExtractBagInput<Schema, unknown>
           >
-        >
-  : // Single schema pattern (backward compatible)
-    (
-      state: ExtractStateType<Schema>,
-      config: LangGraphRunnableConfig<Context>
-    ) =>
-      | ConditionalEdgeRouterReturnValue<Nodes, ExtractStateType<Schema>>
-      | Promise<
-          ConditionalEdgeRouterReturnValue<Nodes, ExtractStateType<Schema>>
-        >;
+        | Promise<
+            ConditionalEdgeRouterReturnValue<
+              ExtractBagNodes<Schema, string>,
+              ExtractBagInput<Schema, unknown>
+            >
+          >
+    : // Single schema pattern (backward compatible)
+      (
+        state: ExtractStateType<Schema>,
+        config: LangGraphRunnableConfig<Context>
+      ) =>
+        | ConditionalEdgeRouterReturnValue<Nodes, ExtractStateType<Schema>>
+        | Promise<
+            ConditionalEdgeRouterReturnValue<Nodes, ExtractStateType<Schema>>
+          >;

@@ -1,25 +1,33 @@
 <script lang="ts">
   import { useStream } from "../../index.js";
-  import { Client, type Message } from "@langchain/langgraph-sdk";
+  import { Client } from "@langchain/langgraph-sdk";
 
   interface Props {
     apiUrl: string;
     assistantId?: string;
     client: Client;
+    threadId?: string;
   }
 
-  const { apiUrl, assistantId = "agent", client }: Props = $props();
+  const {
+    apiUrl,
+    assistantId = "agent",
+    client,
+    threadId,
+  }: Props = $props();
 
-  const { submit, messages } = useStream({
+  // svelte-ignore state_referenced_locally
+  const stream = useStream({
     assistantId,
     apiUrl,
     client,
+    threadId,
   });
 </script>
 
 <div>
   <div data-testid="messages">
-    {#each $messages as msg, i (msg.id ?? i)}
+    {#each stream.messages as msg, i (msg.id ?? i)}
       <div data-testid={`message-${i}`}>
         {typeof msg.content === "string"
           ? msg.content
@@ -27,10 +35,13 @@
       </div>
     {/each}
   </div>
+  <div data-testid="loading">
+    {stream.isLoading ? "Loading..." : "Not loading"}
+  </div>
   <button
     data-testid="submit"
     onclick={() =>
-      void submit(
+      void stream.submit(
         { messages: [{ content: "Hello", type: "human" }] } as any,
       )}
   >
