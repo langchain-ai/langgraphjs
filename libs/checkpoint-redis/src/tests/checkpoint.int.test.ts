@@ -367,7 +367,7 @@ describe("RedisSaver Integration Tests", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
       channel_values: { test: "integration" },
     };
 
@@ -400,7 +400,7 @@ describe("RedisSaver Integration Tests", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
       channel_values: { test: "fromUrl" },
     };
 
@@ -458,7 +458,7 @@ describe("test_from_conn_string", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     const saved = await saver.put(
@@ -496,12 +496,12 @@ describe("test_from_conn_string", () => {
 
     const checkpoint1: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     const checkpoint2: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     // Save checkpoints with different savers
@@ -555,7 +555,7 @@ describe("test_from_conn_string", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     // Save with saver1

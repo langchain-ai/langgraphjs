@@ -18,8 +18,8 @@ export function putWritesTests<T extends BaseCheckpointSaver>(
     let checkpoint_id: string;
 
     beforeEach(async () => {
-      thread_id = uuid6(-3);
-      checkpoint_id = uuid6(-3);
+      thread_id = uuid6(3);
+      checkpoint_id = uuid6(3);
 
       checkpointer = await initializer.createCheckpointer();
     });

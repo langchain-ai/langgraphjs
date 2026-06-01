@@ -4,10 +4,9 @@ export function uuid6(clockseq: number): string {
   return v6({ clockseq });
 }
 
-// Skip UUID validation check, since UUID6s
-// generated with negative clockseq are not
-// technically compliant, but still work.
-// See: https://github.com/uuidjs/uuid/issues/511
+// Negative clockseq values are not RFC-compliant but still accepted by uuid.
+// Avoid them for checkpoint IDs: uuid@14+ no longer preserves sort order between
+// negative and positive clockseq values.
 export function uuid5(name: string, namespace: string): string {
   const namespaceBytes = namespace
     .replace(/-/g, "")
