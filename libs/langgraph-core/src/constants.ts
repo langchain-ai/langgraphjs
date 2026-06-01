@@ -614,10 +614,7 @@ export function _deserializeCommandSendObjectGraph(
         );
       });
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (x instanceof Command || x instanceof Send) {
-      result = x;
-      seen.set(x, result);
-    } else if (!isPlainObject(x)) {
+    } else if (x instanceof Command || x instanceof Send || !isPlainObject(x)) {
       result = x;
       seen.set(x, result);
     } else if (isCommand(x)) {

@@ -195,15 +195,24 @@ describe("_deserializeCommandSendObjectGraph", () => {
     const task = new TaskEnvelope("task-1");
 
     const send = new Send("worker", {
-      tags,
-      metadata,
-      createdAt,
-      task,
+      payload: {
+        tags,
+        metadata,
+        createdAt,
+        task,
+      },
     });
 
-    expect(send.args.tags).toBe(tags);
-    expect(send.args.metadata).toBe(metadata);
-    expect(send.args.createdAt).toBe(createdAt);
-    expect(send.args.task).toBe(task);
+    expect(send.args.payload.tags).toBe(tags);
+    expect(send.args.payload.metadata).toBe(metadata);
+    expect(send.args.payload.createdAt).toBe(createdAt);
+    expect(send.args.payload.task).toBe(task);
+
+    const command = new Command({ goto: [send] });
+    const deserializedSend = (command.goto as Send[])[0];
+    expect(deserializedSend.args.payload.tags).toBe(tags);
+    expect(deserializedSend.args.payload.metadata).toBe(metadata);
+    expect(deserializedSend.args.payload.createdAt).toBe(createdAt);
+    expect(deserializedSend.args.payload.task).toBe(task);
   });
 });
