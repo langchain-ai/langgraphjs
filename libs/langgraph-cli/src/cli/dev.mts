@@ -24,7 +24,10 @@ builder
   .option("-p, --port <number>", "port to run the server on", "2024")
   .option("-h, --host <string>", "host to bind to", "localhost")
   .option("--no-browser", "disable auto-opening the browser")
-  .option("--no-reload", "disable automatic reloading when code changes are detected")
+  .option(
+    "--no-reload",
+    "disable automatic reloading when code changes are detected"
+  )
   .option("-n, --n-jobs-per-worker <number>", "number of workers to run", "10")
   .option("-c, --config <path>", "path to configuration file", process.cwd())
   .option(
@@ -49,10 +52,12 @@ builder
       const configPath = await getProjectPath(options.config);
       const projectCwd = path.dirname(configPath);
       const [pid, server] = await createIpcServer();
-      const watcher = watch([configPath], {
-        ignoreInitial: true,
-        cwd: projectCwd,
-      });
+      const watcher = options.reload
+        ? watch([configPath], {
+            ignoreInitial: true,
+            cwd: projectCwd,
+          })
+        : undefined;
 
       let hasOpenedFlag = false;
       let child: ChildProcess | undefined = undefined;
@@ -104,8 +109,15 @@ builder
             const envPath = path.resolve(projectCwd, configEnv);
             newWatch.push(envPath);
 
-            const envData = await fs.readFile(envPath, "utf-8");
-            populate(env as Record<string, string>, parse(envData));
+            const envData = await fs.readFile(envPath, "utf-8").catch(() => {
+              logger.warn(
+                `Env file "${configEnv}" not found. Continuing without it.`
+              );
+              return null;
+            });
+            if (envData != null) {
+              populate(env as Record<string, string>, parse(envData));
+            }
           } else if (Array.isArray(configEnv)) {
             throw new Error("Env storage is not supported by CLI.");
           } else if (typeof configEnv === "object") {
@@ -114,20 +126,22 @@ builder
           }
         }
 
-        const oldWatch = Object.entries(watcher.getWatched()).flatMap(
-          ([dir, files]) =>
-            files.map((file) => path.resolve(projectCwd, dir, file))
-        );
+        if (watcher) {
+          const oldWatch = Object.entries(watcher.getWatched()).flatMap(
+            ([dir, files]) =>
+              files.map((file) => path.resolve(projectCwd, dir, file))
+          );
 
-        const addedTarget = newWatch.filter(
-          (target) => !oldWatch.includes(target)
-        );
+          const addedTarget = newWatch.filter(
+            (target) => !oldWatch.includes(target)
+          );
 
-        const removedTarget = oldWatch.filter(
-          (target) => !newWatch.includes(target)
-        );
+          const removedTarget = oldWatch.filter(
+            (target) => !newWatch.includes(target)
+          );
 
-        watcher.unwatch(removedTarget).add(addedTarget);
+          watcher.unwatch(removedTarget).add(addedTarget);
+        }
 
         try {
           const { Client } = await import("langsmith");
@@ -172,19 +186,17 @@ builder
         }
       };
 
-      if (options.reload) {
-        watcher.on("all", async (_name, path) => {
-          logger.warn(`Detected changes in ${path}, restarting server`);
-          launchServer();
-        });
-      }
+      watcher?.on("all", async (_name, path) => {
+        logger.warn(`Detected changes in ${path}, restarting server`);
+        launchServer();
+      });
 
       // TODO: sometimes the server keeps sending stuff
       // while gracefully exiting
       launchServer();
 
       process.on("exit", () => {
-        watcher.close();
+        watcher?.close();
         server.close();
         child?.kill();
       });
