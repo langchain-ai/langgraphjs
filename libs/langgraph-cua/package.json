@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cua",
-  "version": "1.0.2-rc.0",
+  "version": "1.0.2",
   "description": "An implementation of a computer use agent (CUA) using LangGraph",
   "type": "module",
   "engines": {
@@ -45,7 +45,7 @@
     "dpdm": "^3.12.0",
     "openai": "^4.87.3",
     "tsx": "^4.19.3",
-    "turbo": "^2.5.4",
+    "turbo": "^2.9.14",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4"
   },

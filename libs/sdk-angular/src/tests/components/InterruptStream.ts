@@ -65,7 +65,7 @@ export class InterruptComponent {
   }
 
   onResume() {
-    void this.stream.submit(null, { command: { resume: "Resuming" } });
+    void this.stream.respond("Resuming");
   }
 
   onRespond() {

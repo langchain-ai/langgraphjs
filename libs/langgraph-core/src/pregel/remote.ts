@@ -303,6 +303,33 @@ export class RemoteGraph<
     };
   }
 
+  /**
+   * Prepare config and thread ID for remote run API calls.
+   *
+   * `thread_id` is passed via the URL path, not in `config.configurable`, so the
+   * server can accept a separate `context` payload for stateful runs.
+   */
+  #prepareRunRequest(mergedConfig: LangGraphRunnableConfig): {
+    threadId: string | undefined;
+    context: unknown;
+    config: ReturnType<RemoteGraph["_sanitizeConfig"]>;
+  } {
+    const context = mergedConfig.context;
+    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const configurable = { ...sanitizedConfig.configurable };
+    const threadId = configurable.thread_id as string | undefined;
+    delete configurable.thread_id;
+
+    return {
+      threadId,
+      context,
+      config: {
+        ...sanitizedConfig,
+        configurable,
+      },
+    };
+  }
+
   protected _getConfig(checkpoint: Record<string, unknown>): RunnableConfig {
     return {
       configurable: {
@@ -312,6 +339,38 @@ export class RemoteGraph<
         checkpoint_map: checkpoint.checkpoint_map ?? {},
       },
     };
+  }
+
+  protected _checkpointToConfig(
+    checkpoint?: Partial<Checkpoint> | null,
+    fallbackConfig?: RunnableConfig
+  ): RunnableConfig {
+    const resolvedCheckpoint =
+      checkpoint ?? this._getCheckpoint(fallbackConfig);
+    if (resolvedCheckpoint == null) {
+      return { configurable: {} };
+    }
+
+    const configurable: Record<string, unknown> = {};
+    if (resolvedCheckpoint.thread_id !== undefined) {
+      configurable.thread_id = resolvedCheckpoint.thread_id;
+    }
+    if (resolvedCheckpoint.checkpoint_ns !== undefined) {
+      configurable.checkpoint_ns = resolvedCheckpoint.checkpoint_ns;
+    }
+    if (resolvedCheckpoint.checkpoint_id !== undefined) {
+      configurable.checkpoint_id = resolvedCheckpoint.checkpoint_id;
+    }
+
+    const hasCheckpointFields =
+      resolvedCheckpoint.checkpoint_ns !== undefined ||
+      resolvedCheckpoint.checkpoint_id !== undefined ||
+      resolvedCheckpoint.checkpoint_map !== undefined;
+    if (hasCheckpointFields) {
+      configurable.checkpoint_map = resolvedCheckpoint.checkpoint_map ?? {};
+    }
+
+    return { configurable };
   }
 
   protected _getCheckpoint(config?: RunnableConfig): Checkpoint | undefined {
@@ -335,7 +394,10 @@ export class RemoteGraph<
     return Object.keys(checkpoint).length > 0 ? checkpoint : undefined;
   }
 
-  protected _createStateSnapshot(state: ThreadState): StateSnapshot {
+  protected _createStateSnapshot(
+    state: ThreadState,
+    fallbackConfig?: RunnableConfig
+  ): StateSnapshot {
     const tasks: PregelTaskDescription[] = state.tasks.map((task) => {
       return {
         id: task.id,
@@ -348,7 +410,12 @@ export class RemoteGraph<
         })),
         // eslint-disable-next-line no-nested-ternary
         state: task.state
-          ? this._createStateSnapshot(task.state)
+          ? this._createStateSnapshot(
+              task.state,
+              task.checkpoint
+                ? this._checkpointToConfig(task.checkpoint)
+                : fallbackConfig
+            )
           : task.checkpoint
             ? { configurable: task.checkpoint }
             : undefined,
@@ -360,27 +427,19 @@ export class RemoteGraph<
     return {
       values: state.values,
       next: state.next ? [...state.next] : [],
-      config: {
-        configurable: {
-          thread_id: state.checkpoint.thread_id,
-          checkpoint_ns: state.checkpoint.checkpoint_ns,
-          checkpoint_id: state.checkpoint.checkpoint_id,
-          checkpoint_map: state.checkpoint.checkpoint_map ?? {},
-        },
-      },
+      // TODO: Fix SDK typing. `ThreadState.checkpoint` is typed as non-null,
+      // but deployments can return `null` (e.g. a thread that exists but has
+      // not produced a checkpoint yet). See #2328.
+      config: this._checkpointToConfig(
+        state.checkpoint as Checkpoint | null,
+        fallbackConfig
+      ),
       metadata: state.metadata
         ? (state.metadata as CheckpointMetadata)
         : undefined,
       createdAt: state.created_at ?? undefined,
       parentConfig: state.parent_checkpoint
-        ? {
-            configurable: {
-              thread_id: state.parent_checkpoint.thread_id,
-              checkpoint_ns: state.parent_checkpoint.checkpoint_ns,
-              checkpoint_id: state.parent_checkpoint.checkpoint_id,
-              checkpoint_map: state.parent_checkpoint.checkpoint_map ?? {},
-            },
-          }
+        ? this._checkpointToConfig(state.parent_checkpoint)
         : undefined,
       tasks,
     };
@@ -430,8 +489,15 @@ export class RemoteGraph<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): AsyncGenerator<PregelOutputType> {
-    const mergedConfig = mergeConfigs(this.config, options);
-    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const mergedConfig = mergeConfigs(
+      this.config,
+      options
+    ) as LangGraphRunnableConfig;
+    const {
+      threadId,
+      context,
+      config: sanitizedConfig,
+    } = this.#prepareRunRequest(mergedConfig);
 
     const streamProtocolInstance = options?.configurable?.[CONFIG_KEY_STREAM];
 
@@ -465,22 +531,26 @@ export class RemoteGraph<
       serializedInput = _serializeInputs(input);
     }
 
-    for await (const chunk of this.client.runs.stream(
-      sanitizedConfig.configurable.thread_id as string,
-      this.graphId,
-      {
-        command,
-        input: serializedInput,
-        config: sanitizedConfig,
-        streamMode: extendedStreamModes,
-        interruptBefore: interruptBefore as string[],
-        interruptAfter: interruptAfter as string[],
-        streamSubgraphs,
-        ifNotExists: "create",
-        signal: mergedConfig.signal,
-        streamResumable: this.streamResumable,
-      }
-    )) {
+    const streamPayload = {
+      command,
+      input: serializedInput,
+      config: sanitizedConfig,
+      context,
+      streamMode: extendedStreamModes,
+      interruptBefore: interruptBefore as string[],
+      interruptAfter: interruptAfter as string[],
+      streamSubgraphs,
+      ifNotExists: "create" as const,
+      signal: mergedConfig.signal,
+      streamResumable: this.streamResumable,
+    };
+
+    const runStream =
+      threadId != null
+        ? this.client.runs.stream(threadId, this.graphId, streamPayload)
+        : this.client.runs.stream(null, this.graphId, streamPayload);
+
+    for await (const chunk of runStream) {
       let mode;
       let namespace: string[];
       if (chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
@@ -576,7 +646,7 @@ export class RemoteGraph<
       }
     );
     for (const state of states) {
-      yield this._createStateSnapshot(state);
+      yield this._createStateSnapshot(state, mergedConfig);
     }
   }
 
@@ -616,7 +686,7 @@ export class RemoteGraph<
       this._getCheckpoint(mergedConfig),
       options
     );
-    return this._createStateSnapshot(state);
+    return this._createStateSnapshot(state, mergedConfig);
   }
 
   /** @deprecated Use getGraphAsync instead. The async method will become the default in the next minor release. */

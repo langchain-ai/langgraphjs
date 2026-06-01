@@ -114,7 +114,7 @@ export function provideStream<T = Record<string, unknown>>(
     provide: STREAM_INSTANCE,
     useFactory: () => {
       const defaults = angularInject(STREAM_DEFAULTS, { optional: true });
-      return useStream(mergeDefaults(options, defaults));
+      return useStream<T>(mergeDefaults(options, defaults));
     },
   };
 }

@@ -43,7 +43,7 @@ const messageWithToolCall = new AIMessage({
 
 const complexValue = {
   number: 1,
-  id: uuid6(-1),
+  id: uuid6(0),
   error: new Error("test error"),
   set: new Set([1, 2, 3, 4]),
   map: new Map([

@@ -19,7 +19,7 @@ import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
 
 export interface ExtendedRunStartParams extends RunStartParams {
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
   multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
 }
 
@@ -185,10 +185,17 @@ export interface ThreadModules {
 /**
  * Human-in-the-loop interrupt payload surfaced from lifecycle events.
  * Matches the in-process `InterruptPayload` type.
+ *
+ * {@link ThreadStream.interrupts} collects these entries in arrival order.
+ * Use them (via {@link StreamController.getThread `getThread()`}) when
+ * you need the protocol `namespace` tuple for
+ * {@link StreamController.respond `respond()`} — for example subgraph
+ * interrupts that are not mirrored on {@link RootSnapshot.interrupts}.
  */
 export interface InterruptPayload<TPayload = unknown> {
   interruptId: string;
   payload: TPayload;
+  /** Protocol namespace tuple the server validates on resume (`[]` at root). */
   namespace: string[];
 }
 

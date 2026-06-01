@@ -1,6 +1,9 @@
 import { defineComponent, type PropType } from "vue";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
-import type { StreamSubmitOptions } from "@langchain/langgraph-sdk/stream";
+import type {
+  RunExecutionInfo,
+  StreamSubmitOptions,
+} from "@langchain/langgraph-sdk/stream";
 import type { Client } from "@langchain/langgraph-sdk";
 
 import { useStream } from "../../index.js";
@@ -35,9 +38,7 @@ export const BasicStream = defineComponent({
       default: undefined,
     },
     onCreated: {
-      type: Function as PropType<
-        (meta: { run_id: string; thread_id: string }) => void
-      >,
+      type: Function as PropType<(info: RunExecutionInfo) => void>,
       default: undefined,
     },
   },

@@ -1,5 +1,56 @@
 # @langchain/langgraph
 
+## 1.3.3
+
+### Patch Changes
+
+- [#2037](https://github.com/langchain-ai/langgraphjs/pull/2037) [`9eb478f`](https://github.com/langchain-ai/langgraphjs/commit/9eb478ffeeda2ad9c3bff2cd0f0ac602b0a79f4f) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - Decouple `ContextType` generic from `configurable` in `PregelOptions` so that providing a custom context type no longer incorrectly narrows the configurable parameter.
+
+- [#2457](https://github.com/langchain-ai/langgraphjs/pull/2457) [`91a5494`](https://github.com/langchain-ai/langgraphjs/commit/91a54947155b3fad3234001e63e20099a63ed999) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): pass context with stateful RemoteGraph runs
+
+  Pop `thread_id` from run `config.configurable` and forward `context` to the SDK so checkpointed remote runs accept user context without a 400 from ambiguous parameters. Closes [#1922](https://github.com/langchain-ai/langgraphjs/issues/1922).
+
+- [#1988](https://github.com/langchain-ai/langgraphjs/pull/1988) [`6d4bf92`](https://github.com/langchain-ai/langgraphjs/commit/6d4bf927e5cf3744034205528bcd09964949d6d7) Thanks [@Axadali](https://github.com/Axadali)! - Fix race condition in IterableReadableWritableStream.push() that caused ERR_INVALID_STATE errors when streaming with multiple parallel nodes and aborting the stream.
+
+- [#2409](https://github.com/langchain-ai/langgraphjs/pull/2409) [`101b70a`](https://github.com/langchain-ai/langgraphjs/commit/101b70aa8d7ec26ec1654ef814689b832f1e17f3) Thanks [@pragnyanramtha](https://github.com/pragnyanramtha)! - Preserve non-plain objects passed through `Send` and `Command` argument deserialization.
+
+- [#2344](https://github.com/langchain-ai/langgraphjs/pull/2344) [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore(deps): bump uuid to 14.0.0 and keep checkpoint ID ordering stable
+
+  Bump `uuid` from 10.x/13.x to 14.0.0 across packages. Starting with uuid 11, `v6({ clockseq })` no longer advances the sub-millisecond time counter when an explicit `clockseq` is passed, so checkpoint IDs created within the same millisecond were ordered only by `clockseq`. Since checkpoint IDs are sorted lexicographically, this broke ordering — most visibly for the negative `clockseq` used by the first ("input") checkpoint, which sorted as the newest.
+
+  `uuid6()` now maintains its own monotonic `(msecs, nsecs)` clock (mirroring uuid 10's internal v1 behavior) so the time component is always strictly increasing and checkpoint ordering no longer depends on the `clockseq` value. `emptyCheckpoint()` also uses a non-negative `clockseq`.
+
+- Updated dependencies [[`863b555`](https://github.com/langchain-ai/langgraphjs/commit/863b555346de02c2c0be290e877b7d260a3f8856), [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842)]:
+  - @langchain/langgraph-sdk@1.9.11
+  - @langchain/langgraph-checkpoint@1.0.4
+
+## 1.3.2
+
+### Patch Changes
+
+- [#2415](https://github.com/langchain-ai/langgraphjs/pull/2415) [`9d3c9dd`](https://github.com/langchain-ai/langgraphjs/commit/9d3c9dd3182059f9eca9fd9b14d8f7466b4338c4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Move `@langchain/core` from a runtime dependency back to a required peer dependency so installing the SDK alone no longer pulls in `@langchain/core` (and `js-tiktoken`, etc.). Consumers that use streaming or message coercion must install `@langchain/core` explicitly or via `@langchain/langgraph`.
+
+- Updated dependencies [[`9d3c9dd`](https://github.com/langchain-ai/langgraphjs/commit/9d3c9dd3182059f9eca9fd9b14d8f7466b4338c4)]:
+  - @langchain/langgraph-sdk@1.9.4
+
+## 1.3.1
+
+### Patch Changes
+
+- [#2339](https://github.com/langchain-ai/langgraphjs/pull/2339) [`2b88da4`](https://github.com/langchain-ai/langgraphjs/commit/2b88da497b2c6f8fbf8f4d901578a198824eb32f) Thanks [@vigneshpatel14](https://github.com/vigneshpatel14)! - fix(langgraph): surface structuredResponse parse failures in createReactAgent
+
+- [#2406](https://github.com/langchain-ai/langgraphjs/pull/2406) [`e54ae90`](https://github.com/langchain-ai/langgraphjs/commit/e54ae901e119ccf81653b90d5a0db2485027a5a9) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-core): keep tool results out of v3 message streams
+
+- [#2376](https://github.com/langchain-ai/langgraphjs/pull/2376) [`4fd1e9f`](https://github.com/langchain-ai/langgraphjs/commit/4fd1e9f5720361a86a386a286ad8fcc824643280) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph): prefer configurable assistant and graph IDs for runtime server info
+
+  Update runtime `serverInfo` construction to read `assistant_id` and `graph_id` from
+  `config.configurable` first, with fallback to `config.metadata` for compatibility.
+  Also expands `execution_info` tests to cover configurable sourcing, precedence,
+  and metadata fallback behavior.
+
+- Updated dependencies [[`44746b1`](https://github.com/langchain-ai/langgraphjs/commit/44746b1a3b5b49737542b120b9e45d6f94181113), [`4cc6491`](https://github.com/langchain-ai/langgraphjs/commit/4cc6491844f21ed0fc737eaef8498133daa877f7), [`ae8af2d`](https://github.com/langchain-ai/langgraphjs/commit/ae8af2d75aef9a7bbd930d221d1ce03e7fbb90ad), [`01dd046`](https://github.com/langchain-ai/langgraphjs/commit/01dd0462ed300dee5a9a51f229e6c401315f070c), [`2ad1aa4`](https://github.com/langchain-ai/langgraphjs/commit/2ad1aa48c6a3f45340b4833e6de555fdc7348d15), [`75e651b`](https://github.com/langchain-ai/langgraphjs/commit/75e651b9cff1a1e39ad6513b8a5e9b565b9ad7fe), [`f1d651a`](https://github.com/langchain-ai/langgraphjs/commit/f1d651ae14ca178f4a915ac853ba9b439cd55ba3)]:
+  - @langchain/langgraph-sdk@1.9.3
+
 ## 1.3.1-rc.0
 
 ### Patch Changes

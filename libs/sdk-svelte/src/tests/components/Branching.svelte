@@ -30,15 +30,17 @@
         {#if msg.type === "human"}
           <button
             data-testid={`fork-${i}`}
-            onclick={() =>
+            onclick={() => {
+              if (!checkpoint) return;
               void stream.submit(
                 {
                   messages: [
                     { type: "human", content: `Fork: ${text}` },
                   ],
                 } as any,
-                checkpoint ? { forkFrom: { checkpointId: checkpoint } } : {},
-              )}
+                { forkFrom: checkpoint },
+              );
+            }}
           >
             Fork
           </button>
@@ -47,11 +49,13 @@
         {#if msg.type === "ai"}
           <button
             data-testid={`regenerate-${i}`}
-            onclick={() =>
+            onclick={() => {
+              if (!checkpoint) return;
               void stream.submit(
                 undefined,
-                checkpoint ? { forkFrom: { checkpointId: checkpoint } } : {},
-              )}
+                { forkFrom: checkpoint },
+              );
+            }}
           >
             Regenerate
           </button>

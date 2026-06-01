@@ -573,6 +573,11 @@ export function isCommand(x: unknown): x is Command {
   return false;
 }
 
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
  * matching their interfaces.
@@ -612,15 +617,15 @@ export function _deserializeCommandSendObjectGraph(
         );
       });
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (isCommand(x) && !(x instanceof Command)) {
+    } else if (x instanceof Command || x instanceof Send || !isPlainObject(x)) {
+      result = x;
+      seen.set(x, result);
+    } else if (isCommand(x)) {
       result = new Command(x);
       seen.set(x, result);
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (_isSendInterface(x) && !(x instanceof Send)) {
+    } else if (_isSendInterface(x)) {
       result = new Send(x.node, x.args);
-      seen.set(x, result);
-    } else if (isCommand(x) || _isSend(x)) {
-      result = x;
       seen.set(x, result);
     } else if ("lc_serializable" in x && x.lc_serializable) {
       result = x;

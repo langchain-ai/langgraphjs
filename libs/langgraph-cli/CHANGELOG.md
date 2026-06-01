@@ -1,5 +1,38 @@
 # @langchain/langgraph-cli
 
+## 1.2.4
+
+### Patch Changes
+
+- [#1925](https://github.com/langchain-ai/langgraphjs/pull/1925) [`6503319`](https://github.com/langchain-ai/langgraphjs/commit/65033191cc3dd671d64dfac78ccdad453fdfbda2) Thanks [@jbrody-nexxa](https://github.com/jbrody-nexxa)! - fix(cli): add --no-reload flag to dev command
+
+- Updated dependencies [[`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842)]:
+  - @langchain/langgraph-api@1.2.4
+
+## 1.2.3
+
+### Patch Changes
+
+- [#2443](https://github.com/langchain-ai/langgraphjs/pull/2443) [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532) Thanks [@christian-bromann](https://github.com/christian-bromann)! - refactor(sdk): drop StreamSubmitOptions.command and simplify forkFrom
+
+  Remove the misleading submit({ command }) surface from protocol-v2
+  StreamController; HITL resume is respond() only. Accept forkFrom as a
+  plain checkpoint id string and align protocol-v2 servers and docs.
+
+- Updated dependencies [[`80c2806`](https://github.com/langchain-ai/langgraphjs/commit/80c2806cb2da93745a640664bd0cf603c2361da9), [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532), [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d)]:
+  - @langchain/langgraph-api@1.2.3
+
+## 1.2.2
+
+### Patch Changes
+
+- [#2389](https://github.com/langchain-ai/langgraphjs/pull/2389) [`40bcdab`](https://github.com/langchain-ai/langgraphjs/commit/40bcdab38fa495028d8eba68062e48079dbe9208) Thanks [@jdrogers940](https://github.com/jdrogers940)! - Adding support for pre-release versions in api_version.
+
+- [#2396](https://github.com/langchain-ai/langgraphjs/pull/2396) [`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph-cli): accept hyphenated prerelease tags in `api_version` values.
+
+- Updated dependencies [[`9b20df0`](https://github.com/langchain-ai/langgraphjs/commit/9b20df081a82b79efca3dfd2c128243889b11eb8)]:
+  - @langchain/langgraph-api@1.2.2
+
 ## 1.2.2-rc.0
 
 ### Patch Changes

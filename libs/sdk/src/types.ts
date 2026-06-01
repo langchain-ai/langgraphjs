@@ -1,4 +1,4 @@
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
+import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
 

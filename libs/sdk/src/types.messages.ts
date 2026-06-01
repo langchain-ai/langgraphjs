@@ -160,15 +160,61 @@ type InferSchemaInput<S> = S extends { _zod: { input: infer Args } }
  * Helper type to extract the input type from a DynamicStructuredTool's _call method.
  * This is more reliable than trying to infer from the schema directly because
  * DynamicStructuredTool has the input type baked into its _call signature.
+ *
+ * Headless tools returned by `tool({ ... }).implement(...)` expose `execute`
+ * instead and nest the registered name under `tool.name`.
  */
 type InferToolInput<T> = T extends {
+  tool: { name: string };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _call: (arg: infer Args, ...rest: any[]) => any;
+  execute: (args: infer Args) => any;
 }
   ? Args
-  : T extends { schema: infer S }
-    ? InferSchemaInput<S>
-    : never;
+  : T extends {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        _call: (arg: infer Args, ...rest: any[]) => any;
+      }
+    ? Args
+    : T extends { schema: infer S }
+      ? InferSchemaInput<S>
+      : never;
+
+type UnwrapToolFuncOutput<R> =
+  R extends Promise<infer Out>
+    ? Out
+    : R extends AsyncGenerator<unknown, infer Out, unknown>
+      ? Out
+      : R;
+
+/**
+ * Infer the successful return type of a LangChain tool.
+ *
+ * Resolution order mirrors {@link InferToolInput}: `func`, then
+ * `invoke`, then `_call`, so inference survives cross-package
+ * boundaries where `_call` is `protected`.
+ */
+export type InferToolOutput<T> = T extends {
+  tool: { name: string };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  execute: (...args: any[]) => Promise<infer Out>;
+}
+  ? Out
+  : T extends {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        func: (...args: any[]) => infer R;
+      }
+    ? UnwrapToolFuncOutput<R>
+    : T extends {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          invoke: (...args: any[]) => Promise<infer Out>;
+        }
+      ? Out
+      : T extends {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            _call: (...args: any[]) => infer R;
+          }
+        ? UnwrapToolFuncOutput<R>
+        : unknown;
 
 /**
  * Infer a tool call type from a single tool.
@@ -194,16 +240,26 @@ type InferToolInput<T> = T extends {
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ToolCallFromTool<T> = T extends { name: infer N }
+export type ToolCallFromTool<T> = T extends {
+  tool: { name: infer N extends string };
+}
   ? InferToolInput<T> extends infer Args
     ? Args extends never
       ? never
-      : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Args extends Record<string, any>
+      : Args extends Record<string, any>
         ? { name: N; args: Args; id?: string; type?: "tool_call" }
         : never
     : never
-  : never;
+  : T extends { name: infer N }
+    ? InferToolInput<T> extends infer Args
+      ? Args extends never
+        ? never
+        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Args extends Record<string, any>
+          ? { name: N; args: Args; id?: string; type?: "tool_call" }
+          : never
+      : never
+    : never;
 
 /**
  * Infer a union of tool call types from an array of tools.

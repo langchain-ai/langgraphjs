@@ -42,6 +42,7 @@ import type { Message } from "@langchain/langgraph-sdk";
 import type { TestProject } from "vitest/node";
 
 import { getLocationTool } from "./browser-fixtures.js";
+import { graph as multiInterruptGraph } from "./multi-interrupt-graph.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -517,6 +518,7 @@ const headlessToolAgent = createAgent({
 const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
+  multi_interrupt_graph: multiInterruptGraph as unknown as AnyPregel,
   parentAgent,
   removeMessageAgent,
   errorAgent,

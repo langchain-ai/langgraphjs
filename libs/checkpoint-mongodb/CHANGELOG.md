@@ -1,5 +1,22 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.3.2
+
+### Patch Changes
+
+- [#2186](https://github.com/langchain-ai/langgraphjs/pull/2186) [`26c2e32`](https://github.com/langchain-ai/langgraphjs/commit/26c2e325f435a2c061d6b78a7bd6af089cb1e0e6) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: metadata filter in list() now works by querying a plain JSON shadow copy instead of the serialized binary blob
+
+## 1.3.1
+
+### Patch Changes
+
+- [#2397](https://github.com/langchain-ai/langgraphjs/pull/2397) [`284226c`](https://github.com/langchain-ai/langgraphjs/commit/284226c7ca164b3c81fe2d9e32b10f1fc6b99a3c) Thanks [@hntrl](https://github.com/hntrl)! - fix(checkpoint-mongodb): validate configurable checkpoint identifiers before queries
+
+  Add runtime validation for `thread_id`, `checkpoint_ns`, and `checkpoint_id` in
+  `MongoDBSaver` methods that read and write checkpoints. This prevents object-based
+  operator payloads from being passed into MongoDB query filters and ensures invalid
+  configurable values fail fast with explicit errors.
+
 ## 1.3.0
 
 ### Minor Changes

@@ -520,9 +520,6 @@ describe("v1 useStream options and submit typing", () => {
     expectTypeOf(typedStream.submit).toBeCallableWith({
       messages: new HumanMessage("hi"),
     });
-    expectTypeOf(typedStream.submit).toBeCallableWith(null, {
-      command: { resume: "approved" },
-    });
     expectTypeOf(typedStream.submit).toBeCallableWith(
       { theme: "dark" },
       { multitaskStrategy: "enqueue" },

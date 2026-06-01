@@ -577,7 +577,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -615,7 +615,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -649,7 +649,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -687,7 +687,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -727,7 +727,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 0,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "",
         channel_values: {},
         channel_versions: {},
@@ -772,7 +772,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 0,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "",
         channel_values: {},
         channel_versions: {},
@@ -822,7 +822,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -874,7 +874,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -1005,7 +1005,7 @@ export function runPregelTests(
 
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: 1,

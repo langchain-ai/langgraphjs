@@ -1,5 +1,39 @@
 # @langchain/langgraph-checkpoint
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2344](https://github.com/langchain-ai/langgraphjs/pull/2344) [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore(deps): bump uuid to 14.0.0 and keep checkpoint ID ordering stable
+
+  Bump `uuid` from 10.x/13.x to 14.0.0 across packages. Starting with uuid 11, `v6({ clockseq })` no longer advances the sub-millisecond time counter when an explicit `clockseq` is passed, so checkpoint IDs created within the same millisecond were ordered only by `clockseq`. Since checkpoint IDs are sorted lexicographically, this broke ordering — most visibly for the negative `clockseq` used by the first ("input") checkpoint, which sorted as the newest.
+
+  `uuid6()` now maintains its own monotonic `(msecs, nsecs)` clock (mirroring uuid 10's internal v1 behavior) so the time component is always strictly increasing and checkpoint ordering no longer depends on the `clockseq` value. `emptyCheckpoint()` also uses a non-negative `clockseq`.
+
+## 1.0.3
+
+### Patch Changes
+
+- [#2352](https://github.com/langchain-ai/langgraphjs/pull/2352) [`14f2a79`](https://github.com/langchain-ai/langgraphjs/commit/14f2a796912e81d7f52f0a4f16747f6d0a269209) Thanks [@Nagendhra-web](https://github.com/Nagendhra-web)! - fix(langgraph-checkpoint): block prototype pollution in MemorySaver via reserved storage keys
+
+  `MemorySaver` previously embedded `thread_id`, `checkpoint_ns`,
+  `checkpoint_id`, and `task_id` directly into property accesses on the
+  nested plain objects `this.storage` and `this.writes`. A caller able to
+  shape any of those fields (every quickstart, tutorial, and test fixture
+  uses `MemorySaver` by default) could pass `"__proto__"`,
+  `"constructor"`, or `"prototype"` and have the subsequent assignment
+  mutate `Object.prototype`. From that point every plain object in the
+  process inherits the injected property, breaking `for...in` loops,
+  truthy short-circuits, and downstream serializers across unrelated code
+  paths. CWE-1321.
+
+  Adds an `assertSafeStorageKey` chokepoint applied at every public entry
+  that touches `storage` or `writes` (`put`, `putWrites`, `deleteThread`,
+  `getTuple`, `list`). The guard rejects non-string values, the empty
+  string (unless explicitly opted-in for `checkpoint_ns`), and the three
+  prototype-pollution keys. Behaviour for valid string identifiers is
+  unchanged.
+
 ## 1.0.2
 
 ### Patch Changes

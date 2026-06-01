@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RunExecutionInfo } from "@langchain/langgraph-sdk/stream";
   import { useStream } from "../../index.js";
 
   interface Props {
@@ -9,7 +10,7 @@
     submitOptions?: Record<string, unknown>;
     transport?: "sse" | "websocket";
     onThreadId?: (threadId: string) => void;
-    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+    onCreated?: (info: RunExecutionInfo) => void;
   }
 
   const {
