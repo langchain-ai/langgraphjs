@@ -122,6 +122,104 @@ describe("MongoDBSaver", () => {
     });
   });
 
+  describe("metadata filtering", () => {
+    const createCapturingMockClient = () => {
+      const findMock = vi.fn(() => ({
+        sort: vi.fn(() => ({
+          async *[Symbol.asyncIterator]() {
+            // Empty iterator
+          },
+        })),
+      }));
+      const updateOneMock = vi.fn().mockResolvedValue({ acknowledged: true });
+
+      const collectionMock = {
+        find: findMock,
+        updateOne: updateOneMock,
+      };
+
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: vi.fn(() => collectionMock),
+        })),
+      };
+
+      return { client, findMock, updateOneMock };
+    };
+
+    it("should store metadata_search as plain JSON in put()", async () => {
+      const { client, updateOneMock } = createCapturingMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const checkpoint = {
+        v: 4,
+        id: "cp-1",
+        ts: "2024-04-19T17:19:07.952Z",
+        channel_values: {},
+        channel_versions: {},
+        versions_seen: {},
+      };
+      const metadata = {
+        source: "input" as const,
+        step: 1,
+        parents: {},
+      };
+
+      await saver.put(
+        { configurable: { thread_id: "test-thread" } },
+        checkpoint,
+        metadata
+      );
+
+      expect(updateOneMock).toHaveBeenCalledWith(
+        {
+          thread_id: "test-thread",
+          checkpoint_ns: "",
+          checkpoint_id: "cp-1",
+        },
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            metadata_search: metadata,
+          }),
+        }),
+        { upsert: true }
+      );
+
+      const setDoc = updateOneMock.mock.calls[0][1].$set;
+      expect(setDoc.metadata).toBeDefined();
+      expect(setDoc.metadata).not.toEqual(metadata);
+    });
+
+    it("should query metadata_search fields in list()", async () => {
+      const { client, findMock } = createCapturingMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const config = { configurable: { thread_id: "test-thread" } };
+      const filter = {
+        source: "input",
+        step: 1,
+        active: true,
+        optional: null,
+      };
+
+      const generator = saver.list(config, { filter });
+      await generator.next();
+
+      expect(findMock).toHaveBeenCalledWith({
+        thread_id: "test-thread",
+        "metadata_search.source": "input",
+        "metadata_search.step": 1,
+        "metadata_search.active": true,
+        "metadata_search.optional": null,
+      });
+    });
+  });
+
   describe("configurable validation", () => {
     it("should return undefined when thread_id is missing in getTuple", async () => {
       const client = createMockClient();
