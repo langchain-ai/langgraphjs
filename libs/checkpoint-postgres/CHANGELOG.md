@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 1.0.2
+
+### Patch Changes
+
+- [#2255](https://github.com/langchain-ai/langgraphjs/pull/2255) [`e82a50b`](https://github.com/langchain-ai/langgraphjs/commit/e82a50b961a9413dab1ad2248747d5c73a6a1e58) Thanks [@leesta24](https://github.com/leesta24)! - fix(checkpoint-postgres): move serialization outside transaction in put()
+
 ## 1.0.1
 
 ### Patch Changes

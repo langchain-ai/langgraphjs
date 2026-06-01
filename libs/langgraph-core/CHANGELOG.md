@@ -1,5 +1,29 @@
 # @langchain/langgraph
 
+## 1.3.3
+
+### Patch Changes
+
+- [#2037](https://github.com/langchain-ai/langgraphjs/pull/2037) [`9eb478f`](https://github.com/langchain-ai/langgraphjs/commit/9eb478ffeeda2ad9c3bff2cd0f0ac602b0a79f4f) Thanks [@pawel-twardziak](https://github.com/pawel-twardziak)! - Decouple `ContextType` generic from `configurable` in `PregelOptions` so that providing a custom context type no longer incorrectly narrows the configurable parameter.
+
+- [#2457](https://github.com/langchain-ai/langgraphjs/pull/2457) [`91a5494`](https://github.com/langchain-ai/langgraphjs/commit/91a54947155b3fad3234001e63e20099a63ed999) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): pass context with stateful RemoteGraph runs
+
+  Pop `thread_id` from run `config.configurable` and forward `context` to the SDK so checkpointed remote runs accept user context without a 400 from ambiguous parameters. Closes [#1922](https://github.com/langchain-ai/langgraphjs/issues/1922).
+
+- [#1988](https://github.com/langchain-ai/langgraphjs/pull/1988) [`6d4bf92`](https://github.com/langchain-ai/langgraphjs/commit/6d4bf927e5cf3744034205528bcd09964949d6d7) Thanks [@Axadali](https://github.com/Axadali)! - Fix race condition in IterableReadableWritableStream.push() that caused ERR_INVALID_STATE errors when streaming with multiple parallel nodes and aborting the stream.
+
+- [#2409](https://github.com/langchain-ai/langgraphjs/pull/2409) [`101b70a`](https://github.com/langchain-ai/langgraphjs/commit/101b70aa8d7ec26ec1654ef814689b832f1e17f3) Thanks [@pragnyanramtha](https://github.com/pragnyanramtha)! - Preserve non-plain objects passed through `Send` and `Command` argument deserialization.
+
+- [#2344](https://github.com/langchain-ai/langgraphjs/pull/2344) [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore(deps): bump uuid to 14.0.0 and keep checkpoint ID ordering stable
+
+  Bump `uuid` from 10.x/13.x to 14.0.0 across packages. Starting with uuid 11, `v6({ clockseq })` no longer advances the sub-millisecond time counter when an explicit `clockseq` is passed, so checkpoint IDs created within the same millisecond were ordered only by `clockseq`. Since checkpoint IDs are sorted lexicographically, this broke ordering — most visibly for the negative `clockseq` used by the first ("input") checkpoint, which sorted as the newest.
+
+  `uuid6()` now maintains its own monotonic `(msecs, nsecs)` clock (mirroring uuid 10's internal v1 behavior) so the time component is always strictly increasing and checkpoint ordering no longer depends on the `clockseq` value. `emptyCheckpoint()` also uses a non-negative `clockseq`.
+
+- Updated dependencies [[`863b555`](https://github.com/langchain-ai/langgraphjs/commit/863b555346de02c2c0be290e877b7d260a3f8856), [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842)]:
+  - @langchain/langgraph-sdk@1.9.11
+  - @langchain/langgraph-checkpoint@1.0.4
+
 ## 1.3.2
 
 ### Patch Changes

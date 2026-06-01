@@ -1,5 +1,14 @@
 # @langchain/langgraph-cli
 
+## 1.2.4
+
+### Patch Changes
+
+- [#1925](https://github.com/langchain-ai/langgraphjs/pull/1925) [`6503319`](https://github.com/langchain-ai/langgraphjs/commit/65033191cc3dd671d64dfac78ccdad453fdfbda2) Thanks [@jbrody-nexxa](https://github.com/jbrody-nexxa)! - fix(cli): add --no-reload flag to dev command
+
+- Updated dependencies [[`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842)]:
+  - @langchain/langgraph-api@1.2.4
+
 ## 1.2.3
 
 ### Patch Changes
