@@ -5,8 +5,8 @@
  * @langchain/core message class instances (BaseMessage) rather than
  * plain SDK Message interfaces.
  *
- * In Vue, reactive properties are wrapped in `Ref<T>` or `ComputedRef<T>`,
- * so accessing the underlying value requires `.value`.
+ * In Vue, reactive properties are wrapped in `Ref<T>`/`ShallowRef<T>`
+ * or `ComputedRef<T>`, so accessing the underlying value requires `.value`.
  *
  * NOTE: These tests are NOT executed at runtime. Vitest only compiles them
  * to verify type correctness.
@@ -14,7 +14,7 @@
 
 import { describe, test, expectTypeOf } from "vitest";
 import { computed, ref } from "vue";
-import type { ComputedRef, Ref } from "vue";
+import type { Ref, ShallowRef } from "vue";
 import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import {
   AIMessage,
@@ -24,7 +24,13 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import type { Message } from "@langchain/langgraph-sdk";
-import { useStream } from "../index.js";
+import { HttpAgentServerAdapter, useStream } from "../index.js";
+import type {
+  AgentServerOptions,
+  CustomAdapterOptions,
+  UseStreamOptions,
+  UseStreamResult,
+} from "../index.js";
 
 // ============================================================================
 // Test State Types
@@ -45,12 +51,12 @@ interface CustomState {
 // ============================================================================
 
 describe("useStream exposes BaseMessage class instances", () => {
-  test("stream.messages is ComputedRef<BaseMessage[]>", () => {
+  test("stream.messages is Readonly<ShallowRef<BaseMessage[]>>", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+    expectTypeOf(stream.messages).toExtend<Readonly<ShallowRef<BaseMessage[]>>>();
     expectTypeOf(stream.messages.value).toExtend<BaseMessage[]>();
     expectTypeOf(stream.messages.value).not.toEqualTypeOf<Message[]>();
   });
@@ -223,13 +229,13 @@ describe("Vue reactive wrappers are correct", () => {
     expectTypeOf(stream.error).toExtend<Ref<unknown>>();
   });
 
-  test("branch is Ref<string>", () => {
+  test("threadId is Ref<string | null>", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.branch).toExtend<Ref<string>>();
-    expectTypeOf(stream.branch.value).toEqualTypeOf<string>();
+    expectTypeOf(stream.threadId).toExtend<Ref<string | null>>();
+    expectTypeOf(stream.threadId.value).toEqualTypeOf<string | null>();
   });
 
   test("stop is a plain function", () => {
@@ -268,25 +274,6 @@ describe("custom state types work with class instance messages", () => {
     });
 
     expectTypeOf(stream.messages.value).toExtend<BaseMessage[]>();
-  });
-});
-
-// ============================================================================
-// Type Tests: getMessagesMetadata works with BaseMessage
-// ============================================================================
-
-describe("getMessagesMetadata accepts BaseMessage", () => {
-  test("getMessagesMetadata can be called with a class instance", () => {
-    const stream = useStream<BasicState>({
-      assistantId: "agent",
-    });
-
-    const msg = stream.messages.value[0];
-    const metadata = stream.getMessagesMetadata(msg, 0);
-
-    if (metadata) {
-      expectTypeOf(metadata.messageId).toEqualTypeOf<string>();
-    }
   });
 });
 
@@ -349,33 +336,16 @@ describe("realistic usage patterns with class instances", () => {
 });
 
 // ============================================================================
-// Type Tests: MaybeRefOrGetter reactive options
+// Type Tests: reactive options
 // ============================================================================
 
-describe("useStream accepts MaybeRefOrGetter for reactive options", () => {
+describe("useStream accepts reactive options for dynamic inputs", () => {
   test("accepts plain string for assistantId", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
-  });
-
-  test("accepts Ref<string> for assistantId", () => {
-    const assistantId = ref("agent");
-    const stream = useStream<BasicState>({
-      assistantId,
-    });
-
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
-  });
-
-  test("accepts getter for assistantId", () => {
-    const stream = useStream<BasicState>({
-      assistantId: () => "agent",
-    });
-
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+    expectTypeOf(stream.messages).toExtend<Readonly<ShallowRef<BaseMessage[]>>>();
   });
 
   test("accepts ComputedRef for apiUrl", () => {
@@ -385,7 +355,7 @@ describe("useStream accepts MaybeRefOrGetter for reactive options", () => {
       apiUrl,
     });
 
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+    expectTypeOf(stream.messages).toExtend<Readonly<ShallowRef<BaseMessage[]>>>();
   });
 
   test("accepts Ref for threadId", () => {
@@ -395,27 +365,62 @@ describe("useStream accepts MaybeRefOrGetter for reactive options", () => {
       threadId,
     });
 
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+    expectTypeOf(stream.messages).toExtend<Readonly<ShallowRef<BaseMessage[]>>>();
   });
 
-  test("accepts getter for messagesKey", () => {
+  test("accepts plain string for messagesKey", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
-      messagesKey: () => "messages",
+      messagesKey: "messages",
     });
 
-    expectTypeOf(stream.messages).toExtend<ComputedRef<BaseMessage[]>>();
+    expectTypeOf(stream.messages).toExtend<Readonly<ShallowRef<BaseMessage[]>>>();
   });
 
   test("callbacks remain plain function types", () => {
     useStream<BasicState>({
       assistantId: "agent",
-      onError: (error) => {
-        expectTypeOf(error).toBeUnknown();
-      },
       onThreadId: (id) => {
         expectTypeOf(id).toBeString();
       },
     });
+  });
+});
+
+// ============================================================================
+// Type Tests: discriminated-union options
+// ============================================================================
+
+describe("UseStreamOptions discriminates built-in and custom transports", () => {
+  test("assistantId alone compiles for the built-in server branch", () => {
+    expectTypeOf<{
+      assistantId: string;
+    }>().toExtend<AgentServerOptions<BasicState>>();
+  });
+
+  test("transport-as-adapter compiles for the custom-adapter branch", () => {
+    type CustomOnly = Pick<CustomAdapterOptions<BasicState>, "transport">;
+    expectTypeOf<CustomOnly>().toExtend<CustomAdapterOptions<BasicState>>();
+  });
+
+  test("HttpAgentServerAdapter is exported as a value for custom transports", () => {
+    const adapter = new HttpAgentServerAdapter({
+      apiUrl: "http://localhost:8000",
+      threadId: "thread-1",
+    });
+
+    useStream<BasicState>({ transport: adapter });
+  });
+
+  test("options union is the sum of the two branches", () => {
+    expectTypeOf<UseStreamOptions<BasicState>>().toEqualTypeOf<
+      AgentServerOptions<BasicState> | CustomAdapterOptions<BasicState>
+    >();
+  });
+
+  test("UseStreamResult aliases the resolved stream handle", () => {
+    expectTypeOf<UseStreamResult<BasicState>>().toEqualTypeOf<
+      ReturnType<typeof useStream<BasicState>>
+    >();
   });
 });

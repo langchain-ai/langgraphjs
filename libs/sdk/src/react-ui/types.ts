@@ -12,7 +12,7 @@ export interface UIMessage<
     run_id?: string;
     name?: string;
     tags?: string[];
-    message_id?: string;
+    id?: string;
     [key: string]: unknown;
   };
 }

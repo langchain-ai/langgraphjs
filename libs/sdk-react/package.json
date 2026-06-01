@@ -1,6 +1,6 @@
 {
   "name": "@langchain/react",
-  "version": "0.3.3",
+  "version": "1.0.10",
   "description": "React integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -18,11 +18,12 @@
     "directory": "libs/sdk-react"
   },
   "dependencies": {
-    "@langchain/langgraph-sdk": "workspace:^"
+    "@langchain/langgraph-sdk": "workspace:*"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.13",
-    "@langchain/core": "^1.1.40",
+    "@hono/node-ws": "^1.3.0",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
     "@langchain/langgraph-checkpoint": "workspace:^",
@@ -32,8 +33,8 @@
     "@vitest/browser": "^4.0.18",
     "@vitest/browser-webdriverio": "^4.0.18",
     "deepagents": "^1.8.3",
-    "hono": "^4.12.14",
-    "langchain": "^1.3.0",
+    "hono": "^4.12.18",
+    "langchain": "^1.3.5",
     "react": "^19.2.4",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
@@ -42,7 +43,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.27",
+    "@langchain/core": "^1.1.44",
     "react": "^18 || ^19"
   },
   "main": "./dist/index.js",

@@ -157,7 +157,7 @@ describe("ExecutionInfo", () => {
 });
 
 describe("ServerInfo", () => {
-  it("should build serverInfo from assistant_id/graph_id in config metadata", async () => {
+  it("should build serverInfo from assistant_id/graph_id in config configurable", async () => {
     let captured: ServerInfo | undefined;
 
     const graph = new StateGraph(State)
@@ -171,7 +171,7 @@ describe("ServerInfo", () => {
 
     await graph.invoke(
       { message: "hi" },
-      { metadata: { assistant_id: "asst-abc", graph_id: "my-graph" } }
+      { configurable: { assistant_id: "asst-abc", graph_id: "my-graph" } }
     );
 
     expect(captured).toBeDefined();
@@ -180,7 +180,54 @@ describe("ServerInfo", () => {
     expect(captured!.user).toBeUndefined();
   });
 
-  it("should return undefined serverInfo when no metadata present", async () => {
+  it("should use configurable values when metadata and configurable both provide ids", async () => {
+    let captured: ServerInfo | undefined;
+
+    const graph = new StateGraph(State)
+      .addNode("capture", (_state: any, runtime: Runtime) => {
+        captured = runtime.serverInfo;
+        return { message: "done" };
+      })
+      .addEdge(START, "capture")
+      .addEdge("capture", END)
+      .compile();
+
+    await graph.invoke(
+      { message: "hi" },
+      {
+        configurable: { assistant_id: "asst-config", graph_id: "graph-config" },
+        metadata: { assistant_id: "asst-meta", graph_id: "graph-meta" },
+      }
+    );
+
+    expect(captured).toBeDefined();
+    expect(captured!.assistantId).toBe("asst-config");
+    expect(captured!.graphId).toBe("graph-config");
+  });
+
+  it("should fall back to metadata ids when configurable ids are absent", async () => {
+    let captured: ServerInfo | undefined;
+
+    const graph = new StateGraph(State)
+      .addNode("capture", (_state: any, runtime: Runtime) => {
+        captured = runtime.serverInfo;
+        return { message: "done" };
+      })
+      .addEdge(START, "capture")
+      .addEdge("capture", END)
+      .compile();
+
+    await graph.invoke(
+      { message: "hi" },
+      { metadata: { assistant_id: "asst-meta", graph_id: "graph-meta" } }
+    );
+
+    expect(captured).toBeDefined();
+    expect(captured!.assistantId).toBe("asst-meta");
+    expect(captured!.graphId).toBe("graph-meta");
+  });
+
+  it("should return undefined serverInfo when no ids or auth user are present", async () => {
     let captured: ServerInfo | undefined;
 
     const graph = new StateGraph(State)
@@ -219,8 +266,11 @@ describe("ServerInfo", () => {
     await graph.invoke(
       { message: "hi" },
       {
-        configurable: { langgraph_auth_user: proxyUser },
-        metadata: { assistant_id: "asst-proxy", graph_id: "graph-proxy" },
+        configurable: {
+          langgraph_auth_user: proxyUser,
+          assistant_id: "asst-proxy",
+          graph_id: "graph-proxy",
+        },
       }
     );
 

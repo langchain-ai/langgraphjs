@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-swarm",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "An implementation of a multi-agent swarm using LangGraph",
   "type": "module",
   "engines": {
@@ -30,18 +30,18 @@
     "zod": "^3.25.76 || ^4"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.40",
-    "@langchain/langgraph": "^0.2.53 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha.5"
+    "@langchain/core": "^1.1.44",
+    "@langchain/langgraph": "^1.3.1-rc.0"
   },
   "devDependencies": {
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.4.1",
+    "@langchain/openai": "^1.4.5",
     "@langchain/scripts": "^0.1.3",
     "@tsconfig/recommended": "^1.0.3",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
     "tsx": "^4.19.3",
-    "turbo": "^2.5.4",
+    "turbo": "^2.9.14",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^3.2.4"
   },

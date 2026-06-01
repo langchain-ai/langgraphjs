@@ -1,19 +1,109 @@
-import { Component } from "@angular/core";
+import { Component, computed, input } from "@angular/core";
 import { inject } from "vitest";
 import {
   AIMessage,
+  HumanMessage,
   type BaseMessage,
   ToolMessage,
 } from "@langchain/core/messages";
 import {
+  injectMessages,
   injectStream,
-  type ClassSubagentStreamInterface,
+  injectToolCalls,
+  provideStream,
+  type SubagentDiscoverySnapshot,
 } from "../../index.js";
+import type { SelectorTarget } from "../../selectors.js";
 import type { DeepAgentGraph } from "../fixtures/browser-fixtures.js";
 
 const serverUrl = inject("serverUrl");
 
 @Component({
+  selector: "lg-deep-agent-subagent-card",
+  template: `
+    @if (subagent(); as sub) {
+      <div
+        [attr.data-testid]="'subagent-' + getSubType(sub)"
+        style="margin: 8px 0; padding-left: 12px; border-left: 2px solid #999"
+      >
+        <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-status'">
+          SubAgent ({{ getSubType(sub) }}) status: {{ sub.status }}
+        </div>
+        <div
+          [attr.data-testid]="
+            'subagent-' + getSubType(sub) + '-task-description'
+          "
+        >
+          Task: {{ getTaskDescription(sub) }}
+        </div>
+        <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-result'">
+          Result: {{ getResult(sub) }}
+        </div>
+        <div
+          [attr.data-testid]="
+            'subagent-' + getSubType(sub) + '-messages-count'
+          "
+        >
+          {{ messages().length }}
+        </div>
+        <div
+          [attr.data-testid]="
+            'subagent-' + getSubType(sub) + '-toolcalls-count'
+          "
+        >
+          {{ toolCalls().length }}
+        </div>
+        <div
+          [attr.data-testid]="
+            'subagent-' + getSubType(sub) + '-toolcall-names'
+          "
+        >
+          {{ toolCallNames() }}
+        </div>
+      </div>
+    }
+  `,
+})
+class DeepAgentSubagentCardComponent {
+  readonly subagent = input<SubagentDiscoverySnapshot | null>(null);
+
+  readonly stream = injectStream<DeepAgentGraph>();
+
+  readonly target = computed<SelectorTarget>(() => this.subagent());
+
+  readonly messages = injectMessages(this.stream, this.target);
+  readonly toolCalls = injectToolCalls(this.stream, this.target);
+
+  getSubType(sub: SubagentDiscoverySnapshot): string {
+    return sub.name ?? "unknown";
+  }
+
+  getTaskDescription(sub: SubagentDiscoverySnapshot): string {
+    return sub.taskInput ?? "";
+  }
+
+  getResult(sub: SubagentDiscoverySnapshot): string {
+    if (sub.output == null) return "";
+    return typeof sub.output === "string"
+      ? sub.output
+      : JSON.stringify(sub.output);
+  }
+
+  toolCallNames(): string {
+    return this.toolCalls()
+      .map((toolCall) => toolCall.name)
+      .join(",");
+  }
+}
+
+@Component({
+  imports: [DeepAgentSubagentCardComponent],
+  providers: [
+    provideStream<DeepAgentGraph>({
+      assistantId: "deepAgent",
+      apiUrl: serverUrl,
+    }),
+  ],
   template: `
     <div
       data-testid="deep-agent-root"
@@ -31,6 +121,12 @@ const serverUrl = inject("serverUrl");
       <div>
         <b>Messages ({{ stream.messages().length }})</b>
       </div>
+      <div data-testid="root-toolcall-count">
+        {{ stream.toolCalls().length }}
+      </div>
+      <div data-testid="root-toolcall-names">
+        {{ rootToolCallNames() }}
+      </div>
       <div data-testid="messages">
         @for (msg of stream.messages(); track msg.id ?? $index) {
           <div [attr.data-testid]="'message-' + $index">
@@ -45,46 +141,9 @@ const serverUrl = inject("serverUrl");
         (<span data-testid="subagent-count">{{ sortedSubagents().length }}</span
         >)
       </div>
+      <div data-testid="subagent-names">{{ subagentNames() }}</div>
       @for (sub of sortedSubagents(); track sub.id) {
-        <div
-          [attr.data-testid]="'subagent-' + getSubType(sub)"
-          style="margin: 8px 0; padding-left: 12px; border-left: 2px solid #999"
-        >
-          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-status'">
-            SubAgent ({{ getSubType(sub) }}) status: {{ sub.status }}
-          </div>
-          <div
-            [attr.data-testid]="
-              'subagent-' + getSubType(sub) + '-task-description'
-            "
-          >
-            Task: {{ sub.toolCall?.args?.description ?? "" }}
-          </div>
-          <div [attr.data-testid]="'subagent-' + getSubType(sub) + '-result'">
-            Result: {{ sub.result ?? "" }}
-          </div>
-          <div
-            [attr.data-testid]="
-              'subagent-' + getSubType(sub) + '-messages-count'
-            "
-          >
-            {{ sub.messages.length }}
-          </div>
-          <div
-            [attr.data-testid]="
-              'subagent-' + getSubType(sub) + '-toolcalls-count'
-            "
-          >
-            {{ sub.toolCalls.length }}
-          </div>
-          <div
-            [attr.data-testid]="
-              'subagent-' + getSubType(sub) + '-toolcall-names'
-            "
-          >
-            {{ getToolCallNames(sub) }}
-          </div>
-        </div>
+        <lg-deep-agent-subagent-card [subagent]="sub" />
       }
 
       <div data-testid="observed-toolcall-states">
@@ -100,28 +159,18 @@ const serverUrl = inject("serverUrl");
   `,
 })
 export class DeepAgentStreamComponent {
-  stream = injectStream<DeepAgentGraph>({
-    assistantId: "deepAgent",
-    apiUrl: serverUrl,
-    filterSubagentMessages: true,
-  });
+  stream = injectStream<DeepAgentGraph>();
 
   toolCallStates = new Set<string>();
   subagentStatuses = new Set<string>();
 
   sortedSubagents() {
     const sorted = [...this.stream.subagents().values()].sort(
-      (a: ClassSubagentStreamInterface, b: ClassSubagentStreamInterface) =>
-        (a.toolCall?.args?.subagent_type ?? "").localeCompare(
-          b.toolCall?.args?.subagent_type ?? "",
-        ),
+      (a, b) => this.getSubType(a).localeCompare(this.getSubType(b)),
     );
     for (const sub of sorted) {
-      const subType = sub.toolCall?.args?.subagent_type ?? "unknown";
+      const subType = this.getSubType(sub);
       this.subagentStatuses.add(`${subType}:${sub.status}`);
-      for (const tc of sub.toolCalls) {
-        this.toolCallStates.add(`${subType}:${tc.call.name}:${tc.state}`);
-      }
     }
     return sorted;
   }
@@ -134,12 +183,21 @@ export class DeepAgentStreamComponent {
     return [...this.subagentStatuses].sort().join(",");
   }
 
-  getSubType(sub: ClassSubagentStreamInterface): string {
-    return sub.toolCall?.args?.subagent_type ?? "unknown";
+  subagentNames(): string {
+    return this.sortedSubagents()
+      .map((sub) => this.getSubType(sub))
+      .join(",");
   }
 
-  getToolCallNames(sub: ClassSubagentStreamInterface): string {
-    return sub.toolCalls.map((tc) => tc.call.name).join(",");
+  rootToolCallNames(): string {
+    return this.stream
+      .toolCalls()
+      .map((toolCall) => toolCall.name)
+      .join(",");
+  }
+
+  getSubType(sub: SubagentDiscoverySnapshot): string {
+    return sub.name ?? "unknown";
   }
 
   formatMessage(msg: BaseMessage): string {
@@ -167,9 +225,8 @@ export class DeepAgentStreamComponent {
   }
 
   onSubmit() {
-    void this.stream.submit(
-      { messages: [{ content: "Run analysis", type: "human" }] },
-      { streamSubgraphs: true },
-    );
+    void this.stream.submit({
+      messages: [new HumanMessage("Run analysis")],
+    });
   }
 }

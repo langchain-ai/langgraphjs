@@ -20,7 +20,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "^1.1.40",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",

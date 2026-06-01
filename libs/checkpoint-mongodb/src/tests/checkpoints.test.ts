@@ -121,4 +121,198 @@ describe("MongoDBSaver", () => {
       expect(result.done).toBe(true);
     });
   });
+
+  describe("configurable validation", () => {
+    it("should return undefined when thread_id is missing in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(saver.getTuple({ configurable: {} })).resolves.toBeUndefined();
+    });
+
+    it("should reject object thread_id in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(
+        saver.getTuple({
+          configurable: { thread_id: { $gt: "" }, checkpoint_ns: "" },
+        } as never)
+      ).rejects.toThrow('Invalid configurable.thread_id: expected a string');
+    });
+
+    it("should reject object checkpoint_ns in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(
+        saver.getTuple({
+          configurable: { thread_id: "safe-thread", checkpoint_ns: { $ne: null } },
+        } as never)
+      ).rejects.toThrow('Invalid configurable.checkpoint_ns: expected a string');
+    });
+
+    it("should reject object checkpoint_id in getTuple", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(
+        saver.getTuple({
+          configurable: {
+            thread_id: "safe-thread",
+            checkpoint_ns: "",
+            checkpoint_id: { $gt: "" },
+          },
+        } as never)
+      ).rejects.toThrow('Invalid configurable.checkpoint_id: expected a string');
+    });
+
+    it("should reject object thread_id in list", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const generator = saver.list({
+        configurable: { thread_id: { $gt: "" } },
+      } as never);
+      await expect(generator.next()).rejects.toThrow(
+        'Invalid configurable.thread_id: expected a string'
+      );
+    });
+
+    it("should reject object checkpoint_ns in list", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const generator = saver.list({
+        configurable: { thread_id: "safe-thread", checkpoint_ns: { $ne: null } },
+      } as never);
+      await expect(generator.next()).rejects.toThrow(
+        'Invalid configurable.checkpoint_ns: expected a string'
+      );
+    });
+
+    it("should reject object before.checkpoint_id in list", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const generator = saver.list(
+        { configurable: { thread_id: "safe-thread", checkpoint_ns: "" } },
+        { before: { configurable: { checkpoint_id: { $lt: "zzz" } } } as never }
+      );
+      await expect(generator.next()).rejects.toThrow(
+        'Invalid configurable.checkpoint_id: expected a string'
+      );
+    });
+
+    it("should reject non-string thread_id in put", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const checkpoint = {
+        v: 4,
+        id: "cp-1",
+        ts: new Date().toISOString(),
+        channel_values: {},
+        channel_versions: {},
+        versions_seen: {},
+      } as never;
+
+      await expect(
+        saver.put(
+          { configurable: { thread_id: { $gt: "" } } } as never,
+          checkpoint,
+          { source: "input", step: 1, parents: {} } as never
+        )
+      ).rejects.toThrow('Invalid configurable.thread_id: expected a string');
+    });
+
+    it("should reject non-string thread_id in putWrites", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(
+        saver.putWrites(
+          {
+            configurable: {
+              thread_id: { $gt: "" },
+              checkpoint_ns: "",
+              checkpoint_id: "cp-1",
+            },
+          } as never,
+          [["foo", "bar"]],
+          "task-1"
+        )
+      ).rejects.toThrow('Invalid configurable.thread_id: expected a string');
+    });
+
+    it("should reject non-string checkpoint_ns in putWrites", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(
+        saver.putWrites(
+          {
+            configurable: {
+              thread_id: "safe-thread",
+              checkpoint_ns: { $ne: null },
+              checkpoint_id: "cp-1",
+            },
+          } as never,
+          [["foo", "bar"]],
+          "task-1"
+        )
+      ).rejects.toThrow('Invalid configurable.checkpoint_ns: expected a string');
+    });
+
+    it("should reject non-string checkpoint_id in putWrites", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(
+        saver.putWrites(
+          {
+            configurable: {
+              thread_id: "safe-thread",
+              checkpoint_ns: "",
+              checkpoint_id: { $gt: "" },
+            },
+          } as never,
+          [["foo", "bar"]],
+          "task-1"
+        )
+      ).rejects.toThrow('Invalid configurable.checkpoint_id: expected a string');
+    });
+
+    it("should reject non-string threadId in deleteThread", async () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await expect(saver.deleteThread({} as never)).rejects.toThrow(
+        "Invalid threadId: expected a string"
+      );
+    });
+  });
 });

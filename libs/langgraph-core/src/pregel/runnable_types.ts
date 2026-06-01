@@ -109,7 +109,6 @@ export interface Runtime<
 export interface LangGraphRunnableConfig<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ContextType extends Record<string, any> = Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 >
   extends
     RunnableConfig<ContextType>,

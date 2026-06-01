@@ -395,10 +395,12 @@ export function useStreamLGP<
       // Fetch internal messages for each subagent from their subgraph checkpoints.
       // These messages are not in the main thread state but are persisted in the
       // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
-      if (threadId) {
+      if (historyLimit !== false && threadId) {
         const controller = new AbortController();
         void stream.fetchSubagentHistory(client.threads, threadId, {
           messagesKey: options.messagesKey ?? "messages",
+          historyLimit:
+            typeof historyLimit === "number" ? historyLimit : undefined,
           signal: controller.signal,
         });
         return () => controller.abort();
@@ -797,7 +799,7 @@ export function useStreamLGP<
     );
   }, [options.onTool, options.tools, submit, values]);
 
-  return {
+  const streamHandle: UseStream<StateType, Bag> = {
     get values() {
       trackStreamMode("values");
       return values;
@@ -894,7 +896,7 @@ export function useStreamLGP<
       return Array.from(toolProgressMap.values());
     },
 
-    getToolCalls(message) {
+    getToolCalls(message: Message<ToolCallType>) {
       trackStreamMode("messages-tuple", "values");
       const msgs = getMessages(values) as Message<ToolCallType>[];
       const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
@@ -947,4 +949,25 @@ export function useStreamLGP<
       return stream.getSubagentsByMessage(messageId);
     },
   };
+
+  // Avoid eager getter evaluation during object spread/rest destructuring.
+  // These accessors are opt-in and should only run when explicitly read.
+  const nonEnumerableAccessors = [
+    "history",
+    "experimental_branchTree",
+    "toolProgress",
+    "subagents",
+    "activeSubagents",
+  ] as const;
+  for (const key of nonEnumerableAccessors) {
+    const descriptor = Object.getOwnPropertyDescriptor(streamHandle, key);
+    if (descriptor?.get) {
+      Object.defineProperty(streamHandle, key, {
+        ...descriptor,
+        enumerable: false,
+      });
+    }
+  }
+
+  return streamHandle;
 }

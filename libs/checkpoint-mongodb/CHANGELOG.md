@@ -1,5 +1,29 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.3.1
+
+### Patch Changes
+
+- [#2397](https://github.com/langchain-ai/langgraphjs/pull/2397) [`284226c`](https://github.com/langchain-ai/langgraphjs/commit/284226c7ca164b3c81fe2d9e32b10f1fc6b99a3c) Thanks [@hntrl](https://github.com/hntrl)! - fix(checkpoint-mongodb): validate configurable checkpoint identifiers before queries
+
+  Add runtime validation for `thread_id`, `checkpoint_ns`, and `checkpoint_id` in
+  `MongoDBSaver` methods that read and write checkpoints. This prevents object-based
+  operator payloads from being passed into MongoDB query filters and ensures invalid
+  configurable values fail fast with explicit errors.
+
+## 1.3.0
+
+### Minor Changes
+
+- [#2326](https://github.com/langchain-ai/langgraphjs/pull/2326) [`36916ed`](https://github.com/langchain-ai/langgraphjs/commit/36916ed86e63eb07249a68ecf0508e3b986ba587) Thanks [@tadjik1](https://github.com/tadjik1)! - feat: add MongoDBStore for long-term memory
+
+  New `MongoDBStore` class for persisting data across threads and sessions — user preferences, learned facts, agent memory, and more.
+
+  - Store and retrieve JSON documents organized by hierarchical namespaces
+  - Search with field-based filtering and comparison operators
+  - Vector similarity search with manual embedding (bring your own embedding model) or auto embedding (MongoDB generates embeddings via Voyage AI)
+  - Automatic document expiration via configurable TTL
+
 ## 1.2.0
 
 ### Minor Changes

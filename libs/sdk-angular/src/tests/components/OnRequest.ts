@@ -1,12 +1,17 @@
-import { Component } from "@angular/core";
+import { Component, input } from "@angular/core";
 import { Client } from "@langchain/langgraph-sdk";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { inject } from "vitest";
 import { injectStream } from "../../index.js";
 
 const serverUrl = inject("serverUrl");
 
+interface StreamState {
+  messages: BaseMessage[];
+}
+
 // eslint-disable-next-line import/no-mutable-exports
-export let onRequestCalls: any[][] = [];
+export let onRequestCalls: Array<[string, unknown]> = [];
 
 export function resetOnRequestCalls() {
   onRequestCalls = [];
@@ -14,12 +19,12 @@ export function resetOnRequestCalls() {
 
 const client = new Client({
   apiUrl: serverUrl,
-  onRequest: (url: any, init: any) => {
+  onRequest: (url, init) => {
     onRequestCalls.push([
       url.toString(),
       {
         ...init,
-        body: init.body ? JSON.parse(init.body as string) : undefined,
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
       },
     ]);
     return init;
@@ -36,15 +41,21 @@ const client = new Client({
           </div>
         }
       </div>
+      <div data-testid="loading">
+        {{ stream.isLoading() ? "Loading..." : "Not loading" }}
+      </div>
       <button data-testid="submit" (click)="onSubmit()">Send</button>
     </div>
   `,
 })
 export class OnRequestComponent {
-  stream = injectStream({
+  threadId = input<string | undefined>(undefined);
+
+  stream = injectStream<StreamState>({
     assistantId: "agent",
     apiUrl: serverUrl,
     client,
+    threadId: this.threadId,
   });
 
   str(v: unknown) {
@@ -53,7 +64,7 @@ export class OnRequestComponent {
 
   onSubmit() {
     void this.stream.submit({
-      messages: [{ content: "Hello", type: "human" }],
-    } as any);
+      messages: [new HumanMessage("Hello")],
+    });
   }
 }

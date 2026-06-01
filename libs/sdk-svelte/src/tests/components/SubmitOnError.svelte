@@ -32,8 +32,7 @@
         { messages: [{ content: "Hello", type: "human" }] },
         {
           onError: (err: unknown) => {
-            submitError =
-              err instanceof Error ? err.message : String(err);
+            submitError = err instanceof Error ? err.message : String(err);
           },
         },
       )}

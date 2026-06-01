@@ -1,0 +1,63 @@
+event: lifecycle
+data: {"type":"event","event_id":"1","seq":1,"method":"lifecycle","params":{"namespace":[],"timestamp":1778485269262,"data":{"event":"running","graph_name":"reasoning"}}}
+id: 1
+
+event: values
+data: {"type":"event","event_id":"3","seq":3,"method":"values","params":{"namespace":[],"timestamp":1778485269330,"data":{"messages":[{"type":"human","content":"Walk me through how you would estimate 17 × 24 mentally, then give the final number.","id":"766e0564-a666-4fc9-8e78-e00a476eb9cd"}]}}}
+id: 3
+
+event: lifecycle
+data: {"type":"event","event_id":"5","seq":5,"method":"lifecycle","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485271449,"data":{"event":"started","graph_name":"model_request"}}}
+id: 5
+
+event: messages
+data: {"type":"event","event_id":"6","seq":6,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485271450,"data":{"event":"message-start","id":"run-019e15fb-934e-7029-94f8-87176a5ffc6a","run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 6
+
+event: messages
+data: {"type":"event","event_id":"7","seq":7,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485274743,"data":{"event":"content-block-start","index":0,"content":{"type":"reasoning","reasoning":"**Estimating multiplication mentally**\n\nThe","index":0},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 7
+
+event: messages
+data: {"type":"event","event_id":"8","seq":8,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485274875,"data":{"event":"content-block-delta","index":0,"delta":{"type":"reasoning-delta","reasoning":" user"},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 8
+
+event: messages
+data: {"type":"event","event_id":"100","seq":100,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485278393,"data":{"event":"content-block-start","index":1,"content":{"type":"reasoning","reasoning":"**Estimating multiplication methods**\n\nTo","index":1},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 100
+
+event: messages
+data: {"type":"event","event_id":"197","seq":197,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485281835,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":"Two"},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 197
+
+event: messages
+data: {"type":"event","event_id":"198","seq":198,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485281837,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" quick"},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 198
+
+event: messages
+data: {"type":"event","event_id":"199","seq":199,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485281850,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" mental"},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 199
+
+event: messages
+data: {"type":"event","event_id":"200","seq":200,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485281851,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":" approaches"},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 200
+
+event: messages
+data: {"type":"event","event_id":"201","seq":201,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485281852,"data":{"event":"content-block-delta","index":0,"delta":{"type":"text-delta","text":":\n\n"},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 201
+
+event: messages
+data: {"type":"event","event_id":"323","seq":323,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485285649,"data":{"event":"content-block-finish","index":0,"content":{"type":"reasoning","reasoning":"**Estimating multiplication mentally**\n\nThe user wants to estimate 17 × 24 and then provide the final answer. I’ll start by showing techniques like rounding: I could round 17 to 20 and 24 to 25 to initially estimate 20 × 25, which equals 500, then adjust that down. \n\nUsing the distributive property, I could express it as 17 × (20 + 4), leading to 340 + 68, giving the actual final answer of 408. So, I’ll clearly walk through those two methods!","index":0},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 323
+
+event: messages
+data: {"type":"event","event_id":"324","seq":324,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485285650,"data":{"event":"content-block-finish","index":1,"content":{"type":"reasoning","reasoning":"**Estimating multiplication methods**\n\nTo estimate 17 × 24, I can round 17 to 20, which gives 20 × 24 = 480—an overestimate. Alternatively, rounding 24 to 25 gives 17 × 25 = 425, which is close; if I subtract 17 from that, it leads me to 408. I could also round both numbers together, resulting in 20 × 25 = 500, but that's even bigger. So, using the distributive property, the final answer is 408. I'll keep this clear and concise!","index":1},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 324
+
+event: messages
+data: {"type":"event","event_id":"325","seq":325,"method":"messages","params":{"namespace":["model_request:d39b63be-39c2-56bf-b6df-42f99c534457"],"timestamp":1778485285651,"data":{"event":"message-finish","reason":"stop","usage":{"input_tokens":26,"output_tokens":536,"total_tokens":562,"input_token_details":{"cache_read":0},"output_token_details":{"reasoning":384}},"run_id":"019e15fb-934e-7029-94f8-87176a5ffc6a"}}}
+id: 325
+
+event: values
+data: {"type":"event","event_id":"330","seq":330,"method":"values","params":{"namespace":[],"timestamp":1778485285651,"data":{"messages":[{"type":"human","content":"Walk me through how you would estimate 17 × 24 mentally, then give the final number.","id":"766e0564-a666-4fc9-8e78-e00a476eb9cd"},{"type":"ai","content":[{"type":"reasoning","reasoning":"**Estimating multiplication mentally**\n\nThe user wants to estimate 17 × 24 and then provide the final answer. I’ll start by showing techniques like rounding: I could round 17 to 20 and 24 to 25 to initially estimate 20 × 25, which equals 500, then adjust that down. \n\nUsing the distributive property, I could express it as 17 × (20 + 4), leading to 340 + 68, giving the actual final answer of 408. So, I’ll clearly walk through those two methods!","index":0},{"type":"reasoning","reasoning":"**Estimating multiplication methods**\n\nTo estimate 17 × 24, I can round 17 to 20, which gives 20 × 24 = 480—an overestimate. Alternatively, rounding 24 to 25 gives 17 × 25 = 425, which is close; if I subtract 17 from that, it leads me to 408. I could also round both numbers together, resulting in 20 × 25 = 500, but that's even bigger. So, using the distributive property, the final answer is 408. I'll keep this clear and concise!","index":1}],"id":"run-019e15fb-934e-7029-94f8-87176a5ffc6a","name":"model"}]}}}
+id: 330
