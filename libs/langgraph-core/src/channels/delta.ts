@@ -187,9 +187,11 @@ export class DeltaChannel<
         overwriteValue !== undefined && overwriteValue !== null
           ? overwriteValue
           : this.initialValueFactory();
-      const remaining = values.filter(
-        (_, i) => i !== overwriteIdx
-      ) as UpdateType[];
+      // Treat Overwrite as a hard reset: drop everything up to and including
+      // the overwrite, keeping only writes that follow it. This mirrors
+      // `replayWrites` so reconstruction from a checkpoint reproduces the live
+      // state even when a plain write precedes the Overwrite in the same step.
+      const remaining = values.slice(overwriteIdx + 1) as UpdateType[];
       this.value = remaining.length > 0 ? this.reducer(base, remaining) : base;
       return true;
     }

@@ -107,6 +107,26 @@ describe("DeltaChannel (unit)", () => {
     ).toThrow();
   });
 
+  it("reload reproduces live state when a plain write precedes an Overwrite in one step", () => {
+    // Live: a single super-step receives [1] then Overwrite([50]).
+    const live = new DeltaChannel<number[], number[]>(listReducer);
+    live.update([[1], { __overwrite__: [50] }]);
+
+    // Reload: the same two writes are replayed from the checkpoint.
+    const replayed = new DeltaChannel<number[], number[]>(
+      listReducer
+    ).fromCheckpoint(undefined);
+    replayed.replayWrites([
+      ["t1", "messages", [1]],
+      ["t2", "messages", { __overwrite__: [50] }],
+    ]);
+
+    // Overwrite is a hard reset: the pre-overwrite [1] is dropped on both paths.
+    expect(live.get()).toEqual([50]);
+    // Invariant: reconstructed state must equal live state.
+    expect(replayed.get()).toEqual(live.get());
+  });
+
   it("equals compares reducer and snapshotFrequency", () => {
     const a = new DeltaChannel(listReducer);
     const b = new DeltaChannel(listReducer);
