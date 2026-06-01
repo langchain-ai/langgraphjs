@@ -240,7 +240,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
       channel_versions: { messages: 1 },
     };
     const meta: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
-    const c0 = await saver.put(baseConfig, cp0, meta, { messages: 1 });
+    const c0 = await saver.put(baseConfig, cp0, meta);
     await saver.putWrites(c0, [["messages", [1]]], "task0");
 
     // cp1: delta (no value), writes [2]
@@ -250,7 +250,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
       channel_values: {},
       channel_versions: { messages: 2 },
     };
-    const c1 = await saver.put(c0, cp1, meta, { messages: 2 });
+    const c1 = await saver.put(c0, cp1, meta);
     await saver.putWrites(c1, [["messages", [2]]], "task1");
 
     // cp2: delta (no value), target
@@ -260,7 +260,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
       channel_values: {},
       channel_versions: { messages: 3 },
     };
-    const c2 = await saver.put(c1, cp2, meta, { messages: 3 });
+    const c2 = await saver.put(c1, cp2, meta);
 
     const hist = await saver.getDeltaChannelHistory({
       config: c2,
@@ -285,7 +285,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
       channel_values: { messages: new DeltaSnapshot([0]) },
       channel_versions: { messages: 1 },
     };
-    const c0 = await saver.put(cfg, cp0, meta, { messages: 1 });
+    const c0 = await saver.put(cfg, cp0, meta);
     await saver.putWrites(c0, [["messages", [1]]], "task0");
     const cp1: Checkpoint = {
       ...emptyCheckpoint(),
@@ -293,7 +293,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
       channel_values: {},
       channel_versions: { messages: 2 },
     };
-    const c1 = await saver.put(c0, cp1, meta, { messages: 2 });
+    const c1 = await saver.put(c0, cp1, meta);
 
     const override = await saver.getDeltaChannelHistory({
       config: c1,
@@ -454,7 +454,7 @@ describe("channelsFromCheckpoint", () => {
       channel_values: { messages: new DeltaSnapshot([1]) },
       channel_versions: { messages: 1 },
     };
-    const c0 = await saver.put(cfg, cp0, meta, { messages: 1 });
+    const c0 = await saver.put(cfg, cp0, meta);
     await saver.putWrites(c0, [["messages", [2]]], "task0");
     const cp1: Checkpoint = {
       ...emptyCheckpoint(),
@@ -462,7 +462,7 @@ describe("channelsFromCheckpoint", () => {
       channel_values: {},
       channel_versions: { messages: 2 },
     };
-    const c1 = await saver.put(c0, cp1, meta, { messages: 2 });
+    const c1 = await saver.put(c0, cp1, meta);
 
     const specs = {
       messages: new DeltaChannel<number[], number[]>(listReducer),
