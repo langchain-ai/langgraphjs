@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { IterableReadableWritableStream, StreamChunk } from "./stream.ts";
+import { IterableReadableWritableStream, StreamChunk } from "./stream.js";
 
 describe("IterableReadableWritableStream", () => {
   let stream: IterableReadableWritableStream;
@@ -13,13 +13,9 @@ describe("IterableReadableWritableStream", () => {
   it("should push chunks when stream is open", async () => {
     const chunk: StreamChunk = [["test"], "values", { data: "test chunk" }];
 
-    // Access the controller through the promise resolution
-    await new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Note: In real usage, the controller would be initialized by the stream's start method
-        resolve();
-      }, 10);
-    });
+    // The controller is assigned on a microtask in the constructor, so flush
+    // the microtask queue before interacting with the stream.
+    await Promise.resolve();
 
     expect(() => stream.push(chunk)).not.toThrow();
     expect(stream.closed).toBe(false);
@@ -147,11 +143,7 @@ describe("IterableReadableWritableStream", () => {
     ];
 
     // Wait for the controller to be initialized before pushing
-    await new Promise<void>((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 10);
-    });
+    await Promise.resolve();
 
     // Push a chunk while stream is open
     streamWithPassthrough.push(chunk);
@@ -174,7 +166,7 @@ describe("IterableReadableWritableStream", () => {
     expect(passthroughResults[0]).toEqual(chunk);
   });
 
-  it("should handle multiple close calls gracefully", () => {
+  it("should not throw when pushing after multiple close calls", () => {
     const chunk: StreamChunk = [["test"], "values", { data: "test chunk" }];
 
     // Close the stream multiple times
@@ -185,6 +177,44 @@ describe("IterableReadableWritableStream", () => {
     // Pushing after multiple closes should not throw
     expect(() => stream.push(chunk)).not.toThrow();
     expect(stream.closed).toBe(true);
+  });
+
+  it("should not throw when pushing after the stream errors (abort path)", async () => {
+    // This reproduces the reported issue: when a run is aborted, the loop
+    // terminates the stream via `error()` (not `close()`), and in-flight
+    // parallel nodes may still call `push()` afterwards.
+    await Promise.resolve();
+
+    const chunk: StreamChunk = [["node1"], "messages", { content: "Hello" }];
+    expect(() => stream.push(chunk)).not.toThrow();
+
+    // Error the stream, simulating an abort/loop failure.
+    stream.error(new Error("aborted"));
+    expect(stream.closed).toBe(true);
+
+    // Late pushes from lingering parallel tasks must be dropped, not thrown.
+    const lateChunk: StreamChunk = [["node2"], "messages", { content: "World" }];
+    expect(() => stream.push(lateChunk)).not.toThrow();
+  });
+
+  it("should not invoke passthrough for pushes after the stream errors", async () => {
+    const passthroughResults: StreamChunk[] = [];
+    const erroredStream = new IterableReadableWritableStream({
+      modes: new Set(["messages"]),
+      passthroughFn: (chunk) => {
+        passthroughResults.push(chunk);
+      },
+    });
+    await Promise.resolve();
+
+    erroredStream.push([["node1"], "messages", { content: "Hello" }]);
+    expect(passthroughResults).toHaveLength(1);
+
+    erroredStream.error(new Error("aborted"));
+    erroredStream.push([["node2"], "messages", { content: "World" }]);
+
+    // Passthrough must not be called for chunks pushed after termination.
+    expect(passthroughResults).toHaveLength(1);
   });
 
   it("should simulate the original issue scenario with multiple parallel nodes", async () => {

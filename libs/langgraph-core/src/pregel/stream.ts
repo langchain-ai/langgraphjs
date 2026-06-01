@@ -188,7 +188,13 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(e: any) {
-    this.controller.error(e);
+    try {
+      this.controller?.error(e);
+    } finally {
+      // Mark the stream as closed so any late `push()` calls from in-flight
+      // parallel tasks are dropped instead of throwing on an errored controller.
+      this._closed = true;
+    }
   }
 }
 
