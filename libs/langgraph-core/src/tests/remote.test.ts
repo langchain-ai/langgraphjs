@@ -645,9 +645,45 @@ describe("RemoteGraph", () => {
       expect.objectContaining({
         signal: config.signal,
         config: expect.objectContaining({
-          configurable: config.configurable,
+          configurable: { custom_key: "custom_value" },
           recursion_limit: config.recursionLimit,
           tags: config.tags,
+        }),
+      }),
+    ]);
+  });
+
+  test("stream passes context separately from config for stateful runs", async () => {
+    const client = new Client({});
+    let streamArgs: unknown[] | undefined;
+    vi.spyOn(client.runs, "stream").mockImplementation(async function* (
+      ...args
+    ) {
+      streamArgs = args;
+      yield { event: "values", data: { ok: true } };
+    });
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const context = { userId: "user-1", tenantId: "tenant-1" };
+    await remotePregel.invoke(
+      { messages: [{ type: "human", content: "hello" }] },
+      {
+        configurable: { thread_id: "thread_1" },
+        context,
+      }
+    );
+
+    expect(streamArgs).toEqual([
+      "thread_1",
+      "test_graph_id",
+      expect.objectContaining({
+        context,
+        config: expect.objectContaining({
+          configurable: {},
         }),
       }),
     ]);
@@ -686,7 +722,6 @@ describe("RemoteGraph", () => {
           configurable: {
             circular: "[Circular]",
             bigint: "123",
-            thread_id: "thread_1",
           },
           metadata: {
             source: "test",
