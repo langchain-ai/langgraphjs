@@ -20,6 +20,7 @@ export {
   CompiledStateGraph,
   type StateGraphNodeSpec,
   type StateGraphAddNodeOptions,
+  type NodeDefaults,
   type StateGraphArgsWithStateSchema,
   type StateGraphArgsWithInputOutputSchemas,
 } from "./state.js";

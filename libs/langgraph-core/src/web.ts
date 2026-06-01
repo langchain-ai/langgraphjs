@@ -32,6 +32,7 @@ export {
   type AddNodeOptions,
   type StateGraphNodeSpec,
   type StateGraphAddNodeOptions,
+  type NodeDefaults,
   type StateGraphArgsWithStateSchema,
   type StateGraphArgsWithInputOutputSchemas,
 } from "./graph/index.js";

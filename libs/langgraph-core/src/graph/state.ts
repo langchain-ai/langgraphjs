@@ -131,6 +131,29 @@ export type StateGraphAddNodeOptions<
   input?: InputSchema;
 } & AddNodeOptions<Nodes>;
 
+/**
+ * Graph-wide default node policies set via {@link StateGraph.setNodeDefaults}.
+ *
+ * These are applied to every node at `compile()` time. Per-node values passed
+ * to `addNode(...)` always take precedence, regardless of the order in which
+ * `setNodeDefaults` and `addNode` are called.
+ *
+ * Defaults are **not** inherited by subgraphs.
+ */
+export type NodeDefaults = {
+  /**
+   * Default retry policy for nodes that don't specify their own via
+   * `addNode(..., { retryPolicy })`.
+   */
+  retryPolicy?: RetryPolicy;
+  /**
+   * Default cache policy for nodes that don't specify their own via
+   * `addNode(..., { cachePolicy })`. Pass `true` for default caching, `false`
+   * to disable.
+   */
+  cachePolicy?: CachePolicy | boolean;
+};
+
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
   I extends StateDefinition,
@@ -350,6 +373,12 @@ export class StateGraph<
   /** @internal */
   _writer: WriterType;
 
+  /**
+   * Graph-wide default node policies, resolved at `compile()` time.
+   * @internal
+   */
+  _nodeDefaults: { retryPolicy?: RetryPolicy; cachePolicy?: CachePolicy } = {};
+
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
   /**
@@ -548,6 +577,49 @@ export class StateGraph<
     // Handle interrupt and writer
     this._interrupt = init.interrupt as InterruptType;
     this._writer = init.writer as WriterType;
+  }
+
+  /**
+   * Set graph-wide default node policies that apply to every node in this
+   * graph.
+   *
+   * Per-node values passed to {@link addNode} always take precedence over these
+   * defaults. Defaults are resolved at {@link compile} time, so this method can
+   * be called before or after `addNode` with the same result. Calling it
+   * multiple times merges the provided fields, with later calls overriding
+   * earlier ones on a per-field basis.
+   *
+   * Policies set here are **not** inherited by subgraphs.
+   *
+   * @param defaults - The default node policies to apply.
+   * @returns The builder instance, for chaining.
+   *
+   * @example
+   * ```ts
+   * const graph = new StateGraph(State)
+   *   .setNodeDefaults({
+   *     retryPolicy: { maxAttempts: 3 },
+   *     cachePolicy: { ttl: 60 },
+   *   })
+   *   .addNode("a", nodeA)
+   *   .addNode("b", nodeB, { retryPolicy: { maxAttempts: 5 } }) // overrides default
+   *   .addEdge(START, "a")
+   *   .compile();
+   * ```
+   */
+  setNodeDefaults(defaults: NodeDefaults): this {
+    if (defaults.retryPolicy !== undefined) {
+      this._nodeDefaults.retryPolicy = defaults.retryPolicy;
+    }
+    if (defaults.cachePolicy !== undefined) {
+      this._nodeDefaults.cachePolicy =
+        typeof defaults.cachePolicy === "boolean"
+          ? defaults.cachePolicy
+            ? {}
+            : undefined
+          : defaults.cachePolicy;
+    }
+    return this;
   }
 
   /**
@@ -1168,10 +1240,24 @@ export class StateGraph<
 
     // attach nodes, edges and branches
     compiled.attachNode(START);
+    // Resolve graph-wide node defaults. Per-node values always win. Defaults
+    // are merged into a copy of each spec so repeated `compile()` calls remain
+    // stable (the builder's node specs are never mutated).
+    const nodeDefaults = this._nodeDefaults;
+    const hasNodeDefaults =
+      nodeDefaults.retryPolicy !== undefined ||
+      nodeDefaults.cachePolicy !== undefined;
     for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
       this.nodes
     )) {
-      compiled.attachNode(key as N, node);
+      const resolvedNode = hasNodeDefaults
+        ? {
+            ...node,
+            retryPolicy: node.retryPolicy ?? nodeDefaults.retryPolicy,
+            cachePolicy: node.cachePolicy ?? nodeDefaults.cachePolicy,
+          }
+        : node;
+      compiled.attachNode(key as N, resolvedNode);
     }
     compiled.attachBranch(START, SELF, _getControlBranch() as Branch<S, N>, {
       withReader: false,
