@@ -169,7 +169,8 @@ export class RemoteGraph<
     PregelOutputType,
     PregelOptions<Nn, Cc, ContextType>
   >
-  implements PregelInterface<Nn, Cc, ContextType> {
+  implements PregelInterface<Nn, Cc, ContextType>
+{
   static lc_name() {
     return "RemoteGraph";
   }
@@ -264,8 +265,8 @@ export class RemoteGraph<
         ) {
           const metadata =
             typeof record.metadata === "object" &&
-              record.metadata != null &&
-              !Array.isArray(record.metadata)
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
               ? (record.metadata as Record<string, unknown>)
               : undefined;
           record.metadata =
@@ -410,11 +411,11 @@ export class RemoteGraph<
         // eslint-disable-next-line no-nested-ternary
         state: task.state
           ? this._createStateSnapshot(
-            task.state,
-            task.checkpoint
-              ? this._checkpointToConfig(task.checkpoint)
-              : fallbackConfig
-          )
+              task.state,
+              task.checkpoint
+                ? this._checkpointToConfig(task.checkpoint)
+                : fallbackConfig
+            )
           : task.checkpoint
             ? { configurable: task.checkpoint }
             : undefined,
