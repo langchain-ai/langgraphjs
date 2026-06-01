@@ -9,7 +9,7 @@
  * `lifecycle` payloads:
  *
  *   - `running`                       → `isLoading = true`
- *   - `completed` / `failed` / `interrupted` / `cancelled`
+ *   - `completed` / `failed` / `interrupted`
  *                                     → `isLoading = false`
  *
  * Non-root, non-lifecycle, and unknown events are ignored.
@@ -131,8 +131,7 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
     if (
       lifecycle?.event === "completed" ||
       lifecycle?.event === "failed" ||
-      lifecycle?.event === "interrupted" ||
-      lifecycle?.event === "cancelled"
+      lifecycle?.event === "interrupted"
     ) {
       if (seq != null) {
         this.#lastTerminalLifecycleSeq = Math.max(

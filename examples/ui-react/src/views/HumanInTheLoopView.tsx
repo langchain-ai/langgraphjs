@@ -60,9 +60,7 @@ export function HumanInTheLoopView({ transport }: { transport: Transport }) {
     async (decisions: HITLResponse["decisions"]) => {
       setIsProcessing(true);
       try {
-        await stream.submit(null, {
-          command: { resume: { decisions } as HITLResponse },
-        });
+        await stream.respond({ decisions } as HITLResponse);
       } finally {
         setIsProcessing(false);
       }
@@ -88,7 +86,7 @@ export function HumanInTheLoopView({ transport }: { transport: Transport }) {
         <>
           A <code>createAgent</code> with <code>humanInTheLoopMiddleware</code>.
           The interrupt rides the always-on root projection; resuming posts
-          through <code>stream.submit(null, {"{"}command: {"{"}resume{"}}"})</code>.
+          through <code>stream.respond(...)</code>.
         </>
       }
       error={stream.error}

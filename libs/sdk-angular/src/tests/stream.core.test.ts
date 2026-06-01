@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-angular";
+import type { RunExecutionInfo } from "@langchain/langgraph-sdk/stream";
 
 import { BasicStreamComponent } from "./components/BasicStream.js";
 import { MessageRemovalComponent } from "./components/MessageRemoval.js";
@@ -51,13 +52,12 @@ it("cancels an in-flight run via stop()", async () => {
 
 it("assigns a thread id on first submit and surfaces it via onThreadId", async () => {
   const threadIds: string[] = [];
-  const created: Array<{ run_id: string; thread_id: string }> = [];
+  const created: RunExecutionInfo[] = [];
 
   const screen = await render(BasicStreamComponent, {
     inputs: {
       onThreadIdCallback: (id: string) => threadIds.push(id),
-      onCreatedCallback: (meta: { run_id: string; thread_id: string }) =>
-        created.push(meta),
+      onCreatedCallback: (info: RunExecutionInfo) => created.push(info),
     },
   });
 
@@ -80,7 +80,8 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
     .toHaveTextContent(threadIds[0]);
 
   await expect.poll(() => created.length).toBeGreaterThanOrEqual(1);
-  expect(created[0].thread_id).toBe(threadIds[0]);
+  expect(typeof created[0].runId).toBe("string");
+  expect(created[0].runId.length).toBeGreaterThan(0);
 });
 
 it("forwards submit options without tripping the controller", async () => {

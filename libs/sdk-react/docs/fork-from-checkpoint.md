@@ -14,7 +14,7 @@ The pre-v1 `branch` / `setBranch` / `experimental_branchTree` API is gone. Forki
 Two pieces work together:
 
 1. **`useMessageMetadata(stream, msgId)`** — returns `{ parentCheckpointId }` for the given message, or `undefined` until it loads. See [Companion selector hooks](./selectors.md#usemessagemetadata).
-2. **`submit(input, { forkFrom: { checkpointId } })`** — dispatches a new run whose initial checkpoint is `checkpointId`, replacing anything that happened after it on the thread.
+2. **`submit(input, { forkFrom })`** — dispatches a new run whose initial checkpoint is `forkFrom`, replacing anything that happened after it on the thread.
 
 You pick a message, read its **parent** checkpoint, and submit from there with new input. The new turn becomes the canonical continuation of the thread — old messages after the fork point are superseded.
 
@@ -42,12 +42,14 @@ function EditButton({
   return (
     <button
       disabled={!metadata?.parentCheckpointId}
-      onClick={() =>
-        stream.submit(
+      onClick={() => {
+        const forkFrom = metadata?.parentCheckpointId;
+        if (!forkFrom) return;
+        void stream.submit(
           { messages: [new HumanMessage(newContent)] },
-          { forkFrom: { checkpointId: metadata!.parentCheckpointId } },
-        )
-      }
+          { forkFrom },
+        );
+      }}
     >
       Save edit
     </button>
@@ -69,12 +71,14 @@ function Retry({ stream }: { stream: AnyStream }) {
   return (
     <button
       disabled={!metadata?.parentCheckpointId || !lastHuman}
-      onClick={() =>
-        stream.submit(
-          { messages: [lastHuman!] },
-          { forkFrom: { checkpointId: metadata!.parentCheckpointId } },
-        )
-      }
+      onClick={() => {
+        const forkFrom = metadata?.parentCheckpointId;
+        if (!forkFrom || !lastHuman) return;
+        void stream.submit(
+          { messages: [lastHuman] },
+          { forkFrom },
+        );
+      }}
     >
       Retry
     </button>

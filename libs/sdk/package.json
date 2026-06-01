@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.9.4",
+  "version": "1.9.10",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "repository": {
@@ -18,7 +18,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@langchain/protocol": "^0.0.15",
+    "@langchain/protocol": "^0.0.16",
     "@types/json-schema": "^7.0.15",
     "p-queue": "^9.0.1",
     "p-retry": "^7.1.1",

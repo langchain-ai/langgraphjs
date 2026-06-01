@@ -18,6 +18,7 @@ import {
   type Event,
   type FileMedia,
   type ImageMedia,
+  type InferToolCalls,
   type InferStateType,
   type SubagentDiscoverySnapshot,
   type SubgraphDiscoverySnapshot,
@@ -154,6 +155,14 @@ const EMPTY_MESSAGES: BaseMessage[] = [];
  * lifecycle rules as {@link injectMessages}; at the root this returns
  * `stream.toolCalls` directly.
  */
+export function injectToolCalls(
+  stream: AnyStream,
+  target?: SelectorTarget | Signal<SelectorTarget>
+): Signal<AssembledToolCall[]>;
+export function injectToolCalls<T>(
+  stream: AnyStream,
+  target?: SelectorTarget | Signal<SelectorTarget>
+): Signal<InferToolCalls<T>[]>;
 export function injectToolCalls(
   stream: AnyStream,
   target?: SelectorTarget | Signal<SelectorTarget>

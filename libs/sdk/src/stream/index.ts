@@ -36,6 +36,8 @@ export type {
   InferSubagentState,
   InferSubagentStates,
   InferToolCalls,
+  AssembledToolCallFromTool,
+  InferToolOutput,
   IsAgentLike,
   IsDeepAgentLike,
   SubAgentLike,
@@ -98,8 +100,13 @@ export type {
   ProjectionSpec,
   RootEventBus,
   RootSnapshot,
-  StateOf,
+  RunCompletedInfo,
+  RunExecutionInfo,
+  RunExecutionReason,
   StreamControllerOptions,
+  StreamRespondAllOptions,
+  StreamRespondOptions,
+  StreamStopOptions,
   StreamSubmitOptions,
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,
@@ -124,6 +131,10 @@ export { NAMESPACE_SEPARATOR } from "./constants.js";
 export type {
   AssembledToolCall,
   ToolCallStatus,
+} from "../client/stream/handles/tools.js";
+export {
+  parseToolPayload,
+  parseToolOutput,
 } from "../client/stream/handles/tools.js";
 
 export { MediaAssembler, MediaAssemblyError } from "../client/stream/media.js";

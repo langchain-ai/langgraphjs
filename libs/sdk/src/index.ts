@@ -87,6 +87,7 @@ export type {
   DefaultToolCall,
   ToolCallFromTool,
   ToolCallsFromTools,
+  InferToolOutput,
 } from "./types.messages.js";
 export type {
   CustomStreamEvent,
@@ -127,4 +128,5 @@ export {
   handleHeadlessToolInterrupt,
   headlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
+  scheduleCoalescedHeadlessToolFlush,
 } from "./headless-tools.js";

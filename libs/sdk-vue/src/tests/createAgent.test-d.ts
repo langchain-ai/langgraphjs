@@ -1,18 +1,16 @@
 import { z } from "zod/v4";
 import { describe, test, expectTypeOf } from "vitest";
 import { createAgent, tool, createMiddleware } from "langchain";
-import type {
-  AIMessage as CoreAIMessage,
-  BaseMessage,
-  ToolMessage as CoreToolMessage,
-} from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import {
   useStream,
   useMessageMetadata,
+  useToolCalls,
   type AssembledToolCall,
-  type ToolCallWithResult,
+  type InferToolCalls,
+  type ToolCallFromTool,
 } from "../index.js";
 
 const getWeather = tool(
@@ -72,6 +70,20 @@ const createFile = tool(
   },
 );
 
+const headlessTool = tool({
+  name: "headless_tool",
+  description: "A headless tool",
+  schema: z.object({
+    foo: z.string(),
+  }),
+});
+
+const headlessToolImpl = headlessTool.implement(async ({ foo }) => {
+  return {
+    bar: foo,
+  };
+});
+
 const todoSchema = z.object({
   id: z.string(),
   content: z.string(),
@@ -108,7 +120,7 @@ const counterMiddleware = createMiddleware({
 
 const simpleAgent = createAgent({
   model: "gpt-4o-mini",
-  tools: [getWeather],
+  tools: [getWeather, headlessTool],
   systemPrompt: "You are a helpful weather assistant.",
 });
 
@@ -156,6 +168,55 @@ const agentWithCustomStateAndMiddleware = createAgent({
   }),
   middleware: [todoListMiddleware, filesMiddleware],
   systemPrompt: "Project assistant.",
+});
+
+describe("ToolCallFromTool infers a streaming handle from a single tool", () => {
+  test("component props can pin a tool call to one tool definition", () => {
+    type SearchWebCall = ToolCallFromTool<typeof searchWeb>;
+
+    function searchWebCallRow({ toolCall }: { toolCall: SearchWebCall }) {
+      expectTypeOf(toolCall.name).toEqualTypeOf<"search_web">();
+      expectTypeOf(toolCall.args).toMatchTypeOf<{
+        query: string;
+        maxResults?: number;
+      }>();
+      expectTypeOf(toolCall.input).toMatchTypeOf<{
+        query: string;
+        maxResults?: number;
+      }>();
+      expectTypeOf(toolCall.id).toEqualTypeOf<string>();
+      expectTypeOf(toolCall.callId).toEqualTypeOf<string>();
+      expectTypeOf(toolCall.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(toolCall.error).toEqualTypeOf<string | undefined>();
+      expectTypeOf(toolCall.output).toEqualTypeOf<string | null>();
+    }
+
+    expectTypeOf(searchWebCallRow).toBeFunction();
+  });
+
+  test("tool call has assembled shape with headless tool", () => {
+    type HeadlessToolCall = ToolCallFromTool<typeof headlessToolImpl>;
+    function headlessToolCallRow({ toolCall }: { toolCall: HeadlessToolCall }) {
+      expectTypeOf(toolCall.name).toEqualTypeOf<"headless_tool">();
+      expectTypeOf(toolCall.args).toMatchTypeOf<{
+        foo: string;
+      }>();
+      expectTypeOf(toolCall.input).toMatchTypeOf<{
+        foo: string;
+      }>();
+      expectTypeOf(toolCall.id).toEqualTypeOf<string>();
+      expectTypeOf(toolCall.callId).toEqualTypeOf<string>();
+      expectTypeOf(toolCall.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(toolCall.error).toEqualTypeOf<string | undefined>();
+      expectTypeOf(toolCall.output).toEqualTypeOf<{ bar: string } | null>();
+    }
+
+    expectTypeOf(headlessToolCallRow).toBeFunction();
+  });
 });
 
 describe("stream.messages contains BaseMessage class instances", () => {
@@ -222,7 +283,6 @@ describe("stream.messages contains BaseMessage class instances", () => {
     expectTypeOf(msg.text).toEqualTypeOf<string>();
     expectTypeOf(msg.id).toEqualTypeOf<string | undefined>();
     expectTypeOf(msg.type).toBeString();
-    expectTypeOf(msg.toDict()).toHaveProperty("type");
   });
 
   test("useMessageMetadata accepts BaseMessage ids", () => {
@@ -241,28 +301,86 @@ describe("stream.messages contains BaseMessage class instances", () => {
 });
 
 describe("stream.toolCalls exposes assembled protocol tool calls", () => {
-  test("tool call has v2 assembled shape", () => {
+  test("tool call has assembled shape", () => {
     const stream = useStream<typeof simpleAgent>({
       assistantId: "agent",
+      tools: [headlessToolImpl],
     });
 
+    expectTypeOf(stream.toolCalls.value).toExtend<
+      InferToolCalls<typeof simpleAgent>[]
+    >();
+
     const tc = stream.toolCalls.value[0];
-    expectTypeOf(tc).toExtend<AssembledToolCall>();
-    expectTypeOf(tc.name).toEqualTypeOf<string>();
-    expectTypeOf(tc.callId).toEqualTypeOf<string>();
-    expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
-    expectTypeOf(tc.input).toEqualTypeOf<unknown>();
-    expectTypeOf(tc.output).toEqualTypeOf<Promise<unknown>>();
-    expectTypeOf(tc.status).toExtend<Promise<unknown>>();
-    expectTypeOf(tc.error).toEqualTypeOf<Promise<string | undefined>>();
+    if (tc.name === "headless_tool") {
+      expectTypeOf(tc).toExtend<AssembledToolCall>();
+      expectTypeOf(tc.name).toEqualTypeOf<"headless_tool">();
+      expectTypeOf(tc.callId).toEqualTypeOf<string>();
+      expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
+      expectTypeOf(tc.input).toEqualTypeOf<{ foo: string }>();
+      expectTypeOf(tc.args).toEqualTypeOf<{ foo: string }>();
+      expectTypeOf(tc.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
+    } else {
+      expectTypeOf(tc).toExtend<AssembledToolCall>();
+      expectTypeOf(tc.name).toEqualTypeOf<"get_weather">();
+      expectTypeOf(tc.callId).toEqualTypeOf<string>();
+      expectTypeOf(tc.namespace).toEqualTypeOf<string[]>();
+      expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+      expectTypeOf(tc.args).toEqualTypeOf<{ location: string }>();
+      expectTypeOf(tc.status).toEqualTypeOf<
+        "running" | "finished" | "error"
+      >();
+      expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
+      expectTypeOf(tc.output).toEqualTypeOf<string | null>();
+    }
   });
 
-  test("toolCalls is an assembled tool-call array", () => {
+  test("multi-tool agent narrows input and output by tool name", () => {
     const stream = useStream<typeof multiToolAgent>({
       assistantId: "agent",
     });
 
-    expectTypeOf(stream.toolCalls.value).toExtend<AssembledToolCall[]>();
+    expectTypeOf(stream.toolCalls.value).toExtend<
+      InferToolCalls<typeof multiToolAgent>[]
+    >();
+
+    for (const tc of stream.toolCalls.value) {
+      if (tc.name === "get_weather") {
+        expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
+      }
+      if (tc.name === "search_web") {
+        expectTypeOf(tc.input).toMatchTypeOf<{
+          query: string;
+          maxResults?: number;
+        }>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
+      }
+    }
+  });
+
+  test("InferToolCalls aligns with ToolCallFromTool args", () => {
+    type WeatherToolCall = ToolCallFromTool<typeof getWeather>;
+    type WeatherStreamCall = InferToolCalls<
+      readonly [typeof getWeather]
+    >;
+    expectTypeOf<WeatherStreamCall["args"]>().toEqualTypeOf<
+      WeatherToolCall["args"]
+    >();
+  });
+
+  test("useToolCalls preserves InferToolCalls typing", () => {
+    const stream = useStream<typeof multiToolAgent>({
+      assistantId: "agent",
+    });
+    const toolCalls = useToolCalls<typeof multiToolAgent>(stream);
+
+    expectTypeOf(toolCalls.value).toEqualTypeOf<
+      InferToolCalls<typeof multiToolAgent>[]
+    >();
   });
 });
 
@@ -440,15 +558,23 @@ describe("core stream properties are correctly typed", () => {
 });
 
 describe("realistic usage patterns with createAgent", () => {
-  test("complete workflow: render tool calls by name", () => {
+  test("complete workflow: render assembled tool calls", () => {
     const stream = useStream<typeof multiToolAgent>({
       assistantId: "agent",
     });
 
     for (const tc of stream.toolCalls.value) {
-      expectTypeOf(tc.name).toEqualTypeOf<string>();
-      expectTypeOf(tc.input).toEqualTypeOf<unknown>();
-      expectTypeOf(tc.output).toEqualTypeOf<Promise<unknown>>();
+      if (tc.name === "get_weather") {
+        expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
+      }
+      if (tc.name === "search_web") {
+        expectTypeOf(tc.input).toMatchTypeOf<{
+          query: string;
+          maxResults?: number;
+        }>();
+        expectTypeOf<NonNullable<typeof tc.output>>().toEqualTypeOf<string>();
+      }
     }
   });
 
@@ -503,33 +629,6 @@ describe("realistic usage patterns with createAgent", () => {
       { messages: new HumanMessage("Hello") },
       undefined,
     );
-  });
-
-  test("exported ToolCallWithResult mirrors the SDK type defaults", () => {
-    type WeatherToolCall = {
-      name: "get_weather";
-      args: { location: string };
-      id?: string;
-    };
-
-    type DefaultResult = ToolCallWithResult<WeatherToolCall>;
-    expectTypeOf<DefaultResult["call"]["name"]>().toEqualTypeOf<"get_weather">();
-    expectTypeOf<DefaultResult["result"]>().toEqualTypeOf<
-      import("@langchain/langgraph-sdk").ToolMessage | undefined
-    >();
-    expectTypeOf<DefaultResult["aiMessage"]>().toEqualTypeOf<
-      import("@langchain/langgraph-sdk").AIMessage<WeatherToolCall>
-    >();
-
-    type ClassResult = ToolCallWithResult<
-      WeatherToolCall,
-      CoreToolMessage,
-      CoreAIMessage
-    >;
-    expectTypeOf<ClassResult["result"]>().toEqualTypeOf<
-      CoreToolMessage | undefined
-    >();
-    expectTypeOf<ClassResult["aiMessage"]>().toEqualTypeOf<CoreAIMessage>();
   });
 
   test("toolCalls[] exposes protocol fields", () => {

@@ -6,7 +6,10 @@ Interrupts pause graph execution and wait for input. `@langchain/react` surfaces
 
 - [Reading interrupts](#reading-interrupts)
 - [Resuming an interrupt](#resuming-an-interrupt)
-- [`respond(response, target?)`](#respondresponse-target)
+- [Multiple pending interrupts](#multiple-pending-interrupts)
+- [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)
+- [`respond(response, options?)`](#respondresponse-options)
+- [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
 - [Headless tools](#headless-tools)
 - [Lower-level helpers](#lower-level-helpers)
 
@@ -15,7 +18,7 @@ Interrupts pause graph execution and wait for input. `@langchain/react` surfaces
 The root hook exposes the latest interrupt and the full list:
 
 ```tsx
-const { messages, interrupt, submit } = useStream<
+const stream = useStream<
   { messages: BaseMessage[] },
   { question: string } // InterruptType
 >({
@@ -25,16 +28,14 @@ const { messages, interrupt, submit } = useStream<
 
 return (
   <>
-    {messages.map((msg, i) => (
+    {stream.messages.map((msg, i) => (
       <div key={msg.id ?? i}>{String(msg.content)}</div>
     ))}
 
-    {interrupt && (
+    {stream.interrupt && (
       <div>
-        <p>{interrupt.value.question}</p>
-        <button
-          onClick={() => void submit(null, { command: { resume: "Approved" } })}
-        >
+        <p>{stream.interrupt.value.question}</p>
+        <button onClick={() => void stream.respond("Approved")}>
           Approve
         </button>
       </div>
@@ -43,32 +44,153 @@ return (
 );
 ```
 
+`stream.interrupt` is `stream.interrupts[0]` — the most recent **root** interrupt mirrored for UI convenience. It is not always the interrupt `respond()` would pick when `target` is omitted (see below).
+
 ## Resuming an interrupt
 
-The most ergonomic way to resume the most-recent root interrupt is `submit(null, { command: { resume: value } })`:
+Call `stream.respond(value)` when exactly one interrupt is pending:
 
 ```tsx
-void submit(null, { command: { resume: { approved: true } } });
+void stream.respond({ approved: true });
 ```
 
-This re-uses the active transport session and is equivalent to `respond(value)` for root-scoped interrupts.
+When more than one interrupt can be active, pass an explicit target (see [Multiple pending interrupts](#multiple-pending-interrupts) and [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)).
 
-## `respond(response, target?)`
+## Multiple pending interrupts
 
-When multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs), call `stream.respond()` with an explicit target:
+When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved by a prior `respond()` call.
+
+That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
+
+| Surface | What it contains | Use for |
+| ------- | ---------------- | ------- |
+| `stream.interrupts` | Root-namespace interrupts (`{ id, value }`) | Rendering root HITL UI |
+| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting + namespace for `respond()` |
+
+When several root interrupts are pending, target by id:
 
 ```tsx
-// Latest root interrupt:
-await stream.respond({ approved: true });
+stream.interrupts.map((intr) => (
+  <button
+    key={intr.id}
+    onClick={() =>
+      void stream.respond({ approved: true }, { interruptId: intr.id! })
+    }
+  >
+    Approve {intr.id}
+  </button>
+));
+```
 
-// Specific interrupt by id, on a subagent namespace:
-await stream.respond(
-  { approved: true },
-  { interruptId: myInterrupt.id, namespace: ["subagent"] },
+Root interrupts use `namespace: []`. You can omit `namespace` in the target — it defaults to the root tuple.
+
+## Subgraph interrupts and namespace
+
+Interrupts raised inside a subagent or nested graph carry a **non-empty** protocol `namespace` tuple (for example `["task:research"]`). The server validates that tuple when you resume.
+
+Those entries appear on `stream.getThread()?.interrupts` but may **not** appear on `stream.interrupts`. Read `namespace` from the thread stream entry — do not guess it from UI state:
+
+```tsx
+const thread = stream.getThread();
+
+return (
+  <>
+    {thread?.interrupts.map((entry) => (
+      <div key={entry.interruptId}>
+        <p>{JSON.stringify(entry.payload)}</p>
+        <p>
+          namespace: {entry.namespace.length === 0 ? "(root)" : entry.namespace.join(" › ")}
+        </p>
+        <button
+          onClick={() =>
+            void stream.respond(buildResponse(entry.payload), {
+              interruptId: entry.interruptId,
+              namespace: entry.namespace,
+            })
+          }
+        >
+          Resume
+        </button>
+      </div>
+    ))}
+  </>
 );
 ```
 
-The target object accepts `{ interruptId, namespace? }`. `namespace` scopes the resolution to a subagent or subgraph.
+Each entry mirrors an `input.requested` event: `{ interruptId, payload, namespace }`. Pass both `interruptId` and `namespace` for subgraph interrupts; omitting `namespace` assumes root (`[]`) and the server will reject the resume if the pending interrupt lives in a subgraph.
+
+## `respond(response, options?)`
+
+Signature:
+
+```tsx
+stream.respond(
+  response: unknown,
+  options?: {
+    interruptId?: string;
+    namespace?: string[];
+    config?: { configurable?: Record<string, unknown>; [key: string]: unknown };
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void>
+```
+
+| `options.interruptId` | Behavior |
+| --------------------- | -------- |
+| Omitted | Newest unresolved entry in `getThread()?.interrupts`. Safe when one interrupt is pending. |
+| `interruptId` set | Resume that id at root (`namespace: []`). |
+| `interruptId` + `namespace` | Resume that id in the given subgraph namespace. Required when the interrupt is not at root. |
+
+`options.config` / `options.metadata` are folded into the run that services the resume — the same `config` / `metadata` you'd pass to `submit()`. Use them to carry model/user config or run metadata (e.g. trigger source) onto a HITL resume.
+
+```tsx
+// Single pending interrupt — omit target:
+await stream.respond({ approved: true });
+
+// Specific root interrupt:
+await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
+
+// Subgraph interrupt — namespace from getThread():
+await stream.respond(
+  { approved: true },
+  { interruptId: entry.interruptId, namespace: entry.namespace },
+);
+
+// Resume carrying run config + metadata:
+await stream.respond({ approved: true }, {
+  config: { configurable: { model: "gpt-4o" } },
+  metadata: { source: "ui" },
+});
+```
+
+### `respondAll(responsesById, options?)`
+
+When a run pauses on **several interrupts at the same checkpoint** (e.g. parallel tool-authorization prompts), resume them in one command with `respondAll`. Sequential `respond()` calls would fail — the first resume starts a run, leaving the rest with no interrupted run to respond to.
+
+```tsx
+stream.respondAll(
+  responsesById: Record<string, unknown>, // interruptId -> response payload
+  options?: {
+    config?: { configurable?: Record<string, unknown>; [key: string]: unknown };
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void>
+```
+
+`responsesById` maps each pending `interruptId` to its response, so different interrupts can receive different payloads. Namespaces are resolved internally from `getThread()?.interrupts`, so you only supply ids. `options.config` / `options.metadata` are folded into the single run that services the batched resume.
+
+```tsx
+// Distinct payloads per interrupt:
+await stream.respondAll({
+  [interruptA.id]: { approved: true },
+  [interruptB.id]: { approved: false },
+});
+
+// Same payload to every pending interrupt:
+await stream.respondAll(
+  Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
+);
+```
 
 ## Headless tools
 
