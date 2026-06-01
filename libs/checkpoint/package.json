@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Library with base interfaces for LangGraph checkpoint savers.",
   "type": "module",
   "engines": {
@@ -27,7 +27,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "uuid": "^10.0.0"
+    "uuid": "^14.0.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.44"

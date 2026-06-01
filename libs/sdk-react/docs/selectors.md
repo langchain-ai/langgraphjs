@@ -109,12 +109,14 @@ function EditButton({ stream, message }) {
   return (
     <button
       disabled={!metadata?.parentCheckpointId}
-      onClick={() =>
-        stream.submit(
+      onClick={() => {
+        const forkFrom = metadata?.parentCheckpointId;
+        if (!forkFrom) return;
+        void stream.submit(
           { messages: [new HumanMessage("...revised prompt...")] },
-          { forkFrom: { checkpointId: metadata!.parentCheckpointId } },
-        )
-      }
+          { forkFrom },
+        );
+      }}
     >
       Edit from here
     </button>

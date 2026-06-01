@@ -245,10 +245,10 @@ export function* generateTuplePairs(
   newVersions: Record<string, number | string>;
 }> {
   for (let i = 0; i < countPerNamespace; i += 1) {
-    const thread_id = uuid6(-3);
+    const thread_id = uuid6(3);
     for (const checkpoint_ns of namespaces) {
-      const parentCheckpointId = uuid6(-3);
-      const childCheckpointId = uuid6(-3);
+      const parentCheckpointId = uuid6(3);
+      const childCheckpointId = uuid6(3);
 
       const writesToParent = [
         {

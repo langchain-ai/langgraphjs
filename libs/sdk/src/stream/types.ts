@@ -22,20 +22,95 @@ import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
-import type { InferStateType } from "./types-inference.js";
 import type { Channel, Event } from "@langchain/protocol";
 import type { StreamStore } from "./store.js";
 
+/** Why a run's active streaming phase ended. */
+export type RunExecutionReason =
+  /** The run reached the protocol `completed` lifecycle event. */
+  | "success"
+  /** The run reached the protocol `failed` lifecycle event. */
+  | "error"
+  /** The run paused on a protocol `interrupted` lifecycle event. */
+  | "interrupt"
+  /** The run was stopped by a client-side abort. */
+  | "stopped";
+
+/** Payload for run-start callbacks. */
+export interface RunExecutionInfo {
+  runId: string;
+}
+
+/** Options for {@link StreamController.stop} / framework `stop()`. */
+export interface StreamStopOptions {
+  /**
+   * When `true` (default), issue a server-side cancel via
+   * `client.runs.cancel` for the active run before disconnecting the
+   * client transport. Set to `false` for join/rejoin flows where the
+   * agent should keep running after the client disconnects.
+   */
+  cancel?: boolean;
+}
+
 /**
- * Legacy alias shared by the framework bindings.
- * Unwraps a compiled graph or agent brand into its state shape.
+ * Options for {@link StreamController.respondAll} / framework
+ * `respondAll()`.
  *
- * @deprecated Prefer {@link InferStateType}.
+ * Carries run-level `config` / `metadata` onto the single run that
+ * services the batched resume — the same fields as
+ * {@link StreamRespondOptions}, minus the per-interrupt target (each
+ * response in the map carries its own `interruptId` as the key).
  */
-export type StateOf<T> =
-  InferStateType<T> extends Record<string, unknown>
-    ? InferStateType<T>
-    : Record<string, unknown>;
+export interface StreamRespondAllOptions<
+  ConfigurableType extends object = Record<string, unknown>,
+> {
+  config?: {
+    configurable?: ConfigurableType;
+    recursion_limit?: number;
+    tags?: string[];
+    [key: string]: unknown;
+  };
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Options for {@link StreamController.respond} / framework `respond()`.
+ *
+ * Targets a single pending interrupt (`interruptId` / `namespace`) and
+ * carries run-level `config` and `metadata` onto the resume so the
+ * resumed run applies the same configurable values (model, user context,
+ * timezone, …) and metadata (trigger source, test flags, …) a fresh
+ * {@link StreamSubmitOptions} would. The server folds these into the run
+ * it starts to service the `input.respond` command.
+ *
+ * To resume several interrupts pending at the same checkpoint, use
+ * {@link StreamController.respondAll} instead.
+ */
+export interface StreamRespondOptions<
+  ConfigurableType extends object = Record<string, unknown>,
+> extends StreamRespondAllOptions<ConfigurableType> {
+  /**
+   * Target a specific pending interrupt. Omit when exactly one
+   * interrupt is pending to resume the newest unresolved one; pass it
+   * when several can be active (parallel subagents, fan-out, nested
+   * graphs) so you resume the interrupt the user acted on.
+   */
+  interruptId?: string;
+  /**
+   * Namespace of the targeted interrupt. Root interrupts use `[]` (the
+   * default when omitted). Subgraph interrupts require the exact tuple
+   * from `getThread()?.interrupts`.
+   */
+  namespace?: string[];
+}
+
+/** Payload for run-end callbacks. */
+export interface RunCompletedInfo extends Omit<RunExecutionInfo, "runId"> {
+  /** Omitted when re-attaching to an in-flight run without local dispatch. */
+  runId?: string;
+  /** Why the active streaming phase ended. */
+  reason: RunExecutionReason;
+}
 
 /** Options common to both transport branches of framework `useStream` APIs. */
 export interface UseStreamCommonOptions<
@@ -44,7 +119,18 @@ export interface UseStreamCommonOptions<
 > {
   threadId?: ThreadIdType;
   onThreadId?: (threadId: string) => void;
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+  /**
+   * Convenience callback fired when this hook instance's run is accepted
+   * by the server. Prefer `stream.isLoading` for UI; use this for
+   * imperative run-execution side effects.
+   */
+  onCreated?: (info: RunExecutionInfo) => void;
+  /**
+   * Convenience callback fired when a run's active streaming phase ends.
+   * `runId` may be omitted for re-attached in-flight runs because no local
+   * dispatch response was observed.
+   */
+  onCompleted?: (info: RunCompletedInfo) => void;
   initialValues?: StateType;
   /** State key holding the message array. Defaults to `"messages"`. */
   messagesKey?: string;
@@ -184,9 +270,8 @@ export interface StreamControllerOptions<
   /**
    * How the controller talks to the agent server. Accepts either a
    * built-in transport string (`"sse"` / `"websocket"`) or a custom
-   * {@link import("../client/stream/transport.js").AgentServerAdapter}
-   * that bypasses the built-in factories entirely. Forwarded to
-   * `client.threads.stream({ transport })`.
+   * {@link AgentServerAdapter} that bypasses the built-in factories
+   * entirely. Forwarded to `client.threads.stream({ transport })`.
    */
   transport?: ThreadStreamOptions["transport"];
   /** Optional `fetch` override forwarded to the built-in SSE transport. */
@@ -195,8 +280,18 @@ export interface StreamControllerOptions<
   webSocketFactory?: (url: string) => WebSocket;
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
-  /** Called when a run starts (mirrors v1 `onCreated`). */
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+  /**
+   * Convenience callback fired when this hook instance's run is accepted
+   * by the server. Prefer `root.isLoading` for UI; use this for
+   * imperative run-execution side effects.
+   */
+  onCreated?: (info: RunExecutionInfo) => void;
+  /**
+   * Convenience callback fired when a run's active streaming phase ends.
+   * `runId` may be omitted for re-attached in-flight runs because no local
+   * dispatch response was observed.
+   */
+  onCompleted?: (info: RunCompletedInfo) => void;
   /** Initial state for `root.values` before hydration lands. */
   initialValues?: StateType;
   /** Key inside `values` that holds the message array. Defaults to `"messages"`. */
@@ -215,41 +310,20 @@ export interface StreamSubmitOptions<
   };
   metadata?: Record<string, unknown>;
   /**
-   * Command shape widened to the v1 surface + protocol-v2 additions.
-   *
-   * - `resume` — dispatches to `thread.input.respond` targeting the most
-   *   recent root-namespace interrupt (honoured today).
-   * - `goto` — routes execution to a specific node (planned, forwarded
-   *   via `/run.start` metadata).
-   * - `update` — merges a partial state update into the thread's
-   *   values before resuming (planned, forwarded via `/run.start`).
-   *
-   * Only `resume` is currently executed by the controller; `goto` /
-   * `update` are accepted by the type surface so callers can migrate
-   * without breakage once the server work lands (plan-roadmap.md §5.3
-   * R2.4).
-   */
-  command?: {
-    resume?: unknown;
-    goto?: string | { node: string; input?: unknown };
-    update?: Partial<StateType>;
-  };
-  /**
    * Fork the run from an explicit checkpoint instead of the thread's
-   * latest. Emits a `forkFrom` field on the `/run.start` request that
-   * the API layer forwards to
-   * `graph.streamEvents(input, { version: "v3", forkFrom })`.
-   *
-   * See plan-roadmap.md §5.3 R2.4.
+   * latest. Ergonomic alias the SDK folds into
+   * `config.configurable.checkpoint_id` before dispatching the run, so
+   * the server receives the fork target via the single legacy-compliant
+   * field (never a top-level `forkFrom`).
    */
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
   /**
    * Behaviour when a run is already in-flight on the thread.
    *
    * - `"rollback"` (default) — abort the active run client-side and
    *   start the new one immediately.
    * - `"interrupt"` — server-side cancel of the in-flight run, then
-   *   start the new one (requires API support, roadmap A0.3).
+   *   start the new one.
    * - `"enqueue"` — do NOT abort the active run; the new submission
    *   lands in {@link StreamController.queueStore} and is forwarded
    *   once the current run terminates.

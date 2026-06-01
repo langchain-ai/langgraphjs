@@ -28,11 +28,6 @@ import {
  *   <div>{{ entry.values | json }}</div>
  * }
  * ```
- *
- * Today the queue is maintained client-side; once the server starts
- * emitting a dedicated queue channel (roadmap A0.3) the controller
- * will mirror that state directly — the selector surface will not
- * change.
  */
 export interface InjectSubmissionQueueReturn<
   StateType extends object = Record<string, unknown>,

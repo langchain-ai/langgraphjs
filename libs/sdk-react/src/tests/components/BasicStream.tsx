@@ -1,5 +1,8 @@
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
-import type { StreamSubmitOptions } from "@langchain/langgraph-sdk/stream";
+import type {
+  RunExecutionInfo,
+  StreamSubmitOptions,
+} from "@langchain/langgraph-sdk/stream";
 import type { Client } from "@langchain/langgraph-sdk";
 
 import { useStream } from "../../index.js";
@@ -19,7 +22,7 @@ interface Props {
   submitOptions?: StreamSubmitOptions<StreamState>;
   transport?: "sse" | "websocket";
   onThreadId?: (threadId: string) => void;
-  onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+  onCreated?: (info: RunExecutionInfo) => void;
 }
 
 export function BasicStream({

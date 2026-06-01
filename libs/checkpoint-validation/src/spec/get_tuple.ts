@@ -42,9 +42,9 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
       let latestTuple: CheckpointTuple | undefined;
 
       beforeAll(async () => {
-        thread_id = uuid6(-3);
-        parentCheckpointId = uuid6(-3);
-        childCheckpointId = uuid6(-3);
+        thread_id = uuid6(3);
+        parentCheckpointId = uuid6(3);
+        childCheckpointId = uuid6(3);
 
         const writesToParent = [
           {
@@ -224,9 +224,9 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         it("should return undefined if the checkpoint_id is not found", async () => {
           const configWithInvalidCheckpointId = {
             configurable: {
-              thread_id: uuid6(-3),
+              thread_id: uuid6(3),
               checkpoint_ns,
-              checkpoint_id: uuid6(-3),
+              checkpoint_id: uuid6(3),
             },
           };
           const checkpointTuple = await checkpointer.getTuple(

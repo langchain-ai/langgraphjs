@@ -54,7 +54,8 @@ errors.
 | `webSocketFactory` | `(url: string) => WebSocket` | Optional `WebSocket` factory for the built-in WS transport. |
 | `threadId` | `MaybeRefOrGetter<string \| null \| undefined>` | Thread to bind to. Accepts a plain value, `null` (start a new thread on first submit), or a reactive ref / getter — updating it re-hydrates against the new thread in place. |
 | `onThreadId` | `(id: string) => void` | Fires when a new thread is created server-side. |
-| `onCreated` | `({ run_id, thread_id }) => void` | Fires as soon as the server acknowledges a run. |
+| `onCreated` | `({ runId }) => void` | Convenience callback fired when this composable's run is accepted by the server. |
+| `onCompleted` | `({ runId?, reason }) => void` | Convenience callback fired when active streaming ends. `reason` is `"success"`, `"error"`, `"interrupt"`, or `"stopped"`; `runId` may be omitted for re-attached runs. |
 | `initialValues` | `StateType` | Seed state used until the first payload arrives. |
 | `messagesKey` | `string` | State key that carries the message array. Defaults to `"messages"`. |
 | `tools` | `AnyHeadlessToolImplementation[]` | Headless tool implementations. Interrupts that target a registered tool are auto-resumed. |
@@ -73,7 +74,7 @@ replacements — see [`v1-migration.md`](./v1-migration.md) §3.
 | `messages` | `ShallowRef<BaseMessage[]>` | Messages assembled from the message channel. Always `BaseMessage` instances from `@langchain/core/messages`. |
 | `toolCalls` | `ShallowRef<AssembledToolCall[]>` | Tool calls assembled with live status + args + results. |
 | `interrupts` | `ShallowRef<Interrupt[]>` | All pending root interrupts. |
-| `interrupt` | `ComputedRef<Interrupt \| undefined>` | Convenience: `interrupts.value[0]`. |
+| `interrupt` | `ComputedRef<Interrupt \| undefined>` | Convenience: `interrupts.value[0]`. In `<script setup>`, read the payload with `stream.interrupt.value?.value` (Vue ref unwrap + SDK `Interrupt.value`). In `<template>`, `stream.interrupt.value` is enough — see [Interrupts](./interrupts.md#script-vs-template-access). |
 | `isLoading` | `ComputedRef<boolean>` | `true` while a run is in flight or hydration hasn't finished. |
 | `isThreadLoading` | `ComputedRef<boolean>` | `true` only during initial thread hydration. |
 | `error` | `ComputedRef<unknown>` | Last error surfaced by the controller. |
@@ -83,10 +84,11 @@ replacements — see [`v1-migration.md`](./v1-migration.md) §3.
 | `subgraphs` / `subgraphsByNode` | `ShallowRef<ReadonlyMap<…>>` | Subgraph discovery, keyed by id or by node. |
 | `submit(input, options?)` | `(…) => Promise<void>` | Start / resume / fork a run. |
 | `stop()` | `() => Promise<void>` | Abort the in-flight run. |
-| `respond(response, target?)` | `(…) => Promise<void>` | Reply to a specific interrupt by id. |
+| `respond(response, options?)` | `(…) => Promise<void>` | Reply to a single interrupt (target via `options.interruptId` / `namespace`; carry `config` / `metadata`). |
+| `respondAll(responsesById, options?)` | `(…) => Promise<void>` | Resume several interrupts pending at the same checkpoint in one command (`interruptId` → response map). |
 | `client` | `Client` | Built-in `Client` when using the LGP branch. |
 | `assistantId` | `string` | Resolved assistant id (defaults to `"_"` when using a custom adapter). |
-| `getThread()` | `() => ThreadStream \| undefined` | Escape hatch returning the bound v2 `ThreadStream`. |
+| `getThread()` | `() => ThreadStream \| undefined` | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 
 ## See also
 

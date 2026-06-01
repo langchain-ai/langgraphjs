@@ -37,7 +37,7 @@ interface ListTestCase {
 export function listTests<T extends BaseCheckpointSaver>(
   initializer: CheckpointerTestInitializer<T>
 ) {
-  const invalidThreadId = uuid6(-3);
+  const invalidThreadId = uuid6(3);
 
   const namespaces = ["", "child"];
 

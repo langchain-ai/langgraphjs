@@ -14,6 +14,12 @@ type TestState = {
   count?: number;
 };
 
+async function flushMicrotasks(count = 4) {
+  for (let i = 0; i < count; i += 1) {
+    await Promise.resolve();
+  }
+}
+
 function createMockClient(overrides?: Partial<Client>): Client {
   return {
     threads: {
@@ -557,6 +563,7 @@ describe("StreamOrchestrator", () => {
       );
 
       await orch.submit({ messages: [] });
+      await flushMicrotasks();
 
       expect(orch.interrupts).toEqual([]);
       expect(orch.interrupt).toBeUndefined();

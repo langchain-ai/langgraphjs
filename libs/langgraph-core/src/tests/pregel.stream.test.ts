@@ -12,7 +12,12 @@ import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
 import { StreamChannel } from "../stream/stream-channel.js";
 import type { ProtocolEvent, StreamTransformer } from "../stream/types.js";
-import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { AIMessage } from "@langchain/core/messages";
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { ToolNode } from "../prebuilt/tool_node.js";
+import type { ToolsEventData } from "../stream/types.js";
+import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
 beforeAll(() => {
   initializeAsyncLocalStorageSingleton();
@@ -720,6 +725,84 @@ describe("streamEvents version v3", () => {
       expect(customEvents.length).toBeGreaterThanOrEqual(1);
       expect(customEvents[0].params.data).toEqual({
         payload: { hello: "world" },
+      });
+    });
+  });
+
+  describe("tool errors", () => {
+    const errorTool = new DynamicStructuredTool({
+      name: "error_tool",
+      description: "Always throws",
+      schema: z.object({}),
+      func: async () => {
+        throw new Error("test error");
+      },
+    });
+
+    function buildErrorToolGraph(handleToolErrors: boolean) {
+      return new StateGraph(MessagesAnnotation)
+        .addNode("tools", new ToolNode([errorTool], { handleToolErrors }))
+        .addEdge(START, "tools")
+        .addEdge("tools", END)
+        .compile({ checkpointer: new MemorySaver() });
+    }
+
+    async function collectToolEvents(handleToolErrors: boolean) {
+      const graph = buildErrorToolGraph(handleToolErrors);
+      const toolEvents: ToolsEventData[] = [];
+
+      try {
+        const run = await graph.streamEvents(
+          {
+            messages: [
+              new AIMessage({
+                tool_calls: [{ id: "call_1", name: "error_tool", args: {} }],
+              }),
+            ],
+          },
+          {
+            version: "v3",
+            configurable: {
+              thread_id: `tool-error-${handleToolErrors}-${Date.now()}`,
+            },
+          }
+        );
+
+        for await (const event of run) {
+          if (event.method === "tools") {
+            toolEvents.push(event.params.data as ToolsEventData);
+          }
+        }
+
+        await run.output;
+      } catch {
+        // Expected when handleToolErrors=false — the error propagates from invoke().
+      }
+
+      return toolEvents;
+    }
+
+    it("emits tool-started and tool-error when handleToolErrors=false", async () => {
+      const toolEvents = await collectToolEvents(false);
+
+      expect(toolEvents.some((e) => e.event === "tool-started")).toBe(true);
+      expect(toolEvents.some((e) => e.event === "tool-error")).toBe(true);
+      const err = toolEvents.find((e) => e.event === "tool-error");
+      expect(err).toMatchObject({
+        tool_call_id: "call_1",
+        message: "test error",
+      });
+    });
+
+    it("emits tool-started and tool-error when handleToolErrors=true", async () => {
+      const toolEvents = await collectToolEvents(true);
+
+      expect(toolEvents.some((e) => e.event === "tool-started")).toBe(true);
+      expect(toolEvents.some((e) => e.event === "tool-error")).toBe(true);
+      const err = toolEvents.find((e) => e.event === "tool-error");
+      expect(err).toMatchObject({
+        tool_call_id: "call_1",
+        message: "test error",
       });
     });
   });

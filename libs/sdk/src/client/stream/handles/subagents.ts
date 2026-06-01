@@ -9,8 +9,12 @@ import type { SubscriptionHandle } from "../index.js";
 import { MultiCursorBuffer } from "../multi-cursor-buffer.js";
 import { StreamingMessageAssembler } from "../messages.js";
 import type { StreamingMessage, StreamingMessageHandle } from "../messages.js";
-import { ToolCallAssembler } from "./tools.js";
-import type { AssembledToolCall } from "./tools.js";
+import {
+  shouldIgnoreScopedTaskToolEvent,
+  ToolCallAssembler,
+  toClientAssembledToolCall,
+} from "./tools.js";
+import type { ClientAssembledToolCall } from "./tools.js";
 import { MediaAssembler } from "../media.js";
 import type {
   AudioMedia,
@@ -51,7 +55,7 @@ export class SubagentHandle {
   readonly #session: Subscribable;
 
   #messagesIterable?: AsyncIterable<StreamingMessage>;
-  #toolCallsIterable?: AsyncIterable<AssembledToolCall>;
+  #toolCallsIterable?: AsyncIterable<ClientAssembledToolCall>;
   #subgraphsIterable?: AsyncIterable<SubgraphHandle>;
 
   #mediaDispatcherStarted = false;
@@ -93,17 +97,19 @@ export class SubagentHandle {
     return buffer;
   }
 
-  get toolCalls(): AsyncIterable<AssembledToolCall> {
+  get toolCalls(): AsyncIterable<ClientAssembledToolCall> {
     if (this.#toolCallsIterable) return this.#toolCallsIterable;
-    const buffer = new MultiCursorBuffer<AssembledToolCall>();
+    const buffer = new MultiCursorBuffer<ClientAssembledToolCall>();
     this.#toolCallsIterable = buffer;
     const assembler = new ToolCallAssembler();
     void this.#startProjection(
       ["tools"],
       (event) => {
         if (event.method !== "tools") return;
-        const tc = assembler.consume(event as ToolsEvent);
-        if (tc) buffer.push(tc);
+        const toolsEvent = event as ToolsEvent;
+        if (shouldIgnoreScopedTaskToolEvent(this.namespace, toolsEvent)) return;
+        const tc = assembler.consume(toolsEvent);
+        if (tc) buffer.push(toClientAssembledToolCall(tc));
       },
       () => buffer.close()
     );

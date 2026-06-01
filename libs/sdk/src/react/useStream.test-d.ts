@@ -728,7 +728,7 @@ describe("useStream.values state inference", () => {
 
     const stream = useStream<DirectState>({
       transport,
-      onFinish() {},
+      onFinish() { },
     });
 
     expectTypeOf(stream.values).toEqualTypeOf<DirectState>();
