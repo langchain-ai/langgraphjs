@@ -105,14 +105,54 @@ export interface StateGraphArgs<Channels extends object | unknown> {
     : ChannelReducers<{ __root__: Channels }>;
 }
 
-export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
-  RunInput,
-  RunOutput
-> & {
-  input?: StateDefinition;
+/**
+ * Retry and cache policies configurable on graph nodes.
+ *
+ * Use with {@link StateGraph.addNode} for per-node overrides, or with
+ * {@link StateGraph.setNodeDefaults} for graph-wide defaults applied at
+ * `compile()` time. Per-node values always take precedence over defaults,
+ * regardless of call order.
+ */
+export type NodePolicyOptions = {
+  /**
+   * Retry policy controlling backoff, max attempts, and which errors trigger
+   * a retry.
+   *
+   * @see {@link RetryPolicy}
+   */
+  retryPolicy?: RetryPolicy;
+  /**
+   * Cache policy controlling how node results are keyed and how long they
+   * persist.
+   *
+   * - Pass a {@link CachePolicy} object for fine-grained control (e.g. custom
+   *   `keyFunc`, `ttl`).
+   * - Pass `true` to enable caching with default settings.
+   * - Pass `false` to disable caching.
+   *
+   * @see {@link CachePolicy}
+   */
+  cachePolicy?: CachePolicy | boolean;
+};
+
+/**
+ * Resolved retry and cache policies stored on a node after boolean
+ * `cachePolicy` shorthand is normalized.
+ *
+ * @internal
+ */
+export type ResolvedNodePolicies = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy;
 };
+
+export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
+  RunInput,
+  RunOutput
+> &
+  ResolvedNodePolicies & {
+    input?: StateDefinition;
+  };
 
 /**
  * Options for StateGraph.addNode() method.
@@ -126,10 +166,9 @@ export type StateGraphAddNodeOptions<
     | StateDefinitionInit
     | undefined,
 > = {
-  retryPolicy?: RetryPolicy;
-  cachePolicy?: CachePolicy | boolean;
   input?: InputSchema;
-} & AddNodeOptions<Nodes>;
+} & NodePolicyOptions &
+  AddNodeOptions<Nodes>;
 
 /**
  * Graph-wide default node policies set via {@link StateGraph.setNodeDefaults}.
@@ -140,19 +179,7 @@ export type StateGraphAddNodeOptions<
  *
  * Defaults are **not** inherited by subgraphs.
  */
-export type NodeDefaults = {
-  /**
-   * Default retry policy for nodes that don't specify their own via
-   * `addNode(..., { retryPolicy })`.
-   */
-  retryPolicy?: RetryPolicy;
-  /**
-   * Default cache policy for nodes that don't specify their own via
-   * `addNode(..., { cachePolicy })`. Pass `true` for default caching, `false`
-   * to disable.
-   */
-  cachePolicy?: CachePolicy | boolean;
-};
+export type NodeDefaults = NodePolicyOptions;
 
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
@@ -377,7 +404,7 @@ export class StateGraph<
    * Graph-wide default node policies, resolved at `compile()` time.
    * @internal
    */
-  _nodeDefaults: { retryPolicy?: RetryPolicy; cachePolicy?: CachePolicy } = {};
+  _nodeDefaults: ResolvedNodePolicies = {};
 
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 

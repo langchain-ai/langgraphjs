@@ -32,6 +32,7 @@ export {
   type AddNodeOptions,
   type StateGraphNodeSpec,
   type StateGraphAddNodeOptions,
+  type NodePolicyOptions,
   type NodeDefaults,
   type StateGraphArgsWithStateSchema,
   type StateGraphArgsWithInputOutputSchemas,
