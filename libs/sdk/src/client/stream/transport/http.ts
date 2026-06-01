@@ -216,7 +216,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
     const startStream = async () => {
       let attempt = 0;
-      let lastError: unknown;
 
       while (!ac.signal.aborted && !this.closed) {
         try {
@@ -271,7 +270,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           streamQueue.close();
           return;
         } catch (error) {
-          lastError = error;
           if (ac.signal.aborted || this.closed) {
             if (!readySettled) {
               rejectReady(error);
