@@ -13,7 +13,8 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
-import { escapeRediSearchTagValue } from "./utils.js";
+import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 // Type for Redis client - supports both standalone and cluster
 export type RedisClientType =
@@ -130,6 +131,12 @@ export class RedisSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    if (checkpointId !== undefined) {
+      assertSafeKeyComponent("checkpoint_id", checkpointId);
+    }
+
     let key: string;
     let jsonDoc: CheckpointDocument | null;
 
@@ -163,9 +170,8 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
 
     // Load checkpoint with pending writes
-    const { checkpoint, pendingWrites } = await this.loadCheckpointWithWrites(
-      jsonDoc
-    );
+    const { checkpoint, pendingWrites } =
+      await this.loadCheckpointWithWrites(jsonDoc);
 
     return await this.createCheckpointTuple(jsonDoc, checkpoint, pendingWrites);
   }
@@ -186,7 +192,14 @@ export class RedisSaver extends BaseCheckpointSaver {
       throw new Error("thread_id is required");
     }
 
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    if (parentCheckpointId !== undefined) {
+      assertSafeKeyComponent("parent_checkpoint_id", parentCheckpointId);
+    }
+
     const checkpointId = checkpoint.id || uuid6(0);
+    assertSafeKeyComponent("checkpoint_id", checkpointId);
     const key = `checkpoint:${threadId}:${checkpointNs}:${checkpointId}`;
 
     // Copy checkpoint and filter channel_values to only include changed channels
@@ -213,6 +226,10 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
     // If newVersions is undefined, keep all channel_values as-is (for backward compatibility)
 
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writesExist = await this.client.exists(zsetKey);
+
     // Structure matching Python implementation
     const jsonDoc: CheckpointDocument = {
       thread_id: threadId,
@@ -223,7 +240,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       checkpoint: storedCheckpoint,
       metadata: metadata,
       checkpoint_ts: Date.now(),
-      has_writes: "false",
+      has_writes: writesExist ? "true" : "false",
     };
 
     // Store metadata fields at top-level for searching
@@ -252,6 +269,41 @@ export class RedisSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     await this.ensureIndexes();
 
+    // Validate caller-controlled identifiers before they reach KEYS / SCAN
+    // patterns or RediSearch tag values. The pre-existing escape protects
+    // the search query body but not the fallback `client.keys(pattern)`
+    // paths below, where a `thread_id` of `*` would otherwise enumerate
+    // every tenant.
+    if (config?.configurable?.thread_id !== undefined) {
+      assertSafeKeyComponent("thread_id", config.configurable.thread_id);
+    }
+    if (config?.configurable?.checkpoint_ns !== undefined) {
+      assertSafeKeyComponent(
+        "checkpoint_ns",
+        config.configurable.checkpoint_ns,
+        { allowEmpty: true }
+      );
+    }
+    if (options?.before?.configurable?.checkpoint_id !== undefined) {
+      assertSafeKeyComponent(
+        "checkpoint_id",
+        options.before.configurable.checkpoint_id
+      );
+    }
+    if (options?.before?.configurable?.thread_id !== undefined) {
+      assertSafeKeyComponent(
+        "thread_id",
+        options.before.configurable.thread_id
+      );
+    }
+    if (options?.before?.configurable?.checkpoint_ns !== undefined) {
+      assertSafeKeyComponent(
+        "checkpoint_ns",
+        options.before.configurable.checkpoint_ns,
+        { allowEmpty: true }
+      );
+    }
+
     // If filter is provided (even if empty), use search functionality
     if (options?.filter !== undefined) {
       // Check if we have null values in the filter which RediSearch can't handle
@@ -264,9 +316,8 @@ export class RedisSaver extends BaseCheckpointSaver {
 
       // Add thread_id constraint if provided
       if (config?.configurable?.thread_id) {
-        const threadId = config.configurable.thread_id.replace(
-          /[-.@]/g,
-          "\\$&"
+        const threadId = escapeRediSearchTagValue(
+          config.configurable.thread_id
         );
         queryParts.push(`(@thread_id:{${threadId}})`);
       }
@@ -279,7 +330,7 @@ export class RedisSaver extends BaseCheckpointSaver {
           // We'll store it as "__empty__" in the index
           queryParts.push(`(@checkpoint_ns:{__empty__})`);
         } else {
-          const escapedNs = checkpointNs.replace(/[-.@]/g, "\\$&");
+          const escapedNs = escapeRediSearchTagValue(checkpointNs);
           queryParts.push(`(@checkpoint_ns:{${escapedNs}})`);
         }
       }
@@ -325,15 +376,15 @@ export class RedisSaver extends BaseCheckpointSaver {
           options?.before && !config?.configurable?.thread_id
             ? 1000 // Fetch many results for global search with 'before' filtering
             : options?.before
-            ? limit * 10
-            : limit;
+              ? limit * 10
+              : limit;
 
         const results = await this.client.ft.search("checkpoints", query, {
           LIMIT: { from: 0, size: fetchLimit },
           SORTBY: { BY: "checkpoint_ts", DIRECTION: "DESC" },
         });
 
-        let documents = results.documents;
+        const documents = results.documents;
 
         let yieldedCount = 0;
 
@@ -605,6 +656,11 @@ export class RedisSaver extends BaseCheckpointSaver {
       throw new Error("thread_id and checkpoint_id are required");
     }
 
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    assertSafeKeyComponent("checkpoint_id", checkpointId);
+    assertSafeKeyComponent("task_id", taskId);
+
     // Collect write keys for sorted set tracking
     const writeKeys: string[] = [];
 
@@ -635,7 +691,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Register write keys in sorted set for efficient retrieval
     if (writeKeys.length > 0) {
-      const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+      const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
 
       // Use timestamp + idx for scoring to maintain correct order
       const zaddArgs: Record<string, number> = {};
@@ -670,24 +726,31 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
+    // Without this guard a `threadId` of `*` would expand the KEYS pattern
+    // into `checkpoint:*:*` and delete every checkpoint in the database
+    // across every tenant. CWE-77 / CWE-943.
+    assertSafeKeyComponent("thread_id", threadId);
+
     // Delete checkpoints
     const checkpointPattern = `checkpoint:${threadId}:*`;
-    // Use scan for better performance and cluster compatibility
-    // Use keys for simplicity - scan would be better for large datasets
     const checkpointKeys = await (this.client as any).keys(checkpointPattern);
 
     if (checkpointKeys.length > 0) {
       await this.client.del(checkpointKeys);
     }
 
-    // Delete writes
-    const writesPattern = `writes:${threadId}:*`;
-    // Use scan for better performance and cluster compatibility
-    // Use keys for simplicity - scan would be better for large datasets
+    const writesPattern = `checkpoint_write:${threadId}:*`;
     const writesKeys = await (this.client as any).keys(writesPattern);
 
     if (writesKeys.length > 0) {
       await this.client.del(writesKeys);
+    }
+
+    const zsetPattern = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:*`;
+    const zsetKeys = await (this.client as any).keys(zsetPattern);
+
+    if (zsetKeys.length > 0) {
+      await this.client.del(zsetKeys);
     }
   }
 
@@ -709,6 +772,11 @@ export class RedisSaver extends BaseCheckpointSaver {
     checkpointNs: string,
     checkpointId: string
   ): Promise<Array<[string, string, any]> | undefined> {
+    // Defense in depth: every public entry already validates these, but
+    // the helper is reachable from internal migration paths too.
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    assertSafeKeyComponent("checkpoint_id", checkpointId);
     // Search for all write documents for this checkpoint
     const pattern = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:*`;
     const writeKeys = await (this.client as any).keys(pattern);

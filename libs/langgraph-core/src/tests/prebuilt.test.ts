@@ -2040,6 +2040,45 @@ describe.each([["v1" as const], ["v2" as const]])(
           "The weather is nice"
         );
       });
+
+      it("Throws when structured output parser returns null", async () => {
+        const cartResponseSchema = z.object({
+          items: z.array(z.string()),
+          cartStatus: z.string(),
+        });
+
+        const llm = new FakeToolCallingChatModel({
+          responses: [new AIMessage('{"items": ["apple", "banana"]}')],
+          structuredResponse: { items: ["apple", "banana"] },
+        });
+
+        vi.spyOn(llm, "withStructuredOutput").mockReturnValue(
+          RunnableLambda.from(async () => null) as unknown as ReturnType<
+            typeof llm.withStructuredOutput
+          >
+        );
+
+        const agent = createReactAgent({
+          llm,
+          tools: [],
+          version,
+          responseFormat: cartResponseSchema,
+        });
+
+        const error = await agent
+          .invoke({
+            messages: [new HumanMessage("What's in my cart?")],
+          })
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(
+          /Failed to parse structured response/
+        );
+        expect((error as Error).message).toMatch(
+          /returned null\/undefined/
+        );
+      });
     });
 
     describe("Dynamic Model", () => {
@@ -2672,6 +2711,51 @@ describe("ToolNode", () => {
     expect(res[0].content).toEqual(
       `Error: Tool "badtool" not found.\n Please fix your mistakes.`
     );
+  });
+
+  // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)
+  it.skip("passes toolCallId to handleToolStart when invoking a tool", async () => {
+    let capturedToolCallId: string | undefined;
+    const recordingTool = tool(async (_args: { x: number }) => "ok", {
+      name: "recorder",
+      description: "Records config",
+      schema: z.object({ x: z.number() }),
+    });
+    const toolNode = new ToolNode([recordingTool]);
+    await toolNode.invoke(
+      [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            {
+              name: "recorder",
+              args: { x: 1 },
+              id: "call_abc123",
+              type: "tool_call",
+            },
+          ],
+        }),
+      ],
+      {
+        callbacks: [
+          {
+            handleToolStart(
+              _tool: unknown,
+              _input: string,
+              _runId: string,
+              _parentRunId?: string,
+              _tags?: string[],
+              _metadata?: Record<string, unknown>,
+              _runName?: string,
+              toolCallId?: string
+            ) {
+              capturedToolCallId = toolCallId;
+            },
+          },
+        ],
+      }
+    );
+    expect(capturedToolCallId).toBe("call_abc123");
   });
 
   it("Should work when nested with a callback manager passed", async () => {

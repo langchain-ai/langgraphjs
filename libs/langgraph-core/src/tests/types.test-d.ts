@@ -5,7 +5,13 @@ import { Annotation } from "../graph/annotation.js";
 import { StateGraph } from "../graph/state.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
-import { Command, Send, START, END } from "../constants.js";
+import {
+  Command,
+  Send,
+  START,
+  END,
+  type OverwriteValue,
+} from "../constants.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import type {
   GraphNode,
@@ -107,7 +113,7 @@ describe("ExtractUpdateType", () => {
       expectTypeOf<Update>().toEqualTypeOf<{
         count?: number | undefined;
         name?: string | undefined;
-        items?: string | undefined;
+        items?: string | OverwriteValue<string[]> | undefined;
       }>();
     });
   });
@@ -125,7 +131,7 @@ describe("ExtractUpdateType", () => {
       type Update = ExtractUpdateType<typeof AgentAnnotation>;
 
       expectTypeOf<Update>().toEqualTypeOf<{
-        count?: number | undefined;
+        count?: number | OverwriteValue<number> | undefined;
         name?: string | undefined;
       }>();
     });
@@ -1294,7 +1300,7 @@ describe("Send", () => {
 
     expectTypeOf(packet.node).toEqualTypeOf<"process">();
     expectTypeOf(packet.args).toEqualTypeOf<{
-      count?: number | undefined;
+      count?: number | OverwriteValue<number> | undefined;
       name?: string | undefined;
     }>();
   });
@@ -1317,7 +1323,7 @@ describe("Schema type helpers", () => {
     it("provides .Update type helper", () => {
       type SchemaUpdate = typeof schema.Update;
       expectTypeOf<SchemaUpdate>().toEqualTypeOf<{
-        messages?: string[] | undefined;
+        messages?: string[] | OverwriteValue<string[]> | undefined;
       }>();
     });
 

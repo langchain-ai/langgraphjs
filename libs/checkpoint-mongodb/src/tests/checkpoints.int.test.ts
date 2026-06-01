@@ -148,6 +148,92 @@ describe("MongoDBSaver", () => {
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
   });
 
+  describe("enableTimestamps", () => {
+    it("should set upserted_at on checkpoint and write documents", async () => {
+      const saver = new MongoDBSaver({
+        client,
+        enableTimestamps: true,
+      });
+
+      const before = new Date();
+
+      await saver.put({ configurable: { thread_id: "ts-1" } }, checkpoint1, {
+        source: "update",
+        step: -1,
+        parents: {},
+      });
+
+      await saver.putWrites(
+        {
+          configurable: {
+            thread_id: "ts-1",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint1.id,
+          },
+        },
+        [["chan", "val"]],
+        "task-1"
+      );
+
+      const after = new Date();
+
+      const db = client.db();
+      const cpDoc = await db
+        .collection("checkpoints")
+        .findOne({ thread_id: "ts-1" });
+      const writeDoc = await db
+        .collection("checkpoint_writes")
+        .findOne({ thread_id: "ts-1" });
+
+      expect(cpDoc?.upserted_at).toBeInstanceOf(Date);
+      expect(cpDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
+        before.getTime()
+      );
+      expect(cpDoc!.upserted_at.getTime()).toBeLessThanOrEqual(after.getTime());
+
+      expect(writeDoc?.upserted_at).toBeInstanceOf(Date);
+      expect(writeDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
+        before.getTime()
+      );
+      expect(writeDoc!.upserted_at.getTime()).toBeLessThanOrEqual(
+        after.getTime()
+      );
+    });
+
+    it("should not set upserted_at when enableTimestamps is false", async () => {
+      const saver = new MongoDBSaver({ client });
+
+      await saver.put({ configurable: { thread_id: "ts-2" } }, checkpoint2, {
+        source: "update",
+        step: -1,
+        parents: {},
+      });
+
+      await saver.putWrites(
+        {
+          configurable: {
+            thread_id: "ts-2",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint2.id,
+          },
+        },
+        [["chan", "val"]],
+        "task-2"
+      );
+
+      const db = client.db();
+      const cpDoc = await db
+        .collection("checkpoints")
+        .findOne({ thread_id: "ts-2" });
+      const writeDoc = await db
+        .collection("checkpoint_writes")
+        .findOne({ thread_id: "ts-2" });
+
+      expect(cpDoc?.upserted_at).toBeUndefined();
+      expect(writeDoc?.upserted_at).toBeUndefined();
+    });
+  });
+
   it("should delete thread", async () => {
     const saver = new MongoDBSaver({ client });
     await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {

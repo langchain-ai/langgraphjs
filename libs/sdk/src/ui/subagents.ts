@@ -1,3 +1,4 @@
+import type { BaseMessage } from "@langchain/core/messages";
 import type {
   Message,
   DefaultToolCall,
@@ -114,6 +115,12 @@ export interface SubagentManagerOptions {
    * Callback when subagent state changes.
    */
   onSubagentChange?: () => void;
+
+  /**
+   * Converts a @langchain/core BaseMessage to the desired output format.
+   * Defaults to `toMessageDict` which produces plain Message objects.
+   */
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 }
 
 /**
@@ -127,15 +134,12 @@ type SubagentStreamBase<ToolCall> = Omit<
   | "getToolCalls"
   | "interrupt"
   | "interrupts"
+  | "switchThread"
   | "subagents"
   | "activeSubagents"
   | "getSubagent"
   | "getSubagentsByType"
   | "getSubagentsByMessage"
-  | "nodes"
-  | "activeNodes"
-  | "getNodeStream"
-  | "getNodeStreamsByName"
 > & {
   /** Internal: ID of the AI message that triggered this subagent */
   aiMessageId: string | null;
@@ -164,6 +168,19 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   private pendingMatches = new Map<string, string>(); // namespaceId -> description
 
   /**
+   * Messages received before we can map a subgraph namespace to the public
+   * subagent tool-call ID. Once the mapping is established, these messages are
+   * replayed so early tool calls are not lost.
+   */
+  private pendingMessages = new Map<
+    string,
+    Array<{
+      serialized: Message<DefaultToolCall>;
+      metadata?: Record<string, unknown>;
+    }>
+  >();
+
+  /**
    * Message managers for each subagent.
    * Uses the same MessageTupleManager as the main stream for proper
    * message chunk concatenation.
@@ -174,11 +191,14 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
 
   private onSubagentChange?: () => void;
 
+  private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
+
   constructor(options?: SubagentManagerOptions) {
     this.subagentToolNames = new Set(
       options?.subagentToolNames ?? DEFAULT_SUBAGENT_TOOL_NAMES
     );
     this.onSubagentChange = options?.onSubagentChange;
+    this.toMessage = options?.toMessage ?? toMessageDict;
   }
 
   /**
@@ -201,14 +221,39 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     const manager = this.messageManagers.get(toolCallId);
     if (!manager) return [];
 
-    // Convert chunks to messages in order
     const messages: Message<ToolCall>[] = [];
     for (const entry of Object.values(manager.chunks)) {
       if (entry.chunk) {
-        messages.push(toMessageDict(entry.chunk) as Message<ToolCall>);
+        messages.push(this.toMessage(entry.chunk) as Message<ToolCall>);
       }
     }
     return messages;
+  }
+
+  /**
+   * Buffer a subagent message until we can resolve its namespace to a tool call.
+   */
+  private queuePendingMessage(
+    namespaceId: string,
+    serialized: Message<DefaultToolCall>,
+    metadata?: Record<string, unknown>
+  ) {
+    const pending = this.pendingMessages.get(namespaceId) ?? [];
+    pending.push({ serialized, metadata });
+    this.pendingMessages.set(namespaceId, pending);
+  }
+
+  /**
+   * Replay any buffered messages once a namespace has been mapped.
+   */
+  private flushPendingMessages(namespaceId: string) {
+    const pending = this.pendingMessages.get(namespaceId);
+    if (!pending?.length) return;
+
+    this.pendingMessages.delete(namespaceId);
+    pending.forEach(({ serialized, metadata }) => {
+      this.addMessageToSubagent(namespaceId, serialized, metadata);
+    });
   }
 
   /**
@@ -239,6 +284,9 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       // Subagents don't have interrupts yet (future enhancement)
       interrupt: undefined,
       interrupts: [],
+
+      // Subagents don't support thread switching
+      switchThread: () => {},
 
       // Nested subagent tracking (empty for now, future enhancement)
       subagents: new Map<
@@ -299,6 +347,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         });
         this.onSubagentChange?.();
       }
+      this.flushPendingMessages(namespaceId);
       return toolCallId;
     };
 
@@ -386,21 +435,16 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
-   * Check if a subagent should be shown to the user.
-   * Subagents are only shown once they've actually started running.
+   * Check if a subagent should be exposed through the public API.
    *
-   * This filters out:
-   * - Pending subagents that haven't been matched to a namespace yet
-   * - Streaming artifacts with partial/corrupted data
+   * We expose subagents as soon as their parent AI message emits a complete
+   * subagent tool call, which means pending subagents should be visible.
    *
-   * The idea is: we register subagents internally when we see tool calls,
-   * but we only show them to the user once LangGraph confirms they're
-   * actually executing (via namespace events).
+   * This still filters out corrupted or partial streaming artifacts by
+   * requiring a valid-looking `subagent_type`.
    */
   private isValidSubagent(subagent: SubagentStreamBase<ToolCall>): boolean {
-    // Only show subagents that have started running or completed
-    // This ensures we don't show partial/pending subagents
-    return subagent.status === "running" || subagent.status === "complete";
+    return this.isValidSubagentType(subagent.toolCall.args.subagent_type);
   }
 
   /**
@@ -410,8 +454,12 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   private buildExecution(
     base: SubagentStreamBase<ToolCall>
   ): SubagentStreamInterface<Record<string, unknown>, ToolCall> {
-    // Get fresh messages from the manager
-    const messages = this.getMessagesForSubagent(base.id);
+    // Get fresh messages from the streaming manager (populated during live streaming).
+    // Fall back to base.messages, which is populated by updateSubagentFromSubgraphState
+    // when restoring history after page reload.
+    const streamingMessages = this.getMessagesForSubagent(base.id);
+    const messages =
+      streamingMessages.length > 0 ? streamingMessages : base.messages;
     return this.createSubagentStream({
       ...base,
       messages,
@@ -549,9 +597,15 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           newTypeIsValid && newType.length > oldType.length;
         const shouldUpdateDesc = newDesc.length > oldDesc.length;
 
-        if (shouldUpdateType || shouldUpdateDesc) {
+        // Update aiMessageId when the provider replaces it (e.g. OpenAI
+        // changes streaming "lc_run--..." IDs to final "resp_..." IDs).
+        const shouldUpdateMessageId =
+          aiMessageId != null && aiMessageId !== existing.aiMessageId;
+
+        if (shouldUpdateType || shouldUpdateDesc || shouldUpdateMessageId) {
           this.subagents.set(toolCall.id, {
             ...existing,
+            ...(shouldUpdateMessageId ? { aiMessageId } : {}),
             toolCall: {
               ...existing.toolCall,
               args: {
@@ -602,6 +656,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       this.subagents.set(toolCall.id, execution);
       // Create a message manager for this subagent
       this.getMessageManager(toolCall.id);
+      this.flushPendingMessages(toolCall.id);
       hasChanges = true;
     }
 
@@ -706,10 +761,10 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     const existing = this.subagents.get(toolCallId);
 
     // If we still don't have a match, the mapping hasn't been established yet.
-    // Don't create a placeholder - just skip this message.
-    // The values event will establish the mapping, and subsequent messages
-    // will be routed correctly.
+    // Buffer the message so early AI/tool-call chunks are replayed once the
+    // values event or a later human message establishes the mapping.
     if (!existing) {
+      this.queuePendingMessage(namespaceId, serialized, metadata);
       return;
     }
 
@@ -808,6 +863,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     this.namespaceToToolCallId.clear();
     this.messageManagers.clear();
     this.pendingMatches.clear();
+    this.pendingMessages.clear();
     this.onSubagentChange?.();
   }
 
@@ -864,7 +920,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       return;
     }
 
-    // Build a map of tool_call_id -> tool message content for quick lookup
+    // Build a map of tool_call_id -> tool message data for quick lookup
     const toolResults = new Map<
       string,
       { content: string; status: "success" | "error" }
@@ -931,7 +987,9 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
             : "complete"
           : "running";
 
-        // Create the subagent execution
+        // Create the subagent execution stub. Messages and namespace are empty
+        // here; fetchSubagentHistory will derive the subgraph checkpoint_ns by
+        // inspecting intermediate history tasks and populate messages async.
         const execution: SubagentStreamBase<ToolCall> = {
           id: toolCall.id,
           toolCall: subagentToolCall,
@@ -941,7 +999,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
             isComplete && status === "complete" ? toolResult.content : null,
           error: isComplete && status === "error" ? toolResult.content : null,
           namespace: [],
-          messages: [], // Internal messages are not available from history
+          messages: [], // Restored asynchronously via fetchSubagentHistory
           aiMessageId: (message.id as string) ?? null,
           parentId: null,
           depth: 0,
@@ -957,6 +1015,36 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     if (hasChanges) {
       this.onSubagentChange?.();
     }
+  }
+
+  /**
+   * Update a reconstructed subagent's messages and values from its subgraph checkpoint state.
+   *
+   * This is called after fetching the subgraph's history to restore the internal
+   * conversation that was lost on page refresh. Only updates if messages are
+   * currently empty (does not overwrite live streaming data).
+   *
+   * @param toolCallId - The tool call ID identifying the subagent
+   * @param messages - Messages from the subgraph's latest checkpoint
+   * @param values - Full state values from the subgraph's latest checkpoint
+   * @returns true if the subagent was updated, false otherwise
+   */
+  updateSubagentFromSubgraphState(
+    toolCallId: string,
+    messages: Message[],
+    values?: Record<string, unknown>
+  ): boolean {
+    const subagent = this.subagents.get(toolCallId);
+    if (!subagent) return false;
+    // Don't overwrite messages from active streaming
+    if (subagent.messages.length > 0) return false;
+    if (messages.length === 0) return false;
+
+    subagent.messages = messages as Message<ToolCall>[];
+    if (values != null) subagent.values = values;
+
+    this.onSubagentChange?.();
+    return true;
   }
 
   /**

@@ -3,8 +3,12 @@ index.cjs
 index.js
 index.d.ts
 *.d.ts
+!vite-env.d.ts
+*.d.ts.map
 *.d.cts
+*.d.cts.map
 *.d.mts
+*.d.mts.map
 node_modules
 dist
 coverage/
@@ -29,3 +33,8 @@ __pycache__
 tsconfig.vitest-temp.json
 .pnpm-store
 .idea
+.claude
+.vitest-attachments
+agent-os/
+__screenshots__
+*_*.md

@@ -13,6 +13,7 @@ import { UntrackedValueChannel } from "../channels/untracked_value.js";
 import type { SerializableSchema } from "./types.js";
 import { isStandardSchema } from "./types.js";
 import { getJsonSchemaFromSchema, getSchemaDefaultGetter } from "./adapter.js";
+import type { OverwriteValue } from "../constants.js";
 import { ReducedValue } from "./values/reduced.js";
 import { UntrackedValue } from "./values/untracked.js";
 
@@ -41,16 +42,14 @@ const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
  * // ChannelType is BaseChannel<number, string>
  * ```
  */
-export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
-  infer V,
-  infer I
->
-  ? BaseChannel<V, I>
-  : F extends UntrackedValue<infer V>
-  ? BaseChannel<V, V>
-  : F extends SerializableSchema<infer I, infer O>
-  ? BaseChannel<O, I>
-  : BaseChannel<unknown, unknown>;
+export type StateSchemaFieldToChannel<F> =
+  F extends ReducedValue<infer V, infer I>
+    ? BaseChannel<V, OverwriteValue<V> | I>
+    : F extends UntrackedValue<infer V>
+      ? BaseChannel<V, V>
+      : F extends SerializableSchema<infer I, infer O>
+        ? BaseChannel<O, I>
+        : BaseChannel<unknown, unknown>;
 
 /**
  * Converts StateSchema fields into a strongly-typed
@@ -82,7 +81,7 @@ export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
  * @see StateSchemaFieldToChannel
  */
 export type StateSchemaFieldsToStateDefinition<
-  TFields extends StateSchemaFields
+  TFields extends StateSchemaFields,
 > = {
   [K in keyof TFields]: StateSchemaFieldToChannel<TFields[K]>;
 };
@@ -116,10 +115,10 @@ export type InferStateSchemaValue<TFields extends StateSchemaFields> = {
   [K in keyof TFields]: TFields[K] extends ReducedValue<any, any>
     ? TFields[K]["ValueType"]
     : TFields[K] extends UntrackedValue<any>
-    ? TFields[K]["ValueType"]
-    : TFields[K] extends SerializableSchema<any, infer TOutput>
-    ? TOutput
-    : never;
+      ? TFields[K]["ValueType"]
+      : TFields[K] extends SerializableSchema<any, infer TOutput>
+        ? TOutput
+        : never;
 };
 
 /**
@@ -131,13 +130,13 @@ export type InferStateSchemaValue<TFields extends StateSchemaFields> = {
  * - SerializableSchema<Input, Output> → Input (what you provide)
  */
 export type InferStateSchemaUpdate<TFields extends StateSchemaFields> = {
-  [K in keyof TFields]?: TFields[K] extends ReducedValue<any, any>
-    ? TFields[K]["InputType"]
+  [K in keyof TFields]?: TFields[K] extends ReducedValue<infer V, infer I>
+    ? OverwriteValue<V> | I
     : TFields[K] extends UntrackedValue<any>
-    ? TFields[K]["ValueType"]
-    : TFields[K] extends SerializableSchema<infer TInput, any>
-    ? TInput
-    : never;
+      ? TFields[K]["ValueType"]
+      : TFields[K] extends SerializableSchema<infer TInput, any>
+        ? TInput
+        : never;
 };
 
 /**
@@ -266,7 +265,8 @@ export class StateSchema<TFields extends StateSchemaFields> {
 
       if (ReducedValue.isInstance(value)) {
         fieldSchema = getJsonSchemaFromSchema(value.valueSchema) as JSONSchema;
-        // Merge jsonSchemaExtra even if base schema is undefined
+        // Merge jsonSchemaExtra (e.g. langgraph_type) into the field schema,
+        // even if base schema is undefined
         if (value.jsonSchemaExtra) {
           fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
         }
@@ -319,6 +319,11 @@ export class StateSchema<TFields extends StateSchemaFields> {
       if (ReducedValue.isInstance(value)) {
         // Use input schema for updates
         fieldSchema = getJsonSchemaFromSchema(value.inputSchema) as JSONSchema;
+        // Merge jsonSchemaExtra (e.g. langgraph_type) into the field schema,
+        // even if base schema is undefined
+        if (value.jsonSchemaExtra) {
+          fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
+        }
       } else if (UntrackedValue.isInstance(value)) {
         fieldSchema = value.schema
           ? (getJsonSchemaFromSchema(value.schema) as JSONSchema)

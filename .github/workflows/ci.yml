@@ -35,10 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+        uses: pnpm/action-setup@26f6d4f2c533a43e6b5da0b4a5dd983f98f7b49a # v4
 
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -55,10 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+        uses: pnpm/action-setup@26f6d4f2c533a43e6b5da0b4a5dd983f98f7b49a # v4
 
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -69,38 +69,16 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
-  check-readmes-synced:
-    name: Check READMEs synced
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 1
-
-      - name: Check README.md is in sync
-        run: |
-          if ! diff -q README.md libs/langgraph/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph/README.md"
-          diff -C 3 README.md libs/langgraph/README.md
-          exit 1
-          fi
-          if ! diff -q README.md libs/langgraph-core/README.md >/dev/null; then
-          echo "README.md is out of sync with langgraph-core/README.md"
-          diff -C 3 README.md libs/langgraph-core/README.md
-          exit 1
-          fi
-
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+        uses: pnpm/action-setup@26f6d4f2c533a43e6b5da0b4a5dd983f98f7b49a # v4
 
       - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -120,7 +98,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: build-artifacts
           path: build-artifacts.tar.gz
@@ -131,17 +109,17 @@ jobs:
   # ============================================
   test:
     name: Unit Tests
-    needs: [lint, format, check-readmes-synced, build]
+    needs: [lint, format, build]
     strategy:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
         os: [ubuntu-latest]
-        node-version: [20.x, "22.14.0"]
+        node-version: [22.x, 24.x, 26.x]
         include:
           - os: windows-latest
-            node-version: "22.14.0"
+            node-version: 22.x
           - os: macos-latest
-            node-version: "22.14.0"
+            node-version: 22.x
     runs-on: ${{ matrix.os }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -149,32 +127,41 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+        uses: pnpm/action-setup@26f6d4f2c533a43e6b5da0b4a5dd983f98f7b49a # v4
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
         with:
           name: build-artifacts
       - name: Extract build artifacts
         run: tar -xzf build-artifacts.tar.gz
         shell: bash
       - name: Test
-        # Run tests directly with pnpm, bypassing turbo's build dependency
-        # since build artifacts are already extracted.
-        run: pnpm -r --if-present run test
+        # Run non-browser tests directly with pnpm, bypassing turbo's build
+        # dependency since build artifacts are already extracted.
+        # Browser tests (sdk-react, sdk-angular, sdk-vue, sdk-svelte) run in
+        # a dedicated job to avoid Chrome connection timeouts.
+        run: pnpm -r --if-present --filter='!@langchain/react' --filter='!@langchain/angular' --filter='!@langchain/vue' --filter='!@langchain/svelte' run test
+
+  browser-tests:
+    name: Browser Tests
+    needs: [lint, format, build]
+    uses: ./.github/workflows/test-browser.yml
+    with:
+      artifact-name: build-artifacts
 
   # ============================================
   # Stage 2: Environment/Export Tests (separate workflow)
   # ============================================
   environment-tests:
     name: Environment Tests
-    needs: [lint, format, check-readmes-synced, build]
+    needs: [lint, format, build]
     uses: ./.github/workflows/test-exports.yml
     with:
       artifact-name: build-artifacts

@@ -1,6 +1,11 @@
-import { it, expect } from "vitest";
-import { getBranchSequence } from "./branching.js";
+import { it, expect, describe } from "vitest";
+import {
+  getBranchSequence,
+  getMessagesMetadataMap,
+  getBranchContext,
+} from "./branching.js";
 import { ThreadState } from "../schema.js";
+import type { Message } from "../types.messages.js";
 
 const history = [
   {
@@ -423,5 +428,79 @@ it("partial tree", async () => {
         sequence(node(2, [2]), node(1, [2]), node(0, [2]))
       )
     ),
+  });
+});
+
+describe("functional graph (values: null)", () => {
+  type FunctionalState = Record<string, unknown>;
+
+  const functionalHistory: ThreadState<FunctionalState>[] = [
+    {
+      values: {
+        messages: [
+          { type: "human", content: "hi", id: "m1" },
+          { type: "ai", content: "hello", id: "m2" },
+        ],
+      },
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "loop",
+        step: 1,
+        parents: {},
+        thread_id: "t1",
+      },
+      created_at: "2025-01-01T00:00:02.000Z",
+      checkpoint: {
+        thread_id: "t1",
+        checkpoint_id: "cp-2",
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      },
+      parent_checkpoint: {
+        thread_id: "t1",
+        checkpoint_id: "cp-1",
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      },
+    },
+    {
+      values: null as unknown as FunctionalState,
+      next: [],
+      tasks: [],
+      metadata: {
+        source: "input",
+        step: 0,
+        parents: {},
+        thread_id: "t1",
+      },
+      created_at: "2025-01-01T00:00:01.000Z",
+      checkpoint: {
+        thread_id: "t1",
+        checkpoint_id: "cp-1",
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      },
+      parent_checkpoint: null,
+    },
+  ];
+
+  it("getMessagesMetadataMap skips history entries with null values", () => {
+    const branchContext = getBranchContext("", functionalHistory);
+
+    const result = getMessagesMetadataMap({
+      initialValues: { messages: [] },
+      history: functionalHistory,
+      getMessages: (values: FunctionalState) =>
+        (values?.messages ?? []) as Message[],
+      branchContext,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[0].messageId).toBe("m1");
+    expect(result[1].messageId).toBe("m2");
+
+    expect(result[0].firstSeenState?.checkpoint?.checkpoint_id).toBe("cp-2");
+    expect(result[1].firstSeenState?.checkpoint?.checkpoint_id).toBe("cp-2");
   });
 });

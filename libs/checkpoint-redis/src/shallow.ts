@@ -10,7 +10,8 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient } from "redis";
-import { escapeRediSearchTagValue } from "./utils.js";
+import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 export interface TTLConfig {
   defaultTTL?: number; // TTL in minutes
@@ -124,7 +125,14 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       throw new Error("thread_id is required");
     }
 
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    if (parentCheckpointId !== undefined) {
+      assertSafeKeyComponent("parent_checkpoint_id", parentCheckpointId);
+    }
+
     const checkpointId = checkpoint.id || uuid6(0);
+    assertSafeKeyComponent("checkpoint_id", checkpointId);
 
     // In shallow mode, we use a single key per thread (no checkpoint_id in key)
     const key = `checkpoint:${threadId}:${checkpointNs}:shallow`;
@@ -137,7 +145,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       if (prevCheckpointData && typeof prevCheckpointData === "object") {
         prevCheckpointId = prevCheckpointData.checkpoint_id;
       }
-    } catch (error) {
+    } catch {
       // Key doesn't exist yet, that's fine
     }
 
@@ -154,6 +162,10 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       channel_blobs: undefined,
     };
 
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writesExist = await this.client.exists(zsetKey);
+
     // Structure matching Python implementation
     const jsonDoc: any = {
       thread_id: threadId,
@@ -163,7 +175,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       checkpoint: checkpointCopy,
       metadata: this.sanitizeMetadata(metadata),
       checkpoint_ts: Date.now(),
-      has_writes: "false",
+      has_writes: writesExist ? "true" : "false",
     };
 
     // Store metadata fields at top-level for searching
@@ -193,6 +205,12 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
 
     if (!threadId) {
       return undefined;
+    }
+
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    if (checkpointId !== undefined) {
+      assertSafeKeyComponent("checkpoint_id", checkpointId);
     }
 
     // In shallow mode, we use a single key per thread
@@ -237,6 +255,21 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     options?: CheckpointListOptions & { filter?: CheckpointMetadata }
   ): AsyncGenerator<CheckpointTuple> {
     await this.ensureIndexes();
+
+    // Validate caller-controlled identifiers before they reach KEYS
+    // patterns or RediSearch tag values. Without this guard a `thread_id`
+    // of `*` would feed `client.keys("checkpoint:*:*:shallow")` in the
+    // fallback path and enumerate every tenant.
+    if (config?.configurable?.thread_id !== undefined) {
+      assertSafeKeyComponent("thread_id", config.configurable.thread_id);
+    }
+    if (config?.configurable?.checkpoint_ns !== undefined) {
+      assertSafeKeyComponent(
+        "checkpoint_ns",
+        config.configurable.checkpoint_ns,
+        { allowEmpty: true }
+      );
+    }
 
     // In shallow mode, we only return the latest checkpoint per thread
     if (config?.configurable?.thread_id) {
@@ -395,6 +428,11 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       throw new Error("thread_id and checkpoint_id are required");
     }
 
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    assertSafeKeyComponent("checkpoint_id", checkpointId);
+    assertSafeKeyComponent("task_id", taskId);
+
     // In shallow mode, we overwrite all writes for the task
     // First, clean up old writes for this task
     const writePattern = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:${taskId}:*`;
@@ -426,7 +464,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
 
     // Register write keys in sorted set for efficient retrieval
     if (writeKeys.length > 0) {
-      const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+      const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
 
       // Clear existing entries for this task and add new ones
       const zaddArgs: Record<string, number> = {};
@@ -457,6 +495,11 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
+    // Without this guard a `threadId` of `*` would expand the KEYS pattern
+    // into `checkpoint:*:*:shallow` and delete every shallow checkpoint
+    // in the database across every tenant. CWE-77 / CWE-943.
+    assertSafeKeyComponent("thread_id", threadId);
+
     // Delete shallow checkpoints
     const checkpointPattern = `checkpoint:${threadId}:*:shallow`;
     const checkpointKeys = await this.client.keys(checkpointPattern);
@@ -474,7 +517,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     }
 
     // Delete write registries
-    const zsetPattern = `write_keys_zset:${threadId}:*`;
+    const zsetPattern = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:*`;
     const zsetKeys = await this.client.keys(zsetPattern);
 
     if (zsetKeys.length > 0) {
@@ -573,7 +616,11 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     checkpointNs: string,
     checkpointId: string
   ): Promise<Array<[string, string, any]> | undefined> {
-    const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${checkpointId}`;
+    // Defense in depth: every public entry already validates these.
+    assertSafeKeyComponent("thread_id", threadId);
+    assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
+    assertSafeKeyComponent("checkpoint_id", checkpointId);
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
     const writeKeys = await this.client.zRange(zsetKey, 0, -1);
 
     if (writeKeys.length === 0) {
@@ -642,7 +689,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     }
 
     // Clean up write registry
-    const zsetKey = `write_keys_zset:${threadId}:${checkpointNs}:${oldCheckpointId}`;
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${oldCheckpointId}`;
     await this.client.del(zsetKey);
 
     // Note: We don't clean up blob keys in shallow mode since we store inline

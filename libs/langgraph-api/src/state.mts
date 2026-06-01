@@ -27,7 +27,7 @@ export const stateSnapshotToThreadState = (
       // TODO: too many type assertions, check if this is actually correct
       checkpoint:
         task.state != null && "configurable" in task.state
-          ? (task.state.configurable as Checkpoint) ?? null
+          ? ((task.state.configurable as Checkpoint) ?? null)
           : null,
       state:
         task.state != null && isStateSnapshot(task.state)

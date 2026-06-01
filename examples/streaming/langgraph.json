@@ -1,0 +1,12 @@
+{
+  "node_version": "22",
+  "graphs": {
+    "simple-tool-graph": "./src/agents/simple-tool-graph.ts:graph",
+    "simple-tool-with-metrics": "./src/agents/simple-tool-with-metrics.ts:graph",
+    "research-pipeline": "./src/agents/research-pipeline.ts:graph",
+    "human-in-the-loop": "./src/agents/hitl-agent.ts:agent",
+    "deep-agent": "./src/agents/deep-agent.ts:agent",
+    "a2a-research": "./src/agents/a2a-research.ts:graph"
+  },
+  "env": ".env"
+}

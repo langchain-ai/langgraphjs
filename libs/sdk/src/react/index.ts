@@ -63,6 +63,14 @@ export type {
   ToolCallFromTool,
   ToolCallsFromTools,
 } from "../types.messages.js";
+export type {
+  HeadlessToolImplementation,
+  AnyHeadlessToolImplementation,
+  ToolEvent,
+  HeadlessToolInterrupt,
+  OnToolCallback,
+  FlushPendingHeadlessToolInterruptsOptions,
+} from "../headless-tools.js";
 export {
   SubagentManager,
   extractToolCallIdFromNamespace,
@@ -70,3 +78,13 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "../ui/subagents.js";
+export {
+  isHeadlessToolInterrupt,
+  parseHeadlessToolInterruptPayload,
+  filterOutHeadlessToolInterrupts,
+  findHeadlessTool,
+  executeHeadlessTool,
+  handleHeadlessToolInterrupt,
+  headlessToolResumeCommand,
+  flushPendingHeadlessToolInterrupts,
+} from "../headless-tools.js";

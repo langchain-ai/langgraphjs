@@ -43,6 +43,7 @@ import {
   INTERRUPT,
   isCommand,
 } from "../constants.js";
+import { propagateConfigurableToMetadata } from "./utils/config.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
@@ -158,11 +159,11 @@ const getStreamModes = (
  * ```
  */
 export class RemoteGraph<
-    Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ContextType extends Record<string, any> = StrRecord<string, any>
-  >
+  Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = StrRecord<string, any>,
+>
   extends Runnable<
     PregelInputType,
     PregelOutputType,
@@ -245,6 +246,44 @@ export class RemoteGraph<
       }
     };
 
+    const propagateMetadataDefaults = (obj: unknown) => {
+      const seen = new WeakSet<object>();
+      const visit = (value: unknown) => {
+        if (typeof value !== "object" || value == null) {
+          return;
+        }
+        if (seen.has(value)) {
+          return;
+        }
+        seen.add(value);
+        const record = value as Record<string, unknown>;
+        const configurable = record.configurable;
+        if (
+          typeof configurable === "object" &&
+          configurable != null &&
+          !Array.isArray(configurable)
+        ) {
+          const metadata =
+            typeof record.metadata === "object" &&
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
+              ? (record.metadata as Record<string, unknown>)
+              : undefined;
+          record.metadata =
+            propagateConfigurableToMetadata(
+              configurable as Record<string, unknown>,
+              metadata
+            ) ?? record.metadata;
+        }
+        for (const nestedValue of Object.values(record)) {
+          visit(nestedValue);
+        }
+      };
+      visit(obj);
+    };
+
+    propagateMetadataDefaults(config);
+
     // Remove non-JSON serializable fields from the config
     const sanitizedConfig = sanitizeObj(config);
 
@@ -275,6 +314,38 @@ export class RemoteGraph<
     };
   }
 
+  protected _checkpointToConfig(
+    checkpoint?: Partial<Checkpoint> | null,
+    fallbackConfig?: RunnableConfig
+  ): RunnableConfig {
+    const resolvedCheckpoint =
+      checkpoint ?? this._getCheckpoint(fallbackConfig);
+    if (resolvedCheckpoint == null) {
+      return { configurable: {} };
+    }
+
+    const configurable: Record<string, unknown> = {};
+    if (resolvedCheckpoint.thread_id !== undefined) {
+      configurable.thread_id = resolvedCheckpoint.thread_id;
+    }
+    if (resolvedCheckpoint.checkpoint_ns !== undefined) {
+      configurable.checkpoint_ns = resolvedCheckpoint.checkpoint_ns;
+    }
+    if (resolvedCheckpoint.checkpoint_id !== undefined) {
+      configurable.checkpoint_id = resolvedCheckpoint.checkpoint_id;
+    }
+
+    const hasCheckpointFields =
+      resolvedCheckpoint.checkpoint_ns !== undefined ||
+      resolvedCheckpoint.checkpoint_id !== undefined ||
+      resolvedCheckpoint.checkpoint_map !== undefined;
+    if (hasCheckpointFields) {
+      configurable.checkpoint_map = resolvedCheckpoint.checkpoint_map ?? {};
+    }
+
+    return { configurable };
+  }
+
   protected _getCheckpoint(config?: RunnableConfig): Checkpoint | undefined {
     if (config?.configurable === undefined) {
       return undefined;
@@ -296,7 +367,10 @@ export class RemoteGraph<
     return Object.keys(checkpoint).length > 0 ? checkpoint : undefined;
   }
 
-  protected _createStateSnapshot(state: ThreadState): StateSnapshot {
+  protected _createStateSnapshot(
+    state: ThreadState,
+    fallbackConfig?: RunnableConfig
+  ): StateSnapshot {
     const tasks: PregelTaskDescription[] = state.tasks.map((task) => {
       return {
         id: task.id,
@@ -309,10 +383,15 @@ export class RemoteGraph<
         })),
         // eslint-disable-next-line no-nested-ternary
         state: task.state
-          ? this._createStateSnapshot(task.state)
+          ? this._createStateSnapshot(
+              task.state,
+              task.checkpoint
+                ? this._checkpointToConfig(task.checkpoint)
+                : fallbackConfig
+            )
           : task.checkpoint
-          ? { configurable: task.checkpoint }
-          : undefined,
+            ? { configurable: task.checkpoint }
+            : undefined,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result: (task as any).result,
       };
@@ -321,27 +400,19 @@ export class RemoteGraph<
     return {
       values: state.values,
       next: state.next ? [...state.next] : [],
-      config: {
-        configurable: {
-          thread_id: state.checkpoint.thread_id,
-          checkpoint_ns: state.checkpoint.checkpoint_ns,
-          checkpoint_id: state.checkpoint.checkpoint_id,
-          checkpoint_map: state.checkpoint.checkpoint_map ?? {},
-        },
-      },
+      // TODO: Fix SDK typing. `ThreadState.checkpoint` is typed as non-null,
+      // but deployments can return `null` (e.g. a thread that exists but has
+      // not produced a checkpoint yet). See #2328.
+      config: this._checkpointToConfig(
+        state.checkpoint as Checkpoint | null,
+        fallbackConfig
+      ),
       metadata: state.metadata
         ? (state.metadata as CheckpointMetadata)
         : undefined,
       createdAt: state.created_at ?? undefined,
       parentConfig: state.parent_checkpoint
-        ? {
-            configurable: {
-              thread_id: state.parent_checkpoint.thread_id,
-              checkpoint_ns: state.parent_checkpoint.checkpoint_ns,
-              checkpoint_id: state.parent_checkpoint.checkpoint_id,
-              checkpoint_map: state.parent_checkpoint.checkpoint_map ?? {},
-            },
-          }
+        ? this._checkpointToConfig(state.parent_checkpoint)
         : undefined,
       tasks,
     };
@@ -537,7 +608,7 @@ export class RemoteGraph<
       }
     );
     for (const state of states) {
-      yield this._createStateSnapshot(state);
+      yield this._createStateSnapshot(state, mergedConfig);
     }
   }
 
@@ -555,11 +626,12 @@ export class RemoteGraph<
       const nodeId = node.id;
       nodesMap[nodeId] = {
         id: nodeId.toString(),
-        name: typeof node.data === "string" ? node.data : node.data?.name ?? "",
+        name:
+          typeof node.data === "string" ? node.data : (node.data?.name ?? ""),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
         metadata:
-          typeof node.data !== "string" ? node.data?.metadata ?? {} : {},
+          typeof node.data !== "string" ? (node.data?.metadata ?? {}) : {},
       };
     }
     return nodesMap;
@@ -576,7 +648,7 @@ export class RemoteGraph<
       this._getCheckpoint(mergedConfig),
       options
     );
-    return this._createStateSnapshot(state);
+    return this._createStateSnapshot(state, mergedConfig);
   }
 
   /** @deprecated Use getGraphAsync instead. The async method will become the default in the next minor release. */
