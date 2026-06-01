@@ -169,8 +169,7 @@ export class RemoteGraph<
     PregelOutputType,
     PregelOptions<Nn, Cc, ContextType>
   >
-  implements PregelInterface<Nn, Cc, ContextType>
-{
+  implements PregelInterface<Nn, Cc, ContextType> {
   static lc_name() {
     return "RemoteGraph";
   }
@@ -265,8 +264,8 @@ export class RemoteGraph<
         ) {
           const metadata =
             typeof record.metadata === "object" &&
-            record.metadata != null &&
-            !Array.isArray(record.metadata)
+              record.metadata != null &&
+              !Array.isArray(record.metadata)
               ? (record.metadata as Record<string, unknown>)
               : undefined;
           record.metadata =
@@ -300,6 +299,33 @@ export class RemoteGraph<
       metadata: sanitizedConfig.metadata ?? {},
       configurable: newConfigurable,
       recursion_limit: sanitizedConfig.recursionLimit,
+    };
+  }
+
+  /**
+   * Prepare config and thread ID for remote run API calls.
+   *
+   * `thread_id` is passed via the URL path, not in `config.configurable`, so the
+   * server can accept a separate `context` payload for stateful runs.
+   */
+  #prepareRunRequest(mergedConfig: LangGraphRunnableConfig): {
+    threadId: string | undefined;
+    context: unknown;
+    config: ReturnType<RemoteGraph["_sanitizeConfig"]>;
+  } {
+    const context = mergedConfig.context;
+    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const configurable = { ...sanitizedConfig.configurable };
+    const threadId = configurable.thread_id as string | undefined;
+    delete configurable.thread_id;
+
+    return {
+      threadId,
+      context,
+      config: {
+        ...sanitizedConfig,
+        configurable,
+      },
     };
   }
 
@@ -384,11 +410,11 @@ export class RemoteGraph<
         // eslint-disable-next-line no-nested-ternary
         state: task.state
           ? this._createStateSnapshot(
-              task.state,
-              task.checkpoint
-                ? this._checkpointToConfig(task.checkpoint)
-                : fallbackConfig
-            )
+            task.state,
+            task.checkpoint
+              ? this._checkpointToConfig(task.checkpoint)
+              : fallbackConfig
+          )
           : task.checkpoint
             ? { configurable: task.checkpoint }
             : undefined,
@@ -462,8 +488,15 @@ export class RemoteGraph<
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): AsyncGenerator<PregelOutputType> {
-    const mergedConfig = mergeConfigs(this.config, options);
-    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const mergedConfig = mergeConfigs(
+      this.config,
+      options
+    ) as LangGraphRunnableConfig;
+    const {
+      threadId,
+      context,
+      config: sanitizedConfig,
+    } = this.#prepareRunRequest(mergedConfig);
 
     const streamProtocolInstance = options?.configurable?.[CONFIG_KEY_STREAM];
 
@@ -497,22 +530,26 @@ export class RemoteGraph<
       serializedInput = _serializeInputs(input);
     }
 
-    for await (const chunk of this.client.runs.stream(
-      sanitizedConfig.configurable.thread_id as string,
-      this.graphId,
-      {
-        command,
-        input: serializedInput,
-        config: sanitizedConfig,
-        streamMode: extendedStreamModes,
-        interruptBefore: interruptBefore as string[],
-        interruptAfter: interruptAfter as string[],
-        streamSubgraphs,
-        ifNotExists: "create",
-        signal: mergedConfig.signal,
-        streamResumable: this.streamResumable,
-      }
-    )) {
+    const streamPayload = {
+      command,
+      input: serializedInput,
+      config: sanitizedConfig,
+      context,
+      streamMode: extendedStreamModes,
+      interruptBefore: interruptBefore as string[],
+      interruptAfter: interruptAfter as string[],
+      streamSubgraphs,
+      ifNotExists: "create" as const,
+      signal: mergedConfig.signal,
+      streamResumable: this.streamResumable,
+    };
+
+    const runStream =
+      threadId != null
+        ? this.client.runs.stream(threadId, this.graphId, streamPayload)
+        : this.client.runs.stream(null, this.graphId, streamPayload);
+
+    for await (const chunk of runStream) {
       let mode;
       let namespace: string[];
       if (chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
