@@ -400,6 +400,9 @@ export class RemoteGraph<
     return {
       values: state.values,
       next: state.next ? [...state.next] : [],
+      // TODO: Fix SDK typing. `ThreadState.checkpoint` is typed as non-null,
+      // but deployments can return `null` (e.g. a thread that exists but has
+      // not produced a checkpoint yet). See #2328.
       config: this._checkpointToConfig(
         state.checkpoint as Checkpoint | null,
         fallbackConfig

@@ -256,6 +256,46 @@ describe("RemoteGraph", () => {
     });
   });
 
+  test("getStateHistory handles null checkpoint", async () => {
+    const client = new Client({});
+    vi.spyOn((client as any).threads, "getHistory").mockResolvedValue([
+      {
+        values: {},
+        next: [],
+        checkpoint: null,
+        metadata: {},
+        created_at: null,
+        parent_checkpoint: null,
+        tasks: [],
+      },
+    ]);
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+    const config = { configurable: { thread_id: "thread1" } };
+    const stateHistorySnapshots = await gatherIterator(
+      remotePregel.getStateHistory(config),
+    );
+
+    expect(stateHistorySnapshots.length).toEqual(1);
+
+    expect(stateHistorySnapshots[0]).toEqual({
+      values: {},
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "thread1",
+        },
+      },
+      metadata: {},
+      createdAt: undefined,
+      parentConfig: undefined,
+      tasks: [],
+    });
+  });
+
   test("updateState", async () => {
     const client = new Client({});
     vi.spyOn((client as any).threads, "updateState").mockResolvedValue({
